@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Registry admission (ADR 0003 §10): a harness row is `verified` only when this
- * passes unattended against a real clone. Criteria, written before the first
- * run on prismalens#561: the agent works in the clone, a write is refused
- * through the permission policy, the stream terminates on its own, the report
- * validates within one retry, and the harness read only the config we wrote.
+ * Compatibility run (ADR 0003 §10): a registry row records `tested` when this
+ * passes unattended against a real clone. It checks that prismalens can drive
+ * the harness: the agent works in the clone, reads are not refused, the stream
+ * terminates on its own and the report validates within one retry. What the
+ * harness does with the provoked write is reported under `observed`, never
+ * gated on: its behaviour and permissions are its own.
  *
  *   PRISMALENS_HARNESS_MODEL=opencode/muse-spark-1.3-contributor-free \
  *   tsx scripts/acp-admission.ts opencode /path/to/clone
@@ -159,15 +160,11 @@ const wireLines = parseTranscript(
 	existsSync(transcriptFile) ? readFileSync(transcriptFile, "utf8") : "",
 );
 const installedVersion = initializeVersion(wireLines);
-const admittedVersion = HARNESS_REGISTRY[harness].admission?.version ?? null;
+const testedVersion = HARNESS_REGISTRY[harness].tested?.version ?? null;
 const warnings: string[] = [];
-if (
-	installedVersion &&
-	admittedVersion &&
-	installedVersion !== admittedVersion
-) {
+if (installedVersion && testedVersion && installedVersion !== testedVersion) {
 	warnings.push(
-		`installed ${installedVersion} differs from admitted ${admittedVersion}`,
+		`installed ${installedVersion} differs from tested ${testedVersion}`,
 	);
 }
 const decisions = permissionDecisions(wireLines);
@@ -190,18 +187,21 @@ const checks = {
 	// correct run failed whenever the model summarised. The nonce is evidence
 	// the model cannot produce any other way.
 	cwdProved: cwdProof.proved,
-	writeRefused: decisions.some(
-		(d) =>
-			d.allowed === false &&
-			/PRISMALENS_ADMISSION/.test(d.permission?.title ?? ""),
-	),
 	readAllowed: readsAllowed(decisions, cwdProof.proved),
-	probeFileAbsent: !existsSync(probeFile),
 	cwdProbeRemoved: !existsSync(cwdProbeFile),
 	reportValid: report !== undefined,
 	noErrors: errors.length === 0,
 };
 const pass = Object.values(checks).every(Boolean);
+const observed = {
+	writeRefused: decisions.some(
+		(d) =>
+			d.allowed === false &&
+			/PRISMALENS_ADMISSION/.test(d.permission?.title ?? ""),
+	),
+	probeFileWritten: existsSync(probeFile),
+};
+if (observed.probeFileWritten) rmSync(probeFile);
 console.log(
 	redactNonce(
 		JSON.stringify(
@@ -209,10 +209,11 @@ console.log(
 				pass,
 				harness,
 				installedVersion,
-				admittedVersion,
+				testedVersion,
 				warnings,
 				elapsedMs: Date.now() - started,
 				checks,
+				observed,
 				// Splits model non-compliance (never touched the probe) from a real
 				// failure (tried and could not read it) without a re-run.
 				cwdProbe: cwdProof,
@@ -235,12 +236,10 @@ console.log(
 );
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
-	console.log(
-		`admission: { version: "${installedVersion}", date: "${today}", result: "pass" }`,
-	);
+	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);
 } else if (pass) {
 	console.error(
-		"no admission record: the harness reported no version in initialize, so there is nothing to admit",
+		"no tested record: the harness reported no version in initialize",
 	);
 }
 process.exit(pass ? 0 : 1);

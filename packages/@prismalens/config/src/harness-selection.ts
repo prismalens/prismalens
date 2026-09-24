@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Detect and report (ADR 0003 §9): the harness is whatever verified registry row
- * is on PATH, in HARNESS_AUTO_ORDER, unless PRISMALENS_HARNESS pins one. Nothing
+ * Detect and report (ADR 0003 §9): the harness is the first registry row on
+ * PATH, in HARNESS_AUTO_ORDER, unless PRISMALENS_HARNESS pins one. Nothing
  * on PATH is a refusal with the install hints, never a bundled fallback.
  */
 import { accessSync, constants as fsConstants } from "node:fs";
@@ -14,7 +14,6 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type HarnessSelectionFailure,
-	isAdmitted,
 } from "./providers/harness.js";
 
 // Re-exported so the union stays importable from the module that produces it,
@@ -60,7 +59,6 @@ export type HarnessSelection =
 			runnable: true;
 			harness: HarnessId;
 			auto: boolean;
-			verified: boolean;
 			pinnedBy?: PinSource;
 	  }
 	| {
@@ -90,10 +88,8 @@ export interface HarnessStatus {
 	label: string;
 	binary: string;
 	installed: boolean;
-	verified: boolean;
-	admission: { version: string; date: string } | null;
-	/** Why it is not admitted, with the version and date that was measured; null when unknown or admitted. */
-	admissionGap: string | null;
+	/** The version a compatibility run passed on; null when none has run. */
+	tested: { version: string; date: string } | null;
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
@@ -114,13 +110,7 @@ export function listHarnessStatus(
 			label: d.label,
 			binary: d.binary,
 			installed: check(d.binary),
-			verified: isAdmitted(d),
-			admission: d.admission
-				? { version: d.admission.version, date: d.admission.date }
-				: null,
-			admissionGap: d.admissionGap
-				? `${d.admissionGap.reason} (${d.admissionGap.version}, ${d.admissionGap.date})`
-				: null,
+			tested: d.tested ?? null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,
 			modelVia: d.modelVia,
@@ -166,27 +156,17 @@ export function resolveHarnessSelection(
 			runnable: true,
 			harness: id,
 			auto: false,
-			verified: isAdmitted(d),
 			pinnedBy: source,
 		};
 	}
 	for (const id of HARNESS_AUTO_ORDER) {
-		const d = HARNESS_REGISTRY[id];
-		if (isAdmitted(d) && check(d.binary)) {
-			return { runnable: true, harness: id, auto: true, verified: true };
+		if (check(HARNESS_REGISTRY[id].binary)) {
+			return { runnable: true, harness: id, auto: true };
 		}
 	}
-	const unverifiedPresent = HARNESS_AUTO_ORDER.filter(
-		(id) =>
-			!isAdmitted(HARNESS_REGISTRY[id]) && check(HARNESS_REGISTRY[id].binary),
-	);
-	const pinHint =
-		unverifiedPresent.length > 0
-			? ` ${unverifiedPresent.map((id) => HARNESS_REGISTRY[id].binary).join(", ")} found but not yet verified; pin one with PRISMALENS_HARNESS=<id> to use it anyway.`
-			: "";
 	return {
 		runnable: false,
 		failure: "no-harness",
-		reason: `No coding agent found on PATH. Install one: ${installHints()}.${pinHint}`,
+		reason: `No coding agent found on PATH. Install one: ${installHints()}.`,
 	};
 }

@@ -22,16 +22,13 @@ export const HarnessStatusSchema = z.object({
 	label: z.string(),
 	binary: z.string(),
 	installed: z.boolean(),
-	/** Passed the registry admission run in CI; auto-selection considers only these. */
-	verified: z.boolean(),
-	admission: z
+	/** The version a compatibility run passed on; null when none has run. */
+	tested: z
 		.object({
 			version: z.string(),
 			date: z.string(),
 		})
 		.nullable(),
-	/** Why it is not admitted, with the version and date measured; null when unknown or admitted (#634). */
-	admissionGap: z.string().nullable(),
 	/** One-line install hint, shown when not installed. */
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */

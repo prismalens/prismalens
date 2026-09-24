@@ -19,23 +19,19 @@ describe("resolveHarnessSelection", () => {
 		}
 	});
 
-	it("auto-selects the first verified harness on PATH", () => {
+	it("auto-selects the first harness on PATH in registry order", () => {
 		const s = resolveHarnessSelection({ isOnPath: onPath(["gemini", "opencode"]) });
-		expect(s).toMatchObject({ runnable: true, harness: "opencode", auto: true, verified: true });
+		expect(s).toMatchObject({ runnable: true, harness: "opencode", auto: true });
 	});
 
-	it("never auto-selects an unadmitted (unverified) harness, but names it in the refusal", () => {
-		const s = resolveHarnessSelection({ isOnPath: onPath(["gemini", "codex", "claude-code", "deepagents"]) });
-		expect(s.runnable).toBe(false);
-		if (!s.runnable) {
-			expect(s.failure).toBe("no-harness");
-			expect(s.reason).toContain("PRISMALENS_HARNESS=<id>");
-		}
+	it("auto-selects a harness no compatibility run has tested", () => {
+		const s = resolveHarnessSelection({ isOnPath: onPath(["gemini"]) });
+		expect(s).toMatchObject({ runnable: true, harness: "gemini", auto: true });
 	});
 
-	it("honours a pin to an unverified harness that is installed", () => {
+	it("honours a pin to an installed harness", () => {
 		const s = resolveHarnessSelection({ envHarness: "gemini", isOnPath: onPath(["gemini"]) });
-		expect(s).toMatchObject({ runnable: true, harness: "gemini", auto: false, verified: false });
+		expect(s).toMatchObject({ runnable: true, harness: "gemini", auto: false });
 	});
 
 	it("refuses a pin whose binary is missing, and an unknown pin", () => {
@@ -67,28 +63,20 @@ describe("resolveHarnessSelection", () => {
 		expect(ok).toMatchObject({ runnable: true, auto: false, pinnedBy: "settings" });
 	});
 
-	it("lists every registry row with installed, verified, and admission data", () => {
+	it("lists every registry row with installed and tested data", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
 		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
 		expect(rows[0]).toMatchObject({
 			installed: true,
-			verified: true,
-			admission: { version: "1.18.30", date: "2026-09-20" },
+			tested: { version: "1.18.30", date: "2026-09-20" },
 			defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		});
 		expect(rows[1]).toMatchObject({
 			installed: false,
-			verified: true,
-			admission: { version: "0.81.1", date: "2026-09-23" },
-			admissionGap: null,
+			tested: { version: "0.81.1", date: "2026-09-23" },
 			defaultModel: null,
 		});
-		// Not admitted, each with the reason its admission run named (#634).
-		for (const row of rows.slice(2)) {
-			expect(row.admission).toBeNull();
-			expect(row.verified).toBe(false);
-			expect(row.admissionGap).toMatch(/\(\d[\d.]*, 2026-09-23\)$/);
-		}
+		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", null, null, "0.1.75"]);
 	});
 });
 

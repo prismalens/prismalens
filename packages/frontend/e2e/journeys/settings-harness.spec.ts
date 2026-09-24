@@ -9,7 +9,7 @@ import { expect, type Page, test } from "@playwright/test";
  * The AI-provider card, its per-provider credential UI, and the raw-report
  * banner are gone — there is no LLM router any more. What is left is
  * `GET /settings/harnesses` (ADR 0003 §9): a registry row per harness
- * (installed/verified on this machine) plus the gate's own selection
+ * (installed on this machine, and the version CI tested) plus the gate's own selection
  * verdict, rendered verbatim. The picker below it is LIVE: it reads and
  * writes `GET`/`PATCH /settings/harness`, the persisted choice and model —
  * `PRISMALENS_HARNESS`, when set, still wins at investigation time
@@ -27,11 +27,9 @@ type HarnessFixture = {
 	label: string;
 	binary: string;
 	installed: boolean;
-	verified: boolean;
 	install: string;
 	defaultModel: string | null;
-	admission: { version: string; date: string } | null;
-	admissionGap: string | null;
+	tested: { version: string; date: string } | null;
 	modelVia: "config" | "env" | "unsupported";
 	loginHint: string;
 };
@@ -41,11 +39,9 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	label: "Claude Code",
 	binary: "claude-agent-acp",
 	installed: true,
-	verified: false,
 	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 	defaultModel: null,
-	admission: null,
-	admissionGap: null,
+	tested: null,
 	modelVia: "env",
 	loginHint:
 		"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
@@ -56,11 +52,9 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	label: "OpenCode",
 	binary: "opencode",
 	installed: true,
-	verified: true,
 	install: "curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
 	defaultModel: null,
-	admission: { version: "1.18.30", date: "2026-09-20" },
-	admissionGap: null,
+	tested: { version: "1.18.30", date: "2026-09-20" },
 	modelVia: "config",
 	loginHint:
 		"Keyless default model; `opencode auth login` or a provider key in env for others",
@@ -71,11 +65,9 @@ const CODEX_INSTALLED: HarnessFixture = {
 	label: "Codex",
 	binary: "codex-acp",
 	installed: true,
-	verified: false,
 	install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
 	defaultModel: null,
-	admission: null,
-	admissionGap: null,
+	tested: null,
 	modelVia: "unsupported",
 	loginHint: "`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
 };
@@ -85,17 +77,15 @@ const DEEPAGENTS_MISSING: HarnessFixture = {
 	label: "deepagents",
 	binary: "deepagents-acp",
 	installed: false,
-	verified: false,
 	install: "pip install deepagents-acp",
 	defaultModel: null,
-	admission: null,
-	admissionGap: null,
+	tested: null,
 	modelVia: "unsupported",
 	loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 };
 
-/** A machine with opencode (CI-verified, on PATH), claude-code and codex (both
- * installed but not admitted), and deepagents missing. */
+/** A machine with opencode (CI-tested, on PATH), claude-code and codex (both
+ * installed, untested), and deepagents missing. */
 const RUNNABLE: HarnessFixture[] = [
 	OPENCODE_INSTALLED,
 	CLAUDE_INSTALLED,
@@ -194,7 +184,7 @@ async function openHarnessSettings(
 const card = (page: Page) => page.getByTestId("harness-settings");
 
 test.describe("Investigation agent settings card (#501/#609)", () => {
-	test("lists every registry harness with its installed/verified badges", async ({
+	test("lists every registry harness with its installed badge", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -229,7 +219,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toHaveCount(1);
 	});
 
-	test("shows admission and sign-in per row, and disables the Model field for a harness that ignores it (#634)", async ({
+	test("shows the tested version and sign-in per row, and disables the Model field for a harness that ignores it (#634)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -242,12 +232,12 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		const registry = page.getByTestId("harness-registry");
-		await expect(registry.getByTestId("harness-admission-opencode")).toHaveText(
-			"verified 1.18.30",
+		await expect(registry.getByTestId("harness-tested-opencode")).toHaveText(
+			"tested 1.18.30",
 		);
 		await expect(
-			registry.getByTestId("harness-admission-claude-code"),
-		).toHaveText("not verified");
+			registry.getByTestId("harness-tested-claude-code"),
+		).toHaveCount(0);
 		await expect(registry.getByText(OPENCODE_INSTALLED.loginHint, {
 			exact: false,
 		})).toBeVisible();

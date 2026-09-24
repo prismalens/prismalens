@@ -2,9 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Harness registry: every harness speaks ACP over stdio (ADR 0003). A row is
- * `verified` only after the unattended CI run on a real clone passes; unverified
- * rows are shown by `pl doctor` and selectable only through PRISMALENS_HARNESS.
+ * Harness registry: every harness speaks ACP over stdio (ADR 0003). Any row on
+ * PATH is selectable; `tested` records the version a compatibility run passed on.
  */
 export const HARNESS_IDS = [
 	"opencode",
@@ -28,7 +27,7 @@ export const HARNESS_SELECTION_FAILURES = [
 	"invalid-env-harness",
 	/** A pin (env or persisted) names a real harness whose binary is absent. */
 	"pinned-harness-missing",
-	/** Nothing verified is on PATH. */
+	/** No registry harness is on PATH. */
 	"no-harness",
 ] as const;
 export type HarnessSelectionFailure =
@@ -93,21 +92,15 @@ export interface HarnessDescriptor {
 	install: string;
 	/**
 	 * The model prismalens asks for when the operator set none: the id the
-	 * row's admission run passed on. Absent means the harness's own default,
-	 * which nobody verified (#337 run e: OpenCode's default ignored the report
+	 * row's compatibility run passed on. Absent means the harness's own default,
+	 * which nobody tested (#337 run e: OpenCode's default ignored the report
 	 * schema twice). Recorded per run with its source in `RunFidelity`.
 	 */
 	defaultModel?: string;
 	readOnlyFidelity: PermissionFidelity;
 	readOnlyMechanism: string;
-	/** The unattended admission run this row passed (ADR 0003 §10), or absent: never admitted. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
-	admission?: { version: string; date: string; result: "pass" };
-	/**
-	 * Why the row is not admitted, when an admission run named the reason
-	 * (#634): the version and date it was measured on, and the failure in one
-	 * line. Shown beside "not verified" by the picker and the doctor.
-	 */
-	admissionGap?: { version: string; date: string; reason: string };
+	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
+	tested?: { version: string; date: string };
 	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
 	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
@@ -178,12 +171,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// The keyless model every #337 walk and the CI admission run used.
+		// The keyless model every #337 walk and the CI compatibility run used.
 		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"opencode.json permission edit/bash=ask answered by prismalens; webfetch, websearch, external_directory denied; repo config disabled",
-		admission: { version: "1.18.30", date: "2026-09-20", result: "pass" },
+		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "config",
 		loginHint:
 			"Keyless default model; `opencode auth login` or a provider key in env for others",
@@ -227,7 +220,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyMechanism:
 			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud with PRISMALENS_PLACEMENT=server (#634).
-		admission: { version: "0.81.1", date: "2026-09-23", result: "pass" },
+		tested: { version: "0.81.1", date: "2026-09-23" },
 		modelVia: "env",
 		loginHint:
 			"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
@@ -249,12 +242,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
-		admissionGap: {
-			version: "1.13.1",
-			date: "2026-09-23",
-			reason:
-				"applies writes without asking first (no session/request_permission), even in read-only mode",
-		},
 		modelVia: "unsupported",
 		loginHint:
 			"`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
@@ -276,11 +263,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP permission answers; GEMINI_CLI_HOME isolates the user's approvalMode",
-		admissionGap: {
-			version: "0.60.0",
-			date: "2026-09-23",
-			reason: "needs a GEMINI_API_KEY; no keyless model to admit it on",
-		},
 		modelVia: "unsupported",
 		loginHint: "`GEMINI_API_KEY` in env",
 	},
@@ -299,12 +281,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: "ACP permission answers; --no-mcp",
-		admissionGap: {
-			version: "0.1.75",
-			date: "2026-09-23",
-			reason:
-				"passes the run checks, but its own config is not isolated: the row sets no config-dir variable",
-		},
+		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
+		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 	},
@@ -366,11 +344,7 @@ export interface ResolvedModel {
 	source: ModelSource;
 }
 
-export function isAdmitted(d: HarnessDescriptor): boolean {
-	return d.admission?.result === "pass";
-}
-
-/** Operator setting first, then the row's verified default, then the harness's own. */
+/** Operator setting first, then the row's tested default, then the harness's own. */
 export function resolveHarnessModel(
 	harnessId: HarnessId,
 	operatorModel?: string,
@@ -382,7 +356,7 @@ export function resolveHarnessModel(
 	return { source: "harness-default" };
 }
 
-/** Auto-selection order; only `verified` rows are eligible without a pin. */
+/** Auto-selection order: the first one on PATH runs unless one is pinned. */
 export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
 	"opencode",
 	"claude-code",

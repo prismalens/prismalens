@@ -149,8 +149,7 @@ describe("HarnessService", () => {
 				settingRow({ harness: "codex" }),
 			);
 
-			// `codex` is unverified, so auto detection would never choose it —
-			// reaching it proves the persisted pin was applied.
+			// `auto: false` proves the persisted pin chose it, not detection.
 			await expect(service().resolveSelection()).resolves.toMatchObject({
 				runnable: true,
 				harness: "codex",
@@ -158,7 +157,7 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("auto-detects the verified row on PATH when nothing is pinned", async () => {
+		it("auto-detects the row on PATH when nothing is pinned", async () => {
 			process.env.PATH = pathWith("opencode");
 
 			await expect(service().resolveSelection()).resolves.toMatchObject({
