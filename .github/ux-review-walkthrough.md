@@ -30,7 +30,14 @@ for n in $nums; do
            -q '"=== PR #\(.number) — \(.title) ==="') || { echo "gh pr view failed on #$n" >&2; break; }
   printf '\n\n%s\n' "$meta"
   gh pr view --repo prismalens/prismalens "$n" --json body -q '.body // ""' |
-    awk '/^```
+    awk '/^```/          { fence = !fence; next }
+         fence           { next }
+         found && /^## / { exit }
+         /^## UX review/ { found = 1 }
+         found           { print }
+         END             { if (!found) print "(!) no ## UX review section" }'
+done
+```
 
 A labelled PR with no section prints `(!)`.
 
