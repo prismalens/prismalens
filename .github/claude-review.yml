@@ -3,6 +3,8 @@
 # Story: prismalens/gh-workflows#33.
 version: 1
 review:
+  # CodeRabbit reviews every PR; this lane stays off until the operator turns it back on.
+  admission: off
   auto_pause_rounds: 3
   path_filters:
     - "packages/@prismalens/database/**"
