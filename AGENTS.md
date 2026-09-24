@@ -46,62 +46,15 @@ Where a named surface explains three or more interacting parts (a resolution ord
 
 README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
 
-## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
+## Frontend changes carry a UX review
 
-**Suspended while releases are 0.5.x patches** (ruled on #337, 2026-09-11, as "until 0.8"; re-keyed
-2026-09-19 when releases went patch-only). The screens are being deleted and merged faster than a
-per-PR gate pays back, so requirements 1 and 3 below are not per-PR. One UX walk runs at the end of
-each milestone over every PR carrying the `ux-review` label. Requirement 2 stays in force on every
-frontend PR: the label and the `## UX review` section are how the walk finds the change. The full
-per-PR gate returns when `versioning: always-bump-patch` leaves `release-please-config.json`.
+Every PR touching `packages/frontend` carries the `ux-review` label and a `## UX review` section
+in its body, filled from the template below. A new page, a navigation change or a new
+interaction model is flagged to the operator immediately, not left for the milestone walk.
 
-Every PR touching `packages/frontend` — regardless of which agent or session produces it:
-
-1. **Design validation before merge, with the screenshots on the PR.** Capture the changed
-   surface from the running dev stack in `default` and `dark`, plus `empty` and `error` for
-   each of those the surface can actually reach, and pass a design review against the
-   frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
-   screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
-   planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
-   #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
-   from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
-   so every predicate over them relocated the hole rather than closing it. A deterministic
-   check over this repo's own content — the `## UX review` section and `ux-review` label
-   below — is the legitimate direction, not a decision #304 has made yet.)
-2. **A `## UX review` section in the PR body, and the `ux-review` label on the PR.** Fill in
-   the template below. The heading text and the label are both load-bearing: they are how the
-   operator finds this change again at milestone sign-off.
-3. **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303). Until
-   the harness lands, name the intended spec in the PR body so coverage debt stays visible.
-
-**UX-shape changes** — a new page, a navigation change, a new interaction model — are flagged
-to the operator **immediately and out of band**, never batched into the milestone walk.
-
-An implementation spec for frontend work that omits these deliverables is incomplete — do not
-start implementation until they are added. Requirement 2 replaced an append-to-a-local-file
-ledger on 2026-08-09; that file is frozen, and the operator's side of this — walking a
-milestone, auditing for PRs that forgot the label — is now
+The per-PR design gate and e2e spec are suspended while releases are 0.5.x patches (#337). Their
+rules and the screenshot convention are in
 [`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
-
-### Screenshots
-
-Commit them beside the spec that exercises the surface, as
-`packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png` — `<suite>` is the Playwright
-directory (`journeys/`, `pl-up/`, …), `<state>` is `default`, `dark`, `empty`, or `error`.
-Generate them from the spec (`await page.screenshot(...)`) wherever it already reaches that
-state. **This repo is public and a committed PNG is permanent**: seeded or synthetic state
-only, and look at every file before `git add` — no keys, tokens, real alert or incident
-payloads, personal names, or emails.
-
-Embed each in the PR body with a raw URL pinned to the **head SHA** (`git rev-parse HEAD` after
-the final push), never the branch name — branch-pinned images 404 once the branch is deleted
-on merge:
-
-```
-![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
-```
-
-### The `## UX review` template
 
 ````markdown
 ## UX review
@@ -124,13 +77,7 @@ state only if the surface genuinely cannot reach it, and say which and why under
 calls.
 ````
 
-Open the PR with the label already attached:
-
-```bash
-gh pr create --title '…' --body-file <body.md> --label ux-review
-```
-
-If it already exists: `gh pr edit <number> --add-label ux-review`.
+Open the PR with `--label ux-review`, or add it later with `gh pr edit <n> --add-label ux-review`.
 
 ## Implementation specs must declare a capability tier
 
