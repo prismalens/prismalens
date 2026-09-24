@@ -1,9 +1,11 @@
 # UX review walkthrough — how the operator signs off a milestone
 
-This is the operator's side of the frontend gate. The contributing agent's side — the three
-deliverables, the screenshot convention, and the `## UX review` template — lives in
+This is the operator's side of the frontend gate. The contributing agent's side that is in force
+now, the `## UX review` section, its template and the `ux-review` label, lives in
 [AGENTS.md](../AGENTS.md#frontend-changes-carry-a-design-gate-a-ux-review-on-the-pr-and-an-e2e-spec).
-Nothing here is needed to *write* a compliant PR; it is only needed to *walk* a milestone.
+The suspended requirements and the screenshot convention live below, in
+[The per-PR gate (suspended)](#the-per-pr-gate-suspended). A PR that attaches screenshots follows
+that convention today, and every frontend PR needs that section again once the gate returns.
 
 Until 2026-08-09 this walk was a single local file, `~/ai-context/prismalens-ux-ledger.html`.
 That file is frozen. Every frontend change now carries its own review evidence in its PR body
