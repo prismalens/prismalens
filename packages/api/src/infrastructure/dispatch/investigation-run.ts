@@ -136,7 +136,7 @@ async function runJobInternal(
 		const { selection, model, modelSource } = await ports.resolveHarness();
 		if (!selection.runnable) throw new Error(selection.reason);
 		logger.info(
-			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}${selection.verified ? "" : ", unverified"}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
+			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
 		let incident: Record<string, unknown> | null = null;

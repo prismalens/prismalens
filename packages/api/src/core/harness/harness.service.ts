@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Detect and report (ADR 0003 §9). The harness is whatever verified registry
- * row is on PATH, unless PRISMALENS_HARNESS or the persisted setting pins one.
+ * Detect and report (ADR 0003 §9). The harness is the first registry row on
+ * PATH, unless PRISMALENS_HARNESS or the persisted setting pins one.
  * Prismalens never bundles, installs or authenticates a harness.
  */
 import { Injectable } from "@nestjs/common";

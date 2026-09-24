@@ -6317,13 +6317,6 @@
                                       ],
                                       "type": "string"
                                     },
-                                    "placement": {
-                                      "enum": [
-                                        "laptop",
-                                        "server"
-                                      ],
-                                      "type": "string"
-                                    },
                                     "harnessVersion": {
                                       "type": "string"
                                     }
@@ -7078,13 +7071,6 @@
                                               "operator",
                                               "product-default",
                                               "harness-default"
-                                            ],
-                                            "type": "string"
-                                          },
-                                          "placement": {
-                                            "enum": [
-                                              "laptop",
-                                              "server"
                                             ],
                                             "type": "string"
                                           },
@@ -7864,13 +7850,6 @@
                                       ],
                                       "type": "string"
                                     },
-                                    "placement": {
-                                      "enum": [
-                                        "laptop",
-                                        "server"
-                                      ],
-                                      "type": "string"
-                                    },
                                     "harnessVersion": {
                                       "type": "string"
                                     }
@@ -8611,13 +8590,6 @@
                                             "operator",
                                             "product-default",
                                             "harness-default"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "placement": {
-                                          "enum": [
-                                            "laptop",
-                                            "server"
                                           ],
                                           "type": "string"
                                         },
@@ -9419,13 +9391,6 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "placement": {
-                                      "enum": [
-                                        "laptop",
-                                        "server"
                                       ],
                                       "type": "string"
                                     },
@@ -10457,13 +10422,6 @@
                                             ],
                                             "type": "string"
                                           },
-                                          "placement": {
-                                            "enum": [
-                                              "laptop",
-                                              "server"
-                                            ],
-                                            "type": "string"
-                                          },
                                           "harnessVersion": {
                                             "type": "string"
                                           }
@@ -10980,13 +10938,6 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "placement": {
-                                      "enum": [
-                                        "laptop",
-                                        "server"
                                       ],
                                       "type": "string"
                                     },
@@ -11642,13 +11593,6 @@
                                 ],
                                 "type": "string"
                               },
-                              "placement": {
-                                "enum": [
-                                  "laptop",
-                                  "server"
-                                ],
-                                "type": "string"
-                              },
                               "harnessVersion": {
                                 "type": "string"
                               }
@@ -12162,13 +12106,6 @@
                                         "operator",
                                         "product-default",
                                         "harness-default"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "placement": {
-                                      "enum": [
-                                        "laptop",
-                                        "server"
                                       ],
                                       "type": "string"
                                     },
@@ -22813,10 +22750,7 @@
                           "installed": {
                             "type": "boolean"
                           },
-                          "verified": {
-                            "type": "boolean"
-                          },
-                          "admission": {
+                          "tested": {
                             "anyOf": [
                               {
                                 "type": "object",
@@ -22917,8 +22851,7 @@
                           "label",
                           "binary",
                           "installed",
-                          "verified",
-                          "admission",
+                          "tested",
                           "install",
                           "defaultModel",
                           "modelVia",

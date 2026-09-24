@@ -2,7 +2,7 @@
 	"name": "@prismalens/desktop",
 	"version": "0.0.1",
 	"private": true,
-	"description": "The Electron launcher: spawns the same backend `pl up` runs, declares the laptop placement, opens a window on it, and adds presence.",
+	"description": "The Electron launcher: spawns the same backend `pl up` runs, opens a window on it, and adds presence.",
 	"type": "module",
 	"main": "dist/main.js",
 	"scripts": {

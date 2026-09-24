@@ -44,17 +44,17 @@ describe("device pairing on real migrated SQLite", () => {
 		const store = prismaPairingStore(prisma);
 
 		// createPairingLink
-		const link = await createPairingLink(store, { label: "Work Laptop" });
+		const link = await createPairingLink(store, { label: "Work computer" });
 		expect(link.token).toBeDefined();
 
 		// redeemPairingLink
 		const redeemed = await redeemPairingLink(store, {
 			token: link.token,
-			name: "Work Laptop",
+			name: "Work computer",
 			userAgent: "Mozilla/5.0",
 		});
 		expect(redeemed.token).toBeDefined();
-		expect(redeemed.device.name).toBe("Work Laptop");
+		expect(redeemed.device.name).toBe("Work computer");
 
 		// authenticateDevice
 		const device = await authenticateDevice(store, redeemed.token);

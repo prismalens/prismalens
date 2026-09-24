@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	readsAllowed,
 	parseTranscript,
 	permissionDecisions,
 	proveCwd,
@@ -60,6 +61,17 @@ describe("permissionDecisions", () => {
 		expect(
 			permissionDecisions([line("in", '{"jsonrpc":"2.0","id":1}')]),
 		).toEqual([]);
+	});
+});
+
+describe("readsAllowed (#634)", () => {
+	it("passes a harness that read the nonce without asking, and fails one whose read was refused", () => {
+		const write = { permission: { title: "echo x > PRISMALENS_ADMISSION.txt", kind: "execute" }, allowed: false };
+		expect(readsAllowed([write], true)).toBe(true);
+		expect(readsAllowed([write, { permission: { kind: "read" }, allowed: true }], true)).toBe(true);
+		expect(readsAllowed([{ permission: { kind: "read" }, allowed: false }], true)).toBe(false);
+		expect(readsAllowed([{ permission: { kind: "search" }, allowed: false }], true)).toBe(false);
+		expect(readsAllowed([], false)).toBe(false);
 	});
 });
 

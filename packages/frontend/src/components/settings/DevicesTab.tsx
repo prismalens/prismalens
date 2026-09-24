@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Settings → Devices (ADR 0004 §8): the phones and laptops paired with this
+ * Settings → Devices (ADR 0004 §8): the phones and computers paired with this
  * instance, a way to pair another, and a way to revoke one. Hidden to a paired
  * device: managing access is the host's.
  */

@@ -182,7 +182,7 @@ export function checkAutoSelection(): Check[] {
 		{
 			name: "Selected harness",
 			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${selection.verified ? "" : ", not yet verified"}`,
+			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
 			hard: false,
 		},
 		{
@@ -190,11 +190,16 @@ export function checkAutoSelection(): Check[] {
 			pass: model.source === "product-default",
 			detail:
 				model.source === "product-default"
-					? `${model.model} (verified default; Settings → Harness → Model overrides it)`
-					: `${selection.harness} has no verified default, so the harness picks its own model unless Settings → Harness → Model sets one`,
+					? `${model.model} (tested default; Settings → Harness → Model overrides it)`
+					: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Harness → Model sets one`,
 			hard: false,
 		},
 	];
+}
+
+function testedOf(id: HarnessId): string {
+	const tested = HARNESS_REGISTRY[id].tested;
+	return tested ? `, tested with ${tested.version}` : "";
 }
 
 export function checkWebhookToken(): Check {

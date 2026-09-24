@@ -65,7 +65,7 @@ rmSync(tmp, { recursive: true, force: true });
 // The backend runs under Electron's Node, whose ABI differs from the system
 // Node the tarball's better-sqlite3 was built for. Swap in the prebuilt
 // binary for Electron's ABI; no compiler is needed, which is what keeps this
-// runnable on a laptop and on a CI runner alike.
+// runnable on a workstation and on a CI runner alike.
 // A global install lays packages out under `lib/node_modules` on POSIX and
 // `node_modules` on Windows. electron-builder drops a top-level `node_modules`
 // from extraResources, so Windows moves to the POSIX layout the app reads.

@@ -254,8 +254,8 @@ jobs:
         run: node scripts/packed-intake.mjs tarballs
 
   harness-admission:
-    # Registry admission (ADR 0003 §10): a harness row is `verified` only while
-    # this passes unattended on a real clone. Criteria and first run: #561.
+    # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
+    # this passes unattended on a real clone. First run: #561.
     name: Harness admission (opencode)
     runs-on: ubuntu-latest
     timeout-minutes: 15

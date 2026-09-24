@@ -42,16 +42,12 @@
 
 ### Minor Changes
 
-- 0049fa8: cli/config: normalize key casing, close the `serve` sandbox parity gap, and split the
+- 0049fa8: cli/config: normalize key casing and split the
   harness/reduce model knobs (#180, #148 items 8-11).
 
   - **Config key casing (item 8):** `telemetry` keys are now snake_case
     (`prometheus_url`, `alertmanager_url`, `api_url`) to match every other config key.
     No back-compat aliases (dev phase) — update your `prismalens.config.yaml`.
-  - **`serve` `--sandbox` parity (item 9):** the JSON-RPC `investigate` method now accepts
-    `sandbox` (validated against the sandbox modes; invalid ⇒ a JSON-RPC error, never a
-    silent floor) and `maxTurns`, matching the `investigate` command's `--sandbox` /
-    `--max-turns` (ADR-0020).
   - **`agent.model` split (item 11):** `agent.model` now sets the Tier-2 HARNESS model
     only; the Tier-1 reduce model is `synth.model` (ADR-0013/0016). `agent.model` no
     longer falls back into the reduce call, so a harness on one provider can't misroute
@@ -75,7 +71,6 @@
 ### Patch Changes
 
 - c824957: CLI UX quick wins: `--json` on `pl status`/`pl report`, unknown flags and config keys now warn/error instead of passing silently, readable config errors, explicit stdin parse errors, SQLite ExperimentalWarning suppressed, usage examples in `--help`.
-- 5af6d68: Retire the "read-only" investigation claim from `pl investigate --help`: it now describes edit-tool removal as a guardrail, not a boundary, with the enforced `--sandbox` as the real one.
 - 4636c9c: Degrade gracefully on permission errors in auth store; document pl auth.
 - bd40a4b: fix(cli): wire --host through startup, expose bound host, token docs (#138)
 - bd40a4b: Add `host` config option to `pl listen` and emit a structured log line on accepted webhook intake.
@@ -111,14 +106,14 @@
   - `pl doctor` stops guessing: it reports the resolved provider and source layer, and proves the credential is callable via a live ping (skip with `--no-ping`); broken or unparseable config is now a red failure naming the file, never green-with-warn.
   - Explicit `--config <path>` fails closed on missing, unreadable, or invalid files before any dispatch — a stated config can no longer be silently ignored while a token-burning run proceeds on defaults.
   - New `agent.max_turns` config key and `--max-turns` flag bound `pl investigate` runs the same way `listen.caps.max_turns` bounds listen-dispatched ones.
-  - One canonical Ollama base URL per placement, with `/v1` appended in exactly one place; the never-read `PRISMALENS_OLLAMA_BASE_URL` env var is gone.
+  - One canonical Ollama base URL, with `/v1` appended in exactly one place; the never-read `PRISMALENS_OLLAMA_BASE_URL` env var is gone.
   - Missing `listen.token` prints one actionable error instead of a stack trace.
   - Engine contract: `SynthesisModelConfig` gains a required `configured: boolean` (set by the host from the resolver outcome; the engine stays env-clean).
 
 - 2c25539: Adds alert storm grouping to `pl listen`. Firing alerts arriving close together are now debounced (default `listen.grouping_window_ms` of 60000ms) into a single group using a coarse key ladder (Alertmanager's `groupKey`/`groupLabels` if present, else `alertname` + service label, else alert labels, else a fallback). One investigation is dispatched per group carrying the full multi-alert context. Alerts arriving while their group's investigation is already running attach to it (deduped by fingerprint or label hash) instead of triggering redundant runs. Group metadata is recorded as a `GroupRecord` with `formedBy: "window"`.
 - 0d1b430: New `pl listen` command (Phase 1 R1, #58): a token-authed local HTTP receiver
   for Alertmanager webhooks. Each firing alert triggers a full investigation —
-  config, repo, and sandbox resolved per payload — with the report written to the
+  config and repo resolved per payload — with the report written to the
   run workspace. Invalid payloads get a 4xx with the validation reason; a bounded
   intake queue 503s overflow so Alertmanager's retry absorbs alert storms.
   Configure via the new `listen: { port, token }` section (`pl init` scaffolds
@@ -139,7 +134,7 @@
 
 ### Patch Changes
 
-- a336543: Harness failure containment + WSL-aware sandbox selection. A mid-run harness abort
+- a336543: Harness failure containment. A mid-run harness abort
   (e.g. deepagents killing its whole turn on one tool exception) no longer kills a
   single-branch run: the branch is respawned once in a fresh session, and if that also
   aborts, the failure becomes the branch's terminal `error` event and the reduce step
@@ -148,10 +143,7 @@
   investigation prompt now pins file reads/searches to the repository working directory
   (deepagents' filesystem tools follow model-supplied absolute paths outside the
   workspace root), and `deepagents-acp` is invoked with an explicit `-w <repo>` since it
-  ignores the ACP `session/new` cwd. On WSL, the `auto` sandbox now floors directly as
-  an expected degrade (calm info log, no per-run warning, no wasted egress probe — srt's
-  bridge is unreliable under WSL in both networking modes); `--sandbox srt` still forces
-  enforcement.
+  ignores the ACP `session/new` cwd.
 - Updated dependencies [a336543]
   - @prismalens/engine@0.0.2
 

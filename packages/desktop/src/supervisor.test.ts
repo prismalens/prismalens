@@ -170,7 +170,7 @@ describe("supervisor", () => {
 			]);
 		});
 
-		it("carries ELECTRON_RUN_AS_NODE '1', PRISMALENS_PLACEMENT 'laptop', and PRISMALENS_RUN_MODE 'electron'", () => {
+		it("carries ELECTRON_RUN_AS_NODE '1' and PRISMALENS_RUN_MODE 'electron'", () => {
 			const spawn = backendSpawn({
 				execPath: "/path/to/electron",
 				backendMain: "/path/to/prismalens.js",
@@ -178,7 +178,6 @@ describe("supervisor", () => {
 				env: { CUSTOM_ENV: "hello" },
 			});
 			expect(spawn.env.ELECTRON_RUN_AS_NODE).toBe("1");
-			expect(spawn.env.PRISMALENS_PLACEMENT).toBe("laptop");
 			expect(spawn.env.PRISMALENS_RUN_MODE).toBe("electron");
 			expect(spawn.env.CUSTOM_ENV).toBe("hello");
 		});

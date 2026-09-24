@@ -72,7 +72,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
-			selection: { runnable: true as const, harness: "opencode" as const, auto: true, verified: true },
+			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
 		getIncident: vi.fn(async () => ({ id: "inc-1", title: "Boom" })),
 		incidentRepos: vi.fn(async () => []),

@@ -166,11 +166,10 @@ describe("runInvestigation over a fake ACP harness", () => {
 });
 
 /**
- * #650 — placement decides the Claude Code row's credential and isolation
- * (ADR 0003 §9). `prepareRunEnv` is what materialises it, so it is asserted
- * here rather than only on the registry row.
+ * #650 — Claude Code runs on the user's own config and sign-in. `prepareRunEnv`
+ * is what materialises it, so it is asserted here rather than only on the row.
  */
-describe("prepareRunEnv and the claude-code placement (#650)", () => {
+describe("prepareRunEnv and claude-code (#650)", () => {
 	function claudeOnPath(): string {
 		const dir = tmp("path");
 		const bin = join(dir, "claude");
@@ -179,8 +178,7 @@ describe("prepareRunEnv and the claude-code placement (#650)", () => {
 		return dir;
 	}
 
-	function envFor(placement: "laptop" | "server", pathDir?: string) {
-		vi.stubEnv("PRISMALENS_PLACEMENT", placement);
+	function envFor(pathDir?: string) {
 		if (pathDir) vi.stubEnv("PATH", pathDir);
 		return prepareRunEnv({
 			harness: "claude-code",
@@ -193,24 +191,19 @@ describe("prepareRunEnv and the claude-code placement (#650)", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("leaves the user's own config dir and HOME alone on a laptop", () => {
-		const env = envFor("laptop");
+	it("leaves the user's own config dir and HOME alone", () => {
+		const env = envFor();
 		expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
 		expect(env.HOME).toBeUndefined();
 	});
 
-	it("isolates the config dir on a server", () => {
-		const env = envFor("server");
-		expect(env.CLAUDE_CONFIG_DIR).toBeTruthy();
-	});
-
 	it("hands the adapter the claude already on PATH", () => {
-		const env = envFor("laptop", claudeOnPath());
+		const env = envFor(claudeOnPath());
 		expect(env.CLAUDE_CODE_EXECUTABLE).toMatch(/\/claude$/);
 	});
 
 	it("passes no executable when none is on PATH", () => {
-		const env = envFor("laptop", tmp("empty-path"));
+		const env = envFor(tmp("empty-path"));
 		expect(env.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
 	});
 });

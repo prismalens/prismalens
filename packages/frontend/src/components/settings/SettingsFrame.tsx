@@ -102,7 +102,9 @@ export function SettingsFrame({
 			icon: <Smartphone className="h-4 w-4" />,
 			tab: "devices",
 			to: "/settings",
-			line: devices ? `${devices.devices.length} paired` : "phones and laptops",
+			line: devices
+				? `${devices.devices.length} paired`
+				: "phones and computers",
 		},
 		{
 			section: "services",
