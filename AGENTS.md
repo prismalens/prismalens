@@ -46,32 +46,15 @@ Where a named surface explains three or more interacting parts (a resolution ord
 
 README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
 
-## Frontend changes carry a design gate, a UX review on the PR, and an e2e spec
+## Frontend changes carry a UX review
 
-**Suspended while releases are 0.5.x patches** (ruled on #337, 2026-09-11, as "until 0.8";
-re-keyed 2026-09-19 when releases went patch-only). The screens are being deleted and merged
-faster than a per-PR gate pays back, so the design gate and the per-change e2e spec are not
-per-PR. One UX walk runs at the end of each milestone over every PR carrying the `ux-review`
-label. The UX review section and label stay in force on every frontend PR: they are how the walk
-finds the change. The full per-PR gate returns when `versioning: always-bump-patch` leaves
-`release-please-config.json`.
+Every PR touching `packages/frontend` carries the `ux-review` label and a `## UX review` section
+in its body, filled from the template below. A new page, a navigation change or a new
+interaction model is flagged to the operator immediately, not left for the milestone walk.
 
-Every PR touching `packages/frontend`, whichever agent or session produces it, carries a
-`## UX review` section in the PR body and the `ux-review` label. Fill in the template below. The
-heading text and the label are both load-bearing: they are how the operator finds this change
-again at milestone sign-off.
-
-**UX-shape changes** (a new page, a navigation change, a new interaction model) are flagged to
-the operator **immediately and out of band**, never batched into the milestone walk.
-
-The suspended requirements (design validation with screenshots on the PR, and a Playwright spec
-per change) and the screenshot conventions are in
-[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md) §The per-PR gate
-(suspended), which is also the operator's side of this: walking a milestone and auditing for PRs
-that forgot the label. An implementation spec for frontend work that omits the UX review
-section is incomplete.
-
-### The `## UX review` template
+The per-PR design gate and e2e spec are suspended while releases are 0.5.x patches (#337). Their
+rules and the screenshot convention are in
+[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
 
 ````markdown
 ## UX review
@@ -94,13 +77,7 @@ state only if the surface genuinely cannot reach it, and say which and why under
 calls.
 ````
 
-Open the PR with the label already attached:
-
-```bash
-gh pr create --title '…' --body-file <body.md> --label ux-review
-```
-
-If it already exists: `gh pr edit <number> --add-label ux-review`.
+Open the PR with `--label ux-review`, or add it later with `gh pr edit <n> --add-label ux-review`.
 
 ## Implementation specs must declare a capability tier
 

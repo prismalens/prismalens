@@ -1,46 +1,7 @@
-# UX review walkthrough — how the operator signs off a milestone
+# UX review walkthrough
 
-This is the operator's side of the frontend gate. The contributing agent's side that is in force
-now, the `## UX review` section, its template and the `ux-review` label, lives in
-[AGENTS.md](../AGENTS.md#frontend-changes-carry-a-design-gate-a-ux-review-on-the-pr-and-an-e2e-spec).
-The suspended requirements and the screenshot convention live below, in
-[The per-PR gate (suspended)](#the-per-pr-gate-suspended). A PR that attaches screenshots follows
-that convention today, and every frontend PR needs that section again once the gate returns.
-
-Until 2026-08-09 this walk was a single local file, `~/ai-context/prismalens-ux-ledger.html`.
-That file is frozen. Every frontend change now carries its own review evidence in its PR body
-under a `## UX review` heading, and the `ux-review` label is what makes the set enumerable.
-
-## Why screenshots are committed rather than attached
-
-Drag-and-drop PR attachments were considered and rejected. An agent driving `gh` cannot create
-one — it is a browser-only gesture, so the rule would be unfollowable by the agents it governs.
-Attachment bytes also live only in GitHub's CDN with no link to the commit that produced them,
-whereas a committed PNG diffs visibly when the surface changes. The repo already did this:
-`packages/frontend/e2e/pl-up/screenshots/` predates the pattern, and #396 and #393 each added
-their own under `e2e/**/screenshots/`.
-
-## The known cost of this design
-
-**The label is load-bearing and nothing mechanical enforces it.** A frontend PR that is merged
-without `ux-review` is invisible to every query below — it drops silently out of the milestone
-walk, and nothing anywhere reports that it is missing. The single ledger file could not fail
-this way: an entry was either in the document or conspicuously absent from it.
-
-This was accepted knowingly when the pattern changed, on the grounds that evidence belonging
-with the code change is worth more than a walkable index. The mitigation is the audit below,
-run by hand before each sign-off. Mechanical enforcement is **#304**, not yet built. Do not
-skip the audit until it lands.
-
-**#304 must not be built as a SHA-keyed evidence status modelled on #301's `review-evidence`
-gate — that pattern was retired in #415.** It derived trust from a third-party reviewer's
-incidental artifacts (comments, review objects), which are undocumented and summonable by
-anyone who can comment; every predicate written over them relocated the hole rather than
-closing it. If a direction is worth naming here, it is a deterministic check over content this
-repo authors itself: if the diff touches `packages/frontend`, require a `## UX review` section
-in the PR body and the `ux-review` label — both GitHub-native data with no vendor grammar to
-drift and nothing to summon. That is a direction, not a decision; #304's design is the
-operator's to make.
+How the operator signs off a milestone. What a frontend PR must carry is in
+[AGENTS.md](../AGENTS.md#frontend-changes-carry-a-ux-review).
 
 ## 1. List everything awaiting a walk
 
@@ -50,22 +11,16 @@ gh pr list --repo prismalens/prismalens --label ux-review --state all --limit 10
   --template '{{range .}}#{{.number}}  {{.state}}  {{.title}}{{"\n"}}   {{.url}}{{"\n"}}{{end}}'
 ```
 
-Scope it to one milestone window by merge date — the equivalent of "everything since the last
-sign-off":
+One milestone window, by merge date:
 
 ```bash
 gh pr list --repo prismalens/prismalens --label ux-review --state merged \
   --search 'merged:>=2026-08-09' --limit 100 --json number,title,url
 ```
 
-Both cap at `--limit 100`. Raise it if a milestone ever spans more frontend PRs than that:
-`gh` returns the first page rather than telling you it truncated.
+Both stop at `--limit 100`; raise it for a bigger milestone.
 
 ## 2. Read the walkthroughs back to back
-
-This prints every `## UX review` section in one pass, without opening a single PR. The `awk`
-pass tracks fenced code, so a PR that merely *quotes* the template — a spec, a follow-up, the
-governance change itself — is not mistaken for one that filled it in:
 
 ```bash
 nums=$(gh pr list --repo prismalens/prismalens --label ux-review --state all \
@@ -75,22 +30,11 @@ for n in $nums; do
            -q '"=== PR #\(.number) — \(.title) ==="') || { echo "gh pr view failed on #$n" >&2; break; }
   printf '\n\n%s\n' "$meta"
   gh pr view --repo prismalens/prismalens "$n" --json body -q '.body // ""' |
-    awk '/^```/          { fence = !fence; next }
-         fence           { next }
-         found && /^## / { exit }
-         /^## UX review/ { found = 1 }
-         found           { print }
-         END             { if (!found) print "(!) no ## UX review section" }'
-done
-```
+    awk '/^```
 
-A PR carrying the label with no section is a gate failure; the loop prints it as `(!)` so it
-cannot hide.
+A labelled PR with no section prints `(!)`.
 
 ## 3. Audit for the PRs that forgot the label
-
-This is the mitigation for the weakness described above. It walks merged PRs in the window,
-keeps the ones that touched `packages/frontend/`, and flags any that are missing the label:
 
 ```bash
 nums=$(gh pr list --repo prismalens/prismalens --state merged --search 'merged:>=2026-08-09' \
@@ -106,61 +50,31 @@ for n in $nums; do
 done
 ```
 
-A `gh` failure aborts the audit loudly rather than skipping a PR — a silently skipped PR looks
-identical to a compliant one, which is the exact failure this audit exists to catch.
-
-Anything it prints gets `gh pr edit <n> --add-label ux-review` and a `## UX review` section
-added to its body before the walk continues. Merged PR bodies are still editable.
+Anything it prints gets `gh pr edit <n> --add-label ux-review` and a `## UX review` section before
+the walk continues.
 
 ## 4. Sign off
-
-Sign-off is a comment on the PR, so the verdict stays attached to the change it judges:
 
 ```bash
 gh pr comment <n> --body 'UX sign-off: …'
 ```
 
-Anything wrong goes back through the fix loop via that PR's issue.
+## The per-PR gate (suspended while releases are 0.5.x patches, #337)
 
-## The per-PR gate (suspended)
-
-Suspended while releases are 0.5.x patches (#337); it returns when `versioning: always-bump-patch`
-leaves `release-please-config.json`, and these two requirements move back into `AGENTS.md` then.
-
-- **Design validation before merge, with the screenshots on the PR.** Capture the changed
-  surface from the running dev stack in `default` and `dark`, plus `empty` and `error` for
-  each of those the surface can actually reach, and pass a design review against the
-  frontend-design standards. Capturing locally is no longer enough — they go *on the PR*. No
-  screenshots visible there and no recorded verdict, no merge. (Mechanical enforcement is
-  planned as **#304**, not yet built. It must not be a SHA-keyed evidence status modelled on
-  #301's `review-evidence` gate — that pattern was retired in #415 because it derived trust
-  from a third-party reviewer's incidental artifacts, which are undocumented and summonable,
-  so every predicate over them relocated the hole rather than closing it. A deterministic
-  check over this repo's own content — the `## UX review` section and `ux-review` label
-  in `AGENTS.md` — is the legitimate direction, not a decision #304 has made yet.)
-- **Playwright spec.** Ship or extend an e2e spec covering the changed surface (#303). Until
-  the harness lands, name the intended spec in the PR body so coverage debt stays visible.
+- Design validation before merge: screenshots of the changed surface in `default` and `dark`,
+  plus `empty` and `error` where the surface reaches them, on the PR, with a recorded design
+  verdict. Enforcement is #304.
+- A Playwright spec covering the changed surface (#303), or the intended spec named in the PR
+  body until the harness lands.
 
 ### Screenshots
 
-Commit them beside the spec that exercises the surface, as
-`packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png` — `<suite>` is the Playwright
-directory (`journeys/`, `pl-up/`, …), `<state>` is `default`, `dark`, `empty`, or `error`.
-Generate them from the spec (`await page.screenshot(...)`) wherever it already reaches that
-state. **This repo is public and a committed PNG is permanent**: seeded or synthetic state
-only, and look at every file before `git add` — no keys, tokens, real alert or incident
-payloads, personal names, or emails.
+Commit them as `packages/frontend/e2e/<suite>/screenshots/<surface>-<state>.png`, generated by
+the spec with `page.screenshot(...)`. Seeded or synthetic state only; look at every file before
+`git add`: no keys, tokens, real alert or incident payloads, personal names or emails.
 
-Embed each in the PR body with a raw URL pinned to the **head SHA** (`git rev-parse HEAD` after
-the final push), never the branch name — branch-pinned images 404 once the branch is deleted
-on merge:
+Embed each with a raw URL pinned to the head SHA after the final push, never the branch name:
 
 ```
 ![Incidents — dark](https://raw.githubusercontent.com/prismalens/prismalens/<head-sha>/packages/frontend/e2e/journeys/screenshots/incidents-dark.png)
 ```
-
-## History
-
-Entries from before 2026-08-09 are in the frozen ledger at
-`~/ai-context/prismalens-ux-ledger.html` — local to the operator's machine, not in git, and
-deliberately not migrated. It stays valid for the changes it describes.

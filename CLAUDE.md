@@ -1,11 +1,5 @@
 # CLAUDE.md
 
-## Development phase context
-This is a project that is still in development phase
-* No deprecation shims, legacy paths or dead code (DB migrations are the exception, below)
-* Clean upgrade/update/change only
-* No account (ADR 0001 §2): open the `Open this machine's session:` link the dev API logs at startup, once per browser (ADR 0004 §8).
-
 ## DB migrations: append-only (#335)
 0.5.0 is on npm (2026-09-19), so installed databases exist:
 
@@ -15,25 +9,5 @@ This is a project that is still in development phase
   hard-stops on an edited history rather than reconcile it.
 * The runner refuses a pre-0.5.0 database by name (`pre-release-database`).
 * See `CONTRIBUTING.md` → *Database migrations* for the lifecycle and the failure table.
-
-## Code Formatting Best Practices
-
-### Never hand-fix what Biome will fix
-Run `pnpm format-and-lint:fix` before you commit. It applies formatting and the
-SAFE lint fixes in one pass; `pnpm format-and-lint` (no `:fix`) is the read-only
-form CI runs.
-
-Do not read a Biome diagnostic and edit the file by hand to satisfy it — that is
-the slow path, and it is the one that produces the push / red `Lint (Biome)` /
-re-read / fix / push-again cycle. Let the tool write, then re-run it to confirm.
-
-A `pre-commit` hook does this for staged files automatically once you have run
-`pnpm install` (it never blocks a commit; CI's `Lint (Biome)` job is the
-enforcement). Do not rely on it alone: it fires at commit time, so a long editing
-session still ends with the fix command.
-
-Unsafe fixes are never applied automatically. If Biome reports one, decide
-deliberately whether `--unsafe` is correct for that case rather than reaching for
-it by reflex.
 
 @AGENTS.md
