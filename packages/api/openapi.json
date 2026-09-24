@@ -22812,10 +22812,7 @@
                           "installed": {
                             "type": "boolean"
                           },
-                          "verified": {
-                            "type": "boolean"
-                          },
-                          "admission": {
+                          "tested": {
                             "anyOf": [
                               {
                                 "type": "object",
@@ -22831,16 +22828,6 @@
                                   "version",
                                   "date"
                                 ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "admissionGap": {
-                            "anyOf": [
-                              {
-                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -22877,9 +22864,7 @@
                           "label",
                           "binary",
                           "installed",
-                          "verified",
-                          "admission",
-                          "admissionGap",
+                          "tested",
                           "install",
                           "defaultModel",
                           "modelVia",
