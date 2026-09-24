@@ -6,7 +6,6 @@ import {
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	resolveHarnessModel,
-	resolvePlacement,
 } from "./harness.js";
 
 afterEach(() => {
@@ -70,7 +69,6 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		configDir: "/c",
 		dataDir: "/d",
 		cwd: "/w",
-		placement: "server" as const,
 	};
 
 	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
@@ -110,19 +108,13 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		]);
 	});
 
-	it("claude-code on a laptop keeps the user's config dir, so their own sign-in runs (#650)", () => {
-		const env = HARNESS_REGISTRY["claude-code"].acpEnv({
-			...runEnv,
-			placement: "laptop",
-		});
-		expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
-		expect(env.HOME).toBeUndefined();
-	});
-
-	it("claude-code on a server gets the empty per-run config dir", () => {
-		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).CLAUDE_CONFIG_DIR).toBe(
-			"/d",
-		);
+	it("claude-code, codex and gemini keep the user's own config and sign-in", () => {
+		for (const id of ["claude-code", "codex", "gemini"] as const) {
+			const env = HARNESS_REGISTRY[id].acpEnv(runEnv);
+			for (const key of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "HOME"]) {
+				expect(env[key], `${id} ${key}`).toBeUndefined();
+			}
+		}
 	});
 
 	it("claude-code drives the PATH claude, never a second bundled binary (#650)", () => {
@@ -140,12 +132,6 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 	it("claude-code loads no setting sources from the snapshot", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: { options: { settingSources: [] } },
-		});
-	});
-
-	it("gemini isolates its config dir through GEMINI_CLI_HOME", () => {
-		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toEqual({
-			GEMINI_CLI_HOME: "/d",
 		});
 	});
 });
@@ -167,25 +153,6 @@ describe("row data every reader needs (#634)", () => {
 		expect(HARNESS_REGISTRY.codex.modelVia).toBe("unsupported");
 		expect(HARNESS_REGISTRY.gemini.modelVia).toBe("unsupported");
 		expect(HARNESS_REGISTRY.deepagents.modelVia).toBe("unsupported");
-	});
-});
-
-describe("resolvePlacement (ADR 0003 §9)", () => {
-	it("defaults to laptop", () => {
-		expect(resolvePlacement({})).toBe("laptop");
-	});
-	it("treats CI as a server", () => {
-		expect(resolvePlacement({ CI: "true" })).toBe("server");
-		expect(resolvePlacement({ CI: "false" })).toBe("laptop");
-	});
-	it("lets PRISMALENS_PLACEMENT win either way", () => {
-		expect(resolvePlacement({ PRISMALENS_PLACEMENT: "server" })).toBe("server");
-		expect(resolvePlacement({ CI: "true", PRISMALENS_PLACEMENT: "laptop" })).toBe(
-			"laptop",
-		);
-	});
-	it("ignores an unknown value", () => {
-		expect(resolvePlacement({ PRISMALENS_PLACEMENT: "vm" })).toBe("laptop");
 	});
 });
 

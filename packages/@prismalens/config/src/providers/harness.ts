@@ -2,9 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Harness registry: every harness speaks ACP over stdio (ADR 0003). A row is
- * `verified` only after the unattended CI run on a real clone passes; unverified
- * rows are shown by `pl doctor` and selectable only through PRISMALENS_HARNESS.
+ * Harness registry: every harness speaks ACP over stdio (ADR 0003). Any row on
+ * PATH is selectable; `tested` records the version a compatibility run passed on.
  */
 export const HARNESS_IDS = [
 	"opencode",
@@ -28,30 +27,13 @@ export const HARNESS_SELECTION_FAILURES = [
 	"invalid-env-harness",
 	/** A pin (env or persisted) names a real harness whose binary is absent. */
 	"pinned-harness-missing",
-	/** Nothing verified is on PATH. */
+	/** No registry harness is on PATH. */
 	"no-harness",
 ] as const;
 export type HarnessSelectionFailure =
 	(typeof HARNESS_SELECTION_FAILURES)[number];
 
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
-
-/**
- * Where `pl up` runs decides the harness credential and isolation (ADR 0003 §9).
- * `laptop`: the user's own config dir and sign-in. `server` (VM, cloud, CI): an
- * empty per-run config dir and an API key in env; a subscription never runs there.
- */
-export const PLACEMENTS = ["laptop", "server"] as const;
-export type Placement = (typeof PLACEMENTS)[number];
-
-/** `PRISMALENS_PLACEMENT` wins; otherwise CI is a server and anything else a laptop. */
-export function resolvePlacement(
-	env: NodeJS.ProcessEnv = process.env,
-): Placement {
-	const explicit = env.PRISMALENS_PLACEMENT?.trim();
-	if (explicit === "laptop" || explicit === "server") return explicit;
-	return env.CI && env.CI !== "false" ? "server" : "laptop";
-}
 
 /**
  * Per-run environment for the harness child. Config is isolated to what
@@ -65,7 +47,6 @@ export interface HarnessRunEnv {
 	cwd: string;
 	/** Model id in the harness's own format, when the operator set one; otherwise the harness default. */
 	model?: string;
-	placement: Placement;
 	/** Absolute path of the row's `companionBinary` on PATH, when found. */
 	companionPath?: string;
 }
@@ -93,15 +74,15 @@ export interface HarnessDescriptor {
 	install: string;
 	/**
 	 * The model prismalens asks for when the operator set none: the id the
-	 * row's admission run passed on. Absent means the harness's own default,
-	 * which nobody verified (#337 run e: OpenCode's default ignored the report
+	 * row's compatibility run passed on. Absent means the harness's own default,
+	 * which nobody tested (#337 run e: OpenCode's default ignored the report
 	 * schema twice). Recorded per run with its source in `RunFidelity`.
 	 */
 	defaultModel?: string;
 	readOnlyFidelity: PermissionFidelity;
 	readOnlyMechanism: string;
-	/** The unattended admission run this row passed (ADR 0003 §10), or absent: never admitted. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
-	admission?: { version: string; date: string; result: "pass" };
+	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
+	tested?: { version: string; date: string };
 	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
 	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
@@ -172,12 +153,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// The keyless model every #337 walk and the CI admission run used.
+		// The keyless model every #337 walk and the CI compatibility run used.
 		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"opencode.json permission edit/bash=ask answered by prismalens; webfetch, websearch, external_directory denied; repo config disabled",
-		admission: { version: "1.18.30", date: "2026-09-20", result: "pass" },
+		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "config",
 		loginHint:
 			"Keyless default model; `opencode auth login` or a provider key in env for others",
@@ -188,10 +169,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "claude-agent-acp",
 		companionBinary: "claude",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir, model, placement, companionPath }) => ({
-			// A laptop keeps the user's own config dir, so their `claude /login` is what
-			// runs; isolation comes from `settingSources: []` below (ADR 0003 §9, #650).
-			...(placement === "server" ? { CLAUDE_CONFIG_DIR: dataDir } : {}),
+		acpEnv: ({ model, companionPath }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 			// Claude Code reads the model from env; one model for every tier and sub-agent.
@@ -207,8 +185,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		}),
 		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
-		// Anthropic SDK default env var (docs.anthropic.com); the only credential on a server
-		// placement, where CLAUDE_CONFIG_DIR is the empty per-run dir.
+		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
@@ -220,50 +197,49 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
+		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
+		tested: { version: "0.81.1", date: "2026-09-23" },
 		modelVia: "env",
-		loginHint:
-			"Laptop: `claude /login`. Server: `ANTHROPIC_API_KEY` with `PRISMALENS_PLACEMENT=server`",
+		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	},
 	codex: {
 		id: "codex",
 		label: "Codex",
 		binary: "codex-acp",
 		acpArgs: () => [],
-		acpEnv: ({ dataDir }) => ({
-			CODEX_HOME: dataDir,
+		acpEnv: () => ({
+			// codex-acp reads an env key only once the client picks its api-key method;
+			// without this it answers -32000 when no login exists (codex-acp 1.13.1, #634).
+			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
 			// codex-acp's own read-only mode, so the harness refuses writes before
 			// prismalens's permission answer is asked (codex-acp readme-dev.md, #634).
 			INITIAL_AGENT_MODE: "read-only",
 		}),
-		// codex-acp's own install line names this as its env-based login fallback.
-		providerKeys: ["OPENAI_API_KEY"],
-		install: "npm i -g @agentclientprotocol/codex-acp  (set OPENAI_API_KEY)",
+		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
+		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
+		install:
+			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",
+		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
+		tested: { version: "1.13.1", date: "2026-09-24" },
 		modelVia: "unsupported",
-		loginHint:
-			"`OPENAI_API_KEY` in env (the CLI login is not visible to the run)",
+		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 	},
 	gemini: {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		// GEMINI_CLI_HOME is Gemini CLI's documented directory its own .gemini folder is
-		// created under (geminicli.com/docs/cli/enterprise); it isolates the user's
-		// approvalMode and other user-level settings. A project .gemini/settings.json in
-		// the snapshot still loads (Trusted Folders is a user setting) — recorded here,
-		// not fixed, until #639's login-vs-isolation ruling lands.
-		acpEnv: ({ dataDir }) => ({ GEMINI_CLI_HOME: dataDir }),
+		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism:
-			"ACP permission answers; GEMINI_CLI_HOME isolates the user's approvalMode",
+		readOnlyMechanism: "ACP permission answers",
 		modelVia: "unsupported",
-		loginHint: "`GEMINI_API_KEY` in env",
+		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 	},
 	deepagents: {
 		id: "deepagents",
@@ -280,6 +256,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism: "ACP permission answers; --no-mcp",
+		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
+		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
 	},
@@ -341,11 +319,7 @@ export interface ResolvedModel {
 	source: ModelSource;
 }
 
-export function isAdmitted(d: HarnessDescriptor): boolean {
-	return d.admission?.result === "pass";
-}
-
-/** Operator setting first, then the row's verified default, then the harness's own. */
+/** Operator setting first, then the row's tested default, then the harness's own. */
 export function resolveHarnessModel(
 	harnessId: HarnessId,
 	operatorModel?: string,
@@ -357,7 +331,7 @@ export function resolveHarnessModel(
 	return { source: "harness-default" };
 }
 
-/** Auto-selection order; only `verified` rows are eligible without a pin. */
+/** Auto-selection order: the first one on PATH runs unless one is pinned. */
 export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
 	"opencode",
 	"claude-code",

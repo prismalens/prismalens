@@ -89,7 +89,6 @@ describe("IncidentsController - storm path alert serialization", () => {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
-				verified: true,
 				auto: true,
 			} satisfies HarnessSelection),
 		};
@@ -255,7 +254,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
-				verified: true,
 				auto: true,
 			} satisfies HarnessSelection),
 		};
@@ -302,7 +300,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		};
 		const dispatchService = { addInvestigationJob: vi.fn() };
 		const harnessService = {
-			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", verified: true, auto: true }),
+			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 		};
 		const controller = new IncidentsController(
 			incidentsService as unknown as IncidentsService,

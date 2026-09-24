@@ -35,7 +35,7 @@ const SECTIONS = {
 	devices: {
 		title: "Devices",
 		intro:
-			"Phones and laptops paired with this instance. Pair one with a one-time link; revoke it here.",
+			"Phones and computers paired with this instance. Pair one with a one-time link; revoke it here.",
 	},
 	usage: {
 		title: "Usage data",

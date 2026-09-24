@@ -61,13 +61,12 @@ describe("buildChildEnv (ADR 0004 §5)", () => {
 		expect(env.NODE_EXTRA_CA_CERTS).toBe("/etc/ssl/corp-ca.pem");
 	});
 
-	it("keeps a relocated Claude config dir for a laptop placement (#650)", () => {
+	it("keeps an agent config dir the user relocated (#650)", () => {
 		vi.stubEnv("CLAUDE_CONFIG_DIR", "/home/dev/.config/claude");
-		expect(buildChildEnv().CLAUDE_CONFIG_DIR).toBe("/home/dev/.config/claude");
-		// A server placement's row still wins: the caller's env is layered on top.
-		expect(buildChildEnv({ CLAUDE_CONFIG_DIR: "/run/x/home" }).CLAUDE_CONFIG_DIR).toBe(
-			"/run/x/home",
-		);
+		vi.stubEnv("CODEX_HOME", "/home/dev/.codex-alt");
+		const env = buildChildEnv();
+		expect(env.CLAUDE_CONFIG_DIR).toBe("/home/dev/.config/claude");
+		expect(env.CODEX_HOME).toBe("/home/dev/.codex-alt");
 	});
 
 	it("skips undefined caller entries instead of stringifying them", () => {

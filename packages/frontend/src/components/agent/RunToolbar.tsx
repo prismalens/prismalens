@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ChevronDown, Lock } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
@@ -79,13 +79,11 @@ function ModelPill() {
 }
 
 /**
- * The strip under the composer input: which agent and model the next run uses,
- * and how much it can be trusted (the fidelity of its read-only enforcement).
+ * The strip under the composer input: which agent and model the next run uses.
  * The same choices live in Settings; this is where they are made at the moment
  * of use.
  */
 export function RunToolbar() {
-	const { fidelity } = useAgentChoice();
 	return (
 		<div
 			className="flex flex-wrap items-center gap-1"
@@ -94,18 +92,6 @@ export function RunToolbar() {
 			<AgentPicker />
 			<span className="h-4 w-px bg-border" aria-hidden />
 			<ModelPill />
-			{fidelity && (
-				<>
-					<span className="h-4 w-px bg-border" aria-hidden />
-					<span
-						className="inline-flex items-center gap-1 px-2 text-meta text-muted-foreground"
-						title="How the agent's read-only limit is enforced"
-					>
-						<Lock className="h-3 w-3" />
-						<span className="lowercase">{fidelity}</span> read-only
-					</span>
-				</>
-			)}
 		</div>
 	);
 }

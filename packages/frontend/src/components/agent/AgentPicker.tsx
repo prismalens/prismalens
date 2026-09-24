@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { HarnessSetting, HarnessStatus } from "@prismalens/contracts";
 import { Check, ChevronDown, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -46,17 +45,11 @@ export function useAgentChoice() {
 	const setting: HarnessSetting = settingsQuery.data?.harness ?? "auto";
 	const effectiveId = setting === "auto" ? selection?.harness : setting;
 	const effective = harnesses.find((h) => h.id === effectiveId);
-	const fidelity =
-		effective && effective.id in HARNESS_REGISTRY
-			? HARNESS_REGISTRY[effective.id as keyof typeof HARNESS_REGISTRY]
-					.readOnlyFidelity
-			: undefined;
 	return {
 		harnesses,
 		selection,
 		setting,
 		effective,
-		fidelity,
 		model: settingsQuery.data?.model ?? "",
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
@@ -88,8 +81,8 @@ export function AgentPicker({
 			value: "auto",
 			name: "Auto",
 			line: selection?.harness
-				? `first verified on PATH · now ${harnesses.find((h) => h.id === selection.harness)?.label ?? selection.harness}`
-				: "first verified agent found on PATH",
+				? `first on PATH · now ${harnesses.find((h) => h.id === selection.harness)?.label ?? selection.harness}`
+				: "first agent found on PATH",
 			disabled: false,
 		};
 		const rest: Choice[] = harnesses.map((h) => ({
@@ -100,10 +93,8 @@ export function AgentPicker({
 			line: h.installed ? (
 				<>
 					<Mono>{h.binary}</Mono>
-					{h.admission ? (
-						<StateWord tone="done">verified {h.admission.version}</StateWord>
-					) : (
-						<StateWord tone="stale">not verified</StateWord>
+					{h.tested && (
+						<StateWord tone="neutral">tested {h.tested.version}</StateWord>
 					)}
 				</>
 			) : (
@@ -145,11 +136,7 @@ export function AgentPicker({
 		setOpen(false);
 	};
 
-	const label = isLoading
-		? "…"
-		: effective
-			? `${effective.label}${effective.admission?.version ? ` ${effective.admission.version}` : ""}`
-			: "No agent";
+	const label = isLoading ? "…" : effective ? effective.label : "No agent";
 	const tone = effective ? (selection?.runnable ? "done" : "watch") : "failed";
 
 	return (

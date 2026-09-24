@@ -15,7 +15,7 @@
  * (`selection.pinned`), so the picker stays editable but the card says so.
  */
 
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import type { HarnessId } from "@prismalens/config/harness";
 import { AlertTriangle, Loader2, RadioTower } from "lucide-react";
 import { useState } from "react";
 import { AgentPicker, useAgentChoice } from "@/components/agent/AgentPicker";
@@ -43,7 +43,7 @@ interface ProbeState {
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
 	const { isLoading: settingsLoading } = useHarnessSettings();
-	const { effective, fidelity } = useAgentChoice();
+	const { effective } = useAgentChoice();
 	const checkHarness = useCheckHarness();
 	const [probes, setProbes] = useState<Partial<Record<HarnessId, ProbeState>>>(
 		{},
@@ -133,7 +133,7 @@ export function HarnessSettings() {
 			>
 				<SettingRow
 					label="Agent and model"
-					description="Auto takes the first verified agent on PATH."
+					description="Auto takes the first agent on PATH."
 					testId="harness-run-row"
 				>
 					<RunToolbar />
@@ -142,7 +142,7 @@ export function HarnessSettings() {
 					label="Next run"
 					description={
 						selection?.runnable
-							? `Would start with ${effective?.label ?? selection.harness}${fidelity ? `, ${fidelity} read-only` : ""}.`
+							? `Would start with ${effective?.label ?? selection.harness}.`
 							: (selection?.blockedReason ?? "Would not start right now.")
 					}
 					testId="harness-selection"
@@ -157,14 +157,10 @@ export function HarnessSettings() {
 
 			<SettingGroup
 				title="Agents on this machine"
-				description="Installed means the binary is on PATH; verified means CI ran an investigation through that version."
+				description="Installed means the binary is on PATH; tested means CI ran an investigation through that version. Each agent runs with its own behaviour and permissions, as it would in your terminal."
 				testId="harness-registry"
 			>
 				{harnesses.map((harness) => {
-					const descriptor =
-						harness.id in HARNESS_REGISTRY
-							? HARNESS_REGISTRY[harness.id as keyof typeof HARNESS_REGISTRY]
-							: undefined;
 					const harnessId = harness.id as HarnessId;
 					const probe = probes[harnessId];
 					const checking =
@@ -189,26 +185,14 @@ export function HarnessSettings() {
 									) : (
 										<StateWord tone="neutral">not installed</StateWord>
 									)}
-									{harness.admission ? (
+									{harness.tested && (
 										<StateWord
-											tone="done"
-											title={harness.admission.date}
-											data-testid={`harness-admission-${harness.id}`}
+											tone="neutral"
+											title={harness.tested.date}
+											data-testid={`harness-tested-${harness.id}`}
 										>
-											verified {harness.admission.version}
+											tested {harness.tested.version}
 										</StateWord>
-									) : (
-										<StateWord
-											tone="stale"
-											data-testid={`harness-admission-${harness.id}`}
-										>
-											not verified
-										</StateWord>
-									)}
-									{descriptor && (
-										<span className="lowercase">
-											{descriptor.readOnlyFidelity} read-only
-										</span>
 									)}
 									<span>
 										· {harness.installed ? harness.loginHint : harness.install}

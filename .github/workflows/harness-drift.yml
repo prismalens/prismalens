@@ -1,4 +1,4 @@
-# Weekly drift check for opencode@latest against the admission gate (ADR 0003 §10).
+# Weekly drift check for opencode@latest against the compatibility run (ADR 0003 §10).
 #
 # Runs weekly (Mondays 06:00 UTC) and on manual dispatch. Installs opencode-ai@latest,
 # executes the unattended ACP admission run, and opens a GitHub issue if admission fails

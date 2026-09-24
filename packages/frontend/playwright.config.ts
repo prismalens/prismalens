@@ -144,7 +144,7 @@ export default defineConfig({
 				{
 					command: `node "${join(repoRoot, "scripts/pl-up-e2e.mjs")}"`,
 					url: `http://localhost:${PL_UP_PORT}/health`,
-					env: { ...process.env, PL_UP_PORT, PRISMALENS_PLACEMENT: "laptop" },
+					env: { ...process.env, PL_UP_PORT },
 					reuseExistingServer: false,
 					// Packing + a cold npm install of the tarball.
 					timeout: 300_000,
