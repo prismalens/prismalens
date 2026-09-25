@@ -256,8 +256,9 @@ describe("updateNotice", () => {
 		// Keeps the previous answer (none) and asks again in an hour, not every run.
 		const cache = readCache(workspace);
 		expect(cache?.latest).toBe(null);
-		expect(isStale(cache, DAY_MS * 10)).toBe(false);
-		expect(isStale(cache, DAY_MS * 10 + 60 * 60 * 1000)).toBe(true);
+		// The refresh stamps the real clock, like the other refresh tests here.
+		expect(isStale(cache, Date.now())).toBe(false);
+		expect(isStale(cache, Date.now() + 60 * 60 * 1000 + 1_000)).toBe(true);
 	});
 
 	it("neither prints nor calls the network when suppressed", async () => {
