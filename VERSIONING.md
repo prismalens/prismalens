@@ -18,11 +18,28 @@ minor, a `fix:` bumps patch (see
 [release-please](https://github.com/googleapis/release-please) computes it and
 opens a release PR; merging that PR publishes the bump.
 
-## Pre-releases
+## Alpha
 
-There is no release-candidate track: every release publishes to npm's `latest`
-dist-tag. We validate against the packed tarball (`pnpm run pack`) — the
-artifact users actually install — and cut the final version directly.
+prismalens is alpha. Any 0.x release, patch included, may change behaviour or
+break a workflow: release-please bumps the patch for every release between
+phases (`always-bump-patch`), breaking changes too. Read the
+[release notes](https://github.com/prismalens/prismalens/releases) before you upgrade.
+
+## Channels
+
+- **`latest`** on npm: every release.
+- No release-candidate track: 0.5.0's `rc` builds came from the retired
+  changesets flow, and release-please publishes straight to `latest`. We
+  validate against the packed tarball (`pnpm run pack`) before a release.
+- **Desktop**: unsigned preview zips attached to each GitHub Release from
+  0.5.1. Signed installers and package managers are #697.
+
+There is no nightly channel yet. Migrations are append-only, so a nightly would
+ship every merged migration to real databases, and a stable build refuses a
+database a nightly has migrated past it.
+
+docs.prismalens.io describes the version `latest` installs: docs merged ahead
+of a release go live when that release publishes.
 
 ## 1.0.0
 
