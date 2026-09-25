@@ -25,6 +25,7 @@
 		"db:reset": "turbo run db:reset --filter=@prismalens/database",
 		"format-and-lint": "biome check .",
 		"format-and-lint:fix": "biome check . --write",
+		"lint": "biome check .",
 		"publint": "pnpm --filter prismalens exec publint --strict",
 		"pack": "node scripts/pack-cli.mjs"
 	},

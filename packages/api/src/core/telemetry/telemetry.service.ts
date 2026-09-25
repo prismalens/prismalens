@@ -28,7 +28,12 @@
  * and `$process_person_profile: false`.
  */
 import { randomUUID } from "node:crypto";
-import { Injectable, Logger } from "@nestjs/common";
+import {
+	Injectable,
+	Logger,
+	type OnApplicationBootstrap,
+	type OnModuleDestroy,
+} from "@nestjs/common";
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import type { TelemetrySettings } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
@@ -45,11 +50,27 @@ const DEDUP_TTL_MS = 60 * 60_000;
 /** Identifies this client to PostHog in place of an SDK's own value. */
 const LIB_NAME = "prismalens-api";
 
-/**
- * How this install was launched. Fixed to `npm` until the Electron build of
- * #603 exists and declares itself.
- */
-export const RUN_MODE = "npm";
+export const RUN_MODES = ["npm", "electron"] as const;
+export type RunMode = (typeof RUN_MODES)[number];
+
+export function runMode(env: NodeJS.ProcessEnv = process.env): RunMode {
+	return env.PRISMALENS_RUN_MODE === "electron" ? "electron" : "npm";
+}
+
+export const BUILD_MODES = ["release", "dev"] as const;
+export type BuildMode = (typeof BUILD_MODES)[number];
+
+export function build(env: NodeJS.ProcessEnv = process.env): BuildMode {
+	return env.NODE_ENV === "production" ? "release" : "dev";
+}
+
+export function utcDayString(date: Date): string {
+	return date.toISOString().slice(0, 10);
+}
+
+export function utcMidnightTimestamp(date: Date): string {
+	return `${utcDayString(date)}T00:00:00.000Z`;
+}
 
 export const SERVICE_SOURCES = ["local", "git"] as const;
 export const INTEGRATION_KINDS = [
@@ -141,6 +162,7 @@ export interface TelemetryEventProps {
 	report_viewed: Record<string, never>;
 	report_exported: { target: ExportTarget };
 	incident_closed: Record<string, never>;
+	install_active: Record<string, never>;
 }
 export type TelemetryEvent = keyof TelemetryEventProps;
 
@@ -162,7 +184,8 @@ export const ALLOWED_PROPERTY_VALUES: Record<
 	duration_bucket: DURATION_BUCKETS,
 	error_class: ERROR_CLASSES,
 	target: EXPORT_TARGETS,
-	run_mode: [RUN_MODE],
+	run_mode: RUN_MODES,
+	build: BUILD_MODES,
 	os: ["aix", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"],
 	arch: [
 		"arm",
@@ -249,6 +272,8 @@ interface StoredTelemetry {
 	setupReported?: boolean;
 	/** `first_webhook_received` is once per install, so it outlives the process. */
 	firstWebhookReported?: boolean;
+	/** The UTC day `install_active` was last reported ("YYYY-MM-DD"). */
+	lastActiveDay?: string;
 }
 
 /** `DO_NOT_TRACK` counts as set for anything but empty, `0`, `false`, `off`. */
@@ -276,7 +301,9 @@ export function telemetryForcedOff(
 }
 
 @Injectable()
-export class TelemetryService {
+export class TelemetryService
+	implements OnApplicationBootstrap, OnModuleDestroy
+{
 	private readonly logger = new Logger(TelemetryService.name);
 	private readonly version = resolveServiceVersion();
 	/**
@@ -286,10 +313,51 @@ export class TelemetryService {
 	 */
 	private readonly reported = new Map<string, number>();
 
+	/**
+	 * In-memory ring buffer of the last 20 posted payloads, newest first,
+	 * with api_key removed. Cleared on restart; nothing persisted.
+	 */
+	private readonly recentlySentBuffer: Array<{
+		payload: Record<string, unknown>;
+	}> = [];
+
+	private activeInterval?: NodeJS.Timeout;
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly fetchImpl: typeof fetch = fetch,
+		private readonly now: () => Date = () => new Date(),
+		private readonly env: NodeJS.ProcessEnv = process.env,
 	) {}
+
+	async onApplicationBootstrap(): Promise<void> {
+		await this.checkInstallActive();
+		this.activeInterval = setInterval(() => {
+			void this.checkInstallActive();
+		}, 60 * 60_000);
+		this.activeInterval.unref();
+	}
+
+	onModuleDestroy(): void {
+		if (this.activeInterval) {
+			clearInterval(this.activeInterval);
+			this.activeInterval = undefined;
+		}
+	}
+
+	async checkInstallActive(): Promise<void> {
+		try {
+			if (telemetryForcedOff(this.env)) return;
+			const stored = await this.read();
+			if (!stored?.enabled) return;
+			const today = utcDayString(this.now());
+			if (stored.lastActiveDay === today) return;
+			await this.write({ ...stored, lastActiveDay: today });
+			await this.capture("install_active", {});
+		} catch (e) {
+			this.logger.debug(`telemetry skipped: ${String(e)}`);
+		}
+	}
 
 	private async read(): Promise<StoredTelemetry | null> {
 		const row = await this.prisma.setting.findUnique({
@@ -320,17 +388,18 @@ export class TelemetryService {
 
 	/** Whether anything would be sent, so a caller can skip gathering properties. */
 	async isEnabled(): Promise<boolean> {
-		if (telemetryForcedOff()) return false;
+		if (telemetryForcedOff(this.env)) return false;
 		return (await this.read())?.enabled === true;
 	}
 
 	async getSettings(): Promise<TelemetrySettings> {
 		const stored = await this.read();
-		const forcedOff = telemetryForcedOff();
+		const forcedOff = telemetryForcedOff(this.env);
 		return {
 			enabled: !forcedOff && (stored?.enabled ?? false),
 			decided: stored !== null,
 			forcedOff,
+			recentlySent: [...this.recentlySentBuffer],
 		};
 	}
 
@@ -341,10 +410,11 @@ export class TelemetryService {
 			installId: stored?.installId ?? randomUUID(),
 			setupReported: stored?.setupReported ?? false,
 			firstWebhookReported: stored?.firstWebhookReported ?? false,
+			lastActiveDay: stored?.lastActiveDay,
 		};
 		await this.write(next);
 		// Setup finishes before anyone can be asked, so it is reported once, at opt-in.
-		if (enabled && !next.setupReported && !telemetryForcedOff()) {
+		if (enabled && !next.setupReported && !telemetryForcedOff(this.env)) {
 			await this.write({ ...next, setupReported: true });
 			await this.capture("setup_completed", {});
 		}
@@ -381,7 +451,7 @@ export class TelemetryService {
 	 */
 	async captureFirstWebhook(provider: WebhookProvider): Promise<void> {
 		try {
-			if (telemetryForcedOff()) return;
+			if (telemetryForcedOff(this.env)) return;
 			const stored = await this.read();
 			if (!stored?.enabled || stored.firstWebhookReported) return;
 			await this.write({ ...stored, firstWebhookReported: true });
@@ -408,33 +478,41 @@ export class TelemetryService {
 		props: TelemetryEventProps[E],
 	): Promise<void> {
 		try {
-			if (telemetryForcedOff()) return;
+			if (telemetryForcedOff(this.env)) return;
 			const stored = await this.read();
 			if (!stored?.enabled) return;
+			const body = {
+				api_key: POSTHOG_KEY,
+				event,
+				distinct_id: stored.installId,
+				timestamp: utcMidnightTimestamp(this.now()),
+				properties: {
+					...sanitize({
+						...props,
+						run_mode: runMode(this.env),
+						build: build(this.env),
+						os: process.platform,
+						arch: process.arch,
+						node_major: Number.parseInt(process.versions.node, 10),
+					}),
+					app_version: this.version,
+					// Without this PostHog resolves the sender's IP to a city and
+					// attaches `$geoip_*` at ingest. The SDKs set it; raw fetch must.
+					$geoip_disable: true,
+					$process_person_profile: false,
+					$lib: LIB_NAME,
+					$lib_version: this.version,
+				},
+			};
+			const { api_key: _dropped, ...payloadWithoutKey } = body;
+			this.recentlySentBuffer.unshift({ payload: payloadWithoutKey });
+			if (this.recentlySentBuffer.length > 20) {
+				this.recentlySentBuffer.pop();
+			}
 			void this.fetchImpl(POSTHOG_CAPTURE_URL, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					api_key: POSTHOG_KEY,
-					event,
-					distinct_id: stored.installId,
-					properties: {
-						...sanitize({
-							...props,
-							run_mode: RUN_MODE,
-							os: process.platform,
-							arch: process.arch,
-							node_major: Number.parseInt(process.versions.node, 10),
-						}),
-						app_version: this.version,
-						// Without this PostHog resolves the sender's IP to a city and
-						// attaches `$geoip_*` at ingest. The SDKs set it; raw fetch must.
-						$geoip_disable: true,
-						$process_person_profile: false,
-						$lib: LIB_NAME,
-						$lib_version: this.version,
-					},
-				}),
+				body: JSON.stringify(body),
 				signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
 			}).catch(() => undefined);
 		} catch (e) {

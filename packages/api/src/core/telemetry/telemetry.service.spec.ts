@@ -11,7 +11,8 @@ import {
 	durationBucket,
 	ERROR_CLASSES,
 	integrationKindFor,
-	RUN_MODE,
+	runMode,
+	build,
 	sanitize,
 	type TelemetryEvent,
 	type TelemetryEventProps,
@@ -44,7 +45,7 @@ function fakePrisma() {
 	};
 }
 
-function setup() {
+function setup(clock?: () => Date) {
 	const prisma = fakePrisma();
 	const fetchImpl = vi.fn(
 		async (_url: string, _init: RequestInit) =>
@@ -53,6 +54,7 @@ function setup() {
 	const service = new TelemetryService(
 		prisma as unknown as PrismaService,
 		fetchImpl as unknown as typeof fetch,
+		clock,
 	);
 	const sent = () =>
 		fetchImpl.mock.calls.map(
@@ -88,6 +90,7 @@ describe("TelemetryService (#602)", () => {
 			enabled: false,
 			decided: false,
 			forcedOff: false,
+			recentlySent: [],
 		});
 		await service.capture("service_added", { source: "git" });
 		expect(fetchImpl).not.toHaveBeenCalled();
@@ -123,6 +126,7 @@ describe("TelemetryService (#602)", () => {
 			"distinct_id",
 			"event",
 			"properties",
+			"timestamp",
 		]);
 		expect(Object.keys(propsOf(1)).sort()).toEqual([
 			"$geoip_disable",
@@ -131,6 +135,7 @@ describe("TelemetryService (#602)", () => {
 			"$process_person_profile",
 			"app_version",
 			"arch",
+			"build",
 			"harness",
 			"node_major",
 			"os",
@@ -164,7 +169,8 @@ describe("TelemetryService (#602)", () => {
 	it("carries the common fields on every event", async () => {
 		const { service, propsOf } = setup();
 		await service.setEnabled(true);
-		expect(propsOf(0).run_mode).toBe(RUN_MODE);
+		expect(propsOf(0).run_mode).toBe("npm");
+		expect(propsOf(0).build).toBe("dev");
 		expect(propsOf(0).os).toBe(process.platform);
 		expect(propsOf(0).arch).toBe(process.arch);
 		expect(propsOf(0).node_major).toBe(
@@ -264,6 +270,130 @@ describe("TelemetryService (#602)", () => {
 			service.capture("service_added", { source: "git" }),
 		).resolves.toBeUndefined();
 	});
+
+	it("derives run_mode from PRISMALENS_RUN_MODE and build from NODE_ENV", async () => {
+		const { service, sent, propsOf } = setup();
+		await service.setEnabled(true);
+
+		vi.stubEnv("PRISMALENS_RUN_MODE", "electron");
+		vi.stubEnv("NODE_ENV", "production");
+		await service.capture("report_viewed", {});
+
+		vi.stubEnv("PRISMALENS_RUN_MODE", "something-else");
+		vi.stubEnv("NODE_ENV", "development");
+		await service.capture("incident_closed", {});
+
+		expect(propsOf(1).run_mode).toBe("electron");
+		expect(propsOf(1).build).toBe("release");
+		expect(propsOf(2).run_mode).toBe("npm");
+		expect(propsOf(2).build).toBe("dev");
+
+		expect(runMode({ PRISMALENS_RUN_MODE: "electron" })).toBe("electron");
+		expect(runMode({ PRISMALENS_RUN_MODE: "npm" })).toBe("npm");
+		expect(runMode({})).toBe("npm");
+		expect(runMode({ PRISMALENS_RUN_MODE: "other" })).toBe("npm");
+
+		expect(build({ NODE_ENV: "production" })).toBe("release");
+		expect(build({ NODE_ENV: "development" })).toBe("dev");
+		expect(build({})).toBe("dev");
+	});
+
+	it("every payload has timestamp equal to UTC midnight of the injected clock", async () => {
+		const clockLate = () => new Date("2026-09-25T23:59:59.999Z");
+		const lateSetup = setup(clockLate);
+		await lateSetup.service.setEnabled(true);
+		await lateSetup.service.capture("report_viewed", {});
+		const lateEvents = lateSetup.sent();
+		expect(lateEvents[0].timestamp).toBe("2026-09-25T00:00:00.000Z");
+		expect(lateEvents[1].timestamp).toBe("2026-09-25T00:00:00.000Z");
+
+		const clockEarly = () => new Date("2026-09-26T00:01:00.000Z");
+		const earlySetup = setup(clockEarly);
+		await earlySetup.service.setEnabled(true);
+		await earlySetup.service.capture("report_viewed", {});
+		const earlyEvents = earlySetup.sent();
+		expect(earlyEvents[0].timestamp).toBe("2026-09-26T00:00:00.000Z");
+		expect(earlyEvents[1].timestamp).toBe("2026-09-26T00:00:00.000Z");
+	});
+
+	it("sends install_active at most once per UTC day when enabled and not forced off", async () => {
+		let currentTime = new Date("2026-09-25T12:00:00.000Z");
+		const clock = () => currentTime;
+		const { prisma, service, fetchImpl, sent } = setup(clock);
+
+		// Telemetry disabled: bootstrap sends nothing
+		await service.onApplicationBootstrap();
+		expect(sent()).toHaveLength(0);
+
+		// Telemetry enabled: bootstrap sends install_active
+		await service.setEnabled(true);
+		fetchImpl.mockClear();
+		await service.onApplicationBootstrap();
+		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+
+		// Calling bootstrap again the same UTC day sends nothing
+		await service.onApplicationBootstrap();
+		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+
+		// Simulated restart: new service over the same stored row does not send again the same day
+		const restarted = new TelemetryService(
+			prisma as unknown as PrismaService,
+			fetchImpl as unknown as typeof fetch,
+			clock,
+		);
+		await restarted.onApplicationBootstrap();
+		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+
+		// Sent again the next UTC day
+		currentTime = new Date("2026-09-26T08:00:00.000Z");
+		await restarted.onApplicationBootstrap();
+		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(2);
+
+		// Nothing when forced off
+		currentTime = new Date("2026-09-27T08:00:00.000Z");
+		vi.stubEnv("PRISMALENS_TELEMETRY", "off");
+		await restarted.onApplicationBootstrap();
+		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(2);
+
+		// Clean up interval
+		service.onModuleDestroy();
+		restarted.onModuleDestroy();
+	});
+
+	it("maintains a recentlySent ring buffer of the last 20 posted payloads without api_key, newest first", async () => {
+		const { service, fetchImpl } = setup();
+		expect((await service.getSettings()).recentlySent).toEqual([]);
+
+		await service.setEnabled(true); // sends setup_completed
+		// setup_completed is in recentlySent
+		const initialSettings = await service.getSettings();
+		expect(initialSettings.recentlySent).toHaveLength(1);
+		expect(initialSettings.recentlySent[0].payload).not.toHaveProperty("api_key");
+		expect(initialSettings.recentlySent[0].payload.event).toBe("setup_completed");
+
+		// Send 25 more events
+		for (let i = 1; i <= 25; i++) {
+			await service.capture("service_added", { source: "local" });
+		}
+
+		const settings = await service.getSettings();
+		expect(settings.recentlySent).toHaveLength(20);
+		for (const entry of settings.recentlySent) {
+			expect(entry.payload).not.toHaveProperty("api_key");
+			expect(entry.payload).toHaveProperty("event");
+			expect(entry.payload).toHaveProperty("distinct_id");
+			expect(entry.payload).toHaveProperty("timestamp");
+			expect(entry.payload).toHaveProperty("properties");
+		}
+		// Newest first: the 25th service_added is index 0
+		expect(settings.recentlySent[0].payload.event).toBe("service_added");
+
+		// Pushed when fetch is dispatched, even if fetch fails
+		fetchImpl.mockRejectedValue(new Error("network failure"));
+		await service.capture("incident_closed", {});
+		const afterFailed = await service.getSettings();
+		expect(afterFailed.recentlySent[0].payload.event).toBe("incident_closed");
+	});
 });
 
 /**
@@ -287,6 +417,7 @@ describe("no event property is free text", () => {
 		// and the Slack delivery attempt.
 		report_exported: { target: "markdown" },
 		incident_closed: {},
+		install_active: {},
 	};
 
 	/**
@@ -301,6 +432,7 @@ describe("no event property is free text", () => {
 			[
 				"first_webhook_received",
 				"incident_closed",
+				"install_active",
 				"integration_configured",
 				"investigation_finished",
 				"investigation_started",

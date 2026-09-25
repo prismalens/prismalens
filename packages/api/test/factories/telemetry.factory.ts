@@ -23,11 +23,16 @@ export function telemetryStub(): TelemetryService {
 			enabled: false,
 			decided: true,
 			forcedOff: false,
+			recentlySent: [],
 		})),
 		setEnabled: vi.fn(async () => ({
 			enabled: false,
 			decided: true,
 			forcedOff: false,
+			recentlySent: [],
 		})),
+		checkInstallActive: vi.fn(async () => undefined),
+		onApplicationBootstrap: vi.fn(async () => undefined),
+		onModuleDestroy: vi.fn(() => undefined),
 	} as unknown as TelemetryService;
 }

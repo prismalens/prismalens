@@ -54,7 +54,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		// what it is and what it never carries (#523 moved the question off the
 		// page and onto the sidebar); the full disclosure lives in Settings,
 		// asserted below.
-		await expect(consent).toContainText("Share anonymous usage counts");
+		await expect(consent).toContainText("Share usage counts");
 		await expect(consent).toContainText(
 			"Never an alert, a repo or a report",
 		);
@@ -117,7 +117,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		});
 
 		await page.goto("/settings?tab=usage");
-		const checkbox = page.getByLabel("Share anonymous usage data");
+		const checkbox = page.getByLabel("Share usage data");
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
 		// Each thing the disclosure has to name (#602): what is sent, that the
 		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
@@ -135,7 +135,9 @@ test.describe("#602 — opt-in telemetry", () => {
 			page.getByText("pseudonymous rather than anonymous"),
 		).toBeVisible();
 		await expect(page.getByText("is the only basis")).toBeVisible();
-		await expect(page.getByText("kept for 12 months")).toBeVisible();
+		await expect(
+			page.getByText("kept for as long as PostHog's plan retains them"),
+		).toBeVisible();
 		await expect(page.getByText("withdraws consent")).toBeVisible();
 		await expect(checkbox).not.toBeChecked();
 	});
