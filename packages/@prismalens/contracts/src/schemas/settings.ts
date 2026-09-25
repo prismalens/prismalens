@@ -281,6 +281,11 @@ export const TelemetrySettingsSchema = z.object({
 	enabled: z.boolean(),
 	decided: z.boolean(),
 	forcedOff: z.boolean(),
+	recentlySent: z.array(
+		z.object({
+			payload: z.record(z.string(), z.unknown()),
+		}),
+	),
 });
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
 

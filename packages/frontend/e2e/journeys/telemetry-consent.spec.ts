@@ -14,9 +14,11 @@ import { expect, type Page, test } from "@playwright/test";
  */
 async function serveTelemetry(
 	page: Page,
-	state: { enabled: boolean; decided: boolean; forcedOff: boolean },
+	flags: { enabled: boolean; decided: boolean; forcedOff: boolean },
+	recentlySent: Array<{ payload: Record<string, unknown> }> = [],
 ): Promise<{ puts: Array<{ enabled: boolean }> }> {
 	const puts: Array<{ enabled: boolean }> = [];
+	const state = { ...flags, recentlySent };
 	await page.route("**/api/settings/telemetry", async (route) => {
 		if (route.request().method() === "PUT") {
 			const body = route.request().postDataJSON() as { enabled: boolean };
@@ -54,7 +56,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		// what it is and what it never carries (#523 moved the question off the
 		// page and onto the sidebar); the full disclosure lives in Settings,
 		// asserted below.
-		await expect(consent).toContainText("Share anonymous usage counts");
+		await expect(consent).toContainText("Share usage counts");
 		await expect(consent).toContainText(
 			"Never an alert, a repo or a report",
 		);
@@ -110,14 +112,14 @@ test.describe("#602 — opt-in telemetry", () => {
 	test("Settings → Usage data carries the full disclosure and the toggle", async ({
 		page,
 	}) => {
-		await serveTelemetry(page, {
-			enabled: false,
-			decided: true,
-			forcedOff: false,
-		});
+		await serveTelemetry(
+			page,
+			{ enabled: true, decided: true, forcedOff: false },
+			[{ payload: { event: "install_active", distinct_id: "install-1" } }],
+		);
 
 		await page.goto("/settings?tab=usage");
-		const checkbox = page.getByLabel("Share anonymous usage data");
+		const checkbox = page.getByLabel("Share usage data");
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
 		// Each thing the disclosure has to name (#602): what is sent, that the
 		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
@@ -135,8 +137,13 @@ test.describe("#602 — opt-in telemetry", () => {
 			page.getByText("pseudonymous rather than anonymous"),
 		).toBeVisible();
 		await expect(page.getByText("is the only basis")).toBeVisible();
-		await expect(page.getByText("kept for 12 months")).toBeVisible();
+		await expect(
+			page.getByText("kept for as long as PostHog's plan retains them"),
+		).toBeVisible();
 		await expect(page.getByText("withdraws consent")).toBeVisible();
-		await expect(checkbox).not.toBeChecked();
+		await expect(checkbox).toBeChecked();
+
+		await page.getByText("Recently sent (1)").click();
+		await expect(page.getByText('"event": "install_active"')).toBeVisible();
 	});
 });

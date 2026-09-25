@@ -22468,12 +22468,31 @@
                     },
                     "forcedOff": {
                       "type": "boolean"
+                    },
+                    "recentlySent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "payload": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "payload"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "enabled",
                     "decided",
-                    "forcedOff"
+                    "forcedOff",
+                    "recentlySent"
                   ]
                 }
               }
@@ -22521,12 +22540,31 @@
                     },
                     "forcedOff": {
                       "type": "boolean"
+                    },
+                    "recentlySent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "payload": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "payload"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "enabled",
                     "decided",
-                    "forcedOff"
+                    "forcedOff",
+                    "recentlySent"
                   ]
                 }
               }

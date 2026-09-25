@@ -12,6 +12,7 @@ const telemetry = (settings: Partial<TelemetrySettings>): TelemetryService =>
 			enabled: false,
 			decided: true,
 			forcedOff: false,
+			recentlySent: [],
 			...settings,
 		})),
 	}) as unknown as TelemetryService;
