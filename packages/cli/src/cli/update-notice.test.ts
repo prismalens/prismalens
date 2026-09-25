@@ -190,6 +190,31 @@ describe("noticeFor", () => {
 			"prismalens 0.5.1 is available (you have 0.5.0): irm https://prismalens.io/install.ps1 | iex",
 		);
 	});
+	it("names the package manager's upgrade when Homebrew or Scoop installed it", () => {
+		const standalone = { PRISMALENS_INSTALL: "standalone" };
+		expect(
+			noticeFor(
+				"0.5.1",
+				"0.5.0",
+				standalone,
+				"darwin",
+				"/opt/homebrew/Cellar/prismalens/0.5.0/libexec/node/bin/node",
+			),
+		).toBe(
+			"prismalens 0.5.1 is available (you have 0.5.0): brew upgrade prismalens",
+		);
+		expect(
+			noticeFor(
+				"0.5.1",
+				"0.5.0",
+				standalone,
+				"win32",
+				"C:\\Users\\me\\Scoop\\apps\\prismalens\\0.5.0\\node\\node.exe",
+			),
+		).toBe(
+			"prismalens 0.5.1 is available (you have 0.5.0): scoop update prismalens",
+		);
+	});
 	it("says nothing when current or when the cache never learned a version", () => {
 		expect(noticeFor("0.5.0", "0.5.0")).toBe(null);
 		expect(noticeFor(null, "0.5.0")).toBe(null);

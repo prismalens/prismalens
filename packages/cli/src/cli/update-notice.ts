@@ -160,20 +160,37 @@ export async function fetchLatestVersion(
 	}
 }
 
+/**
+ * The upgrade command for how this copy was installed. Homebrew and Scoop run
+ * the standalone archive too, so they are told apart by the bundled node's path.
+ */
+function upgradeHint(
+	env: NodeJS.ProcessEnv,
+	platform: NodeJS.Platform,
+	execPath: string,
+): string {
+	if (execPath.includes("/Cellar/prismalens/")) return "brew upgrade prismalens";
+	if (/[\\/]scoop[\\/]apps[\\/]prismalens[\\/]/i.test(execPath)) {
+		return "scoop update prismalens";
+	}
+	if (env.PRISMALENS_INSTALL === "standalone") {
+		return platform === "win32"
+			? "irm https://prismalens.io/install.ps1 | iex"
+			: "curl -fsSL https://prismalens.io/install.sh | sh";
+	}
+	return "npm install -g prismalens@latest";
+}
+
 /** The notice line, or null when there is nothing to say. */
 export function noticeFor(
 	latest: string | null,
 	current: string,
 	env: NodeJS.ProcessEnv = process.env,
 	platform: NodeJS.Platform = process.platform,
+	execPath: string = process.execPath,
 ): string | null {
 	if (!latest || !isNewer(latest, current)) return null;
-	const hint =
-		env.PRISMALENS_INSTALL === "standalone"
-			? platform === "win32"
-				? "irm https://prismalens.io/install.ps1 | iex"
-				: "curl -fsSL https://prismalens.io/install.sh | sh"
-			: "npm install -g prismalens@latest";
+	const hint = upgradeHint(env, platform, execPath);
 	return `prismalens ${latest} is available (you have ${current}): ${hint}`;
 }
 

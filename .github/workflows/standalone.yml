@@ -215,6 +215,52 @@ jobs:
 
           Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
 
+      - name: Smoke the Homebrew formula (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          dir="$GITHUB_WORKSPACE/dist/standalone"
+          archive=$(cd "$dir" && ls *.tar.gz | head -1)
+          version=$(echo "$archive" | sed -E 's/^prismalens-(.+)-darwin-(arm64|x64)\.tar\.gz$/\1/')
+          (cd "$dir" && shasum -a 256 "$archive" > SHA256SUMS.brew)
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$dir" >/dev/null 2>&1 &
+          server=$!
+          node scripts/install/package-manifests.mjs --version "$version" --sums "$dir/SHA256SUMS.brew" \
+            --out "$RUNNER_TEMP/manifests" --base-url "http://127.0.0.1:8765" --allow-missing
+          brew tap-new --no-git local/prismalens-test
+          cp "$RUNNER_TEMP/manifests/Formula/prismalens.rb" "$(brew --repository local/prismalens-test)/Formula/"
+          brew install local/prismalens-test/prismalens
+          kill "$server"
+          out=$("$(brew --prefix)/bin/pl" --version)
+          [ "$out" = "$version" ] || { echo "Expected $version, got $out"; exit 1; }
+          brew test local/prismalens-test/prismalens
+          brew uninstall prismalens
+          brew untap local/prismalens-test
+
+      - name: Smoke the Scoop manifest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = "$env:GITHUB_WORKSPACE\dist\standalone"
+          $zip = Get-ChildItem "$dir\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $hash = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($zip.Name)" | Out-File "$dir\SHA256SUMS.scoop" -Encoding ascii
+          $server = Start-Process python -ArgumentList "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", $dir -PassThru -WindowStyle Hidden
+          node scripts/install/package-manifests.mjs --version $version --sums "$dir\SHA256SUMS.scoop" `
+            --out "$env:RUNNER_TEMP\manifests" --base-url "http://127.0.0.1:8765" --allow-missing
+          Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          scoop install "$env:RUNNER_TEMP\manifests\bucket\prismalens.json"
+          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+          Stop-Process -Id $server.Id -Force
+          $out = (pl --version).Trim()
+          if ($out -ne $version) { Write-Error "Expected $version, got $out"; exit 1 }
+          scoop uninstall prismalens
+
       - name: Upload standalone archive artifact
         uses: actions/upload-artifact@v7
         with:
@@ -249,3 +295,40 @@ jobs:
           cd archives
           sha256sum prismalens-* > SHA256SUMS
           gh release upload "$TAG" prismalens-* SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-manifests:
+    name: Update the Homebrew tap and Scoop bucket
+    needs: attach
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Skips until the operator creates both repos and the token (#717).
+      - name: Write and push the formula and manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PM_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$PM_TOKEN" ]; then
+            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
+            exit 0
+          fi
+          version="${TAG#v}"
+          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
+          node scripts/install/package-manifests.mjs --version "$version" --sums "$RUNNER_TEMP/SHA256SUMS" --out "$RUNNER_TEMP/manifests"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          publish() {
+            repo="$1" src="$2" dest="$3" dir="$RUNNER_TEMP/clone-${1#*/}"
+            git clone --depth 1 "https://x-access-token:${PM_TOKEN}@github.com/${repo}.git" "$dir"
+            mkdir -p "$dir/$(dirname "$dest")"
+            cp "$src" "$dir/$dest"
+            git -C "$dir" add "$dest"
+            if git -C "$dir" diff --cached --quiet; then return 0; fi
+            git -C "$dir" commit -m "prismalens $version"
+            git -C "$dir" push origin HEAD:main
+          }
+          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
+          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json

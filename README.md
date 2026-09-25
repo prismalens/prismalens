@@ -36,6 +36,14 @@ curl -fsSL https://prismalens.io/install.sh | sh
 irm https://prismalens.io/install.ps1 | iex
 ```
 
+Or with a package manager:
+
+```bash
+brew install prismalens/tap/prismalens                    # macOS, Linux
+scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+scoop install prismalens                                  # Windows
+```
+
 To try it once without installing, run `npx prismalens@latest up` instead.
 
 A desktop app is attached to each [GitHub Release](https://github.com/prismalens/prismalens/releases)
