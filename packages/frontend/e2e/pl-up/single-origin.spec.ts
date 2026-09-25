@@ -59,7 +59,8 @@ test("first run: a fresh artifact serves the SPA from the same origin as its API
 	// lands on the incidents list with no account and no click.
 	const startup = startupLink();
 	await page.goto(startup);
-	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
+	// Pairing ends in a client-side navigation, which fires no load event.
+	await expect(page).toHaveURL(/\/incidents/, { timeout: 30_000 });
 	await page.context().storageState({ path: PAIRED_STATE });
 });
 
@@ -88,7 +89,7 @@ test("a second device pairs, cannot manage pairing, and is refused once revoked"
 	const phone = await browser.newContext();
 	const phonePage = await phone.newPage();
 	await phonePage.goto(`/pair#${token}`);
-	await phonePage.waitForURL(/\/incidents/, { timeout: 30_000 });
+	await expect(phonePage).toHaveURL(/\/incidents/, { timeout: 30_000 });
 	expect((await phonePage.request.get("/api/incidents")).status()).toBe(200);
 
 	// Non-escalation (ADR 0004 §8): a paired device can neither mint nor revoke.
