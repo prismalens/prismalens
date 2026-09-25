@@ -14,8 +14,10 @@
  *    carries no query, no body and no id — only the IP and UA any HTTP request
  *    carries. That is why it is not part of the opt-in telemetry of #602, and
  *    why `DO_NOT_TRACK` still turns it off.
- * 3. **It belongs to the npm launcher.** An Electron build ships its own
- *    auto-updater, so this path is gated on `run_mode === "npm"`.
+ * 3. **It belongs to the CLI channels.** The desktop app announces updates
+ *    itself, so this path is off under `PRISMALENS_RUN_MODE=electron`.
+ * 4. **It names only an upgrade that can install.** A release is announced once
+ *    its `SHA256SUMS` is attached, which the installer channels need (#717).
  *
  * GitHub Releases rather than a registry or a project-owned manifest:
  * release-please already publishes the release, and electron-updater's GitHub
@@ -27,6 +29,8 @@ import { join } from "node:path";
 
 const RELEASES_LATEST_URL =
 	"https://github.com/prismalens/prismalens/releases/latest";
+const RELEASES_DOWNLOAD_URL =
+	"https://github.com/prismalens/prismalens/releases/download";
 const TIMEOUT_MS = 3_000;
 const CACHE_FILE = "update-check.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -161,38 +165,35 @@ export async function fetchLatestVersion(
 }
 
 /**
- * The upgrade command for how this copy was installed. Homebrew and Scoop run
- * the standalone archive too, so they are told apart by the bundled node's path.
+ * True once `v<version>`'s `SHA256SUMS` is attached, which standalone.yml does
+ * about 20 minutes after the release publishes. A 302 means the asset exists.
  */
-function upgradeHint(
-	env: NodeJS.ProcessEnv,
-	platform: NodeJS.Platform,
-	execPath: string,
-): string {
-	if (execPath.includes("/Cellar/prismalens/"))
-		return "brew upgrade prismalens";
-	if (/[\\/]scoop[\\/]apps[\\/]prismalens[\\/]/i.test(execPath)) {
-		return "scoop update prismalens";
+export async function releaseReady(
+	version: string,
+	fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+	try {
+		const res = await fetchImpl(
+			`${RELEASES_DOWNLOAD_URL}/v${encodeURIComponent(version)}/SHA256SUMS`,
+			{
+				method: "HEAD",
+				redirect: "manual",
+				signal: AbortSignal.timeout(TIMEOUT_MS),
+			},
+		);
+		return res.status >= 200 && res.status < 400;
+	} catch {
+		return false;
 	}
-	if (env.PRISMALENS_INSTALL === "standalone") {
-		return platform === "win32"
-			? "irm https://prismalens.io/install.ps1 | iex"
-			: "curl -fsSL https://prismalens.io/install.sh | sh";
-	}
-	return "npm install -g prismalens@latest";
 }
 
 /** The notice line, or null when there is nothing to say. */
 export function noticeFor(
 	latest: string | null,
 	current: string,
-	env: NodeJS.ProcessEnv = process.env,
-	platform: NodeJS.Platform = process.platform,
-	execPath: string = process.execPath,
 ): string | null {
 	if (!latest || !isNewer(latest, current)) return null;
-	const hint = upgradeHint(env, platform, execPath);
-	return `prismalens ${latest} is available (you have ${current}): ${hint}`;
+	return `prismalens ${latest} is available (you have ${current}). Run: pl upgrade`;
 }
 
 export interface UpdateNotice {
@@ -228,11 +229,13 @@ export function updateNotice(options: {
 	}
 
 	const cache = readCache(workspaceDir);
-	const line = noticeFor(cache?.latest ?? null, current, env);
+	const line = noticeFor(cache?.latest ?? null, current);
 	if (!isStale(cache, now)) return { line, refresh: Promise.resolve() };
 
 	const refresh = fetchLatestVersion(fetchImpl)
-		.then((latest) => {
+		.then(async (latest) => {
+			// Not attached yet: leave the cache stale so the next run asks again.
+			if (latest && !(await releaseReady(latest, fetchImpl))) return;
 			writeCache(workspaceDir, { checkedAt: Date.now(), latest });
 		})
 		.catch(() => {

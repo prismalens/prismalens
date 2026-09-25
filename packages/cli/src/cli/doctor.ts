@@ -14,11 +14,13 @@
  *    and the model a run would ask it for
  *  - the port/host `pl up` will bind, informational only
  */
-import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import {
 	ensureAppDataDir,
 	getAppDataDir,
+	installChannel,
 	secretFileName,
 } from "@prismalens/config";
 import {
@@ -35,6 +37,7 @@ import {
 import { probeHarness } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
+import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
 
 // The packed tarball declares engines.node >=24 (scripts/pack-cli.mjs).
@@ -116,6 +119,66 @@ function checkPath(): Check {
 			entries.length === 0
 				? "empty"
 				: `${entries.length} entries, starting ${head}${entries.length > 3 ? ", …" : ""}`,
+		hard: false,
+	};
+}
+
+const INSTALLER_MARKER = "Added by the PrismaLens installer";
+
+/** Which channel put this `pl` on PATH, from its path or the installer's marker. */
+export function channelOfPath(path: string, contents = ""): string {
+	if (path.includes("/Cellar/prismalens/") || path.includes("/homebrew/bin/")) {
+		return "homebrew";
+	}
+	if (/[\\/]scoop[\\/]/i.test(path)) return "scoop";
+	if (contents.includes(INSTALLER_MARKER)) return "installer";
+	return "npm";
+}
+
+/**
+ * Every `pl` on PATH (#717). They all share one workspace, and an older copy
+ * refuses a database a newer one has migrated, so more than one is worth a warning.
+ */
+export function checkInstalls(
+	path = process.env.PATH ?? "",
+	platform: NodeJS.Platform = process.platform,
+): Check {
+	const names = platform === "win32" ? ["pl.cmd", "pl.exe"] : ["pl"];
+	const seen = new Map<string, string>();
+	for (const dir of path.split(delimiter).filter(Boolean)) {
+		for (const name of names) {
+			const candidate = join(dir, name);
+			if (!existsSync(candidate)) continue;
+			let real = candidate;
+			try {
+				real = realpathSync(candidate);
+			} catch {}
+			if ([...seen.values()].some((r) => r === real)) continue;
+			seen.set(candidate, real);
+		}
+	}
+	const rows = [...seen.keys()].map((p) => {
+		let contents = "";
+		try {
+			contents = readFileSync(p, "utf8").slice(0, 400);
+		} catch {}
+		const out = spawnSync(p, ["--version"], {
+			encoding: "utf8",
+			timeout: 5_000,
+			shell: platform === "win32",
+		});
+		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
+		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;
+	});
+	return {
+		name: `PrismaLens ${cliVersion()} (${installChannel()})`,
+		pass: rows.length <= 1,
+		detail:
+			rows.length === 0
+				? `this one (${cliVersion()}) is not on PATH`
+				: rows.length === 1
+					? rows[0]
+					: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`,
 		hard: false,
 	};
 }
@@ -267,6 +330,7 @@ export default defineCommand({
 				checkNodeVersion(),
 				checkAppDataDir(),
 				checkPath(),
+				checkInstalls(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakeChecks,

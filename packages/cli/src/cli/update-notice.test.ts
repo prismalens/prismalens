@@ -9,6 +9,7 @@ import {
 	fetchLatestVersion,
 	isNewer,
 	noticeFor,
+	releaseReady,
 	readCache,
 	runMode,
 	updateCheckEnabled,
@@ -151,73 +152,28 @@ describe("the cache file", () => {
 });
 
 describe("noticeFor", () => {
-	it("names the newer version and the install command", () => {
+	it("names the newer version and pl upgrade, which knows the channel", () => {
 		expect(noticeFor("0.5.1", "0.5.0")).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): npm install -g prismalens@latest",
-		);
-	});
-	it("suggests curl installer for standalone installs on unix", () => {
-		expect(
-			noticeFor(
-				"0.5.1",
-				"0.5.0",
-				{ PRISMALENS_INSTALL: "standalone" },
-				"linux",
-			),
-		).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): curl -fsSL https://prismalens.io/install.sh | sh",
-		);
-		expect(
-			noticeFor(
-				"0.5.1",
-				"0.5.0",
-				{ PRISMALENS_INSTALL: "standalone" },
-				"darwin",
-			),
-		).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): curl -fsSL https://prismalens.io/install.sh | sh",
-		);
-	});
-	it("suggests powershell installer for standalone installs on win32", () => {
-		expect(
-			noticeFor(
-				"0.5.1",
-				"0.5.0",
-				{ PRISMALENS_INSTALL: "standalone" },
-				"win32",
-			),
-		).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): irm https://prismalens.io/install.ps1 | iex",
-		);
-	});
-	it("names the package manager's upgrade when Homebrew or Scoop installed it", () => {
-		const standalone = { PRISMALENS_INSTALL: "standalone" };
-		expect(
-			noticeFor(
-				"0.5.1",
-				"0.5.0",
-				standalone,
-				"darwin",
-				"/opt/homebrew/Cellar/prismalens/0.5.0/libexec/node/bin/node",
-			),
-		).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): brew upgrade prismalens",
-		);
-		expect(
-			noticeFor(
-				"0.5.1",
-				"0.5.0",
-				standalone,
-				"win32",
-				"C:\\Users\\me\\Scoop\\apps\\prismalens\\0.5.0\\node\\node.exe",
-			),
-		).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): scoop update prismalens",
+			"prismalens 0.5.1 is available (you have 0.5.0). Run: pl upgrade",
 		);
 	});
 	it("says nothing when current or when the cache never learned a version", () => {
 		expect(noticeFor("0.5.0", "0.5.0")).toBe(null);
 		expect(noticeFor(null, "0.5.0")).toBe(null);
+	});
+});
+
+describe("releaseReady", () => {
+	it("is true once SHA256SUMS redirects to its asset, false on a 404 or failure", async () => {
+		const at = (status: number) =>
+			(async () => new Response(null, { status })) as unknown as typeof fetch;
+		expect(await releaseReady("0.5.1", at(302))).toBe(true);
+		expect(await releaseReady("0.5.1", at(404))).toBe(false);
+		expect(
+			await releaseReady("0.5.1", (async () => {
+				throw new Error("offline");
+			}) as unknown as typeof fetch),
+		).toBe(false);
 	});
 });
 
@@ -281,6 +237,22 @@ describe("updateNotice", () => {
 		});
 		await notice.refresh;
 		expect(readCache(workspace)).toMatchObject({ latest: null });
+	});
+
+	it("does not learn a release whose downloads aren't attached yet", async () => {
+		const fetchImpl = (async (url: string) =>
+			String(url).endsWith("/SHA256SUMS")
+				? new Response(null, { status: 404 })
+				: new Response(null, { status: 302, headers: { location: TAG_URL } })) as unknown as typeof fetch;
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.0",
+			workspaceDir: workspace,
+			fetchImpl,
+			now: DAY_MS * 10,
+		});
+		await notice.refresh;
+		expect(readCache(workspace)).toBe(null);
 	});
 
 	it("neither prints nor calls the network when suppressed", async () => {

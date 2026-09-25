@@ -63,6 +63,13 @@ export {
 	type WorkspaceLockOwner,
 	type WorkspaceLockState,
 } from "./utils/workspace-lock.js";
+export {
+	INSTALL_CHANNELS,
+	type InstallChannel,
+	installChannel,
+	installerDataDir,
+	upgradeCommand,
+} from "./utils/install-channel.js";
 // Re-export app data utilities
 // Re-export encryption key and secret utilities
 export {

@@ -34,6 +34,11 @@ import {
 	type OnApplicationBootstrap,
 	type OnModuleDestroy,
 } from "@nestjs/common";
+import {
+	INSTALL_CHANNELS,
+	type InstallChannel,
+	installChannel,
+} from "@prismalens/config";
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import type { TelemetrySettings } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
@@ -50,11 +55,15 @@ const DEDUP_TTL_MS = 60 * 60_000;
 /** Identifies this client to PostHog in place of an SDK's own value. */
 const LIB_NAME = "prismalens-api";
 
-export const RUN_MODES = ["npm", "electron"] as const;
-export type RunMode = (typeof RUN_MODES)[number];
+/** How this copy was installed; the same closed set `pl doctor` names (#717). */
+export const RUN_MODES = INSTALL_CHANNELS;
+export type RunMode = InstallChannel;
 
-export function runMode(env: NodeJS.ProcessEnv = process.env): RunMode {
-	return env.PRISMALENS_RUN_MODE === "electron" ? "electron" : "npm";
+export function runMode(
+	env: NodeJS.ProcessEnv = process.env,
+	execPath: string = process.execPath,
+): RunMode {
+	return installChannel(env, execPath);
 }
 
 export const BUILD_MODES = ["release", "dev"] as const;

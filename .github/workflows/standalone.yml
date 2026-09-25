@@ -118,24 +118,6 @@ jobs:
             exit 1
           fi
 
-          (cd "$GITHUB_WORKSPACE/dist/standalone" && sha256sum *.tar.gz > SHA256SUMS)
-          install_bin="$smoke_dir/bin"
-          install_xdg="$smoke_dir/xdg"
-          mkdir -p "$install_bin" "$install_xdg"
-
-          env -i HOME="$HOME" PATH="$CLEAN_PATH" \
-            XDG_DATA_HOME="$install_xdg" \
-            PRISMALENS_INSTALL_BIN_DIR="$install_bin" \
-            PRISMALENS_VERSION="$pkg_version" \
-            PRISMALENS_RELEASE_BASE_URL="file://$GITHUB_WORKSPACE/dist/standalone" \
-            sh scripts/install/install.sh
-
-          inst_ver=$(env -i HOME="$HOME" PATH="$CLEAN_PATH" "$install_bin/pl" --version)
-          if [ "$inst_ver" != "$pkg_version" ]; then
-            echo "Installed version mismatch: expected $pkg_version, got $inst_ver"
-            exit 1
-          fi
-
           rm -rf "$smoke_dir"
 
       - name: Smoke test standalone CLI (Windows)
@@ -192,28 +174,30 @@ jobs:
             exit 1
           }
 
-          $archiveDir = "$env:GITHUB_WORKSPACE\dist\standalone"
-          $hash = (Get-FileHash -Path $archive.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $($archive.Name)" | Out-File -FilePath "$archiveDir\SHA256SUMS" -Encoding ascii
-
-          $installBin = Join-Path $smokeDir "bin"
-          $installAppData = Join-Path $smokeDir "appdata"
-
-          $env:LOCALAPPDATA = $installAppData
-          $env:PRISMALENS_INSTALL_BIN_DIR = $installBin
-          $env:PRISMALENS_VERSION = $pkgVersion
-          $cleanBaseUrl = "file://" + $archiveDir.Replace('\', '/')
-          $env:PRISMALENS_RELEASE_BASE_URL = $cleanBaseUrl
-
-          & pwsh -File "$env:GITHUB_WORKSPACE\scripts\install\install.ps1"
-
-          $instVer = (& "$installBin\pl.cmd" --version).Trim()
-          if ($instVer -ne $pkgVersion) {
-            Write-Error "Installed version mismatch: expected $pkgVersion, got $instVer"
-            exit 1
-          }
-
           Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Build the published 0.5.0 as an archive, for the upgrade test
+        run: |
+          mkdir -p "$RUNNER_TEMP/old"
+          npm pack prismalens@0.5.0 --pack-destination "$RUNNER_TEMP/old"
+          node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/prismalens-0.5.0.tgz" --out "$GITHUB_WORKSPACE/dist/old"
+
+      - name: Installer end to end (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          version=$(tar -xzOf packages/cli/dist-pack/*.tgz package/package.json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0,'utf8')).version)")
+          sh scripts/install/smoke-installer.sh "$GITHUB_WORKSPACE/dist/standalone" "$version" "$GITHUB_WORKSPACE/dist/old" 0.5.0
+
+      - name: Installer end to end (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tgz = Get-ChildItem "$env:GITHUB_WORKSPACE\packages\cli\dist-pack\*.tgz" | Select-Object -First 1
+          Push-Location $tgz.DirectoryName
+          $version = (tar -xzOf $tgz.Name package/package.json | ConvertFrom-Json).version
+          Pop-Location
+          & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old" -OldVersion 0.5.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Smoke the Homebrew formula (macOS)
         if: runner.os == 'macOS'
@@ -277,6 +261,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
 
@@ -286,6 +272,12 @@ jobs:
           pattern: standalone-*
           path: archives
           merge-multiple: true
+
+      # `gh attestation verify <archive> --repo prismalens/prismalens` proves CI built it.
+      - name: Attest the archives' build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: archives/prismalens-*
 
       - name: Generate SHA256SUMS and upload to release
         env:

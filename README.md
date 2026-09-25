@@ -161,9 +161,13 @@ setup (providers, harnesses, configuration, commands) lives at
 
 ### Upgrading
 
-Upgrade the way you installed: `npm install -g prismalens@latest`, re-run the
-installer, `brew upgrade prismalens` or `scoop update prismalens`. `pl up`
-prints the right command when a newer release is out.
+```bash
+pl upgrade
+```
+
+It upgrades the way you installed: npm, the installer, Homebrew or Scoop. `pl up`
+says when a newer release is out. To uninstall, see
+[Install, upgrade and uninstall](https://docs.prismalens.io/install/).
 
 PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructions and database migration details are documented at **[docs.prismalens.io](https://docs.prismalens.io)**.
 

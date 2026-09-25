@@ -291,7 +291,16 @@ describe("TelemetryService (#602)", () => {
 		expect(runMode({ PRISMALENS_RUN_MODE: "electron" })).toBe("electron");
 		expect(runMode({ PRISMALENS_RUN_MODE: "npm" })).toBe("npm");
 		expect(runMode({})).toBe("npm");
-		expect(runMode({ PRISMALENS_RUN_MODE: "other" })).toBe("npm");
+		expect(runMode({ PRISMALENS_RUN_MODE: "other" }, "/usr/bin/node")).toBe("npm");
+		expect(runMode({ PRISMALENS_INSTALL: "standalone" }, "/x/node")).toBe(
+			"installer",
+		);
+		expect(
+			runMode({}, "/opt/homebrew/Cellar/prismalens/0.5.1/libexec/node/bin/node"),
+		).toBe("homebrew");
+		expect(
+			runMode({}, "C:\\Users\\me\\scoop\\apps\\prismalens\\0.5.1\\node\\node.exe"),
+		).toBe("scoop");
 
 		expect(build({ NODE_ENV: "production" })).toBe("release");
 		expect(build({ NODE_ENV: "development" })).toBe("dev");
