@@ -28,10 +28,14 @@ interface Probe {
 let server: Server;
 let port: number;
 
-function probe(headers: Record<string, string>, path = "/api/health"): Promise<Probe> {
+function probe(
+	headers: Record<string, string>,
+	path = "/api/health",
+	method = "GET",
+): Promise<Probe> {
 	return new Promise((resolve, reject) => {
 		const req = httpRequest(
-			{ host: "127.0.0.1", port, path, method: "GET", headers },
+			{ host: "127.0.0.1", port, path, method, headers },
 			(res) => {
 				let body = "";
 				res.setEncoding("utf8");
@@ -100,6 +104,21 @@ describe("host allowlist over real HTTP", () => {
 		});
 		expect(res.status).toBe(403);
 		expect(res.body).toContain("Origin");
+	});
+
+	it("rejects a cross-site form POST to loopback (#698)", async () => {
+		// A form on evil.example posting to http://localhost: simple request, no
+		// preflight, so the Origin check is the only thing between it and a route.
+		const res = await probe(
+			{
+				host: `localhost:${port}`,
+				origin: "https://evil.example",
+				"content-type": "application/x-www-form-urlencoded",
+			},
+			"/api/pairing/links",
+			"POST",
+		);
+		expect(res.status).toBe(403);
 	});
 
 	it("blocks a rebound request to the pre-setup route, not just /api", async () => {
