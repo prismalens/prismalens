@@ -10,6 +10,16 @@ Requires Node.js 24+.
 npm install -g prismalens
 ```
 
+No Node required (from 0.5.2):
+
+```bash
+# macOS, Linux
+curl -fsSL https://prismalens.io/install.sh | sh
+
+# Windows (PowerShell)
+irm https://prismalens.io/install.ps1 | iex
+```
+
 To try it once without installing: `npx prismalens@latest up`.
 
 PrismaLens is alpha: any 0.x release may break, so read the

@@ -1,0 +1,251 @@
+# Standalone CLI archives and installers (#717): build per-OS archives with
+# bundled Node runtime and smoke test without Node on PATH.
+name: Standalone CLI
+
+on:
+  pull_request:
+    paths:
+      - "scripts/build-standalone.mjs"
+      - "scripts/install/**"
+      - "scripts/pack-cli.mjs"
+      - ".github/workflows/standalone.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & smoke (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          # windows-2022, not windows-latest: windows-latest moved to Visual Studio
+          # 2026 (installed at ...\Microsoft Visual Studio\18\...) in June 2026, and
+          # the node-gyp pnpm vendors doesn't parse that version string — it finds
+          # the install, can't read its version, and fails better-sqlite3's native
+          # build with "Could not find any Visual Studio installation to use".
+          # windows-2022 still ships VS2022 and stays supported for the next 3 years.
+          - os: windows-2022
+            target: win32-x64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Pack CLI
+        run: pnpm run pack
+
+      - name: Build standalone archive
+        run: node scripts/build-standalone.mjs --out "$GITHUB_WORKSPACE/dist/standalone"
+
+      - name: Smoke test standalone CLI (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          archive=$(ls "$GITHUB_WORKSPACE/dist/standalone"/*.tar.gz | head -1)
+          smoke_dir=$(mktemp -d)
+          tar -xzf "$archive" -C "$smoke_dir"
+          pkg_dir=$(ls -d "$smoke_dir"/prismalens-* | head -1)
+
+          pkg_version=$(tar -xzOf packages/cli/dist-pack/*.tgz package/package.json | node -e "process.stdout.write(JSON.parse(require('fs').readFileSync(0, 'utf8')).version)")
+
+          CLEAN_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+          out_ver=$(env -i HOME="$HOME" PATH="$CLEAN_PATH" "$pkg_dir/bin/pl" --version)
+          if [ "$out_ver" != "$pkg_version" ]; then
+            echo "Expected $pkg_version, got $out_ver"
+            exit 1
+          fi
+
+          port=3941
+          ws_dir=$(mktemp -d)
+          env -i HOME="$HOME" PATH="$CLEAN_PATH" CI=true "$pkg_dir/bin/pl" up --port "$port" --workspace "$ws_dir" &
+          up_pid=$!
+
+          i=0
+          healthy=false
+          while [ "$i" -lt 60 ]; do
+            if curl -s -f "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+              healthy=true
+              break
+            fi
+            if ! kill -0 "$up_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+            i=$((i + 1))
+          done
+
+          kill -TERM "$up_pid" 2>/dev/null || true
+          kill -9 "$up_pid" 2>/dev/null || true
+          rm -rf "$ws_dir"
+
+          if [ "$healthy" != "true" ]; then
+            echo "Health check failed after ${i}s"
+            exit 1
+          fi
+
+          (cd "$GITHUB_WORKSPACE/dist/standalone" && sha256sum *.tar.gz > SHA256SUMS)
+          install_bin="$smoke_dir/bin"
+          install_xdg="$smoke_dir/xdg"
+          mkdir -p "$install_bin" "$install_xdg"
+
+          env -i HOME="$HOME" PATH="$CLEAN_PATH" \
+            XDG_DATA_HOME="$install_xdg" \
+            PRISMALENS_INSTALL_BIN_DIR="$install_bin" \
+            PRISMALENS_VERSION="$pkg_version" \
+            PRISMALENS_RELEASE_BASE_URL="file://$GITHUB_WORKSPACE/dist/standalone" \
+            sh scripts/install/install.sh
+
+          inst_ver=$(env -i HOME="$HOME" PATH="$CLEAN_PATH" "$install_bin/pl" --version)
+          if [ "$inst_ver" != "$pkg_version" ]; then
+            echo "Installed version mismatch: expected $pkg_version, got $inst_ver"
+            exit 1
+          fi
+
+          rm -rf "$smoke_dir"
+
+      - name: Smoke test standalone CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $smokeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pl-smoke-" + [System.Guid]::NewGuid().ToString("N"))
+          Expand-Archive -Path $archive.FullName -DestinationPath $smokeDir -Force
+          $pkgDir = Get-ChildItem -Path "$smokeDir\prismalens-*" -Directory | Select-Object -First 1
+
+          $tgz = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\packages\cli\dist-pack\*.tgz" | Select-Object -First 1
+          $pkgJson = tar -xzOf $tgz.FullName package/package.json | ConvertFrom-Json
+          $pkgVersion = $pkgJson.version
+
+          # Remove Node from PATH for current session
+          $env:Path = ($env:Path -split ';' | Where-Object { $_ -notmatch 'node|hostedtoolcache' }) -join ';'
+          if (Get-Command node -ErrorAction SilentlyContinue) {
+            Write-Error "Node is still on PATH!"
+            exit 1
+          }
+
+          $outVer = (& "$pkgDir\bin\pl.cmd" --version).Trim()
+          if ($outVer -ne $pkgVersion) {
+            Write-Error "Expected $pkgVersion, got $outVer"
+            exit 1
+          }
+
+          $port = 3941
+          $wsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pl-ws-" + [System.Guid]::NewGuid().ToString("N"))
+          $env:CI = "true"
+          $p = Start-Process -FilePath "$pkgDir\bin\pl.cmd" -ArgumentList "up", "--port", "$port", "--workspace", "$wsDir" -PassThru
+
+          $healthy = $false
+          $i = 0
+          while ($i -lt 60) {
+            try {
+              $res = Invoke-WebRequest -Uri "http://127.0.0.1:$port/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+              if ($res.StatusCode -eq 200) {
+                $healthy = $true
+                break
+              }
+            } catch {}
+            if ($p.HasExited) { break }
+            Start-Sleep -Seconds 1
+            $i++
+          }
+
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path $wsDir -Recurse -Force -ErrorAction SilentlyContinue
+
+          if (-not $healthy) {
+            Write-Error "Health check failed after ${i}s"
+            exit 1
+          }
+
+          $archiveDir = "$env:GITHUB_WORKSPACE\dist\standalone"
+          $hash = (Get-FileHash -Path $archive.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($archive.Name)" | Out-File -FilePath "$archiveDir\SHA256SUMS" -Encoding ascii
+
+          $installBin = Join-Path $smokeDir "bin"
+          $installAppData = Join-Path $smokeDir "appdata"
+
+          $env:LOCALAPPDATA = $installAppData
+          $env:PRISMALENS_INSTALL_BIN_DIR = $installBin
+          $env:PRISMALENS_VERSION = $pkgVersion
+          $cleanBaseUrl = "file://" + $archiveDir.Replace('\', '/')
+          $env:PRISMALENS_RELEASE_BASE_URL = $cleanBaseUrl
+
+          & pwsh -File "$env:GITHUB_WORKSPACE\scripts\install\install.ps1"
+
+          $instVer = (& "$installBin\pl.cmd" --version).Trim()
+          if ($instVer -ne $pkgVersion) {
+            Write-Error "Installed version mismatch: expected $pkgVersion, got $instVer"
+            exit 1
+          }
+
+          Remove-Item -Path $smokeDir -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload standalone archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-${{ matrix.target }}
+          path: |
+            dist/standalone/*.tar.gz
+            dist/standalone/*.zip
+          retention-days: 7
+
+  attach:
+    name: Attach to the release
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download standalone archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: standalone-*
+          path: archives
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS and upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cd archives
+          sha256sum * > SHA256SUMS
+          gh release upload "$TAG" * SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber

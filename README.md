@@ -26,6 +26,16 @@ Requires **Node.js 24+**.
 npm install -g prismalens
 ```
 
+No Node required (from 0.5.2):
+
+```bash
+# macOS, Linux
+curl -fsSL https://prismalens.io/install.sh | sh
+
+# Windows (PowerShell)
+irm https://prismalens.io/install.ps1 | iex
+```
+
 To try it once without installing, run `npx prismalens@latest up` instead.
 
 A desktop app is attached to each [GitHub Release](https://github.com/prismalens/prismalens/releases)

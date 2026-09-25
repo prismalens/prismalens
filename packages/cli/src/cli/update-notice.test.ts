@@ -156,6 +156,40 @@ describe("noticeFor", () => {
 			"prismalens 0.5.1 is available (you have 0.5.0): npm install -g prismalens@latest",
 		);
 	});
+	it("suggests curl installer for standalone installs on unix", () => {
+		expect(
+			noticeFor(
+				"0.5.1",
+				"0.5.0",
+				{ PRISMALENS_INSTALL: "standalone" },
+				"linux",
+			),
+		).toBe(
+			"prismalens 0.5.1 is available (you have 0.5.0): curl -fsSL https://prismalens.io/install.sh | sh",
+		);
+		expect(
+			noticeFor(
+				"0.5.1",
+				"0.5.0",
+				{ PRISMALENS_INSTALL: "standalone" },
+				"darwin",
+			),
+		).toBe(
+			"prismalens 0.5.1 is available (you have 0.5.0): curl -fsSL https://prismalens.io/install.sh | sh",
+		);
+	});
+	it("suggests powershell installer for standalone installs on win32", () => {
+		expect(
+			noticeFor(
+				"0.5.1",
+				"0.5.0",
+				{ PRISMALENS_INSTALL: "standalone" },
+				"win32",
+			),
+		).toBe(
+			"prismalens 0.5.1 is available (you have 0.5.0): irm https://prismalens.io/install.ps1 | iex",
+		);
+	});
 	it("says nothing when current or when the cache never learned a version", () => {
 		expect(noticeFor("0.5.0", "0.5.0")).toBe(null);
 		expect(noticeFor(null, "0.5.0")).toBe(null);

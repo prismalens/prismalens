@@ -164,9 +164,17 @@ export async function fetchLatestVersion(
 export function noticeFor(
 	latest: string | null,
 	current: string,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
 ): string | null {
 	if (!latest || !isNewer(latest, current)) return null;
-	return `prismalens ${latest} is available (you have ${current}): npm install -g prismalens@latest`;
+	const hint =
+		env.PRISMALENS_INSTALL === "standalone"
+			? platform === "win32"
+				? "irm https://prismalens.io/install.ps1 | iex"
+				: "curl -fsSL https://prismalens.io/install.sh | sh"
+			: "npm install -g prismalens@latest";
+	return `prismalens ${latest} is available (you have ${current}): ${hint}`;
 }
 
 export interface UpdateNotice {
@@ -202,7 +210,7 @@ export function updateNotice(options: {
 	}
 
 	const cache = readCache(workspaceDir);
-	const line = noticeFor(cache?.latest ?? null, current);
+	const line = noticeFor(cache?.latest ?? null, current, env);
 	if (!isStale(cache, now)) return { line, refresh: Promise.resolve() };
 
 	const refresh = fetchLatestVersion(fetchImpl)
