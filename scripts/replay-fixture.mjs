@@ -27,11 +27,13 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+	chmodSync,
 	createWriteStream,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,6 +55,7 @@ const out = resolve(
 		mkdtempSync(join(tmpdir(), `replay-${fixture.name}-`)),
 );
 mkdirSync(out, { recursive: true, mode: 0o700 });
+chmodSync(out, 0o700);
 const save = (name, value) =>
 	writeFileSync(
 		join(out, name),
@@ -159,7 +162,9 @@ async function main() {
 
 	let bootLog = "";
 	// The log carries the startup link, which pairs the host for 15 minutes.
-	const log = createWriteStream(join(out, "pl-up.log"), { mode: 0o600 });
+	const logPath = join(out, "pl-up.log");
+	rmSync(logPath, { force: true });
+	const log = createWriteStream(logPath, { flags: "wx", mode: 0o600 });
 	child = spawn(bin, ["up", "--no-open"], {
 		detached: true,
 		stdio: ["ignore", "pipe", "pipe"],
