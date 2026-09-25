@@ -17,7 +17,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,10 +74,12 @@ function resolveTarball(argTarball) {
 
 function extractTarballVersion(tarballPath) {
 	try {
+		// Relative name from the tarball's dir: Git-Bash's GNU tar reads `D:\...` as a remote host.
 		const out = execFileSync(
 			"tar",
-			["-xzOf", tarballPath, "package/package.json"],
+			["-xzOf", basename(tarballPath), "package/package.json"],
 			{
+				cwd: dirname(tarballPath),
 				encoding: "utf8",
 			},
 		);
