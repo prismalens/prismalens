@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Bell, Layers, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
-import { TelemetryConsent } from "@/components/settings";
+import { TelemetryConsent, useAbout } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
@@ -57,6 +57,7 @@ function SidebarBody({ pathname }: { pathname: string }) {
 		enabled: signedIn,
 		refetchInterval: 30_000,
 	});
+	const about = useAbout(signedIn);
 	const alerts = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
 		enabled: signedIn,
@@ -75,6 +76,8 @@ function SidebarBody({ pathname }: { pathname: string }) {
 		icon: ReactNode;
 		count?: number;
 		countTone?: "critical" | "neutral";
+		/** A newer release is out (#717). */
+		dot?: boolean;
 	}[] = [
 		{
 			to: "/incidents",
@@ -94,6 +97,7 @@ function SidebarBody({ pathname }: { pathname: string }) {
 			to: "/settings",
 			label: "Settings",
 			icon: <Settings className="h-4 w-4" />,
+			dot: about.data?.update.available === true,
 		},
 	];
 
@@ -114,7 +118,16 @@ function SidebarBody({ pathname }: { pathname: string }) {
 					)}
 					data-testid={`nav-${item.label.toLowerCase()}`}
 				>
-					{item.icon}
+					<span className="relative">
+						{item.icon}
+						{item.dot && (
+							<span
+								className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary"
+								aria-label="Update available"
+								data-testid={`nav-${item.label.toLowerCase()}-dot`}
+							/>
+						)}
+					</span>
 					{!(sidebarFolded && !compact) && (
 						<span className="flex-1">{item.label}</span>
 					)}

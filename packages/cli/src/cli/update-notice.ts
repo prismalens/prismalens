@@ -24,45 +24,28 @@
  * provider reads the same manifest, so one source serves both channels.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+	doNotTrack,
+	fetchLatestVersion,
+	isNewer,
+	isStale,
+	readCache,
+	releaseReady,
+	writeCache,
+} from "@prismalens/config";
 
-const RELEASES_LATEST_URL =
-	"https://github.com/prismalens/prismalens/releases/latest";
-const RELEASES_DOWNLOAD_URL =
-	"https://github.com/prismalens/prismalens/releases/download";
-const TIMEOUT_MS = 3_000;
-const CACHE_FILE = "update-check.json";
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export {
+	fetchLatestVersion,
+	isNewer,
+	isStale,
+	readCache,
+	releaseReady,
+	type UpdateCheckCache,
+	writeCache,
+} from "@prismalens/config";
 
 /** How this process was launched. An Electron shell declares itself. */
 export type RunMode = "npm" | "electron";
-
-/** `{checkedAt, latest}` — the whole of what is kept on disk. */
-export interface UpdateCheckCache {
-	/** Epoch millis of the last completed check, successful or not. */
-	checkedAt: number;
-	/** Latest plain `x.y.z` seen, or null when the last check could not tell. */
-	latest: string | null;
-}
-
-type Version = [number, number, number];
-
-function parse(version: string): Version | null {
-	const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
-	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-/** True only for two plain `x.y.z` versions where `latest` is higher. */
-export function isNewer(latest: string, current: string): boolean {
-	const a = parse(latest);
-	const b = parse(current);
-	if (!a || !b) return false;
-	for (let i = 0; i < 3; i++) {
-		if (a[i] !== b[i]) return a[i] > b[i];
-	}
-	return false;
-}
 
 /**
  * The launcher declares itself; nothing is inferred. An Electron shell spawns
@@ -70,16 +53,6 @@ export function isNewer(latest: string, current: string): boolean {
  */
 export function runMode(env: NodeJS.ProcessEnv): RunMode {
 	return env.PRISMALENS_RUN_MODE === "electron" ? "electron" : "npm";
-}
-
-/** `DO_NOT_TRACK` counts as set for anything but empty, `0`, `false`, `off`. */
-function doNotTrack(env: NodeJS.ProcessEnv): boolean {
-	const value = env.DO_NOT_TRACK?.trim().toLowerCase();
-	return (
-		value !== undefined &&
-		value !== "" &&
-		!["0", "false", "off"].includes(value)
-	);
 }
 
 /**
@@ -96,95 +69,6 @@ export function updateCheckEnabled(
 	if (env.CI !== undefined && env.CI !== "") return false;
 	if (doNotTrack(env)) return false;
 	return runMode(env) === "npm";
-}
-
-function cachePath(workspaceDir: string): string {
-	return join(workspaceDir, CACHE_FILE);
-}
-
-/** The cache, or null when it is absent, unreadable or not the shape above. */
-export function readCache(workspaceDir: string): UpdateCheckCache | null {
-	try {
-		const raw: unknown = JSON.parse(
-			readFileSync(cachePath(workspaceDir), "utf8"),
-		);
-		if (typeof raw !== "object" || raw === null) return null;
-		const { checkedAt, latest } = raw as Record<string, unknown>;
-		if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
-			return null;
-		}
-		if (latest !== null && typeof latest !== "string") return null;
-		return { checkedAt, latest };
-	} catch {
-		return null;
-	}
-}
-
-/** Best effort: a read-only or full disk must not affect the run. */
-export function writeCache(
-	workspaceDir: string,
-	cache: UpdateCheckCache,
-): void {
-	try {
-		writeFileSync(cachePath(workspaceDir), `${JSON.stringify(cache)}\n`, {
-			mode: 0o600,
-		});
-	} catch {
-		// Nothing to do and nothing worth saying: the next run checks again.
-	}
-}
-
-export function isStale(cache: UpdateCheckCache | null, now: number): boolean {
-	return cache === null || now - cache.checkedAt >= CACHE_TTL_MS;
-}
-
-/**
- * HEAD the `releases/latest` redirect and read the tag out of `Location`.
- * `redirect: "manual"` keeps it to one request and no page body; the API is
- * never called, so there is no rate limit and no token. Null on anything
- * unexpected — the caller treats that as "nothing to say".
- */
-export async function fetchLatestVersion(
-	fetchImpl: typeof fetch = fetch,
-): Promise<string | null> {
-	try {
-		const res = await fetchImpl(RELEASES_LATEST_URL, {
-			method: "HEAD",
-			redirect: "manual",
-			signal: AbortSignal.timeout(TIMEOUT_MS),
-		});
-		const location = res.headers.get("location");
-		if (!location) return null;
-		const tag = /\/releases\/tag\/(.+)$/.exec(location)?.[1];
-		if (!tag) return null;
-		const version = decodeURIComponent(tag).replace(/^v/, "");
-		return parse(version) ? version : null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * True once `v<version>`'s `SHA256SUMS` is attached, which standalone.yml does
- * about 20 minutes after the release publishes. A 302 means the asset exists.
- */
-export async function releaseReady(
-	version: string,
-	fetchImpl: typeof fetch = fetch,
-): Promise<boolean> {
-	try {
-		const res = await fetchImpl(
-			`${RELEASES_DOWNLOAD_URL}/v${encodeURIComponent(version)}/SHA256SUMS`,
-			{
-				method: "HEAD",
-				redirect: "manual",
-				signal: AbortSignal.timeout(TIMEOUT_MS),
-			},
-		);
-		return res.status >= 200 && res.status < 400;
-	} catch {
-		return false;
-	}
 }
 
 /** The notice line, or null when there is nothing to say. */

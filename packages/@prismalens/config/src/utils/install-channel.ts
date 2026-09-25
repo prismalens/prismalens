@@ -56,6 +56,27 @@ export function upgradeCommand(
 	}
 }
 
+/** The command that removes this channel's install; the workspace is never touched. */
+export function uninstallCommand(
+	channel: InstallChannel,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	switch (channel) {
+		case "installer":
+			return platform === "win32"
+				? "& ([scriptblock]::Create((irm https://prismalens.io/install.ps1))) -Uninstall"
+				: "curl -fsSL https://prismalens.io/install.sh | sh -s -- --uninstall";
+		case "homebrew":
+			return "brew uninstall prismalens";
+		case "scoop":
+			return "scoop uninstall prismalens";
+		case "electron":
+			return "quit PrismaLens and delete the app";
+		default:
+			return "npm uninstall -g prismalens";
+	}
+}
+
 /** Where the installer keeps its runtimes and receipt. */
 export function installerDataDir(
 	env: NodeJS.ProcessEnv = process.env,

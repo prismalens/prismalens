@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import {
 	BarChart3,
 	Boxes,
+	Info,
 	KeyRound,
 	Plug,
 	Smartphone,
@@ -12,6 +13,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAbout } from "@/components/settings/AboutSettings";
 import { useDevices } from "@/components/settings/DevicesTab";
 import { StateWord } from "@/components/shared/StateChip";
 import { useOperator } from "@/hooks/use-operator";
@@ -29,6 +31,7 @@ export type SettingsSection =
 	| "devices"
 	| "services"
 	| "usage"
+	| "about"
 	| "danger";
 
 interface Item {
@@ -63,6 +66,7 @@ export function SettingsFrame({
 	const { data: connections } = useConnections();
 	const { managesPairing } = useOperator();
 	const { data: devices } = useDevices(managesPairing);
+	const { data: about } = useAbout();
 	const items: Item[] = [
 		{
 			section: "harness",
@@ -119,7 +123,21 @@ export function SettingsFrame({
 			icon: <BarChart3 className="h-4 w-4" />,
 			tab: "usage",
 			to: "/settings",
-			line: "anonymous counts, off by default",
+			line: "usage counts, off by default",
+		},
+		{
+			section: "about",
+			label: "About",
+			icon: <Info className="h-4 w-4" />,
+			tab: "about",
+			to: "/settings",
+			line: about?.update.available ? (
+				<StateWord tone="primary">{`${about.update.latest} available`}</StateWord>
+			) : about ? (
+				`version ${about.version}`
+			) : (
+				"version and updates"
+			),
 		},
 		{
 			section: "danger",
