@@ -94,7 +94,8 @@ export default defineCommand({
 
 		let target: string;
 		if (pinned) {
-			if (!(await releaseReady(pinned))) {
+			// npm resolves the version itself; the other channels need the release's archives.
+			if (channel !== "npm" && !(await releaseReady(pinned))) {
 				consola.error(
 					`There is no PrismaLens ${pinned} release with downloads attached.`,
 				);

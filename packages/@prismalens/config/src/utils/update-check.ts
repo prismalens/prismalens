@@ -25,6 +25,8 @@ export interface UpdateCheckCache {
 	checkedAt: number;
 	/** Latest plain `x.y.z` seen, or null when the last check could not tell. */
 	latest: string | null;
+	/** Ask again at this epoch millis instead of a day after `checkedAt`. */
+	recheckAt?: number;
 }
 
 type Version = [number, number, number];
@@ -75,11 +77,14 @@ export function readCache(workspaceDir: string): UpdateCheckCache | null {
 			readFileSync(cachePath(workspaceDir), "utf8"),
 		);
 		if (typeof raw !== "object" || raw === null) return null;
-		const { checkedAt, latest } = raw as Record<string, unknown>;
+		const { checkedAt, latest, recheckAt } = raw as Record<string, unknown>;
 		if (typeof checkedAt !== "number" || !Number.isFinite(checkedAt)) {
 			return null;
 		}
 		if (latest !== null && typeof latest !== "string") return null;
+		if (typeof recheckAt === "number" && Number.isFinite(recheckAt)) {
+			return { checkedAt, latest, recheckAt };
+		}
 		return { checkedAt, latest };
 	} catch {
 		return null;
@@ -101,7 +106,9 @@ export function writeCache(
 }
 
 export function isStale(cache: UpdateCheckCache | null, now: number): boolean {
-	return cache === null || now - cache.checkedAt >= CACHE_TTL_MS;
+	if (cache === null) return true;
+	if (cache.recheckAt !== undefined) return now >= cache.recheckAt;
+	return now - cache.checkedAt >= CACHE_TTL_MS;
 }
 
 /**
@@ -169,8 +176,9 @@ export async function refreshUpdateCache(
 	const latest = await fetchLatestVersion(fetchImpl);
 	if (latest && !(await releaseReady(latest, fetchImpl))) {
 		writeCache(workspaceDir, {
-			checkedAt: now - CACHE_TTL_MS + NOT_READY_RETRY_MS,
+			checkedAt: now,
 			latest: readCache(workspaceDir)?.latest ?? null,
+			recheckAt: now + NOT_READY_RETRY_MS,
 		});
 		return;
 	}
