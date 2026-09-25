@@ -34,18 +34,21 @@ function Install([string]$base, [string[]]$more) {
 	return $LASTEXITCODE
 }
 
+# pl.cmd runs node.exe as a child; killing only cmd.exe leaves node holding the runtime open.
+function Stop-Tree($p) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Start-Sleep 2 }
+
 function Healthy([string]$ws) {
 	$p = Start-Process -FilePath (Join-Path $bin "pl.cmd") -ArgumentList "up", "--port", "$port", "--workspace", $ws -PassThru -WindowStyle Hidden
 	for ($i = 0; $i -lt 90; $i++) {
 		try {
 			if ((Invoke-WebRequest "http://127.0.0.1:$port/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) {
-				Stop-Process -Id $p.Id -Force; Start-Sleep 2; return $true
+				Stop-Tree $p; return $true
 			}
 		} catch {}
 		if ($p.HasExited) { break }
 		Start-Sleep 1
 	}
-	Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+	Stop-Tree $p
 	return $false
 }
 

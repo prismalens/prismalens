@@ -207,8 +207,13 @@ try {
 	$unpacked = Join-Path $staging "prismalens-$Version-$target"
 	if (-not (Test-Path $unpacked)) { Fail "Unexpected archive layout" }
 	New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-	if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
-	Move-Item -Path $unpacked -Destination $dest
+	try {
+		if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+		Move-Item -Path $unpacked -Destination $dest
+	} catch {
+		# Windows locks a running node.exe's files; Unix lets them be replaced.
+		Fail "Couldn't replace $dest, most likely because PrismaLens $Version is running. Stop pl up and run the installer again."
+	}
 
 	New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 	foreach ($name in "pl", "prismalens") {

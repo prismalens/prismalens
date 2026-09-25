@@ -68,6 +68,8 @@ sql() {
 
 mkdir -p "$work/home"
 bin="$work/home/.local/bin"
+# The installer picks bash's rc file per OS: macOS terminals start login shells.
+if [ "$(uname -s)" = Darwin ]; then rc="$work/home/.bash_profile"; else rc="$work/home/.bashrc"; fi
 new_base=$(stage "$new_dir" "$new_version" new)
 
 # 1. Upgrade from an older build, with its data (only when one is given).
@@ -89,16 +91,16 @@ if [ -n "$old_dir" ]; then
 	mkdir -p "$work/home"
 fi
 
-# 2. Fresh install puts pl on PATH through ~/.bashrc and writes a receipt.
+# 2. Fresh install puts pl on PATH through the rc file and writes a receipt.
 out=$(run_installer "$new_base" --version "$new_version" 2>&1) || { echo "$out"; fail "fresh install"; }
 [ "$(env -i PATH="$clean_path" "$bin/pl" --version)" = "$new_version" ] || fail "pl --version"
-grep -q "Added by the PrismaLens installer" "$work/home/.bashrc" || fail "no PATH line in .bashrc"
+grep -q "Added by the PrismaLens installer" "$rc" || fail "no PATH line in $rc"
 grep -q "^version=$new_version$" "$work/home/.local/share/prismalens/receipt" || fail "receipt"
-pass "fresh install: pl $new_version, PATH line in .bashrc, receipt written"
+pass "fresh install: pl $new_version, PATH line in ${rc##*/}, receipt written"
 
 # 3. Reinstalling doesn't add a second PATH line.
 run_installer "$new_base" --version "$new_version" >/dev/null 2>&1 || fail "reinstall"
-[ "$(grep -c "Added by the PrismaLens installer" "$work/home/.bashrc")" = 1 ] || fail "PATH line duplicated"
+[ "$(grep -c "Added by the PrismaLens installer" "$rc")" = 1 ] || fail "PATH line duplicated"
 pass "reinstall: one PATH line"
 
 # 4. An older version than the receipt's is refused without PRISMALENS_ALLOW_DOWNGRADE.
@@ -124,7 +126,7 @@ mkdir -p "$work/home/.prismalens"
 touch "$work/home/.prismalens/prismalens.db"
 run_installer "$new_base" --uninstall >/dev/null 2>&1 || fail "uninstall"
 [ ! -e "$bin/pl" ] || fail "pl wrapper left behind"
-! grep -q "Added by the PrismaLens installer" "$work/home/.bashrc" || fail "PATH line left behind"
+! grep -q "Added by the PrismaLens installer" "$rc" || fail "PATH line left behind"
 [ ! -d "$work/home/.local/share/prismalens" ] || fail "runtime left behind"
 [ -f "$work/home/.prismalens/prismalens.db" ] || fail "uninstall touched the workspace"
 pass "uninstall: wrappers, PATH line and runtime gone, workspace kept"
