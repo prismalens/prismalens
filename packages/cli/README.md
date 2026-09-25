@@ -10,7 +10,7 @@ Requires Node.js 24+.
 npm install -g prismalens
 ```
 
-No Node required (from 0.5.2):
+No Node required (from 0.5.1):
 
 ```bash
 # macOS, Linux
