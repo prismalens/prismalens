@@ -22445,6 +22445,137 @@
         }
       }
     },
+    "/settings/about": {
+      "get": {
+        "operationId": "settings.about.get",
+        "summary": "What this install is and whether a newer release is out",
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "channel": {
+                      "enum": [
+                        "npm",
+                        "installer",
+                        "homebrew",
+                        "scoop",
+                        "electron"
+                      ],
+                      "type": "string"
+                    },
+                    "build": {
+                      "enum": [
+                        "release",
+                        "dev"
+                      ],
+                      "type": "string"
+                    },
+                    "workspaceDir": {
+                      "type": "string"
+                    },
+                    "latestBackup": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "update": {
+                      "type": "object",
+                      "properties": {
+                        "latest": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "checkedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "disabledBy": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "PRISMALENS_UPDATE_CHECK",
+                                "DO_NOT_TRACK"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "releaseNotesUrl": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "latest",
+                        "available",
+                        "checkedAt",
+                        "disabledBy",
+                        "releaseNotesUrl"
+                      ]
+                    },
+                    "upgradeCommand": {
+                      "type": "string"
+                    },
+                    "uninstallCommand": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "channel",
+                    "build",
+                    "workspaceDir",
+                    "latestBackup",
+                    "update",
+                    "upgradeCommand",
+                    "uninstallCommand"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/telemetry": {
       "get": {
         "operationId": "settings.telemetry.get",
