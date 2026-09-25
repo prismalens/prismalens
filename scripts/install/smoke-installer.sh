@@ -27,15 +27,16 @@ stage() {
 
 # Runs the installer as a fresh user: its own HOME, bash as the login shell.
 run_installer() {
-	base=$1
+	r_base=$1
 	shift
 	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash \
-		PRISMALENS_RELEASE_BASE_URL="$base" sh "$installer" "$@"
+		PRISMALENS_RELEASE_BASE_URL="$r_base" sh "$installer" "$@"
 }
 
+# POSIX sh has no `local`: the names are prefixed so they can't clobber callers'.
 health() {
-	ws=$1 bin=$2
-	env -i HOME="$work/home" PATH="$clean_path" CI=true "$bin" up --port "$port" --workspace "$ws" >"$work/up.log" 2>&1 &
+	h_ws=$1 h_pl=$2
+	env -i HOME="$work/home" PATH="$clean_path" CI=true "$h_pl" up --port "$port" --workspace "$h_ws" >"$work/up.log" 2>&1 &
 	pid=$!
 	i=0
 	while [ $i -lt 90 ]; do
@@ -55,9 +56,9 @@ health() {
 
 # Rows in a table of the workspace database, read with the installed runtime.
 count() {
-	rt="$work/home/.local/share/prismalens/runtime/$1"
-	"$rt/node/bin/node" -e "
-		const Database = require(require.resolve('better-sqlite3', { paths: ['$rt/lib/node_modules/prismalens'] }));
+	c_rt="$work/home/.local/share/prismalens/runtime/$1"
+	"$c_rt/node/bin/node" -e "
+		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/lib/node_modules/prismalens'] }));
 		const db = new Database(process.argv[1], { readonly: true });
 		console.log(db.prepare('select count(*) as n from ' + process.argv[2]).get().n);
 	" "$2/prismalens.db" "$3"
