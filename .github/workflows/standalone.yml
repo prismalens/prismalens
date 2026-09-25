@@ -247,5 +247,5 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           cd archives
-          sha256sum * > SHA256SUMS
-          gh release upload "$TAG" * SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
+          sha256sum prismalens-* > SHA256SUMS
+          gh release upload "$TAG" prismalens-* SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
