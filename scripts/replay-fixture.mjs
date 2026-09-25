@@ -35,7 +35,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 
 const PORT = process.env.REPLAY_PORT ?? "3104";
@@ -52,7 +52,7 @@ const out = resolve(
 	process.env.REPLAY_OUT ??
 		mkdtempSync(join(tmpdir(), `replay-${fixture.name}-`)),
 );
-mkdirSync(out, { recursive: true });
+mkdirSync(out, { recursive: true, mode: 0o700 });
 const save = (name, value) =>
 	writeFileSync(
 		join(out, name),
@@ -62,7 +62,14 @@ const save = (name, value) =>
 	);
 
 let child;
-process.on("exit", () => child?.kill("SIGKILL"));
+// `pl up` forks a worker per investigation: kill the whole group, not just its pid.
+process.on("exit", () => {
+	try {
+		if (child?.pid) process.kill(-child.pid, "SIGKILL");
+	} catch {
+		// already gone
+	}
+});
 
 function findTarball() {
 	if (process.env.PRISMALENS_TARBALL)
@@ -151,8 +158,10 @@ async function main() {
 	);
 
 	let bootLog = "";
-	const log = createWriteStream(join(out, "pl-up.log"));
+	// The log carries the startup link, which pairs the host for 15 minutes.
+	const log = createWriteStream(join(out, "pl-up.log"), { mode: 0o600 });
 	child = spawn(bin, ["up", "--no-open"], {
+		detached: true,
 		stdio: ["ignore", "pipe", "pipe"],
 		env: {
 			...process.env,
@@ -259,14 +268,16 @@ async function main() {
 			`run ended ${investigation.status}: ${investigation.error ?? "no report"}`,
 		);
 	}
-	const cited = [...reportCitedPaths(investigation.report)];
+	// An absolute path inside the clone is that repo path; one outside it is missing.
+	const cited = [...reportCitedPaths(investigation.report)].map((p) =>
+		isAbsolute(p) && p.startsWith(repo + sep) ? relative(repo, p) : p,
+	);
 	const missing = cited.filter((p) => {
+		if (isAbsolute(p)) return true;
 		try {
-			run(
-				"git",
-				["-C", repo, "cat-file", "-e", `${head}:${p.replace(/^\/+/, "")}`],
-				{ stdio: "ignore" },
-			);
+			run("git", ["-C", repo, "cat-file", "-e", `${head}:${p}`], {
+				stdio: "ignore",
+			});
 			return false;
 		} catch {
 			return true;

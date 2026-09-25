@@ -90,9 +90,12 @@ export function reportToMarkdown({
 		const agent = f.harnessVersion
 			? `${f.harness} ${f.harnessVersion}`
 			: f.harness;
+		const source = f.modelSource ? MODEL_SOURCE_LABEL[f.modelSource] : null;
 		const model = f.model
-			? `, model ${f.model}${f.modelSource ? ` (${MODEL_SOURCE_LABEL[f.modelSource]})` : ""}`
-			: "";
+			? `, model ${f.model}${source ? ` (${source})` : ""}`
+			: source
+				? `, model: ${source}`
+				: "";
 		out.push(
 			"---",
 			"",

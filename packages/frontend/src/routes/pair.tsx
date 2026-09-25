@@ -39,7 +39,7 @@ function PairPage() {
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);
 	const operator = useOperator();
-	const started = useRef(false);
+	const attempted = useRef<string | null>(null);
 
 	useEffect(() => {
 		const readFragment = () => {
@@ -67,8 +67,9 @@ function PairPage() {
 	});
 
 	useEffect(() => {
-		if (!token || operator.isPending || started.current) return;
-		started.current = true;
+		// Keyed on the token, so a new link pasted after a failed one is redeemed.
+		if (!token || operator.isPending || attempted.current === token) return;
+		attempted.current = token;
 		// `pl up` prints a fresh link on every start. A browser that already
 		// holds this machine's session leaves it unused rather than pairing twice.
 		if (operator.managesPairing) {

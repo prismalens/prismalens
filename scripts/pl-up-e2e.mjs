@@ -26,7 +26,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import {
-	createWriteStream,
+	appendFileSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -111,10 +111,11 @@ const child = spawn(bin, ["up", "--no-open"], {
 	},
 });
 
-const out = createWriteStream(join(prefix, "pl-up.out"));
+const out = join(prefix, "pl-up.out");
 child.stdout.on("data", (chunk) => {
 	process.stdout.write(chunk);
-	out.write(chunk);
+	// Holds the startup link: owner-only, and no open handle left for cleanup's rmSync.
+	appendFileSync(out, chunk, { mode: 0o600 });
 });
 
 let cleaned = false;
