@@ -46,6 +46,10 @@ Where a named surface explains three or more interacting parts (a resolution ord
 
 README files in this repository follow a three-tier model. The root `README.md` is the project's front page for orientation, quick start instructions, and the monorepo layout. As the npm landing page for the published `prismalens` package, `packages/cli/README.md` stands alone with installation steps, a short quick start, a list of commands with a one-line description each, and a link to the website; flags, configuration keys, environment variables, and per-command reference material live on docs.prismalens.io. Every other package README under `packages/` carries only a short description of what the package is and a link to the website. An implementation spec that covers feature detail, configuration keys, or reference material names the corresponding page on docs.prismalens.io instead of a package README.
 
+## How reviews start
+
+Marking a PR ready starts no review. CodeRabbit is summoned by the hourly `CodeRabbit summoner` routine, one PR per hour across every repo (Sumit1993/rig#150); never post `@coderabbitai review` yourself. After a review: fix, push once, reply in every thread, and stop; the routine re-reviews. The Claude lane runs only on PRs labelled `claude_review`, and only the operator adds that label or `coderabbit_review`.
+
 ## Frontend changes carry a UX review
 
 Every PR touching `packages/frontend` carries the `ux-review` label and a `## UX review` section
