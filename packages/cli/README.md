@@ -23,7 +23,7 @@ To try it once without installing, run `npx prismalens@latest up`.
 curl -fsSL https://prismalens.io/install.sh | sh
 ```
 
-### Windows, without Node
+### Windows, without Node (preview)
 
 ```powershell
 irm https://prismalens.io/install.ps1 | iex
@@ -32,7 +32,7 @@ irm https://prismalens.io/install.ps1 | iex
 Both installers bring their own Node, check the download against the
 release's `SHA256SUMS`, and put `pl` on your PATH.
 
-### Homebrew and Scoop
+### Homebrew, and Scoop (preview)
 
 ```bash
 brew install prismalens/tap/prismalens

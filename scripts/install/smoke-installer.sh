@@ -57,7 +57,7 @@ health() {
 count() {
 	rt="$work/home/.local/share/prismalens/runtime/$1"
 	"$rt/node/bin/node" -e "
-		const Database = require('$rt/lib/node_modules/prismalens/node_modules/better-sqlite3');
+		const Database = require(require.resolve('better-sqlite3', { paths: ['$rt/lib/node_modules/prismalens'] }));
 		const db = new Database(process.argv[1], { readonly: true });
 		console.log(db.prepare('select count(*) as n from ' + process.argv[2]).get().n);
 	" "$2/prismalens.db" "$3"
