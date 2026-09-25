@@ -20,7 +20,7 @@ export const TELEMETRY_SUMMARY =
 /** Everything sent, in the order it is worth reading. */
 export const TELEMETRY_SENT = [
 	"An install id: a random identifier created once for this workspace.",
-	"The PrismaLens version, whether it is a release or a development build, how it was launched (npm or the desktop app), the operating system, CPU architecture and Node major version.",
+	"The PrismaLens version, whether it is a release or a development build, how it was installed (npm, the installer, Homebrew, Scoop or the desktop app), the operating system, CPU architecture and Node major version.",
 	"One event per milestone, carrying fixed categories only: setup finished; a service gained a repository (local folder or git); an integration was configured (which vendor); the first alert this install ever received (which source); an investigation started (which coding agent, and whether it was asked for by hand or by an alert); an investigation ended (its outcome, how long it took as one of four ranges, and a category for the failure); a report was viewed; a report was exported (Markdown, Slack or a GitHub comment); an incident was closed.",
 	"Once a day while PrismaLens is running and sharing is on: a sign that this install is active, with nothing else attached.",
 ];

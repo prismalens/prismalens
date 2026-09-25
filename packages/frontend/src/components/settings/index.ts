@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+export { AboutSettings, useAbout } from "./AboutSettings";
 export { ConnectionFormDialog } from "./ConnectionFormDialog";
 export { ConnectionsTab } from "./ConnectionsTab";
 export { DangerZoneSettings } from "./DangerZoneSettings";

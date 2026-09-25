@@ -5,11 +5,17 @@
 
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { useState } from "react";
+import {
+	CHANNEL_LABEL,
+	CommandLine,
+	useAbout,
+} from "@/components/settings/AboutSettings";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Button } from "@/components/ui/button";
 import { useFactoryReset, useResetData } from "@/lib/api/hooks";
 
 export function DangerZoneSettings() {
+	const { data: about } = useAbout();
 	const [showResetDialog, setShowResetDialog] = useState(false);
 	const [showFactoryResetDialog, setShowFactoryResetDialog] = useState(false);
 
@@ -106,6 +112,29 @@ export function DangerZoneSettings() {
 				isPending={resetData.isPending}
 				error={resetData.error}
 			/>
+
+			{about && (
+				<div className="mt-4 rounded-lg border bg-card p-6 space-y-3 text-sm">
+					<h3 className="text-base font-semibold text-foreground">
+						Uninstall PrismaLens
+					</h3>
+					<p className="text-muted-foreground">
+						This copy was installed with {CHANNEL_LABEL[about.channel]}. Stop{" "}
+						<code>pl up</code>, then run:
+					</p>
+					{about.channel === "electron" ? (
+						<p className="text-foreground">
+							Quit PrismaLens from the tray, then delete the app.
+						</p>
+					) : (
+						<CommandLine command={about.uninstallCommand} />
+					)}
+					<p className="text-muted-foreground">
+						Uninstalling keeps your workspace (<code>{about.workspaceDir}</code>
+						). Factory reset first if you want the data gone as well.
+					</p>
+				</div>
+			)}
 
 			<DestructiveConfirm
 				open={showFactoryResetDialog}

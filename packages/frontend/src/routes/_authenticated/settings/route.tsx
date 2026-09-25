@@ -10,6 +10,7 @@ export type SettingsTab =
 	| "connections"
 	| "devices"
 	| "usage"
+	| "about"
 	| "danger";
 const TABS: SettingsTab[] = [
 	"harness",
@@ -17,6 +18,7 @@ const TABS: SettingsTab[] = [
 	"connections",
 	"devices",
 	"usage",
+	"about",
 	"danger",
 ];
 

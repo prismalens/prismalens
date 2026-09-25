@@ -48,9 +48,30 @@ export {
 	resolveHarnessSelection,
 	resolveOnPath,
 } from "./harness-selection.js";
+export {
+	INSTALL_CHANNELS,
+	type InstallChannel,
+	installChannel,
+	installerDataDir,
+	uninstallCommand,
+	upgradeCommand,
+} from "./utils/install-channel.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";
+export {
+	doNotTrack,
+	fetchLatestVersion,
+	isNewer,
+	isStale,
+	RELEASES_URL,
+	readCache,
+	refreshUpdateCache,
+	releaseReady,
+	type UpdateCheckCache,
+	updateCheckDisabledBy,
+	writeCache,
+} from "./utils/update-check.js";
 export {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,

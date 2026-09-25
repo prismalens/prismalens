@@ -8,6 +8,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AboutSchema,
 	CheckHarnessInputSchema,
 	DangerOperationResultSchema,
 	FactoryResetInputSchema,
@@ -23,6 +24,21 @@ import {
 } from "../schemas/settings.js";
 
 export const settingsContract = {
+	/**
+	 * Version, install channel, update status and the upgrade/uninstall commands (#717)
+	 * GET /settings/about
+	 */
+	about: {
+		get: oc
+			.route({
+				method: "GET",
+				path: "/settings/about",
+				summary: "What this install is and whether a newer release is out",
+				tags: ["settings"],
+			})
+			.output(AboutSchema),
+	},
+
 	telemetry: {
 		/**
 		 * Opt-in telemetry state (#602)

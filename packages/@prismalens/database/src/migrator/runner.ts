@@ -212,7 +212,7 @@ function assertHistoryIsCompatible(
 			"version-skew",
 			`The database at ${databaseFile} was written by a newer PrismaLens: it records ` +
 				`${unknown.length === 1 ? "a migration" : "migrations"} this build does not ship (${unknown.join(", ")}). ` +
-				`Nothing was applied. Upgrade PrismaLens (\`npm install -g prismalens@latest\`), or point PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.`,
+				`Nothing was applied. Upgrade this copy with \`pl upgrade\`, restore the prismalens.db.bak-* file the newer version made before migrating, or point PRISMALENS_WORKSPACE_DIR at a different directory to start fresh.`,
 		);
 	}
 

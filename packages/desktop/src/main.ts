@@ -48,6 +48,12 @@ import {
 	planLaunch,
 	resetWorkspaceSpawn,
 } from "./supervisor.js";
+import {
+	availableUpdate,
+	backendVersion,
+	releaseUrl,
+	updateCheckEnabled,
+} from "./updates.js";
 
 const READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 15_000;
@@ -65,6 +71,8 @@ let stopping = false;
 let owned = false;
 let backendMainPath = "";
 let running = 0;
+/** A newer release with its downloads attached, once the check has found one. */
+let update: string | null = null;
 /** Rebuilds the tray menu; set once the tray exists. */
 let refreshTray: () => void = () => {};
 
@@ -219,6 +227,15 @@ function buildTray(): void {
 		tray?.setContextMenu(
 			Menu.buildFromTemplate([
 				{ label, enabled: false },
+				...(update
+					? [
+							{
+								label: `Download PrismaLens ${update}…`,
+								click: () =>
+									void shell.openExternal(releaseUrl(update as string)),
+							},
+						]
+					: []),
 				{ type: "separator" },
 				{ label: "Open PrismaLens", click: () => openWindow() },
 				{
@@ -352,6 +369,30 @@ function startPolling(): void {
 	void tick();
 }
 
+const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
+
+/** Daily: a notification once per new version, and a tray item to download it. */
+function startUpdateChecks(): void {
+	const current = backendVersion(backendMainPath);
+	if (!current || !updateCheckEnabled(process.env)) return;
+	const check = async () => {
+		const found = await availableUpdate(current);
+		if (!found || found === update) return;
+		update = found;
+		refreshTray();
+		if (Notification.isSupported()) {
+			const n = new Notification({
+				title: `PrismaLens ${found} is available`,
+				body: `You have ${current}. Click to download the new version.`,
+			});
+			n.on("click", () => void shell.openExternal(releaseUrl(found)));
+			n.show();
+		}
+	};
+	setInterval(() => void check(), UPDATE_EVERY_MS);
+	void check();
+}
+
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
@@ -363,6 +404,7 @@ if (!app.requestSingleInstanceLock()) {
 			buildTray();
 			openWindow();
 			startPolling();
+			startUpdateChecks();
 		})
 		.catch((error) => {
 			console.error(error);

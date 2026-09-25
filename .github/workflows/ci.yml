@@ -160,7 +160,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs
 
       - name: Pack tarball
         # `pnpm pack` cannot produce this artifact: the published package carries

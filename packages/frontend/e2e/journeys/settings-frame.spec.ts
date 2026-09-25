@@ -40,7 +40,9 @@ test.describe("#523 — the settings frame", () => {
 		const usageNav = page.getByTestId("settings-nav-usage");
 		await expect(usageNav).toBeVisible();
 		await expect(usageNav).toContainText("Usage data");
-		await expect(usageNav).toContainText("anonymous counts");
+		await expect(usageNav).toContainText("usage counts");
+
+		await expect(page.getByTestId("settings-nav-about")).toContainText(/version|available/);
 
 		const dangerNav = page.getByTestId("settings-nav-danger");
 		await expect(dangerNav).toBeVisible();

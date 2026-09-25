@@ -9,6 +9,7 @@ import { HarnessService } from "../harness/harness.service.js";
 import { HarnessProbeService } from "../harness/harness-probe.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
+import { AboutService } from "./about.service.js";
 import { ActiveRunsError, SettingsService } from "./settings.service.js";
 
 @UseGuards(MutationThrottleGuard)
@@ -19,7 +20,18 @@ export class SettingsController {
 		private readonly harnessService: HarnessService,
 		private readonly harnessProbeService: HarnessProbeService,
 		private readonly telemetryService: TelemetryService,
+		private readonly aboutService: AboutService,
 	) {}
+
+	/** Settings → About (#717) */
+	@Implement(settingsContract.about)
+	about() {
+		return {
+			get: implement(settingsContract.about.get).handler(() =>
+				this.aboutService.get(),
+			),
+		};
+	}
 
 	/** Opt-in telemetry (#602) */
 	@Implement(settingsContract.telemetry)

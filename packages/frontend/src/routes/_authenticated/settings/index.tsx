@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
+	AboutSettings,
 	DangerZoneSettings,
 	HarnessSettings,
 	IntegrationsSettings,
@@ -40,7 +41,12 @@ const SECTIONS = {
 	usage: {
 		title: "Usage data",
 		intro:
-			"Anonymous counts of what gets used and whether runs finish. Off until you say yes.",
+			"Counts of what gets used and whether runs finish. Off until you say yes.",
+	},
+	about: {
+		title: "About",
+		intro:
+			"Which version this is, how it was installed, and whether a newer release is out.",
 	},
 	danger: {
 		title: "Danger zone",
@@ -66,6 +72,7 @@ function SettingsPage() {
 			{tab === "connections" && <ConnectionsTab />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
+			{tab === "about" && <AboutSettings />}
 			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>
 	);

@@ -1,0 +1,132 @@
+#!/bin/sh
+# End-to-end check of install.sh against local archives (#717): install, PATH,
+# reinstall, downgrade guard, upgrade from an older build with data, uninstall.
+# Usage: smoke-installer.sh <new-archive-dir> <new-version> [<old-archive-dir> <old-version>]
+set -eu
+
+new_dir=$1 new_version=$2 old_dir=${3:-} old_version=${4:-}
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
+installer="$repo_root/scripts/install/install.sh"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+clean_path="/usr/bin:/bin:/usr/sbin:/sbin"
+port=3942
+
+fail() { echo "SMOKE FAIL: $*" >&2; exit 1; }
+pass() { echo "ok - $*"; }
+
+# A release-shaped base URL, <base>/v<version>/{archive,SHA256SUMS}; old and new
+# can share a version number before the release bumps it, hence the label.
+stage() {
+	base="$work/base-$3"
+	mkdir -p "$base/v$2"
+	cp "$1"/prismalens-"$2"-*.tar.gz "$base/v$2/"
+	(cd "$base/v$2" && { sha256sum ./*.tar.gz 2>/dev/null || shasum -a 256 ./*.tar.gz; } | sed 's# \./# #' >SHA256SUMS)
+	echo "file://$base"
+}
+
+# Runs the installer as a fresh user: its own HOME, bash as the login shell.
+run_installer() {
+	r_base=$1
+	shift
+	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash \
+		PRISMALENS_RELEASE_BASE_URL="$r_base" sh "$installer" "$@"
+}
+
+# POSIX sh has no `local`: the names are prefixed so they can't clobber callers'.
+health() {
+	h_ws=$1 h_pl=$2
+	env -i HOME="$work/home" PATH="$clean_path" CI=true "$h_pl" up --port "$port" --workspace "$h_ws" >"$work/up.log" 2>&1 &
+	pid=$!
+	i=0
+	while [ $i -lt 90 ]; do
+		if curl -sf "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+			kill "$pid" 2>/dev/null || true
+			wait "$pid" 2>/dev/null || true
+			return 0
+		fi
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 1
+		i=$((i + 1))
+	done
+	kill -9 "$pid" 2>/dev/null || true
+	cat "$work/up.log" >&2
+	return 1
+}
+
+# Runs SQL against the workspace database with the installed runtime's own
+# node and better-sqlite3: `sql <version> <workspace> <statement>` prints one value.
+sql() {
+	c_rt="$work/home/.local/share/prismalens/runtime/$1"
+	"$c_rt/node/bin/node" -e "
+		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/lib/node_modules/prismalens'] }));
+		const db = new Database(process.argv[1]);
+		const stmt = db.prepare(process.argv[2]);
+		console.log(stmt.reader ? Object.values(stmt.get() ?? { v: '' })[0] : stmt.run().changes);
+	" "$2/prismalens.db" "$3"
+}
+
+mkdir -p "$work/home"
+bin="$work/home/.local/bin"
+# The installer picks bash's rc file per OS: macOS terminals start login shells.
+if [ "$(uname -s)" = Darwin ]; then rc="$work/home/.bash_profile"; else rc="$work/home/.bashrc"; fi
+new_base=$(stage "$new_dir" "$new_version" new)
+
+# 1. Upgrade from an older build, with its data (only when one is given).
+if [ -n "$old_dir" ]; then
+	old_base=$(stage "$old_dir" "$old_version" old)
+	run_installer "$old_base" --version "$old_version" --no-modify-path >/dev/null 2>&1 || fail "installing $old_version"
+	ws="$work/workspace"
+	health "$ws" "$bin/pl" || fail "$old_version pl up"
+	migrations_before=$(sql "$old_version" "$ws" "select count(*) from _prisma_migrations")
+	sql "$old_version" "$ws" "insert into settings (id, key, value, updatedAt) values ('smoke', 'SMOKE_MARKER', '\"kept\"', CURRENT_TIMESTAMP)" >/dev/null
+	run_installer "$new_base" --version "$new_version" --no-modify-path >/dev/null 2>&1 || fail "upgrading to $new_version"
+	health "$ws" "$bin/pl" || fail "$new_version pl up on the $old_version workspace"
+	migrations_after=$(sql "$new_version" "$ws" "select count(*) from _prisma_migrations")
+	marker=$(sql "$new_version" "$ws" "select value from settings where key = 'SMOKE_MARKER'")
+	[ "$migrations_after" -ge "$migrations_before" ] || fail "migrations went from $migrations_before to $migrations_after"
+	[ "$marker" = '"kept"' ] || fail "a row written by $old_version was lost (got '$marker')"
+	pass "upgrade $old_version → $new_version: pl up healthy, migrations $migrations_before → $migrations_after, a row written by $old_version kept"
+	rm -rf "$work/home"
+	mkdir -p "$work/home"
+fi
+
+# 2. Fresh install puts pl on PATH through the rc file and writes a receipt.
+out=$(run_installer "$new_base" --version "$new_version" 2>&1) || { echo "$out"; fail "fresh install"; }
+[ "$(env -i PATH="$clean_path" "$bin/pl" --version)" = "$new_version" ] || fail "pl --version"
+grep -q "Added by the PrismaLens installer" "$rc" || fail "no PATH line in $rc"
+grep -q "^version=$new_version$" "$work/home/.local/share/prismalens/receipt" || fail "receipt"
+pass "fresh install: pl $new_version, PATH line in ${rc##*/}, receipt written"
+
+# 3. Reinstalling doesn't add a second PATH line.
+run_installer "$new_base" --version "$new_version" >/dev/null 2>&1 || fail "reinstall"
+[ "$(grep -c "Added by the PrismaLens installer" "$rc")" = 1 ] || fail "PATH line duplicated"
+pass "reinstall: one PATH line"
+
+# 4. An older version than the receipt's is refused without PRISMALENS_ALLOW_DOWNGRADE.
+sed -i.bak "s/^version=.*/version=99.0.0/" "$work/home/.local/share/prismalens/receipt"
+if run_installer "$new_base" --version "$new_version" >"$work/down.log" 2>&1; then
+	fail "downgrade from 99.0.0 was not refused"
+fi
+grep -q "PRISMALENS_ALLOW_DOWNGRADE" "$work/down.log" || fail "downgrade refusal doesn't name the override"
+pass "downgrade guard"
+sed -i.bak "s/^version=.*/version=$new_version/" "$work/home/.local/share/prismalens/receipt"
+
+# 5. Another pl on PATH is reported.
+mkdir -p "$work/other"
+printf '#!/bin/sh\necho 0.0.1\n' >"$work/other/pl"
+chmod 755 "$work/other/pl"
+env -i HOME="$work/home" PATH="$work/other:$clean_path" SHELL=/bin/bash PRISMALENS_RELEASE_BASE_URL="$new_base" \
+	sh "$installer" --version "$new_version" >"$work/other.log" 2>&1 || fail "install with another pl"
+grep -q "Another PrismaLens is on your PATH" "$work/other.log" || fail "second pl not reported"
+pass "second pl on PATH reported"
+
+# 6. Uninstall removes the wrappers, the PATH line and the runtime; the workspace stays.
+mkdir -p "$work/home/.prismalens"
+touch "$work/home/.prismalens/prismalens.db"
+run_installer "$new_base" --uninstall >/dev/null 2>&1 || fail "uninstall"
+[ ! -e "$bin/pl" ] || fail "pl wrapper left behind"
+! grep -q "Added by the PrismaLens installer" "$rc" || fail "PATH line left behind"
+[ ! -d "$work/home/.local/share/prismalens" ] || fail "runtime left behind"
+[ -f "$work/home/.prismalens/prismalens.db" ] || fail "uninstall touched the workspace"
+pass "uninstall: wrappers, PATH line and runtime gone, workspace kept"

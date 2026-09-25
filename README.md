@@ -18,20 +18,51 @@ PrismaLens account, no subscription. Before you run it on your machine, read
 > workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
 > before you upgrade. See [VERSIONING.md](VERSIONING.md).
 
-## Quick start
+## Install
 
-Requires **Node.js 24+**.
+### npm
+
+Needs Node.js 24+.
 
 ```bash
 npm install -g prismalens
 ```
 
-To try it once without installing, run `npx prismalens@latest up` instead.
+To try it once without installing, run `npx prismalens@latest up`.
 
-A desktop app is attached to each [GitHub Release](https://github.com/prismalens/prismalens/releases)
-from 0.5.1 on, as zips for macOS, Windows and Linux. It is a preview and
-unsigned, so your OS will warn before opening it; signed installers and package
-managers (Homebrew, winget) come with #697.
+### macOS and Linux, without Node
+
+```bash
+curl -fsSL https://prismalens.io/install.sh | sh
+```
+
+### Windows, without Node (preview)
+
+```powershell
+irm https://prismalens.io/install.ps1 | iex
+```
+
+Both installers bring their own Node, check the download against the
+release's `SHA256SUMS`, and put `pl` on your PATH.
+
+### Homebrew, and Scoop (preview)
+
+```bash
+brew install prismalens/tap/prismalens
+```
+
+```powershell
+scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+scoop install prismalens
+```
+
+### Desktop app (preview)
+
+Unsigned zips for macOS, Windows and Linux are attached to each
+[GitHub Release](https://github.com/prismalens/prismalens/releases); your OS
+will warn before opening one. Signed installers come with #697.
+
+## Quick start
 
 One package, one process, no external services. `pl up` runs the API and the
 dashboard on a single port, creates a SQLite database in `~/.prismalens` on
@@ -131,8 +162,12 @@ setup (providers, harnesses, configuration, commands) lives at
 ### Upgrading
 
 ```bash
-npm install -g prismalens@latest
+pl upgrade
 ```
+
+It upgrades the way you installed: npm, the installer, Homebrew or Scoop. `pl up`
+says when a newer release is out. To uninstall, see
+[Install, upgrade and uninstall](https://docs.prismalens.io/install/).
 
 PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructions and database migration details are documented at **[docs.prismalens.io](https://docs.prismalens.io)**.
 
@@ -192,4 +227,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing work
 ## License
 
 [Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE).
-

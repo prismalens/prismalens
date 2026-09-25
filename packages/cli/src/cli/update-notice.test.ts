@@ -8,7 +8,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	fetchLatestVersion,
 	isNewer,
+	isStale,
 	noticeFor,
+	releaseReady,
 	readCache,
 	runMode,
 	updateCheckEnabled,
@@ -151,14 +153,28 @@ describe("the cache file", () => {
 });
 
 describe("noticeFor", () => {
-	it("names the newer version and the install command", () => {
+	it("names the newer version and pl upgrade, which knows the channel", () => {
 		expect(noticeFor("0.5.1", "0.5.0")).toBe(
-			"prismalens 0.5.1 is available (you have 0.5.0): npm install -g prismalens@latest",
+			"prismalens 0.5.1 is available (you have 0.5.0). Run: pl upgrade",
 		);
 	});
 	it("says nothing when current or when the cache never learned a version", () => {
 		expect(noticeFor("0.5.0", "0.5.0")).toBe(null);
 		expect(noticeFor(null, "0.5.0")).toBe(null);
+	});
+});
+
+describe("releaseReady", () => {
+	it("is true once SHA256SUMS redirects to its asset, false on a 404 or failure", async () => {
+		const at = (status: number) =>
+			(async () => new Response(null, { status })) as unknown as typeof fetch;
+		expect(await releaseReady("0.5.1", at(302))).toBe(true);
+		expect(await releaseReady("0.5.1", at(404))).toBe(false);
+		expect(
+			await releaseReady("0.5.1", (async () => {
+				throw new Error("offline");
+			}) as unknown as typeof fetch),
+		).toBe(false);
 	});
 });
 
@@ -222,6 +238,27 @@ describe("updateNotice", () => {
 		});
 		await notice.refresh;
 		expect(readCache(workspace)).toMatchObject({ latest: null });
+	});
+
+	it("does not learn a release whose downloads aren't attached yet", async () => {
+		const fetchImpl = (async (url: string) =>
+			String(url).endsWith("/SHA256SUMS")
+				? new Response(null, { status: 404 })
+				: new Response(null, { status: 302, headers: { location: TAG_URL } })) as unknown as typeof fetch;
+		const notice = updateNotice({
+			...enabled,
+			current: "0.5.0",
+			workspaceDir: workspace,
+			fetchImpl,
+			now: DAY_MS * 10,
+		});
+		await notice.refresh;
+		// Keeps the previous answer (none) and asks again in an hour, not every run.
+		const cache = readCache(workspace);
+		expect(cache?.latest).toBe(null);
+		// The refresh stamps the real clock, like the other refresh tests here.
+		expect(isStale(cache, Date.now())).toBe(false);
+		expect(isStale(cache, Date.now() + 60 * 60 * 1000 + 1_000)).toBe(true);
 	});
 
 	it("neither prints nor calls the network when suppressed", async () => {

@@ -289,6 +289,31 @@ export const TelemetrySettingsSchema = z.object({
 });
 export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
 
+/**
+ * Settings → About (#717): what this copy is, whether a newer release is out,
+ * and the commands to upgrade or uninstall it the way it was installed.
+ */
+export const AboutSchema = z.object({
+	version: z.string(),
+	channel: z.enum(["npm", "installer", "homebrew", "scoop", "electron"]),
+	build: z.enum(["release", "dev"]),
+	workspaceDir: z.string(),
+	/** Newest `prismalens.db.bak-*` in the workspace, made before a migration. */
+	latestBackup: z.string().nullable(),
+	update: z.object({
+		/** Newest release with its downloads attached, or null when unknown. */
+		latest: z.string().nullable(),
+		available: z.boolean(),
+		checkedAt: z.string().nullable(),
+		/** The variable that turned the check off, or null when it runs. */
+		disabledBy: z.enum(["PRISMALENS_UPDATE_CHECK", "DO_NOT_TRACK"]).nullable(),
+		releaseNotesUrl: z.string().nullable(),
+	}),
+	upgradeCommand: z.string(),
+	uninstallCommand: z.string(),
+});
+export type About = z.infer<typeof AboutSchema>;
+
 export const UpdateTelemetrySettingsSchema = z.object({
 	enabled: z.boolean(),
 });
