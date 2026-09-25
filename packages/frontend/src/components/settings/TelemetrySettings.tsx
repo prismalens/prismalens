@@ -170,8 +170,8 @@ export function TelemetrySettings() {
 					Recently sent ({settings?.recentlySent.length ?? 0})
 				</summary>
 				<p className="text-muted-foreground">
-					The last 20 events, exactly as sent, kept in memory until PrismaLens
-					restarts.
+					The last 20 events exactly as sent, less the PostHog project key, kept
+					in memory until PrismaLens restarts.
 				</p>
 				{!settings?.recentlySent.length ? (
 					<p className="text-muted-foreground">

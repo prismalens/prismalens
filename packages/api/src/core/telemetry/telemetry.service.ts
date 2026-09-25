@@ -41,8 +41,8 @@ import { PrismaService } from "../prisma/prisma.service.js";
 
 const SETTING_KEY = "TELEMETRY";
 /** PostHog project key: a public, ingest-only key meant to ship in clients. */
-const POSTHOG_KEY = "phc_nhC5zGT87zGtNR7VCZUw9gKRdtRJmBfZMYaXNZM7sgy2";
-const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/i/v0/e/";
+const POSTHOG_KEY = "phc_pCgmw347sL5wFdtsf5eTG4NEki5DyyFwHNXiyUjT5UcW";
+const POSTHOG_CAPTURE_URL = "https://eu.i.posthog.com/i/v0/e/";
 const SEND_TIMEOUT_MS = 3_000;
 /** How long a per-entity "already reported" marker is remembered in memory. */
 const DEDUP_TTL_MS = 60 * 60_000;
