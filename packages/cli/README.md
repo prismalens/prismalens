@@ -4,34 +4,44 @@ PrismaLens is an AI-powered root-cause investigation tool for on-call engineers.
 
 ## Install
 
-Requires Node.js 24+.
+PrismaLens is alpha: any 0.x release may break, so read the
+[release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
+
+### npm
+
+Needs Node.js 24+.
 
 ```bash
 npm install -g prismalens
 ```
 
-No Node required (from 0.5.1):
+To try it once without installing, run `npx prismalens@latest up`.
+
+### macOS and Linux, without Node
 
 ```bash
-# macOS, Linux
 curl -fsSL https://prismalens.io/install.sh | sh
+```
 
-# Windows (PowerShell)
+### Windows, without Node
+
+```powershell
 irm https://prismalens.io/install.ps1 | iex
 ```
 
-Or with a package manager:
+Both installers bring their own Node, check the download against the
+release's `SHA256SUMS`, and put `pl` on your PATH.
+
+### Homebrew and Scoop
 
 ```bash
-brew install prismalens/tap/prismalens                    # macOS, Linux
-scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
-scoop install prismalens                                  # Windows
+brew install prismalens/tap/prismalens
 ```
 
-To try it once without installing: `npx prismalens@latest up`.
-
-PrismaLens is alpha: any 0.x release may break, so read the
-[release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
+```powershell
+scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+scoop install prismalens
+```
 
 ## Quick start
 
@@ -58,4 +68,3 @@ Complete documentation, guides, and configuration references are available at ht
 ## License
 
 Apache-2.0
-

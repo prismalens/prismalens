@@ -18,38 +18,51 @@ PrismaLens account, no subscription. Before you run it on your machine, read
 > workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
 > before you upgrade. See [VERSIONING.md](VERSIONING.md).
 
-## Quick start
+## Install
 
-Requires **Node.js 24+**.
+### npm
+
+Needs Node.js 24+.
 
 ```bash
 npm install -g prismalens
 ```
 
-No Node required (from 0.5.1):
+To try it once without installing, run `npx prismalens@latest up`.
+
+### macOS and Linux, without Node
 
 ```bash
-# macOS, Linux
 curl -fsSL https://prismalens.io/install.sh | sh
+```
 
-# Windows (PowerShell)
+### Windows, without Node
+
+```powershell
 irm https://prismalens.io/install.ps1 | iex
 ```
 
-Or with a package manager:
+Both installers bring their own Node, check the download against the
+release's `SHA256SUMS`, and put `pl` on your PATH.
+
+### Homebrew and Scoop
 
 ```bash
-brew install prismalens/tap/prismalens                    # macOS, Linux
-scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
-scoop install prismalens                                  # Windows
+brew install prismalens/tap/prismalens
 ```
 
-To try it once without installing, run `npx prismalens@latest up` instead.
+```powershell
+scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+scoop install prismalens
+```
 
-A desktop app is attached to each [GitHub Release](https://github.com/prismalens/prismalens/releases)
-from 0.5.1 on, as zips for macOS, Windows and Linux. It is a preview and
-unsigned, so your OS will warn before opening it; signed installers and package
-managers (Homebrew, winget) come with #697.
+### Desktop app (preview)
+
+Unsigned zips for macOS, Windows and Linux are attached to each
+[GitHub Release](https://github.com/prismalens/prismalens/releases); your OS
+will warn before opening one. Signed installers come with #697.
+
+## Quick start
 
 One package, one process, no external services. `pl up` runs the API and the
 dashboard on a single port, creates a SQLite database in `~/.prismalens` on
@@ -148,9 +161,9 @@ setup (providers, harnesses, configuration, commands) lives at
 
 ### Upgrading
 
-```bash
-npm install -g prismalens@latest
-```
+Upgrade the way you installed: `npm install -g prismalens@latest`, re-run the
+installer, `brew upgrade prismalens` or `scoop update prismalens`. `pl up`
+prints the right command when a newer release is out.
 
 PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructions and database migration details are documented at **[docs.prismalens.io](https://docs.prismalens.io)**.
 
@@ -210,4 +223,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing work
 ## License
 
 [Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE).
-
