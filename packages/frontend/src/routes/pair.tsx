@@ -42,12 +42,18 @@ function PairPage() {
 	const started = useRef(false);
 
 	useEffect(() => {
-		const fragment = window.location.hash.replace(/^#/, "");
-		// A second run (StrictMode in dev) finds the fragment already dropped and
-		// must keep the token the first run read.
-		setToken((read) => fragment || read || "");
-		// The token is a one-time secret: drop it from the address bar at once.
-		if (fragment) history.replaceState(null, "", window.location.pathname);
+		const readFragment = () => {
+			const fragment = window.location.hash.replace(/^#/, "");
+			// A second run (StrictMode in dev) finds the fragment already dropped and
+			// must keep the token the first run read.
+			setToken((read) => fragment || read || "");
+			// The token is a one-time secret: drop it from the address bar at once.
+			if (fragment) history.replaceState(null, "", window.location.pathname);
+		};
+		readFragment();
+		// A link pasted into a tab already on /pair changes only the fragment: no reload.
+		window.addEventListener("hashchange", readFragment);
+		return () => window.removeEventListener("hashchange", readFragment);
 	}, []);
 
 	const redeem = useMutation({
