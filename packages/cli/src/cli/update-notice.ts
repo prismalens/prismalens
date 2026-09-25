@@ -26,12 +26,10 @@
 
 import {
 	doNotTrack,
-	fetchLatestVersion,
 	isNewer,
 	isStale,
 	readCache,
-	releaseReady,
-	writeCache,
+	refreshUpdateCache,
 } from "@prismalens/config";
 
 export {
@@ -116,15 +114,9 @@ export function updateNotice(options: {
 	const line = noticeFor(cache?.latest ?? null, current);
 	if (!isStale(cache, now)) return { line, refresh: Promise.resolve() };
 
-	const refresh = fetchLatestVersion(fetchImpl)
-		.then(async (latest) => {
-			// Not attached yet: leave the cache stale so the next run asks again.
-			if (latest && !(await releaseReady(latest, fetchImpl))) return;
-			writeCache(workspaceDir, { checkedAt: Date.now(), latest });
-		})
-		.catch(() => {
-			// Already fail-silent one level down; this keeps the promise safe to
-			// leave unawaited whatever a future fetch implementation does.
-		});
+	const refresh = refreshUpdateCache(workspaceDir, fetchImpl).catch(() => {
+		// Already fail-silent one level down; this keeps the promise safe to
+		// leave unawaited whatever a future fetch implementation does.
+	});
 	return { line, refresh };
 }

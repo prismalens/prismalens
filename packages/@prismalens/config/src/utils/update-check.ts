@@ -152,3 +152,27 @@ export async function releaseReady(
 		return false;
 	}
 }
+
+/** How soon to ask again when the newest release's downloads aren't attached yet. */
+const NOT_READY_RETRY_MS = 60 * 60 * 1000;
+
+/**
+ * Refresh the day-long cache. A release whose `SHA256SUMS` isn't attached yet is
+ * not learned; the previous answer is kept and the check comes back in an hour,
+ * so a release whose archive build failed doesn't make every run ask again.
+ */
+export async function refreshUpdateCache(
+	workspaceDir: string,
+	fetchImpl: typeof fetch = fetch,
+	now: number = Date.now(),
+): Promise<void> {
+	const latest = await fetchLatestVersion(fetchImpl);
+	if (latest && !(await releaseReady(latest, fetchImpl))) {
+		writeCache(workspaceDir, {
+			checkedAt: now - CACHE_TTL_MS + NOT_READY_RETRY_MS,
+			latest: readCache(workspaceDir)?.latest ?? null,
+		});
+		return;
+	}
+	writeCache(workspaceDir, { checkedAt: now, latest });
+}

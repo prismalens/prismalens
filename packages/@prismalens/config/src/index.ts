@@ -66,6 +66,7 @@ export {
 	isStale,
 	RELEASES_URL,
 	readCache,
+	refreshUpdateCache,
 	releaseReady,
 	type UpdateCheckCache,
 	updateCheckDisabledBy,

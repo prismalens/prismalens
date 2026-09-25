@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	fetchLatestVersion,
 	isNewer,
+	isStale,
 	noticeFor,
 	releaseReady,
 	readCache,
@@ -252,7 +253,11 @@ describe("updateNotice", () => {
 			now: DAY_MS * 10,
 		});
 		await notice.refresh;
-		expect(readCache(workspace)).toBe(null);
+		// Keeps the previous answer (none) and asks again in an hour, not every run.
+		const cache = readCache(workspace);
+		expect(cache?.latest).toBe(null);
+		expect(isStale(cache, DAY_MS * 10)).toBe(false);
+		expect(isStale(cache, DAY_MS * 10 + 60 * 60 * 1000)).toBe(true);
 	});
 
 	it("neither prints nor calls the network when suppressed", async () => {

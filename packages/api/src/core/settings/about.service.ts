@@ -10,18 +10,16 @@
 import { readdirSync } from "node:fs";
 import { Injectable } from "@nestjs/common";
 import {
-	fetchLatestVersion,
 	getAppDataDir,
 	installChannel,
 	isNewer,
 	isStale,
 	RELEASES_URL,
 	readCache,
-	releaseReady,
+	refreshUpdateCache,
 	uninstallCommand,
 	updateCheckDisabledBy,
 	upgradeCommand,
-	writeCache,
 } from "@prismalens/config";
 import type { About } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
@@ -55,7 +53,11 @@ export class AboutService {
 		const disabledBy = updateCheckDisabledBy(this.env);
 
 		if (!disabledBy && isStale(readCache(workspaceDir), this.now())) {
-			this.refreshing ??= this.refresh(workspaceDir).finally(() => {
+			this.refreshing ??= refreshUpdateCache(
+				workspaceDir,
+				this.fetchImpl,
+				this.now(),
+			).finally(() => {
 				this.refreshing = null;
 			});
 			await this.refreshing;
@@ -80,12 +82,5 @@ export class AboutService {
 			upgradeCommand: upgradeCommand(channel),
 			uninstallCommand: uninstallCommand(channel),
 		};
-	}
-
-	/** Same rule as the CLI: a release counts once its downloads are attached. */
-	private async refresh(workspaceDir: string): Promise<void> {
-		const latest = await fetchLatestVersion(this.fetchImpl);
-		if (latest && !(await releaseReady(latest, this.fetchImpl))) return;
-		writeCache(workspaceDir, { checkedAt: this.now(), latest });
 	}
 }

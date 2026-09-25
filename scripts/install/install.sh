@@ -162,28 +162,26 @@ other_pls() {
 if [ "$action" = uninstall ]; then
 	banner uninstaller
 	installed_bin=$(receipt_get bin_dir)
-	for dir in ${installed_bin:-$bin_dir}; do
-		for name in pl prismalens; do
-			if [ -f "$dir/$name" ] && grep -q "$marker" "$dir/$name"; then
-				rm -f "$dir/$name"
-				done_ "Removed $dir/$name"
-			fi
-		done
+	dir="${installed_bin:-$bin_dir}"
+	for name in pl prismalens; do
+		if [ -f "$dir/$name" ] && grep -q "$marker" "$dir/$name"; then
+			rm -f "$dir/$name"
+			done_ "Removed $dir/$name"
+		fi
 	done
 	rc=$(receipt_get rc)
-	for f in $rc; do
-		[ -f "$f" ] && grep -q "$marker" "$f" || continue
-		case "$f" in
-		*.fish) rm -f "$f" ;;
+	if [ -n "$rc" ] && [ -f "$rc" ] && grep -q "$marker" "$rc"; then
+		case "$rc" in
+		*.fish) rm -f "$rc" ;;
 		*)
 			tmp=$(mktemp)
-			awk -v m="$marker" '$0 == m { skip = 1; next } skip { skip = 0; next } { print }' "$f" >"$tmp"
-			cat "$tmp" >"$f"
+			awk -v m="$marker" '$0 == m { skip = 1; next } skip { skip = 0; next } { print }' "$rc" >"$tmp"
+			cat "$tmp" >"$rc"
 			rm -f "$tmp"
 			;;
 		esac
-		done_ "Removed the PATH line from $f"
-	done
+		done_ "Removed the PATH line from $rc"
+	fi
 	if [ -d "$data_root" ]; then
 		rm -rf "$data_root"
 		done_ "Removed $data_root"
@@ -221,7 +219,9 @@ if [ -n "$version" ]; then
 else
 	step "Finding the newest release"
 	fetch "${api}/releases?per_page=5" "$staging/releases.json" || fail "Couldn't reach GitHub. Pass --version to install a known version."
-	tags=$(sed -n 's/.*"tag_name":[[:space:]]*"v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' "$staging/releases.json")
+	# The API returns one line of JSON: split it per field so every tag is seen,
+	# newest first. Plain x.y.z only, which also skips pre-releases.
+	tags=$(tr ',{' '\n\n' <"$staging/releases.json" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"[]}[:space:]]*$/\1/p')
 	newest=
 	for tag in $tags; do
 		[ -n "$newest" ] || newest=$tag

@@ -34,7 +34,7 @@ import {
 	resolveHarnessSelection,
 	resolveOnPath,
 } from "@prismalens/config/harness-selection";
-import { probeHarness } from "@prismalens/engine";
+import { probeHarness, windowsSpawnPlan } from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
@@ -162,10 +162,12 @@ export function checkInstalls(
 		try {
 			contents = readFileSync(p, "utf8").slice(0, 400);
 		} catch {}
-		const out = spawnSync(p, ["--version"], {
+		// A .cmd path with a space needs cmd.exe's own quoting, which the engine already has.
+		const plan = windowsSpawnPlan(p, ["--version"], platform);
+		const out = spawnSync(plan.command, plan.args, {
+			...plan.options,
 			encoding: "utf8",
 			timeout: 5_000,
-			shell: platform === "win32",
 		});
 		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
 		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;

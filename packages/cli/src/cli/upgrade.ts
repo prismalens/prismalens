@@ -78,8 +78,38 @@ export default defineCommand({
 		const channel = config.installChannel();
 
 		const pinned = args.version ? String(args.version).replace(/^v/, "") : null;
-		let target = pinned;
-		if (!target) {
+		// Plain x.y.z only: the installer channel puts it into a shell command.
+		if (pinned && !/^\d+\.\d+\.\d+$/.test(pinned)) {
+			consola.error(
+				`--version takes a plain version like 0.5.1, not "${pinned}".`,
+			);
+			process.exit(1);
+		}
+		if (pinned && (channel === "homebrew" || channel === "scoop")) {
+			consola.error(
+				`${channel === "homebrew" ? "Homebrew" : "Scoop"} installs only its newest version. Upgrade without --version, or use the installer for a specific one.`,
+			);
+			process.exit(1);
+		}
+
+		let target: string;
+		if (pinned) {
+			if (!(await releaseReady(pinned))) {
+				consola.error(
+					`There is no PrismaLens ${pinned} release with downloads attached.`,
+				);
+				process.exit(1);
+			}
+			if (!isNewer(pinned, current)) {
+				consola.error(
+					pinned === current
+						? `PrismaLens ${current} is already installed.`
+						: `${pinned} is older than the ${current} installed. A workspace ${current} has migrated won't open in ${pinned}; see https://docs.prismalens.io/install/ before going back.`,
+				);
+				process.exit(1);
+			}
+			target = pinned;
+		} else {
 			const latest = await fetchLatestVersion();
 			if (!latest) {
 				consola.error(
@@ -107,15 +137,9 @@ export default defineCommand({
 		);
 		if (args.check) {
 			consola.info(
-				`${target} is available (you have ${current}, installed with ${channel}). Upgrade with: pl upgrade`,
+				`${target} is available (you have ${current}, installed with ${channel}). Upgrade with: pl upgrade${pinned ? ` --version ${pinned}` : ""}`,
 			);
 			return;
-		}
-		if (channel === "homebrew" && pinned) {
-			consola.error(
-				"Homebrew installs only the newest version. Run `brew upgrade prismalens`, or use the installer for a specific version.",
-			);
-			process.exit(1);
 		}
 
 		const lock = config.readWorkspaceLockState(config.getAppDataDir());
