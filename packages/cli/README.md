@@ -10,6 +10,11 @@ Requires Node.js 24+.
 npm install -g prismalens
 ```
 
+To try it once without installing: `npx prismalens@latest up`.
+
+PrismaLens is alpha: any 0.x release may break, so read the
+[release notes](https://github.com/prismalens/prismalens/releases) before upgrading.
+
 ## Quick start
 
 Check the environment, then start the web interface:

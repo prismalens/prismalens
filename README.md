@@ -13,6 +13,11 @@ scores. It's open source (Apache-2.0), local-first, and BYO-key — no
 PrismaLens account, no subscription. Before you run it on your machine, read
 **[what PrismaLens reads and never does](https://docs.prismalens.io/trust/)**.
 
+> [!WARNING]
+> PrismaLens is **alpha**. Any 0.x release may change behaviour or break a
+> workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
+> before you upgrade. See [VERSIONING.md](VERSIONING.md).
+
 ## Quick start
 
 Requires **Node.js 24+**.
@@ -20,6 +25,13 @@ Requires **Node.js 24+**.
 ```bash
 npm install -g prismalens
 ```
+
+To try it once without installing, run `npx prismalens@latest up` instead.
+
+A desktop app is attached to each [GitHub Release](https://github.com/prismalens/prismalens/releases)
+from 0.5.1 on, as zips for macOS, Windows and Linux. It is a preview and
+unsigned, so your OS will warn before opening it; signed installers and package
+managers (Homebrew, winget) come with #697.
 
 One package, one process, no external services. `pl up` runs the API and the
 dashboard on a single port, creates a SQLite database in `~/.prismalens` on

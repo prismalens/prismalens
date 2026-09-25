@@ -37,8 +37,9 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
 
-const MIN_NODE_MAJOR = 22;
-const MIN_NODE_MINOR = 13;
+// The packed tarball declares engines.node >=24 (scripts/pack-cli.mjs).
+const MIN_NODE_MAJOR = 24;
+const MIN_NODE_MINOR = 0;
 
 interface Check {
 	name: string;
