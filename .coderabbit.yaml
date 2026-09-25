@@ -3,43 +3,17 @@ language: en-US
 reviews:
   profile: chill
   auto_review:
-    # ONLINE REVIEW IS ADMITTED, NOT AUTOMATIC.
+    # Admission (Sumit1993/rig#150): automatic review is off. The hourly `CodeRabbit summoner`
+    # routine (Sumit1993/rig scripts/coderabbit-routine) summons one PR per hour across every
+    # repo, because the allowance is one review per developer per hour. Marking a PR ready
+    # starts nothing. Sessions never summon by hand: fix, push once, reply in each thread,
+    # and the routine re-reviews. `coderabbit_review` below is the operator's override for a
+    # review now; `labels` gates automatic review only.
     #
-    # Every PR is reviewed by Claude Code in GitHub Actions
-    # (.github/workflows/claude-code-review.yml), which is subscription-billed
-    # and not scarce. This counter is scarce: it is per DEVELOPER, not per repo,
-    # so this repo, `sreforge` and `mage-memory` all draw one pool, and a
-    # successful review costs roughly a 40-minute cooldown across all three.
-    # Measured over 180 merged PRs: 7.5/day, worst hour 8 opens, and at 1
-    # review/hr 61% of PRs arrived with the counter already empty. Reviewing
-    # everything automatically spends it where PRs happen to fall rather than
-    # where a second opinion is worth having.
-    #
-    # So it is spent in exactly two cases, and `labels` below is what implements
-    # the first:
-    #
-    #   1. Someone decides a PR is worth an independent second opinion — a
-    #      sensitive surface (the CI/workflow surface itself, credential and crypto
-    #      handling, the engine core, contract or schema changes), or a Claude
-    #      review whose findings deserve a check from a reviewer sharing no model,
-    #      prompt or failure mode. Apply the `coderabbit_review` label BY HAND.
-    #      This used to be automatic: `review-admit.yml` applied the label on a
-    #      path match against `.github/high-risk-paths.txt`, and the
-    #      `review-evidence` gate kept such PRs red until `coderabbitai[bot]`
-    #      evidence existed. Both were retired in #415 with the rest of that gate.
-    #      The label is now the whole mechanism, and it is a judgement call.
-    #   2. The Claude lane is down — `@coderabbitai review`, by hand.
-    #
-    # SCOPE, precisely: `labels` gates AUTOMATIC review only. Manual triggers run
-    # regardless of these settings and still spend the counter. That is wanted —
-    # it is the escape hatch for case 2 and for re-requesting after
-    # `auto_pause_after_reviewed_commits` stops incremental reviews.
-    #
-    # WHAT ENFORCES A MERGE, since it is no longer a required check: `CI gate`,
-    # the conventional-title check, and GitHub's native
-    # `required_review_thread_resolution` — an unresolved thread from any reviewer
-    # blocks the merge button. Findings block; silence does not. So an unlabelled
-    # PR is reviewed by the Claude lane only, and that is the accepted default.
+    # The Claude lane is separate and opt-in here (`admission: label` in
+    # .github/claude-review.yml): it reviews only PRs labelled `claude_review`.
+    # Merge is enforced by `CI gate`, the conventional-title check, and
+    # `required_review_thread_resolution`.
     #
     # No dry run exists for this setting: CodeRabbit applies base-branch config
     # only for open-source repos, so it takes effect the moment it lands on main.
