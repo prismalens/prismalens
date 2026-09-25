@@ -11,6 +11,7 @@ import {
 	EVIDENCE_DIRECTION_LABEL,
 	EVIDENCE_STATUS_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
+	MODEL_SOURCE_LABEL,
 	ROOT_CAUSE_CATEGORY_LABEL,
 } from "@prismalens/contracts";
 
@@ -86,10 +87,16 @@ export function reportToMarkdown({
 
 	if (report.fidelity) {
 		const f = report.fidelity;
+		const agent = f.harnessVersion
+			? `${f.harness} ${f.harnessVersion}`
+			: f.harness;
+		const model = f.model
+			? `, model ${f.model}${f.modelSource ? ` (${MODEL_SOURCE_LABEL[f.modelSource]})` : ""}`
+			: "";
 		out.push(
 			"---",
 			"",
-			`Run: ${f.harness}${f.model ? ` (${f.model})` : ""}, ${f.mode} mode, ${f.fidelity}: ${f.mechanism}`,
+			`Run: ${agent}${model}, ${f.mode} mode, ${f.fidelity}: ${f.mechanism}`,
 			"",
 		);
 	}

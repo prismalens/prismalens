@@ -81,6 +81,28 @@ describe("reportToMarkdown", () => {
 		expect([...order].sort((a, b) => a - b)).toEqual(order);
 	});
 
+	it("names the agent's version and where the model came from", () => {
+		const md = reportToMarkdown({
+			incident: { number: 7, title: "Checkout 500s" },
+			report: {
+				...REPORT,
+				fidelity: {
+					harness: "opencode",
+					mode: "read-only",
+					fidelity: "cooperative",
+					mechanism: "permission policy",
+					harnessVersion: "1.18.30",
+					model: "gemma4:31b",
+					modelSource: "operator",
+				},
+			},
+			completedAt: null,
+		});
+		expect(md).toContain(
+			"Run: opencode 1.18.30, model gemma4:31b (set in Settings), read-only mode, cooperative: permission policy",
+		);
+	});
+
 	it("omits empty sections", () => {
 		const md = reportToMarkdown({
 			incident: { number: 1, title: "t" },
