@@ -54,13 +54,15 @@ health() {
 	return 1
 }
 
-# Rows in a table of the workspace database, read with the installed runtime.
-count() {
+# Runs SQL against the workspace database with the installed runtime's own
+# node and better-sqlite3: `sql <version> <workspace> <statement>` prints one value.
+sql() {
 	c_rt="$work/home/.local/share/prismalens/runtime/$1"
 	"$c_rt/node/bin/node" -e "
 		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/lib/node_modules/prismalens'] }));
-		const db = new Database(process.argv[1], { readonly: true });
-		console.log(db.prepare('select count(*) as n from ' + process.argv[2]).get().n);
+		const db = new Database(process.argv[1]);
+		const stmt = db.prepare(process.argv[2]);
+		console.log(stmt.reader ? Object.values(stmt.get() ?? { v: '' })[0] : stmt.run().changes);
 	" "$2/prismalens.db" "$3"
 }
 
@@ -74,15 +76,15 @@ if [ -n "$old_dir" ]; then
 	run_installer "$old_base" --version "$old_version" --no-modify-path >/dev/null 2>&1 || fail "installing $old_version"
 	ws="$work/workspace"
 	health "$ws" "$bin/pl" || fail "$old_version pl up"
-	migrations_before=$(count "$old_version" "$ws" _prisma_migrations)
-	settings_before=$(count "$old_version" "$ws" settings)
+	migrations_before=$(sql "$old_version" "$ws" "select count(*) from _prisma_migrations")
+	sql "$old_version" "$ws" "insert into settings (id, key, value, updatedAt) values ('smoke', 'SMOKE_MARKER', '\"kept\"', CURRENT_TIMESTAMP)" >/dev/null
 	run_installer "$new_base" --version "$new_version" --no-modify-path >/dev/null 2>&1 || fail "upgrading to $new_version"
 	health "$ws" "$bin/pl" || fail "$new_version pl up on the $old_version workspace"
-	migrations_after=$(count "$new_version" "$ws" _prisma_migrations)
-	settings_after=$(count "$new_version" "$ws" settings)
+	migrations_after=$(sql "$new_version" "$ws" "select count(*) from _prisma_migrations")
+	marker=$(sql "$new_version" "$ws" "select value from settings where key = 'SMOKE_MARKER'")
 	[ "$migrations_after" -ge "$migrations_before" ] || fail "migrations went from $migrations_before to $migrations_after"
-	[ "$settings_after" -ge "$settings_before" ] || fail "settings rows went from $settings_before to $settings_after"
-	pass "upgrade $old_version → $new_version: pl up healthy, migrations $migrations_before → $migrations_after, settings kept ($settings_after)"
+	[ "$marker" = '"kept"' ] || fail "a row written by $old_version was lost (got '$marker')"
+	pass "upgrade $old_version → $new_version: pl up healthy, migrations $migrations_before → $migrations_after, a row written by $old_version kept"
 	rm -rf "$work/home"
 	mkdir -p "$work/home"
 fi
