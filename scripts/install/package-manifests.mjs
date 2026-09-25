@@ -77,7 +77,12 @@ end
 `;
 }
 
-export function scoopManifest({ version, baseUrl, sums, allowMissing = false }) {
+export function scoopManifest({
+	version,
+	baseUrl,
+	sums,
+	allowMissing = false,
+}) {
 	const hash = hashFor(sums, version, WINDOWS_TARGET, allowMissing);
 	const releases = `https://github.com/${REPO}/releases/download`;
 	return `${JSON.stringify(
@@ -132,7 +137,8 @@ function main() {
 	const input = {
 		version,
 		baseUrl:
-			values["base-url"] ?? `https://github.com/${REPO}/releases/download/v${version}`,
+			values["base-url"] ??
+			`https://github.com/${REPO}/releases/download/v${version}`,
 		sums: parseSums(readFileSync(values.sums, "utf8")),
 		allowMissing: values["allow-missing"],
 	};
@@ -145,9 +151,14 @@ function main() {
 		writeFileSync(join(values.out, "Formula", "prismalens.rb"), formula(input));
 	}
 	if (!input.allowMissing || present.includes(WINDOWS_TARGET)) {
-		writeFileSync(join(values.out, "bucket", "prismalens.json"), scoopManifest(input));
+		writeFileSync(
+			join(values.out, "bucket", "prismalens.json"),
+			scoopManifest(input),
+		);
 	}
-	console.log(`==> manifests for ${version} (${present.join(", ")}) in ${values.out}`);
+	console.log(
+		`==> manifests for ${version} (${present.join(", ")}) in ${values.out}`,
+	);
 }
 
 if (process.argv[1]?.endsWith("package-manifests.mjs")) main();

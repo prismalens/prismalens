@@ -30,15 +30,22 @@ test("the formula pairs each platform's archive with its own hash", () => {
 	]) {
 		assert.match(
 			rb,
-			new RegExp(`url "${BASE}/prismalens-1\\.2\\.3-${target}\\.tar\\.gz"\\n\\s+sha256 "${hash}"`),
+			new RegExp(
+				`url "${BASE}/prismalens-1\\.2\\.3-${target}\\.tar\\.gz"\\n\\s+sha256 "${hash}"`,
+			),
 		);
 	}
 	assert.match(rb, /on_macos do\n\s+on_arm do[\s\S]*darwin-arm64/);
-	assert.match(rb, /bin\.install_symlink libexec\/"bin\/pl", libexec\/"bin\/prismalens"/);
+	assert.match(
+		rb,
+		/bin\.install_symlink libexec\/"bin\/pl", libexec\/"bin\/prismalens"/,
+	);
 });
 
 test("the Scoop manifest points at the Windows zip and its extract dir", () => {
-	const manifest = JSON.parse(scoopManifest({ version: "1.2.3", baseUrl: BASE, sums: SUMS }));
+	const manifest = JSON.parse(
+		scoopManifest({ version: "1.2.3", baseUrl: BASE, sums: SUMS }),
+	);
 	assert.equal(manifest.version, "1.2.3");
 	assert.deepEqual(manifest.architecture["64bit"], {
 		url: `${BASE}/prismalens-1.2.3-win32-x64.zip`,
@@ -61,7 +68,12 @@ test("a missing archive fails unless --allow-missing", () => {
 		() => scoopManifest({ version: "1.2.3", baseUrl: BASE, sums: partial }),
 		/win32-x64\.zip is not in SHA256SUMS/,
 	);
-	const rb = formula({ version: "1.2.3", baseUrl: BASE, sums: partial, allowMissing: true });
+	const rb = formula({
+		version: "1.2.3",
+		baseUrl: BASE,
+		sums: partial,
+		allowMissing: true,
+	});
 	assert.match(rb, /darwin-arm64/);
 	assert.doesNotMatch(rb, /on_linux|darwin-x64/);
 });

@@ -169,7 +169,8 @@ function upgradeHint(
 	platform: NodeJS.Platform,
 	execPath: string,
 ): string {
-	if (execPath.includes("/Cellar/prismalens/")) return "brew upgrade prismalens";
+	if (execPath.includes("/Cellar/prismalens/"))
+		return "brew upgrade prismalens";
 	if (/[\\/]scoop[\\/]apps[\\/]prismalens[\\/]/i.test(execPath)) {
 		return "scoop update prismalens";
 	}
