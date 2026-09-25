@@ -38,10 +38,14 @@ function Install([string]$base, [string[]]$more) {
 function Stop-Tree($p) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Start-Sleep 2 }
 
 function Healthy([string]$ws) {
-	$p = Start-Process -FilePath (Join-Path $bin "pl.cmd") -ArgumentList "up", "--port", "$port", "--workspace", $ws -PassThru -WindowStyle Hidden
+	$script:port++
+	$out = Join-Path $work "up-$script:port.out"
+	$err = Join-Path $work "up-$script:port.err"
+	$p = Start-Process -FilePath (Join-Path $bin "pl.cmd") -ArgumentList "up", "--port", "$script:port", "--workspace", $ws `
+		-PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
 	for ($i = 0; $i -lt 90; $i++) {
 		try {
-			if ((Invoke-WebRequest "http://127.0.0.1:$port/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) {
+			if ((Invoke-WebRequest "http://127.0.0.1:$script:port/health" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) {
 				Stop-Tree $p; return $true
 			}
 		} catch {}
@@ -49,6 +53,8 @@ function Healthy([string]$ws) {
 		Start-Sleep 1
 	}
 	Stop-Tree $p
+	Write-Host "--- pl up stdout ---"; Get-Content $out -ErrorAction SilentlyContinue | Write-Host
+	Write-Host "--- pl up stderr ---"; Get-Content $err -ErrorAction SilentlyContinue | Write-Host
 	return $false
 }
 
