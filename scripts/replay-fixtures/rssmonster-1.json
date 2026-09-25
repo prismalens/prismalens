@@ -1,0 +1,13 @@
+{
+	"name": "rssmonster-1",
+	"source": "prismalens#336, rssmonster card 1, ratified 2026-09-17",
+	"upstream": "https://github.com/pietheinstrengholt/rssmonster.git",
+	"commitInvestigated": "ae6cbf463d339fc3418de00c37eb88f744e0e62f",
+	"fixCommit": "fffbf208f9abbd2b46878f36e1c34abdf80904a4",
+	"culpritFiles": ["server/app.js", "server/controllers/hotlink.js"],
+	"nullIncident": false,
+	"incident": {
+		"title": "Server process exits unexpectedly every few minutes with \"Unknown column 'createdAt'\"",
+		"description": "Since the last deploy the rssmonster server process dies every few minutes and is restarted by the supervisor. Right before each exit the log shows an unhandled SequelizeDatabaseError: Unknown column 'createdAt'. It happens with no user request in flight, on a regular interval. The database was migrated forward from an older schema. Find the cause."
+	}
+}

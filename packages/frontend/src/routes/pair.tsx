@@ -39,15 +39,21 @@ function PairPage() {
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);
 	const operator = useOperator();
-	const started = useRef(false);
+	const attempted = useRef<string | null>(null);
 
 	useEffect(() => {
-		const fragment = window.location.hash.replace(/^#/, "");
-		// A second run (StrictMode in dev) finds the fragment already dropped and
-		// must keep the token the first run read.
-		setToken((read) => fragment || read || "");
-		// The token is a one-time secret: drop it from the address bar at once.
-		if (fragment) history.replaceState(null, "", window.location.pathname);
+		const readFragment = () => {
+			const fragment = window.location.hash.replace(/^#/, "");
+			// A second run (StrictMode in dev) finds the fragment already dropped and
+			// must keep the token the first run read.
+			setToken((read) => fragment || read || "");
+			// The token is a one-time secret: drop it from the address bar at once.
+			if (fragment) history.replaceState(null, "", window.location.pathname);
+		};
+		readFragment();
+		// A link pasted into a tab already on /pair changes only the fragment: no reload.
+		window.addEventListener("hashchange", readFragment);
+		return () => window.removeEventListener("hashchange", readFragment);
 	}, []);
 
 	const redeem = useMutation({
@@ -61,8 +67,9 @@ function PairPage() {
 	});
 
 	useEffect(() => {
-		if (!token || operator.isPending || started.current) return;
-		started.current = true;
+		// Keyed on the token, so a new link pasted after a failed one is redeemed.
+		if (!token || operator.isPending || attempted.current === token) return;
+		attempted.current = token;
 		// `pl up` prints a fresh link on every start. A browser that already
 		// holds this machine's session leaves it unused rather than pairing twice.
 		if (operator.managesPairing) {

@@ -1,0 +1,13 @@
+{
+	"name": "prometheus-1",
+	"source": "prismalens#336, prometheus card 1, ratified 2026-09-17",
+	"upstream": "https://github.com/prometheus/prometheus.git",
+	"commitInvestigated": "7a73c9ae654485b92ff3000bbb7e7e03b6a6d1f2",
+	"fixCommit": "895958a6fbf8dd29c32ca68668cedb716e9276d2",
+	"culpritFiles": ["promql/engine.go"],
+	"nullIncident": false,
+	"incident": {
+		"title": "Range query returns HTTP 422 \"unexpected error: runtime error: index out of range [-1]\"",
+		"description": "Since upgrading Prometheus, some range queries that use the anchored or smoothed range-selector modifiers fail with HTTP 422 and the body unexpected error: runtime error: index out of range [-1]. On other inputs the same query returns index out of range [0] with length 0 instead. It happens when the selected series has no samples inside the requested window; queries over series with data in the window succeed. Find the cause."
+	}
+}

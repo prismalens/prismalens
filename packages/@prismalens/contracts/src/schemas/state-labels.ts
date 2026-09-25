@@ -150,6 +150,16 @@ export const FIDELITY_LABEL: Record<RunFidelity["fidelity"], string> = {
 	advisory: "Advisory",
 };
 
+/** Where a run's model id came from, read as "model x, <label>". */
+export const MODEL_SOURCE_LABEL: Record<
+	NonNullable<RunFidelity["modelSource"]>,
+	string
+> = {
+	operator: "set in Settings",
+	"product-default": "PrismaLens default",
+	"harness-default": "the agent's default",
+};
+
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
 	failed_run: "Run failed",
 	unacknowledged: "Needs acknowledging",

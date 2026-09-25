@@ -41,6 +41,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import { reportCitedPaths } from "./lib/cited-paths.mjs";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -455,12 +456,7 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 			`investigation ${investigation.id} completed with no hypothesis`,
 		);
 	}
-	const cited = new Set();
-	for (const h of hypotheses) {
-		for (const e of h.evidence ?? []) {
-			for (const p of citedPaths(e.source ?? "")) cited.add(p);
-		}
-	}
+	const cited = reportCitedPaths(finished.report);
 	if (cited.size === 0) {
 		throw new Error(
 			`report for investigation ${investigation.id} cites no file path in any evidence source`,
@@ -481,27 +477,6 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 	console.log(
 		`[packed-intake] OK   report: ${hypotheses.length} hypothesis(es), ${cited.size} cited path(s) all present`,
 	);
-}
-
-/**
- * Repo-relative or absolute file paths inside an evidence source, which is a
- * command or origin string ("cat config/db.yaml", "promql/engine.go:4880-4890",
- * "git show 03b0db54 -- server/models/hotlink.js"). A path needs a directory
- * part and an extension; a bare "hotlink.js" or "e.g." is not one, and a URL
- * is skipped.
- */
-function citedPaths(source) {
-	const paths = [];
-	for (const raw of source.split(/[\s"'`()[\]{},;]+/)) {
-		if (!raw || raw.includes("://")) continue;
-		const token = raw.replace(/^\.\//, "").replace(/[.:]+$/, "");
-		const m =
-			/^(\/?(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,8})(?::\d+(?:-\d+)?)?$/.exec(
-				token,
-			);
-		if (m) paths.push(m[1]);
-	}
-	return paths;
 }
 
 /** Poll the incident list for the one whose alerts carry `fingerprint` (Alert.externalId, not the internal dedup Alert.fingerprint). */

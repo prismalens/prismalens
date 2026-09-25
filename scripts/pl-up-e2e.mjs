@@ -19,10 +19,14 @@
  *   PL_UP_REUSE_TARBALL  "1" to reuse whatever is already in dist-pack
  *   PL_UP_PORT          port to serve on (default 3100)
  *   PL_UP_PREFIX        install prefix (default a fresh mkdtemp)
+ *
+ * `pl up`'s stdout is also written to `<prefix>/pl-up.out`, so a spec can open
+ * the startup link it printed, the way the operator does.
  */
 
 import { execFileSync, spawn } from "node:child_process";
 import {
+	appendFileSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -97,14 +101,21 @@ console.log(
 // on teardown. Putting `pl up` in its own group instead makes Playwright's kill
 // miss it: the tests pass, the orphan keeps the port, and the run hangs at
 // teardown until the outer timeout fires (observed as exit 124).
-const child = spawn(bin, ["up"], {
-	stdio: "inherit",
+const child = spawn(bin, ["up", "--no-open"], {
+	stdio: ["inherit", "pipe", "inherit"],
 	env: {
 		...process.env,
 		PRISMALENS_WORKSPACE_DIR: workspace,
 		PRISMALENS_HOST: "127.0.0.1",
 		PRISMALENS_PORT: PORT,
 	},
+});
+
+const out = join(prefix, "pl-up.out");
+child.stdout.on("data", (chunk) => {
+	process.stdout.write(chunk);
+	// Holds the startup link: owner-only, and no open handle left for cleanup's rmSync.
+	appendFileSync(out, chunk, { mode: 0o600 });
 });
 
 let cleaned = false;

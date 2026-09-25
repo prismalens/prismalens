@@ -7,6 +7,7 @@ import {
 	FIDELITY_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
 	type InvestigationWithRelations,
+	MODEL_SOURCE_LABEL,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	type RunFidelity,
 } from "@prismalens/contracts";
@@ -34,8 +35,9 @@ import { PriorityBadge } from "./investigation.utils";
 import { PostToGitHubButton } from "./PostToGitHubButton";
 
 /**
- * Honest run-metadata badge (ADR-0017): the enforcement the rented harness
- * actually applied. Mechanism on hover; nothing inferred client-side.
+ * Honest run-metadata badge (ADR-0017): which agent ran, at which version,
+ * and the enforcement it actually applied. Model and mechanism on hover;
+ * nothing inferred client-side.
  */
 export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 	return (
@@ -43,14 +45,30 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<StateChip tone={fidelityTone(fidelity.fidelity)}>
+						<span className="font-mono">
+							{fidelity.harness}
+							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
+						</span>
+						<span className="opacity-60">·</span>
 						<span className="font-mono">{fidelity.mode}</span>
 						<span className="opacity-60">·</span>
 						<span>{FIDELITY_LABEL[fidelity.fidelity]}</span>
 					</StateChip>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs">
-					<span className="font-mono">{fidelity.harness}</span> —{" "}
-					{fidelity.mechanism}
+					<p>
+						Model:{" "}
+						{fidelity.model ? (
+							<>
+								<span className="font-mono">{fidelity.model}</span>
+								{fidelity.modelSource &&
+									`, ${MODEL_SOURCE_LABEL[fidelity.modelSource]}`}
+							</>
+						) : (
+							"the agent's default"
+						)}
+					</p>
+					<p>Read-only: {fidelity.mechanism}</p>
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>
