@@ -31,12 +31,6 @@ import {
 } from "./backend.js";
 import { readLoginShellPath } from "./login-shell-path.js";
 import {
-	availableUpdate,
-	backendVersion,
-	releaseUrl,
-	updateCheckEnabled,
-} from "./updates.js";
-import {
 	type InvestigationSummary,
 	newlyFinished,
 	notificationText,
@@ -54,6 +48,12 @@ import {
 	planLaunch,
 	resetWorkspaceSpawn,
 } from "./supervisor.js";
+import {
+	availableUpdate,
+	backendVersion,
+	releaseUrl,
+	updateCheckEnabled,
+} from "./updates.js";
 
 const READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 15_000;
@@ -231,7 +231,8 @@ function buildTray(): void {
 					? [
 							{
 								label: `Download PrismaLens ${update}…`,
-								click: () => void shell.openExternal(releaseUrl(update as string)),
+								click: () =>
+									void shell.openExternal(releaseUrl(update as string)),
 							},
 						]
 					: []),

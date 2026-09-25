@@ -39,7 +39,10 @@ export function updateCheckEnabled(env: NodeJS.ProcessEnv): boolean {
 export function backendVersion(backendMain: string): string | null {
 	try {
 		const pkg = JSON.parse(
-			readFileSync(join(dirname(dirname(dirname(backendMain))), "package.json"), "utf8"),
+			readFileSync(
+				join(dirname(dirname(dirname(backendMain))), "package.json"),
+				"utf8",
+			),
 		) as { version?: string };
 		return pkg.version ?? null;
 	} catch {
@@ -67,7 +70,9 @@ export async function availableUpdate(
 				signal: AbortSignal.timeout(TIMEOUT_MS),
 			});
 		const latestRes = await head(`${RELEASES}/latest`);
-		const tag = /\/releases\/tag\/(.+)$/.exec(latestRes.headers.get("location") ?? "")?.[1];
+		const tag = /\/releases\/tag\/(.+)$/.exec(
+			latestRes.headers.get("location") ?? "",
+		)?.[1];
 		const latest = tag ? decodeURIComponent(tag).replace(/^v/, "") : null;
 		if (!latest || !isNewer(latest, current)) return null;
 		const sums = await head(`${RELEASES}/download/v${latest}/SHA256SUMS`);

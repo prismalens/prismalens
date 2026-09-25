@@ -71,9 +71,9 @@ export default defineCommand({
 	},
 	async run({ args, cmd }) {
 		assertKnownFlags(args, cmd);
-		const config = (await import("@prismalens/config")) as typeof import(
+		const config = (await import(
 			"@prismalens/config"
-		);
+		)) as typeof import("@prismalens/config");
 		const current = cliVersion();
 		const channel = config.installChannel();
 
@@ -100,7 +100,11 @@ export default defineCommand({
 			target = latest;
 		}
 
-		const command = config.upgradeCommand(channel, process.platform, pinned ?? undefined);
+		const command = config.upgradeCommand(
+			channel,
+			process.platform,
+			pinned ?? undefined,
+		);
 		if (args.check) {
 			consola.info(
 				`${target} is available (you have ${current}, installed with ${channel}). Upgrade with: pl upgrade`,
@@ -127,7 +131,9 @@ export default defineCommand({
 			consola.info(`The desktop app upgrades by download: ${command}`);
 			return;
 		}
-		consola.start(`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`);
+		consola.start(
+			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
+		);
 		const result = spawnSync(argv[0], argv.slice(1), { stdio: "inherit" });
 		if (result.status !== 0) {
 			consola.error(
