@@ -21,7 +21,7 @@ export const TELEMETRY_SUMMARY =
 export const TELEMETRY_SENT = [
 	"An install id: a random identifier created once for this workspace.",
 	"The PrismaLens version, whether it is a release or a development build, how it was launched (npm or the desktop app), the operating system, CPU architecture and Node major version.",
-	"One event per milestone, carrying fixed categories only: setup finished; a service gained a repository (local folder or git); an integration was configured (which vendor); the first alert this install ever received (which source); an investigation started (which coding agent, and whether it was asked for by hand or by an alert); an investigation ended (its outcome, how long it took as one of four ranges, and a category for the failure); a report was viewed; a report was exported (Markdown or Slack); an incident was closed.",
+	"One event per milestone, carrying fixed categories only: setup finished; a service gained a repository (local folder or git); an integration was configured (which vendor); the first alert this install ever received (which source); an investigation started (which coding agent, and whether it was asked for by hand or by an alert); an investigation ended (its outcome, how long it took as one of four ranges, and a category for the failure); a report was viewed; a report was exported (Markdown, Slack or a GitHub comment); an incident was closed.",
 	"Once a day while PrismaLens is running and sharing is on: a sign that this install is active, with nothing else attached.",
 ];
 
