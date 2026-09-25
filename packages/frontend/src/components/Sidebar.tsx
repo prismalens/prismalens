@@ -121,11 +121,14 @@ function SidebarBody({ pathname }: { pathname: string }) {
 					<span className="relative">
 						{item.icon}
 						{item.dot && (
-							<span
-								className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary"
-								aria-label="Update available"
-								data-testid={`nav-${item.label.toLowerCase()}-dot`}
-							/>
+							<>
+								<span
+									className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary"
+									aria-hidden="true"
+									data-testid={`nav-${item.label.toLowerCase()}-dot`}
+								/>
+								<span className="sr-only">, update available</span>
+							</>
 						)}
 					</span>
 					{!(sidebarFolded && !compact) && (
