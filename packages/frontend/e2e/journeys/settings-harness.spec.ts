@@ -267,9 +267,13 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			registry.getByTestId("harness-tested-claude-code"),
 		).toHaveCount(0);
-		await expect(registry.getByText(OPENCODE_INSTALLED.loginHint, {
-			exact: false,
-		})).toBeVisible();
+		// The hint renders its backticked spans as code, so match the text without them.
+		await expect(
+			registry.getByText(OPENCODE_INSTALLED.loginHint.replaceAll("`", ""), {
+				exact: false,
+			}),
+		).toBeVisible();
+		await expect(registry.locator("code", { hasText: "opencode auth login" })).toBeVisible();
 
 		const modelPill = page.getByTestId("model-pill");
 		await expect(modelPill).toBeEnabled();
