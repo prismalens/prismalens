@@ -79,8 +79,8 @@ export function DangerZoneSettings() {
 								Factory reset
 							</h4>
 							<p className="text-record text-muted-foreground">
-								Reset data, plus every service, connection and setting. Paired
-								devices stay paired.
+								Reset data, plus every service, integration, connection and
+								setting. Paired devices stay paired.
 							</p>
 						</div>
 						<Button
@@ -151,7 +151,7 @@ export function DangerZoneSettings() {
 						</p>
 						<ul className="list-disc list-inside">
 							<li>All alerts, incidents and investigations</li>
-							<li>All services and their connections</li>
+							<li>All services, integrations and connections</li>
 							<li>All settings</li>
 						</ul>
 						<p>Paired devices stay paired.</p>

@@ -281,3 +281,30 @@ describe("a status update that lands after a reset", () => {
 		).resolves.toBe(null);
 	});
 });
+
+describe("factory reset", () => {
+	it("deletes registered integrations after their connections, and leaves paired devices alone", async () => {
+		const order: string[] = [];
+		const tx = new Proxy(
+			{},
+			{
+				get: (_t, model: string) => ({
+					count: async () => 0,
+					deleteMany: async () => {
+						order.push(model);
+					},
+				}),
+			},
+		);
+		const service = new SettingsService(prismaWith(async (fn) => fn(tx)));
+
+		await service.factoryReset();
+
+		expect(order).toContain("integration");
+		expect(order.indexOf("integration")).toBeGreaterThan(
+			order.indexOf("connection"),
+		);
+		expect(order).not.toContain("deviceSession");
+		expect(order).not.toContain("pairingLink");
+	});
+});
