@@ -266,7 +266,7 @@ export function FirstRunPanel() {
 					{codeLinked ? (
 						<StateWord tone="done">linked</StateWord>
 					) : (
-						"Set a repository (a folder or a git URL) on a service, or runs read no code."
+						"Set a repository (a folder or a git URL) on a service; without one a run reads no code."
 					)}
 				</Row>
 			</div>

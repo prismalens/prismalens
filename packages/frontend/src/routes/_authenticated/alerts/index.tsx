@@ -15,6 +15,7 @@ import { orderAlerts, useAlertWindow } from "@/components/alerts/AlertListPane";
 import { LiveSlot } from "@/components/shared/LiveSlot";
 import { StateChip } from "@/components/shared/StateChip";
 import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertStatusTone, severityTone } from "@/lib/state-tone";
 
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/_authenticated/alerts/")({
 });
 
 function AlertsOverview() {
+	usePageTitle("Alerts");
 	const { search, listInput } = useAlertWindow();
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),

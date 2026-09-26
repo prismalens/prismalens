@@ -174,8 +174,16 @@ function openWindow(path = "/"): void {
 	window = new BrowserWindow({
 		width: 1280,
 		height: 840,
+		// Below this the sidebar folds to the phone top bar; a desktop window
+		// never needs to go there.
+		minWidth: 800,
+		minHeight: 560,
 		title: "PrismaLens",
 		show: false,
+		// The app's default (dark) background, so first paint is not a white flash.
+		backgroundColor: "#09090b",
+		// Windows and Linux: the stock File/Edit/View menu stays behind Alt.
+		autoHideMenuBar: true,
 		webPreferences: { contextIsolation: true, nodeIntegration: false },
 	});
 	window.once("ready-to-show", () => window?.show());

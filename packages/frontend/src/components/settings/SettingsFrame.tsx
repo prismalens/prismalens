@@ -17,6 +17,7 @@ import { useAbout } from "@/components/settings/AboutSettings";
 import { useDevices } from "@/components/settings/DevicesTab";
 import { StateWord } from "@/components/shared/StateChip";
 import { useOperator } from "@/hooks/use-operator";
+import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useConnections,
 	useIntegrations,
@@ -61,6 +62,7 @@ export function SettingsFrame({
 	actions?: ReactNode;
 	children: ReactNode;
 }) {
+	usePageTitle(`${title} · Settings`);
 	const readiness = useInvestigationReadiness();
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();

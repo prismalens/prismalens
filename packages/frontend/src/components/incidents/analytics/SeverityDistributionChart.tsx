@@ -43,7 +43,7 @@ export function SeverityDistributionChart({
 	return (
 		<Card className={className}>
 			<CardHeader className="pb-2">
-				<CardTitle className="text-base font-medium">By Severity</CardTitle>
+				<CardTitle>By severity</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{total === 0 ? (
@@ -98,7 +98,7 @@ export function SeverityDistributionChart({
 									key={entry.name}
 									onClick={() => handleClick(entry)}
 									disabled={!onSeverityClick}
-									className="flex items-center gap-2 text-sm hover:opacity-80 disabled:cursor-default"
+									className="flex items-center gap-2 text-record hover:opacity-80 disabled:cursor-default"
 								>
 									<span
 										className="w-3 h-3 rounded-full"

@@ -65,7 +65,7 @@ export function ServiceDependenciesTab({
 			<div>
 				<div className="flex items-center justify-between mb-3">
 					<h3 className="text-sm font-medium">
-						Upstream Dependencies ({topology?.upstream?.length ?? 0})
+						Upstream dependencies ({topology?.upstream?.length ?? 0})
 					</h3>
 					<Button
 						size="sm"
@@ -173,7 +173,7 @@ export function ServiceDependenciesTab({
 			{/* Downstream Dependents */}
 			<div>
 				<h3 className="text-sm font-medium mb-3">
-					Downstream Dependents ({topology?.downstream?.length ?? 0})
+					Downstream dependents ({topology?.downstream?.length ?? 0})
 				</h3>
 				<div className="max-h-96 overflow-y-auto rounded-md border">
 					{topology?.downstream && topology.downstream.length > 0 ? (

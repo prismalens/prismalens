@@ -36,7 +36,7 @@ export function ServiceOverviewTab({
 			{/* Basic Info */}
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base">Basic Info</CardTitle>
+					<CardTitle>Basic info</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-2 text-sm">
 					<div className="flex justify-between">
@@ -94,20 +94,20 @@ export function ServiceOverviewTab({
 			<div className="space-y-4">
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base">Statistics</CardTitle>
+						<CardTitle>Statistics</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-2 text-sm">
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Active Alerts</span>
+							<span className="text-muted-foreground">Active alerts</span>
 							<span className="font-medium">{service.alertCount ?? 0}</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-muted-foreground">Active Incidents</span>
+							<span className="text-muted-foreground">Active incidents</span>
 							<span className="font-medium">{service.incidentCount ?? 0}</span>
 						</div>
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">
-								Upstream Dependencies
+								Upstream dependencies
 							</span>
 							<span className="font-medium">
 								{topology?.upstream?.length ?? 0}
@@ -115,7 +115,7 @@ export function ServiceOverviewTab({
 						</div>
 						<div className="flex justify-between">
 							<span className="text-muted-foreground">
-								Downstream Dependents
+								Downstream dependents
 							</span>
 							<span className="font-medium">
 								{topology?.downstream?.length ?? 0}
@@ -127,7 +127,7 @@ export function ServiceOverviewTab({
 				{service.description && (
 					<Card>
 						<CardHeader>
-							<CardTitle className="text-base">Description</CardTitle>
+							<CardTitle>Description</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<p className="text-record text-muted-foreground">
@@ -141,7 +141,7 @@ export function ServiceOverviewTab({
 			{/* Repositories Summary */}
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base flex items-center gap-2">
+					<CardTitle className="flex items-center gap-2">
 						<FolderGit2 className="h-4 w-4" />
 						Repositories ({repos.length})
 					</CardTitle>
@@ -193,7 +193,7 @@ export function ServiceOverviewTab({
 			{integrations.length > 0 && (
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base flex items-center gap-2">
+						<CardTitle className="flex items-center gap-2">
 							<Link2 className="h-4 w-4" />
 							Integrations ({integrations.length})
 						</CardTitle>

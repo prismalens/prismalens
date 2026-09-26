@@ -27,6 +27,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ago, useNow } from "@/hooks/use-now";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { incidentStatusTone } from "@/lib/state-tone";
 
 export interface IncidentStateBandProps {
@@ -71,6 +72,7 @@ export function IncidentStateBand({
 	surfaceOpen,
 	onToggleSurfaces,
 }: IncidentStateBandProps) {
+	usePageTitle(`INC-${incident.number} ${incident.title}`);
 	const now = useNow();
 	const handlers: Record<IncidentAction, () => void> = {
 		acknowledge: onAcknowledge,

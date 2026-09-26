@@ -82,7 +82,7 @@ export function ServiceInvestigationTab({
 		<div className="space-y-6">
 			<Card>
 				<CardHeader>
-					<CardTitle>Auto-Investigation Trigger</CardTitle>
+					<CardTitle>Auto-investigation trigger</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<RadioGroup
@@ -107,7 +107,7 @@ export function ServiceInvestigationTab({
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Analysis Context</CardTitle>
+					<CardTitle>Analysis context</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<Label htmlFor="investigation-context">

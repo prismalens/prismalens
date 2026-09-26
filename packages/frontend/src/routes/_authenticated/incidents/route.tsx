@@ -5,8 +5,13 @@
  * in this route's search so the list and the record share one window.
  */
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
-import { IncidentListPane } from "@/components/incidents/IncidentListPane";
+import {
+	IncidentListPane,
+	useIncidentWindow,
+} from "@/components/incidents/IncidentListPane";
+import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
 export interface IncidentsSearch {
@@ -43,6 +48,13 @@ function IncidentsFrame() {
 		shouldThrow: false,
 	});
 	const recordOpen = !!record;
+	// An empty workspace has no list to show; below `lg` the first-run panel
+	// takes the list's place instead of hiding behind it.
+	const { statsInput } = useIncidentWindow();
+	const stats = useQuery(
+		orpc.incidents.getStats.queryOptions({ input: statsInput }),
+	);
+	const firstRun = !recordOpen && stats.data?.total === 0;
 
 	return (
 		<div
@@ -51,9 +63,17 @@ function IncidentsFrame() {
 		>
 			<IncidentListPane
 				selectedId={record?.params.id ?? null}
-				className={cn("min-h-0 border-r", recordOpen && "hidden lg:flex")}
+				className={cn(
+					"min-h-0 border-r",
+					(recordOpen || firstRun) && "hidden lg:flex",
+				)}
 			/>
-			<div className={cn("min-h-0 min-w-0", !recordOpen && "hidden lg:block")}>
+			<div
+				className={cn(
+					"min-h-0 min-w-0",
+					!recordOpen && !firstRun && "hidden lg:block",
+				)}
+			>
 				<Outlet />
 			</div>
 		</div>

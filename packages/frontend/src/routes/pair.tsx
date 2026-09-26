@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { MutationError } from "@/components/shared/MutationError";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/pair")({
@@ -36,6 +37,7 @@ function guessDeviceName(): string | undefined {
 }
 
 function PairPage() {
+	usePageTitle("Pair this device");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);

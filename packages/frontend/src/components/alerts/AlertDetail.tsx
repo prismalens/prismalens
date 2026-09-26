@@ -18,6 +18,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ago, useNow } from "@/hooks/use-now";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
@@ -53,6 +54,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 		isLoading,
 		error,
 	} = useQuery(orpc.alerts.get.queryOptions({ input: { id: alertId } }));
+	usePageTitle(alert?.title ?? "Alert");
 
 	const invalidate = () => {
 		queryClient.invalidateQueries({ queryKey: alertKeys.all() });

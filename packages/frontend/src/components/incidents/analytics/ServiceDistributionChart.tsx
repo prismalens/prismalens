@@ -52,7 +52,7 @@ export function ServiceDistributionChart({
 	return (
 		<Card className={className}>
 			<CardHeader className="pb-2">
-				<CardTitle className="text-base font-medium">By Service</CardTitle>
+				<CardTitle>By service</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{total === 0 ? (

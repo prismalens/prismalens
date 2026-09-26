@@ -18,6 +18,7 @@ import {
 } from "@/components/incidents/IncidentListPane";
 import { Button } from "@/components/ui/button";
 import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/incidents/")({
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/incidents/")({
 });
 
 function IncidentsOverview() {
+	usePageTitle("Incidents");
 	const navigate = useNavigate();
 	const { search, from, to, listInput, statsInput, windowLabel } =
 		useIncidentWindow();
@@ -158,7 +160,7 @@ function IncidentsOverview() {
 						days={
 							from && to
 								? Math.ceil((to.getTime() - from.getTime()) / 86_400_000)
-								: 30
+								: spanDays(list?.data ?? [])
 						}
 						onSeverityFilter={(severity) =>
 							setSearch({
@@ -177,5 +179,17 @@ function IncidentsOverview() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+/** "All time" charts from the oldest incident, so the chart and the totals agree. */
+function spanDays(incidents: { triggeredAt: string | Date }[]): number {
+	const oldest = Math.min(
+		...incidents.map((i) => new Date(i.triggeredAt).getTime()),
+	);
+	if (!Number.isFinite(oldest)) return 30;
+	return Math.min(
+		365,
+		Math.max(30, Math.ceil((Date.now() - oldest) / 86_400_000) + 1),
 	);
 }

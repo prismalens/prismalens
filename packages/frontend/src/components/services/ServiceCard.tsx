@@ -46,7 +46,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 					<div className="flex items-center gap-3">
 						<div className="p-2 rounded-lg bg-muted">{typeIcon}</div>
 						<div>
-							<CardTitle className="text-base">
+							<CardTitle>
 								<Link
 									to="/services/$id"
 									params={{ id: service.id }}

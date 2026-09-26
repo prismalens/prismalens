@@ -60,11 +60,15 @@ function StatCard({
 		<Card>
 			<CardContent className="p-4">
 				<p className="text-record text-muted-foreground">{title}</p>
-				<p className="text-2xl font-semibold mt-1">{value}</p>
-				<div className={cn("flex items-center gap-1 mt-1 text-sm", trendColor)}>
+				<p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+					{value}
+				</p>
+				<div
+					className={cn("mt-1 flex items-center gap-1 text-meta", trendColor)}
+				>
 					<TrendIcon className="h-3 w-3" />
 					<span>{formatTrend(trend)}</span>
-					<span className="text-muted-foreground text-xs">{trendLabel}</span>
+					<span className="text-muted-foreground">{trendLabel}</span>
 				</div>
 			</CardContent>
 		</Card>
@@ -89,7 +93,7 @@ export function IncidentAnalytics({
 			{/* Stats Cards */}
 			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 				<StatCard
-					title="Total Incidents"
+					title="Total incidents"
 					value={summary.total}
 					trend={summary.totalTrend}
 				/>
@@ -106,7 +110,7 @@ export function IncidentAnalytics({
 					lowerIsBetter
 				/>
 				<StatCard
-					title="AI-Assisted"
+					title="AI-assisted"
 					value={`${summary.aiAssistedPercent}%`}
 					trend={summary.aiAssistedTrend}
 				/>
