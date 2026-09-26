@@ -20,6 +20,7 @@ import { AlertTriangle, Loader2, RadioTower } from "lucide-react";
 import { useState } from "react";
 import { AgentPicker, useAgentChoice } from "@/components/agent/AgentPicker";
 import { RunToolbar } from "@/components/agent/RunToolbar";
+import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { StateWord } from "@/components/shared/StateChip";
@@ -195,7 +196,12 @@ export function HarnessSettings() {
 										</StateWord>
 									)}
 									<span>
-										· {harness.installed ? harness.loginHint : harness.install}
+										·{" "}
+										<InlineCode
+											text={
+												harness.installed ? harness.loginHint : harness.install
+											}
+										/>
 									</span>
 								</span>
 							}

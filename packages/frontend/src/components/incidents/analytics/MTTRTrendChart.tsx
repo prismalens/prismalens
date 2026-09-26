@@ -58,9 +58,9 @@ export function MTTRTrendChart({
 		<Card className={className}>
 			<CardHeader className="flex flex-row items-center justify-between pb-2">
 				<div>
-					<CardTitle className="text-base font-medium">MTTR Trend</CardTitle>
+					<CardTitle>MTTR trend</CardTitle>
 					{avgMTTR != null && (
-						<p className="text-sm text-muted-foreground">
+						<p className="text-record text-muted-foreground">
 							Average: {formatDuration(avgMTTR)}
 						</p>
 					)}
@@ -112,7 +112,7 @@ export function MTTRTrendChart({
 									return (
 										<div className="rounded-lg border bg-background p-2 shadow-sm">
 											<p className="text-sm font-medium">{data.label}</p>
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												MTTR: {formatDuration(data.mttr)}
 											</p>
 											<p className="text-xs text-muted-foreground">

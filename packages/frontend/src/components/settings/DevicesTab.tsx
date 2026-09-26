@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
+import { formatDate, formatDateTime } from "@/lib/format-time";
 
 export function useDevices(enabled = true) {
 	return useQuery({
@@ -50,7 +51,7 @@ export function DevicesTab() {
 			<PairAnother />
 
 			<section className="space-y-3">
-				<h3 className="text-label font-medium">Paired devices</h3>
+				<h3 className="text-sm font-semibold tracking-tight">Paired devices</h3>
 				{devices.isPending && (
 					<div className="flex items-center justify-center py-6">
 						<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -72,9 +73,9 @@ export function DevicesTab() {
 								<div className="min-w-0">
 									<p className="truncate text-record">{d.name}</p>
 									<p className="text-meta text-muted-foreground">
-										paired {new Date(d.createdAt).toLocaleDateString()}
+										paired {formatDate(d.createdAt)}
 										{d.lastSeenAt &&
-											` · last seen ${new Date(d.lastSeenAt).toLocaleString()}`}
+											` · last seen ${formatDateTime(d.lastSeenAt)}`}
 									</p>
 								</div>
 								<Button
@@ -110,7 +111,9 @@ function PairAnother() {
 
 	return (
 		<section className="space-y-3">
-			<h3 className="text-label font-medium">Pair another device</h3>
+			<h3 className="text-sm font-semibold tracking-tight">
+				Pair another device
+			</h3>
 			<p className="text-record text-muted-foreground">
 				The link works once, for 15 minutes. Open it on the other device. Treat
 				it as a password.

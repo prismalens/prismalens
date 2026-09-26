@@ -38,10 +38,10 @@ export function RecordSection({
 			)}
 			{...props}
 		>
-			<div className="mb-3 flex min-h-7 items-center justify-between gap-3">
+			<div className="mb-3 flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1">
 				<h2
 					id={`${id}-title`}
-					className="flex items-baseline gap-2 text-sm font-medium text-foreground"
+					className="flex shrink-0 items-baseline gap-2 text-sm font-medium text-foreground"
 				>
 					{title}
 					{count !== undefined && (

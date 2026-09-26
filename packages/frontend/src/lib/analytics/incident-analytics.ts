@@ -354,7 +354,7 @@ export function calculateAnalyticsSummary(
  * Format duration in minutes to human readable string
  */
 export function formatDuration(minutes: number | null): string {
-	if (minutes == null) return "-";
+	if (minutes == null) return "—";
 	if (minutes < 60) return `${minutes}m`;
 	const hours = Math.floor(minutes / 60);
 	const mins = minutes % 60;
@@ -368,7 +368,7 @@ export function formatDuration(minutes: number | null): string {
  * Format trend percentage with + or - prefix
  */
 export function formatTrend(trend: number | null): string {
-	if (trend == null) return "-";
+	if (trend == null) return "—";
 	const prefix = trend > 0 ? "+" : "";
 	return `${prefix}${trend}%`;
 }

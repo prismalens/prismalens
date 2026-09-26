@@ -33,6 +33,7 @@ import {
 	useTemplates,
 	useTestConnection,
 } from "@/lib/api/hooks";
+import { formatDateTime } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
@@ -115,6 +116,7 @@ export function ConnectionsTab() {
 	}, [refetchConnections]);
 
 	// Filter connections
+	const hasAny = (connections?.length ?? 0) > 0;
 	const filteredConnections = connections?.filter((conn) => {
 		if (providerFilter !== "all" && conn.templateId !== providerFilter) {
 			return false;
@@ -189,7 +191,7 @@ export function ConnectionsTab() {
 			{oauthMessage && (
 				<div
 					className={cn(
-						"flex items-center gap-2 p-4 rounded-lg border text-sm",
+						"flex items-center gap-2 p-4 rounded-lg border text-record",
 						oauthMessage.type === "success"
 							? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/50 dark:border-green-800 dark:text-green-200"
 							: "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/50 dark:border-red-800 dark:text-red-200",
@@ -205,20 +207,27 @@ export function ConnectionsTab() {
 			)}
 
 			{/* Connections Section */}
-			<div className="rounded-lg border bg-card p-6 space-y-4">
+			<div className="rounded-md border bg-card p-4 space-y-4">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<Link2 className="h-5 w-5 text-muted-foreground" />
-						<h3 className="text-base font-semibold">Connections</h3>
+						<h3 className="text-sm font-semibold tracking-tight">
+							Connections
+						</h3>
 					</div>
-					<Button onClick={() => setShowAddDialog(true)}>
-						<Plus className="h-4 w-4 mr-2" />
-						Add Connection
-					</Button>
+					{/* With none yet, the empty state carries the only Add button. */}
+					{hasAny && (
+						<Button onClick={() => setShowAddDialog(true)}>
+							<Plus className="h-4 w-4 mr-2" />
+							Add connection
+						</Button>
+					)}
 				</div>
-				<div className="flex items-center gap-3 pt-1">
+				<div
+					className={cn("flex items-center gap-2 pt-1", !hasAny && "hidden")}
+				>
 					<Select value={providerFilter} onValueChange={setProviderFilter}>
-						<SelectTrigger className="w-[180px]">
+						<SelectTrigger className="w-40">
 							<SelectValue placeholder="All providers" />
 						</SelectTrigger>
 						<SelectContent>
@@ -236,16 +245,16 @@ export function ConnectionsTab() {
 						</SelectContent>
 					</Select>
 					<Select value={statusFilter} onValueChange={setStatusFilter}>
-						<SelectTrigger className="w-[180px]">
+						<SelectTrigger className="w-40">
 							<SelectValue placeholder="All statuses" />
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="all">All statuses</SelectItem>
 							<SelectItem value="ACTIVE">Active</SelectItem>
-							<SelectItem value="TOKEN_EXPIRED">Token Expired</SelectItem>
-							<SelectItem value="REFRESH_FAILED">Refresh Failed</SelectItem>
+							<SelectItem value="TOKEN_EXPIRED">Token expired</SelectItem>
+							<SelectItem value="REFRESH_FAILED">Refresh failed</SelectItem>
 							<SelectItem value="CREDENTIALS_INVALID">
-								Credentials Invalid
+								Credentials invalid
 							</SelectItem>
 							<SelectItem value="REVOKED">Revoked</SelectItem>
 							<SelectItem value="ERROR">Error</SelectItem>
@@ -275,7 +284,7 @@ export function ConnectionsTab() {
 												</span>
 												<ConnectionStatusBadge status={connection.status} />
 											</div>
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												{connection.templateName}
 												{connection.integration
 													? connection.integration.enabled
@@ -287,9 +296,7 @@ export function ConnectionsTab() {
 														{" "}
 														• Last refreshed:{" "}
 														<Mono>
-															{new Date(
-																connection.lastRefreshedAt,
-															).toLocaleString()}
+															{formatDateTime(connection.lastRefreshedAt)}
 														</Mono>
 													</>
 												)}
@@ -363,7 +370,7 @@ export function ConnectionsTab() {
 						</p>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
-							Add Connection
+							Add connection
 						</Button>
 					</div>
 				)}

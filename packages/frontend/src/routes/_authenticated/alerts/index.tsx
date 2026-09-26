@@ -14,6 +14,8 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { orderAlerts, useAlertWindow } from "@/components/alerts/AlertListPane";
 import { LiveSlot } from "@/components/shared/LiveSlot";
 import { StateChip } from "@/components/shared/StateChip";
+import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertStatusTone, severityTone } from "@/lib/state-tone";
 
@@ -22,6 +24,7 @@ export const Route = createFileRoute("/_authenticated/alerts/")({
 });
 
 function AlertsOverview() {
+	usePageTitle("Alerts");
 	const { search, listInput } = useAlertWindow();
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
@@ -31,7 +34,10 @@ function AlertsOverview() {
 		orpc.alerts.list.queryOptions({ input: listInput }),
 	);
 	const showStats = search.view === "stats";
-	const top = !showStats && list ? orderAlerts(list.data)[0] : undefined;
+	// Below `lg` the list is the page, so there is nothing to land on.
+	const split = useMediaQuery(SPLIT_PANES);
+	const top =
+		split && !showStats && list ? orderAlerts(list.data)[0] : undefined;
 	if (top) {
 		return (
 			<Navigate

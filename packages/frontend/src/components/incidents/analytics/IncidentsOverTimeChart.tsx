@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Incidents Over Time Chart
+ * Incidents over time Chart
  *
  * Line chart showing incident count by day or week
  */
@@ -52,9 +52,7 @@ export function IncidentsOverTimeChart({
 	return (
 		<Card className={className}>
 			<CardHeader className="flex flex-row items-center justify-between pb-2">
-				<CardTitle className="text-base font-medium">
-					Incidents Over Time
-				</CardTitle>
+				<CardTitle>Incidents over time</CardTitle>
 				<div className="flex gap-1">
 					<Button
 						variant={granularity === "day" ? "secondary" : "ghost"}
@@ -122,7 +120,7 @@ export function IncidentsOverTimeChart({
 									return (
 										<div className="rounded-lg border bg-background p-2 shadow-sm">
 											<p className="text-sm font-medium">{data.label}</p>
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												{data.value} incident{data.value !== 1 ? "s" : ""}
 											</p>
 										</div>

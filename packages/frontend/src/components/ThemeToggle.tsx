@@ -18,17 +18,15 @@ import {
 import { useTheme } from "@/lib/providers/theme-provider";
 
 export function ThemeToggle() {
-	const { theme, setTheme } = useTheme();
+	const { setTheme } = useTheme();
 
 	return (
 		<DropdownMenu modal={false}>
 			<DropdownMenuTrigger asChild>
 				<Button variant="ghost" size="icon" className="h-9 w-9">
-					{theme === "dark" ? (
-						<Moon className="h-4 w-4" />
-					) : (
-						<Sun className="h-4 w-4" />
-					)}
+					{/* CSS picks the icon: the prerendered shell cannot know the cookie. */}
+					<Sun className="h-4 w-4 dark:hidden" />
+					<Moon className="hidden h-4 w-4 dark:block" />
 					<span className="sr-only">Toggle theme</span>
 				</Button>
 			</DropdownMenuTrigger>

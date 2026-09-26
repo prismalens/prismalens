@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { ORPCError } from "@orpc/client";
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { ConnectionError } from "@/lib/api/orpc-client";
@@ -23,7 +24,15 @@ export const queryClient = new QueryClient({
 				if (error instanceof ConnectionError) {
 					return false;
 				}
-				// Retry up to 3 times for other errors
+				// A 4xx will not change on a retry, and a 429 asks us to slow down
+				// (#527): only server and network failures are worth another try.
+				if (
+					error instanceof ORPCError &&
+					error.status >= 400 &&
+					error.status < 500
+				) {
+					return false;
+				}
 				return failureCount < 3;
 			},
 			retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 1000),

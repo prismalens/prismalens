@@ -24,13 +24,13 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 			timeout: 15_000,
 		});
 		await expect(
-			page.getByRole("button", { name: "Add Integration" }).first(),
+			page.getByRole("button", { name: "Add integration" }).first(),
 		).toBeVisible({ timeout: 15_000 });
 
 		// 2. Navigate to /settings/integrations/configure and assert configuration page/form renders
 		await page.goto("/settings/integrations/configure");
 		await expect(
-			page.getByText(/Configure|Select Installation|Missing Connection ID/),
+			page.getByText(/Configure|Select installation|Missing Connection ID/),
 		).toBeVisible({ timeout: 15_000 });
 	});
 });

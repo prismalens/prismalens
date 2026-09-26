@@ -84,7 +84,7 @@ export function TelemetryConsent({
 
 	return (
 		<div
-			className="flex flex-col gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+			className="flex flex-col gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-record sm:flex-row sm:items-center sm:justify-between"
 			data-testid="telemetry-consent"
 		>
 			<p className="text-muted-foreground">
@@ -120,8 +120,10 @@ export function TelemetrySettings() {
 	const settings = query.data;
 
 	return (
-		<div className="rounded-lg border bg-card p-6 space-y-4 text-sm">
-			<h3 className="text-base font-semibold text-foreground">Usage data</h3>
+		<div className="rounded-md border bg-card p-4 space-y-4 text-record">
+			<h3 className="text-sm font-semibold tracking-tight text-foreground">
+				Usage data
+			</h3>
 			<p className="text-muted-foreground">{TELEMETRY_SUMMARY}</p>
 			<div className="space-y-2 text-muted-foreground">
 				<p className="font-medium text-foreground">What is sent</p>

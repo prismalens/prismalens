@@ -272,7 +272,7 @@ export function DateRangeFilter({
 						numberOfMonths={2}
 					/>
 					<div className="flex items-center justify-between border-t p-3">
-						<div className="text-sm text-muted-foreground">
+						<div className="text-record text-muted-foreground">
 							{formatDateRange()}
 						</div>
 						<Button

@@ -3,14 +3,15 @@
 
 /**
  * The shell's left rail: the three front doors with what waits behind each,
- * the theme and the account at the bottom. Hidden on setup and auth routes so
- * nothing leads away from a step that must finish. On narrow screens it folds
+ * the theme and the account at the bottom. Hidden on setup, auth and pairing
+ * routes so nothing leads away from a step that must finish. On narrow screens it folds
  * to a top strip.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Bell, Layers, PanelLeft, Settings, Siren } from "lucide-react";
+import { Bell, PanelLeft, Settings, Siren } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { TelemetryConsent, useAbout } from "@/components/settings";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,8 @@ export function Sidebar() {
 	const location = useLocation();
 	if (
 		location.pathname.startsWith("/setup") ||
-		location.pathname.startsWith("/auth")
+		location.pathname.startsWith("/auth") ||
+		location.pathname.startsWith("/pair")
 	) {
 		return null;
 	}
@@ -103,13 +105,16 @@ function SidebarBody({ pathname }: { pathname: string }) {
 
 	const nav = (compact: boolean) =>
 		items.map((item) => {
-			const active = pathname.startsWith(item.to);
+			// Services live inside the settings frame, so Settings stays lit there.
+			const active =
+				pathname.startsWith(item.to) ||
+				(item.to === "/settings" && pathname.startsWith("/services"));
 			return (
 				<Link
 					key={item.to}
 					to={item.to}
 					aria-current={active ? "page" : undefined}
-					title={sidebarFolded && !compact ? item.label : undefined}
+					title={sidebarFolded || compact ? item.label : undefined}
 					className={cn(
 						"flex items-center gap-2.5 rounded-md px-2 py-1.5 text-record text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
 						active && "bg-muted text-foreground",
@@ -132,7 +137,9 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						)}
 					</span>
 					{!(sidebarFolded && !compact) && (
-						<span className="flex-1">{item.label}</span>
+						<span className={cn("flex-1", compact && "sr-only sm:not-sr-only")}>
+							{item.label}
+						</span>
 					)}
 					{item.count !== undefined && !(sidebarFolded && !compact) && (
 						<span
@@ -163,9 +170,7 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						className="flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
 						title="PrismaLens"
 					>
-						<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
-							<Layers className="h-3.5 w-3.5" />
-						</span>
+						<PrismaLensMark className="h-6 w-6 shrink-0" />
 						{!sidebarFolded && <span className="truncate">PrismaLens</span>}
 					</Link>
 					{!sidebarFolded && (
@@ -209,13 +214,20 @@ function SidebarBody({ pathname }: { pathname: string }) {
 			</aside>
 
 			<div
-				className="flex items-center gap-1 border-b bg-card px-2 py-1 md:hidden"
+				className="flex h-10 items-center gap-1 border-b bg-card px-2 md:hidden"
 				data-testid="topbar"
 			>
-				<Link to="/incidents" className="px-2 text-sm font-semibold">
-					PrismaLens
+				<Link
+					to="/incidents"
+					className="flex shrink-0 items-center gap-1.5 px-1.5 text-sm font-semibold tracking-tight"
+					aria-label="PrismaLens"
+				>
+					<PrismaLensMark className="h-6 w-6" />
+					<span className="hidden sm:inline">PrismaLens</span>
 				</Link>
-				<nav className="flex flex-1 items-center gap-0.5">{nav(true)}</nav>
+				<nav className="flex min-w-0 flex-1 items-center justify-end gap-0.5 sm:justify-start">
+					{nav(true)}
+				</nav>
 				<ThemeToggle />
 			</div>
 		</>

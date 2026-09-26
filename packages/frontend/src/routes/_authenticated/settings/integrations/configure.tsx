@@ -167,7 +167,7 @@ function GitHubAppInstallationWizard({
 							{getIntegrationIcon("github", "h-6 w-6")}
 						</div>
 						<div>
-							<h1 className="text-xl font-semibold">Select Installation</h1>
+							<h1 className="text-xl font-semibold">Select installation</h1>
 							<p className="text-sm text-muted-foreground">
 								Choose which organization or account to connect
 							</p>
@@ -177,7 +177,7 @@ function GitHubAppInstallationWizard({
 
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base">Available Installations</CardTitle>
+						<CardTitle className="text-base">Available installations</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{isLoading && (

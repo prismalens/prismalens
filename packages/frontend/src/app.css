@@ -30,7 +30,11 @@ body {
 /* Code/Monospace Styling - Per Brand Guidelines Section 5 */
 code, pre, kbd, samp {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  /* Relative, so inline code sits at the size of the text around it. */
+  font-size: 0.92em;
+}
+
+pre {
   line-height: 1.6;
 }
 
@@ -38,6 +42,12 @@ code {
   background-color: var(--muted);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
+}
+
+pre code {
+  font-size: inherit;
+  background: none;
+  padding: 0;
 }
 
 /* React Flow MiniMap styling for light and dark themes (#436) */

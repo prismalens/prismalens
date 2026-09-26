@@ -267,9 +267,13 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			registry.getByTestId("harness-tested-claude-code"),
 		).toHaveCount(0);
-		await expect(registry.getByText(OPENCODE_INSTALLED.loginHint, {
-			exact: false,
-		})).toBeVisible();
+		// The hint renders its backticked spans as code, so match the text without them.
+		await expect(
+			registry.getByText(OPENCODE_INSTALLED.loginHint.replaceAll("`", ""), {
+				exact: false,
+			}),
+		).toBeVisible();
+		await expect(registry.locator("code", { hasText: "opencode auth login" })).toBeVisible();
 
 		const modelPill = page.getByTestId("model-pill");
 		await expect(modelPill).toBeEnabled();
@@ -391,6 +395,34 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-status-error")).toBeVisible({
 			timeout: 15_000,
 		});
+	});
+
+	test("stops at a 429 instead of retrying it, and shows the error (#527)", async ({
+		page,
+	}) => {
+		let calls = 0;
+		await page.route(isHarnessesUrl, async (route) => {
+			calls++;
+			await route.fulfill({
+				status: 429,
+				contentType: "application/json",
+				headers: { "retry-after": "60" },
+				body: JSON.stringify({
+					code: "TOO_MANY_REQUESTS",
+					message: "ThrottlerException: Too Many Requests",
+					status: 429,
+				}),
+			});
+		});
+		await openHarnessSettings(page);
+
+		await expect(page.getByTestId("harness-status-error")).toBeVisible();
+		// Every mount issues one request; none of them is a retry.
+		await page.waitForTimeout(1_500);
+		const mounted = calls;
+		await page.waitForTimeout(2_000);
+		expect(calls).toBe(mounted);
+		expect(calls).toBeLessThanOrEqual(2);
 	});
 
 	test("saves the picked harness and model through PATCH /settings/harness", async ({

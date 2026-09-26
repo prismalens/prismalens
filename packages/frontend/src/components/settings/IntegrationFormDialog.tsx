@@ -268,7 +268,7 @@ export function IntegrationFormDialog({
 											{getTemplateIcon(template.id)}
 										</div>
 										<div>
-											<p className="font-medium text-sm">{template.name}</p>
+											<p className="font-medium text-record">{template.name}</p>
 											<p className="text-xs text-muted-foreground">
 												{template.category}
 											</p>
@@ -314,7 +314,9 @@ export function IntegrationFormDialog({
 								aria-invalid={showErrors && !label.trim() ? true : undefined}
 							/>
 							{showErrors && !label.trim() && (
-								<p className="text-sm text-destructive">Label is required</p>
+								<p className="text-record text-destructive">
+									Label is required
+								</p>
 							)}
 						</div>
 
@@ -324,7 +326,7 @@ export function IntegrationFormDialog({
 								<>
 									{mode === "edit" && (
 										<div className="space-y-1">
-											<Label className="text-sm text-muted-foreground">
+											<Label className="text-record text-muted-foreground">
 												Leave fields blank to keep existing values
 											</Label>
 										</div>
@@ -347,7 +349,7 @@ export function IntegrationFormDialog({
 										.
 									</p>
 									{mode === "edit" && (
-										<Label className="text-sm text-muted-foreground">
+										<Label className="text-record text-muted-foreground">
 											Leave fields blank to keep existing values
 										</Label>
 									)}
@@ -390,7 +392,7 @@ export function IntegrationFormDialog({
 										}
 									/>
 									{mode === "create" && showErrors && !oauthClientId && (
-										<p className="text-sm text-destructive">
+										<p className="text-record text-destructive">
 											Client ID is required
 										</p>
 									)}
@@ -428,7 +430,7 @@ export function IntegrationFormDialog({
 										}
 									/>
 									{mode === "create" && showErrors && !oauthClientSecret && (
-										<p className="text-sm text-destructive">
+										<p className="text-record text-destructive">
 											Client Secret is required
 										</p>
 									)}

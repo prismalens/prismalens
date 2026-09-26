@@ -13,8 +13,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { MutationError } from "@/components/shared/MutationError";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/pair")({
@@ -35,6 +37,7 @@ function guessDeviceName(): string | undefined {
 }
 
 function PairPage() {
+	usePageTitle("Pair this device");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const [token, setToken] = useState<string | null>(null);
@@ -85,7 +88,7 @@ function PairPage() {
 		return (
 			<Shell title="Nothing to pair">
 				<p className="text-record text-muted-foreground">
-					This page needs a pairing link. On the machine running prismalens,
+					This page needs a pairing link. On the machine running PrismaLens,
 					open the link <code>pl up</code> printed, or create one: Settings →
 					Devices, or <code>pl pair</code>.
 				</p>
@@ -123,9 +126,13 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-background px-4">
-			<div className="w-full max-w-sm space-y-6">
-				<h1 className="text-title font-semibold">{title}</h1>
+		<div className="fixed inset-0 overflow-y-auto bg-background px-4">
+			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center space-y-4 py-8">
+				<div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+					<PrismaLensMark className="h-7 w-7" />
+					PrismaLens
+				</div>
+				<h1 className="text-lg font-semibold tracking-tight">{title}</h1>
 				{children}
 			</div>
 		</div>

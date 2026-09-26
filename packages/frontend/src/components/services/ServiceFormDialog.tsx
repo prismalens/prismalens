@@ -175,7 +175,7 @@ export function ServiceFormDialog({
 			<DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>
-						{isEditing ? "Edit Service" : "Add Service"}
+						{isEditing ? "Edit service" : "Add service"}
 					</DialogTitle>
 					<DialogDescription>
 						{isEditing
@@ -202,9 +202,9 @@ export function ServiceFormDialog({
 						</p>
 					</div>
 
-					{/* Display Name */}
+					{/* Display name */}
 					<div className="space-y-2">
-						<Label htmlFor="displayName">Display Name</Label>
+						<Label htmlFor="displayName">Display name</Label>
 						<Input
 							id="displayName"
 							value={displayName}
@@ -314,7 +314,7 @@ export function ServiceFormDialog({
 					</Button>
 					<Button onClick={handleSubmit} disabled={isPending || !name.trim()}>
 						{isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						{isEditing ? "Save Changes" : "Create Service"}
+						{isEditing ? "Save changes" : "Create service"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

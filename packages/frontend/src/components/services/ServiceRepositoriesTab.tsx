@@ -216,7 +216,7 @@ export function ServiceRepositoriesTab({
 						))}
 					</div>
 				) : (
-					<p className="p-4 text-sm text-muted-foreground text-center">
+					<p className="p-4 text-record text-muted-foreground text-center">
 						No repositories linked to this service
 					</p>
 				)}

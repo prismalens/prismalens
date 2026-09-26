@@ -52,7 +52,7 @@ export function ServiceDistributionChart({
 	return (
 		<Card className={className}>
 			<CardHeader className="pb-2">
-				<CardTitle className="text-base font-medium">By Service</CardTitle>
+				<CardTitle>By service</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{total === 0 ? (
@@ -93,7 +93,7 @@ export function ServiceDistributionChart({
 									return (
 										<div className="rounded-lg border bg-background p-2 shadow-sm">
 											<p className="text-sm font-medium">{data.name}</p>
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												{data.value} incident{data.value !== 1 ? "s" : ""}
 											</p>
 										</div>

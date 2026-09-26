@@ -17,6 +17,8 @@ import {
 	useIncidentWindow,
 } from "@/components/incidents/IncidentListPane";
 import { Button } from "@/components/ui/button";
+import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/incidents/")({
@@ -24,6 +26,7 @@ export const Route = createFileRoute("/_authenticated/incidents/")({
 });
 
 function IncidentsOverview() {
+	usePageTitle("Incidents");
 	const navigate = useNavigate();
 	const { search, from, to, listInput, statsInput, windowLabel } =
 		useIncidentWindow();
@@ -31,6 +34,9 @@ function IncidentsOverview() {
 		...orpc.incidents.getStats.queryOptions({ input: statsInput }),
 		refetchInterval: 30_000,
 	});
+	const workspace = useQuery(
+		orpc.incidents.getStats.queryOptions({ input: {} }),
+	);
 	const analytics = search.view === "analytics";
 	const { data: list, isLoading: listLoading } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
@@ -45,7 +51,10 @@ function IncidentsOverview() {
 
 	// With nothing chosen, land on the row that needs a human most; the numbers
 	// stay one click away behind the overview. An empty window shows the numbers.
-	const top = !analytics && list ? orderIncidents(list.data)[0] : undefined;
+	// Below `lg` the list is the page, so there is nothing to land on.
+	const split = useMediaQuery(SPLIT_PANES);
+	const top =
+		split && !analytics && list ? orderIncidents(list.data)[0] : undefined;
 	if (top) {
 		return (
 			<Navigate
@@ -66,7 +75,7 @@ function IncidentsOverview() {
 	if (!analytics && listLoading) return null;
 
 	// Nothing exists yet, in any window: the on-ramp, not numbers.
-	if (stats.data && stats.data.total === 0) {
+	if (workspace.data && workspace.data.total === 0) {
 		return (
 			<div className="h-full overflow-y-auto">
 				<FirstRunPanel />
@@ -74,6 +83,20 @@ function IncidentsOverview() {
 		);
 	}
 	const windowEmpty = !!list && list.data.length === 0;
+	const loaded = list?.data ?? [];
+	const chartDays =
+		from && to
+			? Math.ceil((to.getTime() - from.getTime()) / 86_400_000)
+			: spanDays(loaded);
+	// The charts stop at `chartDays`; the totals count the same incidents.
+	const charted =
+		from && to
+			? loaded
+			: loaded.filter(
+					(i) =>
+						Date.now() - new Date(i.triggeredAt).getTime() <
+						chartDays * 86_400_000,
+				);
 
 	return (
 		<div className="h-full overflow-y-auto" data-testid="incidents-overview">
@@ -148,14 +171,20 @@ function IncidentsOverview() {
 						</button>
 					</p>
 				)}
+				{analytics && !windowEmpty && !(from && to) && (
+					<p
+						className="text-meta text-muted-foreground"
+						data-testid="analytics-scope"
+					>
+						Last {chartDays} days
+						{loaded.length >= listInput.limit &&
+							`, the ${listInput.limit} most recent incidents`}
+					</p>
+				)}
 				{analytics && !windowEmpty && (
 					<IncidentAnalytics
-						incidents={list?.data ?? []}
-						days={
-							from && to
-								? Math.ceil((to.getTime() - from.getTime()) / 86_400_000)
-								: 30
-						}
+						incidents={charted}
+						days={chartDays}
 						onSeverityFilter={(severity) =>
 							setSearch({
 								severity: severity as typeof search.severity,
@@ -173,5 +202,17 @@ function IncidentsOverview() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+/** With no window, the charts start at the oldest incident loaded, capped at a year. */
+function spanDays(incidents: { triggeredAt: string | Date }[]): number {
+	const oldest = Math.min(
+		...incidents.map((i) => new Date(i.triggeredAt).getTime()),
+	);
+	if (!Number.isFinite(oldest)) return 30;
+	return Math.min(
+		365,
+		Math.max(30, Math.ceil((Date.now() - oldest) / 86_400_000) + 1),
 	);
 }

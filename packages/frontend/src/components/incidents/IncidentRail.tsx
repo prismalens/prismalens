@@ -17,6 +17,7 @@ import type { InvestigationRun } from "@/components/investigation/useInvestigati
 import { LiveSlot } from "@/components/shared/LiveSlot";
 import { Mono } from "@/components/shared/Mono";
 import { StateChip } from "@/components/shared/StateChip";
+import { formatDateTime } from "@/lib/format-time";
 import { runStatusTone } from "@/lib/state-tone";
 
 interface RailBlockProps {
@@ -108,18 +109,18 @@ export function RunBlock({ run }: { run: InvestigationRun | null }) {
 							</StateChip>
 						</Detail>
 						<Detail label="Started">
-							<Mono>
+							<span className="tabular-nums">
 								{investigation.startedAt
-									? new Date(investigation.startedAt).toLocaleString()
+									? formatDateTime(investigation.startedAt)
 									: "—"}
-							</Mono>
+							</span>
 						</Detail>
 						<Detail label="Completed">
-							<Mono>
+							<span className="tabular-nums">
 								{investigation.completedAt
-									? new Date(investigation.completedAt).toLocaleString()
+									? formatDateTime(investigation.completedAt)
 									: "—"}
-							</Mono>
+							</span>
 						</Detail>
 						<Detail label="Events">
 							<span className="tabular-nums">{run?.events.length ?? 0}</span>
@@ -196,24 +197,32 @@ export function DetailsBlock({
 			<RailBlock title="Details" testId="rail-details">
 				<dl>
 					<Detail label={isActive ? "Open for" : "Time to resolve"}>
-						<Mono>{formatDuration(duration)}</Mono>
+						<span className="tabular-nums">{formatDuration(duration)}</span>
 					</Detail>
 					{incident.timeToAcknowledge ? (
 						<Detail label="Time to acknowledge">
-							<Mono>{formatDuration(incident.timeToAcknowledge)}</Mono>
+							<span className="tabular-nums">
+								{formatDuration(incident.timeToAcknowledge)}
+							</span>
 						</Detail>
 					) : null}
 					<Detail label="Triggered">
-						<Mono>{new Date(incident.triggeredAt).toLocaleString()}</Mono>
+						<span className="tabular-nums">
+							{formatDateTime(incident.triggeredAt)}
+						</span>
 					</Detail>
 					{incident.acknowledgedAt && (
 						<Detail label="Acknowledged">
-							<Mono>{new Date(incident.acknowledgedAt).toLocaleString()}</Mono>
+							<span className="tabular-nums">
+								{formatDateTime(incident.acknowledgedAt)}
+							</span>
 						</Detail>
 					)}
 					{incident.resolvedAt && (
 						<Detail label="Resolved">
-							<Mono>{new Date(incident.resolvedAt).toLocaleString()}</Mono>
+							<span className="tabular-nums">
+								{formatDateTime(incident.resolvedAt)}
+							</span>
 						</Detail>
 					)}
 					<Detail label="Alerts">
@@ -230,7 +239,7 @@ export function DetailsBlock({
 								to="/services/$id"
 								params={{ id: incident.service.id }}
 								search={{ tab: "overview" }}
-								className="font-mono text-primary hover:underline"
+								className="text-primary hover:underline"
 							>
 								{incident.service.displayName || incident.service.name}
 							</Link>

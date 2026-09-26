@@ -229,7 +229,9 @@ export function TimelineEntry({
 					</Badge>
 				</div>
 				{description && (
-					<p className="text-sm text-muted-foreground mt-1">{description}</p>
+					<p className="text-record text-muted-foreground mt-1">
+						{description}
+					</p>
 				)}
 				<span className="text-xs text-muted-foreground mt-2 block">
 					{formatDistanceToNow(new Date(occurredAt), { addSuffix: true })}
