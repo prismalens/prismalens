@@ -79,9 +79,9 @@ machine's included, so nothing gets in by being local. Everything else is
 configured in the dashboard. A coding agent must be installed on the machine for
 investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
-is the verified default). For each one on PATH it also opens an ACP handshake and
+is first in the pick order). For each one on PATH it also opens an ACP handshake and
 reports `ready` or the harness's own reason (for example "not logged in") — the
-same check the Settings → Harness card runs on demand. PrismaLens never bundles,
+same check Settings → Agent runs on demand. PrismaLens never bundles,
 installs or authenticates a harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
@@ -110,7 +110,7 @@ You do not need an Alertmanager to see it work:
    your browser on the link that pairs it, no account. `pl doctor` says whether a coding agent is on PATH, which model
    a run will ask it for. With OpenCode the
    model is `opencode/muse-spark-1.3-contributor-free`, keyless, unless you set
-   another under Settings → Harness → Model.
+   another under Settings → Agent → Model.
 2. **Point a service at its code.** Services, then Add Service, then set
    **Repository** to a folder (`~/code/payments`) or a git URL
    (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
@@ -178,10 +178,10 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
   PrismaLens assembles the prompt, answers the agent's permission requests,
   records the stream and validates the report. It never calls a model itself.
 - **Bring your own harness.** Any ACP agent on PATH is a registry row:
-  `opencode` (verified), `claude-code`, `codex`, `gemini`, `deepagents`. A row
-  is auto-selected only after its unattended admission run is green in CI; the
-  rest need `PRISMALENS_HARNESS=<id>`. Settings → Harness shows what is
-  installed. The harness's own login or API key is its business; PrismaLens
+  `opencode`, `claude-code`, `codex`, `gemini`, `deepagents`. With nothing
+  pinned, the first one on PATH in that order runs; pin another with
+  `PRISMALENS_HARNESS=<id>` or in Settings → Agent, which shows what is
+  installed and the version each was tested with. The harness's own login or API key is its business; PrismaLens
   never reads or stores one.
 - **Runtime gate, not read-only.** Every ACP permission request is answered in
   PrismaLens code: edit, delete and move tools and mutating shell commands are
