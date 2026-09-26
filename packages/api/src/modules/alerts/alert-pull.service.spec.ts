@@ -2,7 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import { Test, TestingModule } from "@nestjs/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { WebhooksService } from "../webhooks/webhooks.service.js";
@@ -13,19 +21,39 @@ import {
 } from "./alert-pull.service.js";
 import { alertmanagerFingerprint } from "./alertmanager-fingerprint.js";
 
+type FetchLike = (
+	url: string | URL | Request,
+	init?: RequestInit,
+) => Promise<Response>;
+
+const UP_SINCE_LONG_AGO = "2000-01-01T00:00:00Z";
+
+function uptimeResponse(uptime: string): Response {
+	return new Response(JSON.stringify({ uptime }), {
+		status: 200,
+		headers: { "Content-Type": "application/json" },
+	});
+}
+
 describe("AlertPullService (#605)", () => {
 	let service: AlertPullService;
 	let prisma: {
 		connection: { findMany: ReturnType<typeof vi.fn> };
 		setting: { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> };
 		event: { findFirst: ReturnType<typeof vi.fn> };
+		alertSourceAlert: {
+			updateMany: ReturnType<typeof vi.fn>;
+			findMany: ReturnType<typeof vi.fn>;
+		};
 	};
 	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
 	let webhooksService: {
 		processPrometheusAlert: ReturnType<typeof vi.fn>;
 		resolvePrometheusAlert: ReturnType<typeof vi.fn>;
 	};
-	let fetchSpy: ReturnType<typeof vi.spyOn>;
+	/** Every request except Alertmanager's `/api/v2/status`, which `statusFetch` answers. */
+	let fetchSpy: Mock<FetchLike>;
+	let statusFetch: Mock<FetchLike>;
 
 	beforeEach(async () => {
 		prisma = {
@@ -38,6 +66,10 @@ describe("AlertPullService (#605)", () => {
 			},
 			event: {
 				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			alertSourceAlert: {
+				updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+				findMany: vi.fn().mockResolvedValue([]),
 			},
 		};
 		integrationsService = {
@@ -58,11 +90,17 @@ describe("AlertPullService (#605)", () => {
 		}).compile();
 
 		service = module.get<AlertPullService>(AlertPullService);
-		fetchSpy = vi.spyOn(globalThis, "fetch");
+		fetchSpy = vi.fn<FetchLike>();
+		statusFetch = vi.fn<FetchLike>(async () => uptimeResponse(UP_SINCE_LONG_AGO));
+		vi.stubGlobal("fetch", (url: string | URL | Request, init?: RequestInit) =>
+			url.toString().endsWith("/api/v2/status")
+				? statusFetch(url, init)
+				: fetchSpy(url, init),
+		);
 	});
 
 	afterEach(() => {
-		fetchSpy.mockRestore();
+		vi.unstubAllGlobals();
 	});
 
 	describe("Alertmanager pull (Slice 1)", () => {
@@ -102,7 +140,7 @@ describe("AlertPullService (#605)", () => {
 			const result = await service.pull();
 
 			expect(fetchSpy).toHaveBeenCalledWith(
-				"http://alertmanager:9093/api/v2/alerts?active=true&silenced=false&inhibited=false",
+				"http://alertmanager:9093/api/v2/alerts",
 				expect.objectContaining({ method: "GET" }),
 			);
 			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
@@ -126,6 +164,7 @@ describe("AlertPullService (#605)", () => {
 				received: 1,
 				processed: 1,
 				caughtUp: 0,
+				resolvedByAbsence: 0,
 				errors: [],
 			});
 		});
@@ -367,6 +406,7 @@ describe("AlertPullService (#605)", () => {
 				received: 0,
 				processed: 0,
 				caughtUp: 0,
+				resolvedByAbsence: 0,
 				errors: [],
 			});
 		});
@@ -1062,6 +1102,283 @@ describe("AlertPullService (#605)", () => {
 				`prometheus-catchup:${expectedFp}:${ep2StartsAt}:resolved`,
 				ep2StartsAt,
 			);
+		});
+	});
+
+	describe("resolution by absence", () => {
+		const now = new Date("2026-09-26T08:00:00.000Z");
+		const json = (body: unknown, status = 200) =>
+			new Response(JSON.stringify(body), {
+				status,
+				headers: { "Content-Type": "application/json" },
+			});
+		const alertmanagers = (...ids: string[]) =>
+			prisma.connection.findMany.mockImplementation(
+				async (args?: { where?: { integration?: { templateId?: string } } }) =>
+					args?.where?.integration?.templateId === "alertmanager"
+						? ids.map((id) => ({
+								id,
+								label: id,
+								status: "ACTIVE",
+								integration: { templateId: "alertmanager" },
+							}))
+						: [],
+			);
+		/** Each connection's base URL is `http://<id>`; `lists` maps it to what it holds. */
+		const serve = (lists: Record<string, unknown[] | Error>) => {
+			integrationsService.connectionBaseUrl.mockImplementation(
+				async (id: string) => `http://${id}`,
+			);
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const host = new URL(url.toString()).host;
+				const list = lists[host];
+				if (list instanceof Error) throw list;
+				return json(list ?? []);
+			});
+		};
+		const listed = (fingerprint: string, state = "active") => ({
+			labels: { alertname: "HighLatency" },
+			startsAt: "2026-09-25T20:00:00Z",
+			fingerprint,
+			status: { state },
+		});
+		const open = (...fingerprints: string[]) =>
+			prisma.alertSourceAlert.findMany.mockResolvedValue(
+				fingerprints.map((sourceAlertId) => ({
+					sourceAlertId,
+					alert: { labels: JSON.stringify({ alertname: "HighLatency" }) },
+				})),
+			);
+
+		it("resolves a stamped alert no Alertmanager lists, and says why", async () => {
+			alertmanagers("am-1");
+			serve({ "am-1": [] });
+			open("fp-gone");
+
+			const result = await service.pull(now);
+
+			expect(prisma.alertSourceAlert.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { resolvedAt: null, lastPulledAt: { not: null } },
+				}),
+			);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
+				"fp-gone",
+				"alertmanager-absent:fp-gone:2026-09-26T08:00:00.000Z",
+				undefined,
+				{
+					source: "alertmanager-pull",
+					note: {
+						text: "no connected Alertmanager still lists HighLatency (fp-gone); no resolved notification was received",
+						reason: "alertmanager-absence",
+					},
+				},
+			);
+			expect(result.resolvedByAbsence).toBe(1);
+		});
+
+		it("stamps every listed fingerprint, silenced and unprocessed included, and ingests only active ones", async () => {
+			alertmanagers("am-1");
+			serve({
+				"am-1": [
+					listed("fp-silenced", "suppressed"),
+					listed("fp-new", "unprocessed"),
+				],
+			});
+			open("fp-silenced", "fp-new");
+
+			const result = await service.pull(now);
+
+			expect(prisma.alertSourceAlert.updateMany).toHaveBeenCalledWith({
+				where: { sourceAlertId: { in: ["fp-silenced", "fp-new"] } },
+				data: { lastPulledAt: now },
+			});
+			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+			expect(result.resolvedByAbsence).toBe(0);
+		});
+
+		it("skips when an Alertmanager started less than 10 minutes ago", async () => {
+			alertmanagers("am-1");
+			serve({ "am-1": [] });
+			statusFetch.mockImplementation(async () =>
+				uptimeResponse("2026-09-26T07:57:00.000Z"),
+			);
+			open("fp-gone");
+
+			const result = await service.pull(now);
+
+			expect(prisma.alertSourceAlert.findMany).not.toHaveBeenCalled();
+			expect(result.resolvedByAbsence).toBe(0);
+		});
+
+		it("skips when an Alertmanager's status does not answer", async () => {
+			alertmanagers("am-1");
+			serve({ "am-1": [] });
+			statusFetch.mockImplementation(async () => json({}, 500));
+			open("fp-gone");
+
+			await service.pull(now);
+
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("skips for every connection when one list fails", async () => {
+			alertmanagers("am-1", "am-2");
+			serve({ "am-1": [], "am-2": new Error("Connection refused") });
+			open("fp-gone");
+
+			const result = await service.pull(now);
+
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+			expect(result.errors).toEqual(["am-2: Network error: Connection refused"]);
+		});
+
+		it("keeps an alert any one Alertmanager still lists", async () => {
+			alertmanagers("am-1", "am-2");
+			serve({ "am-1": [], "am-2": [listed("fp-b")] });
+			open("fp-b");
+
+			await service.pull(now);
+
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("never resolves without a connected Alertmanager", async () => {
+			prisma.connection.findMany.mockResolvedValue([]);
+			open("fp-gone");
+
+			await service.pull(now);
+
+			expect(statusFetch).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("keeps an alert Prometheus catch-up still sees firing", async () => {
+			prisma.connection.findMany.mockImplementation(
+				async (args?: { where?: { integration?: { templateId?: string } } }) => {
+					const templateId = args?.where?.integration?.templateId;
+					if (templateId === "alertmanager") {
+						return [{ id: "am-1", label: "am-1", status: "ACTIVE", integration: { templateId } }];
+					}
+					if (templateId === "prometheus") {
+						return [{ id: "prom-1", label: "prom-1", status: "ACTIVE", integration: { templateId } }];
+					}
+					return [];
+				},
+			);
+			const labels = { alertname: "HighLatency" };
+			const fingerprint = alertmanagerFingerprint(labels);
+			const lastSec = Math.floor(now.getTime() / 1000) - 30;
+			integrationsService.connectionBaseUrl.mockImplementation(
+				async (id: string) => `http://${id}`,
+			);
+			fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+				const u = url.toString();
+				if (u.startsWith("http://am-1")) return json([]);
+				if (u.includes("ALERTS_FOR_STATE")) {
+					return json({ status: "success", data: { resultType: "matrix", result: [] } });
+				}
+				return json({
+					status: "success",
+					data: {
+						resultType: "matrix",
+						result: [
+							{
+								metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
+								values: [
+									[lastSec - 60, "1"],
+									[lastSec, "1"],
+								],
+							},
+						],
+					},
+				});
+			});
+			open(fingerprint);
+
+			await service.pull(now);
+
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalledWith(
+				fingerprint,
+				expect.stringMatching(/^alertmanager-absent:/),
+				undefined,
+				expect.anything(),
+			);
+		});
+
+		it("still resolves when Prometheus catch-up fails", async () => {
+			prisma.connection.findMany.mockImplementation(
+				async (args?: { where?: { integration?: { templateId?: string } } }) => {
+					const templateId = args?.where?.integration?.templateId;
+					if (templateId === "alertmanager") {
+						return [{ id: "am-1", label: "am-1", status: "ACTIVE", integration: { templateId } }];
+					}
+					if (templateId === "prometheus") {
+						return [{ id: "prom-1", label: "prom-1", status: "ACTIVE", integration: { templateId } }];
+					}
+					return [];
+				},
+			);
+			serve({ "am-1": [], "prom-1": new Error("Prometheus down") });
+			open("fp-gone");
+
+			const result = await service.pull(now);
+
+			expect(result.resolvedByAbsence).toBe(1);
+		});
+
+		describe("after a webhook", () => {
+			beforeEach(() => {
+				vi.stubEnv("CI", "");
+				vi.stubEnv("PRISMALENS_SEED_DEMO", "");
+			});
+			afterEach(() => {
+				vi.unstubAllEnvs();
+			});
+
+			it("stamps and resolves without ingesting or moving the catch-up checkpoint", async () => {
+				alertmanagers("am-1");
+				serve({ "am-1": [listed("fp-live")] });
+				open("fp-live", "fp-gone");
+
+				await service.onWebhook(() => now);
+
+				expect(prisma.alertSourceAlert.updateMany).toHaveBeenCalledWith({
+					where: { sourceAlertId: { in: ["fp-live"] } },
+					data: { lastPulledAt: now },
+				});
+				expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+				expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
+					"fp-gone",
+					expect.any(String),
+					undefined,
+					expect.anything(),
+				);
+				expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+				expect(prisma.setting.upsert).not.toHaveBeenCalled();
+			});
+
+			it("coalesces a burst into at most two rounds", async () => {
+				alertmanagers("am-1");
+				serve({ "am-1": [] });
+
+				await Promise.all(
+					Array.from({ length: 5 }, () => service.onWebhook(() => now)),
+				);
+
+				expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(2);
+				expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+			});
+
+			it("does nothing under CI", async () => {
+				vi.stubEnv("CI", "true");
+				alertmanagers("am-1");
+
+				await service.onWebhook(() => now);
+
+				expect(prisma.connection.findMany).not.toHaveBeenCalled();
+			});
 		});
 	});
 });

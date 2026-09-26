@@ -24,6 +24,20 @@ export interface PullResult {
 	received: number;
 	processed: number;
 	caughtUp: number;
+	/** Alerts resolved because no connected Alertmanager lists them any more. */
+	resolvedByAbsence?: number;
+	errors: string[];
+}
+
+/** One round of listing every connected Alertmanager. */
+interface AlertmanagerLists {
+	/** Every connection listed its alerts. */
+	listed: boolean;
+	/** Every connection has been up long enough to have its alerts back. */
+	settled: boolean;
+	byConnection: Array<{ label: string; alerts: GettableAlert[] }>;
+	/** Fingerprints any connection lists, in any state. */
+	present: Set<string>;
 	errors: string[];
 }
 
@@ -41,10 +55,19 @@ export interface GettableAlert {
 
 export const ALERT_PULL_SETTING_KEY = "ALERT_PULL";
 export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+/**
+ * Alertmanager keeps alerts in memory, so a restarted one lists nothing until
+ * Prometheus resends (every evaluation, after a 1 min resend delay). Absence
+ * from a younger Alertmanager proves nothing (#605).
+ */
+export const ALERTMANAGER_MIN_UPTIME_MS = 10 * 60 * 1000;
+const STAMP_CHUNK = 500;
 
 @Injectable()
 export class AlertPullService implements OnApplicationBootstrap {
 	private readonly logger = new Logger(AlertPullService.name);
+	private webhookCheck: Promise<void> | null = null;
+	private webhookCheckQueued = false;
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -61,13 +84,11 @@ export class AlertPullService implements OnApplicationBootstrap {
 	 * (`PRISMALENS_SEED_DEMO=1`) so tests never depend on network access.
 	 */
 	onApplicationBootstrap(): void {
-		if (process.env.CI || process.env.PRISMALENS_SEED_DEMO === "1") {
-			return;
-		}
+		if (offline()) return;
 		void this.pull()
 			.then((result) => {
 				this.logger.log(
-					`Boot pull: ${result.sources} source(s), ${result.received} received, ${result.processed} new, ${result.caughtUp} caught up, ${result.errors.length} error(s)`,
+					`Boot pull: ${result.sources} source(s), ${result.received} received, ${result.processed} new, ${result.caughtUp} caught up, ${result.resolvedByAbsence ?? 0} resolved by absence, ${result.errors.length} error(s)`,
 				);
 			})
 			.catch((err) => {
@@ -154,32 +175,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 		const since = await this.getCatchupSince(now);
 
 		// 1. Query Alertmanager connections
-		let alertmanagerConnections: Array<
-			Awaited<
-				ReturnType<
-					typeof this.prisma.connection.findMany<{
-						include: { integration: true };
-					}>
-				>
-			>[number]
-		> = [];
-		try {
-			alertmanagerConnections = await this.prisma.connection.findMany({
-				where: {
-					status: "ACTIVE",
-					integration: {
-						templateId: "alertmanager",
-					},
-				},
-				include: {
-					integration: true,
-				},
-			});
-		} catch (err) {
-			result.errors.push(
-				`Failed to query Alertmanager connections: ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
+		const alertmanagerConnections = await this.alertmanagerConnections(
+			result.errors,
+		);
 
 		// 2. Query Prometheus connections
 		let prometheusConnections: Array<
@@ -213,102 +211,54 @@ export class AlertPullService implements OnApplicationBootstrap {
 			alertmanagerConnections.length + prometheusConnections.length;
 
 		// 3. Pull from Alertmanager connections
-		for (const conn of alertmanagerConnections) {
-			const label = conn.label || conn.id;
-			try {
-				const baseUrl = await this.integrationsService.connectionBaseUrl(
-					conn.id,
-				);
-				if (!baseUrl) {
-					result.errors.push(`${label}: Connection has no baseUrl`);
-					continue;
-				}
+		const lists = await this.listAlertmanagers(alertmanagerConnections, now);
+		result.errors.push(...lists.errors);
+		for (const { label, alerts } of lists.byConnection) {
+			result.received += alerts.length;
+			for (const alertItem of alerts) {
+				// Listed while silenced or inhibited still counts as present, but
+				// only an active alert is worth an incident.
+				if (alertItem.status?.state !== "active") continue;
 
-				const requestFn = urlOnlyRequestFn(baseUrl);
-				let response: Response;
+				const fingerprint = alertItem.fingerprint ?? "";
+				const startsAt = alertItem.startsAt;
+				const prometheusAlert: PrometheusAlert = {
+					status: "firing",
+					labels: alertItem.labels ?? {},
+					annotations: alertItem.annotations,
+					startsAt,
+					endsAt: alertItem.endsAt,
+					generatorURL: alertItem.generatorURL,
+					fingerprint: fingerprint || undefined,
+				};
+
 				try {
-					response = await requestFn(
-						"GET",
-						"/api/v2/alerts?active=true&silenced=false&inhibited=false",
+					const { isNew } = await this.webhooksService.processPrometheusAlert(
+						prometheusAlert,
+						{
+							idempotencyKey: `alertmanager-pull:${fingerprint}:${startsAt}`,
+							source: "alertmanager-pull",
+							autoInvestigate: false,
+						},
 					);
-				} catch (networkErr) {
-					result.errors.push(
-						`${label}: Network error: ${networkErr instanceof Error ? networkErr.message : String(networkErr)}`,
-					);
-					continue;
-				}
-
-				if (!response.ok) {
-					result.errors.push(
-						`${label}: HTTP ${response.status} ${response.statusText}`,
-					);
-					continue;
-				}
-
-				let rawAlerts: unknown;
-				try {
-					rawAlerts = await response.json();
-				} catch (jsonErr) {
-					result.errors.push(
-						`${label}: Invalid JSON response: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`,
-					);
-					continue;
-				}
-
-				if (!Array.isArray(rawAlerts)) {
-					result.errors.push(
-						`${label}: Invalid response: expected an array of alerts`,
-					);
-					continue;
-				}
-
-				const alertList = rawAlerts as GettableAlert[];
-				result.received += alertList.length;
-
-				for (const alertItem of alertList) {
-					if (alertItem.status?.state !== "active") {
-						continue;
+					if (isNew) {
+						result.processed++;
 					}
-
-					const fingerprint = alertItem.fingerprint ?? "";
-					const startsAt = alertItem.startsAt;
-					const prometheusAlert: PrometheusAlert = {
-						status: "firing",
-						labels: alertItem.labels ?? {},
-						annotations: alertItem.annotations,
-						startsAt,
-						endsAt: alertItem.endsAt,
-						generatorURL: alertItem.generatorURL,
-						fingerprint: fingerprint || undefined,
-					};
-
-					try {
-						const { isNew } = await this.webhooksService.processPrometheusAlert(
-							prometheusAlert,
-							{
-								idempotencyKey: `alertmanager-pull:${fingerprint}:${startsAt}`,
-								source: "alertmanager-pull",
-								autoInvestigate: false,
-							},
-						);
-						if (isNew) {
-							result.processed++;
-						}
-					} catch (alertErr) {
-						this.logger.error(
-							`Failed to process pulled alert ${fingerprint}: ${alertErr}`,
-						);
-						result.errors.push(
-							`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
-						);
-					}
+				} catch (alertErr) {
+					this.logger.error(
+						`Failed to process pulled alert ${fingerprint}: ${alertErr}`,
+					);
+					result.errors.push(
+						`${label}: alert ${fingerprint}: ${alertErr instanceof Error ? alertErr.message : String(alertErr)}`,
+					);
 				}
-			} catch (err) {
-				result.errors.push(
-					`${label}: ${err instanceof Error ? err.message : String(err)}`,
-				);
 			}
 		}
+		// After ingest, so an alert this pull just created is stamped too.
+		await this.stampListed(lists.present, now);
+
+		// Fingerprints catch-up saw still firing; never resolved by absence.
+		const stillFiring = new Set<string>();
 
 		// 4. Catch up from Prometheus connections
 		const metricsSegment = new PrometheusMetricsSegment();
@@ -488,6 +438,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 							const shouldResolve =
 								!isLastEpisode || lastSampleTimeMs < endedThresholdMs;
 
+							if (!shouldResolve) stillFiring.add(fingerprint);
 							if (shouldResolve) {
 								await this.webhooksService.resolvePrometheusAlert(
 									fingerprint,
@@ -512,7 +463,14 @@ export class AlertPullService implements OnApplicationBootstrap {
 			}
 		}
 
-		// 5. Update ALERT_PULL setting only after catch-up completed without catch-up errors
+		// 5. Resolve what every connected Alertmanager has stopped listing
+		result.resolvedByAbsence = await this.resolveAbsent(
+			lists,
+			stillFiring,
+			now,
+		);
+
+		// 6. Update ALERT_PULL setting only after catch-up completed without catch-up errors
 		if (catchupErrors.length === 0) {
 			try {
 				await this.updateLastPulledAt(now);
@@ -524,5 +482,214 @@ export class AlertPullService implements OnApplicationBootstrap {
 		}
 
 		return result;
+	}
+
+	/**
+	 * After a webhook delivery, list every connected Alertmanager, stamp what it
+	 * lists and resolve what it no longer lists. This is what lets an alert that
+	 * fired by webhook resolve after a night with the lid closed. Never awaited by
+	 * the webhook; one run at a time, at most one queued behind it.
+	 */
+	onWebhook(now: () => Date = () => new Date()): Promise<void> {
+		if (offline()) return Promise.resolve();
+		if (this.webhookCheck) {
+			this.webhookCheckQueued = true;
+			return this.webhookCheck;
+		}
+		const run = async (): Promise<void> => {
+			do {
+				this.webhookCheckQueued = false;
+				try {
+					const at = now();
+					const errors: string[] = [];
+					const connections = await this.alertmanagerConnections(errors);
+					if (connections.length === 0) continue;
+					const lists = await this.listAlertmanagers(connections, at);
+					await this.stampListed(lists.present, at);
+					await this.resolveAbsent(lists, new Set(), at);
+				} catch (err) {
+					this.logger.warn(`Alertmanager check after webhook failed: ${err}`);
+				}
+			} while (this.webhookCheckQueued);
+		};
+		this.webhookCheck = run().finally(() => {
+			this.webhookCheck = null;
+		});
+		return this.webhookCheck;
+	}
+
+	private async alertmanagerConnections(errors: string[]) {
+		try {
+			return await this.prisma.connection.findMany({
+				where: {
+					status: "ACTIVE",
+					integration: {
+						templateId: "alertmanager",
+					},
+				},
+				include: {
+					integration: true,
+				},
+			});
+		} catch (err) {
+			errors.push(
+				`Failed to query Alertmanager connections: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			return [];
+		}
+	}
+
+	/** Every alert each connection holds, silenced and inhibited included, and its uptime. */
+	private async listAlertmanagers(
+		connections: Array<{ id: string; label: string | null }>,
+		now: Date,
+	): Promise<AlertmanagerLists> {
+		const lists: AlertmanagerLists = {
+			listed: connections.length > 0,
+			settled: connections.length > 0,
+			byConnection: [],
+			present: new Set(),
+			errors: [],
+		};
+		for (const conn of connections) {
+			const label = conn.label || conn.id;
+			const fail = (message: string) => {
+				lists.errors.push(`${label}: ${message}`);
+				lists.listed = false;
+			};
+			const baseUrl = await this.integrationsService
+				.connectionBaseUrl(conn.id)
+				.catch(() => null);
+			if (!baseUrl) {
+				fail("Connection has no baseUrl");
+				continue;
+			}
+			const requestFn = urlOnlyRequestFn(baseUrl);
+
+			let rawAlerts: unknown;
+			try {
+				const response = await requestFn("GET", "/api/v2/alerts");
+				if (!response.ok) {
+					fail(`HTTP ${response.status} ${response.statusText}`);
+					continue;
+				}
+				rawAlerts = await response.json();
+			} catch (err) {
+				fail(
+					`Network error: ${err instanceof Error ? err.message : String(err)}`,
+				);
+				continue;
+			}
+			if (!Array.isArray(rawAlerts)) {
+				fail("Invalid response: expected an array of alerts");
+				continue;
+			}
+			const alerts = rawAlerts as GettableAlert[];
+			lists.byConnection.push({ label, alerts });
+			for (const a of alerts)
+				if (a.fingerprint) lists.present.add(a.fingerprint);
+
+			if (!(await this.upLongEnough(requestFn, now))) lists.settled = false;
+		}
+		return lists;
+	}
+
+	private async upLongEnough(
+		requestFn: ReturnType<typeof urlOnlyRequestFn>,
+		now: Date,
+	): Promise<boolean> {
+		try {
+			const response = await requestFn("GET", "/api/v2/status");
+			if (!response.ok) return false;
+			const { uptime } = (await response.json()) as { uptime?: unknown };
+			const startedAt =
+				typeof uptime === "string" ? new Date(uptime).getTime() : Number.NaN;
+			return (
+				Number.isFinite(startedAt) &&
+				now.getTime() - startedAt >= ALERTMANAGER_MIN_UPTIME_MS
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	private async stampListed(present: Set<string>, now: Date): Promise<void> {
+		const fingerprints = [...present];
+		for (let i = 0; i < fingerprints.length; i += STAMP_CHUNK) {
+			await this.prisma.alertSourceAlert.updateMany({
+				where: {
+					sourceAlertId: { in: fingerprints.slice(i, i + STAMP_CHUNK) },
+				},
+				data: { lastPulledAt: now },
+			});
+		}
+	}
+
+	/**
+	 * Resolve alerts a connected Alertmanager once listed and none lists now.
+	 * Only when every connection listed and has been up long enough; an alert no
+	 * connected Alertmanager ever listed (another Alertmanager, Grafana) is never
+	 * a candidate.
+	 */
+	private async resolveAbsent(
+		lists: AlertmanagerLists,
+		stillFiring: Set<string>,
+		now: Date,
+	): Promise<number> {
+		if (!lists.listed || !lists.settled) {
+			if (lists.byConnection.length > 0) {
+				this.logger.log(
+					"Skipped resolving by absence: an Alertmanager did not answer or restarted less than 10 minutes ago",
+				);
+			}
+			return 0;
+		}
+		const open = await this.prisma.alertSourceAlert.findMany({
+			where: { resolvedAt: null, lastPulledAt: { not: null } },
+			select: { sourceAlertId: true, alert: { select: { labels: true } } },
+		});
+		let resolved = 0;
+		for (const member of open) {
+			const fingerprint = member.sourceAlertId;
+			if (lists.present.has(fingerprint) || stillFiring.has(fingerprint)) {
+				continue;
+			}
+			const name = alertName(member.alert.labels) ?? "the alert";
+			try {
+				const alert = await this.webhooksService.resolvePrometheusAlert(
+					fingerprint,
+					`alertmanager-absent:${fingerprint}:${now.toISOString()}`,
+					undefined,
+					{
+						source: "alertmanager-pull",
+						note: {
+							text: `no connected Alertmanager still lists ${name} (${fingerprint}); no resolved notification was received`,
+							reason: "alertmanager-absence",
+						},
+					},
+				);
+				if (alert) resolved++;
+			} catch (err) {
+				this.logger.warn(
+					`Failed to resolve absent alert ${fingerprint}: ${err}`,
+				);
+			}
+		}
+		return resolved;
+	}
+}
+
+/** Tests and the seeded e2e stack never reach the network (#605). */
+function offline(): boolean {
+	return !!process.env.CI || process.env.PRISMALENS_SEED_DEMO === "1";
+}
+
+function alertName(labels: string | null): string | null {
+	if (!labels) return null;
+	try {
+		const parsed = JSON.parse(labels) as Record<string, unknown>;
+		return typeof parsed.alertname === "string" ? parsed.alertname : null;
+	} catch {
+		return null;
 	}
 }

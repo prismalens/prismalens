@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller, Logger, UseGuards } from "@nestjs/common";
+import {
+	Controller,
+	forwardRef,
+	Inject,
+	Logger,
+	UseGuards,
+} from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Implement, implement } from "@orpc/nest";
 import type { PrometheusAlert } from "@prismalens/contracts";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import { AlertPullService } from "../alerts/alert-pull.service.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
@@ -27,6 +34,8 @@ export class WebhooksController {
 	constructor(
 		private readonly webhooksService: WebhooksService,
 		private readonly telemetry: TelemetryService,
+		@Inject(forwardRef(() => AlertPullService))
+		private readonly alertPull: AlertPullService,
 	) {}
 
 	@Implement({
@@ -87,6 +96,10 @@ export class WebhooksController {
 							this.logger.error(`Failed to process Prometheus alert: ${error}`);
 						}
 					}
+
+					// Stamp what Alertmanager lists while the machine is awake, so an
+					// alert it stops listing overnight can resolve by absence (#605).
+					void this.alertPull.onWebhook();
 
 					return {
 						received: alerts.length,
