@@ -102,12 +102,7 @@ export function reportToMarkdown({
 			: source
 				? `, model: ${source}${served}`
 				: served;
-		out.push(
-			"---",
-			"",
-			`Run: ${agent}${model}, ${f.mode} mode, ${f.fidelity}: ${f.mechanism}`,
-			"",
-		);
+		out.push("---", "", `Run: ${agent}${model}`, "");
 	}
 	return out.join("\n");
 }

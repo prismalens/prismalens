@@ -4,7 +4,6 @@
 import {
 	type Culprit,
 	EVIDENCE_STATUS_LABEL,
-	FIDELITY_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
 	type InvestigationWithRelations,
 	MODEL_SOURCE_LABEL,
@@ -26,26 +25,21 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-	evidenceStatusTone,
-	fidelityTone,
-	hypothesisStatusTone,
-} from "@/lib/state-tone";
+import { evidenceStatusTone, hypothesisStatusTone } from "@/lib/state-tone";
 import { ExportReportButton } from "./ExportReportButton";
 import { PriorityBadge } from "./investigation.utils";
 import { PostToGitHubButton } from "./PostToGitHubButton";
 
 /**
- * Honest run-metadata badge (ADR-0017): which agent ran, at which version,
- * and the enforcement it actually applied. Model and mechanism on hover;
- * nothing inferred client-side.
+ * Which agent ran, at which version, and with which model. No read-only claim:
+ * the agent runs with its own permissions (ADR 0003 §2, ruled on #673).
  */
 export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 	return (
 		<TooltipProvider>
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<StateChip tone={fidelityTone(fidelity.fidelity)}>
+					<StateChip tone={modelSubstituted(fidelity) ? "stale" : "neutral"}>
 						<span className="font-mono">
 							{fidelity.harness}
 							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
@@ -56,10 +50,6 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 								<span>model substituted</span>
 							</>
 						)}
-						<span className="opacity-60">·</span>
-						<span className="font-mono">{fidelity.mode}</span>
-						<span className="opacity-60">·</span>
-						<span>{FIDELITY_LABEL[fidelity.fidelity]}</span>
 					</StateChip>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs">
@@ -89,7 +79,6 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 								</p>
 							)
 						))}
-					<p>Read-only: {fidelity.mechanism}</p>
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>

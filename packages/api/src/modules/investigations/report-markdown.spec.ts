@@ -68,7 +68,7 @@ describe("reportToMarkdown", () => {
 		expect(md).toContain("- **Restore pool size** [high]: Set it back to 50");
 		expect(md).toContain("- Not queried: metrics");
 		expect(md).toContain(
-			"Run: opencode, read-only mode, cooperative: permission policy",
+			"Run: opencode\n",
 		);
 		const order = [
 			"## Summary",
@@ -99,7 +99,7 @@ describe("reportToMarkdown", () => {
 			completedAt: null,
 		});
 		expect(md).toContain(
-			"Run: opencode 1.18.30, model gemma4:31b (set in Settings), read-only mode, cooperative: permission policy",
+			"Run: opencode 1.18.30, model gemma4:31b (set in Settings)\n",
 		);
 	});
 
@@ -119,7 +119,7 @@ describe("reportToMarkdown", () => {
 			completedAt: null,
 		});
 		expect(md).toContain(
-			"Run: codex, model: the agent's default, read-only mode, cooperative: read-only agent mode",
+			"Run: codex, model: the agent's default\n",
 		);
 	});
 
@@ -138,7 +138,7 @@ describe("reportToMarkdown", () => {
 			completedAt: null,
 		});
 		expect(swapped).toContain(
-			"model gemma4:31b (set in Settings); the agent ran gemma3:12b instead, read-only mode",
+			"model gemma4:31b (set in Settings); the agent ran gemma3:12b instead\n",
 		);
 		const same = reportToMarkdown({
 			incident: { number: 7, title: "Checkout 500s" },
@@ -161,7 +161,7 @@ describe("reportToMarkdown", () => {
 			},
 			completedAt: null,
 		});
-		expect(chosen).toContain("model: the agent's default, ran gpt-5.3-codex,");
+		expect(chosen).toContain("model: the agent's default, ran gpt-5.3-codex\n");
 	});
 
 	it("omits empty sections", () => {
