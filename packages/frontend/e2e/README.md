@@ -258,13 +258,13 @@ anything.
 
 ### J13 — Integration configuration
 
-- **Entry point**: *Add Integration* → provider-specific configuration.
+- **Entry point**: *Add integration* → provider-specific configuration.
 - **Route**: `/settings/integrations/configure`.
 - **Goal**: complete a GitHub App install or an OAuth org/repo selection and land a working
   connection.
 - **States**: loading orgs; loading repos; **missing connection ID** (the error case); installation
   selection; saving; save failure.
-- **Coverage**: the spec asserts that one of `Configure` / `Select Installation` /
+- **Coverage**: the spec asserts that one of `Configure` / `Select installation` /
   `Missing Connection ID` is visible — a regex that passes in the success *and* error states. It
   proves the route renders something, not which state it rendered.
 
@@ -356,7 +356,7 @@ assert that **no execution path exists without a verified module**, not that app
 
 ### J17 — Manual authorship (demo without an alert source) — ✅ covered
 
-- **Entry point**: `/incidents` → *Create Incident* in the page header, or the same control in
+- **Entry point**: `/incidents` → *Create incident* in the page header, or the same control in
   the table's empty state (the state a `pl up` user actually lands in).
 - **Routes**: `/incidents` → `CreateIncidentDialog` → `incidents.create` → `/incidents/$id` →
   `incidents.investigate` → `/investigations/$id`.

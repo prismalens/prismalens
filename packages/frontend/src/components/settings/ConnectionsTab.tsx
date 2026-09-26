@@ -219,7 +219,7 @@ export function ConnectionsTab() {
 					{hasAny && (
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
-							Add Connection
+							Add connection
 						</Button>
 					)}
 				</div>
@@ -251,10 +251,10 @@ export function ConnectionsTab() {
 						<SelectContent>
 							<SelectItem value="all">All statuses</SelectItem>
 							<SelectItem value="ACTIVE">Active</SelectItem>
-							<SelectItem value="TOKEN_EXPIRED">Token Expired</SelectItem>
-							<SelectItem value="REFRESH_FAILED">Refresh Failed</SelectItem>
+							<SelectItem value="TOKEN_EXPIRED">Token expired</SelectItem>
+							<SelectItem value="REFRESH_FAILED">Refresh failed</SelectItem>
 							<SelectItem value="CREDENTIALS_INVALID">
-								Credentials Invalid
+								Credentials invalid
 							</SelectItem>
 							<SelectItem value="REVOKED">Revoked</SelectItem>
 							<SelectItem value="ERROR">Error</SelectItem>
@@ -370,7 +370,7 @@ export function ConnectionsTab() {
 						</p>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
-							Add Connection
+							Add connection
 						</Button>
 					</div>
 				)}

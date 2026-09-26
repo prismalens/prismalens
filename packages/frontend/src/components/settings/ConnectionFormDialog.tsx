@@ -346,7 +346,7 @@ export function ConnectionFormDialog({
 								<SelectContent>
 									{integrations && integrations.length > 0 && (
 										<SelectGroup>
-											<SelectLabel>Existing Integrations</SelectLabel>
+											<SelectLabel>Existing integrations</SelectLabel>
 											{integrations.map((integration: Integration) => (
 												<SelectItem key={integration.id} value={integration.id}>
 													<div className="flex items-center gap-2">
@@ -360,7 +360,7 @@ export function ConnectionFormDialog({
 
 									{availableTemplates.length > 0 && (
 										<SelectGroup>
-											<SelectLabel>Add New Integration</SelectLabel>
+											<SelectLabel>Add new integration</SelectLabel>
 											{availableTemplates.map(
 												(template: AuthTemplateResponse) => (
 													<SelectItem
@@ -396,7 +396,7 @@ export function ConnectionFormDialog({
 						<>
 							{mode === "create" && (
 								<div className="space-y-2">
-									<Label htmlFor="connectionLabel">Connection Label</Label>
+									<Label htmlFor="connectionLabel">Connection label</Label>
 									<Input
 										id="connectionLabel"
 										value={connectionLabel}

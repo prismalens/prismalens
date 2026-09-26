@@ -131,7 +131,7 @@ export function CreateIncidentDialog({
 			>
 				<form onSubmit={handleSubmit}>
 					<DialogHeader>
-						<DialogTitle>Create Incident</DialogTitle>
+						<DialogTitle>Create incident</DialogTitle>
 						<DialogDescription>
 							Author an incident by hand — useful for trying an investigation
 							before any alert source is wired up.
@@ -265,7 +265,7 @@ export function CreateIncidentDialog({
 									Creating...
 								</>
 							) : (
-								"Create Incident"
+								"Create incident"
 							)}
 						</Button>
 					</DialogFooter>

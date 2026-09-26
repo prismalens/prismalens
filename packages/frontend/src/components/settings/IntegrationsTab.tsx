@@ -159,7 +159,7 @@ export function IntegrationsTab() {
 							<Zap className="h-5 w-5 text-muted-foreground" />
 							<div>
 								<p className="font-medium text-record">
-									Prometheus AlertManager
+									Prometheus Alertmanager
 								</p>
 								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/prometheus
@@ -185,7 +185,7 @@ export function IntegrationsTab() {
 						<div className="flex items-center gap-3">
 							<Link2 className="h-5 w-5 text-muted-foreground" />
 							<div>
-								<p className="font-medium text-record">Generic Webhook</p>
+								<p className="font-medium text-record">Generic webhook</p>
 								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/generic
 								</Mono>
@@ -216,7 +216,7 @@ export function IntegrationsTab() {
 					{integrations && integrations.length > 0 && (
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
-							Add Integration
+							Add integration
 						</Button>
 					)}
 				</div>
@@ -318,7 +318,7 @@ export function IntegrationsTab() {
 						</p>
 						<Button onClick={() => setShowAddDialog(true)}>
 							<Plus className="h-4 w-4 mr-2" />
-							Add Integration
+							Add integration
 						</Button>
 					</div>
 				)}
