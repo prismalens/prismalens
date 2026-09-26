@@ -8,6 +8,7 @@ import { useState } from "react";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
+import { formatDateTime } from "@/lib/format-time";
 
 export const CHANNEL_LABEL: Record<About["channel"], string> = {
 	npm: "npm",
@@ -75,7 +76,7 @@ export function AboutSettings() {
 
 	if (isError) {
 		return (
-			<div className="rounded-lg border bg-card p-6 text-sm text-destructive">
+			<div className="rounded-md border bg-card p-4 text-record text-destructive">
 				Couldn't read this install's details. Reload to try again.
 			</div>
 		);
@@ -86,10 +87,12 @@ export function AboutSettings() {
 
 	const { update } = about;
 	return (
-		<div className="space-y-4 text-sm">
-			<div className="rounded-lg border bg-card p-6 space-y-4">
+		<div className="space-y-4 text-record">
+			<div className="rounded-md border bg-card p-4 space-y-4">
 				<div className="flex flex-wrap items-center justify-between gap-2">
-					<h3 className="text-base font-semibold text-foreground">Updates</h3>
+					<h3 className="text-sm font-semibold tracking-tight text-foreground">
+						Updates
+					</h3>
 					{update.disabledBy ? (
 						<StateWord tone="neutral">check off</StateWord>
 					) : update.available ? (
@@ -136,7 +139,7 @@ export function AboutSettings() {
 					<p className="text-muted-foreground">
 						You're on the newest release.
 						{update.checkedAt &&
-							` Checked ${new Date(update.checkedAt).toLocaleString()}.`}
+							` Checked ${formatDateTime(update.checkedAt)}.`}
 					</p>
 				)}
 				{!update.disabledBy && (
@@ -147,8 +150,8 @@ export function AboutSettings() {
 				)}
 			</div>
 
-			<div className="rounded-lg border bg-card p-6">
-				<h3 className="text-base font-semibold text-foreground">
+			<div className="rounded-md border bg-card p-4">
+				<h3 className="text-sm font-semibold tracking-tight text-foreground">
 					This install
 				</h3>
 				<dl className="mt-2 divide-y">

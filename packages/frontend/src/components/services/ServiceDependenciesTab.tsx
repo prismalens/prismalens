@@ -163,7 +163,7 @@ export function ServiceDependenciesTab({
 							))}
 						</div>
 					) : (
-						<p className="p-4 text-sm text-muted-foreground text-center">
+						<p className="p-4 text-record text-muted-foreground text-center">
 							No upstream dependencies
 						</p>
 					)}
@@ -221,7 +221,7 @@ export function ServiceDependenciesTab({
 							))}
 						</div>
 					) : (
-						<p className="p-4 text-sm text-muted-foreground text-center">
+						<p className="p-4 text-record text-muted-foreground text-center">
 							No downstream dependents
 						</p>
 					)}

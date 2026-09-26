@@ -29,8 +29,8 @@ export function SlackDeliverySettings() {
 	const configured = settings.data?.slackConfigured ?? false;
 
 	return (
-		<div className="mb-6 rounded-lg border bg-card p-6 space-y-3 text-sm">
-			<h3 className="text-base font-semibold text-foreground">
+		<div className="mb-6 rounded-md border bg-card p-4 space-y-3 text-record">
+			<h3 className="text-sm font-semibold tracking-tight text-foreground">
 				Post reports to Slack
 			</h3>
 			<p className="text-muted-foreground">

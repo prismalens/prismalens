@@ -54,7 +54,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 						type="button"
 						aria-expanded={expanded}
 						onClick={() => setExpanded((v) => !v)}
-						className="flex items-center gap-1.5 font-medium text-sm hover:text-foreground/80 transition-colors w-full text-left"
+						className="flex items-center gap-1.5 font-medium text-record hover:text-foreground/80 transition-colors w-full text-left"
 					>
 						<span className="flex-shrink-0">{icon}</span>
 						<span>
@@ -105,9 +105,9 @@ export function DeletionImpactSection({
 		impact.repositories.length > 0 || impact.affectedServices.length > 0;
 
 	return (
-		<div className="space-y-2 py-2 text-sm">
+		<div className="space-y-2 py-2 text-record">
 			{showConnections && impact.connections.length > 0 && (
-				<div className="text-sm font-medium">
+				<div className="text-record font-medium">
 					{impact.connections.length} connection
 					{impact.connections.length !== 1 ? "s" : ""}
 				</div>

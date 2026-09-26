@@ -19,6 +19,7 @@ import { StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate } from "@/lib/format-time";
 import { recommendationPriorityTone } from "@/lib/state-tone";
 
 export interface RecommendationsListProps {
@@ -69,7 +70,7 @@ export function RecommendationsList({
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<div className="text-sm text-muted-foreground">
+				<div className="text-record text-muted-foreground">
 					{recommendations.length} recommendation
 					{recommendations.length !== 1 ? "s" : ""}
 					{pendingCount > 0 && ` (${pendingCount} pending)`}
@@ -95,7 +96,7 @@ export function RecommendationsList({
 											{rec.title}
 										</CardTitle>
 										{rec.description && (
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												{rec.description}
 											</p>
 										)}
@@ -115,7 +116,7 @@ export function RecommendationsList({
 							</CardHeader>
 							<CardContent>
 								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-4 text-sm text-muted-foreground">
+									<div className="flex items-center gap-4 text-record text-muted-foreground">
 										<span className="flex items-center gap-1">
 											{icon}
 											{statusLabel}
@@ -162,9 +163,7 @@ export function RecommendationsList({
 								{rec.implementedAt && rec.implementedBy && (
 									<div className="mt-2 text-xs text-muted-foreground">
 										Implemented by {rec.implementedBy} on{" "}
-										<Mono>
-											{new Date(rec.implementedAt).toLocaleDateString()}
-										</Mono>
+										<Mono>{formatDate(rec.implementedAt)}</Mono>
 									</div>
 								)}
 							</CardContent>

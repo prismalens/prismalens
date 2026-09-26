@@ -11,6 +11,7 @@ import { FolderGit2, GitBranch, Link2 } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate } from "@/lib/format-time";
 import { tierLabels } from "./service-detail.utils";
 
 interface ServiceOverviewTabProps {
@@ -73,13 +74,17 @@ export function ServiceOverviewTab({
 					<div className="flex justify-between">
 						<span className="text-muted-foreground">Created</span>
 						<span>
-							<Mono>{new Date(service.createdAt).toLocaleDateString()}</Mono>
+							<span className="tabular-nums">
+								{formatDate(service.createdAt)}
+							</span>
 						</span>
 					</div>
 					<div className="flex justify-between">
 						<span className="text-muted-foreground">Updated</span>
 						<span>
-							<Mono>{new Date(service.updatedAt).toLocaleDateString()}</Mono>
+							<span className="tabular-nums">
+								{formatDate(service.updatedAt)}
+							</span>
 						</span>
 					</div>
 				</CardContent>
@@ -125,7 +130,7 @@ export function ServiceOverviewTab({
 							<CardTitle className="text-base">Description</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<p className="text-sm text-muted-foreground">
+							<p className="text-record text-muted-foreground">
 								{service.description}
 							</p>
 						</CardContent>
@@ -177,7 +182,7 @@ export function ServiceOverviewTab({
 							))}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">
+						<p className="text-record text-muted-foreground">
 							No linked repositories
 						</p>
 					)}

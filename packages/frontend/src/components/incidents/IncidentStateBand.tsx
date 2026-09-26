@@ -97,7 +97,7 @@ export function IncidentStateBand({
 	return (
 		<div
 			data-testid="incident-state-band"
-			className="flex h-10 items-center gap-2 overflow-hidden border-b bg-background px-3"
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0"
 		>
 			<Link
 				to="/incidents"
@@ -117,7 +117,7 @@ export function IncidentStateBand({
 				style={{ background: `var(--sev-${incident.severity})` }}
 			/>
 			<h1
-				className="min-w-0 flex-1 truncate text-record font-semibold tracking-tight"
+				className="order-last line-clamp-2 min-w-0 basis-full text-record font-semibold tracking-tight sm:order-none sm:line-clamp-none sm:flex-1 sm:basis-auto sm:truncate"
 				title={incident.title}
 			>
 				{incident.title}
@@ -134,7 +134,7 @@ export function IncidentStateBand({
 				{ago(incident.triggeredAt, now)}
 			</span>
 
-			<div className="ml-1 flex shrink-0 items-center gap-1">
+			<div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-1">
 				{primary && (
 					<TooltipProvider>
 						<Tooltip>

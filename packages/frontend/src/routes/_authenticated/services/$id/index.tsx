@@ -124,7 +124,7 @@ function ServiceDetailPage() {
 				<p className="text-lg font-medium text-destructive">
 					Failed to load service
 				</p>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-record text-muted-foreground">
 					{error?.message || "Service not found"}
 				</p>
 			</div>

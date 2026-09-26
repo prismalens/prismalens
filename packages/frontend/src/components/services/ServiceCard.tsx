@@ -56,7 +56,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 									{service.displayName || service.name}
 								</Link>
 							</CardTitle>
-							<Mono className="text-sm text-muted-foreground block">
+							<Mono className="text-record text-muted-foreground block">
 								{service.name}
 							</Mono>
 						</div>
@@ -74,7 +74,7 @@ export function ServiceCard({ service }: ServiceCardProps) {
 			<CardContent className="space-y-3">
 				{/* Description */}
 				{service.description && (
-					<p className="text-sm text-muted-foreground line-clamp-2">
+					<p className="text-record text-muted-foreground line-clamp-2">
 						{service.description}
 					</p>
 				)}

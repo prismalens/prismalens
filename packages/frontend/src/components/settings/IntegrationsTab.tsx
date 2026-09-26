@@ -139,12 +139,12 @@ export function IntegrationsTab() {
 	return (
 		<div className="space-y-6">
 			{/* Webhook URLs */}
-			<div className="rounded-lg border bg-card p-6 space-y-4">
+			<div className="rounded-md border bg-card p-4 space-y-4">
 				<div className="flex items-center gap-2">
 					<Link2 className="h-5 w-5 text-muted-foreground" />
-					<h3 className="text-base font-semibold">Webhook URLs</h3>
+					<h3 className="text-sm font-semibold tracking-tight">Webhook URLs</h3>
 				</div>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-record text-muted-foreground">
 					Copy these URLs into your monitoring tools to send alerts to
 					PrismaLens. Each delivery must send the webhook token as{" "}
 					<Mono>Authorization: Bearer &lt;token&gt;</Mono> or as the basic auth
@@ -158,7 +158,9 @@ export function IntegrationsTab() {
 						<div className="flex items-center gap-3">
 							<Zap className="h-5 w-5 text-muted-foreground" />
 							<div>
-								<p className="font-medium text-sm">Prometheus AlertManager</p>
+								<p className="font-medium text-record">
+									Prometheus AlertManager
+								</p>
 								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/prometheus
 								</Mono>
@@ -183,7 +185,7 @@ export function IntegrationsTab() {
 						<div className="flex items-center gap-3">
 							<Link2 className="h-5 w-5 text-muted-foreground" />
 							<div>
-								<p className="font-medium text-sm">Generic Webhook</p>
+								<p className="font-medium text-record">Generic Webhook</p>
 								<Mono className="text-xs text-muted-foreground break-all">
 									{webhookBaseUrl}/generic
 								</Mono>
@@ -207,15 +209,18 @@ export function IntegrationsTab() {
 			</div>
 
 			{/* Integrations List */}
-			<div className="rounded-lg border bg-card p-6 space-y-4">
+			<div className="rounded-md border bg-card p-4 space-y-4">
 				<div className="flex items-center justify-between">
-					<h3 className="text-base font-semibold">Integrations</h3>
-					<Button onClick={() => setShowAddDialog(true)}>
-						<Plus className="h-4 w-4 mr-2" />
-						Add Integration
-					</Button>
+					<h3 className="text-sm font-semibold tracking-tight">Integrations</h3>
+					{/* The empty state below carries the only Add button. */}
+					{integrations && integrations.length > 0 && (
+						<Button onClick={() => setShowAddDialog(true)}>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Integration
+						</Button>
+					)}
 				</div>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-record text-muted-foreground">
 					Register external service providers. Connections are managed in the
 					Connections tab.
 				</p>
@@ -225,19 +230,19 @@ export function IntegrationsTab() {
 						<table className="w-full">
 							<thead>
 								<tr className="border-b bg-muted/50">
-									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
 										Provider
 									</th>
-									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
 										Label
 									</th>
-									<th className="text-left text-sm font-medium text-muted-foreground px-4 py-3">
+									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
 										Auth mode
 									</th>
-									<th className="text-center text-sm font-medium text-muted-foreground px-4 py-3">
+									<th className="text-center text-record font-medium text-muted-foreground px-4 py-3">
 										Connections
 									</th>
-									<th className="text-right text-sm font-medium text-muted-foreground px-4 py-3">
+									<th className="text-right text-record font-medium text-muted-foreground px-4 py-3">
 										Actions
 									</th>
 								</tr>
@@ -259,18 +264,20 @@ export function IntegrationsTab() {
 													<span className="text-muted-foreground">
 														{getTemplateIcon(integration.templateId)}
 													</span>
-													<span className="font-medium text-sm">
+													<span className="font-medium text-record">
 														{template?.name ?? integration.templateId}
 													</span>
 												</div>
 											</td>
-											<td className="px-4 py-3 text-sm">{integration.label}</td>
+											<td className="px-4 py-3 text-record">
+												{integration.label}
+											</td>
 											<td className="px-4 py-3">
 												<StateChip tone="neutral">
 													{template?.authModeLabel ?? "—"}
 												</StateChip>
 											</td>
-											<td className="px-4 py-3 text-center text-sm">
+											<td className="px-4 py-3 text-center text-record">
 												<Mono>{connCount}</Mono>
 											</td>
 											<td className="px-4 py-3 text-right">

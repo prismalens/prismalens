@@ -59,7 +59,7 @@ function StatCard({
 	return (
 		<Card>
 			<CardContent className="p-4">
-				<p className="text-sm text-muted-foreground">{title}</p>
+				<p className="text-record text-muted-foreground">{title}</p>
 				<p className="text-2xl font-semibold mt-1">{value}</p>
 				<div className={cn("flex items-center gap-1 mt-1 text-sm", trendColor)}>
 					<TrendIcon className="h-3 w-3" />

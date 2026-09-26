@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { formatDateTime } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { alertStatusTone } from "@/lib/state-tone";
 
@@ -116,7 +117,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 			className="grid h-full grid-rows-[auto_minmax(0,1fr)]"
 			data-testid="alert-detail"
 		>
-			<div className="flex h-10 items-center gap-2 overflow-hidden border-b bg-background px-3">
+			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0">
 				<Link
 					to="/alerts"
 					aria-label="Back to alerts"
@@ -132,7 +133,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					style={{ background: `var(--sev-${alert.severity})` }}
 				/>
 				<h1
-					className="min-w-0 flex-1 truncate text-record font-semibold tracking-tight"
+					className="order-last line-clamp-2 min-w-0 basis-full text-record font-semibold tracking-tight sm:order-none sm:line-clamp-none sm:flex-1 sm:basis-auto sm:truncate"
 					title={alert.title}
 				>
 					{alert.title}
@@ -148,7 +149,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 				<span className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:inline">
 					{ago(alert.triggeredAt, now)}
 				</span>
-				<div className="ml-1 flex shrink-0 items-center gap-1">
+				<div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-1">
 					{canAlertAction("acknowledge", alert.status) && (
 						<Button
 							variant="outline"
@@ -275,7 +276,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 										to="/services/$id"
 										params={{ id: alert.service.id }}
 										search={{ tab: "overview" }}
-										className="font-mono text-primary hover:underline"
+										className="text-primary hover:underline"
 									>
 										{alert.service.displayName || alert.service.name}
 									</Link>
@@ -295,22 +296,30 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 								<Mono>{alert.externalId ?? "—"}</Mono>
 							</Field>
 							<Field label="Occurrences">
-								<Mono>{alert.occurrenceCount}</Mono>
+								<span className="tabular-nums">{alert.occurrenceCount}</span>
 							</Field>
 							<Field label="First fired">
-								<Mono>{new Date(alert.triggeredAt).toLocaleString()}</Mono>
+								<span className="tabular-nums">
+									{formatDateTime(alert.triggeredAt)}
+								</span>
 							</Field>
 							<Field label="Last fired">
-								<Mono>{new Date(alert.lastOccurrence).toLocaleString()}</Mono>
+								<span className="tabular-nums">
+									{formatDateTime(alert.lastOccurrence)}
+								</span>
 							</Field>
 							{alert.acknowledgedAt && (
 								<Field label="Acknowledged">
-									<Mono>{new Date(alert.acknowledgedAt).toLocaleString()}</Mono>
+									<span className="tabular-nums">
+										{formatDateTime(alert.acknowledgedAt)}
+									</span>
 								</Field>
 							)}
 							{alert.resolvedAt && (
 								<Field label="Resolved">
-									<Mono>{new Date(alert.resolvedAt).toLocaleString()}</Mono>
+									<span className="tabular-nums">
+										{formatDateTime(alert.resolvedAt)}
+									</span>
 								</Field>
 							)}
 						</dl>

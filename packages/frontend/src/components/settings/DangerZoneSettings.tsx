@@ -47,7 +47,7 @@ export function DangerZoneSettings() {
 			<div className="rounded-lg border border-destructive/30 bg-card p-6 space-y-6">
 				<div className="flex items-center gap-2">
 					<AlertTriangle className="h-5 w-5 text-destructive" />
-					<h3 className="text-base font-semibold text-destructive">
+					<h3 className="text-sm font-semibold tracking-tight text-destructive">
 						Danger zone
 					</h3>
 				</div>
@@ -55,8 +55,10 @@ export function DangerZoneSettings() {
 					{/* Reset Data */}
 					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
-							<h4 className="font-medium text-foreground">Reset all data</h4>
-							<p className="text-sm text-muted-foreground">
+							<h4 className="text-record font-medium text-foreground">
+								Reset all data
+							</h4>
+							<p className="text-record text-muted-foreground">
 								Delete all alerts, incidents, and investigations. Services and
 								integrations will be preserved.
 							</p>
@@ -73,10 +75,12 @@ export function DangerZoneSettings() {
 					{/* Factory Reset */}
 					<div className="flex justify-between items-center p-4 border rounded-lg">
 						<div>
-							<h4 className="font-medium text-foreground">Factory reset</h4>
-							<p className="text-sm text-muted-foreground">
-								Delete all data and return to initial setup state. This removes
-								users, services, and all configurations.
+							<h4 className="text-record font-medium text-foreground">
+								Factory reset
+							</h4>
+							<p className="text-record text-muted-foreground">
+								Reset data, plus every service, connection and setting. Paired
+								devices stay paired.
 							</p>
 						</div>
 						<Button
@@ -114,8 +118,8 @@ export function DangerZoneSettings() {
 			/>
 
 			{about && (
-				<div className="mt-4 rounded-lg border bg-card p-6 space-y-3 text-sm">
-					<h3 className="text-base font-semibold text-foreground">
+				<div className="mt-4 rounded-md border bg-card p-4 space-y-3 text-record">
+					<h3 className="text-sm font-semibold tracking-tight text-foreground">
 						Uninstall PrismaLens
 					</h3>
 					<p className="text-muted-foreground">
@@ -146,13 +150,11 @@ export function DangerZoneSettings() {
 							This permanently deletes <strong>everything</strong>:
 						</p>
 						<ul className="list-disc list-inside">
-							<li>All users except the owner</li>
-							<li>All services</li>
-							<li>All integrations</li>
 							<li>All alerts, incidents and investigations</li>
+							<li>All services and their connections</li>
 							<li>All settings</li>
 						</ul>
-						<p>You return to setup afterwards.</p>
+						<p>Paired devices stay paired.</p>
 					</>
 				}
 				confirmWord="FACTORY RESET"

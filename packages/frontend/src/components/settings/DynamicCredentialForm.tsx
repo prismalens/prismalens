@@ -150,7 +150,7 @@ export function DynamicCredentialForm({
 							<p
 								id={`cred-${field.name}-error`}
 								role="alert"
-								className="text-sm text-destructive"
+								className="text-record text-destructive"
 							>
 								{error}
 							</p>

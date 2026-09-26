@@ -119,7 +119,7 @@ export function ServiceIntegrationsTab({
 				{integrations.length === 0 ? (
 					<div className="p-4 rounded-md border border-dashed text-center">
 						<Link2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-						<p className="text-sm text-muted-foreground">
+						<p className="text-record text-muted-foreground">
 							No integrations configured
 						</p>
 					</div>

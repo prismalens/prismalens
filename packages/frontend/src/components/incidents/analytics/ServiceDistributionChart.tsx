@@ -93,7 +93,7 @@ export function ServiceDistributionChart({
 									return (
 										<div className="rounded-lg border bg-background p-2 shadow-sm">
 											<p className="text-sm font-medium">{data.name}</p>
-											<p className="text-sm text-muted-foreground">
+											<p className="text-record text-muted-foreground">
 												{data.value} incident{data.value !== 1 ? "s" : ""}
 											</p>
 										</div>

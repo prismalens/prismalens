@@ -623,12 +623,12 @@ function ServicesPage() {
 			</RecordSection>
 
 			{/* Filters */}
-			<div className="flex flex-wrap items-center gap-3">
+			<div className="flex flex-wrap items-center gap-2">
 				<DebouncedSearchInput
 					value={searchParams.search ?? ""}
 					onValueChange={handleSearchChange}
-					placeholder="Search services..."
-					className="w-[220px]"
+					placeholder="Search services…"
+					className="w-full sm:w-48"
 				/>
 
 				<Select
@@ -640,7 +640,7 @@ function ServicesPage() {
 						})
 					}
 				>
-					<SelectTrigger className="w-[160px]">
+					<SelectTrigger className="w-32">
 						<SelectValue placeholder="Filter by type" />
 					</SelectTrigger>
 					<SelectContent>
@@ -661,7 +661,7 @@ function ServicesPage() {
 						})
 					}
 				>
-					<SelectTrigger className="w-[180px]">
+					<SelectTrigger className="w-32">
 						<SelectValue placeholder="Filter by tier" />
 					</SelectTrigger>
 					<SelectContent>
@@ -683,10 +683,7 @@ function ServicesPage() {
 							})
 						}
 					>
-						<SelectTrigger
-							className="w-[180px]"
-							data-testid="services-team-filter"
-						>
+						<SelectTrigger className="w-36" data-testid="services-team-filter">
 							<SelectValue placeholder="Filter by team" />
 						</SelectTrigger>
 						<SelectContent>
@@ -748,7 +745,7 @@ function ServicesPage() {
 			{/* Pagination */}
 			{total > PAGE_SIZE && (
 				<div className="flex items-center justify-between">
-					<p className="text-sm text-muted-foreground">
+					<p className="text-record text-muted-foreground">
 						Showing {showingFrom}–{showingTo} of {total} services
 					</p>
 					<div className="flex items-center gap-2">
@@ -761,7 +758,7 @@ function ServicesPage() {
 							<ChevronLeft className="h-4 w-4 mr-1" />
 							Previous
 						</Button>
-						<span className="text-sm text-muted-foreground">
+						<span className="text-record text-muted-foreground">
 							Page {currentPage} of {totalPages}
 						</span>
 						<Button

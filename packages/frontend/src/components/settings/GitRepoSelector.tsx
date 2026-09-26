@@ -163,7 +163,7 @@ export function GitRepoSelector({
 					{isLoadingOrgs ? (
 						<Skeleton className="h-10 w-full" />
 					) : organizations.length === 0 ? (
-						<p className="text-sm text-muted-foreground">
+						<p className="text-record text-muted-foreground">
 							No organizations found. You may need to grant organization access
 							in {providerDisplayName}.
 						</p>
@@ -249,7 +249,7 @@ export function GitRepoSelector({
 
 							{/* Select all button */}
 							<div className="flex items-center justify-between">
-								<span className="text-sm text-muted-foreground">
+								<span className="text-record text-muted-foreground">
 									{selectedRepos.size} selected
 								</span>
 								<Button
@@ -272,7 +272,7 @@ export function GitRepoSelector({
 									))}
 								</div>
 							) : filteredRepos.length === 0 ? (
-								<p className="text-sm text-muted-foreground text-center py-4">
+								<p className="text-record text-muted-foreground text-center py-4">
 									{repoSearch
 										? "No repositories match your search"
 										: "No repositories found"}

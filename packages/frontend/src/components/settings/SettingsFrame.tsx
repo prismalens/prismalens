@@ -158,7 +158,9 @@ export function SettingsFrame({
 				className="hidden min-h-0 flex-col border-r lg:flex"
 				data-testid="settings-pane"
 			>
-				<h1 className="border-b px-3 py-2 text-sm font-semibold">Settings</h1>
+				<h1 className="border-b px-3 py-2 text-record font-semibold">
+					Settings
+				</h1>
 				<nav className="min-h-0 flex-1 overflow-y-auto">
 					{items.map((item) => {
 						const active = item.section === section;
@@ -191,13 +193,37 @@ export function SettingsFrame({
 			</aside>
 			<div className="min-h-0 min-w-0 overflow-y-auto">
 				<div className="mx-auto max-w-3xl space-y-6 px-4 py-4 sm:px-6">
+					{/* Below `lg` the section list folds into a strip that scrolls itself. */}
+					<nav
+						className="-mx-4 flex gap-1 overflow-x-auto border-b px-4 pb-3 sm:-mx-6 sm:px-6 lg:hidden"
+						data-testid="settings-strip"
+					>
+						{items.map((item) => {
+							const active = item.section === section;
+							return (
+								<Link
+									key={item.section}
+									to={item.to}
+									search={item.tab ? { tab: item.tab } : undefined}
+									aria-current={active ? "page" : undefined}
+									className={cn(
+										"flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-record text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
+										active && "border-primary/40 bg-primary/8 text-foreground",
+									)}
+								>
+									{item.icon}
+									{item.label}
+								</Link>
+							);
+						})}
+					</nav>
 					<div className="flex flex-wrap items-start justify-between gap-3">
 						<div>
 							<p className="text-meta text-muted-foreground">
 								Settings <span className="mx-1">/</span>
 								{items.find((i) => i.section === section)?.label}
 							</p>
-							<h2 className="text-base font-semibold tracking-tight">
+							<h2 className="text-sm font-semibold tracking-tight tracking-tight">
 								{title}
 							</h2>
 							{intro && (

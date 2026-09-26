@@ -18,7 +18,8 @@ export interface SettingRowProps {
 
 /**
  * One setting: label and meaning on the left, the control on the right, a
- * hairline between rows. Groups of these replace card stacks.
+ * hairline between rows; on a phone the control drops under the label.
+ * Groups of these replace card stacks.
  */
 export function SettingRow({
 	label,
@@ -33,7 +34,7 @@ export function SettingRow({
 			className={cn("border-t py-3 first:border-t-0", className)}
 			data-testid={testId}
 		>
-			<div className="flex items-center gap-4">
+			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
 				<div className="min-w-0 flex-1">
 					<div className="text-record font-medium">{label}</div>
 					{description && (
@@ -43,7 +44,9 @@ export function SettingRow({
 					)}
 				</div>
 				{children && (
-					<div className="flex shrink-0 items-center gap-2">{children}</div>
+					<div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
+						{children}
+					</div>
 				)}
 			</div>
 			{below && <div className="mt-2">{below}</div>}

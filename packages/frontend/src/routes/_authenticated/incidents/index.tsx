@@ -17,6 +17,7 @@ import {
 	useIncidentWindow,
 } from "@/components/incidents/IncidentListPane";
 import { Button } from "@/components/ui/button";
+import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/incidents/")({
@@ -45,7 +46,10 @@ function IncidentsOverview() {
 
 	// With nothing chosen, land on the row that needs a human most; the numbers
 	// stay one click away behind the overview. An empty window shows the numbers.
-	const top = !analytics && list ? orderIncidents(list.data)[0] : undefined;
+	// Below `lg` the list is the page, so there is nothing to land on.
+	const split = useMediaQuery(SPLIT_PANES);
+	const top =
+		split && !analytics && list ? orderIncidents(list.data)[0] : undefined;
 	if (top) {
 		return (
 			<Navigate

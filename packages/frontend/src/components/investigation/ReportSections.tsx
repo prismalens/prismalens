@@ -25,6 +25,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatDateTime } from "@/lib/format-time";
 import {
 	evidenceStatusTone,
 	fidelityTone,
@@ -321,7 +322,7 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 								<Mono className="text-meta text-muted-foreground">
 									{change.source}
 									{change.serviceName ? ` · ${change.serviceName}` : ""} ·{" "}
-									{new Date(change.timestamp).toLocaleString()} · hypothesis #
+									{formatDateTime(change.timestamp)} · hypothesis #
 									{change.hypothesisIndex + 1} · {change.matchedOn}
 								</Mono>
 							</li>

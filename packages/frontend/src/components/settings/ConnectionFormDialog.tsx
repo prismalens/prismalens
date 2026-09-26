@@ -385,7 +385,7 @@ export function ConnectionFormDialog({
 								</SelectContent>
 							</Select>
 							{showErrors && !selectedValue && (
-								<p className="text-sm text-destructive">
+								<p className="text-record text-destructive">
 									Please select a provider or integration
 								</p>
 							)}
@@ -427,7 +427,7 @@ export function ConnectionFormDialog({
 									<>
 										{mode === "edit" && (
 											<div className="space-y-1">
-												<Label className="text-sm text-muted-foreground">
+												<Label className="text-record text-muted-foreground">
 													Leave fields blank to keep existing values
 												</Label>
 											</div>
