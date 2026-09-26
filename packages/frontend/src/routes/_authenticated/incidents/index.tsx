@@ -171,6 +171,16 @@ function IncidentsOverview() {
 						</button>
 					</p>
 				)}
+				{analytics && !windowEmpty && !(from && to) && (
+					<p
+						className="text-meta text-muted-foreground"
+						data-testid="analytics-scope"
+					>
+						Last {chartDays} days
+						{loaded.length >= listInput.limit &&
+							`, the ${listInput.limit} most recent incidents`}
+					</p>
+				)}
 				{analytics && !windowEmpty && (
 					<IncidentAnalytics
 						incidents={charted}
@@ -195,7 +205,7 @@ function IncidentsOverview() {
 	);
 }
 
-/** "All time" charts from the oldest incident, so the chart and the totals agree. */
+/** With no window, the charts start at the oldest incident loaded, capped at a year. */
 function spanDays(incidents: { triggeredAt: string | Date }[]): number {
 	const oldest = Math.min(
 		...incidents.map((i) => new Date(i.triggeredAt).getTime()),
