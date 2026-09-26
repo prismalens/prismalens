@@ -34,6 +34,9 @@ function IncidentsOverview() {
 		...orpc.incidents.getStats.queryOptions({ input: statsInput }),
 		refetchInterval: 30_000,
 	});
+	const workspace = useQuery(
+		orpc.incidents.getStats.queryOptions({ input: {} }),
+	);
 	const analytics = search.view === "analytics";
 	const { data: list, isLoading: listLoading } = useQuery(
 		orpc.incidents.list.queryOptions({ input: listInput }),
@@ -72,7 +75,7 @@ function IncidentsOverview() {
 	if (!analytics && listLoading) return null;
 
 	// Nothing exists yet, in any window: the on-ramp, not numbers.
-	if (stats.data && stats.data.total === 0) {
+	if (workspace.data && workspace.data.total === 0) {
 		return (
 			<div className="h-full overflow-y-auto">
 				<FirstRunPanel />
@@ -80,6 +83,20 @@ function IncidentsOverview() {
 		);
 	}
 	const windowEmpty = !!list && list.data.length === 0;
+	const loaded = list?.data ?? [];
+	const chartDays =
+		from && to
+			? Math.ceil((to.getTime() - from.getTime()) / 86_400_000)
+			: spanDays(loaded);
+	// The charts stop at `chartDays`; the totals count the same incidents.
+	const charted =
+		from && to
+			? loaded
+			: loaded.filter(
+					(i) =>
+						Date.now() - new Date(i.triggeredAt).getTime() <
+						chartDays * 86_400_000,
+				);
 
 	return (
 		<div className="h-full overflow-y-auto" data-testid="incidents-overview">
@@ -156,12 +173,8 @@ function IncidentsOverview() {
 				)}
 				{analytics && !windowEmpty && (
 					<IncidentAnalytics
-						incidents={list?.data ?? []}
-						days={
-							from && to
-								? Math.ceil((to.getTime() - from.getTime()) / 86_400_000)
-								: spanDays(list?.data ?? [])
-						}
+						incidents={charted}
+						days={chartDays}
 						onSeverityFilter={(severity) =>
 							setSearch({
 								severity: severity as typeof search.severity,

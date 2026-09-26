@@ -7,10 +7,7 @@
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
-import {
-	IncidentListPane,
-	useIncidentWindow,
-} from "@/components/incidents/IncidentListPane";
+import { IncidentListPane } from "@/components/incidents/IncidentListPane";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -50,10 +47,8 @@ function IncidentsFrame() {
 	const recordOpen = !!record;
 	// An empty workspace has no list to show; below `lg` the first-run panel
 	// takes the list's place instead of hiding behind it.
-	const { statsInput } = useIncidentWindow();
-	const stats = useQuery(
-		orpc.incidents.getStats.queryOptions({ input: statsInput }),
-	);
+	// Unfiltered: a date window with no incidents is not a new workspace.
+	const stats = useQuery(orpc.incidents.getStats.queryOptions({ input: {} }));
 	const firstRun = !recordOpen && stats.data?.total === 0;
 
 	return (

@@ -126,8 +126,8 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="fixed inset-0 flex items-center justify-center bg-background px-4">
-			<div className="w-full max-w-sm space-y-4">
+		<div className="fixed inset-0 overflow-y-auto bg-background px-4">
+			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center space-y-4 py-8">
 				<div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
 					<PrismaLensMark className="h-7 w-7" />
 					PrismaLens
