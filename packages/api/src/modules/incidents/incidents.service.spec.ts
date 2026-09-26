@@ -169,6 +169,35 @@ describe("IncidentsService", () => {
 		});
 	});
 
+	describe("resolve with a reason (#605)", () => {
+		it("says in the status entry why the system resolved the incident", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "open",
+				triggeredAt: new Date(Date.now() - 60_000),
+				resolvedAt: null,
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.resolve("inc-1", {
+				text: "no connected Alertmanager still lists HighLatency (fp-1); no resolved notification was received",
+				reason: "alertmanager-absence",
+			});
+
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					description:
+						"Status changed from open to resolved: no connected Alertmanager still lists HighLatency (fp-1); no resolved notification was received",
+					metadata: {
+						previousStatus: "open",
+						newStatus: "resolved",
+						reason: "alertmanager-absence",
+					},
+				}),
+			);
+		});
+	});
+
 	describe("close", () => {
 		const triggeredAt = new Date(Date.now() - 60_000);
 

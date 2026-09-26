@@ -12,6 +12,7 @@ import { AlertsService } from "../alerts/alerts.service.js";
 import { IncidentCorrelationService } from "../alerts/incident-correlation.service.js";
 import type { Event } from "../events/events.service.js";
 import { EventsService } from "../events/events.service.js";
+import type { StatusNote } from "../incidents/incidents.service.js";
 import { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 
 export interface WebhookResult {
@@ -230,6 +231,8 @@ export class WebhooksService {
 		fingerprint: string | undefined,
 		idempotencyKey?: string,
 		startsAt?: string,
+		/** Set when no resolved delivery exists and prismalens inferred it (#605). */
+		inferred?: { source: string; note: StatusNote },
 	): Promise<Alert | null> {
 		if (!fingerprint) {
 			this.logger.warn(
@@ -261,11 +264,15 @@ export class WebhooksService {
 		// immutable Event row and idempotency handling as every other path (#593).
 		const ingested = await this.ingestEvent(idempotencyKey, () =>
 			this.eventsService.create({
-				source: "prometheus",
+				source: inferred?.source ?? "prometheus",
 				sourceEventId: fingerprint,
 				idempotencyKey,
 				eventType: "alert",
-				payload: { status: "resolved", fingerprint },
+				payload: {
+					status: "resolved",
+					fingerprint,
+					...(inferred && { reason: inferred.note.reason }),
+				},
 			}),
 		);
 		if ("replay" in ingested) return ingested.replay.alert;
@@ -280,6 +287,7 @@ export class WebhooksService {
 			if (resolved.incidentId) {
 				await this.incidentCorrelation.resolveIncidentIfNoFiringAlerts(
 					resolved.incidentId,
+					inferred?.note,
 				);
 			}
 		}

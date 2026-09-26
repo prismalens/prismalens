@@ -13,7 +13,10 @@ import {
 	ALERT_CORRELATED_EVENT,
 	type AlertCorrelatedEvent,
 } from "../../shared/events/investigation-events.js";
-import { IncidentsService } from "../incidents/incidents.service.js";
+import {
+	IncidentsService,
+	type StatusNote,
+} from "../incidents/incidents.service.js";
 
 export interface IncidentCorrelationResult {
 	incidentId: string;
@@ -152,12 +155,15 @@ export class IncidentCorrelationService {
 	 * after a delivery resolves one of the incident's alerts (#593); a no-op
 	 * while any other alert on the incident is still open.
 	 */
-	async resolveIncidentIfNoFiringAlerts(incidentId: string): Promise<void> {
+	async resolveIncidentIfNoFiringAlerts(
+		incidentId: string,
+		note?: StatusNote,
+	): Promise<void> {
 		const firing = await this.prisma.alert.count({
 			where: { incidentId, status: { in: [...OPEN_ALERT_STATUSES] } },
 		});
 		if (firing === 0) {
-			await this.incidentsService.resolve(incidentId);
+			await this.incidentsService.resolve(incidentId, note);
 			this.logger.log(
 				`Resolved incident ${incidentId}: no firing alerts remain`,
 			);
