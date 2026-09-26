@@ -131,7 +131,7 @@ export async function readTelemetryState(
 
 /** The one line `pl up` prints while consent is undecided. */
 export const TELEMETRY_CONSENT_NOTICE =
-	"Usage data is off. PrismaLens can count anonymous product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
+	"Usage data is off. PrismaLens can count product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
 
 /**
  * The command that opens a URL in the host's browser, or null when there is
