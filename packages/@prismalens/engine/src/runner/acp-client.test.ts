@@ -24,6 +24,7 @@ import {
 	AcpSession,
 	type AcpStreamItem,
 	offeredModels,
+	selectedModel,
 } from "./acp-client.js";
 
 /** A child whose stdin fails every write the way a dead peer's pipe does. */
@@ -291,5 +292,20 @@ describe("offeredModels (#639)", () => {
 		]);
 		expect(offeredModels(undefined)).toEqual([]);
 		expect(offeredModels({ not: "an array" })).toEqual([]);
+	});
+});
+
+describe("selectedModel (#639)", () => {
+	it("reads the model select option's currentValue and nothing else", () => {
+		expect(
+			selectedModel([
+				{ id: "mode", type: "select", category: "mode", currentValue: "ask" },
+				{ id: "model-flag", type: "boolean", category: "model", currentValue: true },
+				{ id: "model", type: "select", category: "model", currentValue: "m2", options: [] },
+			]),
+		).toBe("m2");
+		expect(selectedModel([{ id: "model", type: "select", category: "model", currentValue: "" }])).toBeNull();
+		expect(selectedModel(undefined)).toBeNull();
+		expect(selectedModel({ not: "an array" })).toBeNull();
 	});
 });

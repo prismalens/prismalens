@@ -18,7 +18,6 @@ import type {
 	Severity,
 	WorkflowStatus,
 } from "./common.js";
-import type { RunFidelity } from "./investigation.js";
 
 /** How heavily a thing weighs against the others of its kind. */
 export type StateWeight = "critical" | "high" | "medium" | "low" | "info";
@@ -97,13 +96,6 @@ export const HYPOTHESIS_STATUS_PHASE: Record<HypothesisStatus, StatePhase> = {
 export const EVIDENCE_STATUS_PHASE: Record<EvidenceStatus, StatePhase> = {
 	verified: "done",
 	inferred: "watch",
-};
-
-/** How much the harness's enforcement can be trusted (ADR-0017). */
-export const FIDELITY_PHASE: Record<RunFidelity["fidelity"], StatePhase> = {
-	enforced: "done",
-	cooperative: "watch",
-	advisory: "failed",
 };
 
 const ENDED_PHASES: ReadonlySet<StatePhase> = new Set([

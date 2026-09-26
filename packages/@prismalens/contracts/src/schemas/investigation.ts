@@ -107,8 +107,15 @@ export const RunFidelitySchema = z.object({
 		.optional(),
 	/** ACP `initialize` `agentInfo.version`; absent when the harness did not report one. */
 	harnessVersion: z.string().optional(),
+	/** The model `session/new` reported as selected; absent when the harness reported none (#639). */
+	servedModel: z.string().optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
+
+/** The run asked for one model and the harness reported another (#639). */
+export function modelSubstituted(f: RunFidelity): boolean {
+	return !!f.model && !!f.servedModel && f.model !== f.servedModel;
+}
 
 /**
  * Structured culprit identification (ADR-0026 / D3).

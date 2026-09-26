@@ -144,12 +144,6 @@ export const EVIDENCE_DIRECTION_LABEL: Record<EvidenceDirection, string> = {
 	contradicts: "Against",
 };
 
-export const FIDELITY_LABEL: Record<RunFidelity["fidelity"], string> = {
-	enforced: "Enforced",
-	cooperative: "Cooperative",
-	advisory: "Advisory",
-};
-
 /** Where a run's model id came from, read as "model x, <label>". */
 export const MODEL_SOURCE_LABEL: Record<
 	NonNullable<RunFidelity["modelSource"]>,
