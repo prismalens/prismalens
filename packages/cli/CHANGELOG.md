@@ -1,5 +1,36 @@
 # prismalens
 
+## [0.5.1](https://github.com/prismalens/prismalens/compare/v0.5.0...v0.5.1) (2026-09-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **harness:** supported agents on their own sign-in, no safety verdict, no placement ([#634](https://github.com/prismalens/prismalens/issues/634)) (#707)
+* **auth:** no account on the instance; the host pairs through a startup link ([#698](https://github.com/prismalens/prismalens/issues/698)) (#701)
+* remove the sandbox providers and every promise about them ([#682](https://github.com/prismalens/prismalens/issues/682))
+
+### Features
+
+* **auth:** devices pair with the host ([#698](https://github.com/prismalens/prismalens/issues/698)) ([#700](https://github.com/prismalens/prismalens/issues/700)) ([5fea4ec](https://github.com/prismalens/prismalens/commit/5fea4ecb4a17eae59413d646c96bed0c65219087))
+* **auth:** no account on the instance; the host pairs through a startup link ([#698](https://github.com/prismalens/prismalens/issues/698)) ([#701](https://github.com/prismalens/prismalens/issues/701)) ([c8f9ea6](https://github.com/prismalens/prismalens/commit/c8f9ea6f4a9f8f9cb8fa00ff533f64e1f34c119b))
+* Claude Code on a laptop runs on the user's own sign-in ([#663](https://github.com/prismalens/prismalens/issues/663)) ([35df29e](https://github.com/prismalens/prismalens/commit/35df29e915a0da3b098cb2734275930eee001d29))
+* close an incident, export the report as Markdown, pl reset, update notice ([#661](https://github.com/prismalens/prismalens/issues/661)) ([8bd230a](https://github.com/prismalens/prismalens/commit/8bd230a493e422451035578f5460d18c9cc44210))
+* harness admission as data — SDK types, version in the record, per-row sign-in and model, Windows shims ([#681](https://github.com/prismalens/prismalens/issues/681)) ([b64ea46](https://github.com/prismalens/prismalens/commit/b64ea46be4c970b843cff254b1a9fa41814ebc43))
+* **harness:** supported agents on their own sign-in, no safety verdict, no placement ([#634](https://github.com/prismalens/prismalens/issues/634)) ([#707](https://github.com/prismalens/prismalens/issues/707)) ([cd00535](https://github.com/prismalens/prismalens/commit/cd00535b22633cf98c5d587fe0d25066ee831521))
+* **install:** the whole lifecycle on every channel: pl upgrade, PATH, fallback, rollback, uninstall, and guards for two copies and downgrades ([#717](https://github.com/prismalens/prismalens/issues/717)) ([#721](https://github.com/prismalens/prismalens/issues/721)) ([46d360e](https://github.com/prismalens/prismalens/commit/46d360eb1837e41ed981f4a731cac4d4899f373a))
+* opt-in PostHog telemetry, asked once, off by default ([#666](https://github.com/prismalens/prismalens/issues/666)) ([5bbc739](https://github.com/prismalens/prismalens/commit/5bbc73967e35efa07190a65a55100d4fcfa109f2))
+* workspace lock, pl reset-password, cancel reaches the clone, safe resets ([#662](https://github.com/prismalens/prismalens/issues/662)) ([f6cc503](https://github.com/prismalens/prismalens/commit/f6cc50330f6780727dec0a3bc5793f8cd6ffe45e))
+
+
+### Bug Fixes
+
+* **cli:** the consent line no longer calls usage events anonymous ([#731](https://github.com/prismalens/prismalens/issues/731)) ([f4fc7e2](https://github.com/prismalens/prismalens/commit/f4fc7e2bdf6ef8917e936e60db968e26c41022ff))
+
+
+### Code Refactoring
+
+* remove the sandbox providers and every promise about them ([#682](https://github.com/prismalens/prismalens/issues/682)) ([e70f87e](https://github.com/prismalens/prismalens/commit/e70f87ec814f882b257ac1bdada841a604c21ebb))
+
 ## [0.5.0](https://github.com/prismalens/prismalens/compare/prismalens@0.5.0-rc.3...v0.5.0) (2026-09-19)
 
 
