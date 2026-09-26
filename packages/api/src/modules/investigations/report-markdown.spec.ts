@@ -123,6 +123,47 @@ describe("reportToMarkdown", () => {
 		);
 	});
 
+	it("flags a model the agent swapped for another (#639)", () => {
+		const fidelity = {
+			harness: "opencode",
+			mode: "read-only",
+			fidelity: "cooperative" as const,
+			mechanism: "permission policy",
+			model: "gemma4:31b",
+			modelSource: "operator" as const,
+		};
+		const swapped = reportToMarkdown({
+			incident: { number: 7, title: "Checkout 500s" },
+			report: { ...REPORT, fidelity: { ...fidelity, servedModel: "gemma3:12b" } },
+			completedAt: null,
+		});
+		expect(swapped).toContain(
+			"model gemma4:31b (set in Settings); the agent ran gemma3:12b instead, read-only mode",
+		);
+		const same = reportToMarkdown({
+			incident: { number: 7, title: "Checkout 500s" },
+			report: { ...REPORT, fidelity: { ...fidelity, servedModel: "gemma4:31b" } },
+			completedAt: null,
+		});
+		expect(same).not.toContain("instead");
+		const chosen = reportToMarkdown({
+			incident: { number: 7, title: "Checkout 500s" },
+			report: {
+				...REPORT,
+				fidelity: {
+					harness: "codex",
+					mode: "read-only",
+					fidelity: "cooperative",
+					mechanism: "read-only agent mode",
+					modelSource: "harness-default",
+					servedModel: "gpt-5.3-codex",
+				},
+			},
+			completedAt: null,
+		});
+		expect(chosen).toContain("model: the agent's default, ran gpt-5.3-codex,");
+	});
+
 	it("omits empty sections", () => {
 		const md = reportToMarkdown({
 			incident: { number: 1, title: "t" },

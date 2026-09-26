@@ -12,6 +12,7 @@ import {
 	EVIDENCE_STATUS_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
 	MODEL_SOURCE_LABEL,
+	modelSubstituted,
 	ROOT_CAUSE_CATEGORY_LABEL,
 } from "@prismalens/contracts";
 
@@ -91,11 +92,16 @@ export function reportToMarkdown({
 			? `${f.harness} ${f.harnessVersion}`
 			: f.harness;
 		const source = f.modelSource ? MODEL_SOURCE_LABEL[f.modelSource] : null;
-		const model = f.model
-			? `, model ${f.model}${source ? ` (${source})` : ""}`
-			: source
-				? `, model: ${source}`
+		const served = modelSubstituted(f)
+			? `; the agent ran ${f.servedModel} instead`
+			: !f.model && f.servedModel
+				? `, ran ${f.servedModel}`
 				: "";
+		const model = f.model
+			? `, model ${f.model}${source ? ` (${source})` : ""}${served}`
+			: source
+				? `, model: ${source}${served}`
+				: served;
 		out.push(
 			"---",
 			"",

@@ -6319,6 +6319,9 @@
                                     },
                                     "harnessVersion": {
                                       "type": "string"
+                                    },
+                                    "servedModel": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -7075,6 +7078,9 @@
                                             "type": "string"
                                           },
                                           "harnessVersion": {
+                                            "type": "string"
+                                          },
+                                          "servedModel": {
                                             "type": "string"
                                           }
                                         },
@@ -7852,6 +7858,9 @@
                                     },
                                     "harnessVersion": {
                                       "type": "string"
+                                    },
+                                    "servedModel": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -8594,6 +8603,9 @@
                                           "type": "string"
                                         },
                                         "harnessVersion": {
+                                          "type": "string"
+                                        },
+                                        "servedModel": {
                                           "type": "string"
                                         }
                                       },
@@ -9395,6 +9407,9 @@
                                       "type": "string"
                                     },
                                     "harnessVersion": {
+                                      "type": "string"
+                                    },
+                                    "servedModel": {
                                       "type": "string"
                                     }
                                   },
@@ -10424,6 +10439,9 @@
                                           },
                                           "harnessVersion": {
                                             "type": "string"
+                                          },
+                                          "servedModel": {
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -10942,6 +10960,9 @@
                                       "type": "string"
                                     },
                                     "harnessVersion": {
+                                      "type": "string"
+                                    },
+                                    "servedModel": {
                                       "type": "string"
                                     }
                                   },
@@ -11595,6 +11616,9 @@
                               },
                               "harnessVersion": {
                                 "type": "string"
+                              },
+                              "servedModel": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -12110,6 +12134,9 @@
                                       "type": "string"
                                     },
                                     "harnessVersion": {
+                                      "type": "string"
+                                    },
+                                    "servedModel": {
                                       "type": "string"
                                     }
                                   },

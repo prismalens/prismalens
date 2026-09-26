@@ -8,6 +8,7 @@ import {
 	HYPOTHESIS_STATUS_LABEL,
 	type InvestigationWithRelations,
 	MODEL_SOURCE_LABEL,
+	modelSubstituted,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	type RunFidelity,
 } from "@prismalens/contracts";
@@ -49,6 +50,12 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 							{fidelity.harness}
 							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
 						</span>
+						{modelSubstituted(fidelity) && (
+							<>
+								<span className="opacity-60">·</span>
+								<span>model substituted</span>
+							</>
+						)}
 						<span className="opacity-60">·</span>
 						<span className="font-mono">{fidelity.mode}</span>
 						<span className="opacity-60">·</span>
@@ -68,6 +75,20 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 							"the agent's default"
 						)}
 					</p>
+					{fidelity.servedModel &&
+						(modelSubstituted(fidelity) ? (
+							<p className="text-stale" data-testid="fidelity-substituted">
+								The agent ran{" "}
+								<span className="font-mono">{fidelity.servedModel}</span>{" "}
+								instead
+							</p>
+						) : (
+							!fidelity.model && (
+								<p>
+									Ran: <span className="font-mono">{fidelity.servedModel}</span>
+								</p>
+							)
+						))}
 					<p>Read-only: {fidelity.mechanism}</p>
 				</TooltipContent>
 			</Tooltip>

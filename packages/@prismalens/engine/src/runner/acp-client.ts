@@ -224,6 +224,22 @@ export function offeredModels(
 	return out;
 }
 
+/**
+ * The model a `session/new` answer says is selected: the `currentValue` of its
+ * `model` select option. Null when the harness reports none (#639).
+ */
+export function selectedModel(
+	configOptions: NewSessionResponse["configOptions"] | unknown,
+): string | null {
+	if (!Array.isArray(configOptions)) return null;
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.category !== "model" || option.type !== "select") continue;
+		if (typeof option.currentValue === "string" && option.currentValue)
+			return option.currentValue;
+	}
+	return null;
+}
+
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
@@ -244,6 +260,8 @@ export class AcpSession {
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
 	models: AcpOfferedModel[] = [];
+	/** The model `session/new` reported as selected; null when it reported none. */
+	servedModel: string | null = null;
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.launcher = config.launcher ?? createProcessLauncher();
@@ -349,6 +367,7 @@ export class AcpSession {
 			throw new Error("ACP session/new returned no sessionId");
 		this.sessionId = session.sessionId;
 		this.models = offeredModels(session.configOptions);
+		this.servedModel = selectedModel(session.configOptions);
 	}
 
 	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */

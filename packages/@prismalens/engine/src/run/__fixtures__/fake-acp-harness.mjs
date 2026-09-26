@@ -231,7 +231,24 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 	} else if (msg.method === "session/new") {
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
-		send({ jsonrpc: "2.0", id: msg.id, result: { sessionId: "s1" } });
+		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
+		const served = process.env.FAKE_SERVED_MODEL;
+		const configOptions = served
+			? [
+					{
+						id: "model",
+						type: "select",
+						category: "model",
+						currentValue: served,
+						options: [{ value: served, name: served }],
+					},
+				]
+			: undefined;
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: { sessionId: "s1", ...(configOptions ? { configOptions } : {}) },
+		});
 	} else if (msg.method === "session/prompt") {
 		const text = msg.params?.prompt?.[0]?.text ?? "";
 		const result = await turn(msg.params.sessionId, text);
