@@ -1328,6 +1328,21 @@ describe("AlertPullService (#605)", () => {
 			expect(result.resolvedByAbsence).toBe(1);
 		});
 
+		it("reports a database error in the absence step instead of failing the pull", async () => {
+			alertmanagers("am-1");
+			serve({ "am-1": [listed("fp-1")] });
+			prisma.alertSourceAlert.updateMany.mockRejectedValue(new Error("db locked"));
+			prisma.alertSourceAlert.findMany.mockRejectedValue(new Error("db locked"));
+
+			const result = await service.pull(now);
+
+			expect(result.errors).toEqual([
+				"Failed to record listed alerts: db locked",
+				"Failed to resolve absent alerts: db locked",
+			]);
+			expect(result.resolvedByAbsence).toBe(0);
+		});
+
 		describe("after a webhook", () => {
 			beforeEach(() => {
 				vi.stubEnv("CI", "");
@@ -1369,6 +1384,22 @@ describe("AlertPullService (#605)", () => {
 
 				expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(2);
 				expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+			});
+
+			it("logs why it could not check, so an outage is visible", async () => {
+				alertmanagers("am-1");
+				serve({ "am-1": new Error("Connection refused") });
+				const warn = vi.spyOn(
+					(service as unknown as { logger: { warn: (m: string) => void } }).logger,
+					"warn",
+				);
+
+				await service.onWebhook(() => now);
+
+				expect(warn).toHaveBeenCalledWith(
+					"Alertmanager check after webhook: am-1: Network error: Connection refused",
+				);
+				expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
 			});
 
 			it("does nothing under CI", async () => {

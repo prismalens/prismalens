@@ -255,7 +255,9 @@ export class AlertPullService implements OnApplicationBootstrap {
 			}
 		}
 		// After ingest, so an alert this pull just created is stamped too.
-		await this.stampListed(lists.present, now);
+		await this.stampListed(lists.present, now).catch((err) => {
+			result.errors.push(`Failed to record listed alerts: ${message(err)}`);
+		});
 
 		// Fingerprints catch-up saw still firing; never resolved by absence.
 		const stillFiring = new Set<string>();
@@ -468,7 +470,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 			lists,
 			stillFiring,
 			now,
-		);
+		).catch((err) => {
+			result.errors.push(`Failed to resolve absent alerts: ${message(err)}`);
+			return 0;
+		});
 
 		// 6. Update ALERT_PULL setting only after catch-up completed without catch-up errors
 		if (catchupErrors.length === 0) {
@@ -503,8 +508,16 @@ export class AlertPullService implements OnApplicationBootstrap {
 					const at = now();
 					const errors: string[] = [];
 					const connections = await this.alertmanagerConnections(errors);
-					if (connections.length === 0) continue;
 					const lists = await this.listAlertmanagers(connections, at);
+					errors.push(...lists.errors);
+					if (errors.length > 0) {
+						// The only trace of an outage between boots: resolving by absence
+						// stays off until every Alertmanager answers again.
+						this.logger.warn(
+							`Alertmanager check after webhook: ${errors.join("; ")}`,
+						);
+					}
+					if (connections.length === 0) continue;
 					await this.stampListed(lists.present, at);
 					await this.resolveAbsent(lists, new Set(), at);
 				} catch (err) {
@@ -682,6 +695,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 /** Tests and the seeded e2e stack never reach the network (#605). */
 function offline(): boolean {
 	return !!process.env.CI || process.env.PRISMALENS_SEED_DEMO === "1";
+}
+
+function message(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 function alertName(labels: string | null): string | null {
