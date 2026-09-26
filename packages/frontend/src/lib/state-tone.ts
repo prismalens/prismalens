@@ -6,7 +6,6 @@ import {
 	type AlertStatus,
 	EVIDENCE_STATUS_PHASE,
 	type EvidenceStatus,
-	FIDELITY_PHASE,
 	HYPOTHESIS_STATUS_PHASE,
 	type HypothesisStatus,
 	INCIDENT_STATUS_PHASE,
@@ -15,7 +14,6 @@ import {
 	type Priority,
 	RECOMMENDATION_PRIORITY_WEIGHT,
 	type RecommendationPriority,
-	type RunFidelity,
 	SEVERITY_WEIGHT,
 	type Severity,
 	type StatePhase,
@@ -90,8 +88,4 @@ export function hypothesisStatusTone(
 export function evidenceStatusTone(status: EvidenceStatus | string): ChipTone {
 	const phase = lookup(EVIDENCE_STATUS_PHASE, status);
 	return phase ? phaseTone[phase] : "neutral";
-}
-
-export function fidelityTone(fidelity: RunFidelity["fidelity"]): ChipTone {
-	return phaseTone[FIDELITY_PHASE[fidelity]];
 }

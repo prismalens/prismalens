@@ -234,6 +234,9 @@ export async function* runInvestigation(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
+		if (session.servedModel) {
+			fidelity = { ...fidelity, servedModel: session.servedModel };
+		}
 		let outcome = yield* consume(
 			session.prompt(
 				buildInvestigationPrompt(opts.context) +

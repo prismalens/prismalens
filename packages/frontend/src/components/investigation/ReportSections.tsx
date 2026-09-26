@@ -4,10 +4,10 @@
 import {
 	type Culprit,
 	EVIDENCE_STATUS_LABEL,
-	FIDELITY_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
 	type InvestigationWithRelations,
 	MODEL_SOURCE_LABEL,
+	modelSubstituted,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	type RunFidelity,
 } from "@prismalens/contracts";
@@ -26,34 +26,31 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatDateTime } from "@/lib/format-time";
-import {
-	evidenceStatusTone,
-	fidelityTone,
-	hypothesisStatusTone,
-} from "@/lib/state-tone";
+import { evidenceStatusTone, hypothesisStatusTone } from "@/lib/state-tone";
 import { ExportReportButton } from "./ExportReportButton";
 import { PriorityBadge } from "./investigation.utils";
 import { PostToGitHubButton } from "./PostToGitHubButton";
 
 /**
- * Honest run-metadata badge (ADR-0017): which agent ran, at which version,
- * and the enforcement it actually applied. Model and mechanism on hover;
- * nothing inferred client-side.
+ * Which agent ran, at which version, and with which model. No read-only claim:
+ * the agent runs with its own permissions (ADR 0003 §2, ruled on #673).
  */
 export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 	return (
 		<TooltipProvider>
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<StateChip tone={fidelityTone(fidelity.fidelity)}>
+					<StateChip tone={modelSubstituted(fidelity) ? "stale" : "neutral"}>
 						<span className="font-mono">
 							{fidelity.harness}
 							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
 						</span>
-						<span className="opacity-60">·</span>
-						<span className="font-mono">{fidelity.mode}</span>
-						<span className="opacity-60">·</span>
-						<span>{FIDELITY_LABEL[fidelity.fidelity]}</span>
+						{modelSubstituted(fidelity) && (
+							<>
+								<span className="opacity-60">·</span>
+								<span>model substituted</span>
+							</>
+						)}
 					</StateChip>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs">
@@ -69,7 +66,20 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 							"the agent's default"
 						)}
 					</p>
-					<p>Read-only: {fidelity.mechanism}</p>
+					{fidelity.servedModel &&
+						(modelSubstituted(fidelity) ? (
+							<p className="text-stale" data-testid="fidelity-substituted">
+								The agent ran{" "}
+								<span className="font-mono">{fidelity.servedModel}</span>{" "}
+								instead
+							</p>
+						) : (
+							!fidelity.model && (
+								<p>
+									Ran: <span className="font-mono">{fidelity.servedModel}</span>
+								</p>
+							)
+						))}
 				</TooltipContent>
 			</Tooltip>
 		</TooltipProvider>

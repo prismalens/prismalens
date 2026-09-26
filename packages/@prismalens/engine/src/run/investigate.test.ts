@@ -64,6 +64,21 @@ async function collect(mode: string, extra?: Partial<Parameters<typeof runInvest
 }
 
 describe("runInvestigation over a fake ACP harness", () => {
+	it("records the model the harness reported next to the one it was asked for (#639)", async () => {
+		const { events } = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_SERVED_MODEL: "served/model" },
+		});
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ model: "asked/model", servedModel: "served/model" });
+		const { events: plain } = await collect("ok");
+		const r2 = plain.at(-1);
+		if (r2?.kind !== "report") throw new Error("no report");
+		expect(r2.report.fidelity?.servedModel).toBeUndefined();
+	});
+
 	it("runs in the clone, refuses the write, validates the report first try, writes the transcript", async () => {
 		const { events, cwd, runDir } = await collect("ok");
 		const kinds = events.map((e) => e.kind);
