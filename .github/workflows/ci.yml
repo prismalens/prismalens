@@ -253,6 +253,47 @@ jobs:
           PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
         run: node scripts/packed-intake.mjs tarballs
 
+  packed-service:
+    # `pl service` on a real systemd user manager (#732). Advisory until it has
+    # passed on three consecutive runs, like packed-intake.
+    name: Packed service (systemd user unit)
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Install, check, restart and uninstall the service
+        env:
+          PRISMALENS_TELEMETRY: "off"
+          PRISMALENS_UPDATE_CHECK: "off"
+        run: |
+          set -eu
+          # A runner has no login session; lingering gives this user a systemd manager.
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          prefix=$(mktemp -d); ws=$(mktemp -d)
+          npm install -g --prefix "$prefix" tarballs/prismalens-*.tgz
+          export PATH="$prefix/bin:$PATH"
+          pl service install --port 3190 --workspace "$ws"
+          pl service status
+          curl -fsS http://127.0.0.1:3190/health
+          pl service restart
+          curl -fsS http://127.0.0.1:3190/health
+          pl service uninstall
+          test ! -e "$HOME/.config/systemd/user/prismalens.service"
+          if curl -fsS -m 2 http://127.0.0.1:3190/health; then echo "still serving after uninstall"; exit 1; fi
+          test -f "$ws/PRISMALENS_AUTH_SECRET_FILE"
+
   harness-admission:
     # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
     # this passes unattended on a real clone. First run: #561.

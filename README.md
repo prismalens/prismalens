@@ -159,6 +159,18 @@ Both `prismalens` and the shorter `pl` alias point at the same binary. Full
 setup (providers, harnesses, configuration, commands) lives at
 **[docs.prismalens.io](https://docs.prismalens.io)**.
 
+### Keep it running in the background
+
+```bash
+pl service install
+```
+
+On Linux (systemd) and macOS (launchd) this runs PrismaLens as a service for your
+user: it starts at login, restarts if it crashes, and `pl upgrade` restarts it on
+the new version. `pl service status` shows where it runs; `pl service uninstall`
+removes it and keeps your data. See
+[Run in the background](https://docs.prismalens.io/guides/background-service/).
+
 ### Upgrading
 
 ```bash

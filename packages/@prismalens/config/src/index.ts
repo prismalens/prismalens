@@ -49,6 +49,17 @@ export {
 	resolveOnPath,
 } from "./harness-selection.js";
 export {
+	type InstalledService,
+	installedService,
+	LAUNCHD_LABEL,
+	parseServiceUnit,
+	type ServiceManagerKind,
+	SYSTEMD_UNIT_NAME,
+	serviceManagerKind,
+	serviceOwnsWorkspace,
+	serviceUnitPath,
+} from "./utils/background-service.js";
+export {
 	INSTALL_CHANNELS,
 	type InstallChannel,
 	installChannel,

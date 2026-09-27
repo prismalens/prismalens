@@ -17,6 +17,7 @@ import {
 	armForcedExitOnSecondSignal,
 	ensureAppDataDir,
 	getConfig,
+	serviceOwnsWorkspace,
 	WorkspaceLockedError,
 } from "@prismalens/config";
 import { MigrationError, runMigrations } from "@prismalens/database/migrator";
@@ -71,7 +72,12 @@ async function bootstrap() {
 		});
 	} catch (error) {
 		if (!(error instanceof WorkspaceLockedError)) throw error;
-		logger.error(error.message);
+		logger.error(
+			serviceOwnsWorkspace(ensureAppDataDir()) &&
+				process.env.PRISMALENS_SERVICE !== "1"
+				? `${error.message} A background service runs on this workspace: see \`pl service status\`.`
+				: error.message,
+		);
 		process.exit(1);
 	}
 

@@ -21,7 +21,9 @@ import {
 	ensureAppDataDir,
 	getAppDataDir,
 	installChannel,
+	installedService,
 	secretFileName,
+	serviceOwnsWorkspace,
 } from "@prismalens/config";
 import {
 	HARNESS_REGISTRY,
@@ -282,6 +284,20 @@ export function checkWebhookToken(): Check {
 	};
 }
 
+export function checkService(
+	service = installedService(),
+	workspace = getAppDataDir(),
+): Check {
+	return {
+		name: "Background service",
+		pass: true,
+		detail: !service
+			? "not installed (pl service install runs PrismaLens in the background)"
+			: `installed on port ${service.port}${serviceOwnsWorkspace(workspace, service) ? "" : `, for workspace ${service.workspace}`}; pl service status shows whether it is running`,
+		hard: false,
+	};
+}
+
 function checkPortHost(): Check {
 	const port = process.env.PRISMALENS_PORT ?? "3001";
 	const host = process.env.PRISMALENS_HOST ?? "127.0.0.1";
@@ -339,6 +355,7 @@ export default defineCommand({
 				...checkAutoSelection(),
 				checkWebhookToken(),
 				checkPortHost(),
+				checkService(),
 			];
 
 			consola.log("");
