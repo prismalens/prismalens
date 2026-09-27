@@ -12,6 +12,24 @@
    `@media (prefers-color-scheme: dark)` and would follow the OS instead (#423). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Inside the Electron window (#736): `data-desktop` carries the platform. */
+@custom-variant desktop (&:where([data-desktop] *));
+@custom-variant mac (&:where([data-desktop="darwin"] *));
+
+@utility app-drag {
+  -webkit-app-region: drag;
+}
+@utility app-no-drag {
+  -webkit-app-region: no-drag;
+}
+/* A drag region swallows clicks on anything painted over it, so whatever
+   floats above the strip opts out. */
+[role="dialog"],
+[role="alertdialog"],
+[data-radix-popper-content-wrapper] {
+  -webkit-app-region: no-drag;
+}
+
 /* Base Styles */
 * {
   border-color: var(--border);

@@ -164,10 +164,12 @@ function SidebarBody({ pathname }: { pathname: string }) {
 				data-testid="sidebar"
 				data-folded={sidebarFolded ? "true" : undefined}
 			>
-				<div className="flex items-center gap-1 px-2 py-2">
+				{/* macOS: the traffic lights sit in this spacer, above the name. */}
+				<div aria-hidden="true" className="app-drag hidden h-7 mac:block" />
+				<div className="app-drag flex items-center gap-1 px-2 py-2 desktop:h-(--titlebar-h) desktop:py-0">
 					<Link
 						to="/incidents"
-						className="flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
+						className="app-no-drag flex min-w-0 flex-1 items-center gap-2 px-1 text-sm font-semibold tracking-tight"
 						title="PrismaLens"
 					>
 						<PrismaLensMark className="h-6 w-6 shrink-0" />
@@ -177,7 +179,7 @@ function SidebarBody({ pathname }: { pathname: string }) {
 						<Button
 							variant="ghost"
 							size="sm"
-							className="h-7 w-7 p-0"
+							className="app-no-drag h-7 w-7 p-0"
 							aria-label="Fold the sidebar"
 							onClick={toggleSidebar}
 							data-testid="sidebar-fold"

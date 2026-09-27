@@ -15,7 +15,8 @@
 		"smoke": "node scripts/smoke-desktop.mjs"
 	},
 	"dependencies": {
-		"@prismalens/config": "workspace:*"
+		"@prismalens/config": "workspace:*",
+		"electron-window-state": "5.0.3"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

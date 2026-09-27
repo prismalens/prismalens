@@ -11,6 +11,7 @@
  */
 
 import { createContext, type ReactNode, use, useEffect, useState } from "react";
+import { desktopBridge } from "@/lib/desktop";
 import { getTheme, setTheme as persistTheme, type Theme } from "@/lib/theme";
 
 interface ThemeContextValue {
@@ -34,6 +35,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 	useEffect(() => {
 		document.documentElement.classList.toggle("dark", theme === "dark");
 		document.documentElement.classList.toggle("light", theme === "light");
+		const desktop = desktopBridge();
+		if (desktop) {
+			document.documentElement.dataset.desktop = desktop.platform;
+			desktop.setTheme(theme);
+		}
 	}, [theme]);
 
 	function setTheme(val: Theme) {

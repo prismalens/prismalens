@@ -11,24 +11,38 @@
 
 import { type ChildProcess, execFile } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { readWorkspaceLockState } from "@prismalens/config";
 import {
 	app,
 	BrowserWindow,
 	dialog,
+	ipcMain,
 	Menu,
 	Notification,
 	nativeImage,
+	nativeTheme,
 	session,
 	shell,
 	Tray,
 } from "electron";
+import windowStateKeeper from "electron-window-state";
 import {
 	resolveBackendMain,
 	startBackend,
 	stopBackend,
 	waitForHealth,
 } from "./backend.js";
+import {
+	backgroundColor,
+	frameOptions,
+	isTheme,
+	THEME_CHANNEL,
+	THEME_COOKIE,
+	type Theme,
+	themeFromCookie,
+	titleBarOverlay,
+} from "./chrome.js";
 import { readLoginShellPath } from "./login-shell-path.js";
 import {
 	type InvestigationSummary,
@@ -73,6 +87,8 @@ let backendMainPath = "";
 let running = 0;
 /** A newer release with its downloads attached, once the check has found one. */
 let update: string | null = null;
+/** The app's theme, read from its cookie at boot and pushed by the page after. */
+let theme: Theme = "dark";
 /** Rebuilds the tray menu; set once the tray exists. */
 let refreshTray: () => void = () => {};
 
@@ -117,6 +133,11 @@ async function boot(): Promise<void> {
 		throw new Error(`Backend not ready at ${baseUrl}`);
 	}
 	await pairWindow(backendMain, dir);
+	const [themeCookie] = await session.defaultSession.cookies.get({
+		url: baseUrl,
+		name: THEME_COOKIE,
+	});
+	applyTheme(themeFromCookie(themeCookie?.value));
 	ready = true;
 }
 
@@ -171,21 +192,28 @@ function openWindow(path = "/"): void {
 		if (path !== "/") window.loadURL(`${baseUrl}${path}`);
 		return;
 	}
+	const state = windowStateKeeper({ defaultWidth: 1280, defaultHeight: 840 });
 	window = new BrowserWindow({
-		width: 1280,
-		height: 840,
+		x: state.x,
+		y: state.y,
+		width: state.width,
+		height: state.height,
 		// Below this the sidebar folds to the phone top bar; a desktop window
 		// never needs to go there.
 		minWidth: 800,
 		minHeight: 560,
 		title: "PrismaLens",
 		show: false,
-		// The app's default (dark) background, so first paint is not a white flash.
-		backgroundColor: "#09090b",
+		...frameOptions(process.platform, theme),
 		// Windows and Linux: the stock File/Edit/View menu stays behind Alt.
 		autoHideMenuBar: true,
-		webPreferences: { contextIsolation: true, nodeIntegration: false },
+		webPreferences: {
+			contextIsolation: true,
+			nodeIntegration: false,
+			preload: fileURLToPath(new URL("./preload.cjs", import.meta.url)),
+		},
 	});
+	state.manage(window);
 	window.once("ready-to-show", () => window?.show());
 	// PRISMALENS_DESKTOP_SMOKE=<png path>: prove the window rendered the app,
 	// write the capture, quit. What CI runs under xvfb, and what a box with no
@@ -220,6 +248,16 @@ function openWindow(path = "/"): void {
 		return { action: "deny" };
 	});
 	window.loadURL(`${baseUrl}${path}`);
+}
+
+/** Native surfaces follow the in-app theme: dialogs, menus, the frame. */
+function applyTheme(next: Theme): void {
+	theme = next;
+	nativeTheme.themeSource = next;
+	if (!window) return;
+	window.setBackgroundColor(backgroundColor(next));
+	if (process.platform !== "darwin")
+		window.setTitleBarOverlay(titleBarOverlay(next));
 }
 
 function buildTray(): void {
@@ -405,6 +443,10 @@ if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
 	app.on("second-instance", () => openWindow());
+	ipcMain.on(THEME_CHANNEL, (event, value: unknown) => {
+		if (event.sender !== window?.webContents || !isTheme(value)) return;
+		applyTheme(value);
+	});
 	app
 		.whenReady()
 		.then(async () => {

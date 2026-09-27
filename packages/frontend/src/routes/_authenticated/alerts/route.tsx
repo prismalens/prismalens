@@ -41,7 +41,7 @@ function AlertsFrame() {
 
 	return (
 		<div
-			className="fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-0 md:left-(--sidebar-w) lg:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]"
+			className="fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w) lg:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]"
 			data-testid="alerts-frame"
 		>
 			<AlertListPane

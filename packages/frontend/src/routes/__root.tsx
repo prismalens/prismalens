@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-router";
 import { AlertTriangle, Frown, ServerOff } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
+import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { ConnectionError } from "@/lib/api/orpc-client";
@@ -39,6 +40,7 @@ var g=function(n){var m=document.cookie.match(new RegExp('(^|; )'+n+'=([^;]*)'))
 var e=document.documentElement;
 var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
+var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -79,8 +81,9 @@ function RootLayout() {
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<div className="min-h-dvh bg-background text-foreground">
+							<TitleBarStrip />
 							<Sidebar />
-							<main className="min-w-0 md:pl-(--sidebar-w)">
+							<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
 								<div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 									<Outlet />
 								</div>
@@ -122,6 +125,7 @@ function RootError({ error }: ErrorComponentProps) {
 					<HeadContent />
 				</head>
 				<body className="font-sans bg-background">
+					<TitleBarStrip />
 					<div className="flex min-h-screen flex-col items-center justify-center gap-4">
 						<ServerOff className="h-16 w-16 text-destructive" />
 						<h1 className="text-2xl font-bold text-foreground">
@@ -145,6 +149,7 @@ function RootError({ error }: ErrorComponentProps) {
 				<HeadContent />
 			</head>
 			<body className="font-sans bg-background">
+				<TitleBarStrip />
 				<div className="flex min-h-screen flex-col items-center justify-center gap-4">
 					<AlertTriangle className="h-16 w-16 text-destructive" />
 					<h1 className="text-2xl font-bold text-foreground">
