@@ -18,6 +18,14 @@ import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
 export type { Incident };
 
+/** Why a status changed, when the system changed it on its own (#605). */
+export interface StatusNote {
+	/** Appended to the timeline entry's description. */
+	text: string;
+	/** Machine-readable, stored as the entry's `metadata.reason`. */
+	reason: string;
+}
+
 // Must mirror what the `findById`/`findByNumber`/`findAll` queries below
 // actually return. `service` is joined with `service: true` (the whole row —
 // the contract's `ServiceSchema` requires `type`, `tier`, `metadata`,
@@ -229,7 +237,11 @@ export class IncidentsService {
 	/**
 	 * Update incident
 	 */
-	async update(id: string, dto: UpdateIncidentDto): Promise<Incident | null> {
+	async update(
+		id: string,
+		dto: UpdateIncidentDto,
+		statusNote?: StatusNote,
+	): Promise<Incident | null> {
 		try {
 			const existing = await this.prisma.incident.findUnique({ where: { id } });
 			if (!existing) return null;
@@ -270,9 +282,13 @@ export class IncidentsService {
 					incidentId: id,
 					type: TimelineEntryType.status_changed,
 					title: "Status changed",
-					description: `Status changed from ${existing.status} to ${dto.status}`,
+					description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
 					source: TimelineSource.system,
-					metadata: { previousStatus: existing.status, newStatus: dto.status },
+					metadata: {
+						previousStatus: existing.status,
+						newStatus: dto.status,
+						...(statusNote && { reason: statusNote.reason }),
+					},
 				});
 			}
 
@@ -415,8 +431,8 @@ export class IncidentsService {
 	/**
 	 * Resolve an incident
 	 */
-	async resolve(id: string): Promise<Incident | null> {
-		return this.update(id, { status: "resolved" });
+	async resolve(id: string, note?: StatusNote): Promise<Incident | null> {
+		return this.update(id, { status: "resolved" }, note);
 	}
 
 	/**

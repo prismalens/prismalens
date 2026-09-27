@@ -185,6 +185,8 @@ export const PullResultSchema = z.object({
 	received: z.number().int(),
 	processed: z.number().int(),
 	caughtUp: z.number().int(),
+	/** Alerts resolved because no connected Alertmanager lists them any more (#605). */
+	resolvedByAbsence: z.number().int().optional(),
 	errors: z.array(z.string()),
 });
 

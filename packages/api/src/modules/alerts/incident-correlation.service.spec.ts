@@ -267,7 +267,19 @@ describe("IncidentCorrelationService", () => {
 
 			await service.resolveIncidentIfNoFiringAlerts("incident-1");
 
-			expect(mockIncidentsService.resolve).toHaveBeenCalledWith("incident-1");
+			expect(mockIncidentsService.resolve).toHaveBeenCalledWith(
+				"incident-1",
+				undefined,
+			);
+		});
+
+		it("passes the reason on when the resolution was inferred (#605)", async () => {
+			mockPrismaService.alert.count.mockResolvedValue(0);
+			const note = { text: "no connected Alertmanager still lists X", reason: "alertmanager-absence" };
+
+			await service.resolveIncidentIfNoFiringAlerts("incident-1", note);
+
+			expect(mockIncidentsService.resolve).toHaveBeenCalledWith("incident-1", note);
 		});
 
 		it("leaves the incident alone while another alert on it is still firing", async () => {

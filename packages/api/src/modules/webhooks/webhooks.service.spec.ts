@@ -354,7 +354,30 @@ describe("WebhooksService", () => {
 
 			expect(
 				incidentCorrelationService.resolveIncidentIfNoFiringAlerts,
-			).toHaveBeenCalledWith("inc-123");
+			).toHaveBeenCalledWith("inc-123", undefined);
+		});
+
+		it("records an inferred resolution under its own source and reason (#605)", async () => {
+			vi.mocked(alertsService.findAlertBySourceAlert).mockResolvedValueOnce({
+				...mockAlert,
+				status: "triggered",
+			});
+			const note = { text: "no connected Alertmanager still lists X", reason: "alertmanager-absence" };
+
+			await service.resolvePrometheusAlert("fp-abc", "absent-1", undefined, {
+				source: "alertmanager-pull",
+				note,
+			});
+
+			expect(eventsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					source: "alertmanager-pull",
+					payload: { status: "resolved", fingerprint: "fp-abc", reason: "alertmanager-absence" },
+				}),
+			);
+			expect(
+				incidentCorrelationService.resolveIncidentIfNoFiringAlerts,
+			).toHaveBeenCalledWith("inc-123", note);
 		});
 
 		it("does not ask to close an incident when the resolved alert carries none", async () => {

@@ -480,6 +480,9 @@ model AlertSourceAlert {
   firstSeenAt   DateTime  @default(now())
   lastSeenAt    DateTime  @default(now())
   resolvedAt    DateTime?
+  /// Last time a connected Alertmanager listed this fingerprint. Only a listed
+  /// alert can later be resolved by its absence from every list (#605).
+  lastPulledAt  DateTime?
 
   alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
 
