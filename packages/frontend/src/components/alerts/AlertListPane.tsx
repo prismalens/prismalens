@@ -130,7 +130,7 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
-	const { cursor, setCursor } = useListKeyboard(rows.length, (i) => {
+	const { cursor, pointAt } = useListKeyboard(rows.length, (i) => {
 		const row = rows[i];
 		if (row) open(row);
 	});
@@ -298,12 +298,12 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 								to="/alerts/$id"
 								params={{ id: alert.id }}
 								search={keep}
-								onMouseEnter={() => setCursor(index)}
+								onMouseEnter={() => pointAt(index)}
 								aria-current={selected ? "page" : undefined}
 								data-testid="alert-row-link"
 								data-cursor={cursor === index ? "true" : undefined}
 								className={cn(
-									"block border-b px-3 py-2 outline-none",
+									"block border-b px-3 py-2 outline-none hover:bg-muted/60",
 									cursor === index && "bg-muted/60",
 									selected &&
 										"bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
