@@ -26,6 +26,7 @@ import {
 	shell,
 	Tray,
 } from "electron";
+import contextMenu from "electron-context-menu";
 import windowStateKeeper from "electron-window-state";
 import {
 	resolveBackendMain,
@@ -44,6 +45,7 @@ import {
 	titleBarOverlay,
 } from "./chrome.js";
 import { readLoginShellPath } from "./login-shell-path.js";
+import { appMenuTemplate } from "./menu.js";
 import {
 	type InvestigationSummary,
 	newlyFinished,
@@ -205,8 +207,6 @@ function openWindow(path = "/"): void {
 		title: "PrismaLens",
 		show: false,
 		...frameOptions(process.platform, theme),
-		// Windows and Linux: the stock File/Edit/View menu stays behind Alt.
-		autoHideMenuBar: true,
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
@@ -417,6 +417,22 @@ function startPolling(): void {
 
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 
+/** The macOS menu's "Check for Updates…": always answers, unlike the daily check. */
+async function checkForUpdatesNow(): Promise<void> {
+	const current = backendVersion(backendMainPath);
+	const found = current ? await availableUpdate(current) : null;
+	if (found) {
+		void shell.openExternal(releaseUrl(found));
+		return;
+	}
+	await dialog.showMessageBox({
+		message: current
+			? "PrismaLens is up to date"
+			: "Could not read this build's version",
+		detail: current ? `You have ${current}.` : undefined,
+	});
+}
+
 /** Daily: a notification once per new version, and a tray item to download it. */
 function startUpdateChecks(): void {
 	const current = backendVersion(backendMainPath);
@@ -450,6 +466,25 @@ if (!app.requestSingleInstanceLock()) {
 	app
 		.whenReady()
 		.then(async () => {
+			// Taskbar grouping and notifications key on this; it matches the build's appId.
+			if (process.platform === "win32")
+				app.setAppUserModelId("io.prismalens.desktop");
+			Menu.setApplicationMenu(
+				((template) => (template ? Menu.buildFromTemplate(template) : null))(
+					appMenuTemplate(process.platform, app.name, {
+						openSettings: () => openWindow("/settings"),
+						checkForUpdates: () => void checkForUpdatesNow(),
+					}),
+				),
+			);
+			// Cut, copy and paste where there is text to act on; nothing elsewhere.
+			contextMenu({
+				shouldShowMenu: (_event, params) =>
+					params.isEditable || params.selectionText.trim() !== "",
+				showSearchWithGoogle: false,
+				showLookUpSelection: false,
+				showInspectElement: !app.isPackaged,
+			});
 			await boot();
 			buildTray();
 			openWindow();
