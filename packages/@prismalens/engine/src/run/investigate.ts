@@ -48,7 +48,8 @@ export interface RunInvestigationOptions {
 		| "configFiles"
 		| "sessionMeta"
 		| "companionBinary"
-	>;
+	> &
+		Partial<Pick<HarnessDescriptor, "modelVia">>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
 	/** Per-run directory: harness config, data home, transcript. */
@@ -234,7 +235,10 @@ export async function* runInvestigation(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
-		if (session.servedModel) {
+		// An env-supplied model leaves the selector at its default alias, so the
+		// selector says nothing about what ran (#733).
+		const selectorIsModel = !(descriptor.modelVia === "env" && opts.model);
+		if (session.servedModel && selectorIsModel) {
 			fidelity = { ...fidelity, servedModel: session.servedModel };
 		}
 		let outcome = yield* consume(

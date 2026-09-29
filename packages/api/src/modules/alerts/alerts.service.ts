@@ -10,6 +10,7 @@ import type { Alert } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	AlertStatus,
+	IncidentStatus,
 	TimelineEntryType,
 	TimelineSource,
 } from "../../shared/enums/index.js";
@@ -250,36 +251,59 @@ export class AlertsService {
 	}
 
 	/**
-	 * Append the "reopened by refire (flap)" timeline entry to the alert's linked
-	 * incident. Advisory: an alert with no incident has nowhere to record it, and
-	 * a failed write must not fail the ingest (#231 R1).
+	 * Record the flap reopen on the alert's incident, and move a resolved
+	 * incident back to `triggered` so it never reads resolved while its alert
+	 * fires (#734). Advisory: a failed write must not fail the ingest (#231 R1).
 	 */
 	private async recordFlapReopen(
 		alert: Alert,
 		resolvedAt: Date,
 	): Promise<void> {
-		if (!alert.incidentId) return;
+		const incidentId = alert.incidentId;
+		if (!incidentId) return;
+		const seconds = Math.round(
+			(alert.lastOccurrence.getTime() - resolvedAt.getTime()) / 1000,
+		);
 		try {
-			await this.prisma.timelineEntry.create({
-				data: {
-					incidentId: alert.incidentId,
-					type: TimelineEntryType.status_changed,
-					title: "Alert reopened by refire (flap)",
-					description: `Alert "${alert.title}" refired ${Math.round((alert.lastOccurrence.getTime() - resolvedAt.getTime()) / 1000)}s after resolving, inside the flap window, and was reopened as occurrence ${alert.occurrenceCount}.`,
-					metadata: JSON.stringify({
-						alertId: alert.id,
-						dedupKey: alert.dedupKey,
-						occurrenceCount: alert.occurrenceCount,
-						resolvedAt: resolvedAt.toISOString(),
-						reason: "flap",
-					}),
-					source: TimelineSource.system,
-					occurredAt: alert.lastOccurrence,
-				},
+			await this.prisma.$transaction(async (tx) => {
+				// Cleared so the next resolution stamps its own resolvedAt.
+				const reopened = await tx.incident.updateMany({
+					where: { id: incidentId, status: IncidentStatus.resolved },
+					data: {
+						status: IncidentStatus.triggered,
+						resolvedAt: null,
+						timeToResolve: null,
+						updatedAt: alert.lastOccurrence,
+					},
+				});
+				await tx.timelineEntry.create({
+					data: {
+						incidentId,
+						type: TimelineEntryType.status_changed,
+						title:
+							reopened.count > 0
+								? "Incident reopened: alert refired (flap)"
+								: "Alert reopened by refire (flap)",
+						description: `Alert "${alert.title}" refired ${seconds}s after resolving, inside the flap window, and was reopened as occurrence ${alert.occurrenceCount}.${reopened.count > 0 ? " The incident is open again." : ""}`,
+						metadata: JSON.stringify({
+							alertId: alert.id,
+							dedupKey: alert.dedupKey,
+							occurrenceCount: alert.occurrenceCount,
+							resolvedAt: resolvedAt.toISOString(),
+							reason: "flap",
+							...(reopened.count > 0 && {
+								previousStatus: IncidentStatus.resolved,
+								newStatus: IncidentStatus.triggered,
+							}),
+						}),
+						source: TimelineSource.system,
+						occurredAt: alert.lastOccurrence,
+					},
+				});
 			});
 		} catch (error) {
 			this.logger.warn(
-				`Failed to record flap reopen on incident ${alert.incidentId}: ${error}`,
+				`Failed to record flap reopen on incident ${incidentId}: ${error}`,
 			);
 		}
 	}
