@@ -15,9 +15,13 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 export interface ListKeyboard {
-	/** Index of the highlighted row, or -1 when nothing is highlighted. */
+	/** Index of the keyboard-highlighted row, or -1 when nothing is highlighted. */
 	cursor: number;
-	setCursor: (index: number) => void;
+	/**
+	 * The pointer entered a row: `j` / `k` continue from it. The pointer's own
+	 * highlight is CSS `:hover`, so nothing stays lit once it leaves the row.
+	 */
+	pointAt: (index: number) => void;
 }
 
 /**
@@ -30,6 +34,8 @@ export function useListKeyboard(
 	onOpen: (index: number) => void,
 ): ListKeyboard {
 	const [cursor, setCursor] = useState(-1);
+	/** The cursor was last moved by a key, not by the pointer. */
+	const [keyed, setKeyed] = useState(false);
 
 	useEffect(() => {
 		if (cursor >= count) setCursor(count - 1);
@@ -41,18 +47,20 @@ export function useListKeyboard(
 			if (count === 0) return;
 			if (e.key === "j" || e.key === "ArrowDown") {
 				e.preventDefault();
+				setKeyed(true);
 				setCursor((c) => Math.min(count - 1, c + 1));
 			} else if (e.key === "k" || e.key === "ArrowUp") {
 				e.preventDefault();
+				setKeyed(true);
 				setCursor((c) => Math.max(0, c - 1));
-			} else if (e.key === "Enter" && cursor >= 0) {
+			} else if (e.key === "Enter" && keyed && cursor >= 0) {
 				e.preventDefault();
 				onOpen(cursor);
 			} else if (e.key === "Escape") {
 				setCursor(-1);
 			}
 		},
-		[count, cursor, onOpen],
+		[count, cursor, keyed, onOpen],
 	);
 
 	useEffect(() => {
@@ -60,5 +68,10 @@ export function useListKeyboard(
 		return () => window.removeEventListener("keydown", onKey);
 	}, [onKey]);
 
-	return { cursor, setCursor };
+	const pointAt = useCallback((index: number) => {
+		setCursor(index);
+		setKeyed(false);
+	}, []);
+
+	return { cursor: keyed ? cursor : -1, pointAt };
 }

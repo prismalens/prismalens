@@ -203,7 +203,13 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await page.goto("/incidents?view=analytics");
 		await expect(paneHeading(page)).toBeVisible({ timeout: 15_000 });
 		await expect(row(page, resolvedTitle)).toBeVisible({ timeout: 15_000 });
+		// The pointer lights a row only while over it (CSS :hover); leaving the
+		// list must not leave a keyboard cursor behind on the last row it crossed.
+		await row(page, resolvedTitle).hover();
+		await page.mouse.move(1, 1);
+		await expect(page.locator("[data-cursor]")).toHaveCount(0);
 		await page.keyboard.press("j");
+		await expect(page.locator("[data-cursor]")).toHaveCount(1);
 		await page.keyboard.press("Enter");
 		// Opening a row keeps the frame's other search params (`view=analytics`
 		// among them), so the id is followed by a query string, not the end of

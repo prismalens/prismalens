@@ -157,7 +157,7 @@ export function IncidentListPane({
 			params: { id: incident.id },
 			search: keep,
 		});
-	const { cursor, setCursor } = useListKeyboard(ordered.rows.length, (i) => {
+	const { cursor, pointAt } = useListKeyboard(ordered.rows.length, (i) => {
 		const row = ordered.rows[i];
 		if (row) open(row);
 	});
@@ -331,15 +331,15 @@ export function IncidentListPane({
 								to="/incidents/$id"
 								params={{ id: incident.id }}
 								search={keep}
-								onMouseEnter={() => setCursor(index)}
+								onMouseEnter={() => pointAt(index)}
 								aria-current={selected ? "page" : undefined}
 								data-testid="incident-row"
 								data-cursor={cursor === index ? "true" : undefined}
 								className={cn(
-									"block border-b px-3 py-2 outline-none",
+									"block border-b px-3 py-2 outline-none hover:bg-muted/60",
 									cursor === index && "bg-muted/60",
 									selected &&
-										"bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
+										"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
 								)}
 							>
 								{(() => {
