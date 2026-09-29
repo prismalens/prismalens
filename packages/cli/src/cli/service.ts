@@ -105,7 +105,7 @@ function waitForHealth(
 	timeoutMs = 60_000,
 ): Promise<boolean> {
 	const url = healthUrl({
-		host: bind.host ?? "localhost",
+		host: bind.host || "127.0.0.1",
 		port: bind.port,
 		protocol: "http",
 	});
@@ -143,7 +143,7 @@ const install = defineCommand({
 	},
 	args: {
 		port: { type: "string", description: "Port to listen on (default 3001)" },
-		host: { type: "string", description: "Host to bind (default localhost)" },
+		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
 		workspace: {
 			type: "string",
 			description:
@@ -165,21 +165,30 @@ const install = defineCommand({
 		const config = await loadConfig();
 		const { kind, unitPath, uid } = await manager(config);
 		const workspace = resolve(config.getAppDataDir());
-		const host = args.host ? String(args.host) : process.env.PRISMALENS_HOST;
+		const host =
+			(args.host ? String(args.host) : process.env.PRISMALENS_HOST) ||
+			undefined;
 
-		// Stop our own unit first, so a lock still held after that is someone else's pl up.
-		if (config.installedService()) {
-			runAction(kind, "stop", unitPath, uid);
-			await lockReleased(
-				() => config.readWorkspaceLockState(workspace).kind !== "held",
-			);
-		}
-		const lock = config.readWorkspaceLockState(workspace);
-		if (lock.kind === "held") {
+		// Refuse before stopping anything; when the unit is ours, stop it first so a
+		// lock still held afterwards is a foreground pl up (#735 review).
+		const existing = config.installedService();
+		const ours = config.serviceOwnsWorkspace(workspace, existing);
+		const refuseIfHeld = (restart: boolean) => {
+			const lock = config.readWorkspaceLockState(workspace);
+			if (lock.kind !== "held") return;
 			consola.error(
 				`pl up is running on this workspace (pid ${lock.owner.pid}, port ${lock.owner.port}). Stop it, then install the service.`,
 			);
+			if (restart) runAction(kind, "start", unitPath, uid);
 			process.exit(1);
+		};
+		if (!ours) refuseIfHeld(false);
+		if (existing) runAction(kind, "stop", unitPath, uid);
+		if (ours) {
+			await lockReleased(
+				() => config.readWorkspaceLockState(workspace).kind !== "held",
+			);
+			refuseIfHeld(true);
 		}
 
 		const plan = buildPlan({

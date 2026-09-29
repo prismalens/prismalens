@@ -49,6 +49,8 @@ describe("installedService", () => {
 		expect(parseServiceUnit(unit, "/u")).toMatchObject({ host: "192.168.1.10" });
 		const plist = "<key>PRISMALENS_WORKSPACE_DIR</key><string>/w</string><key>PRISMALENS_PORT</key><string>3170</string><key>PRISMALENS_HOST</key><string>::</string>";
 		expect(parseServiceUnit(plist, "/u")).toMatchObject({ host: "::" });
+		const zoned = unit.replace("192.168.1.10", "fe80::1%%en0");
+		expect(parseServiceUnit(zoned, "/u")).toMatchObject({ host: "fe80::1%en0" });
 		expect(parseServiceUnit(unit.replace(/.*HOST.*\n/, ""), "/u")?.host).toBeUndefined();
 	});
 });

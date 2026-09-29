@@ -79,7 +79,9 @@ export function parseServiceUnit(
 		/^Environment="?PRISMALENS_PORT=(\d+)"?$/m.exec(contents)?.[1] ??
 		/<key>PRISMALENS_PORT<\/key>\s*<string>(\d+)<\/string>/.exec(contents)?.[1];
 	const host =
-		/^Environment="?PRISMALENS_HOST=([^"\n]*)"?$/m.exec(contents)?.[1] ??
+		/^Environment="?PRISMALENS_HOST=([^"\n]*)"?$/m
+			.exec(contents)?.[1]
+			?.replaceAll("%%", "%") ??
 		/<key>PRISMALENS_HOST<\/key>\s*<string>([^<]*)<\/string>/.exec(
 			contents,
 		)?.[1];
