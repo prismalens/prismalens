@@ -7,7 +7,8 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import type { Alert } from "@prismalens/database";
 import { AlertFactory } from "../../../test/factories/index.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { AlertStatus, Severity } from "../../shared/enums/index.js";
+import { AlertStatus, IncidentStatus, Severity } from "../../shared/enums/index.js";
+import { IncidentsService } from "../incidents/incidents.service.js";
 import { AlertsService } from "./alerts.service.js";
 import type { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 
@@ -32,6 +33,12 @@ const mockPrismaService = {
 	timelineEntry: {
 		create: vi.fn(),
 	},
+	incident: {
+		updateMany: vi.fn(async () => ({ count: 0 })),
+	},
+	$transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
+		fn(mockPrismaService),
+	),
 };
 
 /** The #231 flap window, in the units the service reads it in (minutes). */
@@ -288,6 +295,31 @@ describe("AlertsService (BDD)", () => {
 				data: expect.objectContaining({
 					incidentId: "incident-1",
 					title: "Alert reopened by refire (flap)",
+				}),
+			});
+		});
+
+		it("R1: the reopen moves a resolved incident back to triggered and clears resolvedAt (#734)", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 5 * MINUTE),
+			});
+			mockPrismaService.incident.updateMany.mockResolvedValueOnce({ count: 1 });
+
+			await service.create(refireDto);
+
+			expect(mockPrismaService.incident.updateMany).toHaveBeenCalledWith({
+				where: { id: "incident-1", status: IncidentStatus.resolved },
+				data: expect.objectContaining({
+					status: IncidentStatus.triggered,
+					resolvedAt: null,
+					timeToResolve: null,
+				}),
+			});
+			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					incidentId: "incident-1",
+					title: "Incident reopened: alert refired (flap)",
 				}),
 			});
 		});
@@ -915,4 +947,84 @@ describe("AlertsService (BDD)", () => {
 		});
 	});
 
+
+	describe("resolve → flap refire → resolve (#734)", () => {
+		it("the incident reopens on the refire and resolves again with its own resolvedAt", async () => {
+			vi.useFakeTimers();
+			const T0 = new Date("2026-09-27T09:03:31.000Z");
+			vi.setSystemTime(T0);
+			const incident = {
+				id: "inc-1",
+				status: IncidentStatus.triggered as string,
+				triggeredAt: T0,
+				resolvedAt: null as Date | null,
+				timeToResolve: null as number | null,
+			};
+			let alert = AlertFactory.create({
+				id: "alert-1",
+				incidentId: "inc-1",
+				status: AlertStatus.correlated,
+				occurrenceCount: 1,
+			});
+			const db = {
+				alert: {
+					findFirst: vi.fn(async () => alert),
+					update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+						alert = AlertFactory.create({
+							...alert,
+							...data,
+							occurrenceCount: alert.occurrenceCount + 1,
+						});
+						return alert;
+					}),
+				},
+				alertSourceAlert: { upsert: vi.fn() },
+				incident: {
+					findUnique: vi.fn(async () => ({ ...incident })),
+					update: vi.fn(async ({ data }: { data: Record<string, unknown> }) =>
+						Object.assign(incident, data),
+					),
+					updateMany: vi.fn(
+						async ({ where, data }: { where: { status: string }; data: Record<string, unknown> }) => {
+							if (incident.status !== where.status) return { count: 0 };
+							Object.assign(incident, data);
+							return { count: 1 };
+						},
+					),
+				},
+				timelineEntry: { create: vi.fn() },
+				$transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
+			};
+			const timeline = { create: vi.fn() };
+			const incidents = new IncidentsService(
+				db as never,
+				timeline as never,
+				{ capture: vi.fn() } as never,
+			);
+			const alerts = new AlertsService(db as never, mockConfigService as never);
+
+			// The alert resolves, and with it the incident.
+			vi.setSystemTime(new Date("2026-09-27T09:04:11.000Z"));
+			alert = AlertFactory.create({ ...alert, status: AlertStatus.resolved, resolvedAt: new Date() });
+			await incidents.resolve("inc-1");
+			expect(incident.status).toBe(IncidentStatus.resolved);
+			const firstResolvedAt = incident.resolvedAt;
+			expect(firstResolvedAt).toEqual(new Date("2026-09-27T09:04:11.000Z"));
+
+			// It refires 40 s later, inside the window: the incident opens again.
+			vi.setSystemTime(new Date("2026-09-27T09:04:51.000Z"));
+			await alerts.create({ source: "prometheus", title: alert.title, severity: alert.severity as Severity });
+			expect(alert.status).toBe(AlertStatus.triggered);
+			expect(incident.status).toBe(IncidentStatus.triggered);
+			expect(incident.resolvedAt).toBeNull();
+
+			// Its next resolution closes the incident again, stamped anew.
+			vi.setSystemTime(new Date("2026-09-27T09:09:21.000Z"));
+			await incidents.resolve("inc-1");
+			expect(incident.status).toBe(IncidentStatus.resolved);
+			expect(incident.resolvedAt).toEqual(new Date("2026-09-27T09:09:21.000Z"));
+			expect(timeline.create).toHaveBeenCalledTimes(2);
+			vi.useRealTimers();
+		});
+	});
 });

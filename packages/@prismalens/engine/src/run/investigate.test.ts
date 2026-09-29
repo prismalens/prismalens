@@ -79,6 +79,20 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(r2.report.fidelity?.servedModel).toBeUndefined();
 	});
 
+	it("records no served model when the model reached the agent by env, whatever the selector says (#733)", async () => {
+		const base = opts("ok");
+		const { events } = await collect("ok", {
+			model: "gemma4:31b-cloud",
+			modelSource: "operator",
+			descriptor: { ...base.descriptor, modelVia: "env" as const },
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_SERVED_MODEL: "opus" },
+		});
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity?.model).toBe("gemma4:31b-cloud");
+		expect(report.report.fidelity?.servedModel).toBeUndefined();
+	});
+
 	it("runs in the clone, refuses the write, validates the report first try, writes the transcript", async () => {
 		const { events, cwd, runDir } = await collect("ok");
 		const kinds = events.map((e) => e.kind);
