@@ -4,6 +4,7 @@
 import { parseServiceUnit } from "@prismalens/config";
 import { describe, expect, it } from "vitest";
 import {
+	activeProbe,
 	buildPlan,
 	renderLaunchdPlist,
 	renderSystemdUnit,
@@ -85,6 +86,13 @@ describe("renderLaunchdPlist", () => {
 		const odd = renderLaunchdPlist(buildPlan({ ...basics, workspace: "/w/a&b" }), "/Users/u");
 		expect(odd).toContain("<string>/w/a&amp;b</string>");
 		expect(parseServiceUnit(odd, "/p")?.workspace).toBe("/w/a&b");
+	});
+});
+
+describe("activeProbe", () => {
+	it("asks systemd whether the unit runs, and launchd whether it is loaded", () => {
+		expect(activeProbe("systemd", 1000)).toEqual(["systemctl", "--user", "is-active", "--quiet", "prismalens.service"]);
+		expect(activeProbe("launchd", 501)).toEqual(["launchctl", "print", "gui/501/io.prismalens.server"]);
 	});
 });
 

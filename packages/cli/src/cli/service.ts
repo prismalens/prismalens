@@ -22,6 +22,7 @@ import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
 import {
 	type Action,
+	activeProbe,
 	buildPlan,
 	renderLaunchdPlist,
 	renderSystemdUnit,
@@ -183,12 +184,14 @@ const install = defineCommand({
 			process.exit(1);
 		};
 		if (!ours) refuseIfHeld(false);
+		// Only a unit that was running before this install is started again on refusal.
+		const wasActive = existing !== null && exec(activeProbe(kind, uid)).ok;
 		if (existing) runAction(kind, "stop", unitPath, uid);
 		if (ours) {
 			await lockReleased(
 				() => config.readWorkspaceLockState(workspace).kind !== "held",
 			);
-			refuseIfHeld(true);
+			refuseIfHeld(wasActive);
 		}
 
 		const plan = buildPlan({

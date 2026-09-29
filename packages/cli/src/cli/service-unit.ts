@@ -172,6 +172,13 @@ export interface Step {
 
 export type Action = "start" | "stop" | "restart" | "remove";
 
+/** Exits 0 while the unit is running (systemd) or loaded (launchd). */
+export function activeProbe(kind: ServiceManagerKind, uid: number): string[] {
+	return kind === "systemd"
+		? ["systemctl", "--user", "is-active", "--quiet", SYSTEMD_UNIT_NAME]
+		: ["launchctl", "print", `gui/${uid}/${LAUNCHD_LABEL}`];
+}
+
 export function steps(
 	kind: ServiceManagerKind,
 	action: Action,
