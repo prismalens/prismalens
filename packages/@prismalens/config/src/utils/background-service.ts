@@ -49,6 +49,8 @@ export interface InstalledService {
 	unitPath: string;
 	workspace: string;
 	port: number;
+	/** The bind address the unit sets; absent means pl up's default. */
+	host?: string;
 }
 
 /** Reads the unit `pl service install` wrote; null when there is none. */
@@ -76,8 +78,18 @@ export function parseServiceUnit(
 	const port =
 		/^Environment="?PRISMALENS_PORT=(\d+)"?$/m.exec(contents)?.[1] ??
 		/<key>PRISMALENS_PORT<\/key>\s*<string>(\d+)<\/string>/.exec(contents)?.[1];
+	const host =
+		/^Environment="?PRISMALENS_HOST=([^"\n]*)"?$/m.exec(contents)?.[1] ??
+		/<key>PRISMALENS_HOST<\/key>\s*<string>([^<]*)<\/string>/.exec(
+			contents,
+		)?.[1];
 	if (!workspace || !port) return null;
-	return { unitPath, workspace: unescapeXml(workspace), port: Number(port) };
+	return {
+		unitPath,
+		workspace: unescapeXml(workspace),
+		port: Number(port),
+		...(host ? { host: unescapeXml(host) } : {}),
+	};
 }
 
 /** True when the installed service runs on `workspaceDir`. */

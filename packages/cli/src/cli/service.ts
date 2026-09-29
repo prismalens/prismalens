@@ -29,6 +29,7 @@ import {
 	servicePath,
 	steps,
 } from "./service-unit.js";
+import { healthUrl, waitForReady } from "./up-console.js";
 
 type Config = typeof import("@prismalens/config");
 
@@ -99,16 +100,27 @@ function installerBinDir(config: Config): string | null {
 	return /^bin_dir=(.+)$/m.exec(receipt)?.[1] ?? null;
 }
 
-async function waitForHealth(port: number, ms = 60_000): Promise<boolean> {
+function waitForHealth(
+	bind: { host?: string; port: number },
+	timeoutMs = 60_000,
+): Promise<boolean> {
+	const url = healthUrl({
+		host: bind.host ?? "localhost",
+		port: bind.port,
+		protocol: "http",
+	});
+	return waitForReady(url, { timeoutMs, intervalMs: 500 });
+}
+
+/** Waits until `free()` or the deadline; the stopped unit's pl up needs a moment to drop the lock. */
+export async function lockReleased(
+	free: () => boolean,
+	ms = 30_000,
+): Promise<void> {
 	const deadline = Date.now() + ms;
-	while (Date.now() < deadline) {
-		try {
-			const res = await fetch(`http://127.0.0.1:${port}/health`);
-			if (res.ok) return true;
-		} catch {}
-		await new Promise((r) => setTimeout(r, 1000));
+	while (!free() && Date.now() < deadline) {
+		await new Promise((r) => setTimeout(r, 500));
 	}
-	return false;
 }
 
 function lingerHint(): string | null {
@@ -140,25 +152,35 @@ const install = defineCommand({
 	},
 	async run({ args, cmd }) {
 		assertKnownFlags(args, cmd);
+		const rawPort = String(args.port ?? process.env.PRISMALENS_PORT ?? 3001);
+		const port = Number(rawPort);
+		if (!/^\d+$/.test(rawPort) || port < 1 || port > 65535) {
+			consola.error(
+				`--port must be a number from 1 to 65535, not "${rawPort}".`,
+			);
+			process.exit(1);
+		}
 		if (args.workspace)
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		const config = await loadConfig();
 		const { kind, unitPath, uid } = await manager(config);
 		const workspace = resolve(config.getAppDataDir());
-		const port = Number(args.port ?? process.env.PRISMALENS_PORT ?? 3001);
+		const host = args.host ? String(args.host) : process.env.PRISMALENS_HOST;
 
-		const existing = config.installedService();
+		// Stop our own unit first, so a lock still held after that is someone else's pl up.
+		if (config.installedService()) {
+			runAction(kind, "stop", unitPath, uid);
+			await lockReleased(
+				() => config.readWorkspaceLockState(workspace).kind !== "held",
+			);
+		}
 		const lock = config.readWorkspaceLockState(workspace);
-		if (
-			lock.kind === "held" &&
-			!config.serviceOwnsWorkspace(workspace, existing)
-		) {
+		if (lock.kind === "held") {
 			consola.error(
 				`pl up is running on this workspace (pid ${lock.owner.pid}, port ${lock.owner.port}). Stop it, then install the service.`,
 			);
 			process.exit(1);
 		}
-		if (existing) runAction(kind, "stop", unitPath, uid);
 
 		const plan = buildPlan({
 			launcher: resolveLauncher({
@@ -168,7 +190,7 @@ const install = defineCommand({
 			}),
 			workspace,
 			port,
-			host: args.host ? String(args.host) : process.env.PRISMALENS_HOST,
+			host,
 			path: servicePath(process.env.PATH ?? "", process.execPath),
 			env: process.env,
 		});
@@ -183,7 +205,7 @@ const install = defineCommand({
 		if (!runAction(kind, "start", unitPath, uid)) process.exit(1);
 
 		consola.start(`Starting PrismaLens on port ${port}…`);
-		if (!(await waitForHealth(port))) {
+		if (!(await waitForHealth({ host, port }))) {
 			consola.error(
 				`The service didn't answer on port ${port} within a minute. Its log: ${plan.logPath}`,
 			);
@@ -233,7 +255,7 @@ const status = defineCommand({
 			return;
 		}
 		const lock = config.readWorkspaceLockState(service.workspace);
-		const healthy = await waitForHealth(service.port, 2000);
+		const healthy = await waitForHealth(service, 2000);
 		consola.log(
 			[
 				`Unit:      ${service.unitPath}`,
@@ -260,7 +282,7 @@ const restart = defineCommand({
 			process.exit(1);
 		}
 		if (!runAction(kind, "restart", unitPath, uid)) process.exit(1);
-		if (!(await waitForHealth(service.port))) {
+		if (!(await waitForHealth(service))) {
 			consola.error(
 				`The service didn't come back on port ${service.port}. Its log: ${join(service.workspace, "logs", "service.log")}`,
 			);

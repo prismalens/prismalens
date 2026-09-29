@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	installedService,
+	parseServiceUnit,
 	serviceManagerKind,
 	serviceOwnsWorkspace,
 	serviceUnitPath,
@@ -41,5 +42,13 @@ describe("installedService", () => {
 		expect(serviceOwnsWorkspace("/w/ws/", service)).toBe(true);
 		expect(serviceOwnsWorkspace("/w/other", service)).toBe(false);
 		expect(serviceOwnsWorkspace("/w/ws", null)).toBe(false);
+	});
+
+	it("reads the bind host when the unit sets one", () => {
+		const unit = '[Service]\nEnvironment="PRISMALENS_WORKSPACE_DIR=/w"\nEnvironment="PRISMALENS_PORT=3170"\nEnvironment="PRISMALENS_HOST=192.168.1.10"\n';
+		expect(parseServiceUnit(unit, "/u")).toMatchObject({ host: "192.168.1.10" });
+		const plist = "<key>PRISMALENS_WORKSPACE_DIR</key><string>/w</string><key>PRISMALENS_PORT</key><string>3170</string><key>PRISMALENS_HOST</key><string>::</string>";
+		expect(parseServiceUnit(plist, "/u")).toMatchObject({ host: "::" });
+		expect(parseServiceUnit(unit.replace(/.*HOST.*\n/, ""), "/u")?.host).toBeUndefined();
 	});
 });

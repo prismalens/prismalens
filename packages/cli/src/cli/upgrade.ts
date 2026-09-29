@@ -14,7 +14,7 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
-import { runAction } from "./service.js";
+import { lockReleased, runAction } from "./service.js";
 import { fetchLatestVersion, isNewer, releaseReady } from "./update-notice.js";
 
 /** argv to run for `channel`, or null when the user has to act (desktop). */
@@ -198,10 +198,3 @@ export default defineCommand({
 		consola.success(`Upgraded to ${target}. Start it with pl up.`);
 	},
 });
-
-async function lockReleased(free: () => boolean, ms = 30_000): Promise<void> {
-	const deadline = Date.now() + ms;
-	while (!free() && Date.now() < deadline) {
-		await new Promise((r) => setTimeout(r, 500));
-	}
-}

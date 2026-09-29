@@ -164,7 +164,7 @@ if [ "$action" = uninstall ]; then
 	installed_bin=$(receipt_get bin_dir)
 	dir="${installed_bin:-$bin_dir}"
 	# The background service runs this install's pl; remove it before pl goes (#732).
-	if [ -f "$dir/pl" ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/prismalens.service" -o -f "$HOME/Library/LaunchAgents/io.prismalens.server.plist" ]; then
+	if [ -f "$dir/pl" ] && { [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/prismalens.service" ] || [ -f "$HOME/Library/LaunchAgents/io.prismalens.server.plist" ]; }; then
 		"$dir/pl" service uninstall >/dev/null 2>&1 && done_ "Removed the background service"
 	fi
 	for name in pl prismalens; do
