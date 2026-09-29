@@ -14,6 +14,7 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
+import { lockReleased, runAction } from "./service.js";
 import { fetchLatestVersion, isNewer, releaseReady } from "./update-notice.js";
 
 /** argv to run for `channel`, or null when the user has to act (desktop). */
@@ -143,19 +144,39 @@ export default defineCommand({
 			return;
 		}
 
-		const lock = config.readWorkspaceLockState(config.getAppDataDir());
-		if (lock.kind === "held") {
-			consola.error(
-				`pl up is running (pid ${lock.owner.pid}). Stop it first, then run pl upgrade again.`,
-			);
-			process.exit(1);
-		}
-
 		const argv = upgradeArgv(channel, target);
 		if (!argv) {
 			consola.info(`The desktop app upgrades by download: ${command}`);
 			return;
 		}
+
+		// A background service on this workspace is stopped for the upgrade and started again after (#732).
+		const workspace = config.getAppDataDir();
+		const service = config.installedService();
+		const kind = config.serviceManagerKind();
+		const uid = process.getuid?.() ?? 0;
+		const viaService =
+			kind !== null &&
+			service !== null &&
+			config.serviceOwnsWorkspace(workspace, service);
+		const startService = () =>
+			!viaService || runAction(kind, "start", service.unitPath, uid);
+		if (viaService) {
+			consola.start("Stopping the background service for the upgrade…");
+			if (!runAction(kind, "stop", service.unitPath, uid)) process.exit(1);
+			await lockReleased(
+				() => config.readWorkspaceLockState(workspace).kind !== "held",
+			);
+		}
+		const lock = config.readWorkspaceLockState(workspace);
+		if (lock.kind === "held") {
+			consola.error(
+				`pl up is running (pid ${lock.owner.pid}). Stop it first, then run pl upgrade again.`,
+			);
+			startService();
+			process.exit(1);
+		}
+
 		consola.start(
 			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
 		);
@@ -164,7 +185,15 @@ export default defineCommand({
 			consola.error(
 				`The upgrade command failed${result.error ? `: ${result.error.message}` : ""}. Run it yourself: ${command}`,
 			);
+			startService();
 			process.exit(result.status ?? 1);
+		}
+		if (viaService) {
+			if (!startService()) process.exit(1);
+			consola.success(
+				`Upgraded to ${target}; the background service is running it.`,
+			);
+			return;
 		}
 		consola.success(`Upgraded to ${target}. Start it with pl up.`);
 	},

@@ -12,6 +12,7 @@ import { Injectable } from "@nestjs/common";
 import {
 	getAppDataDir,
 	installChannel,
+	installedService,
 	isNewer,
 	isStale,
 	RELEASES_URL,
@@ -80,7 +81,9 @@ export class AboutService {
 				releaseNotesUrl: latest ? `${RELEASES_URL}/tag/v${latest}` : null,
 			},
 			upgradeCommand: upgradeCommand(channel),
-			uninstallCommand: uninstallCommand(channel),
+			uninstallCommand: installedService()
+				? `pl service uninstall && ${uninstallCommand(channel)}`
+				: uninstallCommand(channel),
 		};
 	}
 }
