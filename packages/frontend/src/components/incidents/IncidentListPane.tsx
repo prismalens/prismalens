@@ -339,7 +339,7 @@ export function IncidentListPane({
 									"block border-b px-3 py-2 outline-none hover:bg-muted/60",
 									cursor === index && "bg-muted/60",
 									selected &&
-										"bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
+										"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
 								)}
 							>
 								{(() => {
