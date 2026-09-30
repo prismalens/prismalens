@@ -28,14 +28,10 @@ export function incidentServices(
 	incident: IncidentWithRelations,
 ): ServiceRef[] {
 	if (incident.services && incident.services.length > 0) {
-		// The list's refs carry the service's name; its own service also has
-		// the display name the rest of the UI shows.
-		const own = incident.service;
-		return incident.services.map((s) =>
-			own && s.id === own.id
-				? { id: s.id, name: own.displayName || own.name }
-				: s,
-		);
+		return incident.services.map((s) => ({
+			id: s.id,
+			name: s.displayName ?? s.name,
+		}));
 	}
 	if (incident.service) {
 		return [

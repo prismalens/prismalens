@@ -13,10 +13,10 @@ import {
 	NO_SERVICE_LANE,
 } from "./service-lanes";
 
-const svc = (id: string, name: string) => ({ id, name });
+const svc = (id: string, name: string) => ({ id, name, displayName: null });
 const inc = (
 	id: string,
-	services: { id: string; name: string }[],
+	services: { id: string; name: string; displayName: string | null }[],
 ): IncidentWithRelations =>
 	({ id, services, service: null }) as unknown as IncidentWithRelations;
 
@@ -45,6 +45,11 @@ describe("incidentLanes", () => {
 		expect(incidentLanes([one]).map((l) => l.name)).toEqual(["API Gateway"]);
 	});
 
+	it("shows a service's display name when it has one", () => {
+		const a = inc("a", [{ id: "s1", name: "api-gateway", displayName: "API Gateway" }]);
+		expect(incidentLanes([a]).map((l) => l.name)).toEqual(["API Gateway"]);
+	});
+
 	it("names the other lanes an incident also sits in", () => {
 		const a = inc("a", [svc("s1", "checkout"), svc("s2", "payments"), svc("s3", "search")]);
 		expect(alsoIn(a, "s1")).toEqual(["payments", "search"]);
@@ -53,7 +58,7 @@ describe("incidentLanes", () => {
 
 describe("alertLanes", () => {
 	it("groups alerts by their own service", () => {
-		const alert = (id: string, s?: { id: string; name: string }) =>
+		const alert = (id: string, s?: { id: string; name: string; displayName: string | null }) =>
 			({ id, service: s ? { ...s, displayName: null } : null }) as unknown as AlertWithRelations;
 		const lanes = alertLanes([alert("1", svc("s1", "api")), alert("2"), alert("3", svc("s1", "api"))]);
 		expect(lanes.map((l) => [l.name, l.items.length])).toEqual([
