@@ -167,6 +167,7 @@ const parseDndId = (id: string | number) => {
 type Prompt = { incidentId: string; lane: string } & (
 	| { kind: "investigate" }
 	| { kind: "stop" }
+	| { kind: "reopen" }
 	| { kind: "resolve"; stopFirst: boolean }
 );
 
@@ -180,6 +181,7 @@ function actionFor(d: Dragging, to: BoardColumn, lane: string): DropAction {
 		to,
 		live: !!run && isWorkflowLive(run.status),
 		canResolve: canIncidentAction("resolve", d.incident.status),
+		canReopen: canIncidentAction("reopen", d.incident.status),
 	});
 }
 
@@ -255,6 +257,7 @@ export function IncidentBoard({
 	};
 	const investigate = useMutation(orpc.incidents.investigate.mutationOptions());
 	const resolve = useMutation(orpc.incidents.resolve.mutationOptions());
+	const reopen = useMutation(orpc.incidents.update.mutationOptions());
 	const cancel = useCancelInvestigation();
 
 	const startRun = (incident: IncidentWithRelations, brief: string) => {
@@ -350,6 +353,28 @@ export function IncidentBoard({
 						blockedReason={isReady ? undefined : blockedReason}
 					/>
 				</div>
+			);
+		}
+		if (prompt.kind === "reopen") {
+			return (
+				<ConfirmBody
+					title={`Reopen INC-${incident.number}?`}
+					body="It goes back to Investigating and its resolve time is cleared."
+					cancel="Cancel"
+					confirm="Reopen"
+					onCancel={() => setPrompt(null)}
+					onConfirm={() => {
+						setPrompt(null);
+						setBusy((b) => ({ ...b, [incident.id]: "Reopening…" }));
+						reopen.mutate(
+							{ id: incident.id, status: "investigating" },
+							{
+								onSuccess: settle(incident.id),
+								onError: fail(incident.id, "Not reopened"),
+							},
+						);
+					}}
+				/>
 			);
 		}
 		if (prompt.kind === "stop") {

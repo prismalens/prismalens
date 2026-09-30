@@ -39,6 +39,7 @@ export interface IncidentStateBandProps {
 	onInvestigate: () => void;
 	onResolve: () => void;
 	onClose: () => void;
+	onReopen: () => void;
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
@@ -66,6 +67,7 @@ export function IncidentStateBand({
 	onInvestigate,
 	onResolve,
 	onClose,
+	onReopen,
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
@@ -78,13 +80,13 @@ export function IncidentStateBand({
 		investigate: onInvestigate,
 		resolve: onResolve,
 		close: onClose,
-		reopen: () => {},
+		reopen: onReopen,
 	};
 	// The one the status admits first, in the order the incident moves through.
 	// Once resolved, closing is the next step; Investigate stays in the menu (#743).
 	const order: IncidentAction[] = isIncidentOpen(incident.status)
 		? ["investigate", "acknowledge", "resolve", "close"]
-		: ["close", "investigate"];
+		: ["close", "reopen", "investigate"];
 	const admitted = order.filter(
 		(a) =>
 			canIncidentAction(a, incident.status) &&

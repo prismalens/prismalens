@@ -7,13 +7,14 @@ import { dropAction } from "./board-drop";
 const drop = (
 	from: Parameters<typeof dropAction>[0]["from"],
 	to: Parameters<typeof dropAction>[0]["to"],
-	opts: { live?: boolean; canResolve?: boolean } = {},
+	opts: { live?: boolean; canResolve?: boolean; canReopen?: boolean } = {},
 ) =>
 	dropAction({
 		from,
 		to,
 		live: opts.live ?? false,
 		canResolve: opts.canResolve ?? true,
+		canReopen: opts.canReopen ?? false,
 	});
 
 describe("dropAction", () => {
@@ -51,10 +52,23 @@ describe("dropAction", () => {
 		expect(drop("working", "needs_you").kind).toBe("none");
 		expect(drop("resolved", "needs_you").kind).toBe("none");
 		expect(drop("resolved", "concluded").kind).toBe("none");
+		expect(drop("resolved", "needs_you", { canReopen: true }).kind).toBe(
+			"none",
+		);
 		expect(drop("needs_you", "concluded").kind).toBe("none");
 		expect(drop("working", "working")).toEqual({ kind: "none" });
 		expect(drop("needs_you", "resolved", { canResolve: false }).kind).toBe(
 			"none",
+		);
+	});
+
+	it("reopens a resolved incident dropped on Concluded; a closed one stays", () => {
+		expect(drop("needs_you", "concluded", { canReopen: true })).toEqual({
+			kind: "reopen",
+		});
+		const closed = drop("resolved", "concluded", { canReopen: false });
+		expect(closed.kind === "none" && closed.reason).toBe(
+			"A closed incident stays closed",
 		);
 	});
 

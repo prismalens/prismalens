@@ -13,6 +13,7 @@ import { CloseIncidentDialog } from "@/components/incidents/CloseIncidentDialog"
 import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
 import { RecordCrumb } from "@/components/incidents/RecordCrumb";
+import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { RunStrip } from "@/components/incidents/RunStrip";
 import {
 	type IncidentRecord,
@@ -114,6 +115,21 @@ function IncidentLayout() {
 		},
 	});
 
+	const [reopenOpen, setReopenOpen] = useState(false);
+	const reopenMutation = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () => {
+			setReopenOpen(false);
+			return invalidateIncident();
+		},
+		onError: (err) =>
+			toast({
+				title: "Not reopened",
+				description: getErrorMessage(err),
+				variant: "destructive",
+			}),
+	});
+
 	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
 	// Any live run on the incident withholds Investigate, whichever run is selected.
 	const runLive = run.isActive || runs.some((r) => isWorkflowLive(r.status));
@@ -140,6 +156,7 @@ function IncidentLayout() {
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
 			resolve: () => resolveMutation.mutate({ id }),
 			openClose: () => setCloseOpen(true),
+			openReopen: () => setReopenOpen(true),
 			addNote: (text: string, onDone?: () => void) =>
 				createNote.mutate(
 					{ incidentId: id, title: text, type: "comment", source: "user" },
@@ -199,6 +216,7 @@ function IncidentLayout() {
 					onInvestigate={() => record.investigate()}
 					onResolve={record.resolve}
 					onClose={record.openClose}
+					onReopen={record.openReopen}
 					isInvestigating={investigateMutation.isPending}
 					investigateDisabled={!agentReady}
 					investigateDisabledReason={blockedReason}
@@ -209,6 +227,15 @@ function IncidentLayout() {
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
+				<ReopenDialog
+					open={reopenOpen}
+					onOpenChange={setReopenOpen}
+					incidentNumber={incident.number}
+					isPending={reopenMutation.isPending}
+					onConfirm={() =>
+						reopenMutation.mutate({ id, status: "investigating" })
+					}
+				/>
 				<CloseIncidentDialog
 					open={closeOpen}
 					onOpenChange={setCloseOpen}

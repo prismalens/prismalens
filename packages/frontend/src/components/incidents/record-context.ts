@@ -32,6 +32,8 @@ export interface IncidentRecord {
 	acknowledge: () => void;
 	resolve: () => void;
 	openClose: () => void;
+	/** Ask to reopen a resolved incident; it starts no run. */
+	openReopen: () => void;
 	addNote: (text: string, onDone?: () => void) => void;
 	isSavingNote: boolean;
 	timeline: TimelineEntryWithRelations[];

@@ -12,6 +12,7 @@ export type DropAction =
 	| { kind: "investigate" }
 	| { kind: "stop" }
 	| { kind: "resolve"; stopFirst: boolean }
+	| { kind: "reopen" }
 	| { kind: "none"; reason?: string };
 
 export interface DropInput {
@@ -21,6 +22,8 @@ export interface DropInput {
 	live: boolean;
 	/** The incident's status admits Resolve. */
 	canResolve: boolean;
+	/** The incident's status admits Reopen (resolved, not closed). */
+	canReopen?: boolean;
 }
 
 export function dropAction({
@@ -28,6 +31,7 @@ export function dropAction({
 	to,
 	live,
 	canResolve,
+	canReopen = false,
 }: DropInput): DropAction {
 	if (from === to) return { kind: "none" };
 	if (to === "needs_you") {
@@ -39,13 +43,13 @@ export function dropAction({
 	if (to === "working") return { kind: "investigate" };
 	if (to === "concluded") {
 		if (from === "working") return { kind: "stop" };
-		return {
-			kind: "none",
-			reason:
-				from === "resolved"
-					? "A resolved incident can only be investigated again"
-					: "Concluded follows from a finished run",
-		};
+		// Concluded is where an open incident with no live run sits, so a
+		// resolved one (in Needs you, awaiting close) lands there reopened.
+		if (canReopen) return { kind: "reopen" };
+		if (from === "resolved") {
+			return { kind: "none", reason: "A closed incident stays closed" };
+		}
+		return { kind: "none", reason: "Concluded follows from a finished run" };
 	}
 	// to === "resolved"
 	if (!canResolve) {
