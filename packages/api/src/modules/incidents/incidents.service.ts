@@ -156,6 +156,10 @@ export class IncidentsService {
 						summary: true,
 						rootCause: true,
 						rootCauseCategory: true,
+						error: true,
+						harness: true,
+						model: true,
+						stopRequestedAt: true,
 						createdAt: true,
 						completedAt: true,
 					},
@@ -166,6 +170,12 @@ export class IncidentsService {
 				},
 			},
 		});
+	}
+
+	/** `findById` plus what the list says about the latest run, so detail and list agree (#743). */
+	async findDetail(id: string): Promise<IncidentWithRelations | null> {
+		const incident = await this.findById(id);
+		return incident ? (await this.withLatestRun([incident]))[0] : null;
 	}
 
 	/**
