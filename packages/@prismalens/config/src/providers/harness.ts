@@ -234,12 +234,17 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		acpEnv: () => ({}),
+		// Untrusted workspace gates .gemini/settings.json, commands, extensions,
+		// MCP servers, and GEMINI.md while keeping ACP mode functional (#634).
+		acpEnv: () => ({
+			GEMINI_CLI_TRUST_WORKSPACE: "false",
+		}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
 		readOnlyFidelity: "cooperative",
-		readOnlyMechanism: "ACP permission answers",
+		readOnlyMechanism:
+			"ACP permission answers; GEMINI_CLI_TRUST_WORKSPACE=false keeps repo config inert",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 	},
