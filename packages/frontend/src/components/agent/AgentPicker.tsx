@@ -113,6 +113,9 @@ export function AgentModelPicker({
 		row: 0,
 	});
 	const ignored = effective?.modelVia === "unsupported";
+	// Until the chosen agent's settings come back, the model list is the previous agent's.
+	const [chosen, setChosen] = useState<string | null>(null);
+	const settled = chosen === null || setting === chosen;
 
 	const agents: Option[] = useMemo(
 		() => [
@@ -229,11 +232,15 @@ export function AgentModelPicker({
 
 	const chooseAgent = (o: Option) => {
 		if (o.disabled) return;
-		update.mutate({ harness: o.value as HarnessSetting });
+		setChosen(o.value);
+		update.mutate(
+			{ harness: o.value as HarnessSetting },
+			{ onError: () => setChosen(null) },
+		);
 		setCursor({ col: 1, row: 0 });
 	};
 	const chooseModel = (o: Option) => {
-		if (!effective) return;
+		if (!effective || !settled) return;
 		update.mutate({ models: { [effective.id]: o.value || null } });
 		setOpen(false);
 	};
