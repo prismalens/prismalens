@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { hideQueryDevtools, SHOTS } from "./live-stream-fixtures";
+import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
  * #743 — the board: four columns derived from state, beside the list. A card
@@ -48,7 +48,6 @@ test.describe("#743 — the incidents board", () => {
 			await expect(page.getByTestId(`board-column-${id}`)).toBeVisible();
 		}
 		await page.waitForLoadState("networkidle");
-		await page.screenshot({ path: `${SHOTS}/incidents-board-default.png` });
 	});
 
 	test("a drop on Working asks for the agent and a brief before it runs", async ({
@@ -92,7 +91,6 @@ test.describe("#743 — the incidents board", () => {
 			"data-drop",
 			"valid",
 		);
-		await page.screenshot({ path: `${SHOTS}/incidents-board-dragging.png` });
 		await release();
 
 		const prompt = page.getByTestId("board-drop-prompt");
@@ -213,7 +211,6 @@ test.describe("#743 — the incidents board", () => {
 			.filter({ hasText: "API Gateway" })
 			.getByTestId("service-lane")
 			.click();
-		await page.screenshot({ path: `${SHOTS}/incidents-sidebar-grouped.png` });
 
 		// The group's + opens New incident with that service picked.
 		const groupWithNew = sidebar
