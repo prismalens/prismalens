@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page, test } from "@playwright/test";
-import { setTheme, SHOTS } from "./live-stream-fixtures";
-
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the alerts frame", () => {
 	test("alerts frame layout, rows, and alert record", async ({ page }) => {
@@ -43,17 +39,6 @@ test.describe("#523 — the alerts frame", () => {
 		await expect(detail).toBeVisible();
 		await expect(detail.getByRole("heading").first()).toBeVisible();
 		await expect(page.locator("#identity")).toBeVisible();
-
-		// Screenshots: default (light) and dark
-		await setTheme(page, "light");
-		await expect(detail).toBeVisible();
-		await page.waitForTimeout(500);
-		await shot(page, "alerts-frame-default");
-
-		await setTheme(page, "dark");
-		await expect(detail).toBeVisible();
-		await page.waitForTimeout(500);
-		await shot(page, "alerts-frame-dark");
 	});
 
 	test("stats view shows numbers and live slots", async ({ page }) => {
@@ -107,10 +92,6 @@ test.describe("#523 — the alerts frame", () => {
 		await page.goto("/alerts?view=stats");
 		await expect(page.getByTestId("alerts-empty-state")).toBeVisible({ timeout: 20_000 });
 		await expect(page.getByText("No alerts found")).toBeVisible();
-
-		await setTheme(page, "light");
-		await page.waitForTimeout(500);
-		await shot(page, "alerts-frame-empty");
 
 		await page.unroute("**/api/alerts*");
 	});

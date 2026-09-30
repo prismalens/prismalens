@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
-import { setTheme, SHOTS } from "./live-stream-fixtures";
+import { setTheme } from "./live-stream-fixtures";
 
 /**
  * #523 S2/final — the incidents queue: three live numbers reached through the
@@ -18,9 +18,6 @@ import { setTheme, SHOTS } from "./live-stream-fixtures";
  * detail one, because that is what the queue's attention grouping actually
  * reads (`incident.investigations?.[0]?.status`, not a separate query).
  */
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-
 test.use({ viewport: { width: 1440, height: 900 } });
 
 async function createIncident(page: Page, title: string): Promise<string> {
@@ -157,14 +154,6 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		const closedBox = await closedRow.boundingBox();
 		expect(closedBox?.y ?? 0).toBeGreaterThan(restBoxY);
 
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incidents-queue-default");
-
-		await setTheme(page, "dark");
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incidents-queue-dark");
-		await setTheme(page, "light");
-
 		// The "Open" slot filters, and ended rows (resolved and closed)
 		// disappear. The router serialises a string search param as JSON, so
 		// `open=1` reaches the URL as `open=%221%22`, not a bare `1`.
@@ -227,7 +216,5 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		});
 		await setTheme(page, "light");
 		await expect(page.getByTestId("incidents-empty-state")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incidents-queue-empty");
 	});
 });

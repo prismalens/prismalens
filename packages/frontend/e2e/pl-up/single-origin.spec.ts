@@ -152,16 +152,12 @@ test("theme survives a reload with no server function behind it", async ({ page 
 	await expect(page.locator("html")).toHaveClass(/light/);
 	// And it is stamped BEFORE React runs: no dark class at any point after load.
 	await expect(page.locator("html")).not.toHaveClass(/dark/);
-	await page.waitForLoadState("networkidle");
-	await page.screenshot({ path: "e2e/pl-up/screenshots/light.png", fullPage: true });
 
 	await page.evaluate(() => {
 		document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
 	});
 	await page.reload();
 	await expect(page.locator("html")).toHaveClass(/dark/);
-	await page.waitForLoadState("networkidle");
-	await page.screenshot({ path: "e2e/pl-up/screenshots/dark.png", fullPage: true });
 });
 
 test("error state: a route the API answers with a 404 does not become the SPA shell", async ({
@@ -171,8 +167,6 @@ test("error state: a route the API answers with a 404 does not become the SPA sh
 	// app's own not-found component, while an unknown API route stays JSON.
 	await page.goto("/this-route-does-not-exist");
 	await expect(page.locator("body")).not.toBeEmpty();
-	await page.waitForLoadState("networkidle");
-	await page.screenshot({ path: "e2e/pl-up/screenshots/not-found.png", fullPage: true });
 
 	const api = await page.request.get("/api/also-not-a-route");
 	expect(api.status()).toBe(404);

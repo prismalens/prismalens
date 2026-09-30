@@ -19,7 +19,6 @@ export const INVESTIGATION_ID = "d0111111-1111-4111-8111-111111111111";
 export const SECOND_INVESTIGATION_ID = "d0222222-2222-4222-8222-222222222222";
 export const RUN_ID = "e0111111-1111-4111-8111-111111111111";
 export const DETAIL_URL = `/investigations/${INVESTIGATION_ID}`;
-export const SHOTS = "e2e/journeys/screenshots";
 
 interface StreamSourceDouble {
 	onmessage: ((event: { data: string }) => void) | null;

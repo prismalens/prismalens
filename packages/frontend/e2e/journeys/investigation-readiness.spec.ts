@@ -21,8 +21,6 @@ import { expect, type Page, test } from "@playwright/test";
  * Command Center screen was deleted), so this file no longer opens it.
  */
 
-const SHOTS = "e2e/journeys/screenshots";
-
 /**
  * A real gate message: anthropic is active with a model and a key, but the
  * harness is pinned to deepagents, which speaks only the OpenAI protocol. The
@@ -190,9 +188,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 	});
 
 	test("design evidence: default, dark, empty, and error", async ({ page }) => {
-		const shot = (name: string) =>
-			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-
 		// Default (light) — the incident-detail header, provider selected, gate
 		// refusing. The dashboard panel this used to photograph is gone (the
 		// Command Center screen was deleted); the header carries the same verdict.
@@ -209,16 +204,12 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-default");
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
 		await expect(
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-dark");
 
 		// Empty — the detail record with no investigations on the incident,
 		// which is where the blocked affordance is the only thing on the card.
@@ -232,8 +223,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 		await expect(tabInvestigateButton(page)).toBeDisabled();
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-empty");
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
@@ -241,7 +230,5 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-error");
 	});
 });

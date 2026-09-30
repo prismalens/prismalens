@@ -57,7 +57,7 @@ in its body, filled from the template below. A new page, a navigation change or 
 interaction model is flagged to the operator immediately, not left for the milestone walk.
 
 The per-PR design gate and e2e spec are suspended while releases are 0.5.x patches (#337). Their
-rules and the screenshot convention are in
+rules are in
 [`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
 
 ````markdown
@@ -75,10 +75,6 @@ empty workspace dir, fixture).
 
 **Judgment calls.** Anything the operator may want to veto, and why it was chosen. "None" is
 a valid answer; omitting the field is not.
-
-**Screenshots.** Design gate: PASS | FAIL — one commit-pinned image per state above. Drop a
-state only if the surface genuinely cannot reach it, and say which and why under Judgment
-calls.
 ````
 
 Open the PR with `--label ux-review`, or add it later with `gh pr edit <n> --add-label ux-review`.

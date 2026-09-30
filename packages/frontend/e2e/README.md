@@ -216,8 +216,7 @@ anything.
   suite. The **live** canvas is covered by `live-canvas.spec.ts` (#247), which drives real
   `CanonicalEvent` payloads through a controlled `EventSource` stand-in and asserts the connecting
   placeholder, a node appearing per `agent_step`, a tool count updating in place, the re-fit that
-  keeps the newest node in frame, edge animation, `error`, and `branch_done` — plus the design-gate
-  screenshots in both themes. Still untested: the **completed-investigation replay path**, the
+  keeps the newest node in frame, edge animation, `error`, and `branch_done`. Still untested: the **completed-investigation replay path**, the
   agents tab, cancel, and **all five stream-panel states**. The stream panel is what #243's
   verification calls a live check.
 - **Known coverage debt — the replay path cannot be smoked against the demo seed as it stands.**
