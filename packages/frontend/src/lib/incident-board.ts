@@ -11,6 +11,7 @@ import {
 } from "@prismalens/contracts";
 import { formatClock } from "./format-time";
 import { attentionFor } from "./incident-attention";
+import { STALE_AFTER_S } from "./investigation-events";
 
 export type BoardColumn = "needs_you" | "working" | "concluded" | "resolved";
 
@@ -29,30 +30,38 @@ export function latestRun(incident: IncidentWithRelations): LatestRun | null {
 
 /**
  * Which board column an incident sits in, from the same predicates as the list
- * pane so a card and its row never disagree (#743 §3c). An open incident with
- * no live run and nothing asking for a human is Concluded, whatever its run did.
+ * pane so a card and its row never disagree (#743 §3c). A live run puts it in
+ * Working whatever its status; an open incident with no live run and nothing
+ * asking for a human is Concluded, whatever its run did.
  */
 export function boardColumn(incident: IncidentWithRelations): BoardColumn {
-	if (attentionFor(incident) !== null) return "needs_you";
 	const run = latestRun(incident);
 	if (run && isWorkflowLive(run.status)) return "working";
+	if (attentionFor(incident) !== null) return "needs_you";
 	if (!isIncidentOpen(incident.status)) return "resolved";
 	return "concluded";
 }
 
-/**
- * The run's own state for a list row or a board card. The list payload carries
- * no event count, so a claimed run reads Working (#743).
- */
+/** The run's own state for a list row or a board card (#743 §2). */
 export function listRunState(run: LatestRun): RunState {
-	return runState(run.status, { hasEvents: run.status === "running" });
+	return runState(run.status, {
+		hasEvents: !!run.lastEventAt,
+		stopRequested: !!run.stopRequestedAt,
+	});
+}
+
+/** The first clause of the agent's latest sentence, for a one-line headline. */
+export function firstClause(text: string): string {
+	const line = text.trim().split("\n")[0] ?? "";
+	const cut = line.search(/[.;:](\s|$)/);
+	return cut > 0 ? line.slice(0, cut) : line;
 }
 
 /** `Working 4m`: the run word with minutes since the run started, while live. */
 export function runWord(
 	incident: IncidentWithRelations,
 	now: number | null,
-): { state: RunState; text: string } | null {
+): { state: RunState; text: string; stale: boolean } | null {
 	const run = latestRun(incident);
 	if (!run || !isWorkflowLive(run.status)) return null;
 	const state = listRunState(run);
@@ -63,7 +72,11 @@ export function runWord(
 					0,
 					Math.floor((now - new Date(run.createdAt).getTime()) / 60_000),
 				);
-	return { state, text: `${RUN_STATE_LABEL[state]} ${minutes}m` };
+	const stale =
+		now !== null &&
+		!!run.lastEventAt &&
+		now - new Date(run.lastEventAt).getTime() > STALE_AFTER_S * 1000;
+	return { state, text: `${RUN_STATE_LABEL[state]} ${minutes}m`, stale };
 }
 
 export interface Headline {
@@ -78,15 +91,28 @@ export interface Headline {
  */
 export function incidentHeadline(incident: IncidentWithRelations): Headline {
 	const run = latestRun(incident);
-	if (!isIncidentOpen(incident.status) && incident.actualCause) {
+	// A run started after the incident was resolved speaks for it again.
+	const runAfterResolve =
+		!!run &&
+		!!incident.resolvedAt &&
+		new Date(run.createdAt).getTime() > new Date(incident.resolvedAt).getTime();
+	if (
+		!isIncidentOpen(incident.status) &&
+		incident.actualCause &&
+		!runAfterResolve
+	) {
 		return { lead: "Cause:", text: incident.actualCause };
 	}
 	if (!run) return { text: "No run yet" };
 	switch (run.status) {
 		case "pending":
-			return { text: "Starting…" };
+			return { text: run.stopRequestedAt ? "Stopping…" : "Starting…" };
 		case "running":
-			return { text: "Working…" };
+			if (run.stopRequestedAt) return { text: "Stopping…" };
+			if (!run.lastEventAt) return { text: "Starting…" };
+			return {
+				text: run.latestText ? firstClause(run.latestText) : "Working…",
+			};
 		case "cancelled":
 			return {
 				text: run.completedAt
@@ -94,10 +120,19 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 					: "Stopped by you",
 			};
 		case "failed":
-			return { text: "Run failed" };
+			return {
+				text: run.error
+					? `Run failed: ${firstClause(run.error)}`
+					: "Run failed",
+			};
 		case "completed":
 			return run.rootCause
-				? { lead: "Likely:", text: run.rootCause }
+				? {
+						lead: "Likely:",
+						text: run.evidenceCount
+							? `${run.rootCause}, ${run.evidenceCount} evidence`
+							: run.rootCause,
+					}
 				: { text: "Done, no cause named" };
 		default:
 			return { text: run.status };

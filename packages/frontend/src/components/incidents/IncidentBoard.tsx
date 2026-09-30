@@ -239,7 +239,7 @@ function BoardCard({
 					</StateWord>
 				) : word ? (
 					<StateWord
-						tone={runStateTone(word.state)}
+						tone={word.stale ? "stale" : runStateTone(word.state)}
 						pulse
 						className="tabular-nums"
 					>

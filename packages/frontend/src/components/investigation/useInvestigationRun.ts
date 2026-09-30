@@ -93,7 +93,8 @@ export function useInvestigationRun(investigationId: string | null) {
 	const cancel = useCancelInvestigation();
 	const message = useSendInvestigationMessage();
 
-	const stopRequested = isActive && stopRequestedFor === id;
+	const stopRequested =
+		isActive && (stopRequestedFor === id || !!investigation?.stopRequestedAt);
 	const failed = !!investigation && investigation.status === "failed";
 	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	const state: RunState | null = investigation

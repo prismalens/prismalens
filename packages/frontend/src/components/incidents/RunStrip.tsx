@@ -39,8 +39,8 @@ import { useIncidentRecord } from "./record-context";
 
 /**
  * Which agent and model a run used. The report's fidelity says what actually
- * ran; while a run is live the investigation row does not carry it yet, so the
- * current choice stands in (#743).
+ * ran; before that, the harness and model the run started with; a record
+ * older than those fields falls back to the current choice (#743).
  */
 export function useRunAgentModel(
 	investigation: InvestigationWithRelations | null,
@@ -53,6 +53,17 @@ export function useRunAgentModel(
 		return {
 			agent: harness?.label ?? fidelity.harness,
 			model: modelName(harness, id) ?? "agent default",
+		};
+	}
+	if (investigation?.harness) {
+		const harness = harnesses.find((h) => h.id === investigation.harness);
+		return {
+			agent: harness?.label ?? investigation.harness,
+			model:
+				modelName(harness, investigation.model) ??
+				(harness?.modelVia === "unsupported"
+					? "its own model"
+					: "agent default"),
 		};
 	}
 	return agentModelLabel(effective, model);
