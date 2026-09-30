@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os";
 import { join } from "node:path";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { RunPorts } from "./run-ports.js";
 
@@ -46,10 +46,13 @@ const {
 /** A `RunPorts` double covering exactly what the job makes. */
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 	return {
-		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running" })),
+		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running", harness: null, model: null, acpSessionId: null, workspace: null })),
 		updateStatus: vi.fn(async () => {}),
 		appendEvents: vi.fn(async (_id: string, _events: CanonicalEvent[]) => {}),
 		clearEvents: vi.fn(async () => {}),
+		followUpStatus: vi.fn(async () => {}),
+		lastEventSeq: vi.fn(async () => -1),
+		recordSession: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
@@ -84,7 +87,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ports = fakePorts({ incidentRepos: vi.fn(async () => []) });
 			const ws = await resolveWorkspace(minimalData(), ports);
 
-			expect(ws.mapped).toBe(false);
+			expect(ws.layout).toBe("unmapped");
 			expect(ws.cwd).toBe(join(tmp, "runs", "inv-1", "unmapped"));
 			expect(existsSync(ws.cwd)).toBe(true);
 			expect(ws.note).toContain("no repository linked");
@@ -112,6 +115,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 						defaultBranch: "main",
 						subPath: "services/api",
 						connectionId: "conn-1",
+						serviceName: "checkout",
 					},
 				]),
 				repoToken,
@@ -131,7 +135,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				join(tmp, "runs", "inv-1", "repo"),
 				undefined,
 			);
-			expect(ws.mapped).toBe(true);
+			expect(ws.layout).toBe("single");
 			expect(ws.cwd).toBe(join("/app-data/repos/github.com/acme/api-gateway", "services/api"));
 			expect(ws.note).toContain("https://github.com/acme/api-gateway");
 			expect(ws.note).toContain("abc123def456");
@@ -144,7 +148,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 	it("a linked repo with no subPath: cwd is the snapshot path itself", async () => {
 		const ports = fakePorts({
 			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
 			snapshot: vi.fn(async () => ({
 				path: "/app-data/repos/github.com/acme/api-gateway",
@@ -161,7 +165,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 	it("a stored subPath that climbs out of the snapshot fails the run instead of widening the cwd", async () => {
 		const ports = fakePorts({
 			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: "../../outside", connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: "../../outside", connectionId: null, serviceName: "checkout" },
 			]),
 			snapshot: vi.fn(async () => ({
 				path: "/app-data/runs/r1/repo",
@@ -187,7 +191,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			}));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
-					{ sourceKind: "url" as const, url: "https://github.com/acme/x", defaultBranch: null, subPath: null, connectionId: null },
+					{ sourceKind: "url" as const, url: "https://github.com/acme/x", defaultBranch: null, subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
 				repoToken,
 				snapshot,
@@ -207,28 +211,109 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		}
 	});
 
-	it("only the primary (first) repo is used when a service has more than one", async () => {
-		const snapshot = vi.fn(async () => ({
-			path: "/app-data/repos/github.com/acme/primary",
-			head: "abc123def456789",
-			branch: "main" as const,
-		}));
-		const ports = fakePorts({
-			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/primary", defaultBranch: "main", subPath: null, connectionId: null },
-				{ sourceKind: "url" as const, url: "https://github.com/acme/secondary", defaultBranch: "main", subPath: null, connectionId: null },
-			]),
-			snapshot,
+	describe("every repo the incident touches (#747)", () => {
+		afterEach(() => vi.unstubAllEnvs());
+		const at = (dest: string) => ({ path: dest, head: `${dest.endsWith("worker") ? "5d6e7f8" : "1a2b3c4"}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, branch: "main" as const });
+		const repo = (url: string, serviceName: string, subPath: string | null = null) => ({
+			sourceKind: "url" as const,
+			url,
+			defaultBranch: "main",
+			subPath,
+			connectionId: null,
+			serviceName,
 		});
 
-		await resolveWorkspace(minimalData(), ports);
+		it("two services with different repos: repos/api and repos/worker, cwd is their parent, the note names both commits", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("git@github.com:o/api.git", "checkout"),
+					repo("git@github.com:o/worker.git", "jobs", "svc/jobs"),
+				]),
+				snapshot,
+			});
 
-		expect(snapshot).toHaveBeenCalledTimes(1);
-		expect(snapshot).toHaveBeenCalledWith(
-			expect.objectContaining({ source: "https://github.com/acme/primary" }),
-			expect.any(String),
-			undefined,
-		);
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(snapshot.mock.calls.map((c) => c[1])).toEqual([
+				"/ws/runs/inv-1/repos/api",
+				"/ws/runs/inv-1/repos/worker",
+			]);
+			expect(ws.layout).toBe("multi");
+			expect(ws.cwd).toBe("/ws/runs/inv-1/repos");
+			expect(ws.repos.map((r) => [r.name, r.services, r.subPath])).toEqual([
+				["api", ["checkout"], null],
+				["worker", ["jobs"], "svc/jobs"],
+			]);
+			expect(ws.note).toBe(
+				"Investigating snapshots of 2 repositories: api (URL git@github.com:o/api.git) at main 1a2b3c4, worker (URL git@github.com:o/worker.git/svc/jobs) at main 5d6e7f8. Uncommitted changes are not included.",
+			);
+		});
+
+		it("one repository linked by two services is cloned once with both service names", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("https://github.com/acme/primary", "checkout"),
+					repo("https://github.com/acme/primary", "cart", "sub"),
+				]),
+				snapshot,
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(snapshot).toHaveBeenCalledTimes(1);
+			expect(ws.layout).toBe("single");
+			expect(ws.repos[0]).toMatchObject({ name: "repo", services: ["checkout", "cart"], subPath: null });
+		});
+
+		it("two repos with the same folder name: the second gets -2", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("https://github.com/acme/api", "checkout"),
+					repo("https://github.com/other/api", "billing"),
+				]),
+				snapshot,
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(ws.repos.map((r) => r.name)).toEqual(["api", "api-2"]);
+		});
+
+		it("the run records the workspace on the row and hands the prompt every repo", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", mkdtempSync(join(os.tmpdir(), "pl-appdata-")));
+			const updateStatus = vi.fn(async () => {});
+			const ports = fakePorts({
+				updateStatus,
+				incidentRepos: vi.fn(async () => [
+					repo("git@github.com:o/api.git", "checkout"),
+					repo("git@github.com:o/worker.git", "jobs"),
+				]),
+				snapshot: vi.fn(async (_src: unknown, dest: string) => at(dest)),
+			});
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+
+			await runInvestigationJob(
+				{ id: "job-1", investigationId: "inv-1", attempts: 1 },
+				minimalData(),
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			const [, dto] = updateStatus.mock.calls[0] as unknown as [string, { workspace?: string }];
+			expect(JSON.parse(dto.workspace ?? "null")).toMatchObject({ layout: "multi", repos: [{ name: "api" }, { name: "worker" }] });
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
+			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+		});
 	});
 
 	it("a folder-source repo: snapshot gets kind 'folder' with the folder path as source, and the note says so", async () => {
@@ -245,6 +330,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					defaultBranch: null,
 					subPath: null,
 					connectionId: null,
+					serviceName: "checkout",
 				},
 			]),
 			snapshot,
@@ -647,3 +733,137 @@ describe("context pack reaches the run (#633)", () => {
 	});
 });
 
+
+/**
+ * A message on a finished run continues the same session in the first run's
+ * workspace, rebuilt at the same path and commits; it is chat only (#747).
+ */
+describe("follow-up on a finished run (#747)", () => {
+	const HEAD = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
+	let tmp: string;
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-followup-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		const bin = join(tmp, "bin");
+		mkdirSync(bin);
+		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		vi.stubEnv("PATH", bin);
+		mocks.conductRun.mockReset();
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	const restore = { status: "completed" as const, completedAt: "2026-09-30T10:00:00.000Z", error: null };
+	const data: InvestigationJobData = {
+		investigationId: "inv-1",
+		incidentId: "inc-1",
+		resume: { text: "why the pool?", mode: "queue", restore },
+	};
+	function recorded(dir: string) {
+		return JSON.stringify({
+			layout: "single",
+			cwd: dir,
+			repos: [
+				{ name: "repo", dir, sourceKind: "url", url: "https://github.com/acme/api", subPath: null, connectionId: null, head: HEAD, branch: "main", services: ["checkout"] },
+			],
+		});
+	}
+	function followUpPorts(overrides: Partial<RunPorts> = {}) {
+		const dir = join(tmp, "runs", "inv-1", "repo");
+		return fakePorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(dir),
+			})),
+			lastEventSeq: vi.fn(async () => 41),
+			snapshot: vi.fn(async (_src: unknown, dest: string) => ({ path: dest, head: HEAD, branch: null })),
+			...overrides,
+		});
+	}
+	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+
+	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
+		const ports = followUpPorts();
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(true);
+		expect(ports.snapshot).toHaveBeenCalledWith(
+			{ kind: "url", source: "https://github.com/acme/api", token: null },
+			join(tmp, "runs", "inv-1", "repo"),
+			expect.any(AbortSignal),
+			HEAD,
+		);
+		expect(ports.clearEvents).not.toHaveBeenCalled();
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ seqStart: number; model: string; resume: { sessionId: string; text: string; heads: unknown } },
+		];
+		expect(opts.seqStart).toBe(42);
+		expect(opts.model).toBe("opencode/some-model");
+		expect(opts.resume).toMatchObject({ sessionId: "ses_abc", text: "why the pool?", heads: [{ name: "repo", head: HEAD }] });
+		expect(ports.createTimelineEntry).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "Investigation resumed",
+				description: "Continuing the same OpenCode session in a fresh workspace pinned to 1a2b3c4.",
+			}),
+		);
+		// Chat only: no report write, no status write that delivers, and the row goes back.
+		expect(ports.writeResult).not.toHaveBeenCalled();
+		expect(ports.updateStatus).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{ status: "completed", completedAt: new Date(restore.completedAt), error: null },
+		]);
+		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+	});
+
+	it("refuses a run whose agent kept no session, says so in the conversation, and puts the row back", async () => {
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: null,
+				acpSessionId: null,
+				workspace: null,
+			})),
+		});
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("This run cannot be continued: its agent kept no session to reopen.");
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		const [, events] = vi.mocked(ports.appendEvents).mock.calls[0] as [string, CanonicalEvent[]];
+		expect(events.map((e) => [e.kind, e.seq])).toEqual([
+			["operator_message", 42],
+			["error", 43],
+		]);
+		expect(ports.updateStatus).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "completed" });
+	});
+
+	it("a commit the source lost fails with git's own text, and no clone is left", async () => {
+		const ports = followUpPorts({
+			snapshot: vi.fn(async (_src: unknown, dest: string) => {
+				mkdirSync(dest, { recursive: true });
+				throw new Error(`fatal: reference is not a tree: ${HEAD}`);
+			}),
+		});
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.error).toBe(`fatal: reference is not a tree: ${HEAD}`);
+		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+	});
+});

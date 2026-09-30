@@ -162,11 +162,13 @@ export class RepoSourceService {
 	/**
 	 * A fresh clone of the committed HEAD into `dest`. Local clones hardlink objects, so both kinds are fast.
 	 * `signal` kills this run's git; a mirror refresh shared with other callers keeps going, this caller just stops waiting.
+	 * `at` pins the clone to that commit instead (a follow-up rebuilds the first run's workspace, #747).
 	 */
 	async snapshot(
 		src: RepoSource,
 		dest: string,
 		signal?: AbortSignal,
+		at?: string,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
 		const from =
@@ -176,11 +178,12 @@ export class RepoSourceService {
 		rmSync(dest, { recursive: true, force: true });
 		mkdirSync(join(dest, ".."), { recursive: true });
 		const branch =
-			src.kind === "url" ? src.defaultBranch?.trim() || null : null;
+			src.kind === "url" && !at ? src.defaultBranch?.trim() || null : null;
 		await this.git(
 			[
 				"clone",
 				"--quiet",
+				...(at ? ["--no-checkout"] : []),
 				...(branch ? ["--branch", branch] : []),
 				"--",
 				from,
@@ -190,6 +193,13 @@ export class RepoSourceService {
 			{},
 			signal,
 		);
+		if (at)
+			await this.git(
+				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
+				undefined,
+				{},
+				signal,
+			);
 		const check = await this.headOf(dest);
 		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(

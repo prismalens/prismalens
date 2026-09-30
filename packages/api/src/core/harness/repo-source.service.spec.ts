@@ -383,6 +383,23 @@ describe("repo-source.service", () => {
 			expect(check).toEqual({ branch: "main", head });
 		});
 
+		it("snapshot() pinned to an earlier commit checks that commit out, and a commit the source lacks fails with git's text (#747)", async () => {
+			const { bareDir, work } = makeBareRemote();
+			const first = commitAndPush(work, "a.txt", "v1");
+			commitAndPush(work, "a.txt", "v2");
+			const src = { kind: "url" as const, source: `file://${bareDir}`, defaultBranch: "main" };
+			const service = new RepoSourceService();
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			const pinned = await service.snapshot(src, dest, undefined, first);
+			expect(pinned.head).toBe(first);
+			expect(readFileSync(join(dest, "a.txt"), "utf8")).toBe("v1");
+
+			await expect(
+				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
+			).rejects.toThrow(/0123456789abcdef0123456789abcdef01234567|reference is not a tree|did not match/);
+		});
+
 		it("a second commit pushed to the remote is picked up by the next snapshot()", async () => {
 			const { bareDir, work } = makeBareRemote();
 			commitAndPush(work, "a.txt", "v1");

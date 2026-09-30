@@ -44,6 +44,13 @@ export interface PrismaInvestigationStoreParams {
 	runId: string;
 	harness?: string;
 	model?: string;
+	/** JSON RunWorkspace, kept on the row so a follow-up can rebuild it (#747). */
+	workspace?: string;
+	/**
+	 * A follow-up (#747): the row only goes live, the timeline says resumed with
+	 * this note, and nothing is written at the end; the job puts the row back.
+	 */
+	resume?: { note: string };
 }
 
 export function createPrismaInvestigationStore(
@@ -54,6 +61,8 @@ export function createPrismaInvestigationStore(
 		runId,
 		harness,
 		model,
+		workspace,
+		resume,
 	}: PrismaInvestigationStoreParams,
 ): InvestigationStore {
 	let buffer: CanonicalEvent[] = [];
@@ -99,11 +108,24 @@ export function createPrismaInvestigationStore(
 
 	return {
 		async create() {
+			if (resume) {
+				await ports.followUpStatus(investigationId, { status: "running" });
+				await ports.createTimelineEntry({
+					incidentId,
+					type: "investigation_started",
+					title: "Investigation resumed",
+					description: resume.note,
+					source: "ai_worker",
+					metadata: { investigationId },
+				});
+				return;
+			}
 			await ports.updateStatus(investigationId, {
 				status: "running",
 				harnessThreadId: runId,
 				...(harness ? { harness } : {}),
 				...(model ? { model } : {}),
+				...(workspace ? { workspace } : {}),
 			});
 			await ports.createTimelineEntry({
 				incidentId,
@@ -139,6 +161,7 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
+			if (resume) return;
 			await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,
@@ -173,6 +196,7 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
+			if (resume) return;
 			await ports.updateStatus(investigationId, {
 				status: "failed",
 				error,

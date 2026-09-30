@@ -14,6 +14,7 @@ import {
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
@@ -27,6 +28,7 @@ import type {
 	RecommendationDto,
 } from "./dto/index.js";
 import {
+	followUpBlockedReason,
 	InvestigationsService,
 	type InvestigationWithRelations,
 } from "./investigations.service.js";
@@ -240,7 +242,8 @@ export class InvestigationsController {
 
 			// POST /investigations/:id/messages - Operator message to a live run (#743).
 			// The run holder answers on the bus; a pending run may not be held yet, so
-			// retry like cancel before refusing.
+			// retry like cancel before refusing. On a finished run it is a follow-up
+			// in the same agent session (#747).
 			message: implement(investigationsContract.message).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -255,7 +258,20 @@ export class InvestigationsController {
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
-					if (TERMINAL_STATUSES.has(investigation.status)) throw refuse();
+					if (TERMINAL_STATUSES.has(investigation.status)) {
+						const reason = followUpBlockedReason(investigation);
+						if (reason) throw new ORPCError("CONFLICT", { message: reason });
+						const resumed = await this.dispatchService.resumeInvestigation(
+							input.id,
+							input.text,
+							input.mode,
+						);
+						if (!resumed)
+							throw new ORPCError("CONFLICT", {
+								message: "A follow-up is already running.",
+							});
+						return { state: "resumed" as const };
+					}
 					let state = this.dispatchService.sendMessage(
 						input.id,
 						input.text,
@@ -406,6 +422,19 @@ export class InvestigationsController {
 		return withoutSimilar.success ? withoutSimilar.data : null;
 	}
 
+	private parseWorkspace(raw: Investigation["workspace"]) {
+		const parsed = RunWorkspaceSchema.safeParse(safeParseJsonObject(raw));
+		return parsed.success ? parsed.data : null;
+	}
+
+	/** Only a finished run can take a follow-up; a live one takes messages (#747). */
+	private resumeState(investigation: Investigation) {
+		if (!TERMINAL_STATUSES.has(investigation.status))
+			return { resumable: false, resumeBlockedReason: null };
+		const reason = followUpBlockedReason(investigation);
+		return { resumable: reason === null, resumeBlockedReason: reason };
+	}
+
 	private serializeInvestigation(investigation: Investigation) {
 		return {
 			id: investigation.id,
@@ -428,6 +457,9 @@ export class InvestigationsController {
 			harness: investigation.harness ?? null,
 			model: investigation.model ?? null,
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
+			acpSessionId: investigation.acpSessionId ?? null,
+			workspace: this.parseWorkspace(investigation.workspace),
+			...this.resumeState(investigation),
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
 		};

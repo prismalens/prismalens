@@ -166,3 +166,68 @@ describe("resolveHarnessRunModel (#634, #639)", () => {
 		expect(resolveHarnessRunModel("gemini", undefined)).toEqual({});
 	});
 });
+
+describe("DispatchService.resumeInvestigation (#747)", () => {
+	function withInvestigation(row: Row) {
+		const investigation = {
+			findUnique: vi.fn(async () => ({ ...row })),
+			updateMany: vi.fn(async (args: { where: Row; data: Row }) => {
+				if (row.status !== args.where.status) return { count: 0 };
+				Object.assign(row, args.data);
+				return { count: 1 };
+			}),
+			update: vi.fn(async (args: { data: Row }) => Object.assign(row, args.data)),
+		};
+		const prisma = { job: new FakeJobDelegate([]), investigation };
+		const service = new DispatchService(
+			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
+			fakeBus() as any,
+			{ attach: vi.fn() } as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			prisma as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{ deliver: vi.fn() } as any,
+		);
+		const enqueue = vi.spyOn(service, "addInvestigationJob").mockResolvedValue("job-2");
+		return { service, enqueue };
+	}
+
+	it("reopens a finished run as pending, clears completedAt, and queues the follow-up with what to put back", async () => {
+		const completedAt = new Date("2026-09-30T10:00:00.000Z");
+		const row: Row = { incidentId: "inc-1", status: "completed", completedAt, error: null };
+		const { service, enqueue } = withInvestigation(row);
+
+		expect(await service.resumeInvestigation("inv-1", "why the pool?", "queue")).toBe(true);
+
+		expect(row).toMatchObject({ status: "pending", completedAt: null });
+		expect(enqueue).toHaveBeenCalledWith({
+			incidentId: "inc-1",
+			investigationId: "inv-1",
+			resume: {
+				text: "why the pool?",
+				mode: "queue",
+				restore: { status: "completed", completedAt: completedAt.toISOString(), error: null },
+			},
+		});
+	});
+
+	it("admits one of two follow-ups sent together", async () => {
+		const row: Row = { incidentId: "inc-1", status: "failed", completedAt: null, error: "boom" };
+		const { service, enqueue } = withInvestigation(row);
+
+		const results = await Promise.all([
+			service.resumeInvestigation("inv-1", "a", "queue"),
+			service.resumeInvestigation("inv-1", "b", "queue"),
+		]);
+
+		expect(results.filter(Boolean)).toHaveLength(1);
+		expect(enqueue).toHaveBeenCalledTimes(1);
+	});
+});

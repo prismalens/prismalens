@@ -56,6 +56,9 @@ function makePorts(
 		updateStatus: vi.fn(async () => {}),
 		appendEvents,
 		clearEvents: vi.fn(async () => {}),
+		followUpStatus: vi.fn(async () => {}),
+		lastEventSeq: vi.fn(async () => -1),
+		recordSession: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
@@ -294,5 +297,34 @@ describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () =>
 			source: "ai_worker",
 			metadata: { investigationId: INVESTIGATION_ID, error: "disk full" },
 		});
+	});
+});
+
+describe("createPrismaInvestigationStore — a follow-up (#747)", () => {
+	it("goes live as resumed and writes nothing when it ends", async () => {
+		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {});
+		const ports = makePorts(appendEvents);
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			resume: { note: "Continuing the same OpenCode session in a fresh workspace pinned to 1a2b3c4." },
+		});
+
+		await store.create();
+		await store.append(evt(1));
+		await store.fail("boom");
+
+		expect(ports.followUpStatus).toHaveBeenCalledWith(INVESTIGATION_ID, { status: "running" });
+		expect(ports.createTimelineEntry).toHaveBeenCalledTimes(1);
+		expect(ports.createTimelineEntry).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "Investigation resumed",
+				description: "Continuing the same OpenCode session in a fresh workspace pinned to 1a2b3c4.",
+			}),
+		);
+		expect(appendEvents).toHaveBeenCalledTimes(1);
+		expect(ports.updateStatus).not.toHaveBeenCalled();
+		expect(ports.writeResult).not.toHaveBeenCalled();
 	});
 });

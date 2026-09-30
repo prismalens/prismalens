@@ -2,6 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
+import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+	resumeBlockedReason,
+} from "@prismalens/config/harness";
+import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	CanonicalEventSchema,
@@ -41,6 +48,28 @@ function isForeignKeyViolation(error: unknown): boolean {
 		error !== null &&
 		(error as { code?: unknown }).code === "P2003"
 	);
+}
+
+/**
+ * Why a finished run cannot take a follow-up, or null when it can (#747).
+ * Checked again by the run itself, since PATH can change in between.
+ */
+export function followUpBlockedReason(
+	inv: Pick<Investigation, "harness" | "acpSessionId" | "workspace">,
+): string | null {
+	const harness = (HARNESS_IDS as readonly string[]).includes(inv.harness ?? "")
+		? (inv.harness as HarnessId)
+		: null;
+	if (harness) {
+		const off = resumeBlockedReason(harness);
+		if (off) return off;
+	}
+	if (!harness || !inv.acpSessionId)
+		return "This run's agent kept no session to reopen.";
+	const row = HARNESS_REGISTRY[harness];
+	if (!resolveOnPath(row.binary)) return `${row.label} is no longer installed.`;
+	if (!inv.workspace) return "This run recorded no workspace.";
+	return null;
 }
 
 export type InvestigationWithRelations = Investigation & {
@@ -288,7 +317,12 @@ export class InvestigationsService {
 		startedAt?: Date,
 		error?: string,
 		harnessThreadId?: string,
-		facts?: { harness?: string; model?: string },
+		facts?: {
+			harness?: string;
+			model?: string;
+			acpSessionId?: string;
+			workspace?: string;
+		},
 	): Promise<Investigation | null> {
 		try {
 			const updateData: Record<string, unknown> = {
@@ -315,6 +349,8 @@ export class InvestigationsService {
 			}
 			if (facts?.harness) updateData.harness = facts.harness;
 			if (facts?.model) updateData.model = facts.model;
+			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
+			if (facts?.workspace) updateData.workspace = facts.workspace;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
@@ -534,6 +570,15 @@ export class InvestigationsService {
 			}
 		}
 		return { inserted, duplicates };
+	}
+
+	/** The highest stored event `seq`, -1 when none; a follow-up numbers after it (#747). */
+	async lastEventSeq(investigationId: string): Promise<number> {
+		const { _max } = await this.prisma.investigationEvent.aggregate({
+			where: { investigationId },
+			_max: { seq: true },
+		});
+		return _max.seq ?? -1;
 	}
 
 	/**

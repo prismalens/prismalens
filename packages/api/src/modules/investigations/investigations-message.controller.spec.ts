@@ -12,6 +12,9 @@ import { InvestigationsService } from "./investigations.service.js";
 import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
@@ -19,6 +22,7 @@ const mockInvestigationsService = {
 
 const mockDispatchService = {
 	sendMessage: vi.fn(),
+	resumeInvestigation: vi.fn(),
 };
 
 function investigation(id: string, status: string) {
@@ -104,5 +108,59 @@ describe("InvestigationsController.message (#743)", () => {
 		const result = await messageHandler()({ input: { id: "inv-1", text: "stop and look", mode: "now" } });
 
 		expect(result).toEqual({ state: "sent" });
+	});
+
+	describe("a follow-up on a finished run (#747)", () => {
+		let bin: string;
+		beforeEach(() => {
+			bin = mkdtempSync(join(tmpdir(), "pl-bin-"));
+			for (const name of ["opencode", "dcode"]) {
+				writeFileSync(join(bin, name), "#!/bin/sh\n");
+				chmodSync(join(bin, name), 0o755);
+			}
+			vi.stubEnv("PATH", bin);
+		});
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			rmSync(bin, { recursive: true, force: true });
+		});
+		const finished = (harness: string) => ({
+			...investigation("inv-1", "completed"),
+			harness,
+			acpSessionId: "ses_abc",
+			workspace: "{}",
+		});
+
+		it("answers resumed and queues the follow-up", async () => {
+			mockInvestigationsService.findById.mockResolvedValue(finished("opencode"));
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+
+			const result = await messageHandler()({ input: { id: "inv-1", text: "why the pool?", mode: "queue" } });
+
+			expect(result).toEqual({ state: "resumed" });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue");
+			expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+		});
+
+		it("refuses a harness that cannot reopen a session with the registry's words", async () => {
+			mockInvestigationsService.findById.mockResolvedValue(finished("deepagents"));
+
+			await expect(
+				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
+			).rejects.toMatchObject({
+				code: "CONFLICT",
+				message: "deepagents can't reopen a finished session, so a new run starts from the report.",
+			});
+			expect(mockDispatchService.resumeInvestigation).not.toHaveBeenCalled();
+		});
+
+		it("refuses a second follow-up while the first holds the run", async () => {
+			mockInvestigationsService.findById.mockResolvedValue(finished("opencode"));
+			mockDispatchService.resumeInvestigation.mockResolvedValue(false);
+
+			await expect(
+				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
+			).rejects.toMatchObject({ code: "CONFLICT", message: "A follow-up is already running." });
+		});
 	});
 });
