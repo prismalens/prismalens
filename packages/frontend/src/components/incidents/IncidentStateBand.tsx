@@ -107,15 +107,17 @@ export function IncidentStateBand({
 					params={{ id: incident.id }}
 					search={true}
 					aria-label={`Back to INC-${incident.number}`}
-					className="inline-flex h-7 shrink-0 items-center rounded pr-1 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+					title="Back to Overview  Esc"
+					className="inline-flex h-7 shrink-0 items-center rounded pr-1 text-muted-foreground hover:bg-muted hover:text-foreground"
 				>
 					<ChevronLeft className="h-4 w-4" />
 				</Link>
 			) : (
 				<Link
 					to="/incidents"
-					aria-label="Back to incidents"
-					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+					aria-label="Back to the board"
+					title="Back to the board  Esc"
+					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
 				>
 					<ChevronLeft className="h-4 w-4" />
 				</Link>

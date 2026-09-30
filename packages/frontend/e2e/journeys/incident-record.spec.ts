@@ -148,7 +148,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.waitForLoadState("networkidle");
 	});
 
-	test("the incident tabs: every tab in place, and Esc back to Overview", async ({
+	test("the incident tabs: every tab in place, and Esc walks back to the board", async ({
 		page,
 	}) => {
 		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
@@ -172,6 +172,13 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.getByTestId("composer-input").blur();
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("incident-record")).toBeVisible();
+
+		// From Overview, Esc and the back arrow both reach the board.
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("incident-board")).toBeVisible();
+		await page.goto(`/incidents/${INCIDENT_ID}`);
+		await page.getByRole("link", { name: "Back to the board" }).click();
+		await expect(page.getByTestId("incident-board")).toBeVisible();
 
 		// An old investigation link lands on the conversation.
 		await page.goto(`/investigations/${INVESTIGATION_ID}`);

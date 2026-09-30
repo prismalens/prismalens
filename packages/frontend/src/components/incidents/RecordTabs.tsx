@@ -27,8 +27,8 @@ function isTyping(target: EventTarget | null): boolean {
 /**
  * The incident's tabs (#743): Overview is the card page, the others are the
  * routes a card's link opens. Every tab keeps its place whichever is open.
- * The run's state rides at the right end of the same row. Esc goes back to
- * Overview unless the operator is typing or a popover has it.
+ * The run's state rides at the right end of the same row. Esc walks up a
+ * level, tab to Overview to the board, unless typing or a popover has it.
  */
 export function RecordTabs({
 	incidentId,
@@ -44,7 +44,6 @@ export function RecordTabs({
 	const navigate = useNavigate();
 
 	useEffect(() => {
-		if (!here) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || e.defaultPrevented || isTyping(e.target))
 				return;
@@ -54,12 +53,14 @@ export function RecordTabs({
 				)
 			)
 				return;
-			navigate({
-				to: "/incidents/$id",
-				params: { id: incidentId },
-				search: true,
-				viewTransition: true,
-			});
+			if (here)
+				navigate({
+					to: "/incidents/$id",
+					params: { id: incidentId },
+					search: true,
+					viewTransition: true,
+				});
+			else navigate({ to: "/incidents", viewTransition: true });
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
