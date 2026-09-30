@@ -15,9 +15,11 @@ import {
 	SimilarIncidentRow,
 } from "@/components/investigation/ReportSections";
 import { RecordSection } from "@/components/shared/RecordSection";
+import { useToast } from "@/hooks/use-toast";
 import { recommendationKeys } from "@/lib/api/hooks/use-recommendations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatElapsed } from "@/lib/format-time";
+import { getErrorMessage } from "@/lib/get-error-message";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 	component: ReportRoute,
@@ -26,6 +28,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 function ReportRoute() {
 	const { incident, run, runs, investigationId } = useIncidentRecord();
 	const queryClient = useQueryClient();
+	const { toast } = useToast();
 	const investigation = run.investigation;
 	const who = useRunAgentModel(investigation);
 	const { data: recommendations = [] } = useQuery(
@@ -37,6 +40,12 @@ function ReportRoute() {
 		...orpc.recommendations.update.mutationOptions(),
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: recommendationKeys.all() }),
+		onError: (err) =>
+			toast({
+				title: "Recommendation not updated",
+				description: getErrorMessage(err),
+				variant: "destructive",
+			}),
 	});
 	const done = run.state === "done" && !!investigation;
 	const similar = investigation?.overlay?.similarIncidents ?? [];

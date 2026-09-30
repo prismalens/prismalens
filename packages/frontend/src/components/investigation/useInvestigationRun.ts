@@ -21,6 +21,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import {
 	latestAgentText,
 	type PendingMessage,
+	unmatchedPending,
 } from "@/lib/investigation-events";
 
 export type LedgerStatus =
@@ -176,16 +177,8 @@ export function useInvestigationRun(investigationId: string | null) {
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
-	const deliveredTexts = new Set(
-		events.flatMap((e) =>
-			e.kind === "operator_message" ? [e.text.trim()] : [],
-		),
-	);
-	const waiting = pendingItems.filter(
-		(m) =>
-			m.mode === "queue" &&
-			!m.undelivered &&
-			!deliveredTexts.has(m.text.trim()),
+	const waiting = unmatchedPending(events, pendingItems).filter(
+		(m) => m.mode === "queue" && !m.undelivered,
 	).length;
 
 	return {

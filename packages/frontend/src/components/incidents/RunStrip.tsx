@@ -153,9 +153,7 @@ export function RunStrip() {
 								className="text-meta"
 								data-testid="run-picker"
 							>
-								Run{" "}
-								{runs.length - runs.findIndex((r) => r.id === investigationId)}{" "}
-								of {runs.length}
+								{runLabel(runs, investigationId)}
 								<ChevronDown />
 							</Button>
 						</DropdownMenuTrigger>
@@ -252,4 +250,13 @@ function StopButton() {
 			</PopoverContent>
 		</Popover>
 	);
+}
+
+/** "Run 2 of 3"; a run the list has not caught up with yet is the latest. */
+export function runLabel(
+	runs: ReadonlyArray<{ id: string }>,
+	investigationId: string | null,
+): string {
+	const idx = runs.findIndex((r) => r.id === investigationId);
+	return idx < 0 ? "Latest run" : `Run ${runs.length - idx} of ${runs.length}`;
 }
