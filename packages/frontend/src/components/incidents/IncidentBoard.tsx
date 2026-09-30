@@ -246,7 +246,12 @@ export function IncidentBoard({
 	};
 	const stopRun = (incident: IncidentWithRelations, then?: () => void) => {
 		const run = latestRun(incident);
-		if (!run) return;
+		// A refetch can drop the run between the drop and the confirm; never leave the card busy.
+		if (!run) {
+			if (then) then();
+			else settle(incident.id)();
+			return;
+		}
 		cancel.mutate(
 			{ id: run.id },
 			{

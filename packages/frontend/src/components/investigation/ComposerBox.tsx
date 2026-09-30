@@ -194,6 +194,18 @@ export function ComposerBox({
 								{waiting} waiting
 							</span>
 						)}
+						{mode === "live" && (
+							<Button
+								size="xs"
+								variant="ghost"
+								title="Stops the agent's current step"
+								disabled={!text.trim()}
+								onClick={() => submit("now")}
+								data-testid="composer-send-now"
+							>
+								Send now
+							</Button>
+						)}
 						{talking ? (
 							<Button
 								size="icon-sm"

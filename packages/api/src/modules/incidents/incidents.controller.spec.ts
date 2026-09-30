@@ -30,6 +30,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 
 	it("preserves full alert objects with labels, annotations, and timestamps in serializeIncidentWithRelations", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,
@@ -149,6 +150,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 	// output validation is ever loosened or bypassed — defense in depth.
 	it("never leaks tenantId (or other non-contract columns) via serializeAlert", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,
@@ -557,6 +559,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 	// leaking `tenantId`, `discoveryMetadata`, and any raw Prisma columns.
 	it("never leaks tenantId, discoveryMetadata, or extra database columns on incident.service via get handler", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,

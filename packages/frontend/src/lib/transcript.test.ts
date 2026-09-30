@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	deriveTranscript,
 	runStepText,
+	unmatchedPending,
 	type TranscriptItem,
 } from "./investigation-events";
 
@@ -293,5 +294,31 @@ describe("runStepText", () => {
 			stale: true,
 		});
 		expect(runStepText(thinking, T0, { streamLost: true })?.stale).toBe(true);
+	});
+});
+
+describe("unmatchedPending", () => {
+	const pending = (id: string, text: string, undelivered = false) => ({
+		id,
+		text,
+		mode: "queue" as const,
+		at: at(0),
+		undelivered,
+	});
+
+	it("lets one event answer one pending message of the same text", () => {
+		const left = unmatchedPending(
+			[operator(1, "yes")],
+			[pending("a", "yes"), pending("b", "yes ")],
+		);
+		expect(left.map((p) => p.id)).toEqual(["b"]);
+	});
+
+	it("keeps a refused message even when an earlier one with its text arrived", () => {
+		const left = unmatchedPending(
+			[operator(1, "yes")],
+			[pending("a", "yes"), pending("b", "yes", true)],
+		);
+		expect(left.map((p) => p.id)).toEqual(["b"]);
 	});
 });

@@ -32,7 +32,7 @@ export function incidentServices(
 	if (incident.services && incident.services.length > 0) {
 		return incident.services.map((s) => ({
 			id: s.id,
-			name: s.displayName ?? s.name,
+			name: s.displayName || s.name,
 		}));
 	}
 	if (incident.service) {

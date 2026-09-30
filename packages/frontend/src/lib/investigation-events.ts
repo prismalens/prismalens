@@ -574,13 +574,7 @@ export function deriveTranscript(
 		}
 	}
 
-	const delivered = new Set(
-		events.flatMap((e) =>
-			e.kind === "operator_message" ? [e.text.trim()] : [],
-		),
-	);
-	for (const p of pending) {
-		if (delivered.has(p.text.trim())) continue;
+	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",
 			key: `pending-${p.id}`,
@@ -687,4 +681,25 @@ export function latestAgentText(events: CanonicalEvent[]): string | null {
 		if (text && text !== REPORT_DRAFTED) return text;
 	}
 	return null;
+}
+
+/** Pending messages no event has answered yet: each operator_message event answers one pending message with its text. */
+export function unmatchedPending(
+	events: ReadonlyArray<CanonicalEvent>,
+	pending: ReadonlyArray<PendingMessage>,
+): PendingMessage[] {
+	const left = new Map<string, number>();
+	for (const e of events) {
+		if (e.kind !== "operator_message") continue;
+		const t = e.text.trim();
+		left.set(t, (left.get(t) ?? 0) + 1);
+	}
+	return pending.filter((p) => {
+		if (p.undelivered) return true;
+		const t = p.text.trim();
+		const n = left.get(t) ?? 0;
+		if (n === 0) return true;
+		left.set(t, n - 1);
+		return false;
+	});
 }

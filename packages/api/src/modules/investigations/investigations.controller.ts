@@ -285,7 +285,15 @@ export class InvestigationsController {
 							input.mode,
 						);
 					}
-					if (state === null) throw refuse();
+					if (state === null) {
+						// A pending run has no holder until the dispatcher claims it.
+						if (investigation.status === "pending") {
+							throw new ORPCError("CONFLICT", {
+								message: "The run has not started yet; try again shortly.",
+							});
+						}
+						throw refuse();
+					}
 					return { state };
 				},
 			),

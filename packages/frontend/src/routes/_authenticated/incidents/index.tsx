@@ -52,9 +52,11 @@ function IncidentsLanding() {
 	const workspace = useQuery(
 		orpc.incidents.getStats.queryOptions({ input: {} }),
 	);
-	const { data: list, isLoading } = useQuery(
-		orpc.incidents.list.queryOptions({ input: listInput }),
-	);
+	const {
+		data: list,
+		isLoading,
+		error: listError,
+	} = useQuery(orpc.incidents.list.queryOptions({ input: listInput }));
 	const keep = {
 		status: search.status,
 		severity: search.severity,
@@ -187,7 +189,11 @@ function IncidentsLanding() {
 					loaded={list?.data ?? []}
 					limit={listInput.limit}
 				/>
-			) : isLoading ? null : (
+			) : isLoading ? null : listError ? (
+				<p className="p-4 text-record text-run-failed">
+					The board did not load: {listError.message}
+				</p>
+			) : (
 				<>
 					<IncidentBoard
 						incidents={incidents}
