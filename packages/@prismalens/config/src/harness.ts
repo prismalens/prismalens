@@ -22,6 +22,7 @@ export {
 	refuseModel,
 	resolveHarnessModel,
 	resolvePermissionOutcome,
+	resumeBlockedReason,
 } from "./providers/harness.js";
 export {
 	annotateModel,

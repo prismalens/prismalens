@@ -77,6 +77,20 @@ export interface RunInvestigationOptions {
 	onPolicyWarning?: (message: string) => void;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
+	/**
+	 * A follow-up on a finished run: reopen its session and send `text` (#747).
+	 * `heads` are the commits the workspace was rebuilt at.
+	 */
+	resume?: {
+		sessionId: string;
+		text: string;
+		mode: OperatorMessageMode;
+		heads: { name: string; head: string }[];
+	};
+	/** First event `seq`; a follow-up continues after the stored events. */
+	seqStart?: number;
+	/** The harness's session id once it is open, and whether it can be loaded again. */
+	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
 	signal?: AbortSignal;
 }
 
@@ -192,7 +206,11 @@ export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
-	const adapter = new AcpAdapter({ runId: opts.runId, branchId: "run" });
+	const adapter = new AcpAdapter({
+		runId: opts.runId,
+		branchId: "run",
+		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
+	});
 	let fidelity = buildRunFidelity(opts.harness, {
 		id: opts.model,
 		source: opts.modelSource,
@@ -222,6 +240,7 @@ export async function* runInvestigation(
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
+		...(opts.resume ? { resume: { sessionId: opts.resume.sessionId } } : {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -285,6 +304,13 @@ export async function* runInvestigation(
 
 	try {
 		await session.open();
+		if (session.sessionId) {
+			opts.onSession?.({
+				sessionId: session.sessionId,
+				loadSession: session.loadSession,
+			});
+		}
+		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
@@ -294,15 +320,22 @@ export async function* runInvestigation(
 		if (session.servedModel && selectorIsModel) {
 			fidelity = { ...fidelity, servedModel: session.servedModel };
 		}
-		const brief = opts.brief?.trim();
-		if (brief) yield adapter.operatorMessage(brief, "queue", true);
-		let outcome = yield* consume(
-			session.prompt(
-				buildInvestigationPrompt(opts.context) +
-					(brief ? `\n\n${brief}` : "") +
-					(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
-			),
-		);
+		let outcome: { stop: string } | { error: string };
+		if (opts.resume) {
+			const { text: line, mode, heads } = opts.resume;
+			yield adapter.operatorMessage(line, mode, true, heads);
+			outcome = yield* consume(session.prompt(line));
+		} else {
+			const brief = opts.brief?.trim();
+			if (brief) yield adapter.operatorMessage(brief, "queue", true);
+			outcome = yield* consume(
+				session.prompt(
+					buildInvestigationPrompt(opts.context) +
+						(brief ? `\n\n${brief}` : "") +
+						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
+				),
+			);
+		}
 
 		while ("stop" in outcome && !opts.signal?.aborted) {
 			const now = sendNow.shift();
@@ -325,6 +358,11 @@ export async function* runInvestigation(
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
 			yield adapter.error(CANCELLED_MESSAGE);
+			return;
+		}
+		// A follow-up is chat only: its answer lives in the stream, never in a report (#747).
+		if (opts.resume) {
+			yield adapter.branchDone(mapStopReason(outcome.stop));
 			return;
 		}
 

@@ -6825,6 +6825,131 @@
                         }
                       ]
                     },
+                    "acpSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workspace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "enum": [
+                                "unmapped",
+                                "single",
+                                "multi"
+                              ],
+                              "type": "string"
+                            },
+                            "cwd": {
+                              "type": "string"
+                            },
+                            "repos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "dir": {
+                                    "type": "string"
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "connectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "head": {
+                                    "type": "string"
+                                  },
+                                  "branch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "dir",
+                                  "sourceKind",
+                                  "url",
+                                  "subPath",
+                                  "connectionId",
+                                  "head",
+                                  "branch",
+                                  "services"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "layout",
+                            "cwd",
+                            "repos"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "resumeBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -7610,6 +7735,131 @@
                               {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acpSessionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "workspace": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "layout": {
+                                    "enum": [
+                                      "unmapped",
+                                      "single",
+                                      "multi"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "cwd": {
+                                    "type": "string"
+                                  },
+                                  "repos": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "dir": {
+                                          "type": "string"
+                                        },
+                                        "sourceKind": {
+                                          "enum": [
+                                            "folder",
+                                            "url"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "url": {
+                                          "type": "string"
+                                        },
+                                        "subPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "connectionId": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "head": {
+                                          "type": "string"
+                                        },
+                                        "branch": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "services": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "dir",
+                                        "sourceKind",
+                                        "url",
+                                        "subPath",
+                                        "connectionId",
+                                        "head",
+                                        "branch",
+                                        "services"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "layout",
+                                  "cwd",
+                                  "repos"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resumable": {
+                            "type": "boolean"
+                          },
+                          "resumeBlockedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -8426,6 +8676,131 @@
                         }
                       ]
                     },
+                    "acpSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workspace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "enum": [
+                                "unmapped",
+                                "single",
+                                "multi"
+                              ],
+                              "type": "string"
+                            },
+                            "cwd": {
+                              "type": "string"
+                            },
+                            "repos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "dir": {
+                                    "type": "string"
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "connectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "head": {
+                                    "type": "string"
+                                  },
+                                  "branch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "dir",
+                                  "sourceKind",
+                                  "url",
+                                  "subPath",
+                                  "connectionId",
+                                  "head",
+                                  "branch",
+                                  "services"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "layout",
+                            "cwd",
+                            "repos"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "resumeBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -9203,6 +9578,131 @@
                             }
                           ]
                         },
+                        "acpSessionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "workspace": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "layout": {
+                                  "enum": [
+                                    "unmapped",
+                                    "single",
+                                    "multi"
+                                  ],
+                                  "type": "string"
+                                },
+                                "cwd": {
+                                  "type": "string"
+                                },
+                                "repos": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "dir": {
+                                        "type": "string"
+                                      },
+                                      "sourceKind": {
+                                        "enum": [
+                                          "folder",
+                                          "url"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "subPath": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "connectionId": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "head": {
+                                        "type": "string"
+                                      },
+                                      "branch": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "services": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "name",
+                                      "dir",
+                                      "sourceKind",
+                                      "url",
+                                      "subPath",
+                                      "connectionId",
+                                      "head",
+                                      "branch",
+                                      "services"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "layout",
+                                "cwd",
+                                "repos"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resumable": {
+                          "type": "boolean"
+                        },
+                        "resumeBlockedReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "origin": {
                           "type": "string",
                           "default": "local"
@@ -9339,6 +9839,14 @@
                   "harnessThreadId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "acpSessionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "workspace": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -10038,6 +10546,131 @@
                         }
                       ]
                     },
+                    "acpSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workspace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "enum": [
+                                "unmapped",
+                                "single",
+                                "multi"
+                              ],
+                              "type": "string"
+                            },
+                            "cwd": {
+                              "type": "string"
+                            },
+                            "repos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "dir": {
+                                    "type": "string"
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "connectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "head": {
+                                    "type": "string"
+                                  },
+                                  "branch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "dir",
+                                  "sourceKind",
+                                  "url",
+                                  "subPath",
+                                  "connectionId",
+                                  "head",
+                                  "branch",
+                                  "services"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "layout",
+                            "cwd",
+                            "repos"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "resumeBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -10529,6 +11162,24 @@
                               },
                               "delivered": {
                                 "type": "boolean"
+                              },
+                              "resumed": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "head": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "head"
+                                  ]
+                                }
                               }
                             },
                             "required": [
@@ -11687,6 +12338,131 @@
                         }
                       ]
                     },
+                    "acpSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workspace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "enum": [
+                                "unmapped",
+                                "single",
+                                "multi"
+                              ],
+                              "type": "string"
+                            },
+                            "cwd": {
+                              "type": "string"
+                            },
+                            "repos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "dir": {
+                                    "type": "string"
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "connectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "head": {
+                                    "type": "string"
+                                  },
+                                  "branch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "dir",
+                                  "sourceKind",
+                                  "url",
+                                  "subPath",
+                                  "connectionId",
+                                  "head",
+                                  "branch",
+                                  "services"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "layout",
+                            "cwd",
+                            "repos"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "resumeBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -11787,7 +12563,8 @@
                     "state": {
                       "enum": [
                         "queued",
-                        "sent"
+                        "sent",
+                        "resumed"
                       ],
                       "type": "string"
                     }
@@ -13022,6 +13799,131 @@
                         {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acpSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "workspace": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "layout": {
+                              "enum": [
+                                "unmapped",
+                                "single",
+                                "multi"
+                              ],
+                              "type": "string"
+                            },
+                            "cwd": {
+                              "type": "string"
+                            },
+                            "repos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "dir": {
+                                    "type": "string"
+                                  },
+                                  "sourceKind": {
+                                    "enum": [
+                                      "folder",
+                                      "url"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "subPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "connectionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "head": {
+                                    "type": "string"
+                                  },
+                                  "branch": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "dir",
+                                  "sourceKind",
+                                  "url",
+                                  "subPath",
+                                  "connectionId",
+                                  "head",
+                                  "branch",
+                                  "services"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "layout",
+                            "cwd",
+                            "repos"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "resumeBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"

@@ -7,6 +7,7 @@ import {
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	resolveHarnessModel,
+	resumeBlockedReason,
 } from "./harness.js";
 
 afterEach(() => {
@@ -197,5 +198,15 @@ describe("refuseModel (#639 rec 4)", () => {
 		expect(refuseModel("codex", undefined)).toBeNull();
 		expect(refuseModel("codex", "  ")).toBeNull();
 		expect(refuseModel("opencode", "synthetic/model-a")).toBeNull();
+	});
+});
+
+describe("resumeBlockedReason (#747)", () => {
+	it("is null on a row that passed the resume probe and names the harness otherwise", () => {
+		expect(resumeBlockedReason("claude-code")).toBeNull();
+		expect(resumeBlockedReason("gemini")).toBeNull();
+		expect(resumeBlockedReason("deepagents")).toBe(
+			"deepagents can't reopen a finished session, so a new run starts from the report.",
+		);
 	});
 });

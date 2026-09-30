@@ -242,6 +242,73 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(Date.now() - started).toBeLessThan(5_000);
 	});
 
+	it("a follow-up loads the session, says the operator's words first, and ends in the stream without a report (#747)", async () => {
+		const sessions: { sessionId: string; loadSession: boolean }[] = [];
+		const { events } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [{ name: "repo", head: "1a2b3c4" }],
+			},
+			seqStart: 42,
+			onSession: (s) => sessions.push(s),
+		});
+		expect(events[0]).toMatchObject({
+			kind: "operator_message",
+			text: "Why the pool?",
+			seq: 42,
+			resumed: [{ name: "repo", head: "1a2b3c4" }],
+		});
+		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("");
+		expect(prose).toContain("Heard: Why the pool?");
+		expect(prose).not.toContain("REPLAYED");
+		expect(events.some((e) => e.kind === "report" || e.kind === "error")).toBe(false);
+		expect(events.at(-1)?.kind).toBe("branch_done");
+		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
+	});
+
+	it("a follow-up against a harness that cannot load fails with the engine's words (#747)", async () => {
+		const { events } = await collect("resume", {
+			resume: { sessionId: "ses_old", text: "hi", mode: "queue", heads: [] },
+		});
+		const last = events.at(-1);
+		expect(last).toMatchObject({ kind: "error", message: "fake 0 does not support session/load" });
+	});
+
+	it("hands the host the session/new id on a normal run (#747)", async () => {
+		const sessions: { sessionId: string; loadSession: boolean }[] = [];
+		await collect("ok", { onSession: (s) => sessions.push(s) });
+		expect(sessions).toEqual([{ sessionId: "s1", loadSession: false }]);
+	});
+
+	it("conductRun ends a follow-up without a report as a success and never finishes the store (#747)", async () => {
+		let finished = 0;
+		let failed = 0;
+		const outcome = await conductRun(
+			opts("resume", {
+				env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+				resume: { sessionId: "ses_old", text: "hi", mode: "queue", heads: [] },
+			}),
+			{
+				sink: () => {},
+				store: {
+					create: async () => {},
+					append: async () => {},
+					finish: async () => {
+						finished += 1;
+					},
+					fail: async () => {
+						failed += 1;
+					},
+				},
+			},
+		);
+		expect(outcome).toMatchObject({ report: null, error: null, failureKind: "none" });
+		expect([finished, failed]).toEqual([0, 0]);
+	});
+
 	it("conductRun classifies the outcome and drives both ports", async () => {
 		const stored: CanonicalEvent[] = [];
 		let finished = 0;

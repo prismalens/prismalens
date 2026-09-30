@@ -21,7 +21,7 @@ export interface ComposerBoxProps {
 	mode: ComposerMode;
 	/** Brief and new-run modes: start a run with the text as its brief. */
 	onInvestigate: (brief: string) => void;
-	/** Live mode: Enter queues for the agent's next pause, Ctrl+Enter sends now. */
+	/** Live and resume modes: Enter queues for the agent's next pause, Ctrl+Enter sends now. */
 	onMessage?: (text: string, mode: "queue" | "now") => void;
 	/** Who a message goes to, for the placeholder: `the main agent`, `branch b1`. */
 	target?: string;
@@ -32,6 +32,10 @@ export interface ComposerBoxProps {
 	isPending?: boolean;
 	/** Why a run cannot start right now; the button is withheld with it. */
 	blockedReason?: string;
+	/** Resume mode: the commits the follow-up's code is pinned to, `api@1a2b3c4, worker@5d6e7f8`. */
+	pinned?: string;
+	/** One line above the box, e.g. why an ended run cannot be continued. */
+	note?: string | null;
 	/** The 409 path: the run ended before the message reached it. */
 	undeliverable?: string | null;
 	onSaveAsNote?: (text: string) => void;
@@ -65,6 +69,8 @@ export function ComposerBox({
 	waiting = 0,
 	isPending,
 	blockedReason,
+	pinned,
+	note,
 	undeliverable,
 	onSaveAsNote,
 	docked,
@@ -73,7 +79,9 @@ export function ComposerBox({
 	const [text, setText] = useState("");
 	const [focused, setFocused] = useState(false);
 	const ref = useRef<HTMLTextAreaElement>(null);
-	const blocked = mode !== "live" && !!blockedReason;
+	// Both talk to the run's own session; the other modes brief a new one.
+	const talking = mode === "live" || mode === "resume";
+	const blocked = !talking && !!blockedReason;
 
 	// The field grows with wrapped text up to a cap, then scrolls inside.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure on every edit.
@@ -119,7 +127,9 @@ export function ComposerBox({
 			? "Add context for the agent (optional)"
 			: mode === "again"
 				? "Context for a new investigation (optional)"
-				: `Message ${target}`;
+				: mode === "resume"
+					? "Ask a follow-up"
+					: `Message ${target}`;
 
 	return (
 		<div
@@ -134,6 +144,14 @@ export function ComposerBox({
 				}
 			}}
 		>
+			{note && (
+				<p
+					className="px-2 text-meta text-muted-foreground"
+					data-testid="composer-note"
+				>
+					{note}
+				</p>
+			)}
 			<div
 				className={cn(
 					"flex flex-col gap-1 rounded-md border bg-background p-1",
@@ -148,12 +166,18 @@ export function ComposerBox({
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={onKeyDown}
 					placeholder={placeholder}
-					aria-label={mode === "live" ? `Message ${target}` : "Brief"}
+					aria-label={
+						mode === "live"
+							? `Message ${target}`
+							: mode === "resume"
+								? "Follow-up"
+								: "Brief"
+					}
 					data-testid="composer-input"
 					className="min-h-7 w-full resize-none bg-transparent px-2 py-1 text-record outline-none placeholder:text-muted-foreground"
 				/>
 				<div className="flex min-w-0 items-center gap-1">
-					{mode === "live" ? (
+					{talking ? (
 						fixed && <AgentModelChip agent={fixed.agent} model={fixed.model} />
 					) : (
 						<AgentModelPicker
@@ -182,12 +206,16 @@ export function ComposerBox({
 								Send now
 							</Button>
 						)}
-						{mode === "live" ? (
+						{talking ? (
 							<Button
 								size="icon-sm"
 								variant={text.trim() ? "default" : "secondary"}
 								aria-label="Send"
-								title="Queue for the agent's next pause"
+								title={
+									mode === "resume"
+										? "Continue this investigation"
+										: "Queue for the agent's next pause"
+								}
 								disabled={!text.trim()}
 								onClick={() => submit("queue")}
 								data-testid="composer-send"
@@ -234,6 +262,16 @@ export function ComposerBox({
 								<Kbd>Ctrl Enter</Kbd> send now, stops its current step
 							</span>
 						</>
+					) : mode === "resume" ? (
+						<>
+							<span className="flex items-center gap-1">
+								<Kbd>Enter</Kbd> continue the same conversation with the agent
+							</span>
+							<span className="flex items-center gap-1">
+								<Kbd>Shift Enter</Kbd> new line
+							</span>
+							{pinned && <span>The code stays at {pinned}.</span>}
+						</>
 					) : (
 						<>
 							<span className="flex items-center gap-1">
@@ -242,7 +280,7 @@ export function ComposerBox({
 							<span className="flex items-center gap-1">
 								<Kbd>Shift Enter</Kbd> new line
 							</span>
-							{mode === "again" && (
+							{mode === "again" && !note && (
 								<span>
 									This investigation has ended and cannot be asked anything
 									more.

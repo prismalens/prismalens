@@ -65,10 +65,13 @@ function makeIo(signal: AbortSignal) {
 
 function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 	return {
-		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running" })),
+		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running", harness: null, model: null, acpSessionId: null, workspace: null })),
 		updateStatus: vi.fn(async () => {}),
 		appendEvents: vi.fn(async (_id: string, _events: CanonicalEvent[]) => {}),
 		clearEvents: vi.fn(async () => {}),
+		followUpStatus: vi.fn(async () => {}),
+		lastEventSeq: vi.fn(async () => -1),
+		recordSession: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => {}),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
@@ -176,7 +179,7 @@ describe("run CANCEL path (ADR-0018)", () => {
 
 	it("skips the run entirely when the investigation is already cancelled (sticky cancel)", async () => {
 		const ports = makePorts({
-			findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "cancelled" })),
+			findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "cancelled", harness: null, model: null, acpSessionId: null, workspace: null })),
 		});
 
 		const result = await runInvestigationJob(
@@ -205,7 +208,7 @@ describe("cancel during the snapshot (#605 edge 23)", () => {
 			const ports = makePorts({
 				updateStatus,
 				incidentRepos: vi.fn(async () => [
-					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
 				snapshot: vi.fn(async (_src, _dest, signal?: AbortSignal) => {
 					controller.abort(new Error("aborted"));
@@ -248,7 +251,7 @@ describe("#331 workspace record (in-process run)", () => {
 			const ports = makePorts({
 				createTimelineEntry,
 				incidentRepos: vi.fn(async () => [
-					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
 				snapshot,
 			});
@@ -309,7 +312,7 @@ describe("#331 workspace record (in-process run)", () => {
 		const ports = makePorts({
 			createTimelineEntry,
 			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
 			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});
@@ -337,7 +340,7 @@ describe("#331 workspace record (in-process run)", () => {
 				throw new Error("timeline down");
 			}),
 			incidentRepos: vi.fn(async () => [
-				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null },
+				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
 			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});

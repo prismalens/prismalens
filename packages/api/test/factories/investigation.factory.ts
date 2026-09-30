@@ -34,6 +34,8 @@ export class InvestigationFactory {
 			harness: null,
 			model: null,
 			stopRequestedAt: null,
+			acpSessionId: null,
+			workspace: null,
 			startedAt: null,
 			completedAt: null,
 			error: null,

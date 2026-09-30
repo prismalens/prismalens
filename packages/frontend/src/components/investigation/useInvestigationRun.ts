@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type CanonicalEvent,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	type RunState,
@@ -18,6 +19,10 @@ import {
 	useSendInvestigationMessage,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+
+const eventsKey = (id: string) =>
+	orpc.investigations.getEvents.key({ input: { id } });
+
 import {
 	latestAgentText,
 	type PendingMessage,
@@ -39,6 +44,42 @@ export function isConflict(error: unknown): boolean {
 }
 
 /**
+ * The stored events, then the live ones, once each by `(branchId, seq)`: a
+ * follow-up streams after a finished run's history (#747).
+ */
+export function mergeRunEvents(
+	history: CanonicalEvent[],
+	live: CanonicalEvent[],
+): CanonicalEvent[] {
+	const seen = new Set<string>();
+	const out: CanonicalEvent[] = [];
+	for (const e of [...history, ...live]) {
+		const key =
+			e.kind === "report" ? `report:${e.seq}` : `${e.branchId}:${e.seq}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(e);
+	}
+	return out.sort((a, b) => a.seq - b.seq);
+}
+
+/** Only an ended run takes a follow-up; a live one takes messages (#747). */
+export function followUpState(
+	investigation: {
+		status: string;
+		resumable?: boolean;
+		resumeBlockedReason?: string | null;
+	} | null,
+): { resumable: boolean; resumeBlockedReason: string | null } {
+	if (!investigation || !isWorkflowTerminal(investigation.status))
+		return { resumable: false, resumeBlockedReason: null };
+	return {
+		resumable: !!investigation.resumable,
+		resumeBlockedReason: investigation.resumeBlockedReason ?? null,
+	};
+}
+
+/**
  * One run's state for the incident's layers: the investigation row, its events
  * (live while it runs, replayed from history after), the run's own state word,
  * the messages the operator sent that have not come back as events, and the
@@ -57,11 +98,30 @@ export function useInvestigationRun(investigationId: string | null) {
 
 	const isActive = !!investigation && isWorkflowLive(investigation.status);
 	const stream = useInvestigationStream(id, { enabled: enabled && isActive });
+	// A follow-up can end before a refetch ever sees it live, so no stream carries its
+	// events: poll the history until an event past the send lands on an ended run.
+	const [followUpFrom, setFollowUpFrom] = useState<{
+		runId: string;
+		seq: number;
+	} | null>(null);
+	const awaitingFollowUp = followUpFrom?.runId === id;
 	const history = useInvestigationEventsHistory(id, {
-		enabled: !!investigation && !isActive,
+		enabled: !!investigation,
+		refetchInterval: awaitingFollowUp && !isActive ? 2000 : false,
 	});
-	const events = isActive ? stream.events : (history.data ?? []);
+	const historyEvents = history.data;
+	const liveEvents = isActive ? stream.events : null;
+	const events = useMemo(
+		() => mergeRunEvents(historyEvents ?? [], liveEvents ?? []),
+		[historyEvents, liveEvents],
+	);
 	const streamFailed = isActive && stream.status === "error";
+	const lastSeq = events[events.length - 1]?.seq ?? -1;
+	const ended = !!investigation && isWorkflowTerminal(investigation.status);
+	useEffect(() => {
+		if (!awaitingFollowUp || isActive || !ended) return;
+		if (lastSeq > (followUpFrom?.seq ?? -1)) setFollowUpFrom(null);
+	}, [awaitingFollowUp, isActive, ended, lastSeq, followUpFrom]);
 
 	const { data: statusData } = useQuery({
 		...orpc.investigations.getStatus.queryOptions({ input: { id } }),
@@ -76,6 +136,7 @@ export function useInvestigationRun(investigationId: string | null) {
 			});
 			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+			queryClient.invalidateQueries({ queryKey: eventsKey(id) });
 		}
 	}, [stream.status, id, queryClient]);
 
@@ -97,7 +158,6 @@ export function useInvestigationRun(investigationId: string | null) {
 	const stopRequested =
 		isActive && (stopRequestedFor === id || !!investigation?.stopRequestedAt);
 	const failed = !!investigation && investigation.status === "failed";
-	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	const state: RunState | null = investigation
 		? runState(investigation.status, {
 				hasEvents: events.length > 0,
@@ -153,6 +213,18 @@ export function useInvestigationRun(investigationId: string | null) {
 			messageMutate(
 				{ id, text, mode, branchId: opts?.branchId },
 				{
+					// A follow-up reopened the run: refetch so it reads live and the stream connects.
+					onSuccess: (result) => {
+						if (result.state !== "resumed") return;
+						// A stop on the finished run must not read as a stop on its follow-up.
+						setStopRequestedFor(null);
+						setFollowUpFrom({ runId: id, seq: lastSeq });
+						queryClient.invalidateQueries({
+							queryKey: investigationKeys.detail(id),
+						});
+						queryClient.invalidateQueries({ queryKey: eventsKey(id) });
+						queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+					},
 					onError: (error) => {
 						if (isConflict(error)) {
 							setPending((p) => ({
@@ -173,7 +245,7 @@ export function useInvestigationRun(investigationId: string | null) {
 				},
 			);
 		},
-		[messageMutate, id],
+		[messageMutate, id, queryClient, lastSeq],
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
@@ -193,6 +265,7 @@ export function useInvestigationRun(investigationId: string | null) {
 		state,
 		isActive,
 		ended,
+		...followUpState(investigation),
 		failed,
 		streamFailed,
 		ledgerStatus,

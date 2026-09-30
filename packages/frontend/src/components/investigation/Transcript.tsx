@@ -143,6 +143,17 @@ function TranscriptRow({
 			);
 		case "tools":
 			return <ToolGroup item={item} />;
+		case "divider":
+			return (
+				<div
+					className="flex items-center gap-3 py-1 text-meta text-muted-foreground"
+					data-testid="transcript-divider"
+				>
+					<span className="h-px flex-1 bg-border" />
+					<span>{item.text}</span>
+					<span className="h-px flex-1 bg-border" />
+				</div>
+			);
 		case "thought":
 			return (
 				<p

@@ -46,9 +46,22 @@ export function buildInvestigationPrompt(
 			`  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}      query recent logs for the affected service`,
 		);
 	}
-	surfaces.push(
-		"  - Application SOURCE CODE is in your current working directory — ls / cat / grep / head / git log.",
-	);
+	const repos = context.workspace?.repos ?? [];
+	if (repos.length) {
+		surfaces.push(
+			`  - Application SOURCE CODE: ${repos.length} repositories under your current working directory:`,
+			...repos.map(
+				(r) =>
+					`      ${r.path}  services: ${r.services.join(", ")}  (at ${r.head.slice(0, 12)})${
+						r.subPath ? `  sub-path: ${r.subPath}` : ""
+					}`,
+			),
+		);
+	} else {
+		surfaces.push(
+			"  - Application SOURCE CODE is in your current working directory — ls / cat / grep / head / git log.",
+		);
+	}
 
 	const pack = context.contextPack;
 	const packBlock = pack ? `\n\n${renderContextPack(pack)}` : "";

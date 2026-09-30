@@ -22,7 +22,11 @@ import {
 	type ModelSource,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
-import type { InvestigationJobData } from "@prismalens/contracts";
+import type {
+	InvestigationJobData,
+	OperatorMessageMode,
+	WorkflowStatus,
+} from "@prismalens/contracts";
 import { isWorkflowTerminal } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -120,7 +124,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			findInvestigation: async (id) => {
 				const investigation = await this.investigationsService.findById(id);
 				return investigation
-					? { id: investigation.id, status: investigation.status }
+					? {
+							id: investigation.id,
+							status: investigation.status,
+							harness: investigation.harness ?? null,
+							model: investigation.model ?? null,
+							acpSessionId: investigation.acpSessionId ?? null,
+							workspace: investigation.workspace ?? null,
+						}
 					: null;
 			},
 			updateStatus: async (id, dto) => {
@@ -130,11 +141,35 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					dto.startedAt,
 					dto.error,
 					dto.harnessThreadId,
-					{ harness: dto.harness, model: dto.model },
+					{
+						harness: dto.harness,
+						model: dto.model,
+						acpSessionId: dto.acpSessionId,
+						workspace: dto.workspace,
+					},
 				);
 				if (dto.status === "failed") void this.reportDelivery.deliver(id);
 				await this.reportStatus(id, dto.status);
 			},
+			followUpStatus: async (id, state) => {
+				await this.prisma.investigation.update({
+					where: { id },
+					data: {
+						status: state.status,
+						...(state.completedAt !== undefined
+							? { completedAt: state.completedAt }
+							: {}),
+						...(state.error !== undefined ? { error: state.error } : {}),
+					},
+				});
+			},
+			recordSession: async (id, acpSessionId) => {
+				await this.prisma.investigation.update({
+					where: { id },
+					data: { acpSessionId },
+				});
+			},
+			lastEventSeq: (id) => this.investigationsService.lastEventSeq(id),
 			appendEvents: async (id, events) => {
 				await this.investigationsService.appendEvents(id, events);
 			},
@@ -163,41 +198,66 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				return { selection, ...modelResult };
 			},
 			incidentRepos: async (incidentId) => {
-				const incident = await this.prisma.incident.findUnique({
-					where: { id: incidentId },
+				const service = {
 					select: {
-						service: {
+						id: true,
+						name: true,
+						repositories: {
+							orderBy: [
+								{ isPrimary: "desc" as const },
+								{ createdAt: "asc" as const },
+							],
 							select: {
-								repositories: {
-									orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+								subPath: true,
+								repository: {
 									select: {
-										subPath: true,
-										repository: {
-											select: {
-												sourceKind: true,
-												url: true,
-												defaultBranch: true,
-												connectionId: true,
-											},
-										},
+										sourceKind: true,
+										url: true,
+										defaultBranch: true,
+										connectionId: true,
 									},
 								},
 							},
 						},
 					},
-				});
-				return (incident?.service?.repositories ?? []).map((r) => ({
-					sourceKind: r.repository.sourceKind === "folder" ? "folder" : "url",
-					url: r.repository.url,
-					defaultBranch: r.repository.defaultBranch,
-					subPath: r.subPath,
-					connectionId: r.repository.connectionId,
-				}));
+				};
+				// The same set incidents.list shows: own service, then every alert's (#743).
+				const [incident, alerts] = await Promise.all([
+					this.prisma.incident.findUnique({
+						where: { id: incidentId },
+						select: { service },
+					}),
+					this.prisma.alert.findMany({
+						where: { incidentId, serviceId: { not: null } },
+						distinct: ["serviceId"],
+						orderBy: { createdAt: "asc" },
+						select: { service },
+					}),
+				]);
+				const services = new Map<
+					string,
+					NonNullable<NonNullable<typeof incident>["service"]>
+				>();
+				for (const s of [incident?.service, ...alerts.map((a) => a.service)])
+					if (s && !services.has(s.id)) services.set(s.id, s);
+				return [...services.values()].flatMap((s) =>
+					s.repositories.map((r) => ({
+						sourceKind:
+							r.repository.sourceKind === "folder"
+								? ("folder" as const)
+								: ("url" as const),
+						url: r.repository.url,
+						defaultBranch: r.repository.defaultBranch,
+						subPath: r.subPath,
+						connectionId: r.repository.connectionId,
+						serviceName: s.name,
+					})),
+				);
 			},
 			repoToken: (connectionId) =>
 				this.integrationsService.gitToken(connectionId),
-			snapshot: (src, dest, signal) =>
-				this.repoSource.snapshot(src, dest, signal),
+			snapshot: (src, dest, signal, at) =>
+				this.repoSource.snapshot(src, dest, signal, at),
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;
@@ -327,6 +387,60 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			);
 			return null;
 		}
+	}
+
+	/**
+	 * Reopen a finished run for one follow-up message (#747). The compare-and-set
+	 * admits one of two racing sends; the job puts status, completedAt and error
+	 * back when the follow-up ends. Returns false when a follow-up already holds it.
+	 */
+	async resumeInvestigation(
+		id: string,
+		text: string,
+		mode: OperatorMessageMode,
+	): Promise<boolean> {
+		const row = await this.prisma.investigation.findUnique({
+			where: { id },
+			select: {
+				incidentId: true,
+				status: true,
+				completedAt: true,
+				error: true,
+			},
+		});
+		if (!row || !isWorkflowTerminal(row.status)) return false;
+		const { count } = await this.prisma.investigation.updateMany({
+			where: { id, status: row.status },
+			data: {
+				status: "pending",
+				completedAt: null,
+				error: null,
+				stopRequestedAt: null,
+			},
+		});
+		if (count === 0) return false;
+		const restore = {
+			status: row.status as WorkflowStatus,
+			completedAt: row.completedAt?.toISOString() ?? null,
+			error: row.error,
+		};
+		const jobId = await this.addInvestigationJob({
+			incidentId: row.incidentId,
+			investigationId: id,
+			resume: { text, mode, restore },
+		});
+		if (jobId === null) {
+			await this.prisma.investigation.update({
+				where: { id },
+				data: {
+					status: restore.status,
+					completedAt: row.completedAt,
+					error: row.error,
+				},
+			});
+			throw new Error("The follow-up could not be queued.");
+		}
+		return true;
 	}
 
 	/**

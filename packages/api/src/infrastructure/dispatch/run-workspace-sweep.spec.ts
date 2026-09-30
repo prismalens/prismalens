@@ -35,6 +35,14 @@ describe("sweepRunWorkspaces (#743)", () => {
 		expect(existsSync(join(clean, "transcript.jsonl"))).toBe(true);
 	});
 
+	it("sweeps the repos/ a crashed multi-repo run left (#747)", () => {
+		const crashed = join(dir, "runs", "run-c");
+		mkdirSync(join(crashed, "repos", "api"), { recursive: true });
+
+		expect(sweepRunWorkspaces()).toBe(1);
+		expect(existsSync(join(crashed, "repos"))).toBe(false);
+	});
+
 	it("does nothing before any run exists", () => {
 		expect(sweepRunWorkspaces()).toBe(0);
 	});

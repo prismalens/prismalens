@@ -51,3 +51,18 @@ describe("composerMode", () => {
 		expect(composerMode({ live: false })).toBe("again");
 	});
 });
+
+describe("resume mode (#747)", () => {
+	it("sends on Enter and Ctrl+Enter like a live run", () => {
+		expect(composerKeyAction(key("Enter"), "resume")).toBe("queue");
+		expect(composerKeyAction(key("Enter", { ctrlKey: true }), "resume")).toBe(
+			"now",
+		);
+	});
+
+	it("is picked for an ended run that can be reopened, again otherwise", () => {
+		expect(composerMode({ live: false, resumable: true })).toBe("resume");
+		expect(composerMode({ live: false, resumable: false })).toBe("again");
+		expect(composerMode({ live: true, resumable: true })).toBe("live");
+	});
+});

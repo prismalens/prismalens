@@ -76,6 +76,8 @@ export interface AdapterContext {
 	now?: () => Date;
 	/** Max chars retained in a tool-result preview. */
 	previewLimit?: number;
+	/** First `seq`; a follow-up continues after the stored events (#747). */
+	seqStart?: number;
 }
 
 const DEFAULT_PREVIEW_LIMIT = 4000;
@@ -98,6 +100,7 @@ export class AcpAdapter {
 	constructor(private readonly ctx: AdapterContext) {
 		this.now = ctx.now ?? (() => new Date());
 		this.previewLimit = ctx.previewLimit ?? DEFAULT_PREVIEW_LIMIT;
+		this.seqCounter = ctx.seqStart ?? 0;
 	}
 
 	/**
@@ -140,6 +143,7 @@ export class AcpAdapter {
 		text: string,
 		mode: OperatorMessageMode,
 		delivered: boolean,
+		resumed?: { name: string; head: string }[],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -147,6 +151,7 @@ export class AcpAdapter {
 			text,
 			mode,
 			delivered,
+			...(resumed ? { resumed } : {}),
 		};
 	}
 

@@ -11,6 +11,8 @@
 // (emits unknown update kinds, unknown tool kinds, extra fields, and unknown stopReason),
 // "steerable" (like "ok"; with FAKE_WAIT_CANCEL its first turn waits for session/cancel;
 // later turns echo the prompt), "silent" (a turn that emits nothing until cancelled),
+// "resume" (a turn answers `Heard: <prompt>` with no tool call; FAKE_LOAD_SESSION=1
+// advertises loadSession and replays two updates before answering session/load),
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
@@ -80,6 +82,13 @@ const cancelled = () =>
 async function turn(sessionId, promptText) {
 	turns += 1;
 	if (mode === "crash") process.exit(3);
+	if (mode === "resume") {
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: `Heard: ${promptText}` },
+		});
+		return { stopReason: "end_turn" };
+	}
 	if (mode === "silent") {
 		await cancelled();
 		return { stopReason: "cancelled" };
@@ -238,6 +247,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			result: {
 				protocolVersion: 1,
 				agentInfo: { name: "fake", version: "0" },
+				...(process.env.FAKE_LOAD_SESSION
+					? { agentCapabilities: { loadSession: true } }
+					: {}),
 				...(mode === "auth-required"
 					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
 					: {}),
@@ -272,6 +284,17 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			result: { sessionId: "s1", ...(configOptions ? { configOptions } : {}) },
 		});
+	} else if (msg.method === "session/load") {
+		const sessionId = msg.params?.sessionId;
+		notify(sessionId, {
+			sessionUpdate: "user_message_chunk",
+			content: { type: "text", text: "the first prompt" },
+		});
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: "REPLAYED" },
+		});
+		send({ jsonrpc: "2.0", id: msg.id, result: {} });
 	} else if (msg.method === "session/prompt") {
 		const text = msg.params?.prompt?.[0]?.text ?? "";
 		const result = await turn(msg.params.sessionId, text);

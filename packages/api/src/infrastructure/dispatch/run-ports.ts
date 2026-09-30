@@ -7,7 +7,7 @@ import type { HarnessSelection } from "@prismalens/config";
  * testable without NestJS. Wired in dispatch.service.ts.
  */
 import type { ModelSource } from "@prismalens/config/harness";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent, WorkflowStatus } from "@prismalens/contracts";
 import type { ContextPack } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
@@ -24,10 +24,20 @@ export interface IncidentRepo {
 	defaultBranch: string | null;
 	subPath: string | null;
 	connectionId: string | null;
+	/** The service that links it; one repo may come back once per service (#747). */
+	serviceName: string;
 }
 
 export interface RunPorts {
-	findInvestigation(id: string): Promise<{ id: string; status: string } | null>;
+	findInvestigation(id: string): Promise<{
+		id: string;
+		status: string;
+		harness: string | null;
+		model: string | null;
+		acpSessionId: string | null;
+		/** JSON RunWorkspace. */
+		workspace: string | null;
+	} | null>;
 	updateStatus(
 		id: string,
 		dto: {
@@ -37,8 +47,30 @@ export interface RunPorts {
 			startedAt?: Date;
 			harness?: string;
 			model?: string;
+			acpSessionId?: string;
+			/** JSON RunWorkspace. */
+			workspace?: string;
 		},
 	): Promise<void>;
+	/**
+	 * A follow-up's own status write: no report delivery, no telemetry, and
+	 * `completedAt`/`error` exactly as given, so the row can be put back (#747).
+	 */
+	followUpStatus(
+		id: string,
+		state: {
+			status: WorkflowStatus;
+			completedAt?: Date | null;
+			error?: string | null;
+		},
+	): Promise<void>;
+	/**
+	 * Keep the harness's session id so a follow-up can load it (#747). Its own
+	 * write, not `updateStatus`, which would count a second run start.
+	 */
+	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** The highest stored event `seq`, or -1 when none (#747). */
+	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
 	clearEvents(id: string): Promise<void>;
 	writeResult(id: string, dto: InternalInvestigationResultDto): Promise<void>;
@@ -50,7 +82,10 @@ export interface RunPorts {
 		modelSource?: ModelSource;
 	}>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
-	/** The repos linked to the incident's service, primary first. Empty means the run is unmapped. */
+	/**
+	 * The repos of the incident's service, then of each service its alerts name,
+	 * primary first. Not deduped. Empty means the run is unmapped.
+	 */
 	incidentRepos(incidentId: string): Promise<IncidentRepo[]>;
 	/** A git token for the connection that discovered the repo, when one exists. */
 	repoToken(connectionId: string): Promise<string | null>;
@@ -60,10 +95,11 @@ export interface RunPorts {
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
-	/** A fresh clone of the source's committed HEAD into `dest`. */
+	/** A fresh clone of the source's committed HEAD, or of commit `at`, into `dest`. */
 	snapshot(
 		src: RepoSource,
 		dest: string,
 		signal?: AbortSignal,
+		at?: string,
 	): Promise<Snapshot>;
 }

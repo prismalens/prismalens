@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The box's three modes (#743 §6): a brief for a new run, a message to the
- * live session, or a brief for the next run after this one ended.
+ * The box's modes (#743 §6): a brief for a new run, a message to the live
+ * session, a follow-up that reopens an ended session (#747), or a brief for
+ * the next run when the ended one cannot be reopened.
  */
-export type ComposerMode = "brief" | "live" | "again";
+export type ComposerMode = "brief" | "live" | "resume" | "again";
 
 export type ComposerKeyAction = "investigate" | "queue" | "now" | null;
 
@@ -28,12 +29,15 @@ export function composerKeyAction(
 	mode: ComposerMode,
 ): ComposerKeyAction {
 	if (e.key !== "Enter" || e.isComposing || e.shiftKey || e.altKey) return null;
-	if (mode !== "live") return "investigate";
+	if (mode !== "live" && mode !== "resume") return "investigate";
 	return e.ctrlKey || e.metaKey ? "now" : "queue";
 }
 
-/** The box's mode from the selected run: no run, a live one, or an ended one. */
-export function composerMode(run: { live: boolean } | null): ComposerMode {
+/** The box's mode from the selected run: none, live, ended and reopenable, or ended. */
+export function composerMode(
+	run: { live: boolean; resumable?: boolean } | null,
+): ComposerMode {
 	if (!run) return "brief";
-	return run.live ? "live" : "again";
+	if (run.live) return "live";
+	return run.resumable ? "resume" : "again";
 }

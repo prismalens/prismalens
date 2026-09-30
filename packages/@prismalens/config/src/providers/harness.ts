@@ -100,6 +100,8 @@ export interface HarnessDescriptor {
 	 * each name is cited in the row's own doc pointer below.
 	 */
 	providerKeys?: readonly string[];
+	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
+	resume: boolean;
 }
 
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
@@ -164,6 +166,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelVia: "config",
 		loginHint:
 			"Keyless default model; `opencode auth login` or a provider key in env for others",
+		resume: true,
 	},
 	"claude-code": {
 		id: "claude-code",
@@ -203,6 +206,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "0.81.1", date: "2026-09-23" },
 		modelVia: "env",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
+		resume: true,
 	},
 	codex: {
 		id: "codex",
@@ -228,6 +232,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "1.13.1", date: "2026-09-24" },
 		modelVia: "unsupported",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
+		resume: true,
 	},
 	gemini: {
 		id: "gemini",
@@ -242,6 +247,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		readOnlyMechanism: "ACP permission answers",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
+		resume: true,
 	},
 	deepagents: {
 		id: "deepagents",
@@ -262,6 +268,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
+		resume: false,
 	},
 };
 
@@ -379,4 +386,11 @@ export function refuseModel(
 	const row = HARNESS_REGISTRY[harnessId];
 	if (row.modelVia !== "unsupported" || !model?.trim()) return null;
 	return `${row.label} does not take a model setting; clear Model for it in Settings → Harness`;
+}
+
+/** Why a finished run on `harnessId` cannot be continued, or null when it can (#747). */
+export function resumeBlockedReason(harnessId: HarnessId): string | null {
+	const row = HARNESS_REGISTRY[harnessId];
+	if (row.resume) return null;
+	return `${row.label} can't reopen a finished session, so a new run starts from the report.`;
 }
