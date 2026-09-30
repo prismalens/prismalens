@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type CanonicalEvent,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	type RunState,
@@ -18,6 +19,10 @@ import {
 	useSendInvestigationMessage,
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+
+const eventsKey = (id: string) =>
+	orpc.investigations.getEvents.key({ input: { id } });
+
 import {
 	latestAgentText,
 	type PendingMessage,
@@ -35,6 +40,42 @@ export function isConflict(error: unknown): boolean {
 	if (!error || typeof error !== "object") return false;
 	const e = error as { status?: unknown; code?: unknown };
 	return e.status === 409 || e.code === "CONFLICT";
+}
+
+/**
+ * The stored events, then the live ones, once each by `(branchId, seq)`: a
+ * follow-up streams after a finished run's history (#747).
+ */
+export function mergeRunEvents(
+	history: CanonicalEvent[],
+	live: CanonicalEvent[],
+): CanonicalEvent[] {
+	const seen = new Set<string>();
+	const out: CanonicalEvent[] = [];
+	for (const e of [...history, ...live]) {
+		const key =
+			e.kind === "report" ? `report:${e.seq}` : `${e.branchId}:${e.seq}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(e);
+	}
+	return out.sort((a, b) => a.seq - b.seq);
+}
+
+/** Only an ended run takes a follow-up; a live one takes messages (#747). */
+export function followUpState(
+	investigation: {
+		status: string;
+		resumable?: boolean;
+		resumeBlockedReason?: string | null;
+	} | null,
+): { resumable: boolean; resumeBlockedReason: string | null } {
+	if (!investigation || !isWorkflowTerminal(investigation.status))
+		return { resumable: false, resumeBlockedReason: null };
+	return {
+		resumable: !!investigation.resumable,
+		resumeBlockedReason: investigation.resumeBlockedReason ?? null,
+	};
 }
 
 /**
@@ -57,9 +98,14 @@ export function useInvestigationRun(investigationId: string | null) {
 	const isActive = !!investigation && isWorkflowLive(investigation.status);
 	const stream = useInvestigationStream(id, { enabled: enabled && isActive });
 	const history = useInvestigationEventsHistory(id, {
-		enabled: !!investigation && !isActive,
+		enabled: !!investigation,
 	});
-	const events = isActive ? stream.events : (history.data ?? []);
+	const historyEvents = history.data;
+	const liveEvents = isActive ? stream.events : null;
+	const events = useMemo(
+		() => mergeRunEvents(historyEvents ?? [], liveEvents ?? []),
+		[historyEvents, liveEvents],
+	);
 	const streamFailed = isActive && stream.status === "error";
 
 	const { data: statusData } = useQuery({
@@ -75,6 +121,7 @@ export function useInvestigationRun(investigationId: string | null) {
 			});
 			queryClient.invalidateQueries({ queryKey: investigationKeys.lists() });
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+			queryClient.invalidateQueries({ queryKey: eventsKey(id) });
 		}
 	}, [stream.status, id, queryClient]);
 
@@ -152,6 +199,14 @@ export function useInvestigationRun(investigationId: string | null) {
 			messageMutate(
 				{ id, text, mode, branchId: opts?.branchId },
 				{
+					// A follow-up reopened the run: refetch so it reads live and the stream connects.
+					onSuccess: (result) => {
+						if (result.state !== "resumed") return;
+						queryClient.invalidateQueries({
+							queryKey: investigationKeys.detail(id),
+						});
+						queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+					},
 					onError: (error) => {
 						if (isConflict(error)) {
 							setPending((p) => ({
@@ -172,7 +227,7 @@ export function useInvestigationRun(investigationId: string | null) {
 				},
 			);
 		},
-		[messageMutate, id],
+		[messageMutate, id, queryClient],
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
@@ -200,6 +255,7 @@ export function useInvestigationRun(investigationId: string | null) {
 		state,
 		isActive,
 		ended,
+		...followUpState(investigation),
 		failed,
 		streamFailed,
 		ledgerStatus,

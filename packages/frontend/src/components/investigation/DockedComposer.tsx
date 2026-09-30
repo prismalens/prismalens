@@ -7,6 +7,7 @@ import { useIncidentRecord } from "@/components/incidents/record-context";
 import { useToast } from "@/hooks/use-toast";
 import { composerMode } from "@/lib/composer-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { pinnedTo } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
 import { ComposerBox } from "./ComposerBox";
 
@@ -32,7 +33,9 @@ export function DockedComposer({
 	const { toast } = useToast();
 	const who = useRunAgentModel(run.investigation);
 	const live = !!run.state && isRunStateLive(run.state);
-	const mode = composerMode(investigationId ? { live } : null);
+	const mode = composerMode(
+		investigationId ? { live, resumable: run.resumable } : null,
+	);
 
 	return (
 		<div
@@ -47,6 +50,8 @@ export function DockedComposer({
 					fixed={who}
 					waiting={run.waiting}
 					isPending={record.isInvestigating}
+					pinned={pinnedTo(run.investigation?.workspace)}
+					note={mode === "again" ? run.resumeBlockedReason : null}
 					blockedReason={
 						!record.canInvestigate && mode !== "live"
 							? "Only an open incident can be investigated."

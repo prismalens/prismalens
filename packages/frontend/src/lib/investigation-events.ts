@@ -323,6 +323,7 @@ export type TranscriptItem =
 			rows: EventRow[];
 	  }
 	| { kind: "thought"; key: string; seconds: number }
+	| { kind: "divider"; key: string; text: string }
 	| { kind: "thinking"; key: string; seconds: number; stale: boolean }
 	| {
 			kind: "operator";
@@ -383,6 +384,24 @@ export function summarizeTools(results: (StreamToolResult | null)[]): string {
 function delegateTitle(call: { name: string; args: Record<string, unknown> }) {
 	const d = call.args.description;
 	return typeof d === "string" && d.trim() ? d.trim() : call.name;
+}
+
+/** `api@1a2b3c4, worker@5d6e7f8`, or the lone short sha for one repo (#747). */
+export function pinnedTo(
+	workspace: { repos: { name: string; head: string }[] } | null | undefined,
+): string | undefined {
+	const repos = workspace?.repos ?? [];
+	if (repos.length === 0) return undefined;
+	if (repos.length === 1) return repos[0]?.head.slice(0, 7);
+	return repos.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
+}
+
+/** The line before a follow-up's first message: the same session, and the code it reopened at. */
+export function resumedLine(resumed: { name: string; head: string }[]): string {
+	const at = pinnedTo({ repos: resumed });
+	return at
+		? `Resumed in the same session, code at ${at}`
+		: "Resumed in the same session";
 }
 
 function transcriptPath(runId?: string): string {
@@ -506,6 +525,12 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				closeGroup();
+				if (event.resumed)
+					items.push({
+						kind: "divider",
+						key: `resumed-${key}`,
+						text: resumedLine(event.resumed),
+					});
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
