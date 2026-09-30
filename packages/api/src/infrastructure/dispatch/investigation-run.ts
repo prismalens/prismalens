@@ -33,6 +33,7 @@ import {
 	conductRun,
 	type InvestigationSink,
 	type ResolvedConnector,
+	type SteerPort,
 	telemetryEndpointsFrom,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
@@ -64,6 +65,7 @@ export interface JobIo {
 	emit(event: CanonicalEvent): void | Promise<void>;
 	streamDone(): void | Promise<void>;
 	signal: AbortSignal;
+	steer?: SteerPort;
 }
 
 export interface JobContext {
@@ -204,6 +206,8 @@ async function runJobInternal(
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
+				...(io.steer ? { steer: io.steer } : {}),
+				...(data.brief ? { brief: data.brief } : {}),
 			},
 			{ sink, store },
 		);
@@ -421,7 +425,7 @@ async function persistCancelled(
 	await ports.createTimelineEntry({
 		incidentId: data.incidentId,
 		type: "investigation_completed",
-		title: "Investigation cancelled",
+		title: "Investigation stopped",
 		description: "The investigation was cancelled before it completed.",
 		source: "ai_worker",
 		metadata: { investigationId: data.investigationId },

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
-import { prepareRunEnv, runInvestigation } from "./investigate.js";
+import { createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
 
 const FAKE = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "fake-acp-harness.mjs");
 
@@ -213,6 +213,22 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("\n")).toContain("Heard: Stop and look at the TTL.");
 		expect(events.at(-1)?.kind).toBe("report");
 		expect(deliver).toBeUndefined();
+	});
+
+	it("marks a message the stopped run never read as not delivered, and refuses later ones (#743)", async () => {
+		const stop = new AbortController();
+		const channel = createSteerChannel();
+		const events: CanonicalEvent[] = [];
+		setTimeout(() => {
+			expect(channel.send("Also check the TTL revert.", "queue")).toBe("queued");
+			stop.abort();
+		}, 200);
+		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) events.push(ev);
+		expect(events.find((e) => e.kind === "operator_message")).toMatchObject({
+			text: "Also check the TTL revert.",
+			delivered: false,
+		});
+		expect(channel.send("too late", "now")).toBeNull();
 	});
 
 	it("cancels a silent harness as soon as the operator stops the run (#743)", async () => {

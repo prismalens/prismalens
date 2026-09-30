@@ -61,6 +61,17 @@ export function runCancelTopic(investigationId: string): string {
 	return `investigation:cancel:${investigationId}`;
 }
 
+export function runMessageTopic(investigationId: string): string {
+	return `investigation:message:${investigationId}`;
+}
+
+/** An operator message for a live run; the holder answers through `reply`. */
+export interface RunMessageRequest {
+	text: string;
+	mode: "queue" | "now";
+	reply(state: "queued" | "sent" | null): void;
+}
+
 /**
  * In-process EventBus over plain Sets of handlers.
  *

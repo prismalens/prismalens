@@ -10,6 +10,7 @@
  */
 
 import type { InvestigationJobData } from "@prismalens/contracts";
+import { createSteerChannel } from "@prismalens/engine";
 import type { JobRunner, RunningJob, RunSink } from "./dispatcher.js";
 import runInvestigationJob, {
 	type InvestigationResult,
@@ -32,6 +33,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 		}
 
 		const controller = new AbortController();
+		const steer = createSteerChannel();
 
 		// Idempotent: the run calls `streamDone` on every path it completes through,
 		// but a thrown error or the sticky-cancel skip (returns without ever
@@ -55,6 +57,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				emit: (event) => sink.onEvent(event),
 				streamDone: () => closeStream(),
 				signal: controller.signal,
+				steer: steer.port,
 			},
 			ports,
 		).then(
@@ -79,6 +82,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			done,
 			cancel: () => controller.abort(),
 			kill: () => controller.abort(),
+			message: (text, mode) => steer.send(text, mode),
 		};
 	};
 }

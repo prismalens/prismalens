@@ -207,6 +207,7 @@ export class IncidentsController {
 									toFiringAlert(a),
 								)
 							: undefined,
+						...(input.brief ? { brief: input.brief } : {}),
 					});
 
 					return {

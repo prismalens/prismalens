@@ -237,6 +237,42 @@ export class InvestigationsController {
 				},
 			),
 
+			// POST /investigations/:id/messages - Operator message to a live run (#743).
+			// The run holder answers on the bus; a pending run may not be held yet, so
+			// retry like cancel before refusing.
+			message: implement(investigationsContract.message).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					const refuse = () =>
+						new ORPCError("CONFLICT", {
+							message: "The run ended before your message reached it.",
+						});
+					if (TERMINAL_STATUSES.has(investigation.status)) throw refuse();
+					let state = this.dispatchService.sendMessage(
+						input.id,
+						input.text,
+						input.mode,
+					);
+					for (let attempt = 0; state === null && attempt < 2; attempt++) {
+						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						state = this.dispatchService.sendMessage(
+							input.id,
+							input.text,
+							input.mode,
+						);
+					}
+					if (state === null) throw refuse();
+					return { state };
+				},
+			),
+
 			// PATCH /investigations/:id/status - Update status (Worker)
 			updateStatus: implement(investigationsContract.updateStatus).handler(
 				async ({ input }) => {

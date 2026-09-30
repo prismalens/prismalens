@@ -21,8 +21,10 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	type EventBus,
 	type RelayMessage,
+	type RunMessageRequest,
 	runCancelTopic,
 	runEventsTopic,
+	runMessageTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobStore } from "./job-store.js";
 
@@ -44,6 +46,8 @@ export interface RunningJob {
 	readonly done: Promise<RunOutcome>;
 	cancel(): void;
 	kill(): void;
+	/** Hand the run an operator message; null once it no longer listens. */
+	message?(text: string, mode: "queue" | "now"): "queued" | "sent" | null;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -166,6 +170,10 @@ export class Dispatcher {
 			runCancelTopic(job.investigationId),
 			() => running.cancel(),
 		);
+		const messageSub = this.bus.subscribe<RunMessageRequest>(
+			runMessageTopic(job.investigationId),
+			(m) => m.reply(running.message?.(m.text, m.mode) ?? null),
+		);
 
 		void running.done
 			.then(async (outcome) => {
@@ -183,6 +191,7 @@ export class Dispatcher {
 			.catch((error) => this.log.error(`Settling job ${job.id} failed`, error))
 			.finally(() => {
 				cancelSub.unsubscribe();
+				messageSub.unsubscribe();
 				this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than waiting for
 				// the next enqueue — but not from inside this callback's stack.

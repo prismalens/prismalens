@@ -21,6 +21,7 @@ import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
+	OperatorMessageMode,
 	RunFidelity,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
@@ -87,6 +88,40 @@ export interface RunInvestigationOptions {
 export interface SteerPort {
 	next(): string | null;
 	onNow(deliver: (text: string) => void): () => void;
+}
+
+/**
+ * The host side of a {@link SteerPort}: `send` answers null once the run has
+ * stopped listening, so the caller can refuse instead of dropping the text.
+ */
+export function createSteerChannel(): {
+	port: SteerPort;
+	send(text: string, mode: OperatorMessageMode): "queued" | "sent" | null;
+} {
+	const queue: string[] = [];
+	let deliverNow: ((text: string) => void) | null = null;
+	let open = true;
+	return {
+		port: {
+			next: () => queue.shift() ?? null,
+			onNow(deliver) {
+				deliverNow = deliver;
+				return () => {
+					deliverNow = null;
+					open = false;
+				};
+			},
+		},
+		send(text, mode) {
+			if (!open) return null;
+			if (mode === "now" && deliverNow) {
+				deliverNow(text);
+				return "sent";
+			}
+			queue.push(text);
+			return "queued";
+		},
+	};
 }
 
 export const CANCELLED_MESSAGE = "investigation cancelled";
@@ -278,6 +313,9 @@ export async function* runInvestigation(
 			outcome = yield* consume(session.prompt(line));
 		}
 		unsubscribe?.();
+		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
+			yield adapter.operatorMessage(line, "queue", false);
+		}
 
 		if ("error" in outcome) {
 			yield adapter.error(
@@ -325,4 +363,10 @@ export async function* runInvestigation(
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}
+}
+
+function drain(steer: SteerPort | undefined): string[] {
+	const left: string[] = [];
+	for (let line = steer?.next(); line; line = steer?.next()) left.push(line);
+	return left;
 }

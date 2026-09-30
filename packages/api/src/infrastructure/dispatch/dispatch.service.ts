@@ -43,7 +43,13 @@ import { StreamRelayService } from "../../modules/investigations/stream-relay.se
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { TimelineService } from "../../modules/timeline/timeline.service.js";
 import { Dispatcher } from "./dispatcher.js";
-import { EVENT_BUS, type EventBus, runCancelTopic } from "./event-bus.js";
+import {
+	EVENT_BUS,
+	type EventBus,
+	type RunMessageRequest,
+	runCancelTopic,
+	runMessageTopic,
+} from "./event-bus.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
 	type JobDelegate,
@@ -321,6 +327,23 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * means nobody holds the run and nobody will ever write its terminal state — the
 	 * caller must write it. Same contract the Redis cancel channel had.
 	 */
+	/** Hand a live run an operator message; null when nothing holds the run or it stopped listening. */
+	sendMessage(
+		investigationId: string,
+		text: string,
+		mode: "queue" | "now",
+	): "queued" | "sent" | null {
+		let state: "queued" | "sent" | null = null;
+		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
+			text,
+			mode,
+			reply: (s) => {
+				state = s;
+			},
+		});
+		return state;
+	}
+
 	async requestCancel(investigationId: string): Promise<number> {
 		const receivers = this.bus.publish(runCancelTopic(investigationId), {
 			kind: "cancel",

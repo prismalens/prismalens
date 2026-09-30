@@ -719,6 +719,8 @@ export const InvestigationJobDataSchema = z.object({
 	context: z.record(z.string(), z.unknown()).optional(),
 	connectionIds: z.array(z.string()).optional(),
 	alerts: z.array(FiringAlertSchema).optional(),
+	/** The operator's brief for the agent (#743). */
+	brief: z.string().max(4000).optional(),
 });
 
 export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;

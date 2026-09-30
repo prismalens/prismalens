@@ -331,7 +331,7 @@ export class InvestigationsService {
 		await this.timelineService.create({
 			incidentId,
 			type: TimelineEntryType.investigation_completed,
-			title: "Investigation cancelled",
+			title: "Investigation stopped",
 			description,
 			source: TimelineSource.system,
 			metadata: { investigationId: id },
