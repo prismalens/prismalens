@@ -7,6 +7,7 @@ import {
 	type IncidentAction,
 	type IncidentStatus,
 	type IncidentWithRelations,
+	isIncidentOpen,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
@@ -51,6 +52,7 @@ const ACTION_LABEL: Record<IncidentAction, string> = {
 	investigate: "Investigate",
 	resolve: "Resolve",
 	close: "Close",
+	reopen: "Reopen",
 };
 
 /**
@@ -79,14 +81,13 @@ export function IncidentStateBand({
 		investigate: onInvestigate,
 		resolve: onResolve,
 		close: onClose,
+		reopen: () => {},
 	};
 	// The one the status admits first, in the order the incident moves through.
-	const order: IncidentAction[] = [
-		"investigate",
-		"acknowledge",
-		"resolve",
-		"close",
-	];
+	// Once resolved, closing is the next step; Investigate stays in the menu (#743).
+	const order: IncidentAction[] = isIncidentOpen(incident.status)
+		? ["investigate", "acknowledge", "resolve", "close"]
+		: ["close", "investigate"];
 	const admitted = order.filter(
 		(a) =>
 			canIncidentAction(a, incident.status) &&
