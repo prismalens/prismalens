@@ -8,6 +8,8 @@ import type {
 
 /** The lane for work no service claims; it always sits last. */
 export const NO_SERVICE_LANE = "none";
+/** The incident list's group of closed incidents, below every service. */
+export const SETTLED_LANE = "settled";
 
 export interface Lane<T> {
 	id: string;

@@ -34,16 +34,19 @@ export function LaneHeader({
 	id,
 	name,
 	count,
+	foldedByDefault = false,
 	className,
 }: {
 	view: GroupView;
 	id: string;
 	name: string;
 	count: number;
+	/** A stored id then means the lane was opened, not folded. */
+	foldedByDefault?: boolean;
 	className?: string;
 }) {
 	const { folded, toggleLane } = useLayoutPrefs();
-	const isFolded = folded[view].includes(id);
+	const isFolded = folded[view].includes(id) !== foldedByDefault;
 	return (
 		<button
 			type="button"
@@ -68,5 +71,6 @@ export function LaneHeader({
 /** Whether a lane is folded, for the views that render its rows. */
 export function useLaneFolded(view: GroupView) {
 	const { folded } = useLayoutPrefs();
-	return (id: string) => folded[view].includes(id);
+	return (id: string, foldedByDefault = false) =>
+		folded[view].includes(id) !== foldedByDefault;
 }

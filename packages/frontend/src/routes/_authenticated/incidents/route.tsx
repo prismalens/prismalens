@@ -9,8 +9,8 @@ import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
+import { SIDEBAR_BESIDE, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
-import { cn } from "@/lib/utils";
 
 export interface IncidentsSearch {
 	status?: IncidentStatus;
@@ -46,34 +46,28 @@ function IncidentsFrame() {
 		shouldThrow: false,
 	});
 	const recordOpen = !!record;
-	// An empty workspace has no list to show; below `lg` the board's first-run
-	// panel takes the list's place instead of hiding behind it.
+	// From `md` the list lives in the sidebar; below it, it is the landing and
+	// the board hides behind it.
+	const beside = useMediaQuery(SIDEBAR_BESIDE);
 	// Unfiltered: a date window with no incidents is not a new workspace.
 	const stats = useQuery(orpc.incidents.getStats.queryOptions({ input: {} }));
 	const firstRun = !recordOpen && stats.data?.total === 0;
+	const listHere = !beside && !firstRun && !recordOpen;
 	return (
 		<div
-			className={cn(
-				"fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)",
-				!firstRun &&
-					"lg:grid-cols-[17rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]",
-			)}
+			className="fixed inset-y-0 left-0 right-0 top-10 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)"
 			data-testid="incidents-frame"
 		>
-			{!firstRun && (
+			{listHere ? (
 				<IncidentListPane
-					selectedId={record?.params.id ?? null}
-					className={cn("min-h-0 border-r", recordOpen && "hidden lg:flex")}
+					selectedId={null}
+					className="h-full bg-background pt-2"
 				/>
+			) : (
+				<div className="h-full min-h-0 min-w-0">
+					<Outlet />
+				</div>
 			)}
-			<div
-				className={cn(
-					"min-h-0 min-w-0",
-					!recordOpen && !firstRun && "hidden lg:block",
-				)}
-			>
-				<Outlet />
-			</div>
 		</div>
 	);
 }

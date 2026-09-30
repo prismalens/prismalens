@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 /**
- * Per-viewer layout choices: the sidebar folded to an icon rail (`[`), the
+ * Per-viewer layout choices: the sidebar folded away (`[`), the
  * alerts pane grouped by service or not, and per view which service groups are
  * folded (#743).
  * Kept in localStorage, which can be absent or throw, so every access is
@@ -13,7 +13,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
  * without sharing React state.
  */
 const KEY = "pl.layout";
-const SIDEBAR_WIDTH = { open: "14rem", folded: "3.5rem" } as const;
+const SIDEBAR_WIDTH = { open: "18rem", folded: "0px" } as const;
 
 /** The incident sidebar is always grouped; the alerts pane can be. */
 export type GroupView = "list" | "alerts";
@@ -62,10 +62,12 @@ function publish(next: LayoutPrefs) {
 	} catch {
 		// A private window or blocked storage: the choice lasts for this page only.
 	}
-	document.documentElement.style.setProperty(
+	const root = document.documentElement;
+	root.style.setProperty(
 		"--sidebar-w",
 		next.sidebarFolded ? SIDEBAR_WIDTH.folded : SIDEBAR_WIDTH.open,
 	);
+	root.toggleAttribute("data-sidebar-folded", next.sidebarFolded);
 	listeners.forEach((l) => {
 		l();
 	});

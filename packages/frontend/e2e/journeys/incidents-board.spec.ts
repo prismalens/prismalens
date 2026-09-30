@@ -187,7 +187,14 @@ test.describe("#743 — the incidents board", () => {
 		await expect(
 			gateway.getByTestId("incident-row").filter({ hasText: "[demo] Storm" }),
 		).toHaveCount(1);
-		await expect(groups.last()).toContainText("No service");
+		// No service sits below every service; only Settled, when present, follows it.
+		const settled = groups.filter({
+			has: page.locator('[data-lane="settled"]'),
+		});
+		const hasSettled = (await settled.count()) > 0;
+		await expect(
+			groups.nth((await groups.count()) - (hasSettled ? 2 : 1)),
+		).toContainText("No service");
 
 		// A group folds, and stays folded after a reload.
 		const header = gateway.getByTestId("service-lane");

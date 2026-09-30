@@ -84,7 +84,7 @@
 
 	/* ── Layout ── */
 	--radius: 0.375rem;
-	--sidebar-w: 14rem;
+	--sidebar-w: 18rem;
 	/* The desktop window's top strip; equals TITLEBAR_HEIGHT in packages/desktop. */
 	--titlebar-h: 0px;
 
@@ -97,6 +97,13 @@
 
 :root[data-desktop] {
 	--titlebar-h: 2.5rem;
+}
+
+/* A folded sidebar leaves its toggle in a top strip, in the browser too (#743). */
+@media (min-width: 48rem) {
+	:root[data-sidebar-folded] {
+		--titlebar-h: 2.5rem;
+	}
 }
 
 /* ── Dark Mode ── */

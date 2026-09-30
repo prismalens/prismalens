@@ -11,7 +11,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	AlertTriangle,
-	BarChart3,
 	Circle,
 	CircleCheck,
 	Plus,
@@ -36,19 +35,25 @@ import {
 	incidentGroups,
 	NO_SERVICE_LANE,
 	otherServices,
+	SETTLED_LANE,
 } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
+import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
 import { CreateIncidentDialog } from "./CreateIncidentDialog";
 import { IncidentFilters } from "./IncidentFilters";
 
 export interface IncidentListPaneProps {
 	selectedId: string | null;
 	className?: string;
+	/** j / k walk this list; off where another list owns the keys. */
+	keyboard?: boolean;
 }
 
 /** Builds the list query from the frame's search, the same window the stats use. */
 export function useIncidentWindow() {
-	const search = useSearch({ from: "/_authenticated/incidents" });
+	// The sidebar renders the list on every route, so the window may be unset.
+	const search: IncidentsSearch =
+		useSearch({ from: "/_authenticated/incidents", shouldThrow: false }) ?? {};
 	const from = search.from ? new Date(search.from) : undefined;
 	const to = search.to ? new Date(search.to) : undefined;
 	return {
@@ -85,6 +90,7 @@ export function useIncidentWindow() {
 export function IncidentListPane({
 	selectedId,
 	className,
+	keyboard = true,
 }: IncidentListPaneProps) {
 	const navigate = useNavigate();
 	const now = useNow();
@@ -128,8 +134,13 @@ export function IncidentListPane({
 				)
 			: incidents;
 		const needsYou = visible.filter((i) => attentionFor(i) !== null);
-		const rest = visible.filter((i) => attentionFor(i) === null);
-		return { needsYou, rest, rows: [...needsYou, ...rest] };
+		const rest = visible.filter(
+			(i) => attentionFor(i) === null && i.status !== "closed",
+		);
+		const settled = visible.filter(
+			(i) => attentionFor(i) === null && i.status === "closed",
+		);
+		return { rows: [...needsYou, ...rest], settled };
 	}, [incidents, q]);
 	const windowValue = search.from
 		? Math.round((Date.now() - new Date(search.from).getTime()) / 86_400_000) <=
@@ -158,16 +169,27 @@ export function IncidentListPane({
 			search: keep,
 		});
 	const groupFolded = useLaneFolded("list");
-	const groups = useMemo(() => incidentGroups(ordered.rows), [ordered.rows]);
+	// Closed incidents sit in one Settled group at the foot, folded until opened.
+	const groups = useMemo(() => {
+		const byService = incidentGroups(ordered.rows);
+		return ordered.settled.length > 0
+			? [
+					...byService,
+					{ id: SETTLED_LANE, name: "Settled", items: ordered.settled },
+				]
+			: byService;
+	}, [ordered]);
+	const isFolded = (id: string) => groupFolded(id, id === SETTLED_LANE);
 	// The rows j / k walk: every row in an open group, top to bottom.
-	const flat = useMemo(
-		() => groups.flatMap((g) => (groupFolded(g.id) ? [] : g.items)),
-		[groups, groupFolded],
+	const flat = groups.flatMap((g) => (isFolded(g.id) ? [] : g.items));
+	const { cursor, pointAt } = useListKeyboard(
+		flat.length,
+		(i) => {
+			const incident = flat[i];
+			if (incident) open(incident);
+		},
+		keyboard,
 	);
-	const { cursor, pointAt } = useListKeyboard(flat.length, (i) => {
-		const incident = flat[i];
-		if (incident) open(incident);
-	});
 	const row = (incident: IncidentWithRelations, index: number) => {
 		const selected = incident.id === selectedId;
 		return (
@@ -192,21 +214,42 @@ export function IncidentListPane({
 		);
 	};
 
-	const setFilter = (patch: Partial<typeof search>) =>
-		navigate({
-			to: ".",
-			search: (prev) => ({ ...prev, ...patch }),
-			replace: true,
-		});
+	// Off the incidents routes a filter change lands on the board it narrows.
+	const setFilter = (patch: Partial<IncidentsSearch>) =>
+		selectedId
+			? navigate({
+					to: "/incidents/$id",
+					params: { id: selectedId },
+					search: { ...keep, ...patch },
+					replace: true,
+				})
+			: navigate({
+					to: "/incidents",
+					search: { ...keep, ...patch },
+					replace: true,
+				});
 
 	return (
-		<aside
-			className={cn("flex flex-col bg-background", className)}
+		<section
+			className={cn("flex flex-col", className)}
 			data-testid="incident-list-pane"
+			aria-labelledby="incident-list-heading"
 		>
-			<div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-				<h1 className="text-sm font-semibold">Incidents</h1>
-				<div className="flex items-center gap-1">
+			<h2 id="incident-list-heading" className="sr-only">
+				Incidents
+			</h2>
+			<div className="flex items-center gap-1 px-2 pb-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-7 flex-1 justify-start gap-2 px-2 font-normal"
+					onClick={() => setCreateOpen(true)}
+					data-testid="create-incident-button"
+				>
+					<Plus className="h-3.5 w-3.5" />
+					New incident
+				</Button>
+				<div className="flex items-center gap-0.5">
 					<Button
 						variant="ghost"
 						size="sm"
@@ -218,34 +261,10 @@ export function IncidentListPane({
 					>
 						<SlidersHorizontal className="h-3.5 w-3.5" />
 					</Button>
-					<Button
-						asChild
-						variant={search.view === "analytics" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-7 w-7 p-0"
-					>
-						<Link
-							to="/incidents"
-							search={{ ...keep, view: "analytics" }}
-							aria-label="Overview and analytics"
-							data-testid="incidents-view-analytics"
-						>
-							<BarChart3 className="h-3.5 w-3.5" />
-						</Link>
-					</Button>
-					<Button
-						size="sm"
-						className="h-7"
-						onClick={() => setCreateOpen(true)}
-						data-testid="create-incident-button"
-					>
-						<Plus className="mr-1 h-3.5 w-3.5" />
-						New
-					</Button>
 				</div>
 			</div>
 
-			<div className="flex items-center gap-1 border-b px-2 py-1.5">
+			<div className="flex items-center gap-1 px-2 pb-2">
 				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-background px-2">
 					<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 					<input
@@ -261,7 +280,7 @@ export function IncidentListPane({
 					value={windowValue}
 					onChange={(e) => setWindow(e.target.value)}
 					aria-label="Window"
-					className="h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none"
+					className="h-6 rounded border md:hidden bg-background px-1 text-meta text-muted-foreground outline-none"
 					data-testid="incident-list-window"
 				>
 					<option value="all">All time</option>
@@ -351,9 +370,10 @@ export function IncidentListPane({
 									id={group.id}
 									name={group.name}
 									count={group.items.length}
+									foldedByDefault={group.id === SETTLED_LANE}
 									className="min-w-0 flex-1 font-normal"
 								/>
-								{group.id !== NO_SERVICE_LANE && (
+								{group.id !== NO_SERVICE_LANE && group.id !== SETTLED_LANE && (
 									<Button
 										variant="ghost"
 										size="icon-xs"
@@ -369,19 +389,17 @@ export function IncidentListPane({
 									</Button>
 								)}
 							</div>
-							{!groupFolded(group.id) &&
+							{!isFolded(group.id) &&
 								group.items.map((incident) => row(incident, index++))}
 						</section>
 					));
 				})()}
-			</div>
-
-			<div className="flex items-center justify-between border-t px-3 py-1.5 text-meta text-muted-foreground">
-				<span>
-					{incidents.length} in window
-					{data?.pagination.hasMore ? " · more not shown" : ""}
-				</span>
-				<span>j k ↵</span>
+				{incidents.length > 0 && (
+					<p className="px-3 pb-3 text-meta text-muted-foreground">
+						{incidents.length} in window
+						{data?.pagination.hasMore ? " · more not shown" : ""}
+					</p>
+				)}
 			</div>
 
 			<CreateIncidentDialog
@@ -399,7 +417,7 @@ export function IncidentListPane({
 					})
 				}
 			/>
-		</aside>
+		</section>
 	);
 }
 
