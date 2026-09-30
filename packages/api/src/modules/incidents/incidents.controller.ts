@@ -436,7 +436,11 @@ export class IncidentsController {
 
 		if (incident.services) {
 			serialized.services = incident.services.map(
-				(s: { id: string; name: string }) => ({ id: s.id, name: s.name }),
+				(s: { id: string; name: string; displayName: string | null }) => ({
+					id: s.id,
+					name: s.name,
+					displayName: s.displayName ?? null,
+				}),
 			);
 		}
 

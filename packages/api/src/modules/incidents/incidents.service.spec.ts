@@ -298,24 +298,24 @@ describe("IncidentsService", () => {
 
 		it("lists every service an incident touches, its own first, once each (#743)", async () => {
 			mockPrisma.incident.findMany.mockResolvedValue([
-				{ id: "inc-1", service: { id: "svc-a", name: "checkout" } },
+				{ id: "inc-1", service: { id: "svc-a", name: "checkout", displayName: "Checkout" } },
 				{ id: "inc-2", service: null },
 			]);
 			mockPrisma.incident.count.mockResolvedValue(2);
 			mockPrisma.alert.findMany.mockResolvedValueOnce([
-				{ incidentId: "inc-1", service: { id: "svc-b", name: "payments" } },
-				{ incidentId: "inc-1", service: { id: "svc-a", name: "checkout" } },
-				{ incidentId: "inc-2", service: { id: "svc-b", name: "payments" } },
+				{ incidentId: "inc-1", service: { id: "svc-b", name: "payments", displayName: null } },
+				{ incidentId: "inc-1", service: { id: "svc-a", name: "checkout", displayName: "Checkout" } },
+				{ incidentId: "inc-2", service: { id: "svc-b", name: "payments", displayName: null } },
 			]);
 
 			const { data } = await service.findAll({ limit: 50, offset: 0 });
 
 			expect(data.map((i) => i.services)).toEqual([
 				[
-					{ id: "svc-a", name: "checkout" },
-					{ id: "svc-b", name: "payments" },
+					{ id: "svc-a", name: "checkout", displayName: "Checkout" },
+					{ id: "svc-b", name: "payments", displayName: null },
 				],
-				[{ id: "svc-b", name: "payments" }],
+				[{ id: "svc-b", name: "payments", displayName: null }],
 			]);
 		});
 

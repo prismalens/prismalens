@@ -36,7 +36,7 @@ export interface StatusNote {
 // alongside `createdAt`.
 export type IncidentWithRelations = Incident & {
 	alerts: Alert[];
-	services?: Array<{ id: string; name: string }>;
+	services?: Array<{ id: string; name: string; displayName: string | null }>;
 	service?: Service | null;
 	investigations?: Array<{
 		id: string;
@@ -269,15 +269,19 @@ export class IncidentsService {
 			distinct: ["incidentId", "serviceId"],
 			select: {
 				incidentId: true,
-				service: { select: { id: true, name: true } },
+				service: { select: { id: true, name: true, displayName: true } },
 			},
 		});
 		return incidents.map((incident) => {
-			const services = new Map<string, { id: string; name: string }>();
+			const services = new Map<
+				string,
+				{ id: string; name: string; displayName: string | null }
+			>();
 			if (incident.service) {
 				services.set(incident.service.id, {
 					id: incident.service.id,
 					name: incident.service.name,
+					displayName: incident.service.displayName ?? null,
 				});
 			}
 			for (const row of rows) {

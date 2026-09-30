@@ -120,6 +120,7 @@ const InvestigationRefSchema = z.object({
 export const IncidentServiceRefSchema = z.object({
 	id: z.string(),
 	name: z.string(),
+	displayName: z.string().nullable(),
 });
 export type IncidentServiceRef = z.infer<typeof IncidentServiceRefSchema>;
 
