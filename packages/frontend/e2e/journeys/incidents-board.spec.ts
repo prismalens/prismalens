@@ -211,4 +211,79 @@ test.describe("#743 — the incidents board", () => {
 			page.getByTestId("alert-list-pane").getByTestId("service-lane").first(),
 		).toBeVisible({ timeout: 15_000 });
 	});
+
+	test("a resolved incident reopens from the band or by a drop on Concluded, without starting a run", async ({
+		page,
+	}) => {
+		const statusOf = async (id: string) => {
+			const res = await page.request.get(`/api/incidents/${id}`);
+			return ((await res.json()) as { status: string }).status;
+		};
+		const investigated: string[] = [];
+		await page.route("**/api/incidents/*/investigate", async (route) => {
+			investigated.push(route.request().url());
+			await route.abort();
+		});
+
+		// From the band's menu, behind a confirm.
+		const bandTitle = `Reopen band ${Date.now()}`;
+		const bandId = await createIncident(page, bandTitle);
+		expect(
+			(await page.request.post(`/api/incidents/${bandId}/resolve`)).ok(),
+		).toBeTruthy();
+		await page.goto(`/incidents/${bandId}`);
+		await expect(page.getByTestId("band-close")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-reopen").click();
+		const dialog = page.getByTestId("reopen-dialog");
+		await expect(dialog).toContainText(`Reopen INC-`);
+		await expect(dialog).toContainText(
+			"It goes back to Investigating and its resolve time is cleared.",
+		);
+		await dialog.getByTestId("confirm-reopen-incident").click();
+		await expect.poll(() => statusOf(bandId)).toBe("investigating");
+		await expect(page.getByTestId("band-status")).toHaveText("Investigating");
+		// No run started: the box still offers Investigate.
+		await expect(page.getByTestId("run-card")).toContainText("No run yet");
+		await expect(page.getByTestId("composer-investigate")).toHaveText(
+			"Investigate",
+		);
+
+		// On the board: a resolved card waits in Needs you; dropped on Concluded
+		// it asks, then reopens.
+		const dropTitle = `Reopen drop ${Date.now()}`;
+		const dropId = await createIncident(page, dropTitle);
+		expect(
+			(await page.request.post(`/api/incidents/${dropId}/resolve`)).ok(),
+		).toBeTruthy();
+		await page.goto("/incidents");
+		const card = page
+			.getByTestId("board-column-needs_you")
+			.getByTestId("board-card")
+			.filter({ hasText: dropTitle });
+		await expect(card).toBeVisible({ timeout: 15_000 });
+		const release = await dragTo(
+			page,
+			card,
+			page.getByTestId("board-column-concluded"),
+		);
+		await expect(page.getByTestId("board-column-concluded")).toHaveAttribute(
+			"data-drop",
+			"valid",
+		);
+		await release();
+		const prompt = page.getByTestId("board-drop-prompt");
+		await expect(prompt).toContainText("Reopen INC-");
+		await prompt.getByTestId("board-drop-confirm").click();
+		await expect.poll(() => statusOf(dropId)).toBe("investigating");
+		await expect(
+			page
+				.getByTestId("board-column-concluded")
+				.getByTestId("board-card")
+				.filter({ hasText: dropTitle }),
+		).toBeVisible();
+		expect(investigated).toHaveLength(0);
+	});
 });
