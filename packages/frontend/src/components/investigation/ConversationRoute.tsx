@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { isRunStateLive } from "@prismalens/contracts";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useIncidentRecord } from "@/components/incidents/record-context";
@@ -40,7 +41,19 @@ export function ConversationRoute() {
 	const record = useIncidentRecord();
 	const { incident, run, investigationId } = record;
 	const now = useNow(1000);
-	const [view, setView] = useState<"transcript" | "ledger">("transcript");
+	const search = useSearch({
+		from: "/_authenticated/incidents/$id/conversation",
+	});
+	const navigate = useNavigate({ from: "/incidents/$id/conversation" });
+	const view = search.ledger ? "ledger" : "transcript";
+	const setView = (next: "transcript" | "ledger") =>
+		navigate({
+			search: (prev) => ({
+				...prev,
+				ledger: next === "ledger" ? ("1" as const) : undefined,
+			}),
+			replace: true,
+		});
 	const [phoneTab, setPhoneTab] = useState<"conversation" | "summary">(
 		"conversation",
 	);

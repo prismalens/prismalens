@@ -4,6 +4,7 @@
 import {
 	type InvestigationWithRelations,
 	isRunStateLive,
+	isWorkflowLive,
 	RUN_STATE_LABEL,
 	runState,
 } from "@prismalens/contracts";
@@ -65,9 +66,11 @@ export function runElapsed(
 	const start = new Date(
 		investigation.startedAt ?? investigation.createdAt,
 	).getTime();
-	const end = investigation.completedAt
-		? new Date(investigation.completedAt).getTime()
-		: (now ?? start);
+	// An ended run with no completedAt (older records) stops at its last write.
+	const ended =
+		investigation.completedAt ??
+		(isWorkflowLive(investigation.status) ? null : investigation.updatedAt);
+	const end = ended ? new Date(ended).getTime() : (now ?? start);
 	return Math.max(0, Math.round((end - start) / 1000));
 }
 

@@ -136,7 +136,7 @@ export function ComposerBox({
 		>
 			<div
 				className={cn(
-					"flex flex-wrap items-end gap-1 rounded-md border bg-background p-1 sm:flex-nowrap",
+					"flex flex-col gap-1 rounded-md border bg-background p-1",
 					"focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
 				)}
 				data-mode={mode}
@@ -150,59 +150,55 @@ export function ComposerBox({
 					placeholder={placeholder}
 					aria-label={mode === "live" ? `Message ${target}` : "Brief"}
 					data-testid="composer-input"
-					className="order-first min-h-7 min-w-0 basis-full resize-none bg-transparent px-2 py-1 text-record outline-none placeholder:text-muted-foreground sm:order-none sm:flex-1 sm:basis-auto"
+					className="min-h-7 w-full resize-none bg-transparent px-2 py-1 text-record outline-none placeholder:text-muted-foreground"
 				/>
-				{mode === "live" ? (
-					fixed && (
-						<AgentModelChip
-							agent={fixed.agent}
-							model={fixed.model}
-							className="sm:order-first"
-						/>
-					)
-				) : (
-					<AgentModelPicker
-						side={docked ? "top" : "bottom"}
-						className="sm:order-first"
-					/>
-				)}
-				<span className="ml-auto flex shrink-0 items-center gap-2">
-					{mode === "live" && waiting > 0 && (
-						<span
-							className="text-meta text-stale tabular-nums"
-							data-testid="composer-waiting"
-						>
-							{waiting} waiting
-						</span>
-					)}
+				<div className="flex min-w-0 items-center gap-1">
 					{mode === "live" ? (
-						<Button
-							size="icon-sm"
-							variant={text.trim() ? "default" : "secondary"}
-							aria-label="Send"
-							title="Queue for the agent's next pause"
-							disabled={!text.trim()}
-							onClick={() => submit("queue")}
-							data-testid="composer-send"
-						>
-							<ArrowUp />
-						</Button>
+						fixed && <AgentModelChip agent={fixed.agent} model={fixed.model} />
 					) : (
-						<Button
-							size="sm"
-							onClick={() => submit("investigate")}
-							disabled={blocked || isPending}
-							title={blocked ? blockedReason : undefined}
-							data-testid="composer-investigate"
-						>
-							{isPending
-								? "Starting"
-								: mode === "again"
-									? "Investigate again"
-									: "Investigate"}
-						</Button>
+						<AgentModelPicker
+							side={docked ? "top" : "bottom"}
+							className="shrink"
+						/>
 					)}
-				</span>
+					<span className="ml-auto flex shrink-0 items-center gap-2">
+						{mode === "live" && waiting > 0 && (
+							<span
+								className="text-meta text-stale tabular-nums"
+								data-testid="composer-waiting"
+							>
+								{waiting} waiting
+							</span>
+						)}
+						{mode === "live" ? (
+							<Button
+								size="icon-sm"
+								variant={text.trim() ? "default" : "secondary"}
+								aria-label="Send"
+								title="Queue for the agent's next pause"
+								disabled={!text.trim()}
+								onClick={() => submit("queue")}
+								data-testid="composer-send"
+							>
+								<ArrowUp />
+							</Button>
+						) : (
+							<Button
+								size="sm"
+								onClick={() => submit("investigate")}
+								disabled={blocked || isPending}
+								title={blocked ? blockedReason : undefined}
+								data-testid="composer-investigate"
+							>
+								{isPending
+									? "Starting"
+									: mode === "again"
+										? "Investigate again"
+										: "Investigate"}
+							</Button>
+						)}
+					</span>
+				</div>
 			</div>
 			{blocked ? (
 				<p className="px-2 text-meta text-muted-foreground">{blockedReason}</p>
