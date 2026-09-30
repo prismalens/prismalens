@@ -118,9 +118,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		// The route redirects to the incident record (#523); the section is
-		// `#report`, headed "Report", and carries the root cause text.
+		// The report is its own route under the incident (#743); the section
+		// is `#report`, headed "Report", and carries the root cause text.
+		await page.goto(
+			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
+		);
 		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});

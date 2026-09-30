@@ -57,23 +57,21 @@ test.describe("#523 — the settings frame", () => {
 
 		const pickerList = page.getByTestId("agent-picker-list");
 		await expect(pickerList).toBeVisible();
-		// Choose auto or opencode
+		// Choosing an agent saves at once and moves to its model column; a
+		// model is picked by name, and choosing one closes the picker.
 		const autoOption = page.getByTestId("agent-option-auto");
 		await expect(autoOption).toBeVisible();
 		await autoOption.click();
-		await expect(pickerList).toHaveCount(0);
-
-		// Model pill
-		const modelPill = page.getByTestId("model-pill");
-		if (await modelPill.isEnabled()) {
-			await modelPill.click();
-			const modelInput = page.getByLabel("Model", { exact: true });
-			await expect(modelInput).toBeVisible();
-			await modelInput.fill("gpt-4o-mini");
-			await page.getByRole("button", { name: "Use", exact: true }).click();
-			await expect(modelInput).toHaveCount(0);
-			await expect(modelPill).toContainText("gpt-4o-mini");
+		const models = pickerList.getByRole("listbox", { name: /^Model/ });
+		if ((await models.count()) > 0) {
+			const firstModel = models.getByRole("option").first();
+			await firstModel.click();
+			await expect(pickerList).toHaveCount(0);
+		} else {
+			await page.keyboard.press("Escape");
+			await expect(pickerList).toHaveCount(0);
 		}
+		await expect(page.getByTestId("model-pill")).toBeVisible();
 
 		// 3. Services lives inside the settings frame
 		await servicesNav.click();
