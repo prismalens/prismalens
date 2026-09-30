@@ -168,4 +168,47 @@ test.describe("#743 — the incidents board", () => {
 		await refused();
 		await expect(prompt).toHaveCount(0);
 	});
+
+	test("groups the board, the list and the alerts by service, and remembers it", async ({
+		page,
+	}) => {
+		await page.goto("/incidents");
+		await expect(page.getByTestId("incident-board")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.getByTestId("group-by-board").selectOption("service");
+		const board = page.getByTestId("incident-board");
+		const lanes = board.getByTestId("service-lane");
+		await expect(lanes.first()).toBeVisible();
+		// Column counts count each incident once, whatever lanes it sits in.
+		const total = await page.getByTestId("board-card").count();
+		expect(total).toBeGreaterThanOrEqual(3);
+
+		// A lane folds, and stays folded after a reload.
+		const first = lanes.first();
+		const laneId = await first.getAttribute("data-lane");
+		await first.click();
+		await expect(first).toHaveAttribute("aria-expanded", "false");
+		await page.reload();
+		await expect(
+			page.locator(`[data-testid="service-lane"][data-lane="${laneId}"]`).first(),
+		).toHaveAttribute("aria-expanded", "false", { timeout: 15_000 });
+		await page.screenshot({ path: `${SHOTS}/incidents-board-by-service.png` });
+
+		// The list pane groups on its own choice.
+		await expect(
+			page.getByTestId("incident-list-pane").getByTestId("service-lane"),
+		).toHaveCount(0);
+		await page.getByTestId("group-by-list").selectOption("service");
+		await expect(
+			page.getByTestId("incident-list-pane").getByTestId("service-lane").first(),
+		).toBeVisible();
+
+		// Alerts group by their own service.
+		await page.goto("/alerts");
+		await page.getByTestId("group-by-alerts").selectOption("service");
+		await expect(
+			page.getByTestId("alert-list-pane").getByTestId("service-lane").first(),
+		).toBeVisible({ timeout: 15_000 });
+	});
 });
