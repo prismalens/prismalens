@@ -4,19 +4,15 @@
 import { isRunStateLive } from "@prismalens/contracts";
 import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useRunAgentModel } from "@/components/incidents/RunStrip";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
 import { StateChip, StateWord } from "@/components/shared/StateChip";
 import { Progress } from "@/components/ui/progress";
 import { useNow } from "@/hooks/use-now";
-import { useToast } from "@/hooks/use-toast";
-import { composerMode } from "@/lib/composer-keys";
-import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
-import { ComposerBox } from "./ComposerBox";
+import { DockedComposer } from "./DockedComposer";
 import { InvestigationDetailSkeleton } from "./InvestigationDetailSkeleton";
 import { InvestigationStreamPanel } from "./InvestigationStreamPanel";
 import { SummaryPanel } from "./SummaryPanel";
@@ -43,14 +39,12 @@ function branchesOf(events: { kind: string; branchId?: string }[]): string[] {
 export function ConversationRoute() {
 	const record = useIncidentRecord();
 	const { incident, run, investigationId } = record;
-	const { toast } = useToast();
 	const now = useNow(1000);
 	const [view, setView] = useState<"transcript" | "ledger">("transcript");
 	const [phoneTab, setPhoneTab] = useState<"conversation" | "summary">(
 		"conversation",
 	);
 	const [branch, setBranch] = useState<string | null>(null);
-	const who = useRunAgentModel(run.investigation);
 	const investigation = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
 
@@ -89,42 +83,14 @@ export function ConversationRoute() {
 		openBranch && openBranch !== MAIN_BRANCH
 			? `Branch ${openBranch}`
 			: "Main agent";
-	const mode = composerMode(investigationId ? { live } : null);
 
 	const box = (
-		<div className="shrink-0 border-t bg-background px-3 py-2">
-			<ComposerBox
-				docked
-				mode={mode}
-				target={
-					addressee === "Main agent"
-						? "the main agent"
-						: addressee.toLowerCase()
-				}
-				fixed={who}
-				waiting={run.waiting}
-				isPending={record.isInvestigating}
-				blockedReason={
-					!record.canInvestigate && mode !== "live"
-						? "Only an open incident can be investigated."
-						: record.investigateBlocked
-				}
-				onInvestigate={(brief) => record.investigate(brief || undefined)}
-				onMessage={(text, send) =>
-					run.sendMessage(text, send, {
-						branchId: openBranch ?? undefined,
-						onError: (error) =>
-							toast({
-								title: "Message not sent",
-								description: getErrorMessage(error),
-								variant: "destructive",
-							}),
-					})
-				}
-				undeliverable={run.undeliverable}
-				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
-			/>
-		</div>
+		<DockedComposer
+			branchId={openBranch ?? undefined}
+			target={
+				addressee === "Main agent" ? "the main agent" : addressee.toLowerCase()
+			}
+		/>
 	);
 
 	return (
@@ -132,7 +98,7 @@ export function ConversationRoute() {
 			className="flex h-full min-h-0 flex-col"
 			data-testid="conversation-route"
 		>
-			<div className="flex h-10 shrink-0 items-center border-b px-3 lg:hidden">
+			<div className="flex h-10 shrink-0 items-center px-3 lg:hidden">
 				<Segmented
 					label="Phone view"
 					value={phoneTab}
@@ -150,7 +116,7 @@ export function ConversationRoute() {
 						phoneTab === "summary" && "hidden lg:flex",
 					)}
 				>
-					<div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+					<div className="flex h-10 shrink-0 items-center gap-2 px-3">
 						<h2 className="text-record font-medium">Conversation</h2>
 						<StateWord
 							tone={live ? "active" : "neutral"}
@@ -223,7 +189,7 @@ export function ConversationRoute() {
 				</section>
 				<SummaryPanel
 					className={cn(
-						"min-h-0 flex-col border-l bg-muted/20",
+						"min-h-0 flex-col bg-muted/20",
 						phoneTab === "summary" ? "flex" : "hidden lg:flex",
 					)}
 				/>

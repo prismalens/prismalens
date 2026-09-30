@@ -199,7 +199,7 @@ function TranscriptRow({
 		case "end":
 			return (
 				<div
-					className={cn("space-y-1 border-t pt-2", ENTER)}
+					className={cn("space-y-1 pt-1", ENTER)}
 					data-testid="transcript-end"
 				>
 					<p className="flex flex-wrap items-center gap-2 text-meta">

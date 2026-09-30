@@ -38,10 +38,11 @@ export function Card({
 	return (
 		<section
 			className={cn(
-				"min-w-0 space-y-2 rounded-md border p-3",
-				tone === "failed" && "border-run-failed/40 bg-run-failed/8",
-				tone === "critical" && "border-sev-critical/40 bg-sev-critical/6",
-				tone === "done" && "border-run-done/40 bg-run-done/6",
+				"min-w-0 space-y-2 rounded-md p-3",
+				!tone && "bg-muted/40",
+				tone === "failed" && "bg-run-failed/10",
+				tone === "critical" && "bg-sev-critical/8",
+				tone === "done" && "bg-run-done/8",
 				className,
 			)}
 			data-testid={testId}

@@ -215,18 +215,16 @@ function IncidentsLanding() {
 							) : undefined
 						}
 					/>
-					<div className="flex h-7 shrink-0 items-center gap-3 border-t px-4 text-meta text-muted-foreground">
+					<div className="flex h-7 shrink-0 items-center gap-3 px-4 text-meta text-muted-foreground">
 						<span className="tabular-nums">
 							{incidents.length} in window
 							{list?.pagination.hasMore ? ", more not shown" : ""}
 						</span>
 						<span className="ml-auto flex items-center gap-1">
-							<Mono>j k Enter</Mono>
-							<span>to move and open,</span>
 							<Mono>1</Mono>
 							<span>to</span>
 							<Mono>4</Mono>
-							<span>for a column</span>
+							<span>jump to a column</span>
 						</span>
 					</div>
 				</>

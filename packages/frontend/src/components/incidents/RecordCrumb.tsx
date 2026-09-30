@@ -63,7 +63,7 @@ export function RecordCrumb({
 	return (
 		<nav
 			aria-label="Incident routes"
-			className="hidden h-8 shrink-0 items-center gap-3 border-b px-3 text-meta text-muted-foreground lg:flex"
+			className="hidden h-8 shrink-0 items-center gap-3 px-3 text-meta text-muted-foreground lg:flex"
 			data-testid="record-crumb"
 		>
 			<Link

@@ -25,7 +25,7 @@ export function SummaryPanel({ className }: { className?: string }) {
 	const [tab, setTab] = useState<PanelTab>("summary");
 	return (
 		<aside className={className} data-testid="summary-panel">
-			<div className="flex h-10 shrink-0 items-center border-b px-3">
+			<div className="flex h-10 shrink-0 items-center px-3">
 				<Segmented
 					label="Panel"
 					value={tab}

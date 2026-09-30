@@ -8,15 +8,13 @@ import {
 	type IncidentWithRelations,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import {
 	type ReactNode,
-	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
 	useRef,
-	useState,
 } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { type ChipTone, StateWord } from "@/components/shared/StateChip";
@@ -30,7 +28,6 @@ import {
 	runWord,
 } from "@/lib/incident-board";
 import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
-import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
 
 const COLUMN_TONE: Record<BoardColumn, ChipTone> = {
@@ -104,10 +101,10 @@ function useFlip(deps: unknown) {
 }
 
 /**
- * The board (#743 §3c, layer 0): the landing when no incident is open. Four
- * columns in the order an SRE asks, from the same query and predicates as the
- * list pane, so a card and its row never disagree. 1 to 4 pick a column,
- * j and k move, Enter opens.
+ * The board (#743 §3c, layer 0): the landing beside the list. Four columns in
+ * the order an SRE asks, from the same query and predicates as the list pane,
+ * so a card and its row never disagree. The board scrolls as one region; 1 to
+ * 4 put focus on a column's first card. j, k and Enter stay with the list.
  */
 export function IncidentBoard({
 	incidents,
@@ -119,113 +116,68 @@ export function IncidentBoard({
 	/** Shown over the empty columns: the first-run panel, or a window note. */
 	empty?: ReactNode;
 }) {
-	const navigate = useNavigate();
 	const now = useNow();
 	const columns = useMemo(() => groupByColumn(incidents), [incidents]);
-	const [cursor, setCursor] = useState<{ col: number; row: number } | null>(
-		null,
-	);
 	const flipRef = useFlip(incidents);
-
-	const open = useCallback(
-		(incident: IncidentWithRelations) =>
-			navigate({
-				to: "/incidents/$id",
-				params: { id: incident.id },
-				search,
-			}),
-		[navigate, search],
-	);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
 			const n = Number(e.key);
-			if (n >= 1 && n <= 4) {
+			if (!(n >= 1 && n <= 4)) return;
+			const first = flipRef.current?.querySelector<HTMLElement>(
+				`[data-column="${BOARD_COLUMNS[n - 1]?.id}"] a`,
+			);
+			if (first) {
 				e.preventDefault();
-				setCursor({ col: n - 1, row: 0 });
-				return;
-			}
-			if (!cursor) {
-				if (e.key === "j" || e.key === "ArrowDown") {
-					e.preventDefault();
-					const first = BOARD_COLUMNS.findIndex(
-						(c) => columns[c.id].length > 0,
-					);
-					if (first >= 0) setCursor({ col: first, row: 0 });
-				}
-				return;
-			}
-			const list = columns[BOARD_COLUMNS[cursor.col]?.id ?? "needs_you"];
-			if (e.key === "j" || e.key === "ArrowDown") {
-				e.preventDefault();
-				setCursor({
-					...cursor,
-					row: Math.min(list.length - 1, cursor.row + 1),
-				});
-			} else if (e.key === "k" || e.key === "ArrowUp") {
-				e.preventDefault();
-				setCursor({ ...cursor, row: Math.max(0, cursor.row - 1) });
-			} else if (e.key === "ArrowRight" || e.key === "l") {
-				e.preventDefault();
-				setCursor({ col: Math.min(3, cursor.col + 1), row: 0 });
-			} else if (e.key === "ArrowLeft" || e.key === "h") {
-				e.preventDefault();
-				setCursor({ col: Math.max(0, cursor.col - 1), row: 0 });
-			} else if (e.key === "Enter") {
-				const hit = list[cursor.row];
-				if (hit) {
-					e.preventDefault();
-					open(hit);
-				}
-			} else if (e.key === "Escape") {
-				setCursor(null);
+				first.focus();
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [columns, cursor, open]);
+	}, [flipRef]);
 
 	return (
-		<div className="relative flex min-h-0 flex-1">
+		<div className="relative flex min-h-0 flex-1 flex-col">
 			<div
 				ref={flipRef}
-				className="hidden min-h-0 flex-1 grid-cols-4 lg:grid"
+				className="hidden min-h-0 flex-1 overflow-y-auto lg:block"
 				data-testid="incident-board"
 			>
-				{BOARD_COLUMNS.map((column, ci) => {
-					const cards = columns[column.id];
-					return (
-						<section
+				<div className="sticky top-0 z-10 grid grid-cols-4 gap-2 bg-background px-2">
+					{BOARD_COLUMNS.map((column) => (
+						<div key={column.id} className="flex h-8 items-center gap-2 px-3">
+							<StateWord tone={COLUMN_TONE[column.id]}>
+								{column.label}
+							</StateWord>
+							<Mono className="ml-auto text-meta text-muted-foreground">
+								{columns[column.id].length}
+							</Mono>
+						</div>
+					))}
+				</div>
+				<div className="grid grid-cols-4 gap-2 px-2">
+					{BOARD_COLUMNS.map((column) => (
+						<ul
 							key={column.id}
 							aria-label={column.label}
-							className="flex min-h-0 min-w-0 flex-col border-r last:border-r-0"
+							data-column={column.id}
+							className="flex min-w-0 flex-col gap-2 pb-2"
 							data-testid={`board-column-${column.id}`}
 						>
-							<div className="flex h-8 shrink-0 items-center gap-2 border-b px-3">
-								<StateWord tone={COLUMN_TONE[column.id]}>
-									{column.label}
-								</StateWord>
-								<Mono className="ml-auto text-meta text-muted-foreground">
-									{cards.length}
-								</Mono>
-							</div>
-							<ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-								{cards.map((incident, ri) => (
-									<li key={incident.id} data-flip={incident.id}>
-										<BoardCard
-											incident={incident}
-											column={column.id}
-											now={now}
-											search={search}
-											cursor={cursor?.col === ci && cursor.row === ri}
-										/>
-									</li>
-								))}
-							</ul>
-						</section>
-					);
-				})}
+							{columns[column.id].map((incident) => (
+								<li key={incident.id} data-flip={incident.id}>
+									<BoardCard
+										incident={incident}
+										column={column.id}
+										now={now}
+										search={search}
+									/>
+								</li>
+							))}
+						</ul>
+					))}
+				</div>
 			</div>
 			{empty && (
 				<div className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 lg:top-8 lg:pt-10">
@@ -243,13 +195,11 @@ function BoardCard({
 	column,
 	now,
 	search,
-	cursor,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
 	search: IncidentsSearch;
-	cursor: boolean;
 }) {
 	const why = attentionFor(incident);
 	const word = runWord(incident, now);
@@ -263,11 +213,7 @@ function BoardCard({
 			params={{ id: incident.id }}
 			search={search}
 			data-testid="board-card"
-			data-cursor={cursor ? "true" : undefined}
-			className={cn(
-				"block space-y-1 rounded-md border bg-background px-3 py-2 outline-none hover:bg-muted/60",
-				cursor && "bg-muted/60 ring-1 ring-primary/50",
-			)}
+			className="block space-y-1 rounded-md bg-muted/40 px-3 py-2 outline-none hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:ring-1 focus-visible:ring-primary/50"
 		>
 			<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
 				<span

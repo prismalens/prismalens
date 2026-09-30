@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ComposerBox } from "@/components/investigation/ComposerBox";
 import { Mono } from "@/components/shared/Mono";
 import { StateChip, StateWord } from "@/components/shared/StateChip";
 import { ago, useNow } from "@/hooks/use-now";
@@ -17,7 +16,7 @@ function plural(n: number, word: string) {
 }
 
 /**
- * The Run card (#743 §3c.1). No run: the box that starts one, in brief mode.
+ * The Run card (#743 §3c.1). No run: a pointer to the box that starts one.
  * Live: the agent's latest sentence and how long since its last step. Ended:
  * how it ended and the way into the conversation.
  */
@@ -38,23 +37,11 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 
 	if (!investigationId) {
 		return (
-			<Card title="Run" count="None yet" testId="run-card">
-				{inPanel ? (
-					<p className="text-record text-muted-foreground">
-						No investigation yet.
-					</p>
-				) : (
-					<ComposerBox
-						mode="brief"
-						onInvestigate={(brief) => record.investigate(brief || undefined)}
-						isPending={record.isInvestigating}
-						blockedReason={
-							!record.canInvestigate
-								? "Only an open incident can be investigated."
-								: record.investigateBlocked
-						}
-					/>
-				)}
+			<Card title="Run" testId="run-card">
+				<p className="text-record text-muted-foreground">
+					No run yet.
+					{!inPanel && " Start one from the box below."}
+				</p>
 			</Card>
 		);
 	}

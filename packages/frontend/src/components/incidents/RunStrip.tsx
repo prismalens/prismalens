@@ -92,7 +92,7 @@ export function RunStrip() {
 
 	return (
 		<div
-			className="flex h-8 shrink-0 items-center gap-3 overflow-hidden border-b bg-muted/30 px-3 whitespace-nowrap [view-transition-name:run-strip]"
+			className="flex h-8 shrink-0 items-center gap-3 overflow-hidden bg-muted/40 px-3 whitespace-nowrap [view-transition-name:run-strip]"
 			data-testid="run-strip"
 		>
 			<StateChip

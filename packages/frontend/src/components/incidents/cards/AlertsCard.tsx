@@ -71,7 +71,7 @@ export function AlertsCard() {
 					No alerts are correlated yet.
 				</p>
 			) : (
-				<ul className="divide-y">
+				<ul>
 					{alerts.slice(0, 2).map((a) => (
 						<AlertRow key={a.id} alert={a} />
 					))}
