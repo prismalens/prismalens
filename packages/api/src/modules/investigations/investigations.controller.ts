@@ -212,6 +212,7 @@ export class InvestigationsController {
 						// Lost the race — a dispatcher claimed the job. Fall through to publish
 						// so the run that holds it owns the terminal write.
 					}
+					await this.investigationsService.markStopRequested(input.id);
 					let receivers = await this.dispatchService.requestCancel(input.id);
 					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -234,6 +235,50 @@ export class InvestigationsController {
 					// unchanged — the terminal "cancelled" state arrives from the run + the
 					// SSE stream's terminal event (the UI refetches on completion).
 					return this.serializeInvestigation(investigation);
+				},
+			),
+
+			// POST /investigations/:id/messages - Operator message to a live run (#743).
+			// The run holder answers on the bus; a pending run may not be held yet, so
+			// retry like cancel before refusing.
+			message: implement(investigationsContract.message).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					const refuse = () =>
+						new ORPCError("CONFLICT", {
+							message: "The run ended before your message reached it.",
+						});
+					if (TERMINAL_STATUSES.has(investigation.status)) throw refuse();
+					let state = this.dispatchService.sendMessage(
+						input.id,
+						input.text,
+						input.mode,
+					);
+					for (let attempt = 0; state === null && attempt < 2; attempt++) {
+						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						state = this.dispatchService.sendMessage(
+							input.id,
+							input.text,
+							input.mode,
+						);
+					}
+					if (state === null) {
+						// A pending run has no holder until the dispatcher claims it.
+						if (investigation.status === "pending") {
+							throw new ORPCError("CONFLICT", {
+								message: "The run has not started yet; try again shortly.",
+							});
+						}
+						throw refuse();
+					}
+					return { state };
 				},
 			),
 
@@ -388,6 +433,9 @@ export class InvestigationsController {
 			// malformed/absent blob degrades to null rather than corrupting the payload.
 			overlay: this.parseOverlay(investigation.overlay),
 			error: investigation.error ?? null,
+			harness: investigation.harness ?? null,
+			model: investigation.model ?? null,
+			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
 		};

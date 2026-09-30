@@ -6,7 +6,7 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import { getHarnessProviderKeys } from "@prismalens/config/harness";
@@ -33,6 +33,7 @@ import {
 	conductRun,
 	type InvestigationSink,
 	type ResolvedConnector,
+	type SteerPort,
 	telemetryEndpointsFrom,
 } from "@prismalens/engine";
 import { enrichContext, Logger } from "@prismalens/logger";
@@ -64,6 +65,7 @@ export interface JobIo {
 	emit(event: CanonicalEvent): void | Promise<void>;
 	streamDone(): void | Promise<void>;
 	signal: AbortSignal;
+	steer?: SteerPort;
 }
 
 export interface JobContext {
@@ -182,6 +184,8 @@ async function runJobInternal(
 			investigationId: data.investigationId,
 			incidentId: data.incidentId,
 			runId,
+			harness: selection.harness,
+			...(model ? { model } : {}),
 		});
 		const outcome = await conductRun(
 			{
@@ -204,6 +208,8 @@ async function runJobInternal(
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
+				...(io.steer ? { steer: io.steer } : {}),
+				...(data.brief ? { brief: data.brief } : {}),
 			},
 			{ sink, store },
 		);
@@ -268,16 +274,45 @@ async function runJobInternal(
 		// The harness's per-run home and the packages it installs under its config dir go too:
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
-			const runDir = runDirFor(unvalidated.investigationId);
-			for (const rel of ["repo", "home", join("config", "node_modules")]) {
-				try {
-					rmSync(join(runDir, rel), { recursive: true, force: true });
-				} catch (e) {
-					logger.warn(`Failed to remove the run's ${rel}`, e);
-				}
-			}
+			clearRunWorkspace(runDirFor(unvalidated.investigationId));
 		}
 	}
+}
+
+const RUN_WORKSPACE = [
+	"repo",
+	"unmapped",
+	"home",
+	join("config", "node_modules"),
+];
+
+function clearRunWorkspace(runDir: string): void {
+	for (const rel of RUN_WORKSPACE) {
+		try {
+			rmSync(join(runDir, rel), { recursive: true, force: true });
+		} catch (e) {
+			logger.warn(`Failed to remove the run's ${rel}`, e);
+		}
+	}
+}
+
+/**
+ * Called at boot, when nothing is running: a process that died mid-run never
+ * reached the run's `finally`, so its clone and harness home are still on disk.
+ */
+export function sweepRunWorkspaces(): number {
+	const runs = resolve(getAppDataDir(), "runs");
+	if (!existsSync(runs)) return 0;
+	let swept = 0;
+	for (const entry of readdirSync(runs, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const dir = join(runs, entry.name);
+		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
+			clearRunWorkspace(dir);
+			swept++;
+		}
+	}
+	return swept;
 }
 
 /** `runs/<id>` for a job id, refusing an id that would resolve anywhere else (it is joined, then deleted from). */
@@ -421,7 +456,7 @@ async function persistCancelled(
 	await ports.createTimelineEntry({
 		incidentId: data.incidentId,
 		type: "investigation_completed",
-		title: "Investigation cancelled",
+		title: "Investigation stopped",
 		description: "The investigation was cancelled before it completed.",
 		source: "ai_worker",
 		metadata: { investigationId: data.investigationId },

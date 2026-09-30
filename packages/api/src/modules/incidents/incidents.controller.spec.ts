@@ -30,6 +30,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 
 	it("preserves full alert objects with labels, annotations, and timestamps in serializeIncidentWithRelations", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,
@@ -149,6 +150,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 	// output validation is ever loosened or bypassed — defense in depth.
 	it("never leaks tenantId (or other non-contract columns) via serializeAlert", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,
@@ -288,6 +290,34 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		// Investigation created and job enqueued
 		expect(investigationsService.startOrGet).toHaveBeenCalledTimes(1);
 		expect(dispatchService.addInvestigationJob).toHaveBeenCalledTimes(1);
+	});
+
+	it("investigates a resolved incident again without reopening it, and passes the brief (#743)", async () => {
+		const resolved = { ...mockIncident, status: "resolved" };
+		const incidentsService = { findById: vi.fn().mockResolvedValue(resolved), update: vi.fn() };
+		const investigationsService = {
+			startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-2" }, created: true }),
+		};
+		const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-2") };
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			investigationsService as unknown as InvestigationsService,
+			dispatchService as unknown as DispatchService,
+			{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
+			{
+				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
+			} as unknown as HarnessService,
+		);
+
+		await (getHandlers(controller).investigate as (a: { input: { id: string; brief: string } }) => Promise<unknown>)({
+			input: { id: mockIncident.id, brief: "The fix did not hold." },
+		});
+
+		expect(incidentsService.update).not.toHaveBeenCalled();
+		expect(investigationsService.startOrGet).toHaveBeenCalledWith({ incidentId: mockIncident.id, afterResolve: true });
+		expect(dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+			expect.objectContaining({ brief: "The fix did not hold." }),
+		);
 	});
 
 	it("returns the investigation already in progress instead of starting a second one", async () => {
@@ -529,6 +559,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 	// leaking `tenantId`, `discoveryMetadata`, and any raw Prisma columns.
 	it("never leaks tenantId, discoveryMetadata, or extra database columns on incident.service via get handler", async () => {
 		const incidentsService = {
+			findDetail(id: string) { return this.findById(id); },
 			findById: vi.fn().mockResolvedValue({
 				id: "123e4567-e89b-12d3-a456-426614174000",
 				number: 1,

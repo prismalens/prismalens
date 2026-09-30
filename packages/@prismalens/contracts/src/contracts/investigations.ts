@@ -18,6 +18,8 @@ import {
 	PostReportToGitHubResultSchema,
 	PostReportToGitHubSchema,
 	paginatedResponseSchema,
+	SendInvestigationMessageResultSchema,
+	SendInvestigationMessageSchema,
 	UpdateInvestigationStatusSchema,
 	WriteInvestigationResultSchema,
 } from "../schemas/index.js";
@@ -108,6 +110,27 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(InvestigationSchema),
+
+	/**
+	 * Send the operator's message to a live run (#743)
+	 * POST /investigations/:id/messages
+	 */
+	message: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/messages",
+			summary: "Send a message to a running investigation",
+			tags: ["investigations"],
+			successStatus: 202,
+		})
+		.input(IdParamSchema.merge(SendInvestigationMessageSchema))
+		.output(SendInvestigationMessageResultSchema)
+		.errors({
+			CONFLICT: {
+				message:
+					"The run ended, or has not started, before the message reached it",
+			},
+		}),
 
 	/**
 	 * Update investigation status (Worker)

@@ -165,6 +165,7 @@ export type IncidentAction =
 	| "acknowledge"
 	| "investigate"
 	| "resolve"
+	| "reopen"
 	| "close";
 
 export const INCIDENT_ACTION_FROM: Record<
@@ -172,8 +173,11 @@ export const INCIDENT_ACTION_FROM: Record<
 	readonly IncidentStatus[]
 > = {
 	acknowledge: ["triggered"],
-	investigate: OPEN_INCIDENT_STATUSES,
+	// A resolved incident can be investigated again; its status stays (#743).
+	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
 	resolve: OPEN_INCIDENT_STATUSES,
+	// A resolved incident can go back to work; closed stays final (#743).
+	reopen: ["resolved"],
 	close: ["resolved"],
 };
 
@@ -196,7 +200,7 @@ export const INCIDENT_STATUS_SET_FROM: Record<
 	readonly IncidentStatus[]
 > = {
 	triggered: [],
-	investigating: ["triggered", "identified", "monitoring"],
+	investigating: ["triggered", "identified", "monitoring", "resolved"],
 	identified: ["investigating", "monitoring"],
 	monitoring: ["investigating", "identified"],
 	resolved: INCIDENT_ACTION_FROM.resolve,
@@ -242,14 +246,44 @@ export function incidentAttention(
 ): IncidentAttention | null {
 	if (status === "resolved") return "awaiting_close";
 	if (!isIncidentOpen(status)) return null;
-	if (
-		latestRunStatus &&
-		isWorkflowTerminal(latestRunStatus) &&
-		latestRunStatus !== "completed"
-	) {
-		return "failed_run";
-	}
+	// A stopped run was the operator's choice; only a failure needs them (#743).
+	if (latestRunStatus === "failed") return "failed_run";
 	if (INCIDENT_STATUS_PHASE[status as IncidentStatus] === "new")
 		return "unacknowledged";
 	return null;
+}
+
+/**
+ * What a run is doing, in the run's own words (#743). Kept apart from the
+ * incident's lifecycle so "Investigating" never reads as "an agent is working".
+ */
+export type RunState =
+	| "starting"
+	| "working"
+	| "stopping"
+	| "stopped"
+	| "failed"
+	| "done";
+
+export function runState(
+	status: string,
+	opts: { hasEvents?: boolean; stopRequested?: boolean } = {},
+): RunState {
+	switch (status) {
+		case "completed":
+			return "done";
+		case "failed":
+			return "failed";
+		case "cancelled":
+			return "stopped";
+		case "running":
+			if (opts.stopRequested) return "stopping";
+			return opts.hasEvents ? "working" : "starting";
+		default:
+			return opts.stopRequested ? "stopping" : "starting";
+	}
+}
+
+export function isRunStateLive(state: RunState): boolean {
+	return state === "starting" || state === "working" || state === "stopping";
 }

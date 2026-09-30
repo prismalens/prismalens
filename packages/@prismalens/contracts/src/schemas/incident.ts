@@ -57,6 +57,7 @@ export const CreateIncidentSchema = z.object({
 	description: z.string().optional(),
 	severity: SeveritySchema.optional(),
 	priority: PrioritySchema.optional(),
+	/** Matches the incident's own service or any of its alerts' services. */
 	serviceId: z.string().uuid().optional(),
 	tags: z.array(z.string()).optional(),
 	customerImpact: z.string().optional(),
@@ -101,15 +102,35 @@ const InvestigationRefSchema = z.object({
 	// Rendered by IncidentDetailPanel — omitting it here strips the field at
 	// the oRPC output boundary even though the service selects it.
 	rootCause: z.string().nullable(),
+	/** Why the run failed, for the list's headline (#743). */
+	error: z.string().nullable().optional(),
+	harness: z.string().nullable().optional(),
+	model: z.string().nullable().optional(),
+	stopRequestedAt: DateStringSchema.nullable().optional(),
+	/** Latest run only: when its last event landed, and its latest agent sentence while live. */
+	lastEventAt: DateStringSchema.nullable().optional(),
+	latestText: z.string().nullable().optional(),
+	/** Latest completed run only: evidence rows behind its top hypothesis. */
+	evidenceCount: z.number().int().nullable().optional(),
 	createdAt: DateStringSchema,
 	completedAt: DateStringSchema.nullable(),
 });
+
+/** A service an incident touches: its own, or one of its alerts' (#743). */
+export const IncidentServiceRefSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	displayName: z.string().nullable(),
+});
+export type IncidentServiceRef = z.infer<typeof IncidentServiceRefSchema>;
 
 export const IncidentWithRelationsSchema = IncidentSchema.extend({
 	service: ServiceSchema.nullable().optional(),
 	assignedTo: UserRefSchema.nullable().optional(),
 	alerts: z.array(AlertSchema).optional(),
 	investigations: z.array(InvestigationRefSchema).optional(),
+	/** Every service the incident touches, its own first. */
+	services: z.array(IncidentServiceRefSchema).optional(),
 });
 
 // =============================================================================
@@ -153,6 +174,14 @@ export const IncidentStatsSchema = z.object({
 // =============================================================================
 // INCIDENT ACTIONS
 // =============================================================================
+
+/** Optional operator brief, appended to the agent's first prompt (#743). */
+export const InvestigateIncidentSchema = z.object({
+	brief: z.string().trim().max(4000).optional(),
+});
+export type InvestigateIncidentInput = z.infer<
+	typeof InvestigateIncidentSchema
+>;
 
 export const InvestigateIncidentResponseSchema = z.object({
 	incidentId: z.string().uuid(),

@@ -9,6 +9,7 @@ import {
 	INCIDENT_ACTION_FROM,
 	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
+	isIncidentEnded,
 	toFiringAlert,
 } from "@prismalens/contracts";
 import type {
@@ -102,7 +103,7 @@ export class IncidentsController {
 
 			// GET /incidents/:id - Get a single incident
 			get: implement(incidentsContract.get).handler(async ({ input }) => {
-				const incident = await this.incidentsService.findById(input.id);
+				const incident = await this.incidentsService.findDetail(input.id);
 				if (!incident) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Incident ${input.id} not found`,
@@ -168,6 +169,7 @@ export class IncidentsController {
 					const { investigation, created } =
 						await this.investigationsService.startOrGet({
 							incidentId: input.id,
+							afterResolve: isIncidentEnded(incident.status),
 						});
 					if (!created) {
 						return {
@@ -178,9 +180,11 @@ export class IncidentsController {
 						};
 					}
 
-					await this.incidentsService.update(input.id, {
-						status: "investigating",
-					});
+					if (!isIncidentEnded(incident.status)) {
+						await this.incidentsService.update(input.id, {
+							status: "investigating",
+						});
+					}
 
 					// Fetch integrations and extract connectionIds for the job payload.
 					// Only connectionIds are persisted — the run fetches credentials on-demand.
@@ -207,6 +211,7 @@ export class IncidentsController {
 									toFiringAlert(a),
 								)
 							: undefined,
+						...(input.brief ? { brief: input.brief } : {}),
 					});
 
 					return {
@@ -413,6 +418,13 @@ export class IncidentsController {
 				id: i.id,
 				status: i.status,
 				rootCause: i.rootCause ?? null,
+				...(i.error !== undefined ? { error: i.error } : {}),
+				harness: i.harness ?? null,
+				model: i.model ?? null,
+				stopRequestedAt: iso(i.stopRequestedAt),
+				lastEventAt: iso(i.lastEventAt),
+				latestText: i.latestText ?? null,
+				evidenceCount: i.evidenceCount ?? null,
 				createdAt:
 					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
 				completedAt:
@@ -422,6 +434,21 @@ export class IncidentsController {
 			}));
 		}
 
+		if (incident.services) {
+			serialized.services = incident.services.map(
+				(s: { id: string; name: string; displayName: string | null }) => ({
+					id: s.id,
+					name: s.name,
+					displayName: s.displayName ?? null,
+				}),
+			);
+		}
+
 		return serialized as IncidentWithRelations;
 	}
+}
+
+function iso(value: Date | string | null | undefined): string | null {
+	if (!value) return null;
+	return value instanceof Date ? value.toISOString() : value;
 }

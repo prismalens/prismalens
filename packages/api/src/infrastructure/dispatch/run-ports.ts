@@ -35,6 +35,8 @@ export interface RunPorts {
 			error?: string;
 			harnessThreadId?: string;
 			startedAt?: Date;
+			harness?: string;
+			model?: string;
 		},
 	): Promise<void>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;

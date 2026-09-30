@@ -42,11 +42,19 @@ export interface PrismaInvestigationStoreParams {
 	investigationId: string;
 	incidentId: string;
 	runId: string;
+	harness?: string;
+	model?: string;
 }
 
 export function createPrismaInvestigationStore(
 	ports: RunPorts,
-	{ investigationId, incidentId, runId }: PrismaInvestigationStoreParams,
+	{
+		investigationId,
+		incidentId,
+		runId,
+		harness,
+		model,
+	}: PrismaInvestigationStoreParams,
 ): InvestigationStore {
 	let buffer: CanonicalEvent[] = [];
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -94,6 +102,8 @@ export function createPrismaInvestigationStore(
 			await ports.updateStatus(investigationId, {
 				status: "running",
 				harnessThreadId: runId,
+				...(harness ? { harness } : {}),
+				...(model ? { model } : {}),
 			});
 			await ports.createTimelineEntry({
 				incidentId,

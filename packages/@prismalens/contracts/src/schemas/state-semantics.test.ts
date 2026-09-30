@@ -22,12 +22,14 @@ import {
 	INCIDENT_STATUS_SET_FROM,
 	INCIDENT_STATUS_PHASE,
 	isIncidentOpen,
+	isRunStateLive,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 	PRIORITY_WEIGHT,
+	runState,
 	RECOMMENDATION_PRIORITY_WEIGHT,
 	SEVERITY_WEIGHT,
 	TERMINAL_WORKFLOW_STATUSES,
@@ -91,7 +93,8 @@ describe("state semantics", () => {
 		expect(canIncidentAction("close", "resolved")).toBe(true);
 		expect(canIncidentAction("close", "investigating")).toBe(false);
 		expect(canIncidentAction("investigate", "monitoring")).toBe(true);
-		expect(canIncidentAction("investigate", "closed")).toBe(false);
+		expect(canIncidentAction("investigate", "closed")).toBe(true);
+		expect(canIncidentAction("investigate", "resolved")).toBe(true);
 		expect(canIncidentAction("acknowledge", "identified")).toBe(false);
 		expect(canAlertAction("resolve", "acknowledged")).toBe(true);
 		expect(canAlertAction("acknowledge", "correlated")).toBe(false);
@@ -109,6 +112,10 @@ describe("state semantics", () => {
 		expect(canSetIncidentStatus("triggered", "closed")).toBe(false);
 		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
 		expect(canSetIncidentStatus("resolved", "closed")).toBe(true);
+		expect(canSetIncidentStatus("resolved", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
+		expect(canIncidentAction("reopen", "resolved")).toBe(true);
+		expect(canIncidentAction("reopen", "closed")).toBe(false);
 		expect(canSetIncidentStatus("triggered", "bogus")).toBe(false);
 	});
 
@@ -116,10 +123,24 @@ describe("state semantics", () => {
 		expect(incidentAttention("triggered", null)).toBe("unacknowledged");
 		expect(incidentAttention("resolved", "failed")).toBe("awaiting_close");
 		expect(incidentAttention("triggered", "failed")).toBe("failed_run");
-		expect(incidentAttention("investigating", "cancelled")).toBe("failed_run");
+		expect(incidentAttention("investigating", "cancelled")).toBeNull();
 		expect(incidentAttention("investigating", "completed")).toBeNull();
 		expect(incidentAttention("investigating", "running")).toBeNull();
 		expect(incidentAttention("resolved", null)).toBe("awaiting_close");
 		expect(incidentAttention("closed", "failed")).toBeNull();
+	});
+
+	it("says what a run is doing in the run's own words, apart from the incident", () => {
+		expect(runState("pending")).toBe("starting");
+		expect(runState("running")).toBe("starting");
+		expect(runState("running", { hasEvents: true })).toBe("working");
+		expect(runState("running", { hasEvents: true, stopRequested: true })).toBe(
+			"stopping",
+		);
+		expect(runState("cancelled")).toBe("stopped");
+		expect(runState("failed")).toBe("failed");
+		expect(runState("completed")).toBe("done");
+		expect(isRunStateLive("stopping")).toBe(true);
+		expect(isRunStateLive("stopped")).toBe(false);
 	});
 });

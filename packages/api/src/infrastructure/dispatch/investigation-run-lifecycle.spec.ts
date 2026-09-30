@@ -136,7 +136,7 @@ describe("run CANCEL path (ADR-0018)", () => {
 			expect.objectContaining({
 				incidentId: "inc-1",
 				type: "investigation_completed",
-				title: "Investigation cancelled",
+				title: "Investigation stopped",
 				source: "ai_worker",
 				metadata: { investigationId: "inv-1" },
 			}),

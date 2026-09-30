@@ -21,6 +21,7 @@ import {
 	InProcessEventBus,
 	type RelayMessage,
 	runCancelTopic,
+	runMessageTopic,
 	runEventsTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobFields, JobStore } from "./job-store.js";
@@ -89,6 +90,7 @@ function controllableRunner() {
 	const cancelled: string[] = [];
 	const killed: string[] = [];
 	const sinks = new Map<string, RunSink>();
+	const messages: string[] = [];
 
 	const runner: JobRunner = (j, sink) => {
 		started.push(j);
@@ -101,6 +103,10 @@ function controllableRunner() {
 		return {
 			done,
 			cancel: () => cancelled.push(j.id),
+			message: (text, mode) => {
+				messages.push(`${mode}:${text}`);
+				return mode === "now" ? "sent" : "queued";
+			},
 			kill: () => {
 				killed.push(j.id);
 				sink.onStreamDone();
@@ -109,7 +115,7 @@ function controllableRunner() {
 		};
 	};
 
-	return { runner, started, finish, cancelled, killed, sinks };
+	return { runner, started, finish, cancelled, killed, sinks, messages };
 }
 
 const OPTS = { concurrency: 2 };
@@ -236,6 +242,29 @@ describe("Dispatcher", () => {
 
 			finish.get("job-1")?.({ outcome: "cancelled" });
 			await vi.waitFor(() => expect(store.completed).toHaveLength(1));
+			await dispatcher.stop();
+		});
+
+		it("hands an operator message to the running job and relays its answer (#743)", async () => {
+			const { runner, messages, finish } = controllableRunner();
+			store.pending = [job(1)];
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			await dispatcher.tick();
+			const answers: Array<string | null> = [];
+			bus.publish(runMessageTopic("inv-1"), {
+				text: "check the TTL",
+				mode: "now",
+				reply: (s: string | null) => answers.push(s),
+			});
+			expect(messages).toEqual(["now:check the TTL"]);
+			expect(answers).toEqual(["sent"]);
+
+			finish.get("job-1")?.({ outcome: "succeeded" });
+			await vi.waitFor(() => expect(store.completed).toHaveLength(1));
+			expect(
+				bus.publish(runMessageTopic("inv-1"), { text: "late", mode: "queue", reply: () => {} }),
+			).toBe(0);
 			await dispatcher.stop();
 		});
 

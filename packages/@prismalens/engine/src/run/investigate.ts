@@ -21,6 +21,7 @@ import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
 	CanonicalEvent,
 	InvestigationContext,
+	OperatorMessageMode,
 	RunFidelity,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
@@ -64,8 +65,10 @@ export interface RunInvestigationOptions {
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	permission?: PermissionPolicy;
-	/** Operator steering lines; each one cancels the turn and re-prompts in the same session. */
-	steer?: () => string | null;
+	/** Operator messages to the live session (#743). */
+	steer?: SteerPort;
+	/** The operator's brief: appended to the first prompt and recorded as its first message. */
+	brief?: string;
 	/** Appended to the prompt. Used by the registry admission script to provoke a write; never by the API. */
 	promptSuffix?: string;
 	/** Harness stderr, chunk by chunk, for the host's logger (#600). */
@@ -75,6 +78,50 @@ export interface RunInvestigationOptions {
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
 	signal?: AbortSignal;
+}
+
+/**
+ * How operator messages reach a live run. Queued messages are drained when the
+ * agent's turn ends; a send-now message cancels the current turn first. ACP v1
+ * has no mid-turn injection, so a turn boundary is the earliest pause (#743).
+ */
+export interface SteerPort {
+	next(): string | null;
+	onNow(deliver: (text: string) => void): () => void;
+}
+
+/**
+ * The host side of a {@link SteerPort}: `send` answers null once the run has
+ * stopped listening, so the caller can refuse instead of dropping the text.
+ */
+export function createSteerChannel(): {
+	port: SteerPort;
+	send(text: string, mode: OperatorMessageMode): "queued" | "sent" | null;
+} {
+	const queue: string[] = [];
+	let deliverNow: ((text: string) => void) | null = null;
+	let open = true;
+	return {
+		port: {
+			next: () => queue.shift() ?? null,
+			onNow(deliver) {
+				deliverNow = deliver;
+				return () => {
+					deliverNow = null;
+					open = false;
+				};
+			},
+		},
+		send(text, mode) {
+			if (!open) return null;
+			if (mode === "now" && deliverNow) {
+				deliverNow(text);
+				return "sent";
+			}
+			queue.push(text);
+			return "queued";
+		},
+	};
 }
 
 export const CANCELLED_MESSAGE = "investigation cancelled";
@@ -189,9 +236,7 @@ export async function* runInvestigation(
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 		for await (const item of items) {
-			if (opts.signal?.aborted) {
-				session.cancel();
-			}
+			if (opts.signal?.aborted) session.cancel();
 			if (item.kind === "update") {
 				const u = item.update;
 				if (u.sessionUpdate === "agent_message_chunk") {
@@ -230,6 +275,14 @@ export async function* runInvestigation(
 		return { error: "harness stream ended without a stop reason" };
 	};
 
+	const sendNow: string[] = [];
+	const unsubscribe = opts.steer?.onNow((line) => {
+		sendNow.push(line);
+		session.cancel();
+	});
+	const onAbort = (): void => session.cancel();
+	opts.signal?.addEventListener("abort", onAbort, { once: true });
+
 	try {
 		await session.open();
 		if (session.agent.version) {
@@ -241,21 +294,27 @@ export async function* runInvestigation(
 		if (session.servedModel && selectorIsModel) {
 			fidelity = { ...fidelity, servedModel: session.servedModel };
 		}
+		const brief = opts.brief?.trim();
+		if (brief) yield adapter.operatorMessage(brief, "queue", true);
 		let outcome = yield* consume(
 			session.prompt(
 				buildInvestigationPrompt(opts.context) +
+					(brief ? `\n\n${brief}` : "") +
 					(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 			),
 		);
 
-		// Operator steering: cancel and re-prompt in the same session, keep streaming.
-		for (
-			let line = opts.steer?.();
-			line && "stop" in outcome;
-			line = opts.steer?.()
-		) {
+		while ("stop" in outcome && !opts.signal?.aborted) {
+			const now = sendNow.shift();
+			const line = now ?? opts.steer?.next() ?? null;
+			if (line === null) break;
+			yield adapter.operatorMessage(line, now ? "now" : "queue", true);
 			text = "";
 			outcome = yield* consume(session.prompt(line));
+		}
+		unsubscribe?.();
+		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
+			yield adapter.operatorMessage(line, "queue", false);
 		}
 
 		if ("error" in outcome) {
@@ -300,6 +359,14 @@ export async function* runInvestigation(
 	} catch (err) {
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
+		unsubscribe?.();
+		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}
+}
+
+function drain(steer: SteerPort | undefined): string[] {
+	const left: string[] = [];
+	for (let line = steer?.next(); line; line = steer?.next()) left.push(line);
+	return left;
 }

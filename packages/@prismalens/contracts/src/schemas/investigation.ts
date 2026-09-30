@@ -200,6 +200,11 @@ export const InvestigationSchema = z.object({
 	 */
 	overlay: OverlaySchema.nullable().optional(),
 	error: z.string().nullable(),
+	/** The harness and model the run started with; the report's fidelity says what actually ran (#743). */
+	harness: z.string().nullable().optional(),
+	model: z.string().nullable().optional(),
+	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
+	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -386,6 +391,28 @@ const StreamBaseShape = {
 	ts: z.string().datetime(),
 };
 
+/** How an operator message reaches a live run: at its next pause, or now. */
+export const OperatorMessageModeSchema = z.enum(["queue", "now"]);
+export type OperatorMessageMode = z.infer<typeof OperatorMessageModeSchema>;
+
+/** Body of `POST /investigations/{id}/messages`. */
+export const SendInvestigationMessageSchema = z.object({
+	text: z.string().trim().min(1).max(4000),
+	/** Only the constant `run` branch exists until fan-out lands (#280). */
+	branchId: z.string().min(1).optional(),
+	mode: OperatorMessageModeSchema.default("queue"),
+});
+export type SendInvestigationMessageInput = z.infer<
+	typeof SendInvestigationMessageSchema
+>;
+
+export const SendInvestigationMessageResultSchema = z.object({
+	state: z.enum(["queued", "sent"]),
+});
+export type SendInvestigationMessageResult = z.infer<
+	typeof SendInvestigationMessageResultSchema
+>;
+
 export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("agent_step"),
@@ -430,6 +457,18 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("error"),
 		...StreamBaseShape,
 		message: z.string(),
+	}),
+	z.object({
+		/**
+		 * Text the operator sent to the running session (#743). `queue` waits for
+		 * the agent's next pause, `now` cancels its current step. `delivered:false`
+		 * means the run ended before the message reached the agent.
+		 */
+		kind: z.literal("operator_message"),
+		...StreamBaseShape,
+		text: z.string(),
+		mode: OperatorMessageModeSchema,
+		delivered: z.boolean(),
 	}),
 	z.object({
 		kind: z.literal("report"),
@@ -685,6 +724,8 @@ export const InvestigationJobDataSchema = z.object({
 	context: z.record(z.string(), z.unknown()).optional(),
 	connectionIds: z.array(z.string()).optional(),
 	alerts: z.array(FiringAlertSchema).optional(),
+	/** The operator's brief for the agent (#743). */
+	brief: z.string().max(4000).optional(),
 });
 
 export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;

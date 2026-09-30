@@ -33,6 +33,14 @@ describe("IncidentsService", () => {
 		alert: {
 			findUnique: vi.fn(),
 			update: vi.fn(),
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		investigation: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		investigationEvent: {
+			groupBy: vi.fn().mockResolvedValue([]),
+			findFirst: vi.fn().mockResolvedValue(null),
 		},
 		incident: {
 			update: vi.fn(),
@@ -276,6 +284,28 @@ describe("IncidentsService", () => {
 		});
 	});
 
+	describe("reopen (#743)", () => {
+		it("clears the resolve time and says the incident was reopened", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt: new Date("2026-10-01T09:00:00Z"),
+				acknowledgedAt: new Date("2026-10-01T09:05:00Z"),
+				resolvedAt: new Date("2026-10-01T10:00:00Z"),
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "investigating" });
+
+			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			expect(data.resolvedAt).toBeNull();
+			expect(data.timeToResolve).toBeNull();
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ title: "Incident reopened" }),
+			);
+		});
+	});
+
 	describe("findAll", () => {
 		it("returns paginated data and total count", async () => {
 			const incidents = [{ id: "inc-1" }, { id: "inc-2" }];
@@ -284,8 +314,69 @@ describe("IncidentsService", () => {
 
 			const result = await service.findAll({ limit: 2, offset: 0 });
 
-			expect(result.data).toEqual(incidents);
+			expect(result.data).toEqual(incidents.map((i) => ({ ...i, services: [] })));
 			expect(result.total).toBe(5);
+		});
+
+		it("lists every service an incident touches, its own first, once each (#743)", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{ id: "inc-1", service: { id: "svc-a", name: "checkout", displayName: "Checkout" } },
+				{ id: "inc-2", service: null },
+			]);
+			mockPrisma.incident.count.mockResolvedValue(2);
+			mockPrisma.alert.findMany.mockResolvedValueOnce([
+				{ incidentId: "inc-1", service: { id: "svc-b", name: "payments", displayName: null } },
+				{ incidentId: "inc-1", service: { id: "svc-a", name: "checkout", displayName: "Checkout" } },
+				{ incidentId: "inc-2", service: { id: "svc-b", name: "payments", displayName: null } },
+			]);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data.map((i) => i.services)).toEqual([
+				[
+					{ id: "svc-a", name: "checkout", displayName: "Checkout" },
+					{ id: "svc-b", name: "payments", displayName: null },
+				],
+				[{ id: "svc-b", name: "payments", displayName: null }],
+			]);
+		});
+
+		it("says when the latest run last moved, what it last said while live, and its top evidence once done (#743)", async () => {
+			const at = new Date("2026-10-01T10:00:00Z");
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{ id: "inc-1", service: null, investigations: [{ id: "run-live", status: "running" }] },
+				{ id: "inc-2", service: null, investigations: [{ id: "run-done", status: "completed" }, { id: "old", status: "failed" }] },
+			]);
+			mockPrisma.incident.count.mockResolvedValue(2);
+			mockPrisma.investigationEvent.groupBy.mockResolvedValueOnce([
+				{ investigationId: "run-live", _max: { createdAt: at } },
+			]);
+			mockPrisma.investigationEvent.findFirst.mockResolvedValueOnce({
+				investigationId: "run-live",
+				event: JSON.stringify({ kind: "agent_step", text: "  Checking the pool size.  " }),
+			});
+			mockPrisma.investigation.findMany.mockResolvedValueOnce([
+				{ id: "run-done", report: JSON.stringify({ hypotheses: [{ evidence: [{}, {}] }] }) },
+			]);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data[0]?.investigations?.[0]).toMatchObject({ lastEventAt: at, latestText: "Checking the pool size." });
+			expect(data[1]?.investigations?.[0]).toMatchObject({ evidenceCount: 2, latestText: null });
+			expect(data[1]?.investigations?.[1]).toEqual({ id: "old", status: "failed" });
+		});
+
+		it("filters by a service the incident or any of its alerts touches (#743)", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+
+			await service.findAll({ serviceId: "svc-b" });
+
+			const [{ where }] = mockPrisma.incident.findMany.mock.calls[0];
+			expect(where.OR).toEqual([
+				{ serviceId: "svc-b" },
+				{ alerts: { some: { serviceId: "svc-b" } } },
+			]);
 		});
 
 		it("does not filter the latest investigation to status=completed", async () => {
