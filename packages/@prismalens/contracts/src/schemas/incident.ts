@@ -154,6 +154,14 @@ export const IncidentStatsSchema = z.object({
 // INCIDENT ACTIONS
 // =============================================================================
 
+/** Optional operator brief, appended to the agent's first prompt (#743). */
+export const InvestigateIncidentSchema = z.object({
+	brief: z.string().trim().max(4000).optional(),
+});
+export type InvestigateIncidentInput = z.infer<
+	typeof InvestigateIncidentSchema
+>;
+
 export const InvestigateIncidentResponseSchema = z.object({
 	incidentId: z.string().uuid(),
 	investigationId: z.string().uuid(),

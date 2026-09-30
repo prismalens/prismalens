@@ -22,12 +22,14 @@ import {
 	INCIDENT_STATUS_SET_FROM,
 	INCIDENT_STATUS_PHASE,
 	isIncidentOpen,
+	isRunStateLive,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 	PRIORITY_WEIGHT,
+	runState,
 	RECOMMENDATION_PRIORITY_WEIGHT,
 	SEVERITY_WEIGHT,
 	TERMINAL_WORKFLOW_STATUSES,
@@ -116,10 +118,24 @@ describe("state semantics", () => {
 		expect(incidentAttention("triggered", null)).toBe("unacknowledged");
 		expect(incidentAttention("resolved", "failed")).toBe("awaiting_close");
 		expect(incidentAttention("triggered", "failed")).toBe("failed_run");
-		expect(incidentAttention("investigating", "cancelled")).toBe("failed_run");
+		expect(incidentAttention("investigating", "cancelled")).toBeNull();
 		expect(incidentAttention("investigating", "completed")).toBeNull();
 		expect(incidentAttention("investigating", "running")).toBeNull();
 		expect(incidentAttention("resolved", null)).toBe("awaiting_close");
 		expect(incidentAttention("closed", "failed")).toBeNull();
+	});
+
+	it("says what a run is doing in the run's own words, apart from the incident", () => {
+		expect(runState("pending")).toBe("starting");
+		expect(runState("running")).toBe("starting");
+		expect(runState("running", { hasEvents: true })).toBe("working");
+		expect(runState("running", { hasEvents: true, stopRequested: true })).toBe(
+			"stopping",
+		);
+		expect(runState("cancelled")).toBe("stopped");
+		expect(runState("failed")).toBe("failed");
+		expect(runState("completed")).toBe("done");
+		expect(isRunStateLive("stopping")).toBe(true);
+		expect(isRunStateLive("stopped")).toBe(false);
 	});
 });

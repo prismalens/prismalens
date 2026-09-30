@@ -15,6 +15,7 @@ import {
 	IncidentStatsSchema,
 	IncidentWithRelationsSchema,
 	InvestigateIncidentResponseSchema,
+	InvestigateIncidentSchema,
 	InvestigationRefusalSchema,
 	paginatedResponseSchema,
 	UpdateIncidentSchema,
@@ -99,7 +100,7 @@ export const incidentsContract = {
 			summary: "Start AI investigation for incident",
 			tags: ["incidents"],
 		})
-		.input(IdParamSchema)
+		.input(IdParamSchema.merge(InvestigateIncidentSchema))
 		.output(InvestigateIncidentResponseSchema)
 		.errors({
 			PRECONDITION_FAILED: {

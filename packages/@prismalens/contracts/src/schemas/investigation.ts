@@ -386,6 +386,28 @@ const StreamBaseShape = {
 	ts: z.string().datetime(),
 };
 
+/** How an operator message reaches a live run: at its next pause, or now. */
+export const OperatorMessageModeSchema = z.enum(["queue", "now"]);
+export type OperatorMessageMode = z.infer<typeof OperatorMessageModeSchema>;
+
+/** Body of `POST /investigations/{id}/messages`. */
+export const SendInvestigationMessageSchema = z.object({
+	text: z.string().trim().min(1).max(4000),
+	/** Only the constant `run` branch exists until fan-out lands (#280). */
+	branchId: z.string().min(1).optional(),
+	mode: OperatorMessageModeSchema.default("queue"),
+});
+export type SendInvestigationMessageInput = z.infer<
+	typeof SendInvestigationMessageSchema
+>;
+
+export const SendInvestigationMessageResultSchema = z.object({
+	state: z.enum(["queued", "sent"]),
+});
+export type SendInvestigationMessageResult = z.infer<
+	typeof SendInvestigationMessageResultSchema
+>;
+
 export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("agent_step"),
@@ -430,6 +452,18 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("error"),
 		...StreamBaseShape,
 		message: z.string(),
+	}),
+	z.object({
+		/**
+		 * Text the operator sent to the running session (#743). `queue` waits for
+		 * the agent's next pause, `now` cancels its current step. `delivered:false`
+		 * means the run ended before the message reached the agent.
+		 */
+		kind: z.literal("operator_message"),
+		...StreamBaseShape,
+		text: z.string(),
+		mode: OperatorMessageModeSchema,
+		delivered: z.boolean(),
 	}),
 	z.object({
 		kind: z.literal("report"),

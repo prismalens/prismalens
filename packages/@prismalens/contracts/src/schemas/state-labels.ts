@@ -25,7 +25,7 @@ import type {
 	WorkflowStatus,
 } from "./common.js";
 import type { RunFidelity } from "./investigation.js";
-import type { IncidentAttention } from "./state-semantics.js";
+import type { IncidentAttention, RunState } from "./state-semantics.js";
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
 	critical: "Critical",
@@ -65,7 +65,7 @@ export const WORKFLOW_STATUS_LABEL: Record<WorkflowStatus, string> = {
 	running: "Running",
 	completed: "Completed",
 	failed: "Failed",
-	cancelled: "Cancelled",
+	cancelled: "Stopped",
 };
 
 export const RECOMMENDATION_PRIORITY_LABEL: Record<
@@ -152,6 +152,15 @@ export const MODEL_SOURCE_LABEL: Record<
 	operator: "set in Settings",
 	"product-default": "PrismaLens default",
 	"harness-default": "the agent's default",
+};
+
+export const RUN_STATE_LABEL: Record<RunState, string> = {
+	starting: "Starting",
+	working: "Working",
+	stopping: "Stopping",
+	stopped: "Stopped by you",
+	failed: "Failed",
+	done: "Done",
 };
 
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
