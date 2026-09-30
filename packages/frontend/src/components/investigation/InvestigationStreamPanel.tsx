@@ -7,11 +7,8 @@ import {
 	AlertTriangle,
 	Brain,
 	CheckCircle,
-	ChevronDown,
-	ChevronRight,
 	GitBranch,
 	Lightbulb,
-	Loader2,
 	Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,14 +16,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-	type BranchGroup,
 	deriveStreamView,
 	type EventRow as EventRowData,
 } from "@/lib/investigation-events";
@@ -187,65 +178,14 @@ export function InvestigationStreamPanel({
 							)}
 						{!isMultiBranch &&
 							flatRows.map((row) => <EventRow key={row.key} row={row} />)}
-						{isMultiBranch && (
-							<div className="space-y-2">
-								{branches.map((group) => (
-									<BranchSection key={group.branchId} group={group} />
-								))}
-								{reportRows.map((row) => (
-									<EventRow key={row.key} row={row} />
-								))}
-							</div>
-						)}
+						{isMultiBranch &&
+							[...branches.flatMap((b) => b.rows), ...reportRows].map((row) => (
+								<EventRow key={row.key} row={row} />
+							))}
 					</div>
 				</ScrollArea>
 			)}
 		</div>
-	);
-}
-
-/**
- * One branch's collapsible section (ADR-0007 differentiator): a small header
- * (branch id + best-effort focus) over its own event rows. Only rendered when
- * >1 distinct branchId is present — the single-branch path never mounts this.
- */
-function BranchSection({ group }: { group: BranchGroup }) {
-	const [isOpen, setIsOpen] = useState(true);
-
-	return (
-		<Collapsible open={isOpen} onOpenChange={setIsOpen}>
-			<div data-testid="stream-branch-section" className="rounded-md border">
-				<CollapsibleTrigger asChild>
-					<button
-						type="button"
-						className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-muted/50 transition-colors rounded-md"
-					>
-						{isOpen ? (
-							<ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-						) : (
-							<ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-						)}
-						<GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-						<span className="text-xs font-medium truncate">
-							{group.branchId}
-							{group.focus && (
-								<span className="font-normal text-muted-foreground">
-									{" "}
-									— {group.focus}
-								</span>
-							)}
-						</span>
-					</button>
-				</CollapsibleTrigger>
-				<CollapsibleContent>
-					<div className="space-y-1 px-2 pb-2 pt-1">
-						{group.rows.map((row) => (
-							<EventRow key={row.key} row={row} />
-						))}
-					</div>
-				</CollapsibleContent>
-			</div>
-		</Collapsible>
 	);
 }
 
