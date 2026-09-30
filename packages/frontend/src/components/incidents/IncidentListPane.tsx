@@ -4,18 +4,16 @@
 import {
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
+	type IncidentAttention,
 	type IncidentStatus,
 	type IncidentWithRelations,
 	isWorkflowLive,
-	type Priority,
 	SEVERITY_LABEL,
-	type Severity,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
 	BarChart3,
-	Loader2,
 	Plus,
 	Search,
 	SlidersHorizontal,
@@ -30,7 +28,8 @@ import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor, attentionTone } from "@/lib/incident-attention";
-import { incidentStatusTone } from "@/lib/state-tone";
+import { incidentHeadline, latestRun, runWord } from "@/lib/incident-board";
+import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import { CreateIncidentDialog } from "./CreateIncidentDialog";
 import { IncidentFilters } from "./IncidentFilters";
@@ -69,13 +68,6 @@ export function useIncidentWindow() {
 					? `since ${from.toLocaleDateString()}`
 					: "all time",
 	};
-}
-
-/** The ones that want a human first, then the rest in the API's order. */
-export function orderIncidents(incidents: IncidentWithRelations[]) {
-	const needsYou = incidents.filter((i) => attentionFor(i) !== null);
-	const rest = incidents.filter((i) => attentionFor(i) === null);
-	return [...needsYou, ...rest];
 }
 
 /**
@@ -342,85 +334,7 @@ export function IncidentListPane({
 										"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
 								)}
 							>
-								{(() => {
-									const run = incident.investigations?.[0];
-									const live = !!run && isWorkflowLive(run.status);
-									return (
-										<div className="min-w-0">
-											<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
-												<span
-													role="img"
-													aria-label={SEVERITY_LABEL[incident.severity]}
-													title={SEVERITY_LABEL[incident.severity]}
-													className="h-2 w-2 shrink-0 rounded-full"
-													style={{
-														background: `var(--sev-${incident.severity})`,
-													}}
-												/>
-												<span className="truncate">
-													{incident.service?.displayName ||
-														incident.service?.name ||
-														"no service"}
-												</span>
-												<span className="ml-auto flex shrink-0 items-center gap-1">
-													{live ? (
-														<StateWord tone="active">
-															<Loader2 className="-ml-0.5 h-3 w-3 animate-spin" />
-															{
-																INCIDENT_STATUS_LABEL[
-																	incident.status as IncidentStatus
-																]
-															}{" "}
-															{ago(run.createdAt, now).replace(" ago", "")}
-														</StateWord>
-													) : why ? (
-														<StateWord
-															tone={attentionTone[why]}
-															data-testid="incident-attention"
-														>
-															{INCIDENT_ATTENTION_LABEL[why]}
-														</StateWord>
-													) : (
-														<StateWord
-															tone={incidentStatusTone(incident.status)}
-														>
-															{INCIDENT_STATUS_LABEL[
-																incident.status as IncidentStatus
-															] ?? incident.status}
-														</StateWord>
-													)}
-												</span>
-											</div>
-											<p
-												className="mt-0.5 truncate text-record font-medium leading-snug"
-												title={incident.title}
-											>
-												{incident.title}
-											</p>
-											<div className="mt-0.5 flex items-center gap-2 text-meta text-muted-foreground">
-												<Mono>INC-{incident.number}</Mono>
-												{incident.alertCount > 0 && (
-													<span className="tabular-nums">
-														{incident.alertCount} alert
-														{incident.alertCount === 1 ? "" : "s"}
-													</span>
-												)}
-												{(incident.investigations?.length ?? 0) > 0 && (
-													<Sparkles
-														className="h-3 w-3"
-														aria-label="Investigated"
-														style={{
-															color: `var(--run-${live ? "active" : run?.status === "completed" ? "done" : "failed"})`,
-														}}
-													/>
-												)}
-												<span className="ml-auto tabular-nums">
-													{ago(incident.triggeredAt, now)}
-												</span>
-											</div>
-										</div>
-									);
-								})()}
+								<IncidentRowBody incident={incident} why={why} now={now} />
 							</Link>
 						</Fragment>
 					);
@@ -465,6 +379,106 @@ function GroupLabel({
 			data-testid={testId}
 		>
 			{label} <Mono>{count}</Mono>
+		</div>
+	);
+}
+
+/**
+ * One row: severity and service with the incident's status word, and the
+ * run's own word beside it while a run is live (#743 §3c); the title; the
+ * number with the agent's headline and the age.
+ */
+function IncidentRowBody({
+	incident,
+	why,
+	now,
+}: {
+	incident: IncidentWithRelations;
+	why: IncidentAttention | null;
+	now: number | null;
+}) {
+	const run = latestRun(incident);
+	const word = runWord(incident, now);
+	const headline = incidentHeadline(incident);
+	return (
+		<div className="min-w-0">
+			<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
+				<span
+					role="img"
+					aria-label={SEVERITY_LABEL[incident.severity]}
+					title={SEVERITY_LABEL[incident.severity]}
+					className="h-2 w-2 shrink-0 rounded-full"
+					style={{ background: `var(--sev-${incident.severity})` }}
+				/>
+				<span className="truncate">
+					{incident.service?.displayName ||
+						incident.service?.name ||
+						"no service"}
+				</span>
+				<span className="ml-auto flex shrink-0 items-center gap-2">
+					{why && !word ? (
+						<StateWord
+							tone={attentionTone[why]}
+							data-testid="incident-attention"
+						>
+							{INCIDENT_ATTENTION_LABEL[why]}
+						</StateWord>
+					) : (
+						<StateWord tone={incidentStatusTone(incident.status)}>
+							{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+								incident.status}
+						</StateWord>
+					)}
+					{word && (
+						<StateWord
+							tone={runStateTone(word.state)}
+							pulse
+							className="tabular-nums"
+							data-testid="incident-run-word"
+						>
+							{word.text}
+						</StateWord>
+					)}
+				</span>
+			</div>
+			<p
+				className="mt-0.5 truncate text-record font-medium leading-snug"
+				title={incident.title}
+			>
+				{incident.title}
+			</p>
+			<div className="mt-0.5 flex items-center gap-2 text-meta text-muted-foreground">
+				<Mono className="shrink-0">INC-{incident.number}</Mono>
+				{run && (
+					<Sparkles
+						className="h-3 w-3 shrink-0"
+						aria-label="Investigated"
+						style={{
+							color: isWorkflowLive(run.status)
+								? "var(--run-active)"
+								: run.status === "completed"
+									? "var(--run-done)"
+									: run.status === "cancelled"
+										? "var(--stale)"
+										: "var(--run-failed)",
+						}}
+					/>
+				)}
+				<span
+					className="min-w-0 truncate text-foreground/80"
+					data-testid="incident-headline"
+				>
+					{headline.lead && (
+						<span className="font-medium text-foreground">
+							{headline.lead}{" "}
+						</span>
+					)}
+					{headline.text}
+				</span>
+				<span className="ml-auto shrink-0 tabular-nums">
+					{ago(incident.triggeredAt, now)}
+				</span>
+			</div>
 		</div>
 	);
 }
