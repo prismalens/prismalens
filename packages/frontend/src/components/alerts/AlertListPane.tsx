@@ -187,7 +187,7 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 						<CloudDownload
 							className={cn(
 								"mr-1 h-3.5 w-3.5",
-								pull.isPending && "animate-pulse",
+								pull.isPending && "motion-safe:animate-pulse",
 							)}
 						/>
 						Pull
