@@ -11,7 +11,7 @@ import {
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, MoreHorizontal, PanelRight } from "lucide-react";
+import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
@@ -33,18 +33,17 @@ import { incidentStatusTone } from "@/lib/state-tone";
 
 export interface IncidentStateBandProps {
 	incident: IncidentWithRelations;
-	/** A run is in flight: Investigate is withheld and Cancel is offered in the menu. */
+	/** A run is in flight: Investigate is withheld; Stop lives on the run strip. */
 	runLive: boolean;
 	onAcknowledge: () => void;
 	onInvestigate: () => void;
 	onResolve: () => void;
 	onClose: () => void;
-	onCancelRun?: () => void;
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
-	surfaceOpen: boolean;
-	onToggleSurfaces: () => void;
+	/** On a route under the incident the phone's back goes to the incident, not the list. */
+	backToIncident?: boolean;
 }
 
 const ACTION_LABEL: Record<IncidentAction, string> = {
@@ -58,7 +57,7 @@ const ACTION_LABEL: Record<IncidentAction, string> = {
 /**
  * The state band: one row that never wraps. Where you are (id, severity,
  * title, status, age) on the left; one primary action and a menu for the rest
- * on the right. The run's state lives in the rail, not here.
+ * on the right. The run's state lives on the run strip under it (#743 §2).
  */
 export function IncidentStateBand({
 	incident,
@@ -67,12 +66,10 @@ export function IncidentStateBand({
 	onInvestigate,
 	onResolve,
 	onClose,
-	onCancelRun,
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
-	surfaceOpen,
-	onToggleSurfaces,
+	backToIncident,
 }: IncidentStateBandProps) {
 	usePageTitle(`INC-${incident.number} ${incident.title}`);
 	const now = useNow();
@@ -100,15 +97,27 @@ export function IncidentStateBand({
 	return (
 		<div
 			data-testid="incident-state-band"
-			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0"
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0"
 		>
-			<Link
-				to="/incidents"
-				aria-label="Back to incidents"
-				className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-			>
-				<ChevronLeft className="h-4 w-4" />
-			</Link>
+			{backToIncident ? (
+				<Link
+					to="/incidents/$id"
+					params={{ id: incident.id }}
+					search={true}
+					aria-label={`Back to INC-${incident.number}`}
+					className="inline-flex h-7 shrink-0 items-center rounded pr-1 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+				>
+					<ChevronLeft className="h-4 w-4" />
+				</Link>
+			) : (
+				<Link
+					to="/incidents"
+					aria-label="Back to incidents"
+					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+				>
+					<ChevronLeft className="h-4 w-4" />
+				</Link>
+			)}
 			<Mono className="shrink-0 text-meta text-muted-foreground">
 				INC-{incident.number}
 			</Mono>
@@ -128,6 +137,7 @@ export function IncidentStateBand({
 			<StateWord
 				tone={incidentStatusTone(incident.status)}
 				className="shrink-0"
+				title="Incident status"
 				data-testid="band-status"
 			>
 				{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
@@ -167,7 +177,7 @@ export function IncidentStateBand({
 						</Tooltip>
 					</TooltipProvider>
 				)}
-				{(rest.length > 0 || (runLive && onCancelRun)) && (
+				{rest.length > 0 && (
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -190,29 +200,9 @@ export function IncidentStateBand({
 									{ACTION_LABEL[a]}
 								</DropdownMenuItem>
 							))}
-							{runLive && onCancelRun && (
-								<DropdownMenuItem
-									onClick={onCancelRun}
-									className="text-run-failed"
-									data-testid="band-menu-cancel-run"
-								>
-									Cancel run
-								</DropdownMenuItem>
-							)}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				)}
-				<Button
-					variant="ghost"
-					size="sm"
-					className="hidden h-7 w-7 p-0 xl:inline-flex"
-					aria-label={surfaceOpen ? "Hide the side pane" : "Show the side pane"}
-					aria-pressed={surfaceOpen}
-					onClick={onToggleSurfaces}
-					data-testid="band-rail-toggle"
-				>
-					<PanelRight className="h-4 w-4" />
-				</Button>
 			</div>
 		</div>
 	);
