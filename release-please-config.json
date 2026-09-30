@@ -8,7 +8,14 @@
 			"package-name": "prismalens",
 			"versioning": "always-bump-patch",
 			"exclude-paths": ["docs", ".github", "packages/desktop"],
-			"extra-files": ["packages/cli/package.json"]
+			"extra-files": [
+				{
+					"type": "json",
+					"path": "packages/cli/package.json",
+					"jsonpath": "$.version"
+				}
+			],
+			"changelog-path": "packages/cli/CHANGELOG.md"
 		}
 	}
 }
