@@ -476,7 +476,7 @@ lock) and the J7 *analytics tab* smoke into `incident-postmortem.spec.ts`, and t
 *stream panel* states into `alerts-investigations.spec.ts`.
 
 Deliberately **out of scope**: the React Flow canvas's graph rendering (expensive to assert, cheap
-to eyeball — the design gate covers it), the *contents* of the four analytics charts (same
+to eyeball), the *contents* of the four analytics charts (same
 reasoning; the tab itself is smoked, per the definition above), per-integration OAuth loops (they
 need live third parties), and anything under J14 or J16 until those surfaces are routed.
 
@@ -617,6 +617,5 @@ One follow-up worth filing, not blocking:
   is still one route away. J17 made exactly that trip in #286, when one control on `/incidents`
   turned it from "no surface" into the suite's first end-to-end journey; J15 made it in #294,
   when `/rules` gave C8 a surface at all.
-- **Coverage is audited at each milestone**, alongside the operator's UX ledger walkthrough
-  (AGENTS.md, *Frontend changes carry a design gate*). The matrix is the audit's input.
+- **Coverage is audited at each milestone.** The matrix is the audit's input.
 
