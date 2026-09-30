@@ -7,7 +7,7 @@
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	getHarnessProviderKeys,
@@ -590,7 +590,8 @@ function folderNames(repos: IncidentRepo[]): string[] {
 function inside(root: string, sub: string | null): string {
 	const dir = sub ? resolve(root, sub) : root;
 	const rel = relative(root, dir);
-	if (rel.startsWith("..") || resolve(root, rel) !== dir)
+	// Across Windows drives `relative` stays absolute, so `..` alone is not the test.
+	if (rel.startsWith("..") || isAbsolute(rel) || resolve(root, rel) !== dir)
 		throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
 	return dir;
 }
