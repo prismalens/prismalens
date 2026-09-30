@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, CloudDownload, Copy } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { RunToolbar } from "@/components/agent/RunToolbar";
+import { AgentModelPicker } from "@/components/agent/AgentPicker";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
@@ -152,7 +152,7 @@ export function FirstRunPanel() {
 					data-testid="first-run-title"
 				/>
 				<div className="flex items-center justify-between gap-2 px-1 pt-1">
-					<RunToolbar />
+					<AgentModelPicker />
 					<Button
 						type="submit"
 						size="sm"

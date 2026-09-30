@@ -104,7 +104,7 @@ export function TimelineTab({
 				</div>
 				<div className="space-y-4">
 					{[1, 2, 3, 4].map((i) => (
-						<div key={i} className="flex gap-4 animate-pulse">
+						<div key={i} className="flex gap-4 motion-safe:animate-pulse">
 							<div className="flex flex-col items-center">
 								<Skeleton className="w-12 h-4" />
 								<Skeleton className="w-8 h-8 rounded-full mt-2" />
@@ -163,7 +163,7 @@ export function TimelineTab({
 				<p className="flex items-center gap-2 rounded-md border border-dashed p-3 text-record text-muted-foreground">
 					<ClipboardList className="h-4 w-4 shrink-0" />
 					Nothing recorded yet. Status changes, runs and alerts land here on
-					their own; type a note in the composer to add your own.
+					their own, and so do your notes.
 				</p>
 			) : (
 				<div className="space-y-6">
