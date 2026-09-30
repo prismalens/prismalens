@@ -79,6 +79,13 @@ describe("deriveTranscript", () => {
 		]);
 	});
 
+	it("still ends a failed run that kept no events with its error", () => {
+		const items = deriveTranscript([], T0, {
+			run: { status: "failed", live: false, error: "not logged in" },
+		});
+		expect(kinds(items)).toEqual(["end"]);
+	});
+
 	it("renders the agent's text as prose", () => {
 		const items = deriveTranscript([step(1, "The p99 rise starts at 14:02.")], T0, {
 			run: ended,

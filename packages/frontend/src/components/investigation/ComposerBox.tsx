@@ -122,7 +122,18 @@ export function ComposerBox({
 				: `Message ${target}`;
 
 	return (
-		<div className={cn("space-y-1", className)} data-testid="composer-box">
+		<div
+			className={cn("space-y-1", className)}
+			data-testid="composer-box"
+			// The hint stays while focus moves to the box's own buttons, so the
+			// layout does not shift under a click on Investigate or Send.
+			onFocus={() => setFocused(true)}
+			onBlur={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+					setFocused(false);
+				}
+			}}
+		>
 			<div
 				className={cn(
 					"flex flex-wrap items-end gap-1 rounded-md border bg-background p-1 sm:flex-nowrap",
@@ -136,8 +147,6 @@ export function ComposerBox({
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={onKeyDown}
-					onFocus={() => setFocused(true)}
-					onBlur={() => setFocused(false)}
 					placeholder={placeholder}
 					aria-label={mode === "live" ? `Message ${target}` : "Brief"}
 					data-testid="composer-input"
@@ -195,9 +204,17 @@ export function ComposerBox({
 					)}
 				</span>
 			</div>
-			{focused && (
+			{blocked ? (
+				<p className="px-2 text-meta text-muted-foreground">{blockedReason}</p>
+			) : (
+				// Always laid out, shown on focus: a line that appeared under a
+				// click would move the button away from the pointer.
 				<div
-					className="flex flex-wrap gap-x-4 gap-y-0.5 px-2 text-meta text-muted-foreground"
+					className={cn(
+						"flex flex-wrap gap-x-4 gap-y-0.5 px-2 text-meta text-muted-foreground",
+						!focused && "invisible",
+					)}
+					aria-hidden={!focused}
 					data-testid="composer-hint"
 				>
 					{mode === "live" ? (
@@ -225,9 +242,6 @@ export function ComposerBox({
 						</>
 					)}
 				</div>
-			)}
-			{blocked && !focused && (
-				<p className="px-2 text-meta text-muted-foreground">{blockedReason}</p>
 			)}
 			{undeliverable && (
 				<div

@@ -611,7 +611,7 @@ export function deriveTranscript(
 		});
 	}
 
-	if (events.length === 0 && pending.length === 0) {
+	if (items.length === 0) {
 		return [{ kind: "empty", key: "empty", text: "This run kept no events." }];
 	}
 	return items;
