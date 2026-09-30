@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
 	eventFactory,
 	INVESTIGATION_ID,
 	serveEventsHistory,
 	serveInvestigationAs,
 	setTheme,
-	SHOTS,
 } from "./live-stream-fixtures";
 
 /**
@@ -25,9 +24,6 @@ import {
  * fakes the `running` status elsewhere: one field of a real response.
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
-
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 
 test.describe("#523 S1 — the incident record", () => {
 	test("bands, sections, ledger, rail and composer for a completed run", async ({
@@ -117,13 +113,8 @@ test.describe("#523 S1 — the incident record", () => {
 		await page.getByTestId("composer-input").press("Escape");
 		await expect(page.getByTestId("composer-commands")).toHaveCount(0);
 
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-default");
-
 		await setTheme(page, "dark");
 		await expect(panel).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-dark");
 	});
 
 	test("record surfaces keyboard navigation (r, a, t, m, and ])", async ({
@@ -176,8 +167,6 @@ test.describe("#523 S1 — the incident record", () => {
 		});
 		await setTheme(page, "light");
 		await expect(page.getByTestId("investigation-empty")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-empty");
 	});
 
 	test("error — a failed run", async ({ page }) => {
@@ -192,7 +181,5 @@ test.describe("#523 S1 — the incident record", () => {
 		});
 		await setTheme(page, "light");
 		await expect(page.getByTestId("investigation-failed-state")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-error");
 	});
 });

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page, test } from "@playwright/test";
-import { setTheme, SHOTS } from "./live-stream-fixtures";
-
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the settings frame", () => {
 	test("pane sections with status lines, agent picker and model pill, services inside frame", async ({
@@ -48,17 +44,6 @@ test.describe("#523 — the settings frame", () => {
 		await expect(dangerNav).toBeVisible();
 		await expect(dangerNav).toContainText("Danger zone");
 		await expect(dangerNav).toContainText("reset");
-
-		// Screenshots: default (light) and dark
-		await setTheme(page, "light");
-		await expect(page.getByTestId("settings-frame")).toBeVisible();
-		await page.waitForTimeout(500);
-		await shot(page, "settings-frame-default");
-
-		await setTheme(page, "dark");
-		await expect(page.getByTestId("settings-frame")).toBeVisible();
-		await page.waitForTimeout(500);
-		await shot(page, "settings-frame-dark");
 
 		// 2. Agent picker choose and model pill set
 		await page.goto("/settings?tab=harness");

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
-import { setTheme, SHOTS } from "./live-stream-fixtures";
+import { setTheme } from "./live-stream-fixtures";
 
 /**
  * #523 S3 — one alert's full record.
@@ -18,9 +18,6 @@ import { setTheme, SHOTS } from "./live-stream-fixtures";
  */
 const CORRELATED_ALERT_ID = "a1111111-1111-4111-8111-111111111100";
 const UNCORRELATED_ALERT_ID = "a9999999-9999-4999-8999-999999000000";
-
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 
 async function servePayload(
 	page: Page,
@@ -81,13 +78,8 @@ test.describe("#523 S3 — the alert record", () => {
 			"APIGatewayHighErrorRate",
 		);
 
-		await page.waitForLoadState("networkidle");
-		await shot(page, "alert-detail-default");
-
 		await setTheme(page, "dark");
 		await expect(detail).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "alert-detail-dark");
 	});
 
 	test("an uncorrelated alert offers to run correlation", async ({ page }) => {
@@ -107,7 +99,5 @@ test.describe("#523 S3 — the alert record", () => {
 		});
 		await setTheme(page, "light");
 		await expect(page.getByText("Failed to load alert")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot(page, "alert-detail-error");
 	});
 });

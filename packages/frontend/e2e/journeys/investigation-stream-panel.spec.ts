@@ -12,7 +12,6 @@ import {
 	SECOND_INVESTIGATION_ID,
 	serveAsRunning,
 	setTheme,
-	SHOTS,
 } from "./live-stream-fixtures";
 
 /**
@@ -278,15 +277,10 @@ test.describe("#280 — the investigation stream panel", () => {
 	}) => {
 		test.setTimeout(120_000);
 
-		const shot = (name: string) =>
-			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-
 		const panel = await openConnectedPanel(page);
 
 		// Empty: connected, nothing received yet.
 		await reloadInto(page, panel, "dark");
-		await page.waitForLoadState("networkidle");
-		await shot("stream-panel-empty");
 
 		// Single non-root branch: the flat list this PR restores.
 		await reloadInto(page, panel, "light");
@@ -295,8 +289,6 @@ test.describe("#280 — the investigation stream panel", () => {
 		await deliver(page, single.toolResult("search_logs", "412 matching lines"));
 		await deliver(page, single.agentStep("scout", "Narrowing to checkout-api"));
 		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(0);
-		await page.waitForLoadState("networkidle");
-		await shot("stream-panel-single-branch-default");
 
 		// Fanned out: badge plus one collapsible section per branch.
 		const fanOut = async () => {
@@ -306,16 +298,13 @@ test.describe("#280 — the investigation stream panel", () => {
 			await deliver(page, b0.toolResult("search_logs", "412 matching lines"));
 			await deliver(page, b1.agentStep("analyst", "Correlating deploys"));
 			await expect(panel.getByTestId("stream-branch-section")).toHaveCount(2);
-			await page.waitForLoadState("networkidle");
 		};
 
 		await reloadInto(page, panel, "light");
 		await fanOut();
-		await shot("stream-panel-default");
 
 		await reloadInto(page, panel, "dark");
 		await fanOut();
-		await shot("stream-panel-dark");
 
 		// Error: a canonical `error` row in the live stream panel. An in-stream
 		// error event over a healthy connection renders as an error row in the stream panel.
@@ -327,8 +316,6 @@ test.describe("#280 — the investigation stream panel", () => {
 		await expect(
 			panel.getByText("Error: harness lost the tool socket"),
 		).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("stream-panel-error");
 
 		// Failed: an in-stream canonical error event followed by done marker
 		// renders the failure indicator in the panel header (default light & dark).
@@ -346,8 +333,6 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
-		await page.waitForLoadState("networkidle");
-		await shot("stream-panel-failed-default");
 
 		await reloadInto(page, panel, "dark");
 		const terminalFailDark = eventFactory("b0");
@@ -363,23 +348,17 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
-		await page.waitForLoadState("networkidle");
-		await shot("stream-panel-failed-dark");
 
 		// SSE failure fallback affordance (#462): default (light) and dark
 		await reloadInto(page, panel, "light");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackLight = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackLight).toBeVisible({ timeout: 20_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-progress-error");
 
 		await reloadInto(page, panel, "dark");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackDark = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("investigation-progress-dark");
 	});
 
 	test("renders terminal failed state when stream carried error before done marker (#462)", async ({

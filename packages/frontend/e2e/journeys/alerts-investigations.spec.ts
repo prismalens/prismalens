@@ -3,8 +3,6 @@
 
 import { expect, test } from "@playwright/test";
 
-const SHOTS = "e2e/journeys/screenshots";
-
 test.describe("D4 substitute — alerts triage & culprit rendering journey", () => {
 	test("asserts total alert count and culprit / no-culprit investigation rendering", async ({
 		page,
@@ -229,9 +227,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	test("design evidence: alerts unmapped tab in default, dark, and empty states", async ({
 		page,
 	}) => {
-		const shot = (name: string) =>
-			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-
 		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {
 				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
@@ -249,12 +244,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		});
 
 		await setTheme("light");
-		await page.waitForLoadState("networkidle");
-		await shot("alerts-unmapped-default");
-
 		await setTheme("dark");
-		await page.waitForLoadState("networkidle");
-		await shot("alerts-unmapped-dark");
 
 		// Empty: no alert in the seed is genuinely unmapped-and-nothing-else, so
 		// the empty state is reached by stubbing the filtered response rather
@@ -278,8 +268,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(page.getByText("No alerts found")).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.waitForLoadState("networkidle");
-		await shot("alerts-unmapped-empty");
 		await page.unroute("**/api/alerts");
 	});
 
@@ -302,19 +290,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 		await setTheme("light");
-		await page.waitForLoadState("networkidle");
-		await page.screenshot({
-			path: `${SHOTS}/investigation-detail-default.png`,
-			fullPage: true,
-		});
 
 		// Dark state: set theme to dark
 		await setTheme("dark");
-		await page.waitForLoadState("networkidle");
-		await page.screenshot({
-			path: `${SHOTS}/investigation-detail-dark.png`,
-			fullPage: true,
-		});
 	});
 
 	/**
@@ -408,9 +386,6 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	test("design evidence: alerts pull toast in default and dark themes", async ({
 		page,
 	}) => {
-		const shot = (name: string) =>
-			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
-
 		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {
 				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
@@ -450,16 +425,12 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await expect(
 			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("alerts-pull-default");
 
 		await setTheme("dark");
 		await page.getByTestId("alerts-pull").click();
 		await expect(
 			page.getByText("Pulled 2 alerts, 2 new, 0 caught up", { exact: true }),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("alerts-pull-dark");
 
 		await page.unroute("**/api/alerts/pull");
 	});

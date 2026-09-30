@@ -174,12 +174,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			timeout: 15_000,
 		});
 
-		await page.waitForLoadState("networkidle");
-		await page.screenshot({
-			path: "e2e/journeys/screenshots/investigate-refusal-default.png",
-			fullPage: true,
-		});
-
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
 		});
@@ -192,11 +186,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.waitForLoadState("networkidle");
-		await page.screenshot({
-			path: "e2e/journeys/screenshots/investigate-refusal-dark.png",
-			fullPage: true,
-		});
 	});
 
 	/**
@@ -207,12 +196,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	test("design evidence: both themes, the empty state, and the error state", async ({
 		page,
 	}) => {
-		const shot = (name: string) =>
-			page.screenshot({
-				path: `e2e/journeys/screenshots/${name}.png`,
-				fullPage: true,
-			});
-
 		// The dialog, light.
 		await page.goto("/incidents");
 		await page.evaluate(() => {
@@ -222,8 +205,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page.locator("html")).toHaveClass(/light/);
 		await page.getByTestId("create-incident-button").click();
 		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("create-incident-dialog-default");
 
 		// The same dialog, dark.
 		await page.evaluate(() => {
@@ -233,8 +214,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page.locator("html")).toHaveClass(/dark/);
 		await page.getByTestId("create-incident-button").click();
 		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("create-incident-dialog-dark");
 
 		// The error state: a create the API refuses is reported inside the
 		// dialog, and the draft is left intact so it can be retried.
@@ -257,7 +236,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("create-incident-dialog")).toBeVisible();
-		await shot("create-incident-error");
 		await page.unroute("**/api/incidents");
 
 		// The empty state — what a fresh install sees. The seeded database has
@@ -269,8 +247,6 @@ test.describe("C10 — manual authorship without an alert source", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("incidents-empty-create")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("incidents-empty");
 	});
 
 	/**

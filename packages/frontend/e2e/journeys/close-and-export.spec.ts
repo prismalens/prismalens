@@ -88,12 +88,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 	test("posts a completed report to a GitHub issue or PR (success and refusal)", async ({
 		page,
 	}) => {
-		const shot = (name: string) =>
-			page.screenshot({
-				path: `e2e/journeys/screenshots/${name}.png`,
-				fullPage: true,
-			});
-
 		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {
 				document.cookie = `prismalens-theme=${value}; path=/; max-age=31536000`;
@@ -139,7 +133,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(postBtn).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("export-report-markdown")).toBeVisible();
 
-		// Default (light) theme screenshot with dialog open
 		await setTheme("light");
 		await expect(page.getByTestId("post-report-github")).toBeVisible({
 			timeout: 15_000,
@@ -147,10 +140,7 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await page.getByTestId("post-report-github").click();
 		await expect(page.getByRole("dialog")).toBeVisible();
 		await expect(page.getByTestId("post-report-github-url")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("post-github-default");
 
-		// Dark theme screenshot with dialog open
 		await page.keyboard.press("Escape");
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -160,8 +150,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		});
 		await page.getByTestId("post-report-github").click();
 		await expect(page.getByRole("dialog")).toBeVisible();
-		await page.waitForLoadState("networkidle");
-		await shot("post-github-dark");
 
 		// (b) 412-shaped oRPC error → not-configured line visible
 		await page.getByTestId("post-report-github-url").fill(
@@ -175,9 +163,6 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(
 			page.getByRole("link", { name: /Settings → Integrations/ }),
 		).toBeVisible();
-
-		// Error screenshot
-		await shot("post-github-error");
 
 		// Unroute 412, close dialog
 		await page.unroute("**/api/investigations/*/report/github");

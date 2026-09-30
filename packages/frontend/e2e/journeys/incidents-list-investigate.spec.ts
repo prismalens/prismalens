@@ -245,12 +245,6 @@ test.describe("#520 part B — incident record investigate gate", () => {
 	test("design evidence: default, dark, and refusal error states", async ({
 		page,
 	}) => {
-		const shot = (name: string) =>
-			page.screenshot({
-				path: `e2e/journeys/screenshots/${name}.png`,
-				fullPage: true,
-			});
-
 		// 1. Default (light): disabled button with reason tooltip visible
 		await page.emulateMedia({ colorScheme: "light" });
 		await serveUnusableLlmAndHarnesses(page);
@@ -274,8 +268,6 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(
 			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("incidents-list-investigate-default");
 
 		// 2. Dark: disabled button with reason tooltip in dark theme
 		await page.emulateMedia({ colorScheme: "dark" });
@@ -294,8 +286,6 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(
 			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
-		await shot("incidents-list-investigate-dark");
 
 		// 3. Error state: server refusal toast
 		const refusalReason =
@@ -341,7 +331,5 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(page.getByText(refusalReason, { exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
-		await page.waitForLoadState("networkidle");
-		await shot("incidents-list-investigate-error");
 	});
 });

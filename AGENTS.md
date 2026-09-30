@@ -50,39 +50,6 @@ README files in this repository follow a three-tier model. The root `README.md` 
 
 Marking a PR ready starts no review. CodeRabbit is summoned by the hourly `CodeRabbit summoner` routine, one PR per hour across every repo (Sumit1993/rig#150); never post `@coderabbitai review` yourself. After a review: fix, push once, reply in every thread, and stop; the routine re-reviews. The Claude lane runs only on PRs labelled `claude_review`, and only the operator adds that label or `coderabbit_review`.
 
-## Frontend changes carry a UX review
-
-Every PR touching `packages/frontend` carries the `ux-review` label and a `## UX review` section
-in its body, filled from the template below. A new page, a navigation change or a new
-interaction model is flagged to the operator immediately, not left for the milestone walk.
-
-The per-PR design gate and e2e spec are suspended while releases are 0.5.x patches (#337). Their
-rules and the screenshot convention are in
-[`.github/ux-review-walkthrough.md`](.github/ux-review-walkthrough.md).
-
-````markdown
-## UX review
-
-**UX shape:** none | new page | navigation change | new interaction model
-
-**What changed & why.** One paragraph. Closes #NNN, plus the ADR link if one governs it.
-
-**Where to click.** Numbered steps starting from a dev-app URL, including how to reach the
-required data state if a normal dev DB will not have it (seed command, `pl up` against an
-empty workspace dir, fixture).
-
-**What to verify, per state.** A `- [ ]` line each for default, dark, empty, error.
-
-**Judgment calls.** Anything the operator may want to veto, and why it was chosen. "None" is
-a valid answer; omitting the field is not.
-
-**Screenshots.** Design gate: PASS | FAIL — one commit-pinned image per state above. Drop a
-state only if the surface genuinely cannot reach it, and say which and why under Judgment
-calls.
-````
-
-Open the PR with `--label ux-review`, or add it later with `gh pr edit <n> --add-label ux-review`.
-
 ## Implementation specs must declare a capability tier
 
 Every implementation spec also states its **capability tier**: `free` (the default — everything

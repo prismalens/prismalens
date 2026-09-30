@@ -20,8 +20,6 @@ import { expect, type Page, test } from "@playwright/test";
  * the suite, so a CI box and a developer machine assert the same thing.
  */
 
-const SHOTS = "e2e/journeys/screenshots";
-
 type HarnessFixture = {
 	id: string;
 	label: string;
@@ -589,8 +587,7 @@ test.describe("Design evidence (#501/#609)", () => {
 			]);
 		};
 
-		const shot = async (
-			name: string,
+		const renderCard = async (
 			theme: "light" | "dark",
 			harnesses: HarnessFixture[] | "error",
 		) => {
@@ -609,14 +606,12 @@ test.describe("Design evidence (#501/#609)", () => {
 			await page.goto("/settings?tab=harness");
 			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 			await expect(card(page)).toBeVisible({ timeout: 15_000 });
-			await page.waitForTimeout(500);
-			await card(page).screenshot({ path: `${SHOTS}/${name}.png` });
 			await page.unroute(isHarnessesUrl);
 		};
 
-		await shot("settings-harness-default", "light", RUNNABLE);
-		await shot("settings-harness-dark", "dark", RUNNABLE);
-		await shot("settings-harness-empty", "light", NOTHING);
-		await shot("settings-harness-error", "light", "error");
+		await renderCard("light", RUNNABLE);
+		await renderCard("dark", RUNNABLE);
+		await renderCard("light", NOTHING);
+		await renderCard("light", "error");
 	});
 });
