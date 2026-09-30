@@ -205,6 +205,17 @@ export class InvestigationsController {
 							input.id,
 						);
 						if (cancelledJob) {
+							if (
+								await this.dispatchService.restoreFollowUp(
+									input.id,
+									"Stopped before the follow-up started. The report is unchanged.",
+								)
+							) {
+								const restored = await this.investigationsService.findById(
+									input.id,
+								);
+								return this.serializeInvestigation(restored ?? investigation);
+							}
 							const cancelled = await this.investigationsService.cancelPending(
 								input.id,
 								investigation.incidentId,

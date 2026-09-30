@@ -26,8 +26,13 @@ class FakeJobDelegate {
 			Object.entries(where).every(([k, v]) => r[k] === v),
 		);
 	}
-	async findUnique() {
-		return null;
+	async findUnique(args?: unknown): Promise<Row | null> {
+		const where = (args as { where?: Row } | undefined)?.where ?? {};
+		return (
+			this.rows.find((r) =>
+				Object.entries(where).every(([k, v]) => r[k] === v),
+			) ?? null
+		);
 	}
 	async updateMany(args: unknown): Promise<{ count: number }> {
 		const a = args as { where: Row; data: Row };
@@ -229,5 +234,89 @@ describe("DispatchService.resumeInvestigation (#747)", () => {
 
 		expect(results.filter(Boolean)).toHaveLength(1);
 		expect(enqueue).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("DispatchService.restoreFollowUp (#752)", () => {
+	const completedAt = "2026-09-30T10:00:00.000Z";
+	const followUp = {
+		incidentId: "inc-1",
+		investigationId: "inv-1",
+		resume: {
+			text: "why the pool?",
+			mode: "queue",
+			restore: { status: "completed", completedAt, error: null },
+		},
+	};
+
+	function build(jobs: Row[]) {
+		const row: Row = { id: "inv-1", status: "running", completedAt: null, error: null };
+		const investigation = {
+			update: vi.fn(async (args: { data: Row }) => Object.assign(row, args.data)),
+		};
+		const investigationsService = {
+			updateStatusInternal: vi.fn(async () => null),
+			lastEventSeq: vi.fn(async () => 41),
+			appendEvents: vi.fn(async () => ({ inserted: 2, duplicates: 0 })),
+		};
+		const service = new DispatchService(
+			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
+			fakeBus() as any,
+			{ attach: vi.fn() } as any,
+			investigationsService as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{ job: new FakeJobDelegate(jobs), investigation } as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{ deliver: vi.fn() } as any,
+		);
+		return { service, row, investigationsService };
+	}
+
+	it("a follow-up cut off by a restart puts the finished run back, not failed", async () => {
+		const { service, row, investigationsService } = build([
+			{
+				id: "job-1",
+				investigationId: "inv-1",
+				incidentId: "inc-1",
+				payload: JSON.stringify(followUp),
+				status: "running",
+			},
+		]);
+		vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+
+		await service.onModuleInit();
+
+		expect(row).toMatchObject({ status: "completed", error: null });
+		expect((row.completedAt as Date).toISOString()).toBe(completedAt);
+		expect(investigationsService.updateStatusInternal).not.toHaveBeenCalled();
+		const [, events] = investigationsService.appendEvents.mock.calls[0] as unknown as [
+			string,
+			Array<Row>,
+		];
+		expect(events.map((e) => [e.kind, e.seq])).toEqual([
+			["operator_message", 42],
+			["error", 43],
+		]);
+		expect(events[0]).toMatchObject({ text: "why the pool?", delivered: false });
+	});
+
+	it("leaves a first run alone", async () => {
+		const { service, row } = build([
+			{
+				id: "job-1",
+				investigationId: "inv-1",
+				payload: JSON.stringify({ incidentId: "inc-1", investigationId: "inv-1" }),
+				status: "cancelled",
+			},
+		]);
+
+		expect(await service.restoreFollowUp("inv-1", "stopped")).toBe(false);
+		expect(row.status).toBe("running");
 	});
 });

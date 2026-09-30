@@ -27,7 +27,10 @@ import type {
 	OperatorMessageMode,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import { isWorkflowTerminal } from "@prismalens/contracts";
+import {
+	InvestigationJobDataSchema,
+	isWorkflowTerminal,
+} from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
@@ -55,7 +58,10 @@ import {
 	runMessageTopic,
 } from "./event-bus.js";
 import { createInProcessRunner } from "./in-process-runner.js";
-import { sweepRunWorkspaces } from "./investigation-run.js";
+import {
+	followUpNotDelivered,
+	sweepRunWorkspaces,
+} from "./investigation-run.js";
 import {
 	type JobDelegate,
 	type JobStore,
@@ -75,6 +81,8 @@ const PRIORITY_ORDER: Record<string, number> = {
 
 /** The reason recorded on every job a restart abandoned mid-flight. */
 const RESTART_REASON = "API restarted while the run was in flight";
+const FOLLOW_UP_RESTART_REASON =
+	"PrismaLens stopped before the follow-up finished. The report is unchanged.";
 
 /**
  * The model a run asks for and where it came from. A harness that cannot take
@@ -324,6 +332,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		// before the loop starts, so nothing sits stuck "running" forever.
 		const ids = await this.store.failRunning(RESTART_REASON);
 		for (const id of ids) {
+			if (await this.restoreFollowUp(id, FOLLOW_UP_RESTART_REASON)) continue;
 			await this.investigationsService.updateStatusInternal(
 				id,
 				"failed",
@@ -475,6 +484,54 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			`Published cancel for investigation ${investigationId} (${receivers} receiver(s))`,
 		);
 		return receivers;
+	}
+
+	/**
+	 * A follow-up that ends without its run (cancelled unclaimed, or cut off by a
+	 * restart) puts back the finished investigation it reopened (#752), and says so in
+	 * the conversation. False when the investigation's job was not a follow-up.
+	 */
+	async restoreFollowUp(
+		investigationId: string,
+		reason: string,
+	): Promise<boolean> {
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId },
+			select: { payload: true },
+		});
+		let resume: InvestigationJobData["resume"];
+		try {
+			resume = job
+				? InvestigationJobDataSchema.parse(JSON.parse(job.payload)).resume
+				: undefined;
+		} catch {
+			return false;
+		}
+		if (!resume) return false;
+		const seq =
+			(await this.investigationsService.lastEventSeq(investigationId)) + 1;
+		try {
+			await this.investigationsService.appendEvents(
+				investigationId,
+				followUpNotDelivered(investigationId, seq, resume, reason),
+			);
+		} catch (e) {
+			this.logger.warn(
+				`Could not record the ended follow-up in the conversation: ${(e as Error).message}`,
+			);
+		}
+		await this.prisma.investigation.update({
+			where: { id: investigationId },
+			data: {
+				status: resume.restore.status,
+				completedAt: resume.restore.completedAt
+					? new Date(resume.restore.completedAt)
+					: null,
+				error: resume.restore.error,
+				stopRequestedAt: null,
+			},
+		});
+		return true;
 	}
 
 	/**
