@@ -301,7 +301,7 @@ describe("#331 workspace record (in-process run)", () => {
 			.find((dto) => dto.type === "investigation_started");
 		if (!entry) throw new Error("no investigation_started timeline entry was recorded");
 		expect(entry.metadata).toMatchObject({ mapped: false });
-		expect(String(entry.title)).toContain("WITHOUT");
+		expect(String(entry.title)).toContain("No repository linked");
 	});
 
 	it("the record lands BEFORE the harness runs, not after", async () => {

@@ -606,7 +606,13 @@ export function deriveTranscript(
 	}
 
 	if (items.length === 0) {
-		return [{ kind: "empty", key: "empty", text: "This run kept no events." }];
+		return [
+			{
+				kind: "empty",
+				key: "empty",
+				text: "This investigation kept no events.",
+			},
+		];
 	}
 	return items;
 }

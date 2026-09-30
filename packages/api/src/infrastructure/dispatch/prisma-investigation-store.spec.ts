@@ -265,8 +265,8 @@ describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () =>
 		expect(createTimelineEntry).toHaveBeenCalledWith({
 			incidentId: INCIDENT_ID,
 			type: "investigation_started",
-			title: "AI Investigation Started",
-			description: "Starting the two-tier engine investigation",
+			title: "Agent started",
+			description: "The agent is reading the incident.",
 			source: "ai_worker",
 			metadata: { investigationId: INVESTIGATION_ID },
 		});
@@ -289,7 +289,7 @@ describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () =>
 		expect(createTimelineEntry).toHaveBeenCalledWith({
 			incidentId: INCIDENT_ID,
 			type: "investigation_completed",
-			title: "AI Investigation Failed",
+			title: "Investigation failed",
 			description: "disk full",
 			source: "ai_worker",
 			metadata: { investigationId: INVESTIGATION_ID, error: "disk full" },

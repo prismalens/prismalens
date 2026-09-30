@@ -4,44 +4,56 @@
 import {
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
-	type IncidentAttention,
 	type IncidentStatus,
 	type IncidentWithRelations,
-	isWorkflowLive,
-	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
-	BarChart3,
+	AlertTriangle,
+	Circle,
+	CircleCheck,
 	Plus,
 	Search,
 	SlidersHorizontal,
-	Sparkles,
 } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
-import { Mono } from "@/components/shared/Mono";
-import { StateWord } from "@/components/shared/StateChip";
+import { useMemo, useState } from "react";
+import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
-import { attentionFor, attentionTone } from "@/lib/incident-attention";
-import { incidentHeadline, latestRun, runWord } from "@/lib/incident-board";
-import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
+import { attentionFor } from "@/lib/incident-attention";
+import {
+	headlineAddsInfo,
+	incidentHeadline,
+	rowGlyph,
+	runWord,
+} from "@/lib/incident-board";
+import {
+	incidentGroups,
+	NO_SERVICE_LANE,
+	otherServices,
+	SETTLED_LANE,
+} from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
+import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
 import { CreateIncidentDialog } from "./CreateIncidentDialog";
 import { IncidentFilters } from "./IncidentFilters";
 
 export interface IncidentListPaneProps {
 	selectedId: string | null;
 	className?: string;
+	/** j / k walk this list; off where another list owns the keys. */
+	keyboard?: boolean;
 }
 
 /** Builds the list query from the frame's search, the same window the stats use. */
 export function useIncidentWindow() {
-	const search = useSearch({ from: "/_authenticated/incidents" });
+	// The sidebar renders the list on every route, so the window may be unset.
+	const search: IncidentsSearch =
+		useSearch({ from: "/_authenticated/incidents", shouldThrow: false }) ?? {};
 	const from = search.from ? new Date(search.from) : undefined;
 	const to = search.to ? new Date(search.to) : undefined;
 	return {
@@ -78,6 +90,7 @@ export function useIncidentWindow() {
 export function IncidentListPane({
 	selectedId,
 	className,
+	keyboard = true,
 }: IncidentListPaneProps) {
 	const navigate = useNavigate();
 	const now = useNow();
@@ -97,6 +110,7 @@ export function IncidentListPane({
 		!!(search.status || search.severity || search.priority),
 	);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [createService, setCreateService] = useState<string | undefined>();
 	const [q, setQ] = useState("");
 
 	const { data, isLoading, error } = useQuery(
@@ -120,8 +134,13 @@ export function IncidentListPane({
 				)
 			: incidents;
 		const needsYou = visible.filter((i) => attentionFor(i) !== null);
-		const rest = visible.filter((i) => attentionFor(i) === null);
-		return { needsYou, rest, rows: [...needsYou, ...rest] };
+		const rest = visible.filter(
+			(i) => attentionFor(i) === null && i.status !== "closed",
+		);
+		const settled = visible.filter(
+			(i) => attentionFor(i) === null && i.status === "closed",
+		);
+		return { rows: [...needsYou, ...rest], settled };
 	}, [incidents, q]);
 	const windowValue = search.from
 		? Math.round((Date.now() - new Date(search.from).getTime()) / 86_400_000) <=
@@ -149,26 +168,88 @@ export function IncidentListPane({
 			params: { id: incident.id },
 			search: keep,
 		});
-	const { cursor, pointAt } = useListKeyboard(ordered.rows.length, (i) => {
-		const row = ordered.rows[i];
-		if (row) open(row);
-	});
+	const groupFolded = useLaneFolded("list");
+	// Closed incidents sit in one Settled group at the foot, folded until opened.
+	const groups = useMemo(() => {
+		const byService = incidentGroups(ordered.rows);
+		return ordered.settled.length > 0
+			? [
+					...byService,
+					{ id: SETTLED_LANE, name: "Settled", items: ordered.settled },
+				]
+			: byService;
+	}, [ordered]);
+	const isFolded = (id: string) => groupFolded(id, id === SETTLED_LANE);
+	// The rows j / k walk: every row in an open group, top to bottom.
+	const flat = groups.flatMap((g) => (isFolded(g.id) ? [] : g.items));
+	const { cursor, pointAt } = useListKeyboard(
+		flat.length,
+		(i) => {
+			const incident = flat[i];
+			if (incident) open(incident);
+		},
+		keyboard,
+	);
+	const row = (incident: IncidentWithRelations, index: number) => {
+		const selected = incident.id === selectedId;
+		return (
+			<Link
+				key={incident.id}
+				to="/incidents/$id"
+				params={{ id: incident.id }}
+				search={keep}
+				onMouseEnter={() => pointAt(index)}
+				aria-current={selected ? "page" : undefined}
+				data-testid="incident-row"
+				data-cursor={cursor === index ? "true" : undefined}
+				title={rowTitle(incident, now)}
+				className={cn(
+					"mx-1.5 flex items-center gap-2 rounded-md px-2 py-1 outline-none hover:bg-muted/60",
+					cursor === index && "bg-muted/60",
+					selected && "bg-muted hover:bg-muted",
+				)}
+			>
+				<IncidentRowBody incident={incident} now={now} selected={selected} />
+			</Link>
+		);
+	};
 
-	const setFilter = (patch: Partial<typeof search>) =>
-		navigate({
-			to: ".",
-			search: (prev) => ({ ...prev, ...patch }),
-			replace: true,
-		});
+	// Off the incidents routes a filter change lands on the board it narrows.
+	const setFilter = (patch: Partial<IncidentsSearch>) =>
+		selectedId
+			? navigate({
+					to: "/incidents/$id",
+					params: { id: selectedId },
+					search: { ...keep, ...patch },
+					replace: true,
+				})
+			: navigate({
+					to: "/incidents",
+					search: { ...keep, ...patch },
+					replace: true,
+				});
 
 	return (
-		<aside
-			className={cn("flex flex-col bg-background", className)}
+		<section
+			className={cn("flex flex-col", className)}
 			data-testid="incident-list-pane"
+			aria-labelledby="incident-list-heading"
 		>
-			<div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-				<h1 className="text-sm font-semibold">Incidents</h1>
-				<div className="flex items-center gap-1">
+			<h2 id="incident-list-heading" className="sr-only">
+				Incidents
+			</h2>
+			<div className="flex items-center gap-1 px-2 pb-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					className="h-7 flex-1 justify-start gap-2 px-2 font-normal"
+					onClick={() => setCreateOpen(true)}
+					data-testid="create-incident-button"
+				>
+					<Plus className="h-3.5 w-3.5" />
+					New incident
+				</Button>
+				<div className="flex items-center gap-0.5">
 					<Button
 						variant="ghost"
 						size="sm"
@@ -180,35 +261,11 @@ export function IncidentListPane({
 					>
 						<SlidersHorizontal className="h-3.5 w-3.5" />
 					</Button>
-					<Button
-						asChild
-						variant={search.view === "analytics" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-7 w-7 p-0"
-					>
-						<Link
-							to="/incidents"
-							search={{ ...keep, view: "analytics" }}
-							aria-label="Overview and analytics"
-							data-testid="incidents-view-analytics"
-						>
-							<BarChart3 className="h-3.5 w-3.5" />
-						</Link>
-					</Button>
-					<Button
-						size="sm"
-						className="h-7"
-						onClick={() => setCreateOpen(true)}
-						data-testid="create-incident-button"
-					>
-						<Plus className="mr-1 h-3.5 w-3.5" />
-						New
-					</Button>
 				</div>
 			</div>
 
-			<div className="flex items-center gap-1 border-b px-2 py-1.5">
-				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-muted/40 px-2">
+			<div className="flex items-center gap-1 px-2 pb-2">
+				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-background px-2">
 					<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 					<input
 						value={q}
@@ -223,7 +280,7 @@ export function IncidentListPane({
 					value={windowValue}
 					onChange={(e) => setWindow(e.target.value)}
 					aria-label="Window"
-					className="h-6 rounded border bg-muted/40 px-1 text-meta text-muted-foreground outline-none"
+					className="h-6 rounded border md:hidden bg-background px-1 text-meta text-muted-foreground outline-none"
 					data-testid="incident-list-window"
 				>
 					<option value="all">All time</option>
@@ -299,59 +356,59 @@ export function IncidentListPane({
 						</div>
 					</div>
 				)}
-				{ordered.rows.map((incident, index) => {
-					const why = attentionFor(incident);
-					const selected = incident.id === selectedId;
-					return (
-						<Fragment key={incident.id}>
-							{index === 0 && ordered.needsYou.length > 0 && (
-								<GroupLabel
-									label="Needs you"
-									count={ordered.needsYou.length}
-									testId="group-needs-you"
+				{(() => {
+					let index = 0;
+					return groups.map((group) => (
+						<section
+							key={group.id}
+							className="pb-2"
+							data-testid="sidebar-group"
+						>
+							<div className="group/header flex items-center pr-2">
+								<LaneHeader
+									view="list"
+									id={group.id}
+									name={group.name}
+									count={group.items.length}
+									foldedByDefault={group.id === SETTLED_LANE}
+									className="min-w-0 flex-1 font-normal"
 								/>
-							)}
-							{ordered.needsYou.length > 0 &&
-								index === ordered.needsYou.length && (
-									<GroupLabel
-										label="Everything else"
-										count={ordered.rest.length}
-										testId="group-rest"
-									/>
+								{group.id !== NO_SERVICE_LANE && group.id !== SETTLED_LANE && (
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										className="opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100"
+										aria-label={`New incident in ${group.name}`}
+										onClick={() => {
+											setCreateService(group.id);
+											setCreateOpen(true);
+										}}
+										data-testid="sidebar-group-new"
+									>
+										<Plus />
+									</Button>
 								)}
-							<Link
-								to="/incidents/$id"
-								params={{ id: incident.id }}
-								search={keep}
-								onMouseEnter={() => pointAt(index)}
-								aria-current={selected ? "page" : undefined}
-								data-testid="incident-row"
-								data-cursor={cursor === index ? "true" : undefined}
-								className={cn(
-									"block border-b px-3 py-2 outline-none hover:bg-muted/60",
-									cursor === index && "bg-muted/60",
-									selected &&
-										"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
-								)}
-							>
-								<IncidentRowBody incident={incident} why={why} now={now} />
-							</Link>
-						</Fragment>
-					);
-				})}
-			</div>
-
-			<div className="flex items-center justify-between border-t px-3 py-1.5 text-meta text-muted-foreground">
-				<span>
-					{incidents.length} in window
-					{data?.pagination.hasMore ? " · more not shown" : ""}
-				</span>
-				<span>j k ↵</span>
+							</div>
+							{!isFolded(group.id) &&
+								group.items.map((incident) => row(incident, index++))}
+						</section>
+					));
+				})()}
+				{incidents.length > 0 && (
+					<p className="px-3 pb-3 text-meta text-muted-foreground">
+						{incidents.length} in window
+						{data?.pagination.hasMore ? " · more not shown" : ""}
+					</p>
+				)}
 			</div>
 
 			<CreateIncidentDialog
 				open={createOpen}
-				onOpenChange={setCreateOpen}
+				onOpenChange={(next) => {
+					setCreateOpen(next);
+					if (!next) setCreateService(undefined);
+				}}
+				defaultServiceId={createService}
 				onCreated={(id) =>
 					navigate({
 						to: "/incidents/$id",
@@ -360,125 +417,90 @@ export function IncidentListPane({
 					})
 				}
 			/>
-		</aside>
+		</section>
 	);
 }
 
-function GroupLabel({
-	label,
-	count,
-	testId,
-}: {
-	label: string;
-	count: number;
-	testId: string;
-}) {
-	return (
-		<div
-			className="sticky top-0 z-10 border-b bg-muted/40 px-3 py-1 text-meta font-medium text-muted-foreground backdrop-blur"
-			data-testid={testId}
-		>
-			{label} <Mono>{count}</Mono>
-		</div>
-	);
+function rowTitle(incident: IncidentWithRelations, now: number | null) {
+	const word = runWord(incident, now);
+	const why = attentionFor(incident);
+	const state = word
+		? word.text
+		: why
+			? INCIDENT_ATTENTION_LABEL[why]
+			: (INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+				incident.status);
+	const headline = incidentHeadline(incident);
+	const others = otherServices(incident);
+	return [
+		`INC-${incident.number}  ${state}  ${ago(incident.triggeredAt, now)}`,
+		headlineAddsInfo(headline)
+			? `${headline.lead ? `${headline.lead} ` : ""}${headline.text}`
+			: null,
+		others.length > 0 ? `Also touches ${others.join(", ")}` : null,
+	]
+		.filter(Boolean)
+		.join("\n");
 }
+
+const GLYPH_CLASS = "h-3.5 w-3.5 shrink-0";
 
 /**
- * One row: severity and service with the incident's status word, and the
- * run's own word beside it while a run is live (#743 §3c); the title; the
- * number with the agent's headline and the age.
+ * One sidebar row (#743): a glyph for where the incident stands and the
+ * title. The state, the age and the headline are in the row's hover title
+ * and in hidden text for assistive tech.
  */
 function IncidentRowBody({
 	incident,
-	why,
 	now,
+	selected,
 }: {
 	incident: IncidentWithRelations;
-	why: IncidentAttention | null;
 	now: number | null;
+	selected: boolean;
 }) {
-	const run = latestRun(incident);
+	const glyph = rowGlyph(incident);
+	const why = attentionFor(incident);
 	const word = runWord(incident, now);
 	const headline = incidentHeadline(incident);
 	return (
-		<div className="min-w-0">
-			<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
-				<span
-					role="img"
-					aria-label={SEVERITY_LABEL[incident.severity]}
-					title={SEVERITY_LABEL[incident.severity]}
-					className="h-2 w-2 shrink-0 rounded-full"
-					style={{ background: `var(--sev-${incident.severity})` }}
+		<>
+			{glyph === "live" ? (
+				<span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+					<span className="h-2 w-2 rounded-full bg-run-active motion-safe:animate-pulse" />
+				</span>
+			) : glyph === "attention" ? (
+				<AlertTriangle
+					className={cn(
+						GLYPH_CLASS,
+						why === "failed_run" ? "text-run-failed" : "text-sev-critical",
+					)}
 				/>
-				<span className="truncate">
-					{incident.service?.displayName ||
-						incident.service?.name ||
-						"no service"}
-				</span>
-				<span className="ml-auto flex shrink-0 items-center gap-2">
-					{why && !word ? (
-						<StateWord
-							tone={attentionTone[why]}
-							data-testid="incident-attention"
-						>
-							{INCIDENT_ATTENTION_LABEL[why]}
-						</StateWord>
-					) : (
-						<StateWord tone={incidentStatusTone(incident.status)}>
-							{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
-								incident.status}
-						</StateWord>
-					)}
-					{word && (
-						<StateWord
-							tone={word.stale ? "stale" : runStateTone(word.state)}
-							pulse
-							className="tabular-nums"
-							data-testid="incident-run-word"
-						>
-							{word.text}
-						</StateWord>
-					)}
-				</span>
-			</div>
-			<p
-				className="mt-0.5 truncate text-record font-medium leading-snug"
-				title={incident.title}
+			) : glyph === "open" ? (
+				<Circle className={cn(GLYPH_CLASS, "text-muted-foreground")} />
+			) : (
+				<CircleCheck className={cn(GLYPH_CLASS, "text-muted-foreground/60")} />
+			)}
+			<span
+				className={cn(
+					"min-w-0 truncate text-record",
+					glyph === "ended" && !selected && "text-muted-foreground",
+				)}
 			>
 				{incident.title}
-			</p>
-			<div className="mt-0.5 flex items-center gap-2 text-meta text-muted-foreground">
-				<Mono className="shrink-0">INC-{incident.number}</Mono>
-				{run && (
-					<Sparkles
-						className="h-3 w-3 shrink-0"
-						aria-label="Investigated"
-						style={{
-							color: isWorkflowLive(run.status)
-								? "var(--run-active)"
-								: run.status === "completed"
-									? "var(--run-done)"
-									: run.status === "cancelled"
-										? "var(--stale)"
-										: "var(--run-failed)",
-						}}
-					/>
+			</span>
+			<span className="sr-only">
+				{word && <span data-testid="incident-run-word">{word.text}</span>}
+				{why && !word && (
+					<span data-testid="incident-attention">
+						{INCIDENT_ATTENTION_LABEL[why]}
+					</span>
 				)}
-				<span
-					className="min-w-0 truncate text-foreground/80"
-					data-testid="incident-headline"
-				>
-					{headline.lead && (
-						<span className="font-medium text-foreground">
-							{headline.lead}{" "}
-						</span>
-					)}
+				<span data-testid="incident-headline">
+					{headline.lead ? `${headline.lead} ` : ""}
 					{headline.text}
 				</span>
-				<span className="ml-auto shrink-0 tabular-nums">
-					{ago(incident.triggeredAt, now)}
-				</span>
-			</div>
-		</div>
+			</span>
+		</>
 	);
 }

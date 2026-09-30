@@ -13,7 +13,7 @@ import { Card } from "./Card";
 
 const WHY: Record<IncidentAttention, string> = {
 	unacknowledged: "Nobody has taken this incident.",
-	failed_run: "The last run failed and nothing concluded.",
+	failed_run: "The last investigation failed and nothing concluded.",
 	awaiting_close: "Resolved. Close it with the actual cause recorded.",
 };
 
@@ -30,21 +30,13 @@ const CARD_TONE = {
 export function NeedsYouCard() {
 	const record = useIncidentRecord();
 	const why = attentionFor(record.incident);
-	if (!why) return null;
+	// A failed investigation is told once, on the Investigation card.
+	if (!why || why === "failed_run") return null;
 
 	const action =
 		why === "unacknowledged"
-			? { label: "Acknowledge", run: record.acknowledge, disabled: false }
-			: why === "failed_run"
-				? {
-						label: "Investigate again",
-						run: () => record.investigate(),
-						disabled:
-							!record.canInvestigate ||
-							!!record.investigateBlocked ||
-							record.isInvestigating,
-					}
-				: { label: "Close", run: record.openClose, disabled: false };
+			? { label: "Acknowledge", run: record.acknowledge }
+			: { label: "Close", run: record.openClose };
 
 	return (
 		<Card
@@ -59,13 +51,7 @@ export function NeedsYouCard() {
 		>
 			<div className="flex items-center gap-3">
 				<p className="min-w-0 flex-1 text-record">{WHY[why]}</p>
-				<Button
-					size="sm"
-					onClick={action.run}
-					disabled={action.disabled}
-					title={action.disabled ? record.investigateBlocked : undefined}
-					data-testid="needs-you-action"
-				>
+				<Button size="sm" onClick={action.run} data-testid="needs-you-action">
 					{action.label}
 				</Button>
 			</div>

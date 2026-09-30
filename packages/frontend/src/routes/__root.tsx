@@ -41,6 +41,7 @@ var e=document.documentElement;
 var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
+try{if(JSON.parse(localStorage.getItem('pl.layout')||'{}').sidebarFolded){e.setAttribute('data-sidebar-folded','');e.style.setProperty('--sidebar-w','0px');}}catch(_){}
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({

@@ -124,11 +124,17 @@ test.describe("#523 S2/final — the incidents queue", () => {
 			});
 		}
 
-		// The grouping and its order: triggered/failed/resolved above closed.
-		const needsYouHeader = page.getByTestId("group-needs-you");
-		const restHeader = page.getByTestId("group-rest");
-		await expect(needsYouHeader).toBeVisible();
-		await expect(restHeader).toBeVisible();
+		// The sidebar groups by service; these hand-made incidents have none, so
+		// they sit in No service. Closed ones wait below it in Settled, folded.
+		const groups = page.getByTestId("sidebar-group");
+		const noService = groups.filter({
+			has: page.locator('[data-lane="none"]'),
+		});
+		await expect(noService).toHaveCount(1);
+		await expect(groups.last()).toContainText("Settled");
+		await expect(groups.nth((await groups.count()) - 2)).toContainText(
+			"No service",
+		);
 
 		const triggeredRow = row(page, triggeredTitle);
 		const failedRow = row(page, failedRunTitle);
@@ -137,22 +143,25 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await expect(triggeredRow).toBeVisible();
 		await expect(failedRow).toBeVisible();
 		await expect(resolvedRow).toBeVisible();
+		await expect(closedRow).toHaveCount(0);
+		await groups.last().getByTestId("service-lane").click();
 		await expect(closedRow).toBeVisible();
 
-		const needsYouBox = await needsYouHeader.boundingBox();
-		const restBox = await restHeader.boundingBox();
-		expect(needsYouBox).not.toBeNull();
-		expect(restBox).not.toBeNull();
-		expect(needsYouBox?.y ?? 0).toBeLessThan(restBox?.y ?? 0);
+		// A row is one line: the glyph and the title. The state rides in hidden text.
+		await expect(triggeredRow.getByTestId("incident-attention")).toHaveText(
+			"Needs acknowledging",
+		);
+		await expect(failedRow.getByTestId("incident-attention")).toHaveText(
+			"Investigation failed",
+		);
+		await expect(triggeredRow).toHaveAttribute("title", /INC-\d+/);
 
-		const restBoxY = restBox?.y ?? 0;
+		const closedY = (await closedRow.boundingBox())?.y ?? 0;
 		for (const r of [triggeredRow, failedRow, resolvedRow]) {
 			const box = await r.boundingBox();
 			expect(box).not.toBeNull();
-			expect(box?.y ?? 0).toBeLessThan(restBoxY);
+			expect(box?.y ?? 0).toBeLessThan(closedY);
 		}
-		const closedBox = await closedRow.boundingBox();
-		expect(closedBox?.y ?? 0).toBeGreaterThan(restBoxY);
 
 		// The "Open" slot filters, and ended rows (resolved and closed)
 		// disappear. The router serialises a string search param as JSON, so
@@ -172,13 +181,17 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
 
-		// `[` folds the sidebar, and folds it back.
+		// `[` folds the sidebar away and back; its toggle never moves.
 		const sidebar = page.getByTestId("sidebar");
-		await expect(sidebar).not.toHaveAttribute("data-folded", "true");
+		const toggle = page.getByTestId("sidebar-toggle");
+		await expect(sidebar).toBeVisible();
+		const open = await toggle.boundingBox();
 		await page.keyboard.press("[");
-		await expect(sidebar).toHaveAttribute("data-folded", "true");
-		await page.keyboard.press("[");
-		await expect(sidebar).not.toHaveAttribute("data-folded", "true");
+		await expect(sidebar).toHaveCount(0);
+		await expect(toggle).toHaveAttribute("aria-expanded", "false");
+		expect(await toggle.boundingBox()).toEqual(open);
+		await toggle.click();
+		await expect(sidebar).toBeVisible();
 
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");

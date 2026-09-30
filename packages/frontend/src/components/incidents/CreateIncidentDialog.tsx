@@ -40,6 +40,8 @@ export interface CreateIncidentDialogProps {
 	onOpenChange: (open: boolean) => void;
 	/** Called with the id of the incident the API just created. */
 	onCreated?: (incidentId: string) => void;
+	/** The service picked when the dialog opens, from a sidebar group's + (#743). */
+	defaultServiceId?: string;
 }
 
 const SEVERITIES = enumOptions(SeveritySchema, SEVERITY_LABEL);
@@ -69,6 +71,7 @@ export function CreateIncidentDialog({
 	open,
 	onOpenChange,
 	onCreated,
+	defaultServiceId,
 }: CreateIncidentDialogProps) {
 	const [title, setTitle] = useState("");
 	const [description, setDescription] = useState("");
@@ -90,10 +93,10 @@ export function CreateIncidentDialog({
 			setDescription("");
 			setSeverity(DEFAULT_SEVERITY);
 			setPriority(DEFAULT_PRIORITY);
-			setServiceId(NO_SERVICE);
+			setServiceId(defaultServiceId ?? NO_SERVICE);
 			setError(null);
 		}
-	}, [open]);
+	}, [open, defaultServiceId]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();

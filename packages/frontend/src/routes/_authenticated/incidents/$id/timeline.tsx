@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/timeline")({
 });
 
 function TimelineRoute() {
-	const { incident, timeline, timelineLoading } = useIncidentRecord();
+	const { incident, runs, timeline, timelineLoading } = useIncidentRecord();
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="timeline-route">
 			<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 sm:px-6">
@@ -23,6 +23,7 @@ function TimelineRoute() {
 					<TimelineTab
 						incidentId={incident.id}
 						entries={timeline}
+						runs={runs}
 						isLoading={timelineLoading}
 					/>
 				</div>

@@ -6,9 +6,7 @@ import {
 	isRunStateLive,
 	isWorkflowLive,
 	RUN_STATE_LABEL,
-	runState,
 } from "@prismalens/contracts";
-import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import {
 	agentModelLabel,
@@ -17,12 +15,6 @@ import {
 } from "@/components/agent/AgentPicker";
 import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
 	Popover,
 	PopoverContent,
@@ -86,12 +78,12 @@ export function runElapsed(
 }
 
 /**
- * The run strip (#743 §2): one row under the band with the run's own words,
- * never the incident's. State, agent and model, what it is doing, elapsed,
- * the run picker when there is more than one, and Stop while it is live.
+ * The run's status (#743 §2), at the right end of the tab row: the
+ * investigation's own words, never the incident's: state, agent and model,
+ * what it is doing, elapsed, and Stop while it is live.
  */
 export function RunStrip() {
-	const { run, runs, investigationId, selectRun } = useIncidentRecord();
+	const { run } = useIncidentRecord();
 	const now = useNow(1000);
 	const investigation = run.investigation;
 	const who = useRunAgentModel(investigation);
@@ -106,7 +98,7 @@ export function RunStrip() {
 
 	return (
 		<div
-			className="flex h-8 shrink-0 items-center gap-3 overflow-hidden bg-muted/40 px-3 whitespace-nowrap [view-transition-name:run-strip]"
+			className="flex h-9 min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap [view-transition-name:run-strip]"
 			data-testid="run-strip"
 		>
 			<StateChip
@@ -144,39 +136,6 @@ export function RunStrip() {
 				{formatElapsed(runElapsed(investigation, now))}
 			</span>
 			<div className="ml-auto flex shrink-0 items-center gap-1">
-				{runs.length > 1 && (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="xs"
-								className="text-meta"
-								data-testid="run-picker"
-							>
-								{runLabel(runs, investigationId)}
-								<ChevronDown />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-48">
-							{runs.map((r, i) => (
-								<DropdownMenuItem
-									key={r.id}
-									onClick={() => selectRun(r.id)}
-									className={cn(
-										"justify-between",
-										r.id === investigationId && "bg-muted",
-									)}
-									data-testid="run-picker-option"
-								>
-									<span className="tabular-nums">Run {runs.length - i}</span>
-									<span className="text-meta text-muted-foreground">
-										{RUN_STATE_LABEL[runState(r.status, { hasEvents: true })]}
-									</span>
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)}
 				{live && <StopButton />}
 			</div>
 		</div>
@@ -195,7 +154,7 @@ function StopButton() {
 		run.stop({
 			onError: (error) =>
 				toast({
-					title: "Stop did not reach the run",
+					title: "Stop did not reach the investigation",
 					description: getErrorMessage(error),
 					variant: "destructive",
 				}),
@@ -227,10 +186,11 @@ function StopButton() {
 				}}
 			>
 				<div className="space-y-1">
-					<p className="text-record font-medium">Stop this run?</p>
+					<p className="text-record font-medium">Stop this investigation?</p>
 					<p className="text-record text-muted-foreground">
 						The agent stops at its current step. Everything it found so far
-						stays in the conversation. You can start a new run afterwards.
+						stays in the conversation. You can start a new investigation
+						afterwards.
 					</p>
 				</div>
 				<div className="flex justify-end gap-2">
@@ -244,19 +204,10 @@ function StopButton() {
 						data-stop-run
 						data-testid="run-stop-confirm-button"
 					>
-						Stop run
+						Stop
 					</Button>
 				</div>
 			</PopoverContent>
 		</Popover>
 	);
-}
-
-/** "Run 2 of 3"; a run the list has not caught up with yet is the latest. */
-export function runLabel(
-	runs: ReadonlyArray<{ id: string }>,
-	investigationId: string | null,
-): string {
-	const idx = runs.findIndex((r) => r.id === investigationId);
-	return idx < 0 ? "Latest run" : `Run ${runs.length - idx} of ${runs.length}`;
 }

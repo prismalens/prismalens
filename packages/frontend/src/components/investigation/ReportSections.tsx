@@ -159,8 +159,8 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 			) : (
 				<p className="text-record text-muted-foreground">
 					{investigation.status === "completed"
-						? "The run finished without naming a root cause. The evidence below is what it found."
-						: "The run failed before a root cause was found."}
+						? "The investigation finished without naming a root cause. The evidence below is what it found."
+						: "The investigation failed before a root cause was found."}
 				</p>
 			)}
 

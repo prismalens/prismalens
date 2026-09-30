@@ -32,6 +32,7 @@ export interface ListKeyboard {
 export function useListKeyboard(
 	count: number,
 	onOpen: (index: number) => void,
+	enabled = true,
 ): ListKeyboard {
 	const [cursor, setCursor] = useState(-1);
 	/** The cursor was last moved by a key, not by the pointer. */
@@ -43,6 +44,7 @@ export function useListKeyboard(
 
 	const onKey = useCallback(
 		(e: KeyboardEvent) => {
+			if (!enabled) return;
 			if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
 			if (count === 0) return;
 			if (e.key === "j" || e.key === "ArrowDown") {
@@ -60,7 +62,7 @@ export function useListKeyboard(
 				setCursor(-1);
 			}
 		},
-		[count, cursor, keyed, onOpen],
+		[count, cursor, keyed, onOpen, enabled],
 	);
 
 	useEffect(() => {

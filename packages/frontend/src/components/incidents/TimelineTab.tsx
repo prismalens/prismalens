@@ -25,12 +25,15 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { groupTimeline, type InvestigationRef } from "@/lib/timeline-groups";
 import { cn } from "@/lib/utils";
-import { TimelineEntry } from "./TimelineEntry";
+import { TimelineList } from "./TimelineList";
 
 export interface TimelineTabProps {
 	incidentId: string;
 	entries: TimelineEntryWithRelations[];
+	/** The incident's investigations, newest first; their entries fold into one row each. */
+	runs?: InvestigationRef[];
 	isLoading?: boolean;
 	className?: string;
 }
@@ -73,6 +76,7 @@ function groupEntriesByDate(
 export function TimelineTab({
 	incidentId,
 	entries,
+	runs = [],
 	isLoading,
 	className,
 }: TimelineTabProps) {
@@ -123,7 +127,7 @@ export function TimelineTab({
 	return (
 		<div className={cn("space-y-4", className)}>
 			<div className="flex flex-wrap items-center gap-2">
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-2 [&_button]:h-7 [&_button]:text-meta">
 					<Select
 						value={typeFilter}
 						onValueChange={(v) => setTypeFilter(v as TypeFilter)}
@@ -166,27 +170,14 @@ export function TimelineTab({
 					their own, and so do your notes.
 				</p>
 			) : (
-				<div className="space-y-6">
+				<div className="space-y-4">
 					{Array.from(groupedEntries.entries()).map(([dateKey, dayEntries]) => (
-						<div key={dateKey}>
-							<h3 className="text-sm font-medium text-muted-foreground mb-3 sticky top-0 bg-background py-1">
+						<section key={dateKey}>
+							<h3 className="sticky top-0 bg-background py-1 text-meta font-medium text-muted-foreground">
 								{formatDateHeader(dayEntries[0].occurredAt)}
 							</h3>
-							<div className="border-l-2 border-border pl-4 ml-3">
-								{dayEntries.map((entry) => (
-									<TimelineEntry
-										key={entry.id}
-										id={entry.id}
-										type={entry.type}
-										title={entry.title}
-										description={entry.description}
-										source={entry.source}
-										occurredAt={entry.occurredAt}
-										user={entry.user}
-									/>
-								))}
-							</div>
-						</div>
+							<TimelineList items={groupTimeline(dayEntries, runs)} full />
+						</section>
 					))}
 				</div>
 			)}

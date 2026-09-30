@@ -113,7 +113,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await serveUnusableLlmAndHarnesses(page);
 		const id = await createIncident(page, `Gate disabled ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/alerts`);
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -136,7 +136,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await serveRunnableLlmAndHarnesses(page);
 		const id = await createIncident(page, `Gate enabled ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/alerts`);
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -176,7 +176,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			await route.fallback();
 		});
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/alerts`);
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -206,7 +206,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			page,
 			`Gate evidence default ${Date.now()}`,
 		);
-		await page.goto(`/incidents/${defaultId}`);
+		await page.goto(`/incidents/${defaultId}/alerts`);
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
@@ -272,7 +272,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			}
 			await route.fallback();
 		});
-		await page.goto(`/incidents/${errorId}`);
+		await page.goto(`/incidents/${errorId}/alerts`);
 		await expect(page.locator("html")).toHaveClass(/light/);
 		const errorBtn = bandInvestigate(page);
 		await expect(errorBtn).toBeEnabled({ timeout: 15_000 });

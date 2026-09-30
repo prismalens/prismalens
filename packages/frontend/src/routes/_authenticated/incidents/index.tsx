@@ -127,7 +127,7 @@ function IncidentsLanding() {
 				/>
 				{!analytics && !firstRun && (
 					<span
-						className="hidden items-center gap-3 text-meta text-muted-foreground tabular-nums xl:flex"
+						className="hidden items-center gap-3 whitespace-nowrap text-meta text-muted-foreground tabular-nums 2xl:flex"
 						data-testid="board-numbers"
 					>
 						<span>{numbers.open} open</span>
@@ -140,7 +140,7 @@ function IncidentsLanding() {
 				<div className="ml-auto flex items-center gap-1">
 					{!analytics && (
 						<>
-							<label className="flex w-44 items-center gap-1.5 rounded border bg-muted/40 px-2">
+							<label className="flex w-44 items-center gap-1.5 rounded border bg-background px-2">
 								<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 								<input
 									value={q}
@@ -155,7 +155,7 @@ function IncidentsLanding() {
 								value={windowValue}
 								onChange={(e) => setWindow(e.target.value)}
 								aria-label="Window"
-								className="h-6 rounded border bg-muted/40 px-1 text-meta text-muted-foreground outline-none"
+								className="h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none"
 								data-testid="board-window"
 							>
 								<option value="all">All time</option>

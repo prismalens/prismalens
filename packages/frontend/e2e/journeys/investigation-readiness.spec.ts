@@ -157,17 +157,19 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 
-		// Band: disabled, and hovering names the reason.
+		// The box on Overview: disabled, with the reason rendered under it.
+		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
+		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible();
+
+		// The band carries Investigate on a tab without the box: disabled, and
+		// hovering names the same reason.
+		await page.getByTestId("tab-alerts").click();
 		const headerBtn = page.getByTestId("band-investigate");
 		await expect(headerBtn).toBeDisabled();
-		await headerBtn.hover({ force: true });
+		await page.getByTestId("band-investigate-trigger").hover();
 		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible({
 			timeout: 15_000,
 		});
-
-		// The box: disabled, with the reason rendered under it.
-		await expect(boxInvestigateButton(page)).toBeDisabled();
-		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible();
 	});
 
 	test("a runnable selection enables both affordances", async ({ page }) => {
@@ -176,10 +178,9 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, title);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(
-			page.getByTestId("band-investigate"),
-		).toBeEnabled({ timeout: 15_000 });
-		await expect(boxInvestigateButton(page)).toBeEnabled();
+		await expect(boxInvestigateButton(page)).toBeEnabled({ timeout: 15_000 });
+		await page.getByTestId("tab-alerts").click();
+		await expect(page.getByTestId("band-investigate")).toBeEnabled();
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -212,22 +213,18 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 				.getByRole("heading", { name: new RegExp(title) }),
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
-		await expect(
-			page.getByTestId("band-investigate"),
-		).toBeDisabled({ timeout: 15_000 });
+		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
-		await expect(
-			page.getByTestId("band-investigate"),
-		).toBeDisabled({ timeout: 15_000 });
+		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
 
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-card")).toContainText("No run yet", {
+		await expect(page.getByTestId("run-card")).toContainText("No investigation yet", {
 			timeout: 15_000,
 		});
 		await expect(boxInvestigateButton(page)).toBeDisabled();

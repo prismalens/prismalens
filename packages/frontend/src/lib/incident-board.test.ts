@@ -3,7 +3,13 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { boardColumn, incidentHeadline, runWord } from "./incident-board";
+import {
+	boardColumn,
+	headlineAddsInfo,
+	rowGlyph,
+	incidentHeadline,
+	runWord,
+} from "./incident-board";
 
 function incident(
 	status: string,
@@ -86,7 +92,7 @@ describe("boardColumn", () => {
 describe("incidentHeadline", () => {
 	it("says what the latest run did, from the list payload", () => {
 		expect(incidentHeadline(incident("triggered"))).toEqual({
-			text: "No run yet",
+			text: "No investigation yet",
 		});
 		expect(
 			incidentHeadline(incident("investigating", { status: "pending" })),
@@ -101,7 +107,7 @@ describe("incidentHeadline", () => {
 		).toEqual({ lead: "Likely:", text: "TTL cut in 3b7e0d" });
 		expect(
 			incidentHeadline(incident("investigating", { status: "failed" })),
-		).toEqual({ text: "Run failed" });
+		).toEqual({ text: "Investigation failed" });
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -129,7 +135,7 @@ describe("incidentHeadline", () => {
 					error: "not logged in; run claude login",
 				}),
 			),
-		).toEqual({ text: "Run failed: not logged in" });
+		).toEqual({ text: "Investigation failed: not logged in" });
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -189,5 +195,31 @@ describe("runWord", () => {
 		expect(
 			runWord(incident("investigating", { status: "cancelled" }), now),
 		).toBeNull();
+	});
+});
+
+describe("headlineAddsInfo", () => {
+	it("drops a headline that only repeats the state word", () => {
+		expect(headlineAddsInfo({ text: "No investigation yet" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Working…" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Investigation failed" })).toBe(false);
+		expect(headlineAddsInfo({ lead: "Likely:", text: "TTL cut" })).toBe(true);
+		expect(headlineAddsInfo({ text: "Investigation failed: not logged in" })).toBe(true);
+		expect(headlineAddsInfo({ text: "Comparing the TTL change" })).toBe(true);
+	});
+});
+
+describe("rowGlyph", () => {
+	it("shows a live run first, then what wants a human, then open or ended", () => {
+		expect(rowGlyph(incident("resolved", { status: "running" }))).toBe("live");
+		expect(rowGlyph(incident("triggered"))).toBe("attention");
+		expect(rowGlyph(incident("investigating", { status: "failed" }))).toBe(
+			"attention",
+		);
+		expect(rowGlyph(incident("investigating", { status: "completed" }))).toBe(
+			"open",
+		);
+		expect(rowGlyph(incident("resolved"))).toBe("ended");
+		expect(rowGlyph(incident("closed"))).toBe("ended");
 	});
 });

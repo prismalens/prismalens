@@ -85,6 +85,20 @@ export interface Headline {
 	text: string;
 }
 
+const SAYS_NOTHING_NEW = new Set([
+	"No investigation yet",
+	"Starting…",
+	"Working…",
+	"Stopping…",
+	"Investigation failed",
+	"Done, no cause named",
+]);
+
+/** Whether a headline tells more than the state word beside it (#743). */
+export function headlineAddsInfo(h: Headline): boolean {
+	return !!h.lead || !SAYS_NOTHING_NEW.has(h.text);
+}
+
 /**
  * The agent's one-line headline for a row or card (#743 §3c). Only what the
  * list payload carries: the latest run's status, its root cause and times.
@@ -103,7 +117,7 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 	) {
 		return { lead: "Cause:", text: incident.actualCause };
 	}
-	if (!run) return { text: "No run yet" };
+	if (!run) return { text: "No investigation yet" };
 	switch (run.status) {
 		case "pending":
 			return { text: run.stopRequestedAt ? "Stopping…" : "Starting…" };
@@ -122,8 +136,8 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 		case "failed":
 			return {
 				text: run.error
-					? `Run failed: ${firstClause(run.error)}`
-					: "Run failed",
+					? `Investigation failed: ${firstClause(run.error)}`
+					: "Investigation failed",
 			};
 		case "completed":
 			return run.rootCause
@@ -137,4 +151,18 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 		default:
 			return { text: run.status };
 	}
+}
+
+export type RowGlyph = "live" | "attention" | "open" | "ended";
+
+/**
+ * The sidebar row's one glyph (#743): a live run, something that wants a
+ * human, an open incident with nothing live, or one that is resolved or closed.
+ */
+export function rowGlyph(incident: IncidentWithRelations): RowGlyph {
+	const run = latestRun(incident);
+	if (run && isWorkflowLive(run.status)) return "live";
+	const why = attentionFor(incident);
+	if (why === "unacknowledged" || why === "failed_run") return "attention";
+	return isIncidentOpen(incident.status) ? "open" : "ended";
 }

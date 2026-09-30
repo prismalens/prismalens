@@ -258,7 +258,7 @@ async function runJobInternal(
 					await ports.createTimelineEntry({
 						incidentId,
 						type: "investigation_completed",
-						title: "AI Investigation Failed",
+						title: "Investigation failed",
 						description: errorMessage,
 						source: "ai_worker",
 						metadata: { investigationId, error: errorMessage },
@@ -428,7 +428,7 @@ async function recordWorkspace(
 			type: "investigation_started",
 			title: ws.mapped
 				? "Investigating the service's repository"
-				: "Investigating WITHOUT a linked repository",
+				: "No repository linked: the agent read no code",
 			description: ws.note,
 			source: "ai_worker",
 			metadata: {

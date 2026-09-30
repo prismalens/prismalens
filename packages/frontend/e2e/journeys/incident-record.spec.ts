@@ -116,7 +116,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.locator("#report")).toBeVisible();
 		await expect(page.locator("#evidence")).toBeVisible();
 		await expect(page.getByTestId("run-strip")).toBeVisible();
-		await expect(page.getByTestId("record-crumb")).toBeVisible();
+		await expect(page.getByTestId("record-tabs")).toBeVisible();
 
 		// Esc goes back to the incident.
 		await page.locator("body").press("Escape");
@@ -148,7 +148,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.waitForLoadState("networkidle");
 	});
 
-	test("the routes under the incident: crumb links and Esc back", async ({
+	test("the incident tabs: every tab in place, and Esc walks back to the board", async ({
 		page,
 	}) => {
 		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
@@ -158,11 +158,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("incident-state-band")).toBeVisible();
 		await expect(page.getByTestId("run-strip")).toBeVisible();
 
-		await page.getByTestId("crumb-timeline").click();
+		await page.getByTestId("tab-timeline").click();
 		await expect(page.getByTestId("timeline-route")).toBeVisible();
 		await expect(page.getByTestId("note-field")).toBeVisible();
 
-		await page.getByTestId("crumb-conversation").click();
+		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
 
 		// Esc is ignored while typing, and goes back once the field lets go.
@@ -172,6 +172,13 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.getByTestId("composer-input").blur();
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("incident-record")).toBeVisible();
+
+		// From Overview, Esc and the back arrow both reach the board.
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("incident-board")).toBeVisible();
+		await page.goto(`/incidents/${INCIDENT_ID}`);
+		await page.getByRole("link", { name: "Back to the board" }).click();
+		await expect(page.getByTestId("incident-board")).toBeVisible();
 
 		// An old investigation link lands on the conversation.
 		await page.goto(`/investigations/${INVESTIGATION_ID}`);
@@ -184,13 +191,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(page.getByTestId("run-card")).toContainText("No run yet", {
+		await expect(page.getByTestId("run-card")).toContainText("No investigation yet", {
 			timeout: 15_000,
 		});
 		await setTheme(page, "light");
-		await expect(page.getByTestId("conclusion-card")).toContainText(
-			"Lands here when a run finishes.",
-		);
+		await expect(page.getByTestId("conclusion-card")).toHaveCount(0);
 		await expect(page.getByTestId("run-strip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",
@@ -262,7 +267,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		// Keep going closes the confirm and sends nothing.
 		await page.getByTestId("run-stop").click();
 		const confirm = page.getByTestId("run-stop-confirm");
-		await expect(confirm).toContainText("Stop this run?");
+		await expect(confirm).toContainText("Stop this investigation?");
 		await confirm.getByRole("button", { name: "Keep going" }).click();
 		await expect(confirm).toHaveCount(0);
 		expect(cancelled).toBe(0);
@@ -346,7 +351,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		expect(sent[1]).toMatchObject({ mode: "now" });
 		const undeliverable = page.getByTestId("composer-undeliverable");
 		await expect(undeliverable).toContainText(
-			"The run ended before your message reached it.",
+			"The investigation ended before your message reached it.",
 		);
 		await expect(
 			page.locator(

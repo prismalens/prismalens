@@ -19,10 +19,13 @@ export function DockedComposer({
 	branchId,
 	target = "the main agent",
 	className,
+	width = "max-w-3xl",
 }: {
 	branchId?: string;
 	target?: string;
 	className?: string;
+	/** The page's content width, so the box lines up with what is above it. */
+	width?: string;
 }) {
 	const record = useIncidentRecord();
 	const { run, investigationId } = record;
@@ -33,10 +36,10 @@ export function DockedComposer({
 
 	return (
 		<div
-			className={cn("shrink-0 bg-background px-3 pt-1 pb-3", className)}
+			className={cn("shrink-0 bg-background px-4 pt-1 pb-3 sm:px-6", className)}
 			data-testid="docked-composer"
 		>
-			<div className="mx-auto max-w-3xl">
+			<div className={cn("mx-auto", width)}>
 				<ComposerBox
 					docked
 					mode={mode}

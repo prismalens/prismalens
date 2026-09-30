@@ -18,3 +18,6 @@ export function useMediaQuery(query: string): boolean {
 
 /** The list and the record sit side by side from Tailwind's `lg`. */
 export const SPLIT_PANES = "(min-width: 1024px)";
+
+/** The sidebar sits beside the page from Tailwind's `md`; below it is a top strip. */
+export const SIDEBAR_BESIDE = "(min-width: 768px)";

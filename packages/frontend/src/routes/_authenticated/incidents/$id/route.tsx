@@ -1,18 +1,22 @@
 /**
- * The incident's layout (#743 §3c): the band and, once a run exists, the run
- * strip stay pinned over every layer under the incident; the card page and
- * the routes (conversation, report, alerts, timeline) scroll inside their
- * bounds. The run the strip follows is the one in the URL, else the one just
+ * The incident's layout (#743 §3c): the band and the tab row, with the
+ * run's status at its right end, stay pinned over every tab; each tab's body
+ * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
  * started, else the newest.
  */
-import { canIncidentAction, isWorkflowLive } from "@prismalens/contracts";
+import {
+	canIncidentAction,
+	isWorkflowLive,
+	runState,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { CloseIncidentDialog } from "@/components/incidents/CloseIncidentDialog";
 import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
-import { RecordCrumb } from "@/components/incidents/RecordCrumb";
+import { RecordTabs } from "@/components/incidents/RecordTabs";
+import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { RunStrip } from "@/components/incidents/RunStrip";
 import {
 	type IncidentRecord,
@@ -117,6 +121,21 @@ function IncidentLayout() {
 		},
 	});
 
+	const [reopenOpen, setReopenOpen] = useState(false);
+	const reopenMutation = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () => {
+			setReopenOpen(false);
+			return invalidateIncident();
+		},
+		onError: (err) =>
+			toast({
+				title: "Not reopened",
+				description: getErrorMessage(err),
+				variant: "destructive",
+			}),
+	});
+
 	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
 	// Any live run on the incident withholds Investigate, whichever run is selected.
 	const runLive = run.isActive || runs.some((r) => isWorkflowLive(r.status));
@@ -143,6 +162,7 @@ function IncidentLayout() {
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
 			resolve: () => resolveMutation.mutate({ id }),
 			openClose: () => setCloseOpen(true),
+			openReopen: () => setReopenOpen(true),
 			addNote: (text: string, onDone?: () => void) =>
 				createNote.mutate(
 					{ incidentId: id, title: text, type: "comment", source: "user" },
@@ -202,16 +222,36 @@ function IncidentLayout() {
 					onInvestigate={() => record.investigate()}
 					onResolve={record.resolve}
 					onClose={record.openClose}
+					onReopen={record.openReopen}
 					isInvestigating={investigateMutation.isPending}
 					investigateDisabled={!agentReady}
 					investigateDisabledReason={blockedReason}
 					backToIncident={here !== null}
+					hideInvestigate={here === null || here === "conversation"}
 				/>
-				<RunStrip />
-				{here && <RecordCrumb incidentId={id} here={here} />}
+				<RecordTabs
+					incidentId={id}
+					here={here}
+					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
+					dimmed={
+						runs.some((r) => runState(r.status, { hasEvents: true }) === "done")
+							? []
+							: ["report"]
+					}
+					status={<RunStrip />}
+				/>
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
+				<ReopenDialog
+					open={reopenOpen}
+					onOpenChange={setReopenOpen}
+					incidentNumber={incident.number}
+					isPending={reopenMutation.isPending}
+					onConfirm={() =>
+						reopenMutation.mutate({ id, status: "investigating" })
+					}
+				/>
 				<CloseIncidentDialog
 					open={closeOpen}
 					onOpenChange={setCloseOpen}

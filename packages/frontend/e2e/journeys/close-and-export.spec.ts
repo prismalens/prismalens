@@ -62,9 +62,9 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await close.click();
 		await page.getByTestId("confirm-close-incident").click();
 		await expect(close).toHaveCount(0, { timeout: 15_000 });
-		// A closed incident can still be investigated again (#743); its
-		// status stays closed.
-		await expect(page.getByTestId("band-investigate")).toBeVisible();
+		// A closed incident can still be investigated again (#743), from the
+		// box on Overview; its status stays closed.
+		await expect(page.getByTestId("composer-investigate")).toBeVisible();
 		await expect(page.getByTestId("band-status")).toHaveText("Closed");
 	});
 
