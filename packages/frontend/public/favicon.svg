@@ -1,11 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>PrismaLens</title>
-  <style>.i{stroke:#0F172A}.r{stroke:#4F46E5}@media(prefers-color-scheme:dark){.i{stroke:#E2E8F0}.r{stroke:#818CF8}}</style>
-  <g fill="none" stroke-linecap="round">
-    <path class="i" d="M1 34H18" opacity=".6" stroke-width="4.5"/>
-    <path class="r" d="M42.9 27 63 16" stroke-width="4.5"/>
-    <path class="r" d="M44.3 29.5 63 30" stroke-width="4.5" opacity=".7"/>
-    <path class="r" d="M45.8 32 63 44" stroke-width="4.5" opacity=".45"/>
-    <path class="i" d="M32 13.4 52 48H12Z" stroke-width="5" stroke-linejoin="round"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<title>PrismaLens</title>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6366F1"/><stop offset=".55" stop-color="#4F46E5"/><stop offset="1" stop-color="#4338CA"/></linearGradient>
+<linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+<rect x="2" y="2" width="1020" height="1020" rx="226" fill="none" stroke="url(#sheen)" stroke-width="4"/>
+<g transform="translate(153.6,153.6) scale(2.8000)"><circle cx="142" cy="104" r="54" fill="none" stroke="#FFFFFF" stroke-width="46"/><line x1="88.0" y1="64.0" x2="88.0" y2="224.0" stroke="#FFFFFF" stroke-width="46" stroke-linecap="round"/></g>
 </svg>

@@ -205,6 +205,8 @@ function openWindow(path = "/"): void {
 		minWidth: 800,
 		minHeight: 560,
 		title: "PrismaLens",
+		// macOS takes the app bundle's icon; Linux and Windows need it here.
+		...(process.platform === "darwin" ? {} : { icon: asset("icon.png") }),
 		show: false,
 		...frameOptions(process.platform, theme),
 		webPreferences: {
@@ -355,27 +357,19 @@ async function confirmReset(): Promise<void> {
 	app.exit(0);
 }
 
+// `assets/` ships inside the app (build.files); electron-builder's `build/` does not (#745).
+function asset(name: string): string {
+	return fileURLToPath(new URL(`../assets/${name}`, import.meta.url));
+}
+
 function trayIcon() {
-	// A 16x16 template mark drawn in code keeps the package free of binary
-	// assets; a designed icon lands with the signed build (#697).
-	const size = 16;
-	const buf = Buffer.alloc(size * size * 4);
-	for (let y = 0; y < size; y++) {
-		for (let x = 0; x < size; x++) {
-			const i = (y * size + x) * 4;
-			const inRing =
-				Math.hypot(x - 7.5, y - 7.5) <= 7 && Math.hypot(x - 7.5, y - 7.5) >= 4;
-			buf[i] = 0;
-			buf[i + 1] = 0;
-			buf[i + 2] = 0;
-			buf[i + 3] = inRing ? 255 : 0;
-		}
-	}
-	const image = nativeImage.createFromBitmap(buf, {
-		width: size,
-		height: size,
-	});
-	image.setTemplateImage(true);
+	// macOS tints the one-colour template mark to the menu bar; elsewhere the
+	// coloured tile. Each loads its @2x sibling on HiDPI screens.
+	const mac = process.platform === "darwin";
+	const image = nativeImage.createFromPath(
+		asset(mac ? "trayTemplate.png" : "tray.png"),
+	);
+	if (mac) image.setTemplateImage(true);
 	return image;
 }
 
