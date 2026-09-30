@@ -60,6 +60,7 @@ import {
 	BOARD_COLUMNS,
 	type BoardColumn,
 	boardColumn,
+	headlineAddsInfo,
 	incidentHeadline,
 	latestRun,
 	runWord,
@@ -426,7 +427,7 @@ export function IncidentBoard({
 					className="hidden min-h-0 flex-1 overflow-y-auto lg:block"
 					data-testid="incident-board"
 				>
-					<div className="sticky top-0 z-10 grid grid-cols-4 gap-2 bg-background px-2">
+					<div className="sticky top-0 z-10 grid grid-cols-4 gap-4 bg-background px-4">
 						{BOARD_COLUMNS.map((column) => (
 							<div key={column.id} className="flex h-8 items-center gap-2 px-3">
 								<StateWord tone={COLUMN_TONE[column.id]}>
@@ -456,7 +457,7 @@ export function IncidentBoard({
 							{!laneFolded(lane.id) && (
 								<div
 									className={cn(
-										"grid grid-cols-4 gap-2 px-2",
+										"grid grid-cols-4 gap-4 px-4",
 										!grouped && "min-h-[calc(100%-2rem)]",
 									)}
 								>
@@ -520,6 +521,7 @@ export function IncidentBoard({
 								incident={dragging.incident}
 								column={dragging.from}
 								now={now}
+								grouped={dragging.lane !== ALL}
 							/>
 						</div>
 					)}
@@ -601,7 +603,7 @@ function DropColumn({
 			data-column={column.id}
 			data-drop={action ? (valid ? "valid" : "refused") : undefined}
 			className={cn(
-				"flex min-w-0 flex-col gap-2 rounded-md pb-2 transition-colors motion-reduce:transition-none",
+				"flex min-w-0 flex-col gap-3 rounded-md pb-3 transition-colors motion-reduce:transition-none",
 				valid && "bg-primary/5",
 				valid && isOver && "bg-primary/10",
 				refused && "opacity-50",
@@ -666,6 +668,7 @@ function DraggableCard({
 						now={now}
 						busy={busy}
 						also={also}
+						grouped={also !== undefined}
 					/>
 				</Link>
 			</li>
@@ -679,45 +682,45 @@ function BoardCardBody({
 	now,
 	busy,
 	also,
+	grouped,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
 	busy?: string;
 	also?: string[];
+	/** Grouped by service: the lane already names the service. */
+	grouped?: boolean;
 }) {
 	const why = attentionFor(incident);
 	const word = runWord(incident, now);
 	const headline = incidentHeadline(incident);
-	const service =
-		incident.service?.displayName || incident.service?.name || "no service";
+	const service = incident.service?.displayName || incident.service?.name;
 
 	return (
-		<div className="space-y-1 rounded-md bg-muted/40 px-3 py-2 hover:bg-muted/70">
-			<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
+		<div
+			className="min-h-[5.5rem] space-y-1.5 rounded-md bg-muted/40 px-3.5 py-3 hover:bg-muted/70"
+			title={`INC-${incident.number}${service ? `, ${service}` : ""}`}
+		>
+			<div className="flex items-start gap-2">
 				<span
 					role="img"
 					aria-label={SEVERITY_LABEL[incident.severity]}
-					title={SEVERITY_LABEL[incident.severity]}
-					className="h-2 w-2 shrink-0 rounded-full"
+					className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
 					style={{ background: `var(--sev-${incident.severity})` }}
 				/>
-				<span className="truncate">{service}</span>
-				<Mono className="ml-auto shrink-0">INC-{incident.number}</Mono>
+				<p className="line-clamp-2 min-w-0 text-record leading-snug">
+					{incident.title}
+				</p>
 			</div>
-			<p
-				className="line-clamp-2 text-record leading-snug font-medium"
-				title={incident.title}
-			>
-				{incident.title}
-			</p>
-			<div className="flex items-center gap-2 text-meta">
+			<div className="flex min-w-0 items-center gap-3 text-meta text-muted-foreground">
 				{column === "needs_you" && why ? (
-					<StateWord tone={attentionTone[why]}>
+					<StateWord quiet tone={attentionTone[why]}>
 						{INCIDENT_ATTENTION_LABEL[why]}
 					</StateWord>
 				) : word ? (
 					<StateWord
+						quiet
 						tone={word.stale ? "stale" : runStateTone(word.state)}
 						pulse
 						className="tabular-nums"
@@ -725,32 +728,33 @@ function BoardCardBody({
 						{word.text}
 					</StateWord>
 				) : (
-					<StateWord tone={incidentStatusTone(incident.status)}>
+					<StateWord quiet tone={incidentStatusTone(incident.status)}>
 						{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
 							incident.status}
 					</StateWord>
 				)}
-				<span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+				{!grouped && service && (
+					<span className="min-w-0 truncate">{service}</span>
+				)}
+				<span className="ml-auto shrink-0 tabular-nums">
 					{ago(incident.triggeredAt, now)}
 				</span>
 			</div>
-			<p
-				className="truncate text-meta text-muted-foreground"
-				data-testid="board-card-headline"
-			>
-				{busy ? (
-					<span className="text-foreground">{busy}</span>
-				) : (
-					<>
+			{busy ? (
+				<p className="truncate text-meta text-foreground">{busy}</p>
+			) : (
+				headlineAddsInfo(headline) && (
+					<p
+						className="truncate text-meta text-muted-foreground"
+						data-testid="board-card-headline"
+					>
 						{headline.lead && (
-							<span className="font-medium text-foreground">
-								{headline.lead}{" "}
-							</span>
+							<span className="text-foreground">{headline.lead} </span>
 						)}
 						{headline.text}
-					</>
-				)}
-			</p>
+					</p>
+				)
+			)}
 			{also && also.length > 0 && (
 				<p
 					className="truncate text-meta text-muted-foreground"

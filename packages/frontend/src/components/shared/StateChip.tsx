@@ -41,6 +41,8 @@ export interface StateChipProps extends HTMLAttributes<HTMLSpanElement> {
 	dashed?: boolean;
 	/** A pulsing dot in front of the label, for a state that is changing right now. */
 	pulse?: boolean;
+	/** StateWord only: the dot keeps the colour, the word reads muted. */
+	quiet?: boolean;
 	children: ReactNode;
 }
 
@@ -54,6 +56,7 @@ export function StateChip({
 	mono,
 	dashed,
 	pulse,
+	quiet: _quiet,
 	className,
 	style,
 	children,
@@ -90,6 +93,7 @@ export function StateChip({
 export function StateWord({
 	tone,
 	pulse,
+	quiet,
 	className,
 	style,
 	children,
@@ -100,7 +104,8 @@ export function StateWord({
 			data-tone={tone}
 			style={{ "--chip": toneVar[tone], ...style } as CSSProperties}
 			className={cn(
-				"inline-flex items-center gap-1.5 whitespace-nowrap text-meta font-medium text-(--chip)",
+				"inline-flex items-center gap-1.5 whitespace-nowrap text-meta",
+				quiet ? "text-muted-foreground" : "font-medium text-(--chip)",
 				className,
 			)}
 			{...props}

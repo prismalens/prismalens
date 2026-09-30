@@ -85,6 +85,20 @@ export interface Headline {
 	text: string;
 }
 
+const SAYS_NOTHING_NEW = new Set([
+	"No run yet",
+	"Starting…",
+	"Working…",
+	"Stopping…",
+	"Run failed",
+	"Done, no cause named",
+]);
+
+/** Whether a headline tells more than the state word beside it (#743). */
+export function headlineAddsInfo(h: Headline): boolean {
+	return !!h.lead || !SAYS_NOTHING_NEW.has(h.text);
+}
+
 /**
  * The agent's one-line headline for a row or card (#743 §3c). Only what the
  * list payload carries: the latest run's status, its root cause and times.

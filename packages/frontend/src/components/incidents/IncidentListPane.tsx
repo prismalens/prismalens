@@ -7,18 +7,11 @@ import {
 	type IncidentAttention,
 	type IncidentStatus,
 	type IncidentWithRelations,
-	isWorkflowLive,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import {
-	BarChart3,
-	Plus,
-	Search,
-	SlidersHorizontal,
-	Sparkles,
-} from "lucide-react";
+import { BarChart3, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import {
@@ -34,7 +27,11 @@ import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor, attentionTone } from "@/lib/incident-attention";
-import { incidentHeadline, latestRun, runWord } from "@/lib/incident-board";
+import {
+	headlineAddsInfo,
+	incidentHeadline,
+	runWord,
+} from "@/lib/incident-board";
 import { alsoIn, incidentLanes } from "@/lib/service-lanes";
 import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
@@ -44,6 +41,8 @@ import { IncidentFilters } from "./IncidentFilters";
 export interface IncidentListPaneProps {
 	selectedId: string | null;
 	className?: string;
+	/** Beside the board: titles only, the board carries the rest (#743). */
+	compact?: boolean;
 }
 
 /** Builds the list query from the frame's search, the same window the stats use. */
@@ -85,6 +84,7 @@ export function useIncidentWindow() {
 export function IncidentListPane({
 	selectedId,
 	className,
+	compact,
 }: IncidentListPaneProps) {
 	const navigate = useNavigate();
 	const now = useNow();
@@ -193,7 +193,8 @@ export function IncidentListPane({
 				data-testid="incident-row"
 				data-cursor={cursor === index ? "true" : undefined}
 				className={cn(
-					"block border-b px-3 py-2 outline-none hover:bg-muted/60",
+					"block px-3 outline-none hover:bg-muted/60",
+					compact ? "py-1.5" : "py-2.5",
 					cursor === index && "bg-muted/60",
 					selected &&
 						"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
@@ -203,9 +204,11 @@ export function IncidentListPane({
 					incident={incident}
 					why={attentionFor(incident)}
 					now={now}
+					selected={selected}
+					compact={compact}
 				/>
-				{also.length > 0 && (
-					<p className="mt-0.5 truncate text-meta text-muted-foreground">
+				{!compact && also.length > 0 && (
+					<p className="mt-0.5 truncate pl-4 text-meta text-muted-foreground">
 						Also in {also.join(", ")}
 					</p>
 				)}
@@ -267,7 +270,7 @@ export function IncidentListPane({
 			</div>
 
 			<div className="flex items-center gap-1 border-b px-2 py-1.5">
-				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-muted/40 px-2">
+				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-background px-2">
 					<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 					<input
 						value={q}
@@ -282,7 +285,7 @@ export function IncidentListPane({
 					value={windowValue}
 					onChange={(e) => setWindow(e.target.value)}
 					aria-label="Window"
-					className="h-6 rounded border bg-muted/40 px-1 text-meta text-muted-foreground outline-none"
+					className="h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none"
 					data-testid="incident-list-window"
 				>
 					<option value="all">All time</option>
@@ -443,53 +446,48 @@ function GroupLabel({
 }
 
 /**
- * One row: severity and service with the incident's status word, and the
- * run's own word beside it while a run is live (#743 §3c); the title; the
- * number with the agent's headline and the age.
+ * One row (#743): the title, then one muted line with the one state word that
+ * matters (the run's while it is live, else what wants a human, else the
+ * incident's) and the age. The headline shows on the selected row only.
+ * Compact rows (beside the board) are the title alone.
  */
 function IncidentRowBody({
 	incident,
 	why,
 	now,
+	selected,
+	compact,
 }: {
 	incident: IncidentWithRelations;
 	why: IncidentAttention | null;
 	now: number | null;
+	selected: boolean;
+	compact?: boolean;
 }) {
-	const run = latestRun(incident);
 	const word = runWord(incident, now);
 	const headline = incidentHeadline(incident);
+	const service = incident.service?.displayName || incident.service?.name;
 	return (
-		<div className="min-w-0">
-			<div className="flex items-center gap-1.5 text-meta text-muted-foreground">
+		<div
+			className="min-w-0"
+			title={`INC-${incident.number}${service ? `, ${service}` : ""}`}
+		>
+			<div className="flex items-center gap-2">
 				<span
 					role="img"
 					aria-label={SEVERITY_LABEL[incident.severity]}
-					title={SEVERITY_LABEL[incident.severity]}
 					className="h-2 w-2 shrink-0 rounded-full"
 					style={{ background: `var(--sev-${incident.severity})` }}
 				/>
-				<span className="truncate">
-					{incident.service?.displayName ||
-						incident.service?.name ||
-						"no service"}
-				</span>
-				<span className="ml-auto flex shrink-0 items-center gap-2">
-					{why && !word ? (
+				<p className="min-w-0 truncate text-record leading-snug">
+					{incident.title}
+				</p>
+			</div>
+			{!compact && (
+				<div className="mt-1 flex items-center gap-2 pl-4 text-meta text-muted-foreground">
+					{word ? (
 						<StateWord
-							tone={attentionTone[why]}
-							data-testid="incident-attention"
-						>
-							{INCIDENT_ATTENTION_LABEL[why]}
-						</StateWord>
-					) : (
-						<StateWord tone={incidentStatusTone(incident.status)}>
-							{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
-								incident.status}
-						</StateWord>
-					)}
-					{word && (
-						<StateWord
+							quiet
 							tone={word.stale ? "stale" : runStateTone(word.state)}
 							pulse
 							className="tabular-nums"
@@ -497,47 +495,36 @@ function IncidentRowBody({
 						>
 							{word.text}
 						</StateWord>
+					) : why ? (
+						<StateWord
+							quiet
+							tone={attentionTone[why]}
+							data-testid="incident-attention"
+						>
+							{INCIDENT_ATTENTION_LABEL[why]}
+						</StateWord>
+					) : (
+						<StateWord quiet tone={incidentStatusTone(incident.status)}>
+							{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+								incident.status}
+						</StateWord>
 					)}
-				</span>
-			</div>
-			<p
-				className="mt-0.5 truncate text-record font-medium leading-snug"
-				title={incident.title}
-			>
-				{incident.title}
-			</p>
-			<div className="mt-0.5 flex items-center gap-2 text-meta text-muted-foreground">
-				<Mono className="shrink-0">INC-{incident.number}</Mono>
-				{run && (
-					<Sparkles
-						className="h-3 w-3 shrink-0"
-						aria-label="Investigated"
-						style={{
-							color: isWorkflowLive(run.status)
-								? "var(--run-active)"
-								: run.status === "completed"
-									? "var(--run-done)"
-									: run.status === "cancelled"
-										? "var(--stale)"
-										: "var(--run-failed)",
-						}}
-					/>
-				)}
-				<span
-					className="min-w-0 truncate text-foreground/80"
+					<span className="ml-auto shrink-0 tabular-nums">
+						{ago(incident.triggeredAt, now)}
+					</span>
+				</div>
+			)}
+			{!compact && selected && headlineAddsInfo(headline) && (
+				<p
+					className="mt-1 truncate pl-4 text-meta text-muted-foreground"
 					data-testid="incident-headline"
 				>
 					{headline.lead && (
-						<span className="font-medium text-foreground">
-							{headline.lead}{" "}
-						</span>
+						<span className="text-foreground">{headline.lead} </span>
 					)}
 					{headline.text}
-				</span>
-				<span className="ml-auto shrink-0 tabular-nums">
-					{ago(incident.triggeredAt, now)}
-				</span>
-			</div>
+				</p>
+			)}
 		</div>
 	);
 }

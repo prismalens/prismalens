@@ -23,7 +23,7 @@ export function GroupBySelect({
 			}
 			aria-label="Group by"
 			className={cn(
-				"h-6 rounded border bg-muted/40 px-1 text-meta text-muted-foreground outline-none",
+				"h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none",
 				className,
 			)}
 			data-testid={`group-by-${view}`}

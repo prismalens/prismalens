@@ -3,7 +3,12 @@
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { boardColumn, incidentHeadline, runWord } from "./incident-board";
+import {
+	boardColumn,
+	headlineAddsInfo,
+	incidentHeadline,
+	runWord,
+} from "./incident-board";
 
 function incident(
 	status: string,
@@ -189,5 +194,16 @@ describe("runWord", () => {
 		expect(
 			runWord(incident("investigating", { status: "cancelled" }), now),
 		).toBeNull();
+	});
+});
+
+describe("headlineAddsInfo", () => {
+	it("drops a headline that only repeats the state word", () => {
+		expect(headlineAddsInfo({ text: "No run yet" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Working…" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Run failed" })).toBe(false);
+		expect(headlineAddsInfo({ lead: "Likely:", text: "TTL cut" })).toBe(true);
+		expect(headlineAddsInfo({ text: "Run failed: not logged in" })).toBe(true);
+		expect(headlineAddsInfo({ text: "Comparing the TTL change" })).toBe(true);
 	});
 });
