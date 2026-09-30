@@ -309,3 +309,61 @@ describe("selectedModel (#639)", () => {
 		expect(selectedModel({ not: "an array" })).toBeNull();
 	});
 });
+
+describe("AcpSession session/load (#747)", () => {
+	const over = (loadSession: boolean, resume?: { sessionId: string }) => {
+		const wire: string[] = [];
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				...(loadSession ? { FAKE_LOAD_SESSION: "1" } : {}),
+			},
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onWire: (d, line) => {
+				if (d === "out") wire.push(line);
+			},
+			...(resume ? { resume } : {}),
+		});
+		return { session, wire };
+	};
+
+	it("drops the replayed history and yields only what follows the load answer", async () => {
+		const { session } = over(true, { sessionId: "ses_old" });
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("and now?")) items.push(item);
+		await session.close();
+
+		expect(session.sessionId).toBe("ses_old");
+		expect(session.replayed).toBe(2);
+		expect(JSON.stringify(items)).not.toContain("REPLAYED");
+		expect(items[0]).toMatchObject({
+			kind: "update",
+			update: { content: { text: "Heard: and now?" } },
+		});
+		expect(items.at(-1)).toEqual({ kind: "done", stopReason: "end_turn" });
+	});
+
+	it("refuses to resume a harness that does not advertise loadSession, before any load is sent", async () => {
+		const { session, wire } = over(false, { sessionId: "ses_old" });
+		await expect(session.open()).rejects.toThrow(
+			"fake 0 does not support session/load",
+		);
+		await session.close();
+		expect(wire.some((l) => l.includes("session/load"))).toBe(false);
+	});
+
+	it("keeps the session/new id when not resuming", async () => {
+		const { session } = over(true);
+		await session.open();
+		await session.close();
+		expect(session.sessionId).toBe("s1");
+		expect(session.loadSession).toBe(true);
+	});
+});

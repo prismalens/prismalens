@@ -11,6 +11,7 @@
 import { createInterface } from "node:readline";
 import type {
 	InitializeResponse,
+	LoadSessionResponse,
 	NewSessionResponse,
 	RequestPermissionRequest,
 	SessionUpdate,
@@ -138,7 +139,12 @@ export interface AcpSessionConfig {
 	onStderr?: (chunk: string) => void;
 	/** A value unknown to the ACP SDK, once per session per value. */
 	onDrift?: (drift: AcpDrift) => void;
+	/** Reopen this session with `session/load` instead of starting one (#747). */
+	resume?: { sessionId: string };
 }
+
+// ACP v2 folds load into session/resume; one constant to move (#747).
+const SESSION_LOAD = "session/load";
 
 const DEFAULT_INIT_TIMEOUT_MS = 120_000;
 const DEFAULT_PROMPT_TIMEOUT_MS = 900_000;
@@ -244,7 +250,9 @@ export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
 	private child: HarnessChild | null = null;
-	private sessionId: string | null = null;
+	private currentSessionId: string | null = null;
+	private loading = false;
+	private loadRequestId = -1;
 	private nextId = 1;
 	private readonly pending = new Map<
 		number,
@@ -262,6 +270,10 @@ export class AcpSession {
 	models: AcpOfferedModel[] = [];
 	/** The model `session/new` reported as selected; null when it reported none. */
 	servedModel: string | null = null;
+	/** The harness advertised `loadSession` at `initialize`. */
+	loadSession = false;
+	/** History updates `session/load` replayed; dropped, never yielded. */
+	replayed = 0;
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.launcher = config.launcher ?? createProcessLauncher();
@@ -354,25 +366,52 @@ export class AcpSession {
 		this.authMethods = Array.isArray(init?.authMethods)
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
+		this.loadSession = init?.agentCapabilities?.loadSession === true;
+		const params = {
+			cwd: config.cwd,
+			mcpServers: [],
+			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
+		};
+		if (config.resume) {
+			if (!this.loadSession)
+				throw new Error(
+					`${this.agent.name ?? config.command} ${this.agent.version ?? ""} does not support session/load`,
+				);
+			this.loading = true;
+			this.loadRequestId = this.nextId;
+			this.currentSessionId = config.resume.sessionId;
+			const loaded = (await this.request(
+				SESSION_LOAD,
+				{ sessionId: config.resume.sessionId, ...params },
+				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
+			).finally(() => {
+				this.loading = false;
+			})) as Partial<LoadSessionResponse> | null;
+			this.models = offeredModels(loaded?.configOptions);
+			this.servedModel = selectedModel(loaded?.configOptions);
+			return;
+		}
 		const session = (await this.request(
 			"session/new",
-			{
-				cwd: config.cwd,
-				mcpServers: [],
-				...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
-			},
+			params,
 			config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 		)) as Partial<NewSessionResponse> | null;
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
-		this.sessionId = session.sessionId;
+		this.currentSessionId = session.sessionId;
 		this.models = offeredModels(session.configOptions);
 		this.servedModel = selectedModel(session.configOptions);
 	}
 
+	/** The harness's own session id once `open()` has one. */
+	get sessionId(): string | null {
+		return this.currentSessionId;
+	}
+
 	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */
 	async *prompt(text: string): AsyncGenerator<AcpStreamItem> {
-		if (!this.sessionId) throw new Error("AcpSession.prompt before open()");
+		if (!this.currentSessionId)
+			throw new Error("AcpSession.prompt before open()");
 		if (this.exitMessage) {
 			yield { kind: "error", message: this.exitMessage };
 			return;
@@ -380,7 +419,7 @@ export class AcpSession {
 		let turnDone = false;
 		this.request(
 			"session/prompt",
-			{ sessionId: this.sessionId, prompt: [{ type: "text", text }] },
+			{ sessionId: this.currentSessionId, prompt: [{ type: "text", text }] },
 			this.config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
 		)
 			.then((res) => {
@@ -409,11 +448,11 @@ export class AcpSession {
 
 	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
 	cancel(): void {
-		if (!this.sessionId) return;
+		if (!this.currentSessionId) return;
 		this.send({
 			jsonrpc: "2.0",
 			method: "session/cancel",
-			params: { sessionId: this.sessionId },
+			params: { sessionId: this.currentSessionId },
 		});
 	}
 
@@ -507,6 +546,8 @@ export class AcpSession {
 		if (msg.id !== undefined && msg.method) {
 			this.onServerRequest(msg);
 		} else if (msg.id !== undefined) {
+			// Updates after the load answer are live, even in the same stdout chunk.
+			if (msg.id === this.loadRequestId) this.loading = false;
 			const p = this.pending.get(msg.id);
 			if (!p) return;
 			this.pending.delete(msg.id);
@@ -515,6 +556,10 @@ export class AcpSession {
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;
+			if (this.loading) {
+				this.replayed += 1;
+				return;
+			}
 			if (update && typeof update === "object") {
 				const u = update as Record<string, unknown>;
 				this.drift("session/update", "sessionUpdate", u.sessionUpdate);

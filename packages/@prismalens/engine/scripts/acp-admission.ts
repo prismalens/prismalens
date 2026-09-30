@@ -100,6 +100,7 @@ const context: InvestigationContext = {
 
 const started = Date.now();
 const events: CanonicalEvent[] = [];
+let session: { sessionId: string; loadSession: boolean } | null = null;
 
 // Everything that can throw once the probe exists runs inside the cleanup
 // scope. Planting it outside meant a failure in between — a full `/tmp` on the
@@ -134,6 +135,9 @@ try {
 			: {}),
 		initTimeoutMs: 120_000,
 		promptTimeoutMs: timeoutMs,
+		onSession: (s) => {
+			session = s;
+		},
 		// One command per step. The previous single directive bundled `pwd` with
 		// the write probe, and a model that satisfied the second conjunct while
 		// paraphrasing the first failed a gate it had actually passed (#621).
@@ -234,6 +238,55 @@ console.log(
 		nonce,
 	),
 );
+// R5 (#747): a finished session reopened with session/load remembers the run,
+// and none of its replayed history comes back as new events. Data, not a gate.
+const r5 = await (async (): Promise<string> => {
+	const opened = session as { sessionId: string; loadSession: boolean } | null;
+	if (!report) return "fail (no report to continue)";
+	if (!opened?.loadSession)
+		return "fail (harness does not advertise loadSession)";
+	const first = new Set(
+		toolResults.flatMap((e) =>
+			e.kind === "tool_result" ? [e.result.toolCallId] : [],
+		),
+	);
+	const followUp: CanonicalEvent[] = [];
+	for await (const ev of runInvestigation({
+		runId: "00000000-0000-4000-8000-000000000001",
+		context,
+		harness,
+		cwd: cloneDir,
+		runDir,
+		env: process.env,
+		...(process.env.PRISMALENS_HARNESS_MODEL
+			? { model: process.env.PRISMALENS_HARNESS_MODEL }
+			: {}),
+		initTimeoutMs: 120_000,
+		promptTimeoutMs: timeoutMs,
+		resume: {
+			sessionId: opened.sessionId,
+			text: "Reply with the alert name from our conversation and nothing else.",
+			mode: "queue",
+			heads: [],
+		},
+	}))
+		followUp.push(ev);
+	const failed = followUp.find((e) => e.kind === "error");
+	if (failed?.kind === "error") return `fail (${failed.message})`;
+	const leaked = followUp.some(
+		(e) => e.kind === "tool_result" && first.has(e.result.toolCallId),
+	);
+	if (leaked) return "fail (replayed history came back as new events)";
+	const reply = followUp
+		.map((e) => (e.kind === "agent_step" ? e.text : ""))
+		.join("");
+	return reply.includes(context.alerts[0]?.alertname ?? "")
+		? "pass (the reply named the alert)"
+		: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))})`;
+})().catch(
+	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
+);
+console.log(`R5 resume: ${r5}`);
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
 	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);

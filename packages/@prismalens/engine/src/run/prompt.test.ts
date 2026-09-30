@@ -52,6 +52,35 @@ describe("buildInvestigationPrompt (#633)", () => {
 		);
 	});
 
+	it("lists every repository of a multi-repo workspace in place of the source-code line (#747)", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseContext,
+			workspace: {
+				repos: [
+					{
+						path: "api/",
+						services: ["checkout", "cart"],
+						subPath: null,
+						head: "1a2b3c4d5e6f7a8b9c0d",
+					},
+					{
+						path: "worker/",
+						services: ["jobs"],
+						subPath: "svc/jobs",
+						head: "5d6e7f8a9b0c1d2e3f4a",
+					},
+				],
+			},
+		});
+
+		expect(prompt).not.toContain(
+			"- Application SOURCE CODE is in your current working directory",
+		);
+		expect(prompt).toContain(
+			"  - Application SOURCE CODE: 2 repositories under your current working directory:\n      api/  services: checkout, cart  (at 1a2b3c4d5e6f)\n      worker/  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
+		);
+	});
+
 	it("tells the agent how to cite a context-pack fact only when a pack is present", () => {
 		const pack = {
 			window: { start: "2026-09-23T10:00:00Z", end: "2026-09-23T11:00:00Z" },
