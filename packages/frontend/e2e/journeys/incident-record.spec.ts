@@ -11,7 +11,6 @@ import {
 	serveAsRunning,
 	serveEventsHistory,
 	serveInvestigationAs,
-	SHOTS,
 	setTheme,
 } from "./live-stream-fixtures";
 
@@ -28,8 +27,6 @@ import {
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
 
-const shot = (page: Page, name: string) =>
-	page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 
 async function createIncident(page: Page, title: string): Promise<string> {
 	const created = await page.request.post("/api/incidents", {
@@ -111,7 +108,6 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		);
 
 		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-default");
 
 		// Read the report: the document on its own route, band and strip still pinned.
 		await page.getByTestId("conclusion-read-report").click();
@@ -146,12 +142,10 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.getByTestId("conversation-view-transcript").click();
 
 		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-conversation-default");
 
 		await setTheme(page, "dark");
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
 		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-conversation-dark");
 	});
 
 	test("the routes under the incident: crumb links and Esc back", async ({
@@ -202,7 +196,6 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			"Investigate",
 		);
 		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-empty");
 	});
 
 	test("error — a failed run", async ({ page }) => {
@@ -221,7 +214,6 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await setTheme(page, "light");
 		await expect(page.getByTestId("run-card")).toBeVisible();
 		await page.waitForLoadState("networkidle");
-		await shot(page, "incident-record-error");
 
 		await page.getByTestId("run-card-open-conversation").click();
 		await expect(page.getByTestId("transcript-end")).toContainText(

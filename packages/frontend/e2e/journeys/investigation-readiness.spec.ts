@@ -22,7 +22,6 @@ import { hideQueryDevtools } from "./live-stream-fixtures";
  * Command Center screen was deleted), so this file no longer opens it.
  */
 
-const SHOTS = "e2e/journeys/screenshots";
 
 /**
  * A real gate message: anthropic is active with a model and a key, but the
@@ -199,8 +198,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 	});
 
 	test("design evidence: default, dark, empty, and error", async ({ page }) => {
-		const shot = (name: string) =>
-			page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 
 		// Default (light) — the incident-detail header, provider selected, gate
 		// refusing. The dashboard panel this used to photograph is gone (the
@@ -219,7 +216,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-default");
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
@@ -227,7 +223,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-dark");
 
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
@@ -237,7 +232,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		});
 		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-empty");
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
@@ -246,6 +240,5 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
 		await page.waitForLoadState("networkidle");
-		await shot("investigation-readiness-error");
 	});
 });
