@@ -340,7 +340,7 @@ describe("runInvestigationJob schema validation", () => {
 			expect.objectContaining({
 				incidentId: "inc-parse-fail",
 				type: "investigation_completed",
-				title: "AI Investigation Failed",
+				title: "Investigation failed",
 				source: "ai_worker",
 				metadata: expect.objectContaining({ investigationId: "inv-parse-fail" }),
 			}),

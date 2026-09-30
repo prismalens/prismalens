@@ -195,9 +195,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			timeout: 15_000,
 		});
 		await setTheme(page, "light");
-		await expect(page.getByTestId("conclusion-card")).toContainText(
-			"Lands here when a run finishes.",
-		);
+		await expect(page.getByTestId("conclusion-card")).toHaveCount(0);
 		await expect(page.getByTestId("run-strip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",

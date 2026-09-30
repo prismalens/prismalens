@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { RUN_STATE_LABEL, runState } from "@prismalens/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { StateChip, StateWord } from "@/components/shared/StateChip";
 import { ago, useNow } from "@/hooks/use-now";
+import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { STALE_AFTER_S } from "@/lib/investigation-events";
 import { runStateTone } from "@/lib/state-tone";
@@ -13,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { runElapsed } from "../RunStrip";
 import { useIncidentRecord } from "../record-context";
 import { Card, CardLink } from "./Card";
+import { useRanWithoutRepo } from "./SummaryBlock";
 
 function plural(n: number, word: string) {
 	return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -63,7 +66,12 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 
 	const events = plural(run.events.length, "event");
 	const state = run.state;
-	const earlier = !inPanel && <OtherInvestigations />;
+	const earlier = !inPanel && (
+		<>
+			<NoRepoLine />
+			<OtherInvestigations />
+		</>
+	);
 
 	if (state === "starting" || state === "working" || state === "stopping") {
 		const age =
@@ -127,19 +135,7 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 				tone="failed"
 				testId="run-card"
 			>
-				<p className="flex items-start gap-2 text-record text-run-failed">
-					<StateWord tone="failed" className="mt-0.5">
-						Failed
-					</StateWord>
-					<span className="line-clamp-2 min-w-0">
-						{investigation.error ?? "No error was recorded."}
-					</span>
-				</p>
-				<p className="text-meta text-muted-foreground">
-					The last events are in the conversation. The raw transcript is at{" "}
-					<Mono>runs/{investigation.id}/transcript.jsonl</Mono> under the
-					workspace directory pl up printed at start.
-				</p>
+				<FailedLines error={investigation.error} />
 				{earlier}
 			</Card>
 		);
@@ -163,12 +159,13 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 
 /**
  * The incident's other investigations, newest first (#743): each opens in
- * the Conversation tab. Three at most; the picker by the status has them all.
+ * the Conversation tab. Newest first, three until asked for more.
  */
 function OtherInvestigations() {
 	const { incident, runs, investigationId } = useIncidentRecord();
 	const now = useNow();
 	const navigate = useNavigate();
+	const [all, setAll] = useState(false);
 	const others = runs
 		.map((r, i) => ({ r, n: runs.length - i }))
 		.filter(({ r }) => r.id !== investigationId);
@@ -176,7 +173,7 @@ function OtherInvestigations() {
 	return (
 		<div className="space-y-0.5 pt-1" data-testid="run-card-others">
 			<p className="text-meta text-muted-foreground">Other investigations</p>
-			{others.slice(0, 3).map(({ r, n }) => {
+			{(all ? others : others.slice(0, 3)).map(({ r, n }) => {
 				const state = runState(r.status, { hasEvents: true });
 				return (
 					<button
@@ -193,15 +190,81 @@ function OtherInvestigations() {
 						data-testid="run-card-other"
 					>
 						<span className="tabular-nums text-foreground">#{n}</span>
-						<StateWord tone={runStateTone(state)}>
+						<StateWord tone={runStateTone(state)} className="shrink-0">
 							{RUN_STATE_LABEL[state]}
 						</StateWord>
-						<span className="ml-auto text-muted-foreground">
+						{state === "failed" && (
+							<span className="min-w-0 truncate text-muted-foreground">
+								{failureWords(r.error).what}
+							</span>
+						)}
+						<span className="ml-auto shrink-0 text-muted-foreground">
 							{ago(r.createdAt, now)}
 						</span>
 					</button>
 				);
 			})}
+			{others.length > 3 && (
+				<button
+					type="button"
+					onClick={() => setAll((v) => !v)}
+					className="px-1 text-meta text-primary hover:underline"
+				>
+					{all ? "Show fewer" : `Show ${others.length - 3} more`}
+				</button>
+			)}
 		</div>
+	);
+}
+
+/** A failure said once, in words an operator can act on; the raw error one click away. */
+function FailedLines({ error }: { error: string | null | undefined }) {
+	const words = failureWords(error);
+	return (
+		<div className="space-y-1" data-testid="run-card-failure">
+			<p className="text-record">
+				<StateWord tone="failed" className="mr-2">
+					Failed
+				</StateWord>
+				{words.what}
+			</p>
+			{words.next && (
+				<p className="text-meta text-muted-foreground">{words.next}</p>
+			)}
+			{error && (
+				<details className="text-meta text-muted-foreground">
+					<summary className="cursor-pointer select-none">The error</summary>
+					<Mono className="mt-1 block whitespace-pre-wrap break-words">
+						{error}
+					</Mono>
+				</details>
+			)}
+		</div>
+	);
+}
+
+/** It ran with no repository: the agent read no code, which bounds everything it said. */
+function NoRepoLine() {
+	const { incident, investigationId } = useIncidentRecord();
+	const noRepo = useRanWithoutRepo(investigationId);
+	if (!noRepo) return null;
+	const serviceId = incident.service?.id;
+	return (
+		<p
+			className="rounded border border-stale/40 bg-stale/10 px-2 py-1 text-meta"
+			data-testid="run-card-no-repo"
+		>
+			No repository linked, so the agent read no code.{" "}
+			{serviceId && (
+				<Link
+					to="/services/$id"
+					search={{ tab: "repositories" }}
+					params={{ id: serviceId }}
+					className="text-primary hover:underline"
+				>
+					Link one
+				</Link>
+			)}
+		</p>
 	);
 }

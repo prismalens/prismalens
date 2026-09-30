@@ -1,8 +1,9 @@
 /**
- * The Report route (#743 §3c, layer 2): the run's report as a document, full
- * width under the pinned band and strip, with the evidence, similar past
- * incidents and the recommendations the run made.
+ * The Report tab (#743): the selected investigation's report as a document,
+ * with the evidence, similar past incidents and its recommendations. With no
+ * report it points at the newest investigation that wrote one.
  */
+import { runState } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { RecommendationsList } from "@/components/incidents";
@@ -24,7 +25,8 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 });
 
 function ReportRoute() {
-	const { incident, run, runs, investigationId } = useIncidentRecord();
+	const { incident, run, runs, investigationId, selectRun } =
+		useIncidentRecord();
 	const queryClient = useQueryClient();
 	const investigation = run.investigation;
 	const who = useRunAgentModel(investigation);
@@ -41,6 +43,12 @@ function ReportRoute() {
 	const done = run.state === "done" && !!investigation;
 	const similar = investigation?.overlay?.similarIncidents ?? [];
 	const number = runs.length - runs.findIndex((r) => r.id === investigationId);
+	// The newest investigation that did write a report, when this one did not.
+	const lastGood = done
+		? null
+		: runs.findIndex((r) => runState(r.status, { hasEvents: true }) === "done");
+	const lastGoodRun =
+		lastGood !== null && lastGood >= 0 ? runs[lastGood] : null;
 
 	return (
 		<div className="h-full overflow-y-auto" data-testid="report-route">
@@ -53,13 +61,27 @@ function ReportRoute() {
 						{!investigationId
 							? "No investigation yet. The report lands here when one finishes."
 							: run.state === "stopped" || run.state === "failed"
-								? "None. The investigation did not finish."
+								? `Investigation #${number} did not finish, so it wrote no report.`
 								: "The report lands here when the investigation finishes."}
+						{lastGoodRun && (
+							<>
+								{" "}
+								<button
+									type="button"
+									onClick={() => selectRun(lastGoodRun.id)}
+									className="text-primary hover:underline"
+									data-testid="report-last-good"
+								>
+									Read the report from investigation #
+									{runs.length - (lastGood ?? 0)}
+								</button>
+							</>
+						)}
 					</p>
 				) : (
 					<>
 						<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-muted-foreground">
-							<span className="tabular-nums">Run {number}</span>
+							<span className="tabular-nums">Investigation #{number}</span>
 							<span>
 								{who.agent} {who.model}
 							</span>

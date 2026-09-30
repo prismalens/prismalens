@@ -4,7 +4,11 @@
  * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
  * started, else the newest.
  */
-import { canIncidentAction, isWorkflowLive } from "@prismalens/contracts";
+import {
+	canIncidentAction,
+	isWorkflowLive,
+	runState,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -220,11 +224,17 @@ function IncidentLayout() {
 					investigateDisabled={!agentReady}
 					investigateDisabledReason={blockedReason}
 					backToIncident={here !== null}
+					hideInvestigate={here === null || here === "conversation"}
 				/>
 				<RecordTabs
 					incidentId={id}
 					here={here}
 					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
+					dimmed={
+						runs.some((r) => runState(r.status, { hasEvents: true }) === "done")
+							? []
+							: ["report"]
+					}
 					status={<RunStrip />}
 				/>
 				<div className="min-h-0 flex-1">

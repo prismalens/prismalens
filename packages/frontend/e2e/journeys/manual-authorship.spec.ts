@@ -291,6 +291,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// and the gate's own words say why (#521).
 		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
+		await page.getByTestId("tab-alerts").click();
 		await expect(page.getByTestId("band-investigate")).toBeDisabled();
 	});
 

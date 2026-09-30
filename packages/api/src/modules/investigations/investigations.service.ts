@@ -146,7 +146,7 @@ export class InvestigationsService {
 			title: dto.afterResolve
 				? "Investigation started after resolve"
 				: "Investigation started",
-			description: "AI investigation has been queued",
+			description: "Queued for the agent.",
 			source: TimelineSource.system,
 			metadata: { investigationId: investigation.id },
 		});

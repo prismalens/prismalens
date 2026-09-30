@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { DockedComposer } from "./DockedComposer";
 import { InvestigationDetailSkeleton } from "./InvestigationDetailSkeleton";
 import { InvestigationStreamPanel } from "./InvestigationStreamPanel";
-import { SummaryPanel } from "./SummaryPanel";
 import { Transcript } from "./Transcript";
 
 /** The only branch that exists until fan-out lands (#280). */
@@ -33,8 +32,8 @@ function branchesOf(events: { kind: string; branchId?: string }[]): string[] {
 }
 
 /**
- * The conversation route (#743 §3c, layer 2): the transcript with the box
- * docked under it, and the Summary | Report | Timeline panel beside it.
+ * The Conversation tab (#743): the transcript, full width, with the box
+ * docked under it.
  * The Ledger view is the row-per-event panel that existed before.
  */
 export function ConversationRoute() {
@@ -54,9 +53,6 @@ export function ConversationRoute() {
 			}),
 			replace: true,
 		});
-	const [phoneTab, setPhoneTab] = useState<"conversation" | "summary">(
-		"conversation",
-	);
 	const [branch, setBranch] = useState<string | null>(null);
 	const investigation = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
@@ -111,102 +107,78 @@ export function ConversationRoute() {
 			className="flex h-full min-h-0 flex-col"
 			data-testid="conversation-route"
 		>
-			<div className="flex h-10 shrink-0 items-center px-3 lg:hidden">
-				<Segmented
-					label="Phone view"
-					value={phoneTab}
-					onChange={setPhoneTab}
-					options={[
-						{ value: "conversation", label: "Conversation" },
-						{ value: "summary", label: "Summary" },
-					]}
-				/>
-			</div>
-			<div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_24rem]">
-				<section
-					className={cn(
-						"flex min-h-0 min-w-0 flex-col",
-						phoneTab === "summary" && "hidden lg:flex",
-					)}
-				>
-					<div className="flex h-10 shrink-0 items-center gap-2 px-3">
-						<h2 className="text-record font-medium">Conversation</h2>
-						<StateWord
-							tone={live ? "active" : "neutral"}
-							data-testid="conversation-addressee"
-						>
-							{addressee}
-						</StateWord>
-						<Segmented
-							label="View"
-							value={view}
-							onChange={setView}
-							options={[
-								{ value: "transcript", label: "Transcript" },
-								{ value: "ledger", label: "Ledger" },
-							]}
-							className="ml-auto"
-							testId="conversation-view"
-						/>
+			<section className="flex min-h-0 min-w-0 flex-1 flex-col">
+				<div className="flex h-10 shrink-0 items-center gap-2 px-3">
+					<h2 className="text-record font-medium">Conversation</h2>
+					<StateWord
+						tone={live ? "active" : "neutral"}
+						data-testid="conversation-addressee"
+					>
+						{addressee}
+					</StateWord>
+					<Segmented
+						label="View"
+						value={view}
+						onChange={setView}
+						options={[
+							{ value: "transcript", label: "Transcript" },
+							{ value: "ledger", label: "Ledger" },
+						]}
+						className="ml-auto"
+						testId="conversation-view"
+					/>
+				</div>
+				{openBranch && (
+					<div
+						role="tablist"
+						aria-label="Branches"
+						className="flex shrink-0 gap-3 border-b px-3"
+						data-testid="branch-tabs"
+					>
+						{branches.map((b) => (
+							<button
+								key={b}
+								type="button"
+								role="tab"
+								aria-selected={b === openBranch}
+								onClick={() => setBranch(b)}
+								className={cn(
+									"-mb-px border-b-2 py-1.5 text-meta",
+									b === openBranch
+										? "border-primary text-foreground"
+										: "border-transparent text-muted-foreground hover:text-foreground",
+								)}
+							>
+								{b === MAIN_BRANCH ? "Main" : b}
+							</button>
+						))}
 					</div>
-					{openBranch && (
-						<div
-							role="tablist"
-							aria-label="Branches"
-							className="flex shrink-0 gap-3 border-b px-3"
-							data-testid="branch-tabs"
-						>
-							{branches.map((b) => (
-								<button
-									key={b}
-									type="button"
-									role="tab"
-									aria-selected={b === openBranch}
-									onClick={() => setBranch(b)}
-									className={cn(
-										"-mb-px border-b-2 py-1.5 text-meta",
-										b === openBranch
-											? "border-primary text-foreground"
-											: "border-transparent text-muted-foreground hover:text-foreground",
-									)}
-								>
-									{b === MAIN_BRANCH ? "Main" : b}
-								</button>
-							))}
-						</div>
-					)}
-					{!investigationId ? (
-						<p className="flex-1 p-6 text-center text-record text-muted-foreground">
-							No investigation yet. Start one below.
+				)}
+				{!investigationId ? (
+					<p className="flex-1 p-6 text-center text-record text-muted-foreground">
+						No investigation yet. Start one below.
+					</p>
+				) : run.isLoading ? (
+					<div className="flex-1 p-4">
+						<InvestigationDetailSkeleton />
+					</div>
+				) : run.error || !investigation ? (
+					<div className="flex flex-1 flex-col items-center justify-center py-8">
+						<AlertCircle className="mb-3 h-8 w-8 text-run-failed" />
+						<p className="text-record font-medium text-run-failed">
+							Failed to load the run
 						</p>
-					) : run.isLoading ? (
-						<div className="flex-1 p-4">
-							<InvestigationDetailSkeleton />
-						</div>
-					) : run.error || !investigation ? (
-						<div className="flex flex-1 flex-col items-center justify-center py-8">
-							<AlertCircle className="mb-3 h-8 w-8 text-run-failed" />
-							<p className="text-record font-medium text-run-failed">
-								Failed to load the run
-							</p>
-							<p className="text-meta text-muted-foreground">
-								{run.error?.message || "Investigation not found"}
-							</p>
-						</div>
-					) : view === "transcript" ? (
-						<Transcript items={items} incidentId={incident.id} />
-					) : (
-						<LedgerView events={events} />
-					)}
-					{box}
-				</section>
-				<SummaryPanel
-					className={cn(
-						"min-h-0 flex-col bg-muted/20",
-						phoneTab === "summary" ? "flex" : "hidden lg:flex",
-					)}
-				/>
-			</div>
+						<p className="text-meta text-muted-foreground">
+							{run.error?.message || "Investigation not found"}
+						</p>
+					</div>
+				) : view === "transcript" ? (
+					<Transcript items={items} incidentId={incident.id} />
+				) : (
+					<LedgerView events={events} />
+				)}
+				{box}
+			</section>
 		</div>
 	);
 }

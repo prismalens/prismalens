@@ -39,15 +39,8 @@ function AgentConclusion() {
 	const investigation = run.investigation;
 	const state = run.state;
 
-	if (!investigationId || !investigation || !state) {
-		return (
-			<Card title="Conclusion" testId="conclusion-card">
-				<p className="text-record text-muted-foreground">
-					Lands here when a run finishes.
-				</p>
-			</Card>
-		);
-	}
+	// Nothing to conclude yet, or nothing will be: the card stays away (#743).
+	if (!investigationId || !investigation || !state) return null;
 	if (state === "starting" || state === "working" || state === "stopping") {
 		return (
 			<Card title="Conclusion" testId="conclusion-card">
@@ -55,15 +48,7 @@ function AgentConclusion() {
 			</Card>
 		);
 	}
-	if (state !== "done") {
-		return (
-			<Card title="Conclusion" testId="conclusion-card">
-				<p className="text-record text-muted-foreground">
-					None. The investigation did not finish.
-				</p>
-			</Card>
-		);
-	}
+	if (state !== "done") return null;
 
 	const report = investigation.report ?? null;
 	const top = report?.hypotheses[0];

@@ -1,54 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	TIMELINE_SOURCE_LABEL,
-	type TimelineEntryWithRelations,
-} from "@prismalens/contracts";
-import { formatClock } from "@/lib/format-time";
+import { groupTimeline } from "@/lib/timeline-groups";
 import { useIncidentRecord } from "../record-context";
+import { TimelineList } from "../TimelineList";
 import { Card, CardLink } from "./Card";
 import { NoteField } from "./NoteField";
 
-/** The newest entries first, the way the Timeline route orders them. */
-export function newestFirst(entries: TimelineEntryWithRelations[]) {
-	return [...entries].sort(
-		(a, b) =>
-			new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
-	);
-}
-
-export function TimelineRows({
-	entries,
-}: {
-	entries: TimelineEntryWithRelations[];
-}) {
-	return (
-		<ul className="space-y-1">
-			{entries.map((e) => (
-				<li
-					key={e.id}
-					className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 text-record"
-				>
-					<span className="font-mono text-meta text-muted-foreground tabular-nums">
-						{formatClock(e.occurredAt)}
-					</span>
-					<span className="truncate" title={e.title}>
-						{e.title}
-					</span>
-					<span className="text-meta text-muted-foreground">
-						{TIMELINE_SOURCE_LABEL[e.source] ?? e.source}
-					</span>
-				</li>
-			))}
-		</ul>
-	);
-}
-
 /** The note field and the last few entries; the rest is one route down (#743 §3c.5). */
 export function TimelineCard({ rows = 3 }: { rows?: number }) {
-	const { incident, timeline, timelineLoading } = useIncidentRecord();
-	const shown = newestFirst(timeline).slice(0, rows);
+	const { incident, runs, timeline, timelineLoading } = useIncidentRecord();
+	const shown = groupTimeline(timeline, runs).slice(0, rows);
 	return (
 		<Card
 			title="Timeline"
@@ -72,7 +34,7 @@ export function TimelineCard({ rows = 3 }: { rows?: number }) {
 					Nothing recorded yet.
 				</p>
 			) : (
-				<TimelineRows entries={shown} />
+				<TimelineList items={shown} />
 			)}
 		</Card>
 	);

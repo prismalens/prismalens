@@ -43,8 +43,4 @@ export {
 	RecommendationsList,
 	type RecommendationsListProps,
 } from "./RecommendationsList";
-export {
-	TimelineEntry,
-	type TimelineEntryProps,
-} from "./TimelineEntry";
 export { TimelineTab, type TimelineTabProps } from "./TimelineTab";

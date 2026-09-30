@@ -34,11 +34,14 @@ export function RecordTabs({
 	incidentId,
 	here,
 	counts,
+	dimmed = [],
 	status,
 }: {
 	incidentId: string;
 	here: CardRoute | null;
 	counts: Partial<Record<CardRoute, number>>;
+	/** Tabs with nothing in them yet: still reachable, drawn quieter. */
+	dimmed?: CardRoute[];
 	status: ReactNode;
 }) {
 	const navigate = useNavigate();
@@ -81,7 +84,7 @@ export function RecordTabs({
 		>
 			<nav
 				aria-label="Incident"
-				className="-mb-px flex min-w-0 items-center overflow-x-auto"
+				className="-mb-px flex min-w-0 items-center overflow-x-auto [scrollbar-width:none]"
 			>
 				<Link
 					to="/incidents/$id"
@@ -102,7 +105,10 @@ export function RecordTabs({
 						search={true}
 						viewTransition
 						aria-current={here === r ? "page" : undefined}
-						className={tab(here === r)}
+						className={cn(
+							tab(here === r),
+							here !== r && dimmed.includes(r) && "text-muted-foreground/50",
+						)}
 						data-testid={`tab-${r}`}
 					>
 						{NAMES[r]}

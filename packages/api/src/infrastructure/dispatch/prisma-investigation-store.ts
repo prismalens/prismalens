@@ -108,8 +108,8 @@ export function createPrismaInvestigationStore(
 			await ports.createTimelineEntry({
 				incidentId,
 				type: "investigation_started",
-				title: "AI Investigation Started",
-				description: "Starting the two-tier engine investigation",
+				title: "Agent started",
+				description: "The agent is reading the incident.",
 				source: "ai_worker",
 				metadata: { investigationId },
 			});
@@ -180,7 +180,7 @@ export function createPrismaInvestigationStore(
 			await ports.createTimelineEntry({
 				incidentId,
 				type: "investigation_completed",
-				title: "AI Investigation Failed",
+				title: "Investigation failed",
 				description: error,
 				source: "ai_worker",
 				metadata: { investigationId, error },

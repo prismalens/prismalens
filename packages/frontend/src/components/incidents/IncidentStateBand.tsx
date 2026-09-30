@@ -45,6 +45,8 @@ export interface IncidentStateBandProps {
 	investigateDisabledReason?: string;
 	/** On a route under the incident the phone's back goes to the incident, not the list. */
 	backToIncident?: boolean;
+	/** The tab has the box, whose own button starts an investigation. */
+	hideInvestigate?: boolean;
 }
 
 const ACTION_LABEL: Record<IncidentAction, string> = {
@@ -72,6 +74,7 @@ export function IncidentStateBand({
 	investigateDisabled,
 	investigateDisabledReason,
 	backToIncident,
+	hideInvestigate,
 }: IncidentStateBandProps) {
 	usePageTitle(`INC-${incident.number} ${incident.title}`);
 	const now = useNow();
@@ -90,7 +93,7 @@ export function IncidentStateBand({
 	const admitted = order.filter(
 		(a) =>
 			canIncidentAction(a, incident.status) &&
-			!(a === "investigate" && runLive),
+			!(a === "investigate" && (runLive || hideInvestigate)),
 	);
 	const primary = admitted[0];
 	const rest = admitted.slice(1);

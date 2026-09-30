@@ -6,9 +6,7 @@ import {
 	isRunStateLive,
 	isWorkflowLive,
 	RUN_STATE_LABEL,
-	runState,
 } from "@prismalens/contracts";
-import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import {
 	agentModelLabel,
@@ -17,12 +15,6 @@ import {
 } from "@/components/agent/AgentPicker";
 import { StateChip } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
 	Popover,
 	PopoverContent,
@@ -87,11 +79,11 @@ export function runElapsed(
 
 /**
  * The run's status (#743 §2), at the right end of the tab row: the
- * investigation's own words, never the incident's. State, agent and model, what it is doing, elapsed,
- * the run picker when there is more than one, and Stop while it is live.
+ * investigation's own words, never the incident's: state, agent and model,
+ * what it is doing, elapsed, and Stop while it is live.
  */
 export function RunStrip() {
-	const { run, runs, investigationId, selectRun } = useIncidentRecord();
+	const { run } = useIncidentRecord();
 	const now = useNow(1000);
 	const investigation = run.investigation;
 	const who = useRunAgentModel(investigation);
@@ -144,43 +136,6 @@ export function RunStrip() {
 				{formatElapsed(runElapsed(investigation, now))}
 			</span>
 			<div className="ml-auto flex shrink-0 items-center gap-1">
-				{runs.length > 1 && (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="xs"
-								className="text-meta"
-								aria-label="Pick an investigation"
-								data-testid="run-picker"
-							>
-								{runs.length - runs.findIndex((r) => r.id === investigationId)}{" "}
-								of {runs.length}
-								<ChevronDown />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-48">
-							{runs.map((r, i) => (
-								<DropdownMenuItem
-									key={r.id}
-									onClick={() => selectRun(r.id)}
-									className={cn(
-										"justify-between",
-										r.id === investigationId && "bg-muted",
-									)}
-									data-testid="run-picker-option"
-								>
-									<span className="tabular-nums">
-										Investigation {runs.length - i}
-									</span>
-									<span className="text-meta text-muted-foreground">
-										{RUN_STATE_LABEL[runState(r.status, { hasEvents: true })]}
-									</span>
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)}
 				{live && <StopButton />}
 			</div>
 		</div>
