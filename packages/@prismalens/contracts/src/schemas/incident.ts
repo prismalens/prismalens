@@ -57,6 +57,7 @@ export const CreateIncidentSchema = z.object({
 	description: z.string().optional(),
 	severity: SeveritySchema.optional(),
 	priority: PrioritySchema.optional(),
+	/** Matches the incident's own service or any of its alerts' services. */
 	serviceId: z.string().uuid().optional(),
 	tags: z.array(z.string()).optional(),
 	customerImpact: z.string().optional(),
@@ -101,15 +102,26 @@ const InvestigationRefSchema = z.object({
 	// Rendered by IncidentDetailPanel — omitting it here strips the field at
 	// the oRPC output boundary even though the service selects it.
 	rootCause: z.string().nullable(),
+	/** Why the run failed, for the list's headline (#743). */
+	error: z.string().nullable().optional(),
 	createdAt: DateStringSchema,
 	completedAt: DateStringSchema.nullable(),
 });
+
+/** A service an incident touches: its own, or one of its alerts' (#743). */
+export const IncidentServiceRefSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+});
+export type IncidentServiceRef = z.infer<typeof IncidentServiceRefSchema>;
 
 export const IncidentWithRelationsSchema = IncidentSchema.extend({
 	service: ServiceSchema.nullable().optional(),
 	assignedTo: UserRefSchema.nullable().optional(),
 	alerts: z.array(AlertSchema).optional(),
 	investigations: z.array(InvestigationRefSchema).optional(),
+	/** Every service the incident touches, its own first. */
+	services: z.array(IncidentServiceRefSchema).optional(),
 });
 
 // =============================================================================

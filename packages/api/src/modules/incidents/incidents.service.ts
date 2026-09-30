@@ -34,6 +34,7 @@ export interface StatusNote {
 // alongside `createdAt`.
 export type IncidentWithRelations = Incident & {
 	alerts: Alert[];
+	services?: Array<{ id: string; name: string }>;
 	service?: Service | null;
 	investigations?: Array<{
 		id: string;
@@ -43,6 +44,7 @@ export type IncidentWithRelations = Incident & {
 		rootCauseCategory: string | null;
 		createdAt: Date;
 		completedAt: Date | null;
+		error?: string | null;
 	}>;
 	_count?: {
 		alerts: number;
@@ -180,7 +182,12 @@ export class IncidentsService {
 					: {}),
 			...(options?.severity && { severity: options.severity }),
 			...(options?.priority && { priority: options.priority }),
-			...(options?.serviceId && { serviceId: options.serviceId }),
+			...(options?.serviceId && {
+				OR: [
+					{ serviceId: options.serviceId },
+					{ alerts: { some: { serviceId: options.serviceId } } },
+				],
+			}),
 			...((options?.fromDate || options?.toDate) && {
 				triggeredAt: {
 					...(options?.fromDate && { gte: options.fromDate }),
@@ -212,6 +219,7 @@ export class IncidentsService {
 							summary: true,
 							rootCause: true,
 							rootCauseCategory: true,
+							error: true,
 							createdAt: true,
 							completedAt: true,
 						},
@@ -231,7 +239,40 @@ export class IncidentsService {
 			this.prisma.incident.count({ where }),
 		]);
 
-		return { data, total };
+		return { data: await this.withServices(data), total };
+	}
+
+	/** Attach every service each incident touches: its own first, then its alerts'. */
+	private async withServices(
+		incidents: IncidentWithRelations[],
+	): Promise<IncidentWithRelations[]> {
+		if (incidents.length === 0) return incidents;
+		const rows = await this.prisma.alert.findMany({
+			where: {
+				incidentId: { in: incidents.map((i) => i.id) },
+				serviceId: { not: null },
+			},
+			distinct: ["incidentId", "serviceId"],
+			select: {
+				incidentId: true,
+				service: { select: { id: true, name: true } },
+			},
+		});
+		return incidents.map((incident) => {
+			const services = new Map<string, { id: string; name: string }>();
+			if (incident.service) {
+				services.set(incident.service.id, {
+					id: incident.service.id,
+					name: incident.service.name,
+				});
+			}
+			for (const row of rows) {
+				if (row.incidentId === incident.id && row.service) {
+					services.set(row.service.id, row.service);
+				}
+			}
+			return { ...incident, services: [...services.values()] };
+		});
 	}
 
 	/**
@@ -472,7 +513,12 @@ export class IncidentsService {
 		toDate?: Date;
 	}): Promise<IncidentStats> {
 		const where = {
-			...(options?.serviceId && { serviceId: options.serviceId }),
+			...(options?.serviceId && {
+				OR: [
+					{ serviceId: options.serviceId },
+					{ alerts: { some: { serviceId: options.serviceId } } },
+				],
+			}),
 			...((options?.fromDate || options?.toDate) && {
 				triggeredAt: {
 					...(options?.fromDate && { gte: options.fromDate }),

@@ -33,6 +33,7 @@ describe("IncidentsService", () => {
 		alert: {
 			findUnique: vi.fn(),
 			update: vi.fn(),
+			findMany: vi.fn().mockResolvedValue([]),
 		},
 		incident: {
 			update: vi.fn(),
@@ -284,8 +285,44 @@ describe("IncidentsService", () => {
 
 			const result = await service.findAll({ limit: 2, offset: 0 });
 
-			expect(result.data).toEqual(incidents);
+			expect(result.data).toEqual(incidents.map((i) => ({ ...i, services: [] })));
 			expect(result.total).toBe(5);
+		});
+
+		it("lists every service an incident touches, its own first, once each (#743)", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{ id: "inc-1", service: { id: "svc-a", name: "checkout" } },
+				{ id: "inc-2", service: null },
+			]);
+			mockPrisma.incident.count.mockResolvedValue(2);
+			mockPrisma.alert.findMany.mockResolvedValueOnce([
+				{ incidentId: "inc-1", service: { id: "svc-b", name: "payments" } },
+				{ incidentId: "inc-1", service: { id: "svc-a", name: "checkout" } },
+				{ incidentId: "inc-2", service: { id: "svc-b", name: "payments" } },
+			]);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data.map((i) => i.services)).toEqual([
+				[
+					{ id: "svc-a", name: "checkout" },
+					{ id: "svc-b", name: "payments" },
+				],
+				[{ id: "svc-b", name: "payments" }],
+			]);
+		});
+
+		it("filters by a service the incident or any of its alerts touches (#743)", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([]);
+			mockPrisma.incident.count.mockResolvedValue(0);
+
+			await service.findAll({ serviceId: "svc-b" });
+
+			const [{ where }] = mockPrisma.incident.findMany.mock.calls[0];
+			expect(where.OR).toEqual([
+				{ serviceId: "svc-b" },
+				{ alerts: { some: { serviceId: "svc-b" } } },
+			]);
 		});
 
 		it("does not filter the latest investigation to status=completed", async () => {

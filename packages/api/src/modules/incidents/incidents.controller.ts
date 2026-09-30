@@ -418,6 +418,7 @@ export class IncidentsController {
 				id: i.id,
 				status: i.status,
 				rootCause: i.rootCause ?? null,
+				...(i.error !== undefined ? { error: i.error } : {}),
 				createdAt:
 					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
 				completedAt:
@@ -425,6 +426,12 @@ export class IncidentsController {
 						? i.completedAt.toISOString()
 						: (i.completedAt ?? null),
 			}));
+		}
+
+		if (incident.services) {
+			serialized.services = incident.services.map(
+				(s: { id: string; name: string }) => ({ id: s.id, name: s.name }),
+			);
 		}
 
 		return serialized as IncidentWithRelations;
