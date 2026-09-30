@@ -6,6 +6,8 @@ node_modules/
 .next/
 dist/
 build/
+# electron-builder's icon source, not an output (#745).
+!packages/desktop/build/
 *.egg-info/
 __pycache__/
 *.pyc
