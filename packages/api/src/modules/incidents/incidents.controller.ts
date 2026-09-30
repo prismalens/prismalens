@@ -419,6 +419,12 @@ export class IncidentsController {
 				status: i.status,
 				rootCause: i.rootCause ?? null,
 				...(i.error !== undefined ? { error: i.error } : {}),
+				harness: i.harness ?? null,
+				model: i.model ?? null,
+				stopRequestedAt: iso(i.stopRequestedAt),
+				lastEventAt: iso(i.lastEventAt),
+				latestText: i.latestText ?? null,
+				evidenceCount: i.evidenceCount ?? null,
 				createdAt:
 					i.createdAt instanceof Date ? i.createdAt.toISOString() : i.createdAt,
 				completedAt:
@@ -436,4 +442,9 @@ export class IncidentsController {
 
 		return serialized as IncidentWithRelations;
 	}
+}
+
+function iso(value: Date | string | null | undefined): string | null {
+	if (!value) return null;
+	return value instanceof Date ? value.toISOString() : value;
 }

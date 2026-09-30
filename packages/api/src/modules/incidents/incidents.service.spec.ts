@@ -35,6 +35,13 @@ describe("IncidentsService", () => {
 			update: vi.fn(),
 			findMany: vi.fn().mockResolvedValue([]),
 		},
+		investigation: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
+		investigationEvent: {
+			groupBy: vi.fn().mockResolvedValue([]),
+			findFirst: vi.fn().mockResolvedValue(null),
+		},
 		incident: {
 			update: vi.fn(),
 			findFirst: vi.fn(),
@@ -310,6 +317,31 @@ describe("IncidentsService", () => {
 				],
 				[{ id: "svc-b", name: "payments" }],
 			]);
+		});
+
+		it("says when the latest run last moved, what it last said while live, and its top evidence once done (#743)", async () => {
+			const at = new Date("2026-10-01T10:00:00Z");
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{ id: "inc-1", service: null, investigations: [{ id: "run-live", status: "running" }] },
+				{ id: "inc-2", service: null, investigations: [{ id: "run-done", status: "completed" }, { id: "old", status: "failed" }] },
+			]);
+			mockPrisma.incident.count.mockResolvedValue(2);
+			mockPrisma.investigationEvent.groupBy.mockResolvedValueOnce([
+				{ investigationId: "run-live", _max: { createdAt: at } },
+			]);
+			mockPrisma.investigationEvent.findFirst.mockResolvedValueOnce({
+				investigationId: "run-live",
+				event: JSON.stringify({ kind: "agent_step", text: "  Checking the pool size.  " }),
+			});
+			mockPrisma.investigation.findMany.mockResolvedValueOnce([
+				{ id: "run-done", report: JSON.stringify({ hypotheses: [{ evidence: [{}, {}] }] }) },
+			]);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data[0]?.investigations?.[0]).toMatchObject({ lastEventAt: at, latestText: "Checking the pool size." });
+			expect(data[1]?.investigations?.[0]).toMatchObject({ evidenceCount: 2, latestText: null });
+			expect(data[1]?.investigations?.[1]).toEqual({ id: "old", status: "failed" });
 		});
 
 		it("filters by a service the incident or any of its alerts touches (#743)", async () => {

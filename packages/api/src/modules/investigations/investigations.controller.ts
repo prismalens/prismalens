@@ -212,6 +212,7 @@ export class InvestigationsController {
 						// Lost the race — a dispatcher claimed the job. Fall through to publish
 						// so the run that holds it owns the terminal write.
 					}
+					await this.investigationsService.markStopRequested(input.id);
 					let receivers = await this.dispatchService.requestCancel(input.id);
 					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -424,6 +425,9 @@ export class InvestigationsController {
 			// malformed/absent blob degrades to null rather than corrupting the payload.
 			overlay: this.parseOverlay(investigation.overlay),
 			error: investigation.error ?? null,
+			harness: investigation.harness ?? null,
+			model: investigation.model ?? null,
+			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
 			createdAt: investigation.createdAt.toISOString(),
 			updatedAt: investigation.updatedAt.toISOString(),
 		};

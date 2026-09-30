@@ -129,6 +129,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					dto.startedAt,
 					dto.error,
 					dto.harnessThreadId,
+					{ harness: dto.harness, model: dto.model },
 				);
 				if (dto.status === "failed") void this.reportDelivery.deliver(id);
 				await this.reportStatus(id, dto.status);

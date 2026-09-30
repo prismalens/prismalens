@@ -24,6 +24,7 @@ const mockInvestigationsService = {
 	findById: vi.fn(),
 	updateStatus: vi.fn(),
 	cancelPending: vi.fn(),
+	markStopRequested: vi.fn(),
 };
 
 const mockDispatchService = {

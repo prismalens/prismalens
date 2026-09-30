@@ -184,6 +184,8 @@ async function runJobInternal(
 			investigationId: data.investigationId,
 			incidentId: data.incidentId,
 			runId,
+			harness: selection.harness,
+			...(model ? { model } : {}),
 		});
 		const outcome = await conductRun(
 			{

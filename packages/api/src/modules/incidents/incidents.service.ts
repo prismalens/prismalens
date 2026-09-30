@@ -7,12 +7,14 @@ import {
 	type IncidentStats,
 	incidentAttention,
 	isIncidentEnded,
+	isWorkflowLive,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
 import type { Alert, Incident, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 import { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 
@@ -45,6 +47,12 @@ export type IncidentWithRelations = Incident & {
 		createdAt: Date;
 		completedAt: Date | null;
 		error?: string | null;
+		harness?: string | null;
+		model?: string | null;
+		stopRequestedAt?: Date | null;
+		lastEventAt?: Date | null;
+		latestText?: string | null;
+		evidenceCount?: number | null;
 	}>;
 	_count?: {
 		alerts: number;
@@ -220,6 +228,9 @@ export class IncidentsService {
 							rootCause: true,
 							rootCauseCategory: true,
 							error: true,
+							harness: true,
+							model: true,
+							stopRequestedAt: true,
 							createdAt: true,
 							completedAt: true,
 						},
@@ -239,7 +250,10 @@ export class IncidentsService {
 			this.prisma.incident.count({ where }),
 		]);
 
-		return { data: await this.withServices(data), total };
+		return {
+			data: await this.withLatestRun(await this.withServices(data)),
+			total,
+		};
 	}
 
 	/** Attach every service each incident touches: its own first, then its alerts'. */
@@ -272,6 +286,74 @@ export class IncidentsService {
 				}
 			}
 			return { ...incident, services: [...services.values()] };
+		});
+	}
+
+	/**
+	 * What the list says about each incident's latest run (#743): when its last
+	 * event landed and, while live, its latest agent sentence; once done, how
+	 * much evidence backs its top hypothesis.
+	 */
+	private async withLatestRun(
+		incidents: IncidentWithRelations[],
+	): Promise<IncidentWithRelations[]> {
+		const latest = incidents.flatMap(
+			(i) => i.investigations?.slice(0, 1) ?? [],
+		);
+		if (latest.length === 0) return incidents;
+		const live = latest
+			.filter((r) => isWorkflowLive(r.status))
+			.map((r) => r.id);
+		const done = latest
+			.filter((r) => r.status === "completed")
+			.map((r) => r.id);
+		const [lastEvents, steps, reports] = await Promise.all([
+			this.prisma.investigationEvent.groupBy({
+				by: ["investigationId"],
+				where: { investigationId: { in: latest.map((r) => r.id) } },
+				_max: { createdAt: true },
+			}),
+			Promise.all(
+				live.map((id) =>
+					this.prisma.investigationEvent.findFirst({
+						where: {
+							investigationId: id,
+							event: { contains: '"kind":"agent_step"' },
+						},
+						orderBy: { seq: "desc" },
+						select: { investigationId: true, event: true },
+					}),
+				),
+			),
+			done.length
+				? this.prisma.investigation.findMany({
+						where: { id: { in: done } },
+						select: { id: true, report: true },
+					})
+				: [],
+		]);
+		const lastAt = new Map<string, Date | null>();
+		for (const e of lastEvents) lastAt.set(e.investigationId, e._max.createdAt);
+		const text = new Map<string, string | null>();
+		for (const s of steps)
+			if (s) text.set(s.investigationId, stepText(s.event));
+		const evidence = new Map<string, number | null>();
+		for (const r of reports) evidence.set(r.id, topEvidenceCount(r.report));
+		return incidents.map((incident): IncidentWithRelations => {
+			const [run, ...rest] = incident.investigations ?? [];
+			if (!run) return incident;
+			return {
+				...incident,
+				investigations: [
+					{
+						...run,
+						lastEventAt: lastAt.get(run.id) ?? null,
+						latestText: text.get(run.id) ?? null,
+						evidenceCount: evidence.get(run.id) ?? null,
+					},
+					...rest,
+				],
+			};
 		});
 	}
 
@@ -594,4 +676,18 @@ export class IncidentsService {
 			},
 		});
 	}
+}
+
+function stepText(raw: string): string | null {
+	const parsed = safeParseJsonObject(raw) as { text?: unknown } | null;
+	const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+	return text ? text.slice(0, 280) : null;
+}
+
+function topEvidenceCount(raw: string | null): number | null {
+	const report = safeParseJsonObject(raw) as {
+		hypotheses?: Array<{ evidence?: unknown[] }>;
+	} | null;
+	const top = report?.hypotheses?.[0];
+	return Array.isArray(top?.evidence) ? top.evidence.length : null;
 }

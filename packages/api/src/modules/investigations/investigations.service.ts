@@ -288,6 +288,7 @@ export class InvestigationsService {
 		startedAt?: Date,
 		error?: string,
 		harnessThreadId?: string,
+		facts?: { harness?: string; model?: string },
 	): Promise<Investigation | null> {
 		try {
 			const updateData: Record<string, unknown> = {
@@ -312,11 +313,21 @@ export class InvestigationsService {
 			if (harnessThreadId) {
 				updateData.harnessThreadId = harnessThreadId;
 			}
+			if (facts?.harness) updateData.harness = facts.harness;
+			if (facts?.model) updateData.model = facts.model;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
 			return null;
 		}
+	}
+
+	/** Record that the operator asked a running run to stop (#743). */
+	async markStopRequested(id: string): Promise<void> {
+		await this.prisma.investigation.updateMany({
+			where: { id, stopRequestedAt: null },
+			data: { stopRequestedAt: new Date() },
+		});
 	}
 
 	/**

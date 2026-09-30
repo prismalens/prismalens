@@ -200,6 +200,11 @@ export const InvestigationSchema = z.object({
 	 */
 	overlay: OverlaySchema.nullable().optional(),
 	error: z.string().nullable(),
+	/** The harness and model the run started with; the report's fidelity says what actually ran (#743). */
+	harness: z.string().nullable().optional(),
+	model: z.string().nullable().optional(),
+	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
+	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */

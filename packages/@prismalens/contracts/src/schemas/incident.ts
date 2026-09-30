@@ -104,6 +104,14 @@ const InvestigationRefSchema = z.object({
 	rootCause: z.string().nullable(),
 	/** Why the run failed, for the list's headline (#743). */
 	error: z.string().nullable().optional(),
+	harness: z.string().nullable().optional(),
+	model: z.string().nullable().optional(),
+	stopRequestedAt: DateStringSchema.nullable().optional(),
+	/** Latest run only: when its last event landed, and its latest agent sentence while live. */
+	lastEventAt: DateStringSchema.nullable().optional(),
+	latestText: z.string().nullable().optional(),
+	/** Latest completed run only: evidence rows behind its top hypothesis. */
+	evidenceCount: z.number().int().nullable().optional(),
 	createdAt: DateStringSchema,
 	completedAt: DateStringSchema.nullable(),
 });
