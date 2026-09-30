@@ -451,7 +451,9 @@ export function ConnectionFormDialog({
 						Cancel
 					</Button>
 					<Button onClick={handleSave} disabled={isSaving}>
-						{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+						{isSaving && (
+							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+						)}
 						{mode === "edit" &&
 						selectedTemplate?.connectionCreationMode === "oauth_redirect"
 							? "Re-authorize"

@@ -10,10 +10,12 @@ import {
 	type HypothesisStatus,
 	INCIDENT_STATUS_PHASE,
 	type IncidentStatus,
+	isRunStateLive,
 	PRIORITY_WEIGHT,
 	type Priority,
 	RECOMMENDATION_PRIORITY_WEIGHT,
 	type RecommendationPriority,
+	type RunState,
 	SEVERITY_WEIGHT,
 	type Severity,
 	type StatePhase,
@@ -88,4 +90,11 @@ export function hypothesisStatusTone(
 export function evidenceStatusTone(status: EvidenceStatus | string): ChipTone {
 	const phase = lookup(EVIDENCE_STATUS_PHASE, status);
 	return phase ? phaseTone[phase] : "neutral";
+}
+
+/** A run's own state word (#743 §2): live states pulse, a stop is stale, not failed. */
+export function runStateTone(state: RunState): ChipTone {
+	if (isRunStateLive(state)) return "active";
+	if (state === "stopped") return "stale";
+	return state === "failed" ? "failed" : "done";
 }

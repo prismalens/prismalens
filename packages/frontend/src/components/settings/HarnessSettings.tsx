@@ -18,8 +18,10 @@
 import type { HarnessId } from "@prismalens/config/harness";
 import { AlertTriangle, Loader2, RadioTower } from "lucide-react";
 import { useState } from "react";
-import { AgentPicker, useAgentChoice } from "@/components/agent/AgentPicker";
-import { RunToolbar } from "@/components/agent/RunToolbar";
+import {
+	AgentModelPicker,
+	useAgentChoice,
+} from "@/components/agent/AgentPicker";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -83,7 +85,7 @@ export function HarnessSettings() {
 				className="flex items-center justify-center py-12"
 				data-testid="harness-settings"
 			>
-				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
@@ -130,14 +132,14 @@ export function HarnessSettings() {
 
 			<SettingGroup
 				title="Runs"
-				description="What the next investigation starts with. The same controls sit under the composer on a record."
+				description="What the next investigation starts with. The same control sits where a run starts on an incident."
 			>
 				<SettingRow
 					label="Agent and model"
 					description="Auto takes the first agent on PATH."
 					testId="harness-run-row"
 				>
-					<RunToolbar />
+					<AgentModelPicker />
 				</SettingRow>
 				<SettingRow
 					label="Next run"
@@ -231,7 +233,7 @@ export function HarnessSettings() {
 									data-testid={`harness-check-${harness.id}`}
 								>
 									{checking ? (
-										<Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+										<Loader2 className="mr-1.5 h-3 w-3 motion-safe:animate-spin" />
 									) : (
 										<RadioTower className="mr-1.5 h-3 w-3" />
 									)}

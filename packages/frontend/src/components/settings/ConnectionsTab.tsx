@@ -180,7 +180,7 @@ export function ConnectionsTab() {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center py-12">
-				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
@@ -330,7 +330,7 @@ export function ConnectionsTab() {
 											disabled={testingConnectionId === connection.id}
 										>
 											{testingConnectionId === connection.id ? (
-												<Loader2 className="h-4 w-4 animate-spin" />
+												<Loader2 className="h-4 w-4 motion-safe:animate-spin" />
 											) : (
 												<Sparkles className="h-4 w-4" />
 											)}

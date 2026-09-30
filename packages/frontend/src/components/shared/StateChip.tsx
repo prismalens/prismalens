@@ -89,6 +89,7 @@ export function StateChip({
  */
 export function StateWord({
 	tone,
+	pulse,
 	className,
 	style,
 	children,
@@ -106,7 +107,10 @@ export function StateWord({
 		>
 			<span
 				aria-hidden
-				className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--chip)"
+				className={cn(
+					"h-1.5 w-1.5 shrink-0 rounded-full bg-(--chip)",
+					pulse && "motion-safe:animate-pulse",
+				)}
 			/>
 			{children}
 		</span>

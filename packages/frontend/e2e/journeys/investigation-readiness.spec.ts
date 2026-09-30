@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
+import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
  * #521 — one readiness verdict for the investigation affordance.
  *
- * The incident-detail header and the detail progress tab used to each derive
+ * The incident band and the box under the cards used to each derive
  * their own boolean from `activeProvider` (and later from
  * `harnesses.some(runnable)`). Both are "someone picked something", not "a run
  * would start": the per-harness rows answer "if you PINNED this one", so a
@@ -21,6 +22,7 @@ import { expect, type Page, test } from "@playwright/test";
  * Command Center screen was deleted), so this file no longer opens it.
  */
 
+
 /**
  * A real gate message: anthropic is active with a model and a key, but the
  * harness is pinned to deepagents, which speaks only the OpenAI protocol. The
@@ -32,27 +34,37 @@ const PROTOCOL_MISMATCH_REASON =
 	"Switch provider or set PRISMALENS_HARNESS to a harness that " +
 	"supports it (e.g. claude-code for anthropic).";
 
-/** A row that IS runnable, so `harnesses.some((h) => h.runnable)` stays true. */
+const NO_MODELS = {
+	source: "catalogue",
+	asOf: "2026-09-23T00:00:00Z",
+	entries: [],
+};
+
+/** An installed row next to the blocked selection: a runnable row is not a verdict. */
 const RUNNABLE_ROW = {
 	id: "claude-code",
-	label: "Claude Code (Agent SDK)",
-	implemented: true,
-	runnable: true,
-	blockedReason: null,
-	verdict: { usable: true, route: "api-key" },
+	label: "Claude Code",
+	binary: "claude-agent-acp",
+	installed: true,
+	tested: null,
+	install: "npm i -g @agentclientprotocol/claude-agent-acp",
+	defaultModel: null,
+	modelVia: "env",
+	loginHint: "`claude /login`",
+	models: NO_MODELS,
 };
 
 const MISMATCHED_ROW = {
 	id: "deepagents",
-	label: "deepagents (ACP)",
-	implemented: true,
-	runnable: false,
-	blockedReason: PROTOCOL_MISMATCH_REASON,
-	verdict: {
-		usable: false,
-		cause: "not-authenticated",
-		reason: PROTOCOL_MISMATCH_REASON,
-	},
+	label: "deepagents",
+	binary: "deepagents-acp",
+	installed: true,
+	tested: null,
+	install: "pip install deepagents-acp",
+	defaultModel: null,
+	modelVia: "unsupported",
+	loginHint: "`OPENAI_API_KEY` in env",
+	models: NO_MODELS,
 };
 
 async function serveUnrunnableSelection(page: Page): Promise<void> {
@@ -120,19 +132,17 @@ async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
 }
 
 /**
- * The Investigation tab's own "start" button, scoped inside
- * `investigation-empty` — it shares an accessible name ("Investigate") with
- * the incident-detail header's button, which stays mounted once the tab is
- * switched, so an unscoped `getByRole` is a strict-mode violation.
+ * The box's own Investigate button, docked under the incident's cards. It
+ * shares its name with the band's button, so it is found by test id.
  */
-function tabInvestigateButton(page: Page) {
-	return page
-		.getByTestId("investigation-empty")
-		.getByRole("button", { name: "Investigate", exact: true });
+function boxInvestigateButton(page: Page) {
+	return page.getByTestId("composer-investigate");
 }
 
 test.describe("#521 — the investigation affordance follows the server's gate", () => {
-	test("incident-detail header and progress tab say unavailable with the same reason", async ({
+	test.beforeEach(({ page }) => hideQueryDevtools(page));
+
+	test("the band and the box say unavailable with the same reason", async ({
 		page,
 	}) => {
 		await serveUnrunnableSelection(page);
@@ -147,7 +157,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 
-		// Header: disabled, and hovering names the reason.
+		// Band: disabled, and hovering names the reason.
 		const headerBtn = page.getByTestId("band-investigate");
 		await expect(headerBtn).toBeDisabled();
 		await headerBtn.hover({ force: true });
@@ -155,8 +165,8 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 
-		// Empty state affordance: disabled, with the reason rendered inline.
-		await expect(tabInvestigateButton(page)).toBeDisabled();
+		// The box: disabled, with the reason rendered under it.
+		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible();
 	});
 
@@ -169,7 +179,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByTestId("band-investigate"),
 		).toBeEnabled({ timeout: 15_000 });
-		await expect(tabInvestigateButton(page)).toBeEnabled();
+		await expect(boxInvestigateButton(page)).toBeEnabled();
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -179,7 +189,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, `Probe failure ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(tabInvestigateButton(page)).toBeDisabled({
+		await expect(boxInvestigateButton(page)).toBeDisabled({
 			timeout: 15_000,
 		});
 		await expect(
@@ -188,6 +198,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 	});
 
 	test("design evidence: default, dark, empty, and error", async ({ page }) => {
+
 		// Default (light) — the incident-detail header, provider selected, gate
 		// refusing. The dashboard panel this used to photograph is gone (the
 		// Command Center screen was deleted); the header carries the same verdict.
@@ -204,25 +215,23 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
 		await expect(
 			page.getByTestId("band-investigate"),
 		).toBeDisabled({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
 
-		// Empty — the detail record with no investigations on the incident,
-		// which is where the blocked affordance is the only thing on the card.
-		// Scoped to the empty-state card: the left pane can carry another
-		// incident from elsewhere in the suite whose title happens to contain
-		// this same text (#523 keeps the pane mounted beside every record).
+		// Empty — the incident has no run, so the Run card says so and the
+		// blocked box is the only way to start one.
 		await setTheme(page, "light");
-		await expect(
-			page.getByTestId("investigation-empty").getByText("No investigation yet"),
-		).toBeVisible({
+		await expect(page.getByTestId("run-card")).toContainText("No run yet", {
 			timeout: 15_000,
 		});
-		await expect(tabInvestigateButton(page)).toBeDisabled();
+		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await page.waitForLoadState("networkidle");
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
@@ -230,5 +239,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
+		await page.waitForLoadState("networkidle");
 	});
 });

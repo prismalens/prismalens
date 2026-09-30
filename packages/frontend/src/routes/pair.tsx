@@ -111,7 +111,7 @@ function PairPage() {
 	return (
 		<Shell title="Pairing this device">
 			<div className="flex items-center gap-2 text-record text-muted-foreground">
-				<Loader2 className="h-4 w-4 animate-spin" />
+				<Loader2 className="h-4 w-4 motion-safe:animate-spin" />
 				Pairing…
 			</div>
 		</Shell>

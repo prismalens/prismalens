@@ -16,11 +16,12 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 3. Open culprit investigation (d0111111) and verify culprit fields on
-		//    the record's Report section (#523 — the route redirects to the
-		//    incident record, and the section is `#report`, not a standalone
-		//    "Root Cause Analysis" heading).
-		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
+		// 3. Open the culprit investigation's report (d0111111) and verify the
+		//    culprit fields. The report is a route under its incident (#743),
+		//    and the section is `#report`.
+		await page.goto(
+			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
+		);
 		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
@@ -38,14 +39,19 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		//    no-culprit state: report renders, but absence stays absence —
 		//    no service, change ref, or mechanism is invented (culprit: null
 		//    in the seed, so AnalysisTab must render no Culprit section at all).
-		await page.goto("/investigations/d0222222-2222-4222-8222-222222222222");
+		await page.goto(
+			"/incidents/b0222222-2222-4222-8222-222222222222/report?investigation=d0222222-2222-4222-8222-222222222222",
+		);
 		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});
+		// Scoped to the report: the list row's headline carries the same cause.
 		await expect(
-			page.getByText(
-				"Upstream payment provider experiencing elevated processing latencies.",
-			),
+			page
+				.getByTestId("report-route")
+				.getByText(
+					"Upstream payment provider experiencing elevated processing latencies.",
+				),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(
 			page.getByText("Culprit", { exact: true }),
@@ -274,7 +280,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	test("design evidence: investigation detail page in default and dark themes", async ({
 		page,
 	}) => {
-		const DETAIL_URL = "/investigations/d0111111-1111-4111-8111-111111111111";
+		// An investigation's report is a route under its incident (#743).
+		const DETAIL_URL =
+			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111";
 
 		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {

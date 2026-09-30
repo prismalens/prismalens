@@ -24,23 +24,12 @@ export {
 	type QuickRange,
 } from "./DateRangeFilter";
 export { FirstRunPanel } from "./FirstRunPanel";
-export {
-	type ComposerCommand,
-	IncidentComposer,
-	type IncidentComposerProps,
-} from "./IncidentComposer";
 export { IncidentFilters, type IncidentFiltersProps } from "./IncidentFilters";
 export {
 	IncidentListPane,
 	type IncidentListPaneProps,
 	useIncidentWindow,
 } from "./IncidentListPane";
-export {
-	DetailsBlock,
-	RunBlock,
-	SimilarBlock,
-	TelemetryBlock,
-} from "./IncidentRail";
 export {
 	IncidentStateBand,
 	type IncidentStateBandProps,
@@ -54,7 +43,6 @@ export {
 	RecommendationsList,
 	type RecommendationsListProps,
 } from "./RecommendationsList";
-export { SurfacePane, SurfaceRail } from "./RecordSurfaces";
 export {
 	TimelineEntry,
 	type TimelineEntryProps,

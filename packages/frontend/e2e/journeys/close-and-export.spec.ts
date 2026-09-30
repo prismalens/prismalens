@@ -61,10 +61,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		// incident first. Closing with both fields blank is allowed.
 		await close.click();
 		await page.getByTestId("confirm-close-incident").click();
-		await expect(page.getByTestId("band-investigate")).toHaveCount(0, {
-			timeout: 15_000,
-		});
-		await expect(close).toHaveCount(0);
+		await expect(close).toHaveCount(0, { timeout: 15_000 });
+		// A closed incident can still be investigated again (#743); its
+		// status stays closed.
+		await expect(page.getByTestId("band-investigate")).toBeVisible();
+		await expect(page.getByTestId("band-status")).toHaveText("Closed");
 	});
 
 	test("offers no Markdown export while the incident has no report", async ({
@@ -118,9 +119,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			await route.fallback();
 		});
 
-		await page.goto("/investigations/d0111111-1111-4111-8111-111111111111");
-		// The route redirects to the incident record (#523); the section is
-		// `#report`, headed "Report", and carries the root cause text.
+		// The report is its own route under the incident (#743); the section
+		// is `#report`, headed "Report", and carries the root cause text.
+		await page.goto(
+			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
+		);
 		await expect(page.locator("#report")).toBeVisible({
 			timeout: 15_000,
 		});

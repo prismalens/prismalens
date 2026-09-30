@@ -4,7 +4,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import {
-	DETAIL_URL,
 	deliver,
 	eventFactory,
 	installStreamDouble,
@@ -15,14 +14,15 @@ import {
 } from "./live-stream-fixtures";
 
 /**
- * #280 — the investigation stream panel groups branches and follows the tail.
+ * #280 — the investigation stream panel, now the conversation's Ledger view
+ * (#743), groups branches and follows the tail.
  *
  * Two behaviours:
  *
- *  - Branch chrome (the count badge and the collapsible per-branch sections)
- *    belongs to a run that ACTUALLY fanned out. A live fan-out emits `b0`
- *    before `b1`, and a cancelled run's terminal event is stamped `supervisor`
- *    — a single non-`root` branch is the normal case, not a hypothetical.
+ *  - Branch chrome (the conversation's branch tabs) belongs to a run that
+ *    ACTUALLY fanned out. A live fan-out emits `b0` before `b1`, and a
+ *    cancelled run's terminal event is stamped `supervisor`, so a single
+ *    non-`root` branch is the normal case, not a hypothetical.
  *  - Auto-scroll follows new events only while the reader is at the tail.
  *
  * The transport and the `running` status are doubles; see
@@ -60,6 +60,14 @@ async function scrollTo(page: Page, top: number | "bottom"): Promise<void> {
 	);
 }
 
+/** The demo seed's incident #1, which both seeded investigations can be shown under. */
+const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
+
+/** The conversation's Ledger view for one investigation. */
+function ledgerUrl(id: string): string {
+	return `/incidents/${INCIDENT_ID}/conversation?investigation=${id}&ledger=1`;
+}
+
 /**
  * A direct `$id` -> `$id` transition. No in-app link produces one today — every
  * link into the detail route lives on another route, which unmounts it — so this
@@ -67,9 +75,9 @@ async function scrollTo(page: Page, top: number | "bottom"): Promise<void> {
  */
 async function navigateToInvestigation(page: Page, id: string): Promise<void> {
 	await page.evaluate((next) => {
-		window.history.pushState({}, "", `/investigations/${next}`);
+		window.history.pushState({}, "", next);
 		window.dispatchEvent(new PopStateEvent("popstate"));
-	}, id);
+	}, ledgerUrl(id));
 	await expect(page).toHaveURL(new RegExp(id));
 }
 
@@ -77,7 +85,7 @@ async function navigateToInvestigation(page: Page, id: string): Promise<void> {
 async function openConnectedPanel(page: Page): Promise<Locator> {
 	await serveAsRunning(page);
 	await installStreamDouble(page);
-	await page.goto(DETAIL_URL);
+	await page.goto(ledgerUrl(INVESTIGATION_ID));
 	const panel = page.getByTestId("investigation-stream-panel");
 	await expect(panel.getByTestId("stream-panel-connecting")).toBeVisible({
 		timeout: 20_000,
@@ -112,7 +120,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		await deliver(page, b0.toolResult("search_logs", "412 matching lines"));
 
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(2);
-		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(0);
+		await expect(page.getByTestId("branch-tabs")).toHaveCount(0);
 		await expect(panel.getByTestId("stream-branch-badge")).toHaveCount(0);
 		await expect(panel.getByTestId("stream-event-row").first()).toContainText(
 			"Mapping services",
@@ -126,11 +134,11 @@ test.describe("#280 — the investigation stream panel", () => {
 		await deliver(page, root.agentStep("scout", "Mapping services"));
 
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(1);
-		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(0);
+		await expect(page.getByTestId("branch-tabs")).toHaveCount(0);
 		await expect(panel.getByTestId("stream-branch-badge")).toHaveCount(0);
 	});
 
-	test("renders a section per branch and a counted badge once a run fans out", async ({
+	test("offers a tab per branch once a run fans out, each tab its own rows", async ({
 		page,
 	}) => {
 		const panel = await openConnectedPanel(page);
@@ -139,16 +147,18 @@ test.describe("#280 — the investigation stream panel", () => {
 
 		// The window this test exists for: b0 alone is NOT a fan-out yet.
 		await deliver(page, b0.agentStep("scout", "Mapping services"));
-		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(0);
+		const tabs = page.getByTestId("branch-tabs");
+		await expect(tabs).toHaveCount(0);
 
 		await deliver(page, b1.agentStep("analyst", "Correlating deploys"));
-		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(2);
-		await expect(panel.getByTestId("stream-branch-badge")).toHaveText(
-			"2 branches",
-		);
-		const sections = panel.getByTestId("stream-branch-section");
-		await expect(sections.first()).toContainText("b0");
-		await expect(sections.nth(1)).toContainText("b1");
+		await expect(tabs.getByRole("tab")).toHaveText(["b0", "b1"]);
+		const rows = panel.getByTestId("stream-event-row");
+		await expect(rows).toHaveCount(1);
+		await expect(rows.first()).toContainText("Mapping services");
+
+		await tabs.getByRole("tab", { name: "b1" }).click();
+		await expect(rows).toHaveCount(1);
+		await expect(rows.first()).toContainText("Correlating deploys");
 	});
 
 	test("follows the tail, but not while the reader has scrolled up", async ({
@@ -200,12 +210,9 @@ test.describe("#280 — the investigation stream panel", () => {
 		await page.waitForTimeout(300);
 		expect(await viewport(page).evaluate((el) => el.scrollTop)).toBe(0);
 
-		// Navigate to B the way a reader does — no full page load. The record's
-		// back link now reads "Back to incidents" (plural; it goes to the queue,
-		// #523) and `/investigations/$id` redirects straight into the incident,
-		// so leaving through the queue unmounts the panel the same way leaving
-		// through the incident used to, then B is entered client-side so the
-		// route mounts fresh.
+		// Navigate to B the way a reader does, with no full page load: leaving
+		// through the queue unmounts the panel, then B is entered client-side
+		// so the route mounts fresh.
 		await page.goto("/incidents");
 		await navigateToInvestigation(page, SECOND_INVESTIGATION_ID);
 		await expect(panel).toBeVisible({ timeout: 20_000 });
@@ -277,10 +284,12 @@ test.describe("#280 — the investigation stream panel", () => {
 	}) => {
 		test.setTimeout(120_000);
 
+
 		const panel = await openConnectedPanel(page);
 
 		// Empty: connected, nothing received yet.
 		await reloadInto(page, panel, "dark");
+		await page.waitForLoadState("networkidle");
 
 		// Single non-root branch: the flat list this PR restores.
 		await reloadInto(page, panel, "light");
@@ -288,16 +297,20 @@ test.describe("#280 — the investigation stream panel", () => {
 		await deliver(page, single.agentStep("scout", "Mapping payment services"));
 		await deliver(page, single.toolResult("search_logs", "412 matching lines"));
 		await deliver(page, single.agentStep("scout", "Narrowing to checkout-api"));
-		await expect(panel.getByTestId("stream-branch-section")).toHaveCount(0);
+		await expect(page.getByTestId("branch-tabs")).toHaveCount(0);
+		await page.waitForLoadState("networkidle");
 
-		// Fanned out: badge plus one collapsible section per branch.
+		// Fanned out: one tab per branch above the ledger.
 		const fanOut = async () => {
 			const b0 = eventFactory("b0");
 			const b1 = eventFactory("b1");
 			await deliver(page, b0.agentStep("scout", "Mapping payment services"));
 			await deliver(page, b0.toolResult("search_logs", "412 matching lines"));
 			await deliver(page, b1.agentStep("analyst", "Correlating deploys"));
-			await expect(panel.getByTestId("stream-branch-section")).toHaveCount(2);
+			await expect(
+				page.getByTestId("branch-tabs").getByRole("tab"),
+			).toHaveCount(2);
+			await page.waitForLoadState("networkidle");
 		};
 
 		await reloadInto(page, panel, "light");
@@ -316,6 +329,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		await expect(
 			panel.getByText("Error: harness lost the tool socket"),
 		).toBeVisible();
+		await page.waitForLoadState("networkidle");
 
 		// Failed: an in-stream canonical error event followed by done marker
 		// renders the failure indicator in the panel header (default light & dark).
@@ -333,6 +347,7 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
+		await page.waitForLoadState("networkidle");
 
 		await reloadInto(page, panel, "dark");
 		const terminalFailDark = eventFactory("b0");
@@ -348,17 +363,20 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
+		await page.waitForLoadState("networkidle");
 
 		// SSE failure fallback affordance (#462): default (light) and dark
 		await reloadInto(page, panel, "light");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackLight = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackLight).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
 
 		await reloadInto(page, panel, "dark");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackDark = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
+		await page.waitForLoadState("networkidle");
 	});
 
 	test("renders terminal failed state when stream carried error before done marker (#462)", async ({
@@ -427,7 +445,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		);
 		await expect(
 			fallbackPanel.getByTestId("stream-fallback-message"),
-		).toHaveText("Live stream unavailable — polling for progress");
+		).toHaveText("Live stream unavailable, polling for progress");
 	});
 });
 

@@ -1,8 +1,9 @@
 /**
- * The incidents frame (#523): a fixed viewport under the nav with the queue as
- * a left pane and the selected record (or the window's numbers) to its right.
- * Nothing here scrolls the window; each pane scrolls itself. The filters live
- * in this route's search so the list and the record share one window.
+ * The incidents frame (#523, #743): a fixed viewport under the nav, the list
+ * always on the left as the navigator, and the board (or the open incident)
+ * to its right. Below `lg` the list is the board folded. Nothing here scrolls
+ * the window; each pane scrolls itself. The filters live in this route's
+ * search so the list, the board and the record share one window.
  */
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -41,28 +42,30 @@ export const Route = createFileRoute("/_authenticated/incidents")({
 
 function IncidentsFrame() {
 	const record = useMatch({
-		from: "/_authenticated/incidents/$id/",
+		from: "/_authenticated/incidents/$id",
 		shouldThrow: false,
 	});
 	const recordOpen = !!record;
-	// An empty workspace has no list to show; below `lg` the first-run panel
-	// takes the list's place instead of hiding behind it.
+	// An empty workspace has no list to show; below `lg` the board's first-run
+	// panel takes the list's place instead of hiding behind it.
 	// Unfiltered: a date window with no incidents is not a new workspace.
 	const stats = useQuery(orpc.incidents.getStats.queryOptions({ input: {} }));
 	const firstRun = !recordOpen && stats.data?.total === 0;
-
 	return (
 		<div
-			className="fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w) lg:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]"
+			className={cn(
+				"fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)",
+				!firstRun &&
+					"lg:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]",
+			)}
 			data-testid="incidents-frame"
 		>
-			<IncidentListPane
-				selectedId={record?.params.id ?? null}
-				className={cn(
-					"min-h-0 border-r",
-					(recordOpen || firstRun) && "hidden lg:flex",
-				)}
-			/>
+			{!firstRun && (
+				<IncidentListPane
+					selectedId={record?.params.id ?? null}
+					className={cn("min-h-0 border-r", recordOpen && "hidden lg:flex")}
+				/>
+			)}
 			<div
 				className={cn(
 					"min-h-0 min-w-0",

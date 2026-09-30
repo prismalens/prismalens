@@ -120,3 +120,8 @@ export function useCancelInvestigation() {
 		},
 	});
 }
+
+/** Send the operator's message to a live run (#743): 202 queued or sent, 409 once it ended. */
+export function useSendInvestigationMessage() {
+	return useMutation(orpc.investigations.message.mutationOptions());
+}

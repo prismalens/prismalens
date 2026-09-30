@@ -182,7 +182,7 @@ function GitHubAppInstallationWizard({
 					<CardContent>
 						{isLoading && (
 							<div className="flex items-center justify-center py-8">
-								<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+								<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
 							</div>
 						)}
 
@@ -251,7 +251,7 @@ function GitHubAppInstallationWizard({
 											disabled={connectingId !== null}
 										>
 											{connectingId === inst.id ? (
-												<Loader2 className="h-4 w-4 animate-spin mr-2" />
+												<Loader2 className="h-4 w-4 motion-safe:animate-spin mr-2" />
 											) : null}
 											Connect
 										</Button>
@@ -378,7 +378,7 @@ function StandardConfigurePage({
 			<div className="px-4 py-6 sm:px-0">
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="flex items-center justify-center py-12">
-						<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+						<Loader2 className="h-8 w-8 motion-safe:animate-spin text-muted-foreground" />
 					</CardContent>
 				</Card>
 			</div>

@@ -82,7 +82,9 @@ export function AboutSettings() {
 		);
 	}
 	if (!about) {
-		return <div className="h-48 animate-pulse rounded-lg border bg-card" />;
+		return (
+			<div className="h-48 motion-safe:animate-pulse rounded-lg border bg-card" />
+		);
 	}
 
 	const { update } = about;

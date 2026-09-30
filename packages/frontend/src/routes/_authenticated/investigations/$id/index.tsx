@@ -1,6 +1,6 @@
 /**
- * A run has no page of its own: it lives on its incident's record (#599, #523).
- * This route keeps old deep links working by sending them there.
+ * A run has no page of its own: it lives under its incident (#599, #523). This
+ * route keeps old deep links working by sending them to its conversation (#743).
  */
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ function InvestigationRedirect() {
 	if (!data) return <Skeleton className="h-24" />;
 	return (
 		<Navigate
-			to="/incidents/$id"
+			to="/incidents/$id/conversation"
 			params={{ id: data.incidentId }}
 			search={{ investigation: id }}
 			replace

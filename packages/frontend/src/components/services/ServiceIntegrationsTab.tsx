@@ -49,7 +49,7 @@ function ConnectionStatusBadge({ status }: { status: string }) {
 		case "pending":
 			return (
 				<StateChip tone="active">
-					<Loader2 className="h-3 w-3 mr-1 animate-spin" />
+					<Loader2 className="h-3 w-3 mr-1 motion-safe:animate-spin" />
 					pending
 				</StateChip>
 			);

@@ -1,32 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
+	deliver,
 	eventFactory,
+	hideQueryDevtools,
 	INVESTIGATION_ID,
+	installStreamDouble,
+	serveAsRunning,
 	serveEventsHistory,
 	serveInvestigationAs,
 	setTheme,
 } from "./live-stream-fixtures";
 
 /**
- * #523 S1 — the incident record: a state band that never scrolls, the
- * durable record in sections, a live sidecar rail, and a composer docked
- * across the bottom.
+ * #743 — the incident: a band and a run strip that never scroll, a page of
+ * bounded cards with the box docked under them, and the routes one level
+ * down (conversation, report, alerts, timeline).
  *
  * The demo seed's incident #1 (`INCIDENT_ID`) already carries a completed
- * investigation with a full report — the happy path reuses it rather than
- * hand-authoring one. The seed writes no canonical event rows for it though
- * (the report is the only durable artifact demo data gives an investigation),
- * so the ledger's ledger-unfold assertion fakes a few event rows onto the
- * real `GET .../events` response the same way `live-stream-fixtures.ts`
- * fakes the `running` status elsewhere: one field of a real response.
+ * investigation with a full report; the happy path reuses it. The seed writes
+ * no canonical event rows for it, so the conversation's events are faked onto
+ * the real `GET .../events` response the same way `live-stream-fixtures.ts`
+ * fakes the `running` status elsewhere.
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
 
-test.describe("#523 S1 — the incident record", () => {
-	test("bands, sections, ledger, rail and composer for a completed run", async ({
+
+async function createIncident(page: Page, title: string): Promise<string> {
+	const created = await page.request.post("/api/incidents", {
+		data: { title },
+	});
+	expect(created.ok()).toBeTruthy();
+	const incident: { id: string } = await created.json();
+	return incident.id;
+}
+
+test.describe("#743 — the incident page, its run strip and its routes", () => {
+	test.beforeEach(({ page }) => hideQueryDevtools(page));
+
+	test("cards, strip, report and conversation for a completed run", async ({
 		page,
 	}) => {
 		const events = eventFactory("root");
@@ -39,9 +53,6 @@ test.describe("#523 S1 — the incident record", () => {
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await setTheme(page, "light");
 
-		// The band: id, severity, title, status. The run's own state lives in
-		// the rail (`rail-working-now` while live, `rail-run-summary` once the
-		// run has a terminal status), asserted below.
 		const band = page.getByTestId("incident-state-band");
 		await expect(band).toBeVisible({ timeout: 15_000 });
 		await expect(band).toContainText("INC-1");
@@ -54,11 +65,21 @@ test.describe("#523 S1 — the incident record", () => {
 		).toBeVisible();
 		await expect(band.getByTestId("band-status")).toBeVisible();
 
-		// The sections, in document order (#alerts and #timeline moved to surfaces).
-		const ids = ["#report", "#evidence", "#ledger"];
+		// The run strip speaks the run's words, not the incident's.
+		await expect(page.getByTestId("run-strip-state")).toHaveText("Done");
+		await expect(page.getByTestId("run-stop")).toHaveCount(0);
+
+		// The cards, in the order an SRE asks.
+		const ids = [
+			"run-card",
+			"conclusion-card",
+			"alerts-card",
+			"timeline-card",
+			"details-card",
+		];
 		const ys: number[] = [];
 		for (const id of ids) {
-			const box = await page.locator(id).boundingBox();
+			const box = await page.getByTestId(id).boundingBox();
 			expect(box, `${id} has a bounding box`).not.toBeNull();
 			ys.push(box?.y ?? 0);
 		}
@@ -68,105 +89,113 @@ test.describe("#523 S1 — the incident record", () => {
 			);
 		}
 
-		// The ledger folds after completion, then unfolds on request.
-		const panel = page.getByTestId("investigation-stream-panel");
-		await expect(panel).toHaveAttribute("data-folded", "true");
-		await page.getByTestId("ledger-toggle").click();
-		await expect(panel).not.toHaveAttribute("data-folded", "true");
-		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
+		// The Details card opens in place, with the metrics row the old
+		// telemetry surface held.
+		await page.getByTestId("details-toggle").click();
+		await expect(page.getByTestId("details-open")).toContainText(
+			"Connect in Settings",
+		);
 
-		// The surfaces: surface-rail and surface-pane-run.
-		const rail = page.getByTestId("surface-rail");
-		await expect(rail).toBeVisible();
-		await expect(page.getByTestId("surface-run")).toBeVisible();
-		await expect(page.getByTestId("surface-alerts")).toBeVisible();
-		await expect(page.getByTestId("surface-timeline")).toBeVisible();
-		await expect(page.getByTestId("surface-telemetry")).toBeVisible();
-
-		const runPane = page.getByTestId("surface-pane-run");
-		await expect(runPane).toBeVisible();
-		await expect(runPane.getByTestId("rail-run-summary")).toBeVisible();
-		await expect(runPane.getByTestId("rail-details")).toBeVisible();
-
-		// Telemetry surface holds live-slot
-		await page.keyboard.press("m");
-		const telemetryPane = page.getByTestId("surface-pane-telemetry");
-		await expect(telemetryPane).toBeVisible();
-		const liveSlot = telemetryPane.getByTestId("live-slot").first();
-		await expect(liveSlot).toHaveAttribute("data-state", "not-configured");
-
-		// The composer: a plain note lands on the timeline.
+		// A note goes to the timeline from the Timeline card's own field.
 		const note = `Design evidence note ${Date.now()}`;
-		await page.getByTestId("composer-input").fill(note);
-		await page.getByTestId("composer-input").press("Enter");
-		await page.getByTestId("composer-input").blur();
-		// Open timeline surface ('t') before asserting note
-		await page.keyboard.press("t");
-		const timelinePane = page.getByTestId("surface-pane-timeline");
-		await expect(timelinePane).toBeVisible();
-		await expect(timelinePane).toContainText(note);
+		await page.getByTestId("note-input").fill(note);
+		await page.getByTestId("note-input").press("Enter");
+		await expect(page.getByTestId("timeline-card")).toContainText(note);
 
-		// `/` opens the command palette.
-		await page.getByTestId("composer-input").fill("/");
-		await expect(page.getByTestId("composer-commands")).toBeVisible();
-		await expect(page.getByTestId("composer-command-investigate")).toBeVisible();
-		await page.getByTestId("composer-input").press("Escape");
-		await expect(page.getByTestId("composer-commands")).toHaveCount(0);
+		// The box docked at the bottom briefs the next run once this one ended.
+		await expect(page.getByTestId("composer-investigate")).toHaveText(
+			"Investigate again",
+		);
+
+		await page.waitForLoadState("networkidle");
+
+		// Read the report: the document on its own route, band and strip still pinned.
+		await page.getByTestId("conclusion-read-report").click();
+		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/report/);
+		await expect(page.getByTestId("report-route")).toBeVisible();
+		await expect(page.locator("#report")).toBeVisible();
+		await expect(page.locator("#evidence")).toBeVisible();
+		await expect(page.getByTestId("run-strip")).toBeVisible();
+		await expect(page.getByTestId("record-crumb")).toBeVisible();
+
+		// Esc goes back to the incident.
+		await page.locator("body").press("Escape");
+		await expect(page.getByTestId("incident-record")).toBeVisible();
+		await expect(page).not.toHaveURL(/\/report/);
+
+		// The conversation: prose, the tool call folded to one line, the end.
+		await page.getByTestId("run-card-open-conversation").click();
+		await expect(page.getByTestId("conversation-route")).toBeVisible();
+		const transcript = page.getByTestId("transcript");
+		await expect(transcript.getByTestId("transcript-prose")).toHaveText(
+			"Mapping the connection pool",
+		);
+		await expect(transcript.getByTestId("transcript-tools")).toContainText(
+			"Ran 1 tool",
+		);
+		await expect(transcript).toContainText("Finished: submitted");
+
+		// The Ledger view is the row-per-event panel, one row per event.
+		await page.getByTestId("conversation-view-ledger").click();
+		const panel = page.getByTestId("investigation-stream-panel");
+		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
+		await page.getByTestId("conversation-view-transcript").click();
+
+		await page.waitForLoadState("networkidle");
 
 		await setTheme(page, "dark");
-		await expect(panel).toBeVisible();
+		await expect(page.getByTestId("conversation-route")).toBeVisible();
+		await page.waitForLoadState("networkidle");
 	});
 
-	test("record surfaces keyboard navigation (r, a, t, m, and ])", async ({
+	test("the routes under the incident: crumb links and Esc back", async ({
 		page,
 	}) => {
-		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("surface-rail")).toBeVisible({
+		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
+		await expect(page.getByTestId("alerts-route")).toBeVisible({
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("incident-state-band")).toBeVisible();
+		await expect(page.getByTestId("run-strip")).toBeVisible();
 
-		// Default surface is run
-		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
+		await page.getByTestId("crumb-timeline").click();
+		await expect(page.getByTestId("timeline-route")).toBeVisible();
+		await expect(page.getByTestId("note-field")).toBeVisible();
 
-		// 'a' switches to alerts surface
-		await page.keyboard.press("a");
-		await expect(page.getByTestId("surface-pane-alerts")).toBeVisible();
+		await page.getByTestId("crumb-conversation").click();
+		await expect(page.getByTestId("conversation-route")).toBeVisible();
 
-		// 't' switches to timeline surface
-		await page.keyboard.press("t");
-		await expect(page.getByTestId("surface-pane-timeline")).toBeVisible();
+		// Esc is ignored while typing, and goes back once the field lets go.
+		await page.getByTestId("composer-input").focus();
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("conversation-route")).toBeVisible();
+		await page.getByTestId("composer-input").blur();
+		await page.keyboard.press("Escape");
+		await expect(page.getByTestId("incident-record")).toBeVisible();
 
-		// 'm' switches to telemetry surface
-		await page.keyboard.press("m");
-		await expect(page.getByTestId("surface-pane-telemetry")).toBeVisible();
-
-		// 'r' switches to run surface
-		await page.keyboard.press("r");
-		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
-
-		// ']' hides the surface pane
-		await page.keyboard.press("]");
-		await expect(page.getByTestId("surface-pane-run")).toHaveCount(0);
-
-		// ']' shows the surface pane again
-		await page.keyboard.press("]");
-		await expect(page.getByTestId("surface-pane-run")).toBeVisible();
+		// An old investigation link lands on the conversation.
+		await page.goto(`/investigations/${INVESTIGATION_ID}`);
+		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/conversation/, {
+			timeout: 15_000,
+		});
 	});
 
 	test("empty — an incident with no run", async ({ page }) => {
-		const title = `No investigation yet ${Date.now()}`;
-		const created = await page.request.post("/api/incidents", {
-			data: { title },
-		});
-		expect(created.ok()).toBeTruthy();
-		const incident: { id: string } = await created.json();
+		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 
-		await page.goto(`/incidents/${incident.id}`);
-		await expect(page.getByTestId("investigation-empty")).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("run-card")).toContainText("No run yet", {
 			timeout: 15_000,
 		});
 		await setTheme(page, "light");
-		await expect(page.getByTestId("investigation-empty")).toBeVisible();
+		await expect(page.getByTestId("conclusion-card")).toContainText(
+			"Lands here when a run finishes.",
+		);
+		await expect(page.getByTestId("run-strip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-investigate")).toHaveText(
+			"Investigate",
+		);
+		await page.waitForLoadState("networkidle");
 	});
 
 	test("error — a failed run", async ({ page }) => {
@@ -176,10 +205,157 @@ test.describe("#523 S1 — the incident record", () => {
 		});
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("investigation-failed-state")).toBeVisible({
+		await expect(page.getByTestId("run-strip-state")).toHaveText("Failed", {
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("run-card")).toContainText(
+			"harness lost the tool socket",
+		);
 		await setTheme(page, "light");
+		await expect(page.getByTestId("run-card")).toBeVisible();
+		await page.waitForLoadState("networkidle");
+
+		await page.getByTestId("run-card-open-conversation").click();
+		await expect(page.getByTestId("transcript-end")).toContainText(
+			"Failed: harness lost the tool socket",
+		);
+		await page.getByTestId("conversation-view-ledger").click();
 		await expect(page.getByTestId("investigation-failed-state")).toBeVisible();
+	});
+
+	test("a live run: Stop asks first, then reads Stopping", async ({ page }) => {
+		await installStreamDouble(page);
+		await serveAsRunning(page, INVESTIGATION_ID);
+		// The run heard the cancel: the API answers with the still-running row.
+		const seeded = await page.request.get(
+			`/api/investigations/${INVESTIGATION_ID}`,
+		);
+		const running = { ...(await seeded.json()), status: "running" };
+		let cancelled = 0;
+		await page.route(
+			(url) =>
+				url.pathname === `/api/investigations/${INVESTIGATION_ID}/cancel`,
+			async (route) => {
+				cancelled++;
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(running),
+				});
+			},
+		);
+
+		await page.goto(`/incidents/${INCIDENT_ID}`);
+		const state = page.getByTestId("run-strip-state");
+		await expect(state).toHaveText("Starting", { timeout: 15_000 });
+
+		const events = eventFactory("run");
+		await deliver(page, events.agentStep("", "Reading the gateway logs"));
+		await expect(state).toHaveText("Working");
+		await expect(page.getByTestId("run-card-latest")).toHaveText(
+			"Reading the gateway logs",
+		);
+		await expect(page.getByTestId("conclusion-card")).toContainText(
+			"Nothing yet",
+		);
+
+		// Keep going closes the confirm and sends nothing.
+		await page.getByTestId("run-stop").click();
+		const confirm = page.getByTestId("run-stop-confirm");
+		await expect(confirm).toContainText("Stop this run?");
+		await confirm.getByRole("button", { name: "Keep going" }).click();
+		await expect(confirm).toHaveCount(0);
+		expect(cancelled).toBe(0);
+
+		await page.getByTestId("run-stop").click();
+		await page.getByTestId("run-stop-confirm-button").click();
+		await expect.poll(() => cancelled).toBe(1);
+		await expect(state).toHaveText("Stopping");
+		await expect(page.getByTestId("run-stop")).toBeDisabled();
+		await expect(page.getByTestId("run-stop")).toHaveText("Stopping");
+		await page.unrouteAll({ behavior: "ignoreErrors" });
+	});
+
+	test("a live run: Enter queues a message, a closed run offers Save as note", async ({
+		page,
+	}) => {
+		await installStreamDouble(page);
+		await serveAsRunning(page, INVESTIGATION_ID);
+		const sent: Record<string, unknown>[] = [];
+		let answer: "queued" | "conflict" = "queued";
+		await page.route(
+			(url) =>
+				url.pathname === `/api/investigations/${INVESTIGATION_ID}/messages`,
+			async (route) => {
+				sent.push(route.request().postDataJSON() as Record<string, unknown>);
+				if (answer === "conflict") {
+					await route.fulfill({
+						status: 409,
+						contentType: "application/json",
+						body: JSON.stringify({
+							defined: false,
+							code: "CONFLICT",
+							status: 409,
+							message: "The run is not live",
+						}),
+					});
+					return;
+				}
+				await route.fulfill({
+					status: 202,
+					contentType: "application/json",
+					body: JSON.stringify({ state: "queued" }),
+				});
+			},
+		);
+
+		await page.goto(`/incidents/${INCIDENT_ID}/conversation`);
+		await expect(page.getByTestId("conversation-route")).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(page.getByTestId("run-strip-state")).toHaveText("Starting");
+		await deliver(page, eventFactory("run").agentStep("", "Reading the logs"));
+		await expect(page.getByTestId("transcript-prose")).toHaveText(
+			"Reading the logs",
+		);
+
+		// Live mode: the agent is fixed for this run; Enter queues.
+		const input = page.getByTestId("composer-input");
+		await expect(page.getByTestId("agent-chip")).toBeVisible();
+		await input.fill("Check the deploy at 13:58 first.");
+		await expect(page.getByTestId("composer-hint")).toContainText(
+			"queue until the agent pauses",
+		);
+		await input.press("Enter");
+		await expect.poll(() => sent.length).toBe(1);
+		expect(sent[0]).toMatchObject({
+			text: "Check the deploy at 13:58 first.",
+			mode: "queue",
+		});
+		await expect(page.getByTestId("transcript-operator")).toHaveAttribute(
+			"data-state",
+			"queued",
+		);
+		await expect(page.getByTestId("composer-waiting")).toHaveText("1 waiting");
+
+		// Ctrl+Enter sends now; the run has ended, so the API answers 409.
+		answer = "conflict";
+		await input.fill("Also check the TTL.");
+		await input.press("Control+Enter");
+		await expect.poll(() => sent.length).toBe(2);
+		expect(sent[1]).toMatchObject({ mode: "now" });
+		const undeliverable = page.getByTestId("composer-undeliverable");
+		await expect(undeliverable).toContainText(
+			"The run ended before your message reached it.",
+		);
+		await expect(
+			page.locator(
+				'[data-testid="transcript-operator"][data-state="not_delivered"]',
+			),
+		).toHaveCount(1);
+		await expect(
+			undeliverable.getByRole("button", { name: "Save as note" }),
+		).toBeVisible();
+		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 });

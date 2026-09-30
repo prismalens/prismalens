@@ -246,7 +246,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toHaveCount(1);
 	});
 
-	test("shows the tested version and sign-in per row, and disables the Model field for a harness that ignores it (#634)", async ({
+	test("shows the tested version and sign-in per row, and drops the model column for a harness that ignores it (#634)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -273,15 +273,20 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toBeVisible();
 		await expect(registry.locator("code", { hasText: "opencode auth login" })).toBeVisible();
 
+		// OpenCode takes a model: the picker's second column lists its models.
 		const modelPill = page.getByTestId("model-pill");
-		await expect(modelPill).toBeEnabled();
-
+		await expect(modelPill).toHaveText("agent default");
 		await page.getByTestId("agent-picker").click();
-		await page.getByTestId("agent-option-codex").click();
-		await expect(modelPill).toBeDisabled();
+		const list = page.getByTestId("agent-picker-list");
+		await expect(list.getByRole("listbox", { name: "Model" })).toBeVisible();
+
+		// Codex runs its own model: no model column, and the pill says so.
+		await list.getByTestId("agent-option-codex").click();
+		await expect(list.getByRole("listbox", { name: "Model" })).toHaveCount(0);
+		await expect(modelPill).toHaveText("its own model");
 	});
 
-	test("keeps the pill open on a harness that cannot take a model when one is stored for it, so it can be cleared (#639)", async ({
+	test("offers only Clear for a model stored for a harness that cannot take one (#639)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -300,14 +305,20 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-selection")).toContainText(
 			"Codex does not take a model setting",
 		);
+		// A model stored for an agent that cannot take one: clearing it is the
+		// only choice in the model column.
 		const modelPill = page.getByTestId("model-pill");
-		await expect(modelPill).toBeEnabled();
-		await modelPill.click();
-		// Clearing is the only action: no suggestions, no input to store another.
-		await expect(page.getByTestId("model-suggestions")).toHaveCount(0);
-		await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
-		await page.getByTestId("model-clear").click();
-		await expect(modelPill).toBeDisabled();
+		await expect(modelPill).toHaveText("its own model");
+		await page.getByTestId("agent-picker").click();
+		const models = page
+			.getByTestId("agent-picker-list")
+			.getByRole("listbox", { name: "Model" });
+		await expect(models.getByRole("option")).toHaveCount(1);
+		await models.getByRole("option", { name: /Clear vendor\/stale/ }).click();
+		await page.getByTestId("agent-picker").click();
+		await expect(
+			page.getByTestId("agent-picker-list").getByRole("listbox", { name: "Model" }),
+		).toHaveCount(0);
 	});
 
 	test("shows the install hint for a harness that is not installed", async ({
@@ -468,18 +479,19 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(1);
 		expect(patches[0]).toMatchObject({ harness: "opencode" });
 
-		// Set model through model-pill -> input Model -> Use
-		await page.getByTestId("model-pill").click();
-		const modelInput = page.getByLabel("Model", { exact: true });
-		await expect(modelInput).toBeVisible();
-		await modelInput.fill("sonnet-4");
-		await page.getByRole("button", { name: "Use", exact: true }).click();
+		// The popover stays open on the model column; a model is chosen by name.
+		await page
+			.getByTestId("agent-picker-list")
+			.getByTestId("model-option-vendor/fixture-current")
+			.click();
 		await expect.poll(() => patches.length).toBeGreaterThanOrEqual(2);
-		expect(patches[1]).toEqual({ models: { opencode: "sonnet-4" } });
-		await expect(page.getByTestId("model-pill")).toContainText("sonnet-4");
+		expect(patches[1]).toEqual({
+			models: { opencode: "vendor/fixture-current" },
+		});
+		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
 	});
 
-	test("suggests models from the list, notes an id it does not know, and sends it as typed (#639)", async ({
+	test("lists the agent's models by name, marks a legacy one, and keeps a stored id it does not know (#639, #743)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -489,32 +501,26 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinnedBy: null,
 			blockedReason: null,
 		});
-		await openHarnessSettings(page, { harness: "opencode" });
+		await openHarnessSettings(page, {
+			harness: "opencode",
+			models: { opencode: "vendor/typed-by-hand" },
+		});
 
-		await page.getByTestId("model-pill").click();
-		const suggestions = page.getByTestId("model-suggestions");
-		await expect(suggestions).toContainText("Fixture Current");
-		await expect(suggestions).toContainText("legacy");
-
-		const modelInput = page.getByLabel("Model", { exact: true });
-		await modelInput.fill("vendor/fixture-old");
-		await expect(page.getByTestId("model-note")).toHaveText(
-			"Marked legacy in the model catalogue of 2026-09-23.",
-		);
-		await modelInput.fill("vendor/typed-by-hand");
-		await expect(page.getByTestId("model-note")).toHaveText(
-			"Not in the model catalogue of 2026-09-23; sent as typed.",
-		);
-		await page.getByRole("button", { name: "Use", exact: true }).click();
-		await expect(page.getByTestId("model-pill")).toContainText(
+		// A stored id the list does not know reads as the id.
+		await expect(page.getByTestId("model-pill")).toHaveText(
 			"vendor/typed-by-hand",
 		);
+		await page.getByTestId("agent-picker").click();
+		const list = page.getByTestId("agent-picker-list");
+		const models = list.getByRole("listbox", { name: "Model" });
+		await expect(models).toContainText("Fixture Current");
+		await expect(models).toContainText("legacy");
+		await expect(models).toContainText("not in the agent's list");
+		// No field to type an id into (#743 §4.1).
+		await expect(list.getByRole("textbox")).toHaveCount(0);
 
-		await page.getByTestId("model-pill").click();
-		await suggestions.getByText("Fixture Current").click();
-		await expect(page.getByTestId("model-pill")).toContainText(
-			"vendor/fixture-current",
-		);
+		await models.getByRole("option", { name: /Fixture Current/ }).click();
+		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
 	});
 
 	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({

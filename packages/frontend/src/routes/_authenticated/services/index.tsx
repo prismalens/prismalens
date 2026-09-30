@@ -533,7 +533,7 @@ function ServicesPage() {
 						<RefreshCw
 							className={cn(
 								"mr-1.5 h-3.5 w-3.5",
-								isFetchingVcs && "animate-spin",
+								isFetchingVcs && "motion-safe:animate-spin",
 							)}
 						/>
 						Fetch from VCS

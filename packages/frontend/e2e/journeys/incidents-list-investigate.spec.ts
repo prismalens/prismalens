@@ -15,78 +15,32 @@ import { expect, type Page, test } from "@playwright/test";
  * - Captures design evidence in default (light), dark, and error states.
  */
 
+/** A `GET /settings/harnesses` row in today's shape (ADR 0003 §9, #639). */
+function harnessRow(id: string, label: string, installed: boolean) {
+	return {
+		id,
+		label,
+		binary: `${id}-acp`,
+		installed,
+		tested: null,
+		install: `install ${id}`,
+		defaultModel: null,
+		modelVia: "config",
+		loginHint: "",
+		models: { source: "catalogue", asOf: "2026-09-23T00:00:00Z", entries: [] },
+	};
+}
+
 const NOTHING_HARNESSES = [
-	{
-		id: "deepagents",
-		label: "deepagents (ACP)",
-		implemented: true,
-		runnable: false,
-		blockedReason:
-			"deepagents-acp was not found on PATH — install the deepagents harness, and add an API key in Settings → AI provider",
-		verdict: {
-			usable: false,
-			cause: "not-installed",
-			reason:
-				"deepagents-acp was not found on PATH — install the deepagents harness, and add an API key in Settings → AI provider",
-		},
-	},
-	{
-		id: "claude-code",
-		label: "Claude Code (Agent SDK)",
-		implemented: true,
-		runnable: false,
-		blockedReason:
-			"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider",
-		verdict: {
-			usable: false,
-			cause: "not-installed",
-			reason:
-				"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider",
-		},
-	},
-	{
-		id: "codex",
-		label: "Codex",
-		implemented: false,
-		runnable: false,
-		blockedReason: "codex harness not implemented",
-		verdict: {
-			usable: false,
-			cause: "not-implemented",
-			reason: "codex harness not implemented",
-		},
-	},
+	harnessRow("deepagents", "deepagents", false),
+	harnessRow("claude-code", "Claude Code", false),
+	harnessRow("codex", "Codex", false),
 ];
 
 const RUNNABLE_HARNESSES = [
-	{
-		id: "deepagents",
-		label: "deepagents (ACP)",
-		implemented: true,
-		runnable: true,
-		blockedReason: null,
-		verdict: { usable: true, route: "api-key" },
-	},
-	{
-		id: "claude-code",
-		label: "Claude Code (Agent SDK)",
-		implemented: true,
-		runnable: true,
-		blockedReason: null,
-		verdict: { usable: true, route: "api-key" },
-	},
-	{
-		id: "codex",
-		label: "Codex",
-		implemented: false,
-		runnable: false,
-		blockedReason: "codex harness not implemented",
-		verdict: {
-			usable: false,
-			cause: "not-implemented",
-			reason: "codex harness not implemented",
-		},
-	},
+	harnessRow("deepagents", "deepagents", true),
+	harnessRow("claude-code", "Claude Code", true),
+	harnessRow("codex", "Codex", false),
 ];
 
 /**

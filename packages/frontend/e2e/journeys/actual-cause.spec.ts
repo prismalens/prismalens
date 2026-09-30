@@ -54,7 +54,7 @@ test.describe("#338 — the actual cause is recorded on close", () => {
 		await page.getByLabel("Actual cause").fill(cause);
 		await page.getByTestId("confirm-close-incident").click();
 
-		await expect(page.getByText(`Actual cause: ${cause}`)).toBeVisible({
+		await expect(page.getByTestId("actual-cause")).toContainText(cause, {
 			timeout: 15_000,
 		});
 		await expect(close).toHaveCount(0);
@@ -79,6 +79,6 @@ test.describe("#338 — the actual cause is recorded on close", () => {
 		await page.getByTestId("confirm-close-incident").click();
 
 		await expect(close).toHaveCount(0, { timeout: 15_000 });
-		await expect(page.getByText("Actual cause:")).toHaveCount(0);
+		await expect(page.getByTestId("actual-cause")).toHaveCount(0);
 	});
 });

@@ -17,10 +17,15 @@ import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authe
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
+import { Route as AuthenticatedIncidentsIdRouteRouteImport } from './routes/_authenticated/incidents/$id/route'
 import { Route as AuthenticatedServicesIndexRouteImport } from './routes/_authenticated/services/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedAlertsIdIndexRouteImport } from './routes/_authenticated/alerts/$id/index'
 import { Route as AuthenticatedIncidentsIdIndexRouteImport } from './routes/_authenticated/incidents/$id/index'
+import { Route as AuthenticatedIncidentsIdAlertsRouteImport } from './routes/_authenticated/incidents/$id/alerts'
+import { Route as AuthenticatedIncidentsIdConversationRouteImport } from './routes/_authenticated/incidents/$id/conversation'
+import { Route as AuthenticatedIncidentsIdReportRouteImport } from './routes/_authenticated/incidents/$id/report'
+import { Route as AuthenticatedIncidentsIdTimelineRouteImport } from './routes/_authenticated/incidents/$id/timeline'
 import { Route as AuthenticatedInvestigationsIdIndexRouteImport } from './routes/_authenticated/investigations/$id/index'
 import { Route as AuthenticatedServicesIdIndexRouteImport } from './routes/_authenticated/services/$id/index'
 import { Route as AuthenticatedSettingsIntegrationsConfigureRouteImport } from './routes/_authenticated/settings/integrations/configure'
@@ -69,6 +74,12 @@ const AuthenticatedIncidentsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedIncidentsRouteRoute,
   } as any)
+const AuthenticatedIncidentsIdRouteRoute =
+  AuthenticatedIncidentsIdRouteRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedIncidentsRouteRoute,
+  } as any)
 const AuthenticatedServicesIndexRoute =
   AuthenticatedServicesIndexRouteImport.update({
     id: '/services/',
@@ -89,9 +100,33 @@ const AuthenticatedAlertsIdIndexRoute =
   } as any)
 const AuthenticatedIncidentsIdIndexRoute =
   AuthenticatedIncidentsIdIndexRouteImport.update({
-    id: '/$id/',
-    path: '/$id/',
-    getParentRoute: () => AuthenticatedIncidentsRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedIncidentsIdRouteRoute,
+  } as any)
+const AuthenticatedIncidentsIdAlertsRoute =
+  AuthenticatedIncidentsIdAlertsRouteImport.update({
+    id: '/alerts',
+    path: '/alerts',
+    getParentRoute: () => AuthenticatedIncidentsIdRouteRoute,
+  } as any)
+const AuthenticatedIncidentsIdConversationRoute =
+  AuthenticatedIncidentsIdConversationRouteImport.update({
+    id: '/conversation',
+    path: '/conversation',
+    getParentRoute: () => AuthenticatedIncidentsIdRouteRoute,
+  } as any)
+const AuthenticatedIncidentsIdReportRoute =
+  AuthenticatedIncidentsIdReportRouteImport.update({
+    id: '/report',
+    path: '/report',
+    getParentRoute: () => AuthenticatedIncidentsIdRouteRoute,
+  } as any)
+const AuthenticatedIncidentsIdTimelineRoute =
+  AuthenticatedIncidentsIdTimelineRouteImport.update({
+    id: '/timeline',
+    path: '/timeline',
+    getParentRoute: () => AuthenticatedIncidentsIdRouteRoute,
   } as any)
 const AuthenticatedInvestigationsIdIndexRoute =
   AuthenticatedInvestigationsIdIndexRouteImport.update({
@@ -118,10 +153,15 @@ export interface FileRoutesByFullPath {
   '/alerts': typeof AuthenticatedAlertsRouteRouteWithChildren
   '/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
+  '/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/services/': typeof AuthenticatedServicesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
+  '/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
+  '/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
+  '/incidents/$id/timeline': typeof AuthenticatedIncidentsIdTimelineRoute
   '/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
   '/alerts/$id/': typeof AuthenticatedAlertsIdIndexRoute
   '/incidents/$id/': typeof AuthenticatedIncidentsIdIndexRoute
@@ -135,6 +175,10 @@ export interface FileRoutesByTo {
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
   '/services': typeof AuthenticatedServicesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
+  '/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
+  '/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
+  '/incidents/$id/timeline': typeof AuthenticatedIncidentsIdTimelineRoute
   '/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
   '/alerts/$id': typeof AuthenticatedAlertsIdIndexRoute
   '/incidents/$id': typeof AuthenticatedIncidentsIdIndexRoute
@@ -149,10 +193,15 @@ export interface FileRoutesById {
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/_authenticated/alerts/': typeof AuthenticatedAlertsIndexRoute
   '/_authenticated/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/_authenticated/services/': typeof AuthenticatedServicesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/incidents/$id/alerts': typeof AuthenticatedIncidentsIdAlertsRoute
+  '/_authenticated/incidents/$id/conversation': typeof AuthenticatedIncidentsIdConversationRoute
+  '/_authenticated/incidents/$id/report': typeof AuthenticatedIncidentsIdReportRoute
+  '/_authenticated/incidents/$id/timeline': typeof AuthenticatedIncidentsIdTimelineRoute
   '/_authenticated/settings/integrations/configure': typeof AuthenticatedSettingsIntegrationsConfigureRoute
   '/_authenticated/alerts/$id/': typeof AuthenticatedAlertsIdIndexRoute
   '/_authenticated/incidents/$id/': typeof AuthenticatedIncidentsIdIndexRoute
@@ -167,10 +216,15 @@ export interface FileRouteTypes {
     | '/alerts'
     | '/incidents'
     | '/settings'
+    | '/incidents/$id'
     | '/alerts/'
     | '/incidents/'
     | '/services/'
     | '/settings/'
+    | '/incidents/$id/alerts'
+    | '/incidents/$id/conversation'
+    | '/incidents/$id/report'
+    | '/incidents/$id/timeline'
     | '/settings/integrations/configure'
     | '/alerts/$id/'
     | '/incidents/$id/'
@@ -184,6 +238,10 @@ export interface FileRouteTypes {
     | '/incidents'
     | '/services'
     | '/settings'
+    | '/incidents/$id/alerts'
+    | '/incidents/$id/conversation'
+    | '/incidents/$id/report'
+    | '/incidents/$id/timeline'
     | '/settings/integrations/configure'
     | '/alerts/$id'
     | '/incidents/$id'
@@ -197,10 +255,15 @@ export interface FileRouteTypes {
     | '/_authenticated/incidents'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/incidents/$id'
     | '/_authenticated/alerts/'
     | '/_authenticated/incidents/'
     | '/_authenticated/services/'
     | '/_authenticated/settings/'
+    | '/_authenticated/incidents/$id/alerts'
+    | '/_authenticated/incidents/$id/conversation'
+    | '/_authenticated/incidents/$id/report'
+    | '/_authenticated/incidents/$id/timeline'
     | '/_authenticated/settings/integrations/configure'
     | '/_authenticated/alerts/$id/'
     | '/_authenticated/incidents/$id/'
@@ -271,6 +334,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIncidentsIndexRouteImport
       parentRoute: typeof AuthenticatedIncidentsRouteRoute
     }
+    '/_authenticated/incidents/$id': {
+      id: '/_authenticated/incidents/$id'
+      path: '/$id'
+      fullPath: '/incidents/$id'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdRouteRouteImport
+      parentRoute: typeof AuthenticatedIncidentsRouteRoute
+    }
     '/_authenticated/services/': {
       id: '/_authenticated/services/'
       path: '/services'
@@ -294,10 +364,38 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/incidents/$id/': {
       id: '/_authenticated/incidents/$id/'
-      path: '/$id'
+      path: '/'
       fullPath: '/incidents/$id/'
       preLoaderRoute: typeof AuthenticatedIncidentsIdIndexRouteImport
-      parentRoute: typeof AuthenticatedIncidentsRouteRoute
+      parentRoute: typeof AuthenticatedIncidentsIdRouteRoute
+    }
+    '/_authenticated/incidents/$id/alerts': {
+      id: '/_authenticated/incidents/$id/alerts'
+      path: '/alerts'
+      fullPath: '/incidents/$id/alerts'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdAlertsRouteImport
+      parentRoute: typeof AuthenticatedIncidentsIdRouteRoute
+    }
+    '/_authenticated/incidents/$id/conversation': {
+      id: '/_authenticated/incidents/$id/conversation'
+      path: '/conversation'
+      fullPath: '/incidents/$id/conversation'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdConversationRouteImport
+      parentRoute: typeof AuthenticatedIncidentsIdRouteRoute
+    }
+    '/_authenticated/incidents/$id/report': {
+      id: '/_authenticated/incidents/$id/report'
+      path: '/report'
+      fullPath: '/incidents/$id/report'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdReportRouteImport
+      parentRoute: typeof AuthenticatedIncidentsIdRouteRoute
+    }
+    '/_authenticated/incidents/$id/timeline': {
+      id: '/_authenticated/incidents/$id/timeline'
+      path: '/timeline'
+      fullPath: '/incidents/$id/timeline'
+      preLoaderRoute: typeof AuthenticatedIncidentsIdTimelineRouteImport
+      parentRoute: typeof AuthenticatedIncidentsIdRouteRoute
     }
     '/_authenticated/investigations/$id/': {
       id: '/_authenticated/investigations/$id/'
@@ -339,15 +437,40 @@ const AuthenticatedAlertsRouteRouteWithChildren =
     AuthenticatedAlertsRouteRouteChildren,
   )
 
-interface AuthenticatedIncidentsRouteRouteChildren {
-  AuthenticatedIncidentsIndexRoute: typeof AuthenticatedIncidentsIndexRoute
+interface AuthenticatedIncidentsIdRouteRouteChildren {
+  AuthenticatedIncidentsIdAlertsRoute: typeof AuthenticatedIncidentsIdAlertsRoute
+  AuthenticatedIncidentsIdConversationRoute: typeof AuthenticatedIncidentsIdConversationRoute
+  AuthenticatedIncidentsIdReportRoute: typeof AuthenticatedIncidentsIdReportRoute
+  AuthenticatedIncidentsIdTimelineRoute: typeof AuthenticatedIncidentsIdTimelineRoute
   AuthenticatedIncidentsIdIndexRoute: typeof AuthenticatedIncidentsIdIndexRoute
+}
+
+const AuthenticatedIncidentsIdRouteRouteChildren: AuthenticatedIncidentsIdRouteRouteChildren =
+  {
+    AuthenticatedIncidentsIdAlertsRoute: AuthenticatedIncidentsIdAlertsRoute,
+    AuthenticatedIncidentsIdConversationRoute:
+      AuthenticatedIncidentsIdConversationRoute,
+    AuthenticatedIncidentsIdReportRoute: AuthenticatedIncidentsIdReportRoute,
+    AuthenticatedIncidentsIdTimelineRoute:
+      AuthenticatedIncidentsIdTimelineRoute,
+    AuthenticatedIncidentsIdIndexRoute: AuthenticatedIncidentsIdIndexRoute,
+  }
+
+const AuthenticatedIncidentsIdRouteRouteWithChildren =
+  AuthenticatedIncidentsIdRouteRoute._addFileChildren(
+    AuthenticatedIncidentsIdRouteRouteChildren,
+  )
+
+interface AuthenticatedIncidentsRouteRouteChildren {
+  AuthenticatedIncidentsIdRouteRoute: typeof AuthenticatedIncidentsIdRouteRouteWithChildren
+  AuthenticatedIncidentsIndexRoute: typeof AuthenticatedIncidentsIndexRoute
 }
 
 const AuthenticatedIncidentsRouteRouteChildren: AuthenticatedIncidentsRouteRouteChildren =
   {
+    AuthenticatedIncidentsIdRouteRoute:
+      AuthenticatedIncidentsIdRouteRouteWithChildren,
     AuthenticatedIncidentsIndexRoute: AuthenticatedIncidentsIndexRoute,
-    AuthenticatedIncidentsIdIndexRoute: AuthenticatedIncidentsIdIndexRoute,
   }
 
 const AuthenticatedIncidentsRouteRouteWithChildren =
