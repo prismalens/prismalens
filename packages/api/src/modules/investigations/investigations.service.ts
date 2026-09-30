@@ -77,6 +77,8 @@ export class InvestigationsService {
 		dto: CreateInvestigationDto & {
 			triggerType?: string;
 			triggerReason?: string;
+			/** The incident was already resolved or closed; it stays so (#743). */
+			afterResolve?: boolean;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -141,7 +143,9 @@ export class InvestigationsService {
 		await this.timelineService.create({
 			incidentId: dto.incidentId,
 			type: TimelineEntryType.investigation_started,
-			title: "Investigation started",
+			title: dto.afterResolve
+				? "Investigation started after resolve"
+				: "Investigation started",
 			description: "AI investigation has been queued",
 			source: TimelineSource.system,
 			metadata: { investigationId: investigation.id },

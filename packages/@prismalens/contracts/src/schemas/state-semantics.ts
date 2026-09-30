@@ -172,7 +172,8 @@ export const INCIDENT_ACTION_FROM: Record<
 	readonly IncidentStatus[]
 > = {
 	acknowledge: ["triggered"],
-	investigate: OPEN_INCIDENT_STATUSES,
+	// A resolved incident can be investigated again; its status stays (#743).
+	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
 	resolve: OPEN_INCIDENT_STATUSES,
 	close: ["resolved"],
 };

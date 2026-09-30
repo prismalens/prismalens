@@ -93,7 +93,8 @@ describe("state semantics", () => {
 		expect(canIncidentAction("close", "resolved")).toBe(true);
 		expect(canIncidentAction("close", "investigating")).toBe(false);
 		expect(canIncidentAction("investigate", "monitoring")).toBe(true);
-		expect(canIncidentAction("investigate", "closed")).toBe(false);
+		expect(canIncidentAction("investigate", "closed")).toBe(true);
+		expect(canIncidentAction("investigate", "resolved")).toBe(true);
 		expect(canIncidentAction("acknowledge", "identified")).toBe(false);
 		expect(canAlertAction("resolve", "acknowledged")).toBe(true);
 		expect(canAlertAction("acknowledge", "correlated")).toBe(false);

@@ -9,6 +9,7 @@ import {
 	INCIDENT_ACTION_FROM,
 	INCIDENT_STATUS_SET_FROM,
 	incidentsContract,
+	isIncidentEnded,
 	toFiringAlert,
 } from "@prismalens/contracts";
 import type {
@@ -168,6 +169,7 @@ export class IncidentsController {
 					const { investigation, created } =
 						await this.investigationsService.startOrGet({
 							incidentId: input.id,
+							afterResolve: isIncidentEnded(incident.status),
 						});
 					if (!created) {
 						return {
@@ -178,9 +180,11 @@ export class IncidentsController {
 						};
 					}
 
-					await this.incidentsService.update(input.id, {
-						status: "investigating",
-					});
+					if (!isIncidentEnded(incident.status)) {
+						await this.incidentsService.update(input.id, {
+							status: "investigating",
+						});
+					}
 
 					// Fetch integrations and extract connectionIds for the job payload.
 					// Only connectionIds are persisted — the run fetches credentials on-demand.
