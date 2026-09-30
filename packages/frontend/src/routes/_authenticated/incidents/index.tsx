@@ -23,6 +23,7 @@ import { IncidentBoard } from "@/components/incidents/IncidentBoard";
 import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
+import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
@@ -125,7 +126,7 @@ function IncidentsLanding() {
 				/>
 				{!analytics && !firstRun && (
 					<span
-						className="hidden items-center gap-3 text-meta text-muted-foreground tabular-nums xl:flex"
+						className="hidden items-center gap-3 whitespace-nowrap text-meta text-muted-foreground tabular-nums 2xl:flex"
 						data-testid="board-numbers"
 					>
 						<span>{numbers.open} open</span>
@@ -161,6 +162,7 @@ function IncidentsLanding() {
 								<option value="7d">7 days</option>
 								<option value="30d">30 days</option>
 							</select>
+							<GroupBySelect view="board" />
 						</>
 					)}
 					<Button

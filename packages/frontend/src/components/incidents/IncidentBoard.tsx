@@ -35,6 +35,7 @@ import {
 } from "react";
 import { ComposerBox } from "@/components/investigation/ComposerBox";
 import { Mono } from "@/components/shared/Mono";
+import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { type ChipTone, StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,7 @@ import {
 	PopoverAnchor,
 	PopoverContent,
 } from "@/components/ui/popover";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { ago, useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useInvestigationReadiness } from "@/lib/api/hooks";
@@ -62,6 +64,7 @@ import {
 	latestRun,
 	runWord,
 } from "@/lib/incident-board";
+import { alsoIn, incidentLanes } from "@/lib/service-lanes";
 import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
@@ -149,15 +152,28 @@ let lastDragEnd = 0;
 interface Dragging {
 	incident: IncidentWithRelations;
 	from: BoardColumn;
+	/** The service lane it was picked up in; `all` when the board is not grouped. */
+	lane: string;
 }
 
-/** A drop waiting on the operator: pick the agent, confirm a stop or a resolve. */
-type Prompt =
-	| { incidentId: string; kind: "investigate" }
-	| { incidentId: string; kind: "stop" }
-	| { incidentId: string; kind: "resolve"; stopFirst: boolean };
+const ALL = "all";
+const dndId = (lane: string, id: string) => `${lane}::${id}`;
+const parseDndId = (id: string | number) => {
+	const [lane = ALL, rest = ""] = String(id).split("::");
+	return { lane, id: rest };
+};
 
-function actionFor(d: Dragging, to: BoardColumn): DropAction {
+/** A drop waiting on the operator: pick the agent, confirm a stop or a resolve. */
+type Prompt = { incidentId: string; lane: string } & (
+	| { kind: "investigate" }
+	| { kind: "stop" }
+	| { kind: "resolve"; stopFirst: boolean }
+);
+
+function actionFor(d: Dragging, to: BoardColumn, lane: string): DropAction {
+	if (lane !== d.lane) {
+		return { kind: "none", reason: "A card moves within its service" };
+	}
 	const run = latestRun(d.incident);
 	return dropAction({
 		from: d.from,
@@ -188,6 +204,19 @@ export function IncidentBoard({
 }) {
 	const now = useNow();
 	const columns = useMemo(() => groupByColumn(incidents), [incidents]);
+	const { groupBy } = useLayoutPrefs();
+	const grouped = groupBy.board === "service";
+	const laneFolded = useLaneFolded("board");
+	const lanes = useMemo(
+		() =>
+			grouped
+				? incidentLanes(incidents).map((l) => ({
+						...l,
+						columns: groupByColumn(l.items),
+					}))
+				: [{ id: ALL, name: "", items: incidents, columns }],
+		[grouped, incidents, columns],
+	);
 	const flipRef = useFlip(incidents);
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
@@ -269,25 +298,23 @@ export function IncidentBoard({
 	};
 
 	const onDragStart = (e: DragStartEvent) => {
-		const incident = incidents.find((i) => i.id === e.active.id);
-		if (incident) setDragging({ incident, from: boardColumn(incident) });
+		const { lane, id } = parseDndId(e.active.id);
+		const incident = incidents.find((i) => i.id === id);
+		if (incident) setDragging({ incident, from: boardColumn(incident), lane });
 	};
 	const onDragEnd = (e: DragEndEvent) => {
 		const d = dragging;
 		setDragging(null);
 		lastDragEnd = Date.now();
-		const to = e.over?.id as BoardColumn | undefined;
-		if (!d || !to) return;
-		const action = actionFor(d, to);
+		if (!d || !e.over) return;
+		const { lane, id: to } = parseDndId(e.over.id);
+		const action = actionFor(d, to as BoardColumn, lane);
 		if (action.kind === "none") return;
+		const at = { incidentId: d.incident.id, lane };
 		setPrompt(
 			action.kind === "resolve"
-				? {
-						incidentId: d.incident.id,
-						kind: "resolve",
-						stopFirst: action.stopFirst,
-					}
-				: { incidentId: d.incident.id, kind: action.kind },
+				? { ...at, kind: "resolve", stopFirst: action.stopFirst }
+				: { ...at, kind: action.kind },
 		);
 	};
 
@@ -386,41 +413,80 @@ export function IncidentBoard({
 							</div>
 						))}
 					</div>
-					<div className="grid min-h-[calc(100%-2rem)] grid-cols-4 gap-2 px-2">
-						{BOARD_COLUMNS.map((column) => (
-							<DropColumn
-								key={column.id}
-								column={column}
-								action={dragging ? actionFor(dragging, column.id) : null}
-								dragging={dragging?.from === column.id}
-							>
-								{columns[column.id].map((incident) => (
-									<Popover
-										key={incident.id}
-										open={prompt?.incidentId === incident.id}
-										onOpenChange={(open) => {
-											if (!open) setPrompt(null);
-										}}
-									>
-										<DraggableCard
-											incident={incident}
-											column={column.id}
-											now={now}
-											search={search}
-											busy={busy[incident.id]}
-										/>
-										<PopoverContent
-											align="start"
-											className="w-96 max-w-[calc(100vw-2rem)] p-3"
-											data-testid="board-drop-prompt"
+					{lanes.map((lane) => (
+						<section
+							key={lane.id}
+							data-lane={lane.id}
+							aria-label={lane.name || undefined}
+						>
+							{grouped && (
+								<LaneHeader
+									view="board"
+									id={lane.id}
+									name={lane.name}
+									count={lane.items.length}
+									className="sticky top-8 z-[5] bg-background px-4"
+								/>
+							)}
+							{!laneFolded(lane.id) && (
+								<div
+									className={cn(
+										"grid grid-cols-4 gap-2 px-2",
+										!grouped && "min-h-[calc(100%-2rem)]",
+									)}
+								>
+									{BOARD_COLUMNS.map((column) => (
+										<DropColumn
+											key={column.id}
+											dropId={dndId(lane.id, column.id)}
+											column={column}
+											action={
+												dragging
+													? actionFor(dragging, column.id, lane.id)
+													: null
+											}
+											dragging={
+												dragging?.from === column.id &&
+												dragging.lane === lane.id
+											}
 										>
-											{promptFor(incident)}
-										</PopoverContent>
-									</Popover>
-								))}
-							</DropColumn>
-						))}
-					</div>
+											{lane.columns[column.id].map((incident) => (
+												<Popover
+													key={incident.id}
+													open={
+														prompt?.incidentId === incident.id &&
+														prompt.lane === lane.id
+													}
+													onOpenChange={(open) => {
+														if (!open) setPrompt(null);
+													}}
+												>
+													<DraggableCard
+														dragId={dndId(lane.id, incident.id)}
+														incident={incident}
+														column={column.id}
+														now={now}
+														search={search}
+														busy={busy[incident.id]}
+														also={
+															grouped ? alsoIn(incident, lane.id) : undefined
+														}
+													/>
+													<PopoverContent
+														align="start"
+														className="w-96 max-w-[calc(100vw-2rem)] p-3"
+														data-testid="board-drop-prompt"
+													>
+														{promptFor(incident)}
+													</PopoverContent>
+												</Popover>
+											))}
+										</DropColumn>
+									))}
+								</div>
+							)}
+						</section>
+					))}
 				</div>
 				<DragOverlay dropAnimation={prefersReducedMotion() ? null : undefined}>
 					{dragging && (
@@ -487,18 +553,20 @@ function ConfirmBody({
 
 /** A column that takes drops: a quiet tint where a drop does something, dim where it cannot. */
 function DropColumn({
+	dropId,
 	column,
 	action,
 	dragging,
 	children,
 }: {
+	dropId: string;
 	column: { id: BoardColumn; label: string };
 	action: DropAction | null;
 	/** The dragged card came from here. */
 	dragging: boolean;
 	children: ReactNode;
 }) {
-	const { setNodeRef, isOver } = useDroppable({ id: column.id });
+	const { setNodeRef, isOver } = useDroppable({ id: dropId });
 	const valid = !!action && action.kind !== "none";
 	const refused = !!action && !dragging && action.kind === "none";
 	return (
@@ -526,20 +594,24 @@ function DropColumn({
 }
 
 function DraggableCard({
+	dragId,
 	incident,
 	column,
 	now,
 	search,
 	busy,
+	also,
 }: {
+	dragId: string;
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
 	search: IncidentsSearch;
 	busy?: string;
+	also?: string[];
 }) {
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-		id: incident.id,
+		id: dragId,
 		disabled: !!busy,
 	});
 	// The card stays a link to screen readers; dnd-kit would make it a button.
@@ -568,6 +640,7 @@ function DraggableCard({
 						column={column}
 						now={now}
 						busy={busy}
+						also={also}
 					/>
 				</Link>
 			</li>
@@ -580,11 +653,13 @@ function BoardCardBody({
 	column,
 	now,
 	busy,
+	also,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
 	busy?: string;
+	also?: string[];
 }) {
 	const why = attentionFor(incident);
 	const word = runWord(incident, now);
@@ -651,6 +726,14 @@ function BoardCardBody({
 					</>
 				)}
 			</p>
+			{also && also.length > 0 && (
+				<p
+					className="truncate text-meta text-muted-foreground"
+					data-testid="board-card-also"
+				>
+					Also in {also.join(", ")}
+				</p>
+			)}
 		</div>
 	);
 }

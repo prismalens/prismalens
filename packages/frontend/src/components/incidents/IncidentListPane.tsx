@@ -21,14 +21,21 @@ import {
 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
+import {
+	GroupBySelect,
+	LaneHeader,
+	useLaneFolded,
+} from "@/components/shared/ServiceLanes";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor, attentionTone } from "@/lib/incident-attention";
 import { incidentHeadline, latestRun, runWord } from "@/lib/incident-board";
+import { alsoIn, incidentLanes } from "@/lib/service-lanes";
 import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import { CreateIncidentDialog } from "./CreateIncidentDialog";
@@ -149,10 +156,62 @@ export function IncidentListPane({
 			params: { id: incident.id },
 			search: keep,
 		});
-	const { cursor, pointAt } = useListKeyboard(ordered.rows.length, (i) => {
-		const row = ordered.rows[i];
-		if (row) open(row);
+	const { groupBy } = useLayoutPrefs();
+	const grouped = groupBy.list === "service";
+	const laneFolded = useLaneFolded("list");
+	const lanes = useMemo(
+		() => (grouped ? incidentLanes(ordered.rows) : []),
+		[grouped, ordered.rows],
+	);
+	// The rows j / k walk: every shown row, an incident once per open lane.
+	const flat = useMemo(
+		() =>
+			grouped
+				? lanes.flatMap((l) =>
+						laneFolded(l.id)
+							? []
+							: l.items.map((incident) => ({ incident, lane: l.id })),
+					)
+				: ordered.rows.map((incident) => ({ incident, lane: "" })),
+		[grouped, lanes, laneFolded, ordered.rows],
+	);
+	const { cursor, pointAt } = useListKeyboard(flat.length, (i) => {
+		const row = flat[i];
+		if (row) open(row.incident);
 	});
+	const row = (incident: IncidentWithRelations, index: number, lane = "") => {
+		const selected = incident.id === selectedId;
+		const also = lane ? alsoIn(incident, lane) : [];
+		return (
+			<Link
+				key={`${lane}-${incident.id}`}
+				to="/incidents/$id"
+				params={{ id: incident.id }}
+				search={keep}
+				onMouseEnter={() => pointAt(index)}
+				aria-current={selected ? "page" : undefined}
+				data-testid="incident-row"
+				data-cursor={cursor === index ? "true" : undefined}
+				className={cn(
+					"block border-b px-3 py-2 outline-none hover:bg-muted/60",
+					cursor === index && "bg-muted/60",
+					selected &&
+						"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
+				)}
+			>
+				<IncidentRowBody
+					incident={incident}
+					why={attentionFor(incident)}
+					now={now}
+				/>
+				{also.length > 0 && (
+					<p className="mt-0.5 truncate text-meta text-muted-foreground">
+						Also in {also.join(", ")}
+					</p>
+				)}
+			</Link>
+		);
+	};
 
 	const setFilter = (patch: Partial<typeof search>) =>
 		navigate({
@@ -231,6 +290,7 @@ export function IncidentListPane({
 					<option value="7d">7 days</option>
 					<option value="30d">30 days</option>
 				</select>
+				<GroupBySelect view="list" />
 			</div>
 
 			{filtersOpen && (
@@ -299,46 +359,45 @@ export function IncidentListPane({
 						</div>
 					</div>
 				)}
-				{ordered.rows.map((incident, index) => {
-					const why = attentionFor(incident);
-					const selected = incident.id === selectedId;
-					return (
-						<Fragment key={incident.id}>
-							{index === 0 && ordered.needsYou.length > 0 && (
-								<GroupLabel
-									label="Needs you"
-									count={ordered.needsYou.length}
-									testId="group-needs-you"
-								/>
-							)}
-							{ordered.needsYou.length > 0 &&
-								index === ordered.needsYou.length && (
+				{grouped
+					? (() => {
+							let index = 0;
+							return lanes.map((lane) => (
+								<Fragment key={lane.id}>
+									<LaneHeader
+										view="list"
+										id={lane.id}
+										name={lane.name}
+										count={lane.items.length}
+										className="sticky top-0 z-10 bg-background"
+									/>
+									{!laneFolded(lane.id) &&
+										lane.items.map((incident) =>
+											row(incident, index++, lane.id),
+										)}
+								</Fragment>
+							));
+						})()
+					: ordered.rows.map((incident, index) => (
+							<Fragment key={incident.id}>
+								{index === 0 && ordered.needsYou.length > 0 && (
 									<GroupLabel
-										label="Everything else"
-										count={ordered.rest.length}
-										testId="group-rest"
+										label="Needs you"
+										count={ordered.needsYou.length}
+										testId="group-needs-you"
 									/>
 								)}
-							<Link
-								to="/incidents/$id"
-								params={{ id: incident.id }}
-								search={keep}
-								onMouseEnter={() => pointAt(index)}
-								aria-current={selected ? "page" : undefined}
-								data-testid="incident-row"
-								data-cursor={cursor === index ? "true" : undefined}
-								className={cn(
-									"block border-b px-3 py-2 outline-none hover:bg-muted/60",
-									cursor === index && "bg-muted/60",
-									selected &&
-										"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
-								)}
-							>
-								<IncidentRowBody incident={incident} why={why} now={now} />
-							</Link>
-						</Fragment>
-					);
-				})}
+								{ordered.needsYou.length > 0 &&
+									index === ordered.needsYou.length && (
+										<GroupLabel
+											label="Everything else"
+											count={ordered.rest.length}
+											testId="group-rest"
+										/>
+									)}
+								{row(incident, index)}
+							</Fragment>
+						))}
 			</div>
 
 			<div className="flex items-center justify-between border-t px-3 py-1.5 text-meta text-muted-foreground">
