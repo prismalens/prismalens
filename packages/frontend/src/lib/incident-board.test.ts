@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	boardColumn,
 	headlineAddsInfo,
+	rowGlyph,
 	incidentHeadline,
 	runWord,
 } from "./incident-board";
@@ -205,5 +206,20 @@ describe("headlineAddsInfo", () => {
 		expect(headlineAddsInfo({ lead: "Likely:", text: "TTL cut" })).toBe(true);
 		expect(headlineAddsInfo({ text: "Run failed: not logged in" })).toBe(true);
 		expect(headlineAddsInfo({ text: "Comparing the TTL change" })).toBe(true);
+	});
+});
+
+describe("rowGlyph", () => {
+	it("shows a live run first, then what wants a human, then open or ended", () => {
+		expect(rowGlyph(incident("resolved", { status: "running" }))).toBe("live");
+		expect(rowGlyph(incident("triggered"))).toBe("attention");
+		expect(rowGlyph(incident("investigating", { status: "failed" }))).toBe(
+			"attention",
+		);
+		expect(rowGlyph(incident("investigating", { status: "completed" }))).toBe(
+			"open",
+		);
+		expect(rowGlyph(incident("resolved"))).toBe("ended");
+		expect(rowGlyph(incident("closed"))).toBe("ended");
 	});
 });

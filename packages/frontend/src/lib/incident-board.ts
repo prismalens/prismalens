@@ -152,3 +152,17 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 			return { text: run.status };
 	}
 }
+
+export type RowGlyph = "live" | "attention" | "open" | "ended";
+
+/**
+ * The sidebar row's one glyph (#743): a live run, something that wants a
+ * human, an open incident with nothing live, or one that is resolved or closed.
+ */
+export function rowGlyph(incident: IncidentWithRelations): RowGlyph {
+	const run = latestRun(incident);
+	if (run && isWorkflowLive(run.status)) return "live";
+	const why = attentionFor(incident);
+	if (why === "unacknowledged" || why === "failed_run") return "attention";
+	return isIncidentOpen(incident.status) ? "open" : "ended";
+}

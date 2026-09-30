@@ -137,8 +137,8 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
-	const { groupBy } = useLayoutPrefs();
-	const grouped = groupBy.alerts === "service";
+	const { alertsGroupBy } = useLayoutPrefs();
+	const grouped = alertsGroupBy === "service";
 	const laneFolded = useLaneFolded("alerts");
 	const lanes = useMemo(
 		() => (grouped ? alertLanes(rows) : []),
@@ -287,7 +287,7 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 						</TabsTrigger>
 					</TabsList>
 				</Tabs>
-				<GroupBySelect view="alerts" />
+				<GroupBySelect />
 			</div>
 
 			{filtersOpen && (

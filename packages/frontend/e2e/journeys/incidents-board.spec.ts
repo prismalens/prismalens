@@ -169,40 +169,55 @@ test.describe("#743 — the incidents board", () => {
 		await expect(prompt).toHaveCount(0);
 	});
 
-	test("groups the board, the list and the alerts by service, and remembers it", async ({
+	test("the sidebar groups incidents by service, folds a group for good, and starts one in a service", async ({
 		page,
 	}) => {
 		await page.goto("/incidents");
-		await expect(page.getByTestId("incident-board")).toBeVisible({
-			timeout: 15_000,
-		});
-		await page.getByTestId("group-by-board").selectOption("service");
-		const board = page.getByTestId("incident-board");
-		const lanes = board.getByTestId("service-lane");
-		await expect(lanes.first()).toBeVisible();
-		// Column counts count each incident once, whatever lanes it sits in.
-		const total = await page.getByTestId("board-card").count();
-		expect(total).toBeGreaterThanOrEqual(3);
+		const sidebar = page.getByTestId("incident-list-pane");
+		const groups = sidebar.getByTestId("sidebar-group");
+		await expect(groups.first()).toBeVisible({ timeout: 15_000 });
+		// The board has no lanes of its own any more.
+		await expect(
+			page.getByTestId("incident-board").getByTestId("service-lane"),
+		).toHaveCount(0);
 
-		// A lane folds, and stays folded after a reload.
-		const first = lanes.first();
-		const laneId = await first.getAttribute("data-lane");
-		await first.click();
-		await expect(first).toHaveAttribute("aria-expanded", "false");
+		// The seeded API Gateway incident sits under its service, once.
+		const gateway = groups.filter({ hasText: "API Gateway" });
+		await expect(gateway).toHaveCount(1);
+		await expect(
+			gateway.getByTestId("incident-row").filter({ hasText: "[demo] Storm" }),
+		).toHaveCount(1);
+		await expect(groups.last()).toContainText("No service");
+
+		// A group folds, and stays folded after a reload.
+		const header = gateway.getByTestId("service-lane");
+		await header.click();
+		await expect(header).toHaveAttribute("aria-expanded", "false");
+		await expect(gateway.getByTestId("incident-row")).toHaveCount(0);
 		await page.reload();
 		await expect(
-			page.locator(`[data-testid="service-lane"][data-lane="${laneId}"]`).first(),
+			sidebar
+				.getByTestId("sidebar-group")
+				.filter({ hasText: "API Gateway" })
+				.getByTestId("service-lane"),
 		).toHaveAttribute("aria-expanded", "false", { timeout: 15_000 });
-		await page.screenshot({ path: `${SHOTS}/incidents-board-by-service.png` });
+		await sidebar
+			.getByTestId("sidebar-group")
+			.filter({ hasText: "API Gateway" })
+			.getByTestId("service-lane")
+			.click();
+		await page.screenshot({ path: `${SHOTS}/incidents-sidebar-grouped.png` });
 
-		// The list pane groups on its own choice.
-		await expect(
-			page.getByTestId("incident-list-pane").getByTestId("service-lane"),
-		).toHaveCount(0);
-		await page.getByTestId("group-by-list").selectOption("service");
-		await expect(
-			page.getByTestId("incident-list-pane").getByTestId("service-lane").first(),
-		).toBeVisible();
+		// The group's + opens New incident with that service picked.
+		const groupWithNew = sidebar
+			.getByTestId("sidebar-group")
+			.filter({ hasText: "API Gateway" });
+		await groupWithNew.hover();
+		await groupWithNew.getByTestId("sidebar-group-new").click();
+		const dialog = page.getByTestId("create-incident-dialog");
+		await expect(dialog).toBeVisible();
+		await expect(dialog).toContainText("API Gateway");
+		await page.keyboard.press("Escape");
 
 		// Alerts group by their own service.
 		await page.goto("/alerts");

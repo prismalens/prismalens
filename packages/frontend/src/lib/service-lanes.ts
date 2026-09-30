@@ -72,22 +72,20 @@ function toLanes<T>(
 }
 
 /**
- * Incidents in one lane per service. An incident that touches several
- * services sits in each of their lanes, in the order it came.
+ * The sidebar's groups (#743): each incident once, under its own service, or
+ * under its first alert's service when it has none of its own. The order the
+ * incidents came in is kept inside each group.
  */
-export function incidentLanes(
+export function incidentGroups(
 	incidents: IncidentWithRelations[],
 ): Lane<IncidentWithRelations>[] {
-	return toLanes(incidents, incidentServices);
+	return toLanes(incidents, (i) => incidentServices(i).slice(0, 1));
 }
 
-/** The other lanes an incident also sits in, for a quiet `Also in` line. */
-export function alsoIn(
-	incident: IncidentWithRelations,
-	laneId: string,
-): string[] {
+/** The services an incident touches besides the group it sits in. */
+export function otherServices(incident: IncidentWithRelations): string[] {
 	return incidentServices(incident)
-		.filter((s) => s.id !== laneId)
+		.slice(1)
 		.map((s) => s.name);
 }
 

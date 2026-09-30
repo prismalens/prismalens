@@ -6,27 +6,21 @@ import { type GroupView, useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { cn } from "@/lib/utils";
 import { Mono } from "./Mono";
 
-/** Group a view by service or not; remembered per view (#743). */
-export function GroupBySelect({
-	view,
-	className,
-}: {
-	view: GroupView;
-	className?: string;
-}) {
-	const { groupBy, setGroupBy } = useLayoutPrefs();
+/** Group the alerts pane by service or not; remembered (#743). */
+export function GroupBySelect({ className }: { className?: string }) {
+	const { alertsGroupBy, setAlertsGroupBy } = useLayoutPrefs();
 	return (
 		<select
-			value={groupBy[view]}
+			value={alertsGroupBy}
 			onChange={(e) =>
-				setGroupBy(view, e.target.value === "service" ? "service" : "none")
+				setAlertsGroupBy(e.target.value === "service" ? "service" : "none")
 			}
 			aria-label="Group by"
 			className={cn(
 				"h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none",
 				className,
 			)}
-			data-testid={`group-by-${view}`}
+			data-testid="group-by-alerts"
 		>
 			<option value="none">No grouping</option>
 			<option value="service">By service</option>

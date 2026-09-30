@@ -8,9 +8,9 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	alertLanes,
-	alsoIn,
-	incidentLanes,
+	incidentGroups,
 	NO_SERVICE_LANE,
+	otherServices,
 } from "./service-lanes";
 
 const svc = (id: string, name: string) => ({ id, name, displayName: null });
@@ -20,21 +20,21 @@ const inc = (
 ): IncidentWithRelations =>
 	({ id, services, service: null }) as unknown as IncidentWithRelations;
 
-describe("incidentLanes", () => {
-	it("puts an incident in each service it touches, No service last", () => {
-		const lanes = incidentLanes([
+describe("incidentGroups", () => {
+	it("puts each incident once, under its first service, No service last", () => {
+		const groups = incidentGroups([
 			inc("a", [svc("s2", "search"), svc("s1", "payments")]),
 			inc("b", []),
 			inc("c", [svc("s1", "payments")]),
 		]);
-		expect(lanes.map((l) => l.name)).toEqual([
+		expect(groups.map((g) => g.name)).toEqual([
 			"payments",
 			"search",
 			"No service",
 		]);
-		expect(lanes[0]?.items.map((i) => i.id)).toEqual(["a", "c"]);
-		expect(lanes[1]?.items.map((i) => i.id)).toEqual(["a"]);
-		expect(lanes[2]?.id).toBe(NO_SERVICE_LANE);
+		expect(groups[0]?.items.map((i) => i.id)).toEqual(["c"]);
+		expect(groups[1]?.items.map((i) => i.id)).toEqual(["a"]);
+		expect(groups[2]?.id).toBe(NO_SERVICE_LANE);
 	});
 
 	it("falls back to the incident's own service when the list carries none", () => {
@@ -42,17 +42,23 @@ describe("incidentLanes", () => {
 			id: "x",
 			service: { id: "s9", name: "api", displayName: "API Gateway" },
 		} as unknown as IncidentWithRelations;
-		expect(incidentLanes([one]).map((l) => l.name)).toEqual(["API Gateway"]);
+		expect(incidentGroups([one]).map((l) => l.name)).toEqual(["API Gateway"]);
 	});
 
 	it("shows a service's display name when it has one", () => {
-		const a = inc("a", [{ id: "s1", name: "api-gateway", displayName: "API Gateway" }]);
-		expect(incidentLanes([a]).map((l) => l.name)).toEqual(["API Gateway"]);
+		const a = inc("a", [
+			{ id: "s1", name: "api-gateway", displayName: "API Gateway" },
+		]);
+		expect(incidentGroups([a]).map((l) => l.name)).toEqual(["API Gateway"]);
 	});
 
-	it("names the other lanes an incident also sits in", () => {
-		const a = inc("a", [svc("s1", "checkout"), svc("s2", "payments"), svc("s3", "search")]);
-		expect(alsoIn(a, "s1")).toEqual(["payments", "search"]);
+	it("names the other services an incident touches", () => {
+		const a = inc("a", [
+			svc("s1", "checkout"),
+			svc("s2", "payments"),
+			svc("s3", "search"),
+		]);
+		expect(otherServices(a)).toEqual(["payments", "search"]);
 	});
 });
 

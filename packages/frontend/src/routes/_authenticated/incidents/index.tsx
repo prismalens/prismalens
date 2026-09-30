@@ -23,7 +23,6 @@ import { IncidentBoard } from "@/components/incidents/IncidentBoard";
 import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
-import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
@@ -162,7 +161,6 @@ function IncidentsLanding() {
 								<option value="7d">7 days</option>
 								<option value="30d">30 days</option>
 							</select>
-							<GroupBySelect view="board" />
 						</>
 					)}
 					<Button

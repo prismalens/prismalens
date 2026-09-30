@@ -124,11 +124,15 @@ test.describe("#523 S2/final — the incidents queue", () => {
 			});
 		}
 
-		// The grouping and its order: triggered/failed/resolved above closed.
-		const needsYouHeader = page.getByTestId("group-needs-you");
-		const restHeader = page.getByTestId("group-rest");
-		await expect(needsYouHeader).toBeVisible();
-		await expect(restHeader).toBeVisible();
+		// The sidebar groups by service; these hand-made incidents have none, so
+		// they sit in No service, the last group. Inside a group what wants a
+		// human comes first: triggered, failed and resolved above closed.
+		const groups = page.getByTestId("sidebar-group");
+		const noService = groups.filter({
+			has: page.locator('[data-lane="none"]'),
+		});
+		await expect(noService).toHaveCount(1);
+		await expect(groups.last()).toContainText("No service");
 
 		const triggeredRow = row(page, triggeredTitle);
 		const failedRow = row(page, failedRunTitle);
@@ -139,20 +143,21 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await expect(resolvedRow).toBeVisible();
 		await expect(closedRow).toBeVisible();
 
-		const needsYouBox = await needsYouHeader.boundingBox();
-		const restBox = await restHeader.boundingBox();
-		expect(needsYouBox).not.toBeNull();
-		expect(restBox).not.toBeNull();
-		expect(needsYouBox?.y ?? 0).toBeLessThan(restBox?.y ?? 0);
+		// A row is one line: the glyph and the title. The state rides in hidden text.
+		await expect(triggeredRow.getByTestId("incident-attention")).toHaveText(
+			"Needs acknowledging",
+		);
+		await expect(failedRow.getByTestId("incident-attention")).toHaveText(
+			"Run failed",
+		);
+		await expect(triggeredRow).toHaveAttribute("title", /INC-\d+/);
 
-		const restBoxY = restBox?.y ?? 0;
+		const closedY = (await closedRow.boundingBox())?.y ?? 0;
 		for (const r of [triggeredRow, failedRow, resolvedRow]) {
 			const box = await r.boundingBox();
 			expect(box).not.toBeNull();
-			expect(box?.y ?? 0).toBeLessThan(restBoxY);
+			expect(box?.y ?? 0).toBeLessThan(closedY);
 		}
-		const closedBox = await closedRow.boundingBox();
-		expect(closedBox?.y ?? 0).toBeGreaterThan(restBoxY);
 
 		// The "Open" slot filters, and ended rows (resolved and closed)
 		// disappear. The router serialises a string search param as JSON, so

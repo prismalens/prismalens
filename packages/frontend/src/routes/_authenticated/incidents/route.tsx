@@ -9,7 +9,6 @@ import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
-import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -52,23 +51,18 @@ function IncidentsFrame() {
 	// Unfiltered: a date window with no incidents is not a new workspace.
 	const stats = useQuery(orpc.incidents.getStats.queryOptions({ input: {} }));
 	const firstRun = !recordOpen && stats.data?.total === 0;
-	// Beside the board the list is titles only; below lg it is the board folded.
-	const split = useMediaQuery(SPLIT_PANES);
 	return (
 		<div
 			className={cn(
 				"fixed inset-y-0 left-0 right-0 top-10 grid grid-cols-1 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)",
 				!firstRun &&
-					(recordOpen
-						? "lg:grid-cols-[19rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]"
-						: "lg:grid-cols-[15rem_minmax(0,1fr)]"),
+					"lg:grid-cols-[17rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]",
 			)}
 			data-testid="incidents-frame"
 		>
 			{!firstRun && (
 				<IncidentListPane
 					selectedId={record?.params.id ?? null}
-					compact={!recordOpen && split}
 					className={cn("min-h-0 border-r", recordOpen && "hidden lg:flex")}
 				/>
 			)}
