@@ -182,6 +182,32 @@ export const InvestigationReportSchema = z.object({
 // INVESTIGATION SCHEMAS
 // =============================================================================
 
+/** One repository a run's workspace holds (#747). */
+export const RunWorkspaceRepoSchema = z.object({
+	/** Folder name under `repos/`, or "repo" for the single layout. */
+	name: z.string(),
+	/** Absolute clone path. */
+	dir: z.string(),
+	sourceKind: z.enum(["folder", "url"]),
+	url: z.string(),
+	subPath: z.string().nullable(),
+	connectionId: z.string().nullable(),
+	/** Full commit sha the run saw. */
+	head: z.string(),
+	branch: z.string().nullable(),
+	/** Service names that link this repo. */
+	services: z.array(z.string()),
+});
+export type RunWorkspaceRepo = z.infer<typeof RunWorkspaceRepoSchema>;
+
+/** Where a run's harness worked, recorded so a follow-up can rebuild it (#747). */
+export const RunWorkspaceSchema = z.object({
+	layout: z.enum(["unmapped", "single", "multi"]),
+	cwd: z.string(),
+	repos: z.array(RunWorkspaceRepoSchema),
+});
+export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
+
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
 	incidentId: z.string().uuid(),
@@ -205,6 +231,13 @@ export const InvestigationSchema = z.object({
 	model: z.string().nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
+	/** The harness's own session id, kept only when it can be loaded again (#747). */
+	acpSessionId: z.string().nullable().optional(),
+	workspace: RunWorkspaceSchema.nullable().optional(),
+	/** A finished run whose session a follow-up message can continue. */
+	resumable: z.boolean().optional(),
+	/** Why a finished run cannot be continued; null when it can. */
+	resumeBlockedReason: z.string().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -311,6 +344,10 @@ export const UpdateInvestigationStatusSchema = z.object({
 	status: WorkflowStatusSchema,
 	error: z.string().optional(),
 	harnessThreadId: z.string().uuid().optional(),
+	/** Not a uuid: OpenCode session ids are `ses_…` (#747). */
+	acpSessionId: z.string().min(1).max(200).optional(),
+	/** JSON {@link RunWorkspace}. */
+	workspace: z.string().optional(),
 });
 
 export const CreateRecommendationInputSchema = z.object({
@@ -407,7 +444,8 @@ export type SendInvestigationMessageInput = z.infer<
 >;
 
 export const SendInvestigationMessageResultSchema = z.object({
-	state: z.enum(["queued", "sent"]),
+	/** `resumed`: the run had finished and a follow-up reopened its session (#747). */
+	state: z.enum(["queued", "sent", "resumed"]),
 });
 export type SendInvestigationMessageResult = z.infer<
 	typeof SendInvestigationMessageResultSchema
@@ -469,6 +507,10 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		text: z.string(),
 		mode: OperatorMessageModeSchema,
 		delivered: z.boolean(),
+		/** Only on a follow-up's first message: the repos it was rebuilt at (#747). */
+		resumed: z
+			.array(z.object({ name: z.string(), head: z.string() }))
+			.optional(),
 	}),
 	z.object({
 		kind: z.literal("report"),
@@ -648,6 +690,19 @@ export const InvestigationContextSchema = z.object({
 	 * one — the engine renders nothing and behaves exactly as before.
 	 */
 	contextPack: ContextPackSchema.optional(),
+	/** Several repos under the cwd; `path` is relative to it, e.g. `api/` (#747). */
+	workspace: z
+		.object({
+			repos: z.array(
+				z.object({
+					path: z.string(),
+					services: z.array(z.string()),
+					subPath: z.string().nullable(),
+					head: z.string(),
+				}),
+			),
+		})
+		.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 
@@ -726,6 +781,19 @@ export const InvestigationJobDataSchema = z.object({
 	alerts: z.array(FiringAlertSchema).optional(),
 	/** The operator's brief for the agent (#743). */
 	brief: z.string().max(4000).optional(),
+	/** A follow-up on a finished run: reopen its session and send this (#747). */
+	resume: z
+		.object({
+			text: z.string().min(1).max(4000),
+			mode: OperatorMessageModeSchema,
+			/** What the row said before the follow-up; a follow-up never changes it. */
+			restore: z.object({
+				status: WorkflowStatusSchema,
+				completedAt: z.string().nullable(),
+				error: z.string().nullable(),
+			}),
+		})
+		.optional(),
 });
 
 export type InvestigationJobData = z.infer<typeof InvestigationJobDataSchema>;

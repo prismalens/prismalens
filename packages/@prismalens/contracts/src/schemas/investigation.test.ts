@@ -12,13 +12,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+	CanonicalEventSchema,
 	CulpritSchema,
 	InvestigationContextSchema,
+	InvestigationJobDataSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
 	PostReportToGitHubResultSchema,
 	PostReportToGitHubSchema,
 	RunFidelitySchema,
+	SendInvestigationMessageResultSchema,
 	toFiringAlert,
 } from "./investigation.js";
 
@@ -440,3 +443,43 @@ describe("PostReportToGitHubSchema and PostReportToGitHubResultSchema (#606)", (
 	});
 });
 
+
+describe("follow-up on a finished run (#747)", () => {
+	const runId = "11111111-1111-4111-8111-111111111111";
+	const message = {
+		kind: "operator_message",
+		runId,
+		branchId: "run",
+		path: [],
+		seq: 7,
+		ts: "2026-09-30T10:00:00.000Z",
+		text: "why the pool?",
+		mode: "queue",
+		delivered: true,
+	};
+
+	it("parses a job payload with resume", () => {
+		const parsed = InvestigationJobDataSchema.parse({
+			incidentId: "i",
+			investigationId: "v",
+			resume: {
+				text: "why the pool?",
+				mode: "now",
+				restore: { status: "completed", completedAt: null, error: null },
+			},
+		});
+		expect(parsed.resume?.mode).toBe("now");
+	});
+
+	it("parses state resumed", () => {
+		expect(
+			SendInvestigationMessageResultSchema.parse({ state: "resumed" }).state,
+		).toBe("resumed");
+	});
+
+	it("keeps resumed optional on operator_message", () => {
+		expect(CanonicalEventSchema.parse(message)).toEqual(message);
+		const first = { ...message, resumed: [{ name: "api", head: "1a2b3c4" }] };
+		expect(CanonicalEventSchema.parse(first)).toEqual(first);
+	});
+});
