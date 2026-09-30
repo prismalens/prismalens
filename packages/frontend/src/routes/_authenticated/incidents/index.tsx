@@ -130,7 +130,9 @@ function IncidentsLanding() {
 					>
 						<span>{numbers.open} open</span>
 						<span>{numbers.critical} critical</span>
-						<span>{numbers.needsYou} need you</span>
+						<span>
+							{numbers.needsYou} {numbers.needsYou === 1 ? "needs" : "need"} you
+						</span>
 					</span>
 				)}
 				<div className="ml-auto flex items-center gap-1">
