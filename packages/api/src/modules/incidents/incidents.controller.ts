@@ -103,7 +103,7 @@ export class IncidentsController {
 
 			// GET /incidents/:id - Get a single incident
 			get: implement(incidentsContract.get).handler(async ({ input }) => {
-				const incident = await this.incidentsService.findById(input.id);
+				const incident = await this.incidentsService.findDetail(input.id);
 				if (!incident) {
 					throw new ORPCError("NOT_FOUND", {
 						message: `Incident ${input.id} not found`,

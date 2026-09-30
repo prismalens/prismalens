@@ -279,13 +279,15 @@ async function runJobInternal(
 	}
 }
 
+const RUN_WORKSPACE = [
+	"repo",
+	"unmapped",
+	"home",
+	join("config", "node_modules"),
+];
+
 function clearRunWorkspace(runDir: string): void {
-	for (const rel of [
-		"repo",
-		"unmapped",
-		"home",
-		join("config", "node_modules"),
-	]) {
+	for (const rel of RUN_WORKSPACE) {
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
 		} catch (e) {
@@ -305,9 +307,7 @@ export function sweepRunWorkspaces(): number {
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(runs, entry.name);
-		if (
-			["repo", "unmapped", "home"].some((rel) => existsSync(join(dir, rel)))
-		) {
+		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			clearRunWorkspace(dir);
 			swept++;
 		}
