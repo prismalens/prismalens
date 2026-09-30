@@ -112,6 +112,10 @@ describe("state semantics", () => {
 		expect(canSetIncidentStatus("triggered", "closed")).toBe(false);
 		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
 		expect(canSetIncidentStatus("resolved", "closed")).toBe(true);
+		expect(canSetIncidentStatus("resolved", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
+		expect(canIncidentAction("reopen", "resolved")).toBe(true);
+		expect(canIncidentAction("reopen", "closed")).toBe(false);
 		expect(canSetIncidentStatus("triggered", "bogus")).toBe(false);
 	});
 

@@ -396,7 +396,16 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
+				// Reopened: the next resolve stamps a fresh resolve time (#743).
+				if (isIncidentEnded(existing.status) && !isIncidentEnded(dto.status)) {
+					updateData.resolvedAt = null;
+					updateData.timeToResolve = null;
+				}
 			}
+			const reopened =
+				!!dto.status &&
+				isIncidentEnded(existing.status) &&
+				!isIncidentEnded(dto.status);
 
 			const incident = await this.prisma.incident.update({
 				where: { id },
@@ -408,7 +417,7 @@ export class IncidentsService {
 				await this.timelineService.create({
 					incidentId: id,
 					type: TimelineEntryType.status_changed,
-					title: "Status changed",
+					title: reopened ? "Incident reopened" : "Status changed",
 					description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
 					source: TimelineSource.system,
 					metadata: {

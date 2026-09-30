@@ -284,6 +284,28 @@ describe("IncidentsService", () => {
 		});
 	});
 
+	describe("reopen (#743)", () => {
+		it("clears the resolve time and says the incident was reopened", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt: new Date("2026-10-01T09:00:00Z"),
+				acknowledgedAt: new Date("2026-10-01T09:05:00Z"),
+				resolvedAt: new Date("2026-10-01T10:00:00Z"),
+			});
+			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "investigating" });
+
+			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			expect(data.resolvedAt).toBeNull();
+			expect(data.timeToResolve).toBeNull();
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ title: "Incident reopened" }),
+			);
+		});
+	});
+
 	describe("findAll", () => {
 		it("returns paginated data and total count", async () => {
 			const incidents = [{ id: "inc-1" }, { id: "inc-2" }];

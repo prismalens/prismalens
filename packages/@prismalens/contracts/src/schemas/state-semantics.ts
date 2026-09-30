@@ -165,6 +165,7 @@ export type IncidentAction =
 	| "acknowledge"
 	| "investigate"
 	| "resolve"
+	| "reopen"
 	| "close";
 
 export const INCIDENT_ACTION_FROM: Record<
@@ -175,6 +176,8 @@ export const INCIDENT_ACTION_FROM: Record<
 	// A resolved incident can be investigated again; its status stays (#743).
 	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
 	resolve: OPEN_INCIDENT_STATUSES,
+	// A resolved incident can go back to work; closed stays final (#743).
+	reopen: ["resolved"],
 	close: ["resolved"],
 };
 
@@ -197,7 +200,7 @@ export const INCIDENT_STATUS_SET_FROM: Record<
 	readonly IncidentStatus[]
 > = {
 	triggered: [],
-	investigating: ["triggered", "identified", "monitoring"],
+	investigating: ["triggered", "identified", "monitoring", "resolved"],
 	identified: ["investigating", "monitoring"],
 	monitoring: ["investigating", "identified"],
 	resolved: INCIDENT_ACTION_FROM.resolve,

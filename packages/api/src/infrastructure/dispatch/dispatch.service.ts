@@ -51,6 +51,7 @@ import {
 	runMessageTopic,
 } from "./event-bus.js";
 import { createInProcessRunner } from "./in-process-runner.js";
+import { sweepRunWorkspaces } from "./investigation-run.js";
 import {
 	type JobDelegate,
 	type JobStore,
@@ -274,6 +275,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			this.logger.warn(
 				`Failed ${ids.length} investigation(s) left running by a previous process: ${ids.join(", ")}`,
 			);
+		}
+		try {
+			const swept = sweepRunWorkspaces();
+			if (swept > 0)
+				this.logger.warn(`Removed the leftover workspaces of ${swept} run(s)`);
+		} catch (e) {
+			this.logger.warn("Could not sweep leftover run workspaces", e);
 		}
 		this.dispatcher.start();
 		this.logger.log(
