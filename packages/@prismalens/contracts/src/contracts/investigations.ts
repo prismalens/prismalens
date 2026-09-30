@@ -124,7 +124,13 @@ export const investigationsContract = {
 			successStatus: 202,
 		})
 		.input(IdParamSchema.merge(SendInvestigationMessageSchema))
-		.output(SendInvestigationMessageResultSchema),
+		.output(SendInvestigationMessageResultSchema)
+		.errors({
+			CONFLICT: {
+				message:
+					"The run ended, or has not started, before the message reached it",
+			},
+		}),
 
 	/**
 	 * Update investigation status (Worker)

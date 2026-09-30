@@ -73,8 +73,11 @@ function IncidentLayout() {
 
 	const [startedId, setStartedId] = useState<string | null>(null);
 	const runs = incident?.investigations ?? [];
+	// The layout stays mounted across incident ids; a run started on another incident is not this one's.
+	const started =
+		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
 	const investigationId =
-		search.investigation ?? startedId ?? runs[0]?.id ?? null;
+		search.investigation ?? started ?? runs[0]?.id ?? null;
 	const run = useInvestigationRun(investigationId);
 
 	// oRPC query keys start with a path array, so a string key such as ["incidents"] never

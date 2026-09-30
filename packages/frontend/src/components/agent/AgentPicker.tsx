@@ -210,6 +210,23 @@ export function AgentModelPicker({
 		}
 	}, [open]);
 
+	// The chosen agent may take no model, and `models` lags the mutation.
+	useEffect(() => {
+		if (cursor.col === 1 && cursor.row >= models.length) {
+			setCursor(
+				models.length > 0
+					? { col: 1, row: 0 }
+					: {
+							col: 0,
+							row: Math.max(
+								0,
+								agents.findIndex((a) => a.active),
+							),
+						},
+			);
+		}
+	}, [cursor, models.length, agents]);
+
 	const chooseAgent = (o: Option) => {
 		if (o.disabled) return;
 		update.mutate({ harness: o.value as HarnessSetting });
