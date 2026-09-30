@@ -244,3 +244,18 @@ export async function setTheme(
 	await page.reload();
 	await expect(page.locator("html")).toHaveClass(new RegExp(theme));
 }
+
+/**
+ * Hide the TanStack Query devtools button the dev server renders at the
+ * bottom-right corner, where it sits over the docked box's own button (#743).
+ * It is dev tooling, not the app under test.
+ */
+export async function hideQueryDevtools(page: Page): Promise<void> {
+	await page.addInitScript(() => {
+		const style = document.createElement("style");
+		style.textContent = ".tsqd-parent-container { display: none !important; }";
+		document.addEventListener("DOMContentLoaded", () =>
+			document.head.append(style),
+		);
+	});
+}

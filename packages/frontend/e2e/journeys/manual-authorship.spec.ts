@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
+import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
  * J17 / C10 — manual authorship.
@@ -21,14 +22,11 @@ const NO_HARNESS_REASON =
 	"the Claude Code CLI (claude) was not found on PATH — install the claude-code harness, or add an Anthropic API key in Settings → AI provider";
 
 /**
- * The empty state's own "start" button, scoped inside `investigation-empty` —
- * it shares an accessible name ("Investigate") with the state band's button,
- * so an unscoped `getByRole` is a strict-mode violation.
+ * The box's own Investigate button, docked under the incident's cards. It
+ * shares its name with the band's button, so it is found by test id.
  */
-function tabInvestigateButton(page: Page) {
-	return page
-		.getByTestId("investigation-empty")
-		.getByRole("button", { name: "Investigate", exact: true });
+function boxInvestigateButton(page: Page) {
+	return page.getByTestId("composer-investigate");
 }
 
 /** Hold the client gate open so a test can drive the server's refusal path. */
@@ -52,6 +50,8 @@ async function serveRunnableSelection(page: Page): Promise<void> {
 }
 
 test.describe("C10 — manual authorship without an alert source", () => {
+	test.beforeEach(({ page }) => hideQueryDevtools(page));
+
 	test("creates an incident by hand and starts an investigation from it", async ({
 		page,
 	}) => {
@@ -89,29 +89,33 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// 3. A hand-authored incident carries no alerts, and the UI says so
 		//    rather than implying a correlation that never happened.
-		await page.getByTestId("surface-alerts").click();
-		const alertsPane = page.getByTestId("surface-pane-alerts");
-		await expect(alertsPane).toBeVisible();
-		await expect(alertsPane).toContainText(
-			"No alerts are correlated to this incident yet",
+		await expect(page.getByTestId("alerts-card")).toContainText(
+			"No alerts are correlated yet.",
 		);
 
-		// Author a timeline note via the composer
-		const note = "Authored by hand from the composer";
-		await page.getByTestId("composer-input").fill(note);
-		await page.getByTestId("composer-input").press("Enter");
-		await page.getByTestId("composer-input").blur();
+		// A note from the Timeline card's own field lands right under it.
+		const note = "Authored by hand from the timeline";
+		await page.getByTestId("note-input").fill(note);
+		await page.getByTestId("note-input").press("Enter");
+		await expect(page.getByTestId("timeline-card")).toContainText(note);
 
-		// Open timeline surface ('t') before asserting the note
-		await page.keyboard.press("t");
-		await expect(page.getByTestId("surface-pane-timeline")).toContainText(note);
-
-		// 4. Start the investigation — incidents.investigate must accept an
-		//    incident that has zero alerts.
-		await expect(tabInvestigateButton(page)).toBeEnabled({
+		// 4. Start the investigation from the box, with a brief: the
+		//    investigate call must accept an incident that has zero alerts.
+		const investigate = page.waitForRequest(
+			(req) =>
+				/\/api\/incidents\/[^/]+\/investigate$/.test(req.url()) &&
+				req.method() === "POST",
+		);
+		await expect(boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await tabInvestigateButton(page).click();
+		await page
+			.getByTestId("composer-input")
+			.fill("Latency started after the 14:00 deploy.");
+		await boxInvestigateButton(page).click();
+		expect((await investigate).postDataJSON()).toMatchObject({
+			brief: "Latency started after the 14:00 deploy.",
+		});
 
 		// 5. An investigation exists and the app stays on the incident, now
 		//    pointed at it — the incident URL carries `?investigation=<id>`
@@ -165,10 +169,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// The client's own gate is open — this is the surface #531 fixes: a
 		// server refusal the client didn't anticipate must not be a silent no-op.
-		await expect(tabInvestigateButton(page)).toBeEnabled({
+		await expect(boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await tabInvestigateButton(page).click();
+		await boxInvestigateButton(page).click();
 
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
@@ -179,10 +183,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await expect(tabInvestigateButton(page)).toBeEnabled({
+		await expect(boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await tabInvestigateButton(page).click();
+		await boxInvestigateButton(page).click();
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
 		});
@@ -285,7 +289,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// Both affordances for the same procedure must agree that it is blocked,
 		// and the gate's own words say why (#521).
-		await expect(tabInvestigateButton(page)).toBeDisabled();
+		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
 		await expect(page.getByTestId("band-investigate")).toBeDisabled();
 	});
