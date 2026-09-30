@@ -42,7 +42,7 @@ async function fetchAllEvents(
  */
 export function useInvestigationEventsHistory(
 	investigationId: string,
-	options?: { enabled?: boolean },
+	options?: { enabled?: boolean; refetchInterval?: number | false },
 ) {
 	return useQuery({
 		queryKey: orpc.investigations.getEvents.key({
@@ -50,5 +50,6 @@ export function useInvestigationEventsHistory(
 		}),
 		queryFn: () => fetchAllEvents(investigationId),
 		enabled: (options?.enabled ?? true) && !!investigationId,
+		refetchInterval: options?.refetchInterval ?? false,
 	});
 }

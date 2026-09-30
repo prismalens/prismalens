@@ -251,6 +251,39 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			);
 		});
 
+		it("a secondary repo that cannot be copied is skipped and named in the note; the primary's failure still fails", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			const snapshot = vi.fn(async (_src: unknown, dest: string) => {
+				if (dest.endsWith("worker")) throw new Error("repository not found");
+				return at(dest);
+			});
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("git@github.com:o/api.git", "checkout"),
+					repo("git@github.com:o/worker.git", "jobs"),
+				]),
+				snapshot,
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(ws.layout).toBe("single");
+			expect(ws.cwd).toBe("/ws/runs/inv-1/repos/api");
+			expect(ws.repos.map((r) => r.name)).toEqual(["api"]);
+			expect(ws.note).toContain(
+				"Not included, because it could not be copied: URL git@github.com:o/worker.git (repository not found).",
+			);
+
+			const primaryDown = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("git@github.com:o/worker.git", "checkout"),
+					repo("git@github.com:o/api.git", "jobs"),
+				]),
+				snapshot,
+			});
+			await expect(resolveWorkspace(minimalData(), primaryDown)).rejects.toThrow("repository not found");
+		});
+
 		it("one repository linked by two services is cloned once with both service names", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
 			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));

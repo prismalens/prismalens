@@ -638,42 +638,54 @@ export async function resolveWorkspace(
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
 	const taken: RunWorkspaceRepo[] = [];
+	const skipped: string[] = [];
 	// One at a time: every clone lands on the same disk.
 	for (const [i, { repo, services }] of repos.entries()) {
 		const name = names[i] as string;
-		const token = repo.connectionId
-			? await ports.repoToken(repo.connectionId).catch(() => null)
-			: null;
-		const snap = await ports.snapshot(
-			{
-				kind: repo.sourceKind,
-				source: repo.url,
-				defaultBranch: repo.defaultBranch,
-				token,
-			},
-			multi ? join(runDir, "repos", name) : join(runDir, "repo"),
-			signal,
-		);
-		inside(snap.path, repo.subPath);
-		taken.push({
-			name,
-			dir: snap.path,
-			sourceKind: repo.sourceKind,
-			url: repo.url,
-			subPath: repo.subPath,
-			connectionId: repo.connectionId,
-			head: snap.head,
-			branch: snap.branch,
-			services,
-		});
+		try {
+			const token = repo.connectionId
+				? await ports.repoToken(repo.connectionId).catch(() => null)
+				: null;
+			const snap = await ports.snapshot(
+				{
+					kind: repo.sourceKind,
+					source: repo.url,
+					defaultBranch: repo.defaultBranch,
+					token,
+				},
+				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
+				signal,
+			);
+			inside(snap.path, repo.subPath);
+			taken.push({
+				name,
+				dir: snap.path,
+				sourceKind: repo.sourceKind,
+				url: repo.url,
+				subPath: repo.subPath,
+				connectionId: repo.connectionId,
+				head: snap.head,
+				branch: snap.branch,
+				services,
+			});
+		} catch (e) {
+			// The primary service's repo is the run; another alert's broken link is not.
+			if (i === 0 || signal?.aborted) throw e;
+			const why = e instanceof Error ? e.message : String(e);
+			logger.warn(`Skipped ${whereFrom(repo)}: ${why}`);
+			skipped.push(`${whereFrom(repo)} (${why})`);
+		}
 	}
-	if (!multi) {
+	const omitted = skipped.length
+		? ` Not included, because it could not be copied: ${skipped.join("; ")}.`
+		: "";
+	if (taken.length === 1) {
 		const [only] = taken as [RunWorkspaceRepo];
 		return {
 			layout: "single",
 			cwd: inside(only.dir, only.subPath),
 			repos: taken,
-			note: `Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.`,
+			note: `Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.${omitted}`,
 		};
 	}
 	const listing = taken
@@ -686,7 +698,7 @@ export async function resolveWorkspace(
 		layout: "multi",
 		cwd: join(runDir, "repos"),
 		repos: taken,
-		note: `Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.`,
+		note: `Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.${omitted}`,
 	};
 }
 

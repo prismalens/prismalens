@@ -98,8 +98,16 @@ export function useInvestigationRun(investigationId: string | null) {
 
 	const isActive = !!investigation && isWorkflowLive(investigation.status);
 	const stream = useInvestigationStream(id, { enabled: enabled && isActive });
+	// A follow-up can end before a refetch ever sees it live, so no stream carries its
+	// events: poll the history until an event past the send lands on an ended run.
+	const [followUpFrom, setFollowUpFrom] = useState<{
+		runId: string;
+		seq: number;
+	} | null>(null);
+	const awaitingFollowUp = followUpFrom?.runId === id;
 	const history = useInvestigationEventsHistory(id, {
 		enabled: !!investigation,
+		refetchInterval: awaitingFollowUp && !isActive ? 2000 : false,
 	});
 	const historyEvents = history.data;
 	const liveEvents = isActive ? stream.events : null;
@@ -108,6 +116,12 @@ export function useInvestigationRun(investigationId: string | null) {
 		[historyEvents, liveEvents],
 	);
 	const streamFailed = isActive && stream.status === "error";
+	const lastSeq = events[events.length - 1]?.seq ?? -1;
+	const ended = !!investigation && isWorkflowTerminal(investigation.status);
+	useEffect(() => {
+		if (!awaitingFollowUp || isActive || !ended) return;
+		if (lastSeq > (followUpFrom?.seq ?? -1)) setFollowUpFrom(null);
+	}, [awaitingFollowUp, isActive, ended, lastSeq, followUpFrom]);
 
 	const { data: statusData } = useQuery({
 		...orpc.investigations.getStatus.queryOptions({ input: { id } }),
@@ -144,7 +158,6 @@ export function useInvestigationRun(investigationId: string | null) {
 	const stopRequested =
 		isActive && (stopRequestedFor === id || !!investigation?.stopRequestedAt);
 	const failed = !!investigation && investigation.status === "failed";
-	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	const state: RunState | null = investigation
 		? runState(investigation.status, {
 				hasEvents: events.length > 0,
@@ -203,9 +216,13 @@ export function useInvestigationRun(investigationId: string | null) {
 					// A follow-up reopened the run: refetch so it reads live and the stream connects.
 					onSuccess: (result) => {
 						if (result.state !== "resumed") return;
+						// A stop on the finished run must not read as a stop on its follow-up.
+						setStopRequestedFor(null);
+						setFollowUpFrom({ runId: id, seq: lastSeq });
 						queryClient.invalidateQueries({
 							queryKey: investigationKeys.detail(id),
 						});
+						queryClient.invalidateQueries({ queryKey: eventsKey(id) });
 						queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 					},
 					onError: (error) => {
@@ -228,7 +245,7 @@ export function useInvestigationRun(investigationId: string | null) {
 				},
 			);
 		},
-		[messageMutate, id, queryClient],
+		[messageMutate, id, queryClient, lastSeq],
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
