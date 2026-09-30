@@ -251,7 +251,7 @@ export function IncidentBoard({
 			{ id: run.id },
 			{
 				onSuccess: then ?? settle(incident.id),
-				onError: fail(incident.id, "Stop did not reach the run"),
+				onError: fail(incident.id, "Stop did not reach the investigation"),
 			},
 		);
 	};
@@ -351,10 +351,10 @@ export function IncidentBoard({
 		if (prompt.kind === "stop") {
 			return (
 				<ConfirmBody
-					title="Stop this run?"
-					body="The agent stops at its current step. Everything it found so far stays in the conversation. You can start a new run afterwards."
+					title="Stop this investigation?"
+					body="The agent stops at its current step. Everything it found so far stays in the conversation. You can start a new investigation afterwards."
 					cancel="Keep going"
-					confirm="Stop run"
+					confirm="Stop"
 					destructive
 					onCancel={() => setPrompt(null)}
 					onConfirm={() => {
@@ -370,7 +370,7 @@ export function IncidentBoard({
 				title={`Resolve INC-${incident.number}?`}
 				body={
 					prompt.stopFirst
-						? "Its run is still working. Resolving stops the run first."
+						? "Its investigation is still working. Resolving stops it first."
 						: "It moves to Resolved. Close it from the incident once the fix holds."
 				}
 				cancel="Cancel"

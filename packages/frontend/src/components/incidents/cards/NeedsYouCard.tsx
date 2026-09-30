@@ -13,7 +13,7 @@ import { Card } from "./Card";
 
 const WHY: Record<IncidentAttention, string> = {
 	unacknowledged: "Nobody has taken this incident.",
-	failed_run: "The last run failed and nothing concluded.",
+	failed_run: "The last investigation failed and nothing concluded.",
 	awaiting_close: "Resolved. Close it with the actual cause recorded.",
 };
 

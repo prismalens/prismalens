@@ -1,8 +1,7 @@
 /**
- * The incident's layout (#743 §3c): the band and, once a run exists, the run
- * strip stay pinned over every layer under the incident; the card page and
- * the routes (conversation, report, alerts, timeline) scroll inside their
- * bounds. The run the strip follows is the one in the URL, else the one just
+ * The incident's layout (#743 §3c): the band and the tab row, with the
+ * run's status at its right end, stay pinned over every tab; each tab's body
+ * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
  * started, else the newest.
  */
 import { canIncidentAction, isWorkflowLive } from "@prismalens/contracts";
@@ -12,7 +11,7 @@ import { useMemo, useState } from "react";
 import { CloseIncidentDialog } from "@/components/incidents/CloseIncidentDialog";
 import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
-import { RecordCrumb } from "@/components/incidents/RecordCrumb";
+import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { RunStrip } from "@/components/incidents/RunStrip";
 import {
@@ -222,8 +221,12 @@ function IncidentLayout() {
 					investigateDisabledReason={blockedReason}
 					backToIncident={here !== null}
 				/>
-				<RunStrip />
-				{here && <RecordCrumb incidentId={id} here={here} />}
+				<RecordTabs
+					incidentId={id}
+					here={here}
+					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
+					status={<RunStrip />}
+				/>
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>

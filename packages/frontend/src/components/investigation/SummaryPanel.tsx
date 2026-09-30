@@ -74,7 +74,7 @@ function ReportPanel() {
 			<p className="text-record font-medium">
 				{investigation.rootCause ??
 					report?.rootCause ??
-					"The run finished without naming a root cause."}
+					"The investigation finished without naming a root cause."}
 			</p>
 			<ul className="space-y-1">
 				{report?.hypotheses.map((h) => (

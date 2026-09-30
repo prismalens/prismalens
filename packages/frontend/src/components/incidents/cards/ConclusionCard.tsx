@@ -59,7 +59,7 @@ function AgentConclusion() {
 		return (
 			<Card title="Conclusion" testId="conclusion-card">
 				<p className="text-record text-muted-foreground">
-					None. The run did not finish.
+					None. The investigation did not finish.
 				</p>
 			</Card>
 		);
@@ -89,7 +89,7 @@ function AgentConclusion() {
 			}
 		>
 			<p className="line-clamp-2 text-record font-medium">
-				{culprit ?? "The run finished without naming a root cause."}
+				{culprit ?? "The investigation finished without naming a root cause."}
 			</p>
 			{top && (
 				<div className="flex min-w-0 items-center gap-2 text-meta">

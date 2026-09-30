@@ -49,7 +49,10 @@ export function dropAction({
 		if (from === "resolved") {
 			return { kind: "none", reason: "A closed incident stays closed" };
 		}
-		return { kind: "none", reason: "Concluded follows from a finished run" };
+		return {
+			kind: "none",
+			reason: "Concluded follows from a finished investigation",
+		};
 	}
 	// to === "resolved"
 	if (!canResolve) {

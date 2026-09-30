@@ -51,10 +51,10 @@ function ReportRoute() {
 						data-testid="report-empty"
 					>
 						{!investigationId
-							? "No run yet. The report lands here when a run finishes."
+							? "No investigation yet. The report lands here when one finishes."
 							: run.state === "stopped" || run.state === "failed"
-								? "None. The run did not finish."
-								: "The report lands here when the run finishes."}
+								? "None. The investigation did not finish."
+								: "The report lands here when the investigation finishes."}
 					</p>
 				) : (
 					<>

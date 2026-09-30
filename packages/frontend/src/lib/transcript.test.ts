@@ -75,7 +75,7 @@ const ended = { status: "completed", live: false };
 describe("deriveTranscript", () => {
 	it("says so when a run kept no events", () => {
 		expect(deriveTranscript([], T0, { run: ended })).toEqual([
-			{ kind: "empty", key: "empty", text: "This run kept no events." },
+			{ kind: "empty", key: "empty", text: "This investigation kept no events." },
 		]);
 	});
 

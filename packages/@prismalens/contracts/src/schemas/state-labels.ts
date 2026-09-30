@@ -164,7 +164,7 @@ export const RUN_STATE_LABEL: Record<RunState, string> = {
 };
 
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
-	failed_run: "Run failed",
+	failed_run: "Investigation failed",
 	unacknowledged: "Needs acknowledging",
 	awaiting_close: "Awaiting close",
 };

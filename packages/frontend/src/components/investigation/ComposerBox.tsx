@@ -118,7 +118,7 @@ export function ComposerBox({
 		mode === "brief"
 			? "Add context for the agent (optional)"
 			: mode === "again"
-				? "Context for a new run (optional)"
+				? "Context for a new investigation (optional)"
 				: `Message ${target}`;
 
 	return (
@@ -225,14 +225,15 @@ export function ComposerBox({
 					) : (
 						<>
 							<span className="flex items-center gap-1">
-								<Kbd>Enter</Kbd> start the run with this as the brief
+								<Kbd>Enter</Kbd> start the investigation with this as the brief
 							</span>
 							<span className="flex items-center gap-1">
 								<Kbd>Shift Enter</Kbd> new line
 							</span>
 							{mode === "again" && (
 								<span>
-									This run has ended and cannot be asked anything more.
+									This investigation has ended and cannot be asked anything
+									more.
 								</span>
 							)}
 						</>
@@ -244,7 +245,7 @@ export function ComposerBox({
 					className="flex flex-wrap items-center gap-2 px-2 text-meta text-run-failed"
 					data-testid="composer-undeliverable"
 				>
-					The run ended before your message reached it.
+					The investigation ended before your message reached it.
 					{onSaveAsNote && (
 						<Button
 							variant="outline"

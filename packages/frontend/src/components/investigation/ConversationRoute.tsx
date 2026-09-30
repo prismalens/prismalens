@@ -177,7 +177,7 @@ export function ConversationRoute() {
 					)}
 					{!investigationId ? (
 						<p className="flex-1 p-6 text-center text-record text-muted-foreground">
-							No run yet. Start one below.
+							No investigation yet. Start one below.
 						</p>
 					) : run.isLoading ? (
 						<div className="flex-1 p-4">

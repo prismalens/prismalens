@@ -152,7 +152,7 @@ test.describe("#523 S2/final — the incidents queue", () => {
 			"Needs acknowledging",
 		);
 		await expect(failedRow.getByTestId("incident-attention")).toHaveText(
-			"Run failed",
+			"Investigation failed",
 		);
 		await expect(triggeredRow).toHaveAttribute("title", /INC-\d+/);
 

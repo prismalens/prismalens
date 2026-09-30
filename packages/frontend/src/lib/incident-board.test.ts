@@ -92,7 +92,7 @@ describe("boardColumn", () => {
 describe("incidentHeadline", () => {
 	it("says what the latest run did, from the list payload", () => {
 		expect(incidentHeadline(incident("triggered"))).toEqual({
-			text: "No run yet",
+			text: "No investigation yet",
 		});
 		expect(
 			incidentHeadline(incident("investigating", { status: "pending" })),
@@ -107,7 +107,7 @@ describe("incidentHeadline", () => {
 		).toEqual({ lead: "Likely:", text: "TTL cut in 3b7e0d" });
 		expect(
 			incidentHeadline(incident("investigating", { status: "failed" })),
-		).toEqual({ text: "Run failed" });
+		).toEqual({ text: "Investigation failed" });
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -135,7 +135,7 @@ describe("incidentHeadline", () => {
 					error: "not logged in; run claude login",
 				}),
 			),
-		).toEqual({ text: "Run failed: not logged in" });
+		).toEqual({ text: "Investigation failed: not logged in" });
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -200,11 +200,11 @@ describe("runWord", () => {
 
 describe("headlineAddsInfo", () => {
 	it("drops a headline that only repeats the state word", () => {
-		expect(headlineAddsInfo({ text: "No run yet" })).toBe(false);
+		expect(headlineAddsInfo({ text: "No investigation yet" })).toBe(false);
 		expect(headlineAddsInfo({ text: "Working…" })).toBe(false);
-		expect(headlineAddsInfo({ text: "Run failed" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Investigation failed" })).toBe(false);
 		expect(headlineAddsInfo({ lead: "Likely:", text: "TTL cut" })).toBe(true);
-		expect(headlineAddsInfo({ text: "Run failed: not logged in" })).toBe(true);
+		expect(headlineAddsInfo({ text: "Investigation failed: not logged in" })).toBe(true);
 		expect(headlineAddsInfo({ text: "Comparing the TTL change" })).toBe(true);
 	});
 });

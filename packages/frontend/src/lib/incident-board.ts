@@ -86,11 +86,11 @@ export interface Headline {
 }
 
 const SAYS_NOTHING_NEW = new Set([
-	"No run yet",
+	"No investigation yet",
 	"Starting…",
 	"Working…",
 	"Stopping…",
-	"Run failed",
+	"Investigation failed",
 	"Done, no cause named",
 ]);
 
@@ -117,7 +117,7 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 	) {
 		return { lead: "Cause:", text: incident.actualCause };
 	}
-	if (!run) return { text: "No run yet" };
+	if (!run) return { text: "No investigation yet" };
 	switch (run.status) {
 		case "pending":
 			return { text: run.stopRequestedAt ? "Stopping…" : "Starting…" };
@@ -136,8 +136,8 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 		case "failed":
 			return {
 				text: run.error
-					? `Run failed: ${firstClause(run.error)}`
-					: "Run failed",
+					? `Investigation failed: ${firstClause(run.error)}`
+					: "Investigation failed",
 			};
 		case "completed":
 			return run.rootCause
