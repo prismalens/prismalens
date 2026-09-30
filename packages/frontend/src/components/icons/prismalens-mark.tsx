@@ -2,8 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { SVGProps } from "react";
+import { cn } from "@/lib/utils";
 
-/** The refraction mark from prismalens.io `brand/logo.svg`: rays fade in order. */
+/**
+ * The p-lens glint mark. Every caller draws it at 24 px or more, so it always
+ * keeps the glint; the brand drops the glint only below 24 px (#745).
+ */
 export function PrismaLensMark({
 	className,
 	...props
@@ -12,30 +16,15 @@ export function PrismaLensMark({
 		<svg
 			aria-hidden="true"
 			fill="none"
-			viewBox="0 0 64 64"
+			viewBox="0 0 256 256"
+			stroke="currentColor"
 			strokeLinecap="round"
-			className={className}
+			className={cn("text-[#4f46e5] dark:text-[#818cf8]", className)}
 			{...props}
 		>
-			<path d="M2 34H20" stroke="currentColor" opacity=".55" strokeWidth="3" />
-			<path
-				d="M20.6 34 40.4 29.6"
-				stroke="currentColor"
-				opacity=".22"
-				strokeWidth="2.5"
-			/>
-			<g className="stroke-[#4f46e5] dark:stroke-[#818cf8]" strokeWidth="3">
-				<path d="M42.8 28.3 62 17" />
-				<path d="M43.2 29 62 26" opacity=".7" />
-				<path d="M43.9 30.2 62 35" opacity=".5" />
-				<path d="M44.4 31 62 44" opacity=".35" />
-			</g>
-			<path
-				d="M32 14.1 51 47H13Z"
-				stroke="currentColor"
-				strokeWidth="3.5"
-				strokeLinejoin="round"
-			/>
+			<circle cx="142" cy="104" r="54" strokeWidth="36" />
+			<path d="M88 64V224" strokeWidth="36" />
+			<path d="M120 108A24 24 0 0 1 144 82" strokeWidth="11" />
 		</svg>
 	);
 }

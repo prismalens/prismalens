@@ -1,12 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PrismaLens">
-  <style>.i{stroke:#0F172A}.r{stroke:#4F46E5}@media(prefers-color-scheme:dark){.i{stroke:#E2E8F0}.r{stroke:#818CF8}}</style>
-  <g fill="none" stroke-linecap="round">
-    <path class="i" d="M2 34H20" opacity=".55" stroke-width="3"/>
-    <path class="i" d="M20.6 34 40.4 29.6" opacity=".22" stroke-width="2.5"/>
-    <path class="r" d="M42.8 28.3 62 17" stroke-width="3"/>
-    <path class="r" d="M43.2 29 62 26" stroke-width="3" opacity=".7"/>
-    <path class="r" d="M43.9 30.2 62 35" stroke-width="3" opacity=".5"/>
-    <path class="r" d="M44.4 31 62 44" stroke-width="3" opacity=".35"/>
-    <path class="i" d="M32 14.1 51 47H13Z" stroke-width="3.5" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="PrismaLens">
+  <style>.m{stroke:#4F46E5}@media(prefers-color-scheme:dark){.m{stroke:#818CF8}}</style>
+  <g class="m" fill="none" stroke-linecap="round">
+    <circle cx="142" cy="104" r="54" stroke-width="36"/>
+    <path d="M88 64V224" stroke-width="36"/>
+    <path d="M120 108A24 24 0 0 1 144 82" stroke-width="11"/>
   </g>
 </svg>
