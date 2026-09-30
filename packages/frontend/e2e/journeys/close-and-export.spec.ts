@@ -61,10 +61,11 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		// incident first. Closing with both fields blank is allowed.
 		await close.click();
 		await page.getByTestId("confirm-close-incident").click();
-		await expect(page.getByTestId("band-investigate")).toHaveCount(0, {
-			timeout: 15_000,
-		});
-		await expect(close).toHaveCount(0);
+		await expect(close).toHaveCount(0, { timeout: 15_000 });
+		// A closed incident can still be investigated again (#743); its
+		// status stays closed.
+		await expect(page.getByTestId("band-investigate")).toBeVisible();
+		await expect(page.getByTestId("band-status")).toHaveText("Closed");
 	});
 
 	test("offers no Markdown export while the incident has no report", async ({
