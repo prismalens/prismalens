@@ -34,6 +34,7 @@
 import type {
 	CanonicalEvent,
 	InvestigationReport,
+	OperatorMessageMode,
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 
@@ -132,6 +133,21 @@ export class AcpAdapter {
 	/** Terminal: a branch finished. Emitted by the runner, not the harness stream. */
 	branchDone(reason: "submitted" | "budget" | "no_progress"): CanonicalEvent {
 		return { kind: "branch_done", ...this.base(), reason };
+	}
+
+	/** The operator's text as the session received it (#743). */
+	operatorMessage(
+		text: string,
+		mode: OperatorMessageMode,
+		delivered: boolean,
+	): CanonicalEvent {
+		return {
+			kind: "operator_message",
+			...this.base(),
+			text,
+			mode,
+			delivered,
+		};
 	}
 
 	/** Terminal: a branch failed. */

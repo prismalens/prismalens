@@ -9,6 +9,8 @@
 // "unauthenticated" (exits immediately with a stderr line), "print-env" (exits
 // naming which of FAKE_ENV_PROBE's comma-separated vars it received), "tolerant"
 // (emits unknown update kinds, unknown tool kinds, extra fields, and unknown stopReason),
+// "steerable" (like "ok"; with FAKE_WAIT_CANCEL its first turn waits for session/cancel;
+// later turns echo the prompt), "silent" (a turn that emits nothing until cancelled),
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
@@ -70,9 +72,18 @@ const report = {
 };
 
 let turns = 0;
+let onCancel = null;
+const cancelled = () =>
+	new Promise((resolve) => {
+		onCancel = resolve;
+	});
 async function turn(sessionId, promptText) {
 	turns += 1;
 	if (mode === "crash") process.exit(3);
+	if (mode === "silent") {
+		await cancelled();
+		return { stopReason: "cancelled" };
+	}
 	if (mode === "tolerant") {
 		notify(sessionId, {
 			sessionUpdate: "unknown_session_update_kind",
@@ -176,9 +187,21 @@ async function turn(sessionId, promptText) {
 			],
 		});
 		process.stderr.write(`fake: write ${allowed ? "ALLOWED" : "refused"}\n`);
+		if (mode === "steerable" && process.env.FAKE_WAIT_CANCEL) {
+			await cancelled();
+			return { stopReason: "cancelled" };
+		}
 	}
+	if (mode === "steerable" && turns > 1)
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: `Heard: ${promptText}\n` },
+		});
 	const valid =
-		mode === "ok" || mode === "nowrite" || (mode === "retry" && turns >= 2);
+		mode === "ok" ||
+		mode === "nowrite" ||
+		mode === "steerable" ||
+		(mode === "retry" && turns >= 2);
 	const body = valid ? JSON.stringify(report) : JSON.stringify({ summary: "" });
 	const prefix = promptText.startsWith("Your final message did not")
 		? "Corrected. "
@@ -254,7 +277,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		const result = await turn(msg.params.sessionId, text);
 		send({ jsonrpc: "2.0", id: msg.id, result });
 	} else if (msg.method === "session/cancel") {
-		// ignored by the fake
+		process.stderr.write("fake: cancel\n");
+		onCancel?.();
+		onCancel = null;
 	} else if (msg.id !== undefined) {
 		send({ jsonrpc: "2.0", id: msg.id, result: {} });
 	}

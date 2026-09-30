@@ -171,6 +171,61 @@ describe("runInvestigation over a fake ACP harness", () => {
 		if (last?.kind === "error") expect(last.message).toContain("no evidence");
 	});
 
+	it("delivers a queued message when the turn ends and answers it before the report (#743)", async () => {
+		const queue = ["Check the 13:58 deploy first."];
+		const { events } = await collect("steerable", {
+			brief: "Focus on the cache layer.",
+			steer: { next: () => queue.shift() ?? null, onNow: () => () => {} },
+		});
+		const said = events.flatMap((e) => (e.kind === "operator_message" ? [[e.text, e.mode, e.delivered]] : []));
+		expect(said).toEqual([
+			["Focus on the cache layer.", "queue", true],
+			["Check the 13:58 deploy first.", "queue", true],
+		]);
+		const kinds = events.map((e) => e.kind);
+		expect(kinds.indexOf("operator_message", 1)).toBeLessThan(kinds.indexOf("report"));
+		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("\n");
+		expect(prose).toContain("Heard: Check the 13:58 deploy first.");
+		expect(events.at(-1)?.kind).toBe("report");
+	});
+
+	it("sends a send-now message by cancelling the turn and prompting the same session (#743)", async () => {
+		let deliver: ((text: string) => void) | undefined;
+		const events: CanonicalEvent[] = [];
+		const o = opts("steerable", {
+			env: { ...process.env, FAKE_ACP_MODE: "steerable", FAKE_WAIT_CANCEL: "1" },
+			steer: {
+				next: () => null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "tool_result" && ev.result.ok === false) deliver?.("Stop and look at the TTL.");
+		}
+		const msg = events.find((e) => e.kind === "operator_message");
+		expect(msg).toMatchObject({ text: "Stop and look at the TTL.", mode: "now", delivered: true });
+		expect(events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("\n")).toContain("Heard: Stop and look at the TTL.");
+		expect(events.at(-1)?.kind).toBe("report");
+		expect(deliver).toBeUndefined();
+	});
+
+	it("cancels a silent harness as soon as the operator stops the run (#743)", async () => {
+		const stop = new AbortController();
+		const started = Date.now();
+		setTimeout(() => stop.abort(), 300);
+		const { events } = await collect("silent", { signal: stop.signal });
+		const last = events.at(-1);
+		expect(last?.kind).toBe("error");
+		if (last?.kind === "error") expect(last.message).toBe("investigation cancelled");
+		expect(Date.now() - started).toBeLessThan(5_000);
+	});
+
 	it("conductRun classifies the outcome and drives both ports", async () => {
 		const stored: CanonicalEvent[] = [];
 		let finished = 0;
