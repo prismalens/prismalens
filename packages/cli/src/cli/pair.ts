@@ -10,6 +10,13 @@
 
 import { defineCommand } from "citty";
 import consola from "consola";
+import {
+	checkIdentity,
+	describeOutcome,
+	lockBase,
+	type ProbeOptions,
+	probeInstance,
+} from "./instance-check.js";
 
 export default defineCommand({
 	meta: {
@@ -26,7 +33,7 @@ export default defineCommand({
 		address: {
 			type: "string",
 			description:
-				"The address the other device will open, e.g. http://192.168.1.5:3001 (default: this machine's loopback, which reaches only this machine)",
+				"The address the other device will open, e.g. http://192.168.1.5:6473 (default: this machine's loopback, which reaches only this machine)",
 		},
 		label: {
 			type: "string",
@@ -43,7 +50,7 @@ export default defineCommand({
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		}
-		const { getAppDataDir, readWorkspaceLock } = await import(
+		const { getAppDataDir, readInstanceFile, readWorkspaceLock } = await import(
 			"@prismalens/config"
 		);
 		const workspaceDir = getAppDataDir();
@@ -59,6 +66,15 @@ export default defineCommand({
 			args.address ? String(args.address) : undefined,
 			lock.port,
 		);
+		const refusal = await pairRefusal({
+			lock,
+			instanceId: readInstanceFile(workspaceDir)?.instanceId ?? null,
+			address: args.address ? origin : null,
+		});
+		if (refusal) {
+			consola.error(refusal);
+			process.exit(1);
+		}
 
 		const {
 			buildPairingUrl,
@@ -110,4 +126,31 @@ export function resolveOrigin(
 	if (!url.port && url.protocol === "http:") url.port = String(port);
 	const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 	return { origin: url.origin, loopback };
+}
+
+/** Why no link should be minted, or null: the lock's server and `--address` must both be this workspace's. */
+export async function pairRefusal(
+	input: {
+		lock: { pid: number; host?: string; port: number };
+		instanceId: string | null;
+		address: string | null;
+	},
+	options: ProbeOptions & { isAlive?: (pid: number) => boolean } = {},
+): Promise<string | null> {
+	if (!input.instanceId) {
+		return "This workspace has no instance.json yet. Restart `pl up` with this version, then pair.";
+	}
+	const base = lockBase(input.lock);
+	const local = await checkIdentity(
+		{ pid: input.lock.pid, base, instanceId: input.instanceId },
+		options,
+	);
+	if (local.kind !== "ok") {
+		return `Not pairing: ${describeOutcome(local, base)}.`;
+	}
+	if (!input.address) return null;
+	const remote = await probeInstance(input.address, input.instanceId, options);
+	return remote.kind === "ok"
+		? null
+		: `Not pairing: ${describeOutcome(remote, input.address)}${remote.kind === "forbidden-host" ? "" : "."}`;
 }

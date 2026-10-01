@@ -21,6 +21,12 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
 import {
+	checkIdentity,
+	describeOutcome,
+	type IdentityOutcome,
+	lockBase,
+} from "./instance-check.js";
+import {
 	type Action,
 	activeProbe,
 	buildPlan,
@@ -261,6 +267,24 @@ async function printOperatorLink(
 	);
 }
 
+function safeInstanceId(config: Config, workspace: string): string {
+	try {
+		return config.readInstanceFile(workspace)?.instanceId ?? "";
+	} catch {
+		return "";
+	}
+}
+
+export function runningLine(
+	identity: IdentityOutcome,
+	base: string,
+	pid: number | null,
+): string {
+	if (identity.kind === "ok") return `yes (pid ${pid})`;
+	if (identity.kind === "not-running") return "no";
+	return `no: ${describeOutcome(identity, base).trim()}`;
+}
+
 const status = defineCommand({
 	meta: {
 		name: "status",
@@ -277,13 +301,23 @@ const status = defineCommand({
 			return;
 		}
 		const lock = config.readWorkspaceLockState(service.workspace);
-		const healthy = await waitForHealth(service, 2000);
+		const base = lockBase(
+			lock.kind === "held"
+				? lock.owner
+				: { host: service.host, port: service.port },
+		);
+		const identity = await checkIdentity({
+			pid: lock.kind === "held" ? lock.owner.pid : null,
+			base,
+			instanceId: safeInstanceId(config, service.workspace),
+		});
+		const healthy = identity.kind === "ok";
 		consola.log(
 			[
 				`Unit:      ${service.unitPath}`,
 				`Workspace: ${service.workspace}`,
 				`Port:      ${service.port}`,
-				`Running:   ${healthy ? `yes${lock.kind === "held" ? ` (pid ${lock.owner.pid})` : ""}` : "no"}`,
+				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null)}`,
 				`Log:       ${join(service.workspace, "logs", "service.log")}`,
 			].join("\n"),
 		);
