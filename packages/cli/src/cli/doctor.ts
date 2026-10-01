@@ -326,6 +326,30 @@ function checkPortHost(): Check {
 	};
 }
 
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/** The URL Alertmanager posts to, and whether another machine can reach this bind. */
+export function checkWebhookUrl(
+	host = process.env.PRISMALENS_HOST ?? "127.0.0.1",
+	port = process.env.PRISMALENS_PORT ?? String(workspacePort()),
+	protocol = process.env.PRISMALENS_PROTOCOL === "https" ? "https" : "http",
+): Check {
+	const path = "/api/webhooks/prometheus";
+	const loopback = LOOPBACK.has(host);
+	const wildcard = host === "0.0.0.0" || host === "::";
+	const shown = host.includes(":") ? `[${host}]` : host;
+	return {
+		name: "Webhook URL",
+		pass: true,
+		detail: loopback
+			? `${protocol}://${shown}:${port}${path}; only this machine can reach it. For Alertmanager elsewhere, bind with --host and use this machine's LAN or tailnet address`
+			: wildcard
+				? `${protocol}://<this machine's LAN or tailnet address>:${port}${path}; other machines can reach it`
+				: `${protocol}://${shown}:${port}${path}; machines that can route to ${host} can reach it`,
+		hard: false,
+	};
+}
+
 export default defineCommand({
 	meta: {
 		name: "doctor",
@@ -372,6 +396,7 @@ export default defineCommand({
 				...checkAutoSelection(),
 				checkWebhookToken(),
 				checkPortHost(),
+				checkWebhookUrl(),
 				checkService(),
 			];
 
