@@ -337,7 +337,7 @@ const json = (path, init) =>
 	});
 	const setCookie = redeem.headers.getSetCookie?.() ?? [];
 	const deviceCookie = setCookie.find((c) =>
-		c.startsWith("prismalens.device="),
+		c.startsWith("prismalens.device."),
 	);
 	const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
 	if (redeem.status === 200 && cookie) {
@@ -409,7 +409,7 @@ const json = (path, init) =>
 	});
 	const hostCookie =
 		(hostRedeem.headers.getSetCookie?.() ?? [])
-			.find((c) => c.startsWith("prismalens.device="))
+			.find((c) => c.startsWith("prismalens.device."))
 			?.split(";")[0] ?? "";
 	const hostDevices = hostCookie
 		? await fetch(base + "/api/pairing/devices", { headers: { cookie: hostCookie } })

@@ -16,6 +16,7 @@ import {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,
 	ensureAppDataDir,
+	ensureInstanceFile,
 	getConfig,
 	resolvePort,
 	serviceOwnsWorkspace,
@@ -67,6 +68,8 @@ async function bootstrap() {
 	// database. The port goes into the lock so a launcher that finds the
 	// workspace held can reach the owner instead of guessing; see the two known
 	// gaps documented on `acquireWorkspaceLock`.
+	// resolvePort skips the file when PRISMALENS_PORT is set; `pl pair` needs it (#763).
+	ensureInstanceFile(ensureAppDataDir());
 	const port = resolvePort(process.env, ensureAppDataDir());
 	const host = getConfig().PRISMALENS_HOST;
 	try {
