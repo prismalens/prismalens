@@ -67,6 +67,15 @@ export {
 	uninstallCommand,
 	upgradeCommand,
 } from "./utils/install-channel.js";
+export {
+	DEFAULT_PORT,
+	ensureInstanceFile,
+	INSTANCE_FILE,
+	type InstanceFile,
+	LEGACY_PORT,
+	readInstanceFile,
+	resolvePort,
+} from "./utils/instance-file.js";
 export type { SecretEnvVar } from "./utils/secrets.js";
 // Re-export secret constants
 export { FILE_SUFFIX, SecretEnvVars, secretFileName } from "./utils/secrets.js";

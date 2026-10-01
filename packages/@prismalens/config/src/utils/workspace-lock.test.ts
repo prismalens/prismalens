@@ -56,6 +56,20 @@ describe("workspace lock (#605 edge 5)", () => {
 		expect(readWorkspaceLock(dir)).toBe(null);
 	});
 
+	it("records the bind host when given, and a 0.5.0 lock without one still parses (#763)", () => {
+		const dir = workspace();
+		const release = acquireWorkspaceLock(dir, { port: 6473, host: "0.0.0.0" });
+		expect(readWorkspaceLock(dir)?.host).toBe("0.0.0.0");
+		release();
+		writeFileSync(
+			lockIn(dir),
+			JSON.stringify({ pid: process.pid, port: 3001, startedAt: new Date().toISOString() }),
+		);
+		expect(readWorkspaceLock(dir)).toMatchObject({ port: 3001 });
+		expect(readWorkspaceLock(dir)?.host).toBeUndefined();
+		unlinkSync(lockIn(dir));
+	});
+
 	it("refuses a workspace held by another live process", () => {
 		const dir = workspace();
 		// The parent of this test runner is alive and is not us.
