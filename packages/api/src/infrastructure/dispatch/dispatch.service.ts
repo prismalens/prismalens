@@ -332,7 +332,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		// before the loop starts, so nothing sits stuck "running" forever.
 		const ids = await this.store.failRunning(RESTART_REASON);
 		for (const id of ids) {
-			if (await this.restoreFollowUp(id, FOLLOW_UP_RESTART_REASON)) continue;
+			const restored = await this.restoreFollowUp(
+				id,
+				FOLLOW_UP_RESTART_REASON,
+			).catch((e) => {
+				this.logger.warn(
+					`Could not restore follow-up ${id}: ${(e as Error).message}`,
+				);
+				return false;
+			});
+			if (restored) continue;
 			await this.investigationsService.updateStatusInternal(
 				id,
 				"failed",
