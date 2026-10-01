@@ -63,8 +63,9 @@ misdesigned — send it back.
 
 All agent work on this repository's files and git state — coding, running commands,
 checking out branches, anything that touches this repo's working tree — happens in a
-worktree at `~/worktrees/<repo>/<branch-slug>`, never in the main checkout at the repo
-root. The main checkout, and the dev stack it serves (the one running `pnpm dev` for
+worktree at `.claude/worktrees/<branch-slug>` inside this repo, never in the main checkout
+at the repo root. `.worktreeinclude` copies `packages/api/.env` into each new worktree so a
+lane can build and run. The main checkout, and the dev stack it serves (the one running `pnpm dev` for
 manual verification), is orchestrator territory: only the orchestrator switches its
 branch or restarts its stack, and only deliberately. An agent that finds itself pointed
 at the main checkout stops and reports rather than proceeding — a prior incident had an
