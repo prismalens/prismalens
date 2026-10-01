@@ -9,7 +9,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { type BackendSpawn, backendUrl } from "./supervisor.js";
+import type { BackendSpawn } from "./supervisor.js";
 
 /** Where the packed `prismalens` package lives: beside the app in production, or wherever the env points in development. */
 export function resolveBackendMain(input: {
@@ -47,12 +47,12 @@ export function startBackend(plan: BackendSpawn): ChildProcess {
 }
 
 export async function waitForHealth(
-	port: number,
+	baseUrl: string,
 	timeoutMs: number,
 	fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
-	const url = `${backendUrl(port)}/health`;
+	const url = `${baseUrl}/health`;
 	while (Date.now() < deadline) {
 		// A stalled request must not outlive the deadline, nor eat the whole of it.
 		const remaining = Math.max(1, deadline - Date.now());
