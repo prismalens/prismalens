@@ -32,6 +32,7 @@ const mockDispatchService = {
 	getJobStatus: vi.fn(),
 	cancelPendingJob: vi.fn(),
 	cancelOrphanedRun: vi.fn(),
+	restoreFollowUp: vi.fn(async () => false),
 };
 
 function investigation(id: string, status: string) {
@@ -166,6 +167,23 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		// No fire-and-forget publish — it would be dropped with no subscriber.
 		expect(mockDispatchService.requestCancel).not.toHaveBeenCalled();
 		expect(result.status).toBe("cancelled");
+	});
+
+	it("pending follow-up: cancelling it puts the finished run back instead of cancelling it (#752)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-5", "pending"))
+			.mockResolvedValueOnce(investigation("inv-5", "completed"));
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
+		mockDispatchService.restoreFollowUp.mockResolvedValueOnce(true);
+
+		const result = await cancelHandler()({ input: { id: "inv-5" } });
+
+		expect(mockDispatchService.restoreFollowUp).toHaveBeenCalledWith(
+			"inv-5",
+			expect.stringContaining("before the follow-up started"),
+		);
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+		expect(result.status).toBe("completed");
 	});
 
 	it("pending run but a dispatcher won the race: row cancel fails → falls through to publish", async () => {

@@ -450,22 +450,20 @@ async function runFollowUp(
 	}
 }
 
-/** A follow-up that never reached the harness still answers in the conversation. */
-async function sayInConversation(
+/** The follow-up's message, not delivered, and why: what the conversation shows when it never ran. */
+export function followUpNotDelivered(
 	runId: string,
 	seq: number,
 	resume: NonNullable<InvestigationJobData["resume"]>,
 	message: string,
-	io: JobIo,
-	ports: RunPorts,
-): Promise<void> {
+): CanonicalEvent[] {
 	const base = {
 		runId,
 		branchId: "run",
 		path: [],
 		ts: new Date().toISOString(),
 	};
-	const events: CanonicalEvent[] = [
+	return [
 		{
 			kind: "operator_message",
 			...base,
@@ -476,6 +474,18 @@ async function sayInConversation(
 		},
 		{ kind: "error", ...base, seq: seq + 1, message },
 	];
+}
+
+/** A follow-up that never reached the harness still answers in the conversation. */
+async function sayInConversation(
+	runId: string,
+	seq: number,
+	resume: NonNullable<InvestigationJobData["resume"]>,
+	message: string,
+	io: JobIo,
+	ports: RunPorts,
+): Promise<void> {
+	const events = followUpNotDelivered(runId, seq, resume, message);
 	try {
 		for (const event of events) await io.emit(event);
 		await ports.appendEvents(runId, events);

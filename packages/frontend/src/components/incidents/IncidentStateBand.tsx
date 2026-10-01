@@ -102,7 +102,9 @@ export function IncidentStateBand({
 	return (
 		<div
 			data-testid="incident-state-band"
-			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0"
+			// On desktop the band is the window's title strip (#752): it drags the window,
+			// its controls opt out, and it clears the window controls and a folded sidebar's head.
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"
 		>
 			{backToIncident ? (
 				<Link

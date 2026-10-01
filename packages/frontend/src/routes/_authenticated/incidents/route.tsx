@@ -11,6 +11,7 @@ import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
 import { SIDEBAR_BESIDE, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
+import { cn } from "@/lib/utils";
 
 export interface IncidentsSearch {
 	status?: IncidentStatus;
@@ -55,7 +56,11 @@ function IncidentsFrame() {
 	const listHere = !beside && !firstRun && !recordOpen;
 	return (
 		<div
-			className="fixed inset-y-0 left-0 right-0 top-10 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)"
+			className={cn(
+				"fixed inset-y-0 left-0 right-0 top-10 bg-background md:top-(--titlebar-h) md:left-(--sidebar-w)",
+				// In the desktop window an open record's band is the title strip (#752).
+				recordOpen && "desktop:top-0 desktop:z-40",
+			)}
 			data-testid="incidents-frame"
 		>
 			{listHere ? (

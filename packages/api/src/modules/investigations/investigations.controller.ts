@@ -205,6 +205,20 @@ export class InvestigationsController {
 							input.id,
 						);
 						if (cancelledJob) {
+							// A failed restore must not strand the run pending: fall through
+							// to the plain cancel below.
+							const restoredFollowUp = await this.dispatchService
+								.restoreFollowUp(
+									input.id,
+									"Stopped before the follow-up started. The report is unchanged.",
+								)
+								.catch(() => false);
+							if (restoredFollowUp) {
+								const restored = await this.investigationsService.findById(
+									input.id,
+								);
+								return this.serializeInvestigation(restored ?? investigation);
+							}
 							const cancelled = await this.investigationsService.cancelPending(
 								input.id,
 								investigation.incidentId,
