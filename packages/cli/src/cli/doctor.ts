@@ -23,7 +23,6 @@ import {
 	getAppDataDir,
 	installChannel,
 	installedService,
-	LEGACY_PORT,
 	readInstanceFile,
 	secretFileName,
 	serviceOwnsWorkspace,
@@ -310,9 +309,7 @@ function workspacePort(): number {
 	} catch {
 		// An invalid instance file fails `pl up` with its own message.
 	}
-	return existsSync(join(workspace, "prismalens.db"))
-		? LEGACY_PORT
-		: DEFAULT_PORT;
+	return DEFAULT_PORT;
 }
 
 function checkPortHost(): Check {

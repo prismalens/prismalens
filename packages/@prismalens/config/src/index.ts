@@ -72,7 +72,6 @@ export {
 	ensureInstanceFile,
 	INSTANCE_FILE,
 	type InstanceFile,
-	LEGACY_PORT,
 	readInstanceFile,
 	resolvePort,
 } from "./utils/instance-file.js";

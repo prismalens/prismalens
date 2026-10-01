@@ -15,7 +15,6 @@ import {
 	DEFAULT_PORT,
 	ensureInstanceFile,
 	INSTANCE_FILE,
-	LEGACY_PORT,
 	readInstanceFile,
 	resolvePort,
 } from "./instance-file.js";
@@ -36,12 +35,6 @@ describe("instance file (#763)", () => {
 		}
 		expect(readdirSync(dir)).toEqual([INSTANCE_FILE]);
 		expect(ensureInstanceFile(dir)).toEqual(created);
-	});
-
-	it("a 0.5.0 workspace (prismalens.db already there) keeps 3001", () => {
-		const dir = workspace();
-		writeFileSync(join(dir, "prismalens.db"), "");
-		expect(ensureInstanceFile(dir).port).toBe(LEGACY_PORT);
 	});
 
 	it("an invalid file is an error naming its path, never replaced", () => {
@@ -66,10 +59,10 @@ describe("resolvePort (#763)", () => {
 		expect(ensureInstanceFile(dir).port).toBe(DEFAULT_PORT);
 	});
 
-	it("otherwise the workspace's port, including a legacy one", () => {
+	it("otherwise the workspace's port", () => {
 		const dir = workspace();
 		writeFileSync(join(dir, "prismalens.db"), "");
-		expect(resolvePort({}, dir)).toBe(LEGACY_PORT);
-		expect(resolvePort({ PRISMALENS_PORT: "abc" }, dir)).toBe(LEGACY_PORT);
+		expect(resolvePort({}, dir)).toBe(DEFAULT_PORT);
+		expect(resolvePort({ PRISMALENS_PORT: "abc" }, dir)).toBe(DEFAULT_PORT);
 	});
 });

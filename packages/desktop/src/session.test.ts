@@ -39,11 +39,11 @@ describe("parsePairingToken / deviceTokenFrom", () => {
 		expect(
 			deviceTokenFrom([
 				"other=1; Path=/",
-				"prismalens.device=legacy; Path=/",
+				"prismalens.device=bare; Path=/",
 				`${cookieName}=t%2Bk; Path=/; HttpOnly; SameSite=Lax`,
 			], cookieName),
 		).toBe("t+k");
-		expect(deviceTokenFrom(["prismalens.device=legacy"], cookieName)).toBeNull();
+		expect(deviceTokenFrom(["prismalens.device=bare"], cookieName)).toBeNull();
 	});
 });
 
@@ -117,19 +117,16 @@ describe("identity before credential", () => {
 	const id = "0123456789ab-cdef";
 	it("sends the stored token only to the instance it was recorded for", () => {
 		expect(
-			storedCandidates({ instanceId: id, expectedId: id, stored: "s", legacy: "l" }),
+			storedCandidates({ instanceId: id, expectedId: id, stored: "s" }),
 		).toEqual(["s"]);
 		expect(
-			storedCandidates({ instanceId: id, expectedId: "other", stored: "s", legacy: "l" }),
+			storedCandidates({ instanceId: id, expectedId: "other", stored: "s" }),
 		).toEqual([]);
 	});
 
-	it("tries the 0.5.0 cookie once, only before any identity is recorded", () => {
+	it("sends nothing before any identity is recorded", () => {
 		expect(
-			storedCandidates({ instanceId: id, expectedId: null, stored: null, legacy: "l" }),
-		).toEqual(["l"]);
-		expect(
-			storedCandidates({ instanceId: id, expectedId: id, stored: null, legacy: "l" }),
+			storedCandidates({ instanceId: id, expectedId: null, stored: "s" }),
 		).toEqual([]);
 	});
 
@@ -144,7 +141,6 @@ describe("identity before credential", () => {
 				instanceId: id,
 				expectedId: "other",
 				stored: "old",
-				legacy: null,
 			}),
 			pairOperator: async () => "/pair#link",
 			fetchImpl,

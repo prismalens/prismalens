@@ -10,10 +10,6 @@
  * backend the launcher spawned and one it attached to.
  */
 
-import { DEVICE_COOKIE_PREFIX } from "@prismalens/auth/device-cookie";
-
-/** The 0.5.0 cookie name, before each instance named its own. */
-export const LEGACY_DEVICE_COOKIE = DEVICE_COOKIE_PREFIX;
 const ACCESS_SCOPE = "admin:access";
 /** What the device list calls this window. */
 export const DEVICE_NAME = "Desktop app";
@@ -61,15 +57,12 @@ export async function fetchInstanceId(
 /**
  * The stored tokens worth sending to `instanceId`, in order. A token is only
  * sent where the recorded id matches (accident prevention, the id is public).
- * The 0.5.0 cookie predates any record, so it is tried once, before one exists (#763).
  */
 export function storedCandidates(input: {
 	instanceId: string;
 	expectedId: string | null;
 	stored: string | null;
-	legacy: string | null;
 }): string[] {
-	if (input.expectedId === null) return input.legacy ? [input.legacy] : [];
 	if (input.expectedId !== input.instanceId) return [];
 	return input.stored ? [input.stored] : [];
 }

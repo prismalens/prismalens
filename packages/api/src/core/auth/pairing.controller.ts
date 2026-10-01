@@ -119,7 +119,7 @@ export class PairingRedeemController {
 					);
 					const own = this.instance.deviceCookie;
 					const secure = this.instance.secureCookies;
-					// Orphans from a reset instance, and the 0.5.0 name (#763).
+					// Orphans from a reset instance (#763).
 					for (const name of otherDeviceCookieNames(
 						request.headers.cookie,
 						own,

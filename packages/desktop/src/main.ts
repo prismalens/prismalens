@@ -64,7 +64,6 @@ import {
 } from "./notifications.js";
 import {
 	fetchInstanceId,
-	LEGACY_DEVICE_COOKIE,
 	OlderBackendError,
 	operatorToken,
 	storedCandidates,
@@ -275,7 +274,6 @@ async function pairWindow(dir: string): Promise<void> {
 	const instanceId = await fetchInstanceId(baseUrl);
 	const cookieName = deviceCookieName(instanceId);
 	const [stored] = await jar.get({ url: baseUrl, name: cookieName });
-	const [legacy] = await jar.get({ url: baseUrl, name: LEGACY_DEVICE_COOKIE });
 	deviceToken = await operatorToken({
 		baseUrl,
 		cookieName,
@@ -283,7 +281,6 @@ async function pairWindow(dir: string): Promise<void> {
 			instanceId,
 			expectedId: readIdentities()[baseUrl] ?? null,
 			stored: stored?.value ?? null,
-			legacy: legacy?.value ?? null,
 		}),
 		pairOperator: () =>
 			runForStdout(
@@ -295,7 +292,6 @@ async function pairWindow(dir: string): Promise<void> {
 				}),
 			),
 	});
-	if (legacy) await jar.remove(baseUrl, LEGACY_DEVICE_COOKIE);
 	if (deviceToken !== stored?.value) {
 		await jar.set({
 			url: baseUrl,

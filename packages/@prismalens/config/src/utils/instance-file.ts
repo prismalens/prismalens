@@ -2,24 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * `<workspace>/instance.json`: who this workspace is and which port it serves on.
- * A workspace created before it existed (its `prismalens.db` is already there)
- * keeps 3001, so a 0.5.0 install keeps its address (#763).
+ * `<workspace>/instance.json`: who this workspace is and which port it serves on (#763).
  */
 
 import { randomUUID } from "node:crypto";
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	renameSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const INSTANCE_FILE = "instance.json";
 export const DEFAULT_PORT = 6473;
-export const LEGACY_PORT = 3001;
 
 export interface InstanceFile {
 	instanceId: string;
@@ -74,9 +65,7 @@ export function ensureInstanceFile(workspaceDir: string): InstanceFile {
 	mkdirSync(workspaceDir, { recursive: true });
 	const created: InstanceFile = {
 		instanceId: randomUUID(),
-		port: existsSync(join(workspaceDir, "prismalens.db"))
-			? LEGACY_PORT
-			: DEFAULT_PORT,
+		port: DEFAULT_PORT,
 	};
 	const path = join(workspaceDir, INSTANCE_FILE);
 	const temp = `${path}.${process.pid}.tmp`;

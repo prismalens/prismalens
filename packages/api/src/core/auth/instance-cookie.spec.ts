@@ -68,17 +68,6 @@ describe("whoami renews the device cookie (#763)", () => {
 		expect(setCookies[0]).toMatch(new RegExp(`^${OWN}=tok;.*Max-Age=31536000`));
 	});
 
-	it("moves a 0.5.0 cookie to the new name and clears the old one", async () => {
-		const { req, setCookies } = request();
-		await whoami({
-			via: "device",
-			device,
-			credential: { token: "tok", via: "legacy-cookie" },
-		})(req);
-		expect(setCookies[0]).toMatch(new RegExp(`^${OWN}=tok;`));
-		expect(setCookies[1]).toMatch(/^prismalens\.device=;.*Max-Age=0/);
-	});
-
 	it("sets no cookie for a Bearer caller or nobody", async () => {
 		const bearer = request();
 		await whoami({
@@ -112,7 +101,7 @@ describe("GET /api/instance (#763)", () => {
 });
 
 describe("redeem clears orphaned device cookies (#763)", () => {
-	it("clears every other prismalens.device* cookie, then sets its own", async () => {
+	it("clears every other prismalens.device.* cookie, then sets its own", async () => {
 		const { req, setCookies } = request(
 			`prismalens.device=old; prismalens.device.0123456789ab=orphan; ${OWN}=stale; theme=dark`,
 		);
@@ -125,11 +114,10 @@ describe("redeem clears orphaned device cookies (#763)", () => {
 			{ token: "link" },
 			{ context: { request: req } },
 		);
-		expect(setCookies).toHaveLength(3);
-		expect(setCookies[0]).toMatch(/^prismalens\.device=;.*Max-Age=0/);
-		expect(setCookies[1]).toMatch(
+		expect(setCookies).toHaveLength(2);
+		expect(setCookies[0]).toMatch(
 			/^prismalens\.device\.0123456789ab=;.*Max-Age=0/,
 		);
-		expect(setCookies[2]).toMatch(new RegExp(`^${OWN}=fresh;`));
+		expect(setCookies[1]).toMatch(new RegExp(`^${OWN}=fresh;`));
 	});
 });

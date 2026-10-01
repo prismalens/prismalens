@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable } from "@nestjs/common";
-import type { ConfigService } from "@nestjs/config";
+// biome-ignore lint/style/useImportType: Nest DI needs the runtime class.
+import { ConfigService } from "@nestjs/config";
 import { deviceCookieName } from "@prismalens/auth";
 import {
 	ensureAppDataDir,

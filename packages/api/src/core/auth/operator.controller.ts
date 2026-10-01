@@ -5,11 +5,7 @@ import { Controller } from "@nestjs/common";
 import { Implement, implement } from "@orpc/nest";
 import { operatorContract } from "@prismalens/contracts";
 import type { Request } from "express";
-import {
-	clearDeviceCookieHeader,
-	deviceCookieHeader,
-	LEGACY_DEVICE_COOKIE,
-} from "./device-cookie.js";
+import { deviceCookieHeader } from "./device-cookie.js";
 import { InstanceIdentity } from "./instance-identity.js";
 import { OperatorResolver } from "./operator.resolver.js";
 import { Public } from "./public.decorator.js";
@@ -34,25 +30,16 @@ export class OperatorController {
 				async ({ context }) => {
 					const request = context.request as Request;
 					const operator = await this.operator.resolve(request);
-					// Sliding expiry: a browser that keeps visiting keeps its cookie,
-					// and a 0.5.0 cookie moves to this instance's name (#763).
-					const via = operator?.credential.via;
-					if (operator && via !== "bearer") {
-						const secure = this.instance.secureCookies;
+					// Sliding expiry: a browser that keeps visiting keeps its cookie.
+					if (operator && operator.credential.via !== "bearer") {
 						request.res?.append(
 							"Set-Cookie",
 							deviceCookieHeader(
 								this.instance.deviceCookie,
 								operator.credential.token,
-								secure,
+								this.instance.secureCookies,
 							),
 						);
-						if (via === "legacy-cookie") {
-							request.res?.append(
-								"Set-Cookie",
-								clearDeviceCookieHeader(LEGACY_DEVICE_COOKIE, secure),
-							);
-						}
 					}
 					return {
 						via: operator?.via ?? null,

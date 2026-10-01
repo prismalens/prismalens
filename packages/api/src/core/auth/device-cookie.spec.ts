@@ -7,7 +7,6 @@ import { deviceCookieName } from "@prismalens/auth";
 import {
 	clearDeviceCookieHeader,
 	deviceCookieHeader,
-	LEGACY_DEVICE_COOKIE,
 	otherDeviceCookieNames,
 	readCookie,
 	readDeviceCredential,
@@ -47,7 +46,6 @@ describe("readCookie", () => {
 describe("deviceCookieName (#763)", () => {
 	it("is the prefix plus the first 12 hex chars of the id, dashes dropped", () => {
 		expect(OWN).toBe("prismalens.device.3f1c2a4b5d6e");
-		expect(LEGACY_DEVICE_COOKIE).toBe("prismalens.device");
 	});
 });
 
@@ -87,19 +85,10 @@ describe("readDeviceCredential", () => {
 		).toBeUndefined();
 	});
 
-	it("accepts the 0.5.0 cookie only when its own is absent", () => {
+	it("ignores the bare prismalens.device cookie", () => {
 		expect(
-			readDeviceCredential(
-				fakeRequest({ cookie: `${LEGACY_DEVICE_COOKIE}=old` }),
-				OWN,
-			),
-		).toEqual({ token: "old", via: "legacy-cookie" });
-		expect(
-			readDeviceCredential(
-				fakeRequest({ cookie: `${LEGACY_DEVICE_COOKIE}=old; ${OWN}=new` }),
-				OWN,
-			),
-		).toEqual({ token: "new", via: "cookie" });
+			readDeviceCredential(fakeRequest({ cookie: "prismalens.device=old" }), OWN),
+		).toBeUndefined();
 	});
 
 	it("returns undefined with neither", () => {
@@ -120,13 +109,13 @@ describe("readDeviceCredential", () => {
 });
 
 describe("otherDeviceCookieNames", () => {
-	it("lists every prismalens.device* cookie except the one kept", () => {
+	it("lists every prismalens.device.* cookie except the one kept", () => {
 		expect(
 			otherDeviceCookieNames(
 				`prismalens.device=a; ${OWN}=b; prismalens.device.0123456789ab=c; prismalens.devices=x; theme=dark`,
 				OWN,
 			),
-		).toEqual(["prismalens.device", "prismalens.device.0123456789ab"]);
+		).toEqual(["prismalens.device.0123456789ab"]);
 		expect(otherDeviceCookieNames(undefined, OWN)).toEqual([]);
 	});
 });
@@ -147,8 +136,8 @@ describe("deviceCookieHeader & clearDeviceCookieHeader", () => {
 	});
 
 	it("clearDeviceCookieHeader has Max-Age=0", () => {
-		const clearInsecure = clearDeviceCookieHeader(LEGACY_DEVICE_COOKIE, false);
-		expect(clearInsecure.startsWith(`${LEGACY_DEVICE_COOKIE}=;`)).toBe(true);
+		const clearInsecure = clearDeviceCookieHeader(OWN, false);
+		expect(clearInsecure.startsWith(`${OWN}=;`)).toBe(true);
 		expect(clearInsecure).toContain("Path=/");
 		expect(clearInsecure).toContain("HttpOnly");
 		expect(clearInsecure).toContain("SameSite=Lax");

@@ -7,22 +7,18 @@
  * it; a non-browser client sends the same token as a Bearer instead.
  *
  * The cookie is named per instance (`deviceCookieName`), because cookies are
- * scoped by host and not by port (#763). A 0.5.0 browser still holds the bare
- * `prismalens.device`; it is accepted until `whoami` moves it to the new name.
+ * scoped by host and not by port (#763).
  */
 
 import { DEVICE_COOKIE_PREFIX } from "@prismalens/auth";
 import type { Request } from "express";
-
-/** The 0.5.0 cookie name, read only to upgrade it. */
-export const LEGACY_DEVICE_COOKIE = DEVICE_COOKIE_PREFIX;
 
 /** A year. Validity is revocation, not expiry (ADR 0004 §8). */
 const DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
 
 export interface DeviceCredential {
 	token: string;
-	via: "bearer" | "cookie" | "legacy-cookie";
+	via: "bearer" | "cookie";
 }
 
 export function readCookie(
@@ -45,7 +41,7 @@ export function readCookie(
 
 /**
  * The device token a request carries: `Authorization: Bearer`, else this
- * instance's cookie, else the 0.5.0 cookie.
+ * instance's cookie.
  */
 export function readDeviceCredential(
 	request: Request,
@@ -57,12 +53,10 @@ export function readDeviceCredential(
 		return token ? { token, via: "bearer" } : undefined;
 	}
 	const own = readCookie(request.headers.cookie, cookieName);
-	if (own) return { token: own, via: "cookie" };
-	const legacy = readCookie(request.headers.cookie, LEGACY_DEVICE_COOKIE);
-	return legacy ? { token: legacy, via: "legacy-cookie" } : undefined;
+	return own ? { token: own, via: "cookie" } : undefined;
 }
 
-/** Every `prismalens.device*` cookie on the request other than `keep`. */
+/** Every `prismalens.device.*` cookie on the request other than `keep`. */
 export function otherDeviceCookieNames(
 	cookieHeader: string | undefined,
 	keep: string,
@@ -71,11 +65,7 @@ export function otherDeviceCookieNames(
 	const names = new Set<string>();
 	for (const part of cookieHeader.split(";")) {
 		const name = part.slice(0, Math.max(part.indexOf("="), 0)).trim();
-		if (
-			name !== keep &&
-			(name === DEVICE_COOKIE_PREFIX ||
-				name.startsWith(`${DEVICE_COOKIE_PREFIX}.`))
-		) {
+		if (name !== keep && name.startsWith(`${DEVICE_COOKIE_PREFIX}.`)) {
 			names.add(name);
 		}
 	}
