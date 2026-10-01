@@ -11,6 +11,10 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./dist/index.js"
+		},
+		"./device-cookie": {
+			"types": "./src/device-cookie.ts",
+			"import": "./dist/device-cookie.js"
 		}
 	},
 	"scripts": {
