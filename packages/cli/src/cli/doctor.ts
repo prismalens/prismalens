@@ -18,10 +18,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import {
+	DEFAULT_PORT,
 	ensureAppDataDir,
 	getAppDataDir,
 	installChannel,
 	installedService,
+	LEGACY_PORT,
+	readInstanceFile,
 	secretFileName,
 	serviceOwnsWorkspace,
 } from "@prismalens/config";
@@ -298,8 +301,22 @@ export function checkService(
 	};
 }
 
+/** What `pl up` would pick, without creating the instance file the doctor only reports on. */
+function workspacePort(): number {
+	const workspace = getAppDataDir();
+	try {
+		const instance = readInstanceFile(workspace);
+		if (instance) return instance.port;
+	} catch {
+		// An invalid instance file fails `pl up` with its own message.
+	}
+	return existsSync(join(workspace, "prismalens.db"))
+		? LEGACY_PORT
+		: DEFAULT_PORT;
+}
+
 function checkPortHost(): Check {
-	const port = process.env.PRISMALENS_PORT ?? "3001";
+	const port = process.env.PRISMALENS_PORT ?? String(workspacePort());
 	const host = process.env.PRISMALENS_HOST ?? "127.0.0.1";
 	return {
 		name: "Port/host",
@@ -318,7 +335,7 @@ export default defineCommand({
 		port: {
 			type: "string",
 			description:
-				"Port `pl up` will listen on (default 3001, or PRISMALENS_PORT)",
+				"Port `pl up` will listen on (default: the workspace's port, or PRISMALENS_PORT)",
 		},
 		host: {
 			type: "string",

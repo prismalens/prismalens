@@ -17,6 +17,7 @@ import {
 	armForcedExitOnSecondSignal,
 	ensureAppDataDir,
 	getConfig,
+	resolvePort,
 	serviceOwnsWorkspace,
 	WorkspaceLockedError,
 } from "@prismalens/config";
@@ -66,10 +67,10 @@ async function bootstrap() {
 	// database. The port goes into the lock so a launcher that finds the
 	// workspace held can reach the owner instead of guessing; see the two known
 	// gaps documented on `acquireWorkspaceLock`.
+	const port = resolvePort(process.env, ensureAppDataDir());
+	const host = getConfig().PRISMALENS_HOST;
 	try {
-		acquireWorkspaceLock(ensureAppDataDir(), {
-			port: Number(process.env.PRISMALENS_PORT ?? 3001),
-		});
+		acquireWorkspaceLock(ensureAppDataDir(), { port, host });
 	} catch (error) {
 		if (!(error instanceof WorkspaceLockedError)) throw error;
 		logger.error(
@@ -248,12 +249,6 @@ async function bootstrap() {
 	app.setGlobalPrefix(API_GLOBAL_PREFIX, {
 		exclude: API_GLOBAL_PREFIX_EXCLUDE,
 	});
-
-	// Prefer PRISMALENS_PORT/HOST over generics if available in Config setup (mapped in schemas/Global)
-	// But schemas map them to defaults.
-	// Let's use the explicit PRISMALENS_ keys from config service which we added to Global schema.
-	const port = configService.get<number>("PRISMALENS_PORT", 3001);
-	const host = configService.get<string>("PRISMALENS_HOST", "127.0.0.1");
 
 	// A non-loopback bind puts the app on the network. That is a supported
 	// opt-in, but it must never be silent: Ollama's default-open bind is how

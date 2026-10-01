@@ -87,7 +87,8 @@ export default defineCommand({
 	args: {
 		port: {
 			type: "string",
-			description: "Port to listen on (default 3001, or PRISMALENS_PORT)",
+			description:
+				"Port to listen on for this run (default: the workspace's port, 6473 for a new one; or PRISMALENS_PORT)",
 		},
 		host: {
 			type: "string",
@@ -141,11 +142,12 @@ export default defineCommand({
 
 		// @prismalens/config derives every on-disk path from this directory —
 		// PRISMALENS_DB_URL is ignored, so the workspace dir is the ONLY knob.
-		const { getAppDataDir, ensureAppDataDir } = (await import(
+		const { getAppDataDir, ensureAppDataDir, resolvePort } = (await import(
 			"@prismalens/config"
 		)) as {
 			getAppDataDir: () => string;
 			ensureAppDataDir: () => string;
+			resolvePort: (env: NodeJS.ProcessEnv, workspaceDir: string) => number;
 		};
 		ensureAppDataDir();
 		const workspaceDir = getAppDataDir();
@@ -161,7 +163,10 @@ export default defineCommand({
 		// tarball: `scripts/pack-cli.mjs` stages it at
 		// `@prismalens/database/dist/prisma/sqlite/schema` and asserts it.
 		const logDir = resolveLogDir(process.env, workspaceDir);
-		const bind = resolveBind(process.env);
+		const bind = resolveBind(
+			process.env,
+			resolvePort(process.env, workspaceDir),
+		);
 		const url = displayUrl(bind);
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Logs: ${logDir}`);

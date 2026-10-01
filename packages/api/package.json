@@ -9,7 +9,7 @@
 	"//main": "`pl up` imports this to boot the API in-process. nest build infers its output root from the widest common source dir, so this path moves if a file outside src/ enters the program — scripts/pack-cli.mjs asserts the file exists in the copied output rather than letting that become a runtime failure.",
 	"main": "dist/src/main.js",
 	"scripts": {
-		"dev": "NODE_ENV=development nest start --watch --preserveWatchOutput",
+		"dev": "NODE_ENV=development PRISMALENS_PORT=${PRISMALENS_PORT:-3001} nest start --watch --preserveWatchOutput",
 		"build": "nest build",
 		"start": "nest start",
 		"start:dev": "nest start --watch",

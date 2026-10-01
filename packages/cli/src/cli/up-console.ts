@@ -32,12 +32,15 @@ export function resolveLogDir(
 	);
 }
 
-export function resolveBind(env: NodeJS.ProcessEnv): {
+/** `port` is the workspace's (see `resolvePort` in @prismalens/config), passed in so this stays pure. */
+export function resolveBind(
+	env: NodeJS.ProcessEnv,
+	port: number,
+): {
 	host: string;
 	port: number;
 	protocol: "http" | "https";
 } {
-	const port = Number(env.PRISMALENS_PORT) || 3001;
 	const host = env.PRISMALENS_HOST || "127.0.0.1";
 	const protocol = env.PRISMALENS_PROTOCOL === "https" ? "https" : "http";
 	return { host, port, protocol };

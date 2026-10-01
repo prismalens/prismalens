@@ -143,7 +143,10 @@ const install = defineCommand({
 		description: "Install and start the background service",
 	},
 	args: {
-		port: { type: "string", description: "Port to listen on (default 3001)" },
+		port: {
+			type: "string",
+			description: "Port to listen on (default: the workspace's port)",
+		},
 		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
 		workspace: {
 			type: "string",
@@ -153,9 +156,12 @@ const install = defineCommand({
 	},
 	async run({ args, cmd }) {
 		assertKnownFlags(args, cmd);
-		const rawPort = String(args.port ?? process.env.PRISMALENS_PORT ?? 3001);
-		const port = Number(rawPort);
-		if (!/^\d+$/.test(rawPort) || port < 1 || port > 65535) {
+		const explicitPort = args.port ?? process.env.PRISMALENS_PORT;
+		const rawPort = String(explicitPort ?? "");
+		if (
+			explicitPort !== undefined &&
+			(!/^\d+$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65535)
+		) {
 			consola.error(
 				`--port must be a number from 1 to 65535, not "${rawPort}".`,
 			);
@@ -166,6 +172,10 @@ const install = defineCommand({
 		const config = await loadConfig();
 		const { kind, unitPath, uid } = await manager(config);
 		const workspace = resolve(config.getAppDataDir());
+		const port =
+			explicitPort !== undefined
+				? Number(rawPort)
+				: config.ensureInstanceFile(workspace).port;
 		const host =
 			(args.host ? String(args.host) : process.env.PRISMALENS_HOST) ||
 			undefined;
