@@ -5,6 +5,7 @@
 export { alertsContract } from "./alerts.js";
 export { eventsContract } from "./events.js";
 export { incidentsContract } from "./incidents.js";
+export { type InstanceInfo, instanceContract } from "./instance.js";
 export { integrationsContract, oauthContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
@@ -32,6 +33,7 @@ export { webhooksContract } from "./webhooks.js";
 import { alertsContract } from "./alerts.js";
 import { eventsContract } from "./events.js";
 import { incidentsContract } from "./incidents.js";
+import { instanceContract } from "./instance.js";
 import { integrationsContract, oauthContract } from "./integrations.js";
 import { investigationsContract } from "./investigations.js";
 import { operatorContract } from "./operator.js";
@@ -63,6 +65,7 @@ export const contract = {
 	settings: settingsContract,
 	setup: setupContract,
 	operator: operatorContract,
+	instance: instanceContract,
 	pairing: pairingContract,
 };
 

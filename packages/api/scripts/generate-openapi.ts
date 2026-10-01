@@ -41,7 +41,7 @@ async function generateOpenAPISpec() {
 		},
 		servers: [
 			{
-				url: "http://localhost:3001/api",
+				url: "http://localhost:6473/api",
 				description: "Development server",
 			},
 			{
