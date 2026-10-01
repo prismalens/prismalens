@@ -221,7 +221,7 @@ async function main() {
 	});
 	cookie =
 		(redeemed.res.headers.getSetCookie?.() ?? [])
-			.find((c) => c.startsWith("prismalens.device="))
+			.find((c) => c.startsWith("prismalens.device."))
 			?.split(";")[0] ?? "";
 	if (!cookie) throw new Error("pairing returned no device cookie");
 

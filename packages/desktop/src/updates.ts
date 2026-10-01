@@ -81,3 +81,8 @@ export async function availableUpdate(
 		return null;
 	}
 }
+
+/** The newest release page, when no specific version is known. */
+export function latestReleaseUrl(): string {
+	return `${RELEASES}/latest`;
+}

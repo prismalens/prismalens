@@ -22,13 +22,11 @@
  *    Without that, a `SIGKILL` inside the microseconds it is held orphaned it
  *    permanently and every later boot refused.
  *
- * The owner record is `{pid, port, startedAt}`. `port` is here for a launcher
- * rather than for this process: an Electron shell that finds the workspace
- * already held is meant to connect to that backend instead of refusing, and the
- * port is the only thing it would otherwise have to guess. Nothing in this
- * repository attaches yet — that behaviour is Electron work (#83) and is
- * deliberately not built here; this only makes sure the information exists when
- * it is.
+ * The owner record is `{pid, port, host?, startedAt}`. `port` and `host` are
+ * here for a launcher rather than for this process: the desktop shell that
+ * finds the workspace already held attaches to that backend instead of
+ * refusing, at the address it really binds (#763). `host` is optional because
+ * a 0.5.0 lock has none.
  *
  * ## Releasing it
  *
@@ -91,6 +89,8 @@ export interface WorkspaceLockOwner {
 	pid: number;
 	/** The port the owner intends to serve on, so a launcher can reach it. */
 	port: number;
+	/** The bind address; absent in a lock written by 0.5.0. */
+	host?: string;
 	startedAt: string;
 }
 
@@ -358,7 +358,7 @@ function reclaim(
  */
 export function acquireWorkspaceLock(
 	workspaceDir: string,
-	options: { port: number },
+	options: { port: number; host?: string },
 ): () => void {
 	const lockPath = join(workspaceDir, WORKSPACE_LOCK_FILE);
 	const owner: WorkspaceLockOwner = {
@@ -367,6 +367,7 @@ export function acquireWorkspaceLock(
 		// `listen`, so this is an intent: if the bind then fails the process
 		// exits and the lock goes with it.
 		port: options.port,
+		...(options.host ? { host: options.host } : {}),
 		startedAt: new Date().toISOString(),
 	};
 	// Records the lock as ours and keeps the `exit` listener as the fallback for

@@ -21,6 +21,12 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { assertKnownFlags } from "./flags.js";
 import {
+	checkIdentity,
+	describeOutcome,
+	type IdentityOutcome,
+	lockBase,
+} from "./instance-check.js";
+import {
 	type Action,
 	activeProbe,
 	buildPlan,
@@ -143,7 +149,10 @@ const install = defineCommand({
 		description: "Install and start the background service",
 	},
 	args: {
-		port: { type: "string", description: "Port to listen on (default 3001)" },
+		port: {
+			type: "string",
+			description: "Port to listen on (default: the workspace's port)",
+		},
 		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
 		workspace: {
 			type: "string",
@@ -153,9 +162,12 @@ const install = defineCommand({
 	},
 	async run({ args, cmd }) {
 		assertKnownFlags(args, cmd);
-		const rawPort = String(args.port ?? process.env.PRISMALENS_PORT ?? 3001);
-		const port = Number(rawPort);
-		if (!/^\d+$/.test(rawPort) || port < 1 || port > 65535) {
+		const explicitPort = args.port ?? process.env.PRISMALENS_PORT;
+		const rawPort = String(explicitPort ?? "");
+		if (
+			explicitPort !== undefined &&
+			(!/^\d+$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65535)
+		) {
 			consola.error(
 				`--port must be a number from 1 to 65535, not "${rawPort}".`,
 			);
@@ -166,6 +178,10 @@ const install = defineCommand({
 		const config = await loadConfig();
 		const { kind, unitPath, uid } = await manager(config);
 		const workspace = resolve(config.getAppDataDir());
+		const port =
+			explicitPort !== undefined
+				? Number(rawPort)
+				: config.ensureInstanceFile(workspace).port;
 		const host =
 			(args.host ? String(args.host) : process.env.PRISMALENS_HOST) ||
 			undefined;
@@ -251,6 +267,24 @@ async function printOperatorLink(
 	);
 }
 
+function safeInstanceId(config: Config, workspace: string): string {
+	try {
+		return config.readInstanceFile(workspace)?.instanceId ?? "";
+	} catch {
+		return "";
+	}
+}
+
+export function runningLine(
+	identity: IdentityOutcome,
+	base: string,
+	pid: number | null,
+): string {
+	if (identity.kind === "ok") return `yes (pid ${pid})`;
+	if (identity.kind === "not-running") return "no";
+	return `no: ${describeOutcome(identity, base).trim()}`;
+}
+
 const status = defineCommand({
 	meta: {
 		name: "status",
@@ -267,13 +301,23 @@ const status = defineCommand({
 			return;
 		}
 		const lock = config.readWorkspaceLockState(service.workspace);
-		const healthy = await waitForHealth(service, 2000);
+		const base = lockBase(
+			lock.kind === "held"
+				? lock.owner
+				: { host: service.host, port: service.port },
+		);
+		const identity = await checkIdentity({
+			pid: lock.kind === "held" ? lock.owner.pid : null,
+			base,
+			instanceId: safeInstanceId(config, service.workspace),
+		});
+		const healthy = identity.kind === "ok";
 		consola.log(
 			[
 				`Unit:      ${service.unitPath}`,
 				`Workspace: ${service.workspace}`,
 				`Port:      ${service.port}`,
-				`Running:   ${healthy ? `yes${lock.kind === "held" ? ` (pid ${lock.owner.pid})` : ""}` : "no"}`,
+				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null)}`,
 				`Log:       ${join(service.workspace, "logs", "service.log")}`,
 			].join("\n"),
 		);

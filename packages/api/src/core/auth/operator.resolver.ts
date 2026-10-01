@@ -18,26 +18,38 @@ import {
 } from "@prismalens/auth";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { readDeviceToken } from "./device-cookie.js";
+import {
+	type DeviceCredential,
+	readDeviceCredential,
+} from "./device-cookie.js";
+import { InstanceIdentity } from "./instance-identity.js";
 
 export type OperatorVia = "device";
 
 export interface Operator {
 	via: OperatorVia;
 	device: DeviceRecord;
+	/** How the token arrived; `whoami` renews a cookie credential. */
+	credential: DeviceCredential;
 }
 
 @Injectable()
 export class OperatorResolver {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly instance: InstanceIdentity,
+	) {}
 
 	async resolve(request: Request): Promise<Operator | null> {
-		const deviceToken = readDeviceToken(request);
-		if (!deviceToken) return null;
+		const credential = readDeviceCredential(
+			request,
+			this.instance.deviceCookie,
+		);
+		if (!credential) return null;
 		const device = await authenticateDevice(
 			prismaPairingStore(this.prisma),
-			deviceToken,
+			credential.token,
 		);
-		return device ? { via: "device", device } : null;
+		return device ? { via: "device", device, credential } : null;
 	}
 }

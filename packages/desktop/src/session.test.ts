@@ -2,9 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
-import { deviceTokenFrom, operatorToken, parsePairingToken } from "./session.js";
+import {
+	deviceTokenFrom,
+	fetchInstanceId,
+	OlderBackendError,
+	operatorToken,
+	parsePairingToken,
+	storedCandidates,
+} from "./session.js";
 
 const baseUrl = "http://127.0.0.1:4100";
+const cookieName = "prismalens.device.0123456789ab";
 
 function response(
 	status: number,
@@ -31,10 +39,11 @@ describe("parsePairingToken / deviceTokenFrom", () => {
 		expect(
 			deviceTokenFrom([
 				"other=1; Path=/",
-				"prismalens.device=t%2Bk; Path=/; HttpOnly; SameSite=Lax",
-			]),
+				"prismalens.device=bare; Path=/",
+				`${cookieName}=t%2Bk; Path=/; HttpOnly; SameSite=Lax`,
+			], cookieName),
 		).toBe("t+k");
-		expect(deviceTokenFrom(["other=1"])).toBeNull();
+		expect(deviceTokenFrom(["prismalens.device=bare"], cookieName)).toBeNull();
 	});
 });
 
@@ -45,7 +54,7 @@ describe("operatorToken", () => {
 			response(200, { via: "device", scopes: ["admin:access"] }),
 		);
 		await expect(
-			operatorToken({ baseUrl, storedToken: "old", pairOperator, fetchImpl }),
+			operatorToken({ baseUrl, cookieName, candidates: ["old"], pairOperator, fetchImpl }),
 		).resolves.toBe("old");
 		expect(pairOperator).not.toHaveBeenCalled();
 		expect(fetchImpl).toHaveBeenCalledWith(`${baseUrl}/api/operator/whoami`, {
@@ -62,11 +71,12 @@ describe("operatorToken", () => {
 				.fn()
 				.mockResolvedValueOnce(whoami)
 				.mockResolvedValueOnce(
-					response(200, {}, ["prismalens.device=fresh; Path=/; HttpOnly"]),
+					response(200, {}, [`${cookieName}=fresh; Path=/; HttpOnly`]),
 				);
 			const token = await operatorToken({
 				baseUrl,
-				storedToken: "old",
+				cookieName,
+				candidates: ["old"],
 				pairOperator: async () => "http://localhost:4100/pair#link",
 				fetchImpl,
 			});
@@ -75,7 +85,7 @@ describe("operatorToken", () => {
 				`${baseUrl}/api/pairing/redeem`,
 				expect.objectContaining({
 					method: "POST",
-					body: JSON.stringify({ token: "link" }),
+					body: JSON.stringify({ token: "link", name: "Desktop app" }),
 				}),
 			);
 		}
@@ -85,7 +95,8 @@ describe("operatorToken", () => {
 		await expect(
 			operatorToken({
 				baseUrl,
-				storedToken: null,
+				cookieName,
+				candidates: [],
 				pairOperator: async () => "nothing",
 				fetchImpl: vi.fn(),
 			}),
@@ -93,10 +104,58 @@ describe("operatorToken", () => {
 		await expect(
 			operatorToken({
 				baseUrl,
-				storedToken: null,
+				cookieName,
+				candidates: [],
 				pairOperator: async () => "/pair#link",
 				fetchImpl: vi.fn(async () => response(400)),
 			}),
 		).rejects.toThrow("400");
+	});
+});
+
+describe("identity before credential", () => {
+	const id = "0123456789ab-cdef";
+	it("sends the stored token only to the instance it was recorded for", () => {
+		expect(
+			storedCandidates({ instanceId: id, expectedId: id, stored: "s" }),
+		).toEqual(["s"]);
+		expect(
+			storedCandidates({ instanceId: id, expectedId: "other", stored: "s" }),
+		).toEqual([]);
+	});
+
+	it("sends nothing before any identity is recorded", () => {
+		expect(
+			storedCandidates({ instanceId: id, expectedId: null, stored: "s" }),
+		).toEqual([]);
+	});
+
+	it("a mismatch re-pairs without sending the old token", async () => {
+		const fetchImpl = vi.fn(async () =>
+			response(200, {}, [`${cookieName}=fresh; Path=/`]),
+		);
+		const token = await operatorToken({
+			baseUrl,
+			cookieName,
+			candidates: storedCandidates({
+				instanceId: id,
+				expectedId: "other",
+				stored: "old",
+			}),
+			pairOperator: async () => "/pair#link",
+			fetchImpl,
+		});
+		expect(token).toBe("fresh");
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain("Bearer old");
+	});
+
+	it("reads the instance id, and names a 404 as an older backend", async () => {
+		await expect(
+			fetchInstanceId(baseUrl, vi.fn(async () => response(200, { instanceId: id }))),
+		).resolves.toBe(id);
+		await expect(
+			fetchInstanceId(baseUrl, vi.fn(async () => response(404))),
+		).rejects.toBeInstanceOf(OlderBackendError);
 	});
 });

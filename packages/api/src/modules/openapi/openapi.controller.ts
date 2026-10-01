@@ -7,7 +7,11 @@ import { OpenAPIGenerator } from "@orpc/openapi";
 // zod4 subpath required: the root "@orpc/zod" export targets zod v3 and silently
 // no-ops on this repo's zod v4 schemas (#547).
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
-import { EnvironmentVariables } from "@prismalens/config";
+import {
+	EnvironmentVariables,
+	getAppDataDir,
+	resolvePort,
+} from "@prismalens/config";
 import { contract } from "@prismalens/contracts";
 import type { Response } from "express";
 import { Public } from "../../core/auth/public.decorator.js";
@@ -46,7 +50,7 @@ export class OpenAPIController {
 			},
 			servers: [
 				{
-					url: `${this.configService.get("PRISMALENS_PROTOCOL")}://${this.configService.get("PRISMALENS_HOST")}:${this.configService.get("PRISMALENS_PORT")}/api`,
+					url: `${this.configService.get("PRISMALENS_PROTOCOL")}://${this.configService.get("PRISMALENS_HOST")}:${resolvePort(process.env, getAppDataDir())}/api`,
 					description: "Current server",
 				},
 				{

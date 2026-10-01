@@ -11,6 +11,7 @@ import {
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
+	serviceHint,
 	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
@@ -54,17 +55,16 @@ describe("resolveLogDir", () => {
 });
 
 describe("resolveBind and displayUrl", () => {
-	it("defaults to http on 127.0.0.1:3001 shown as localhost", () => {
-		const bind = resolveBind({});
-		expect(bind).toEqual({ host: "127.0.0.1", port: 3001, protocol: "http" });
-		expect(displayUrl(bind)).toBe("http://localhost:3001");
+	it("defaults to http on 127.0.0.1 at the given port, shown as localhost", () => {
+		const bind = resolveBind({}, 6473);
+		expect(bind).toEqual({ host: "127.0.0.1", port: 6473, protocol: "http" });
+		expect(displayUrl(bind)).toBe("http://localhost:6473");
 	});
 	it("reads the env and shows a wildcard bind as localhost", () => {
-		const bind = resolveBind({
-			PRISMALENS_PORT: "8080",
-			PRISMALENS_HOST: "0.0.0.0",
-			PRISMALENS_PROTOCOL: "https",
-		});
+		const bind = resolveBind(
+			{ PRISMALENS_HOST: "0.0.0.0", PRISMALENS_PROTOCOL: "https" },
+			8080,
+		);
 		expect(displayUrl(bind)).toBe("https://localhost:8080");
 	});
 	it("brackets an IPv6 literal in the shown URL", () => {
@@ -76,9 +76,6 @@ describe("resolveBind and displayUrl", () => {
 		expect(
 			displayUrl({ host: "pl.internal", port: 3001, protocol: "http" }),
 		).toBe("http://pl.internal:3001");
-	});
-	it("falls back to 3001 on a non-numeric port", () => {
-		expect(resolveBind({ PRISMALENS_PORT: "abc" }).port).toBe(3001);
 	});
 });
 
@@ -190,5 +187,20 @@ describe("browserCommand", () => {
 	it("opens nothing on CI or on Linux with no display", () => {
 		expect(browserCommand("darwin", { CI: "true" }, url)).toBeNull();
 		expect(browserCommand("linux", {}, url)).toBeNull();
+	});
+});
+
+describe("serviceHint", () => {
+	const hint = "For a machine that should always be on: pl service install";
+	it("shown for a foreground pl up on Linux and macOS", () => {
+		for (const platform of ["linux", "darwin"] as const) {
+			expect(serviceHint({ platform, env: {}, serviceOwnsWorkspace: false })).toBe(hint);
+		}
+	});
+	it("hidden on Windows, under a service, in electron, or when a service owns the workspace", () => {
+		expect(serviceHint({ platform: "win32", env: {}, serviceOwnsWorkspace: false })).toBeNull();
+		expect(serviceHint({ platform: "linux", env: { PRISMALENS_SERVICE: "1" }, serviceOwnsWorkspace: false })).toBeNull();
+		expect(serviceHint({ platform: "linux", env: { PRISMALENS_RUN_MODE: "electron" }, serviceOwnsWorkspace: false })).toBeNull();
+		expect(serviceHint({ platform: "darwin", env: {}, serviceOwnsWorkspace: true })).toBeNull();
 	});
 });

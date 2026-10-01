@@ -14,7 +14,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:3001/api",
+      "url": "http://localhost:6473/api",
       "description": "Development server"
     },
     {
@@ -25016,6 +25016,45 @@
                   "required": [
                     "via",
                     "scopes"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/instance": {
+      "get": {
+        "operationId": "instance.get",
+        "summary": "Which PrismaLens instance this is",
+        "tags": [
+          "instance"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "instanceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "apiVersion": {
+                      "const": 1
+                    }
+                  },
+                  "required": [
+                    "instanceId",
+                    "version",
+                    "apiVersion"
                   ]
                 }
               }

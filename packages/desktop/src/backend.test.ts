@@ -95,7 +95,7 @@ describe("backend", () => {
 			});
 
 			const ok = await waitForHealth(
-				3001,
+				"http://127.0.0.1:3001",
 				1500,
 				injectedFetch as unknown as typeof fetch,
 			);
@@ -113,7 +113,7 @@ describe("backend", () => {
 			});
 
 			const ok = await waitForHealth(
-				3001,
+				"http://127.0.0.1:3001",
 				200,
 				injectedFetch as unknown as typeof fetch,
 			);
@@ -132,7 +132,7 @@ describe("backend", () => {
 
 			const started = Date.now();
 			const ok = await waitForHealth(
-				3001,
+				"http://127.0.0.1:3001",
 				200,
 				injectedFetch as unknown as typeof fetch,
 			);

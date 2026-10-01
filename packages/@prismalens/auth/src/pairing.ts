@@ -173,9 +173,12 @@ export async function redeemPairingLink(
 	const device = await store.redeemLink({
 		linkId: link.id,
 		tokenHash: hashToken(deviceToken),
-		// The label the operator gave the link wins over the name the device
-		// guesses for itself: a startup link is always "This machine".
-		name: link.label || input.name.trim() || "Paired device",
+		// "This machine · Firefox on Linux": the operator's label says whose, the
+		// client's own name says which browser, so two devices stay apart (#763).
+		name:
+			[...new Set([link.label, input.name.trim()])]
+				.filter(Boolean)
+				.join(" · ") || "Paired device",
 		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});

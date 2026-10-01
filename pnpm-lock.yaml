@@ -422,6 +422,9 @@ importers:
 
   packages/desktop:
     dependencies:
+      '@prismalens/auth':
+        specifier: workspace:*
+        version: link:../@prismalens/auth
       '@prismalens/config':
         specifier: workspace:*
         version: link:../@prismalens/config

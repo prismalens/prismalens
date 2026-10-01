@@ -23,7 +23,7 @@
  * - **IP literals are always allowed.** DNS rebinding cannot make a browser
  *   send a raw IP as `Host` — the browser sends the *name* it was asked to
  *   visit. Allowing IP literals is therefore free of rebinding risk and is what
- *   makes a LAN bind (`--host 0.0.0.0`, reached at `http://192.168.1.5:3001`)
+ *   makes a LAN bind (`--host 0.0.0.0`, reached at `http://192.168.1.5:6473`)
  *   work without configuration. Same rule Vite's `server.allowedHosts` uses.
  * - **`Origin` is held to the same allowlist** when present, so a rebound page
  *   that somehow presents an acceptable `Host` still fails on its own origin.

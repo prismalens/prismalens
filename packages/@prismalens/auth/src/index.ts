@@ -8,6 +8,7 @@
  * account: every browser pairs, the host's own through the startup link.
  */
 
+export { DEVICE_COOKIE_PREFIX, deviceCookieName } from "./device-cookie.js";
 export {
 	ACCESS_SCOPE,
 	authenticateDevice,

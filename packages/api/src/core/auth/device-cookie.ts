@@ -5,14 +5,20 @@
  * The paired device's credential in the browser: an HttpOnly cookie holding
  * the device token. `SameSite=Lax` keeps a cross-site form POST from carrying
  * it; a non-browser client sends the same token as a Bearer instead.
+ *
+ * The cookie is named per instance (`deviceCookieName`), because cookies are
+ * scoped by host and not by port (#763).
  */
 
 import type { Request } from "express";
 
-export const DEVICE_COOKIE = "prismalens.device";
-
 /** A year. Validity is revocation, not expiry (ADR 0004 §8). */
 const DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+
+export interface DeviceCredential {
+	token: string;
+	via: "bearer" | "cookie";
+}
 
 export function readCookie(
 	cookieHeader: string | undefined,
@@ -32,18 +38,30 @@ export function readCookie(
 	return undefined;
 }
 
-/** The device token a request carries, cookie or `Authorization: Bearer`. */
-export function readDeviceToken(request: Request): string | undefined {
+/**
+ * The device token a request carries: `Authorization: Bearer`, else this
+ * instance's cookie.
+ */
+export function readDeviceCredential(
+	request: Request,
+	cookieName: string,
+): DeviceCredential | undefined {
 	const auth = request.headers.authorization;
 	if (typeof auth === "string" && /^bearer\s+/i.test(auth)) {
-		return auth.replace(/^bearer\s+/i, "").trim() || undefined;
+		const token = auth.replace(/^bearer\s+/i, "").trim();
+		return token ? { token, via: "bearer" } : undefined;
 	}
-	return readCookie(request.headers.cookie, DEVICE_COOKIE);
+	const own = readCookie(request.headers.cookie, cookieName);
+	return own ? { token: own, via: "cookie" } : undefined;
 }
 
-export function deviceCookieHeader(token: string, secure: boolean): string {
+export function deviceCookieHeader(
+	name: string,
+	token: string,
+	secure: boolean,
+): string {
 	return [
-		`${DEVICE_COOKIE}=${encodeURIComponent(token)}`,
+		`${name}=${encodeURIComponent(token)}`,
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
@@ -52,9 +70,9 @@ export function deviceCookieHeader(token: string, secure: boolean): string {
 	].join("; ");
 }
 
-export function clearDeviceCookieHeader(secure: boolean): string {
+export function clearDeviceCookieHeader(name: string, secure: boolean): string {
 	return [
-		`${DEVICE_COOKIE}=`,
+		`${name}=`,
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",

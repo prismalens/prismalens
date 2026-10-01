@@ -18,23 +18,12 @@ import { MutationError } from "@/components/shared/MutationError";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
+import { guessDeviceName } from "@/lib/device-name";
 
 export const Route = createFileRoute("/pair")({
 	ssr: false,
 	component: PairPage,
 });
-
-function guessDeviceName(): string | undefined {
-	if (typeof navigator === "undefined") return undefined;
-	const ua = navigator.userAgent;
-	if (/iPhone/.test(ua)) return "iPhone";
-	if (/iPad/.test(ua)) return "iPad";
-	if (/Android/.test(ua)) return "Android phone";
-	if (/Macintosh/.test(ua)) return "Mac";
-	if (/Windows/.test(ua)) return "Windows PC";
-	if (/Linux/.test(ua)) return "Linux machine";
-	return undefined;
-}
 
 function PairPage() {
 	usePageTitle("Pair this device");
@@ -79,7 +68,13 @@ function PairPage() {
 			navigate({ to: "/" });
 			return;
 		}
-		redeem.mutate({ token, name: guessDeviceName() });
+		redeem.mutate({
+			token,
+			name:
+				typeof navigator === "undefined"
+					? undefined
+					: guessDeviceName(navigator.userAgent),
+		});
 	}, [token, operator.isPending, operator.managesPairing, navigate, redeem]);
 
 	if (token === null) return null;

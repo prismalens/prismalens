@@ -32,12 +32,15 @@ export function resolveLogDir(
 	);
 }
 
-export function resolveBind(env: NodeJS.ProcessEnv): {
+/** `port` is the workspace's (see `resolvePort` in @prismalens/config), passed in so this stays pure. */
+export function resolveBind(
+	env: NodeJS.ProcessEnv,
+	port: number,
+): {
 	host: string;
 	port: number;
 	protocol: "http" | "https";
 } {
-	const port = Number(env.PRISMALENS_PORT) || 3001;
 	const host = env.PRISMALENS_HOST || "127.0.0.1";
 	const protocol = env.PRISMALENS_PROTOCOL === "https" ? "https" : "http";
 	return { host, port, protocol };
@@ -152,4 +155,17 @@ export function browserCommand(
 		return { file: "xdg-open", args: [url] };
 	}
 	return null;
+}
+
+/** The `pl service install` pointer, for a foreground `pl up` on a platform that has a service. */
+export function serviceHint(input: {
+	platform: NodeJS.Platform;
+	env: NodeJS.ProcessEnv;
+	serviceOwnsWorkspace: boolean;
+}): string | null {
+	if (input.platform !== "linux" && input.platform !== "darwin") return null;
+	if (input.env.PRISMALENS_SERVICE === "1") return null;
+	if (input.env.PRISMALENS_RUN_MODE === "electron") return null;
+	if (input.serviceOwnsWorkspace) return null;
+	return "For a machine that should always be on: pl service install";
 }

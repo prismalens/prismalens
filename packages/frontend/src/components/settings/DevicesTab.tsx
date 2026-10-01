@@ -135,7 +135,7 @@ function PairAnother() {
 						id="pair-origin"
 						value={origin}
 						onChange={(e) => setOrigin(e.target.value)}
-						placeholder="http://192.168.1.5:3001"
+						placeholder="http://192.168.1.5:6473"
 					/>
 				</div>
 				<div className="space-y-1">

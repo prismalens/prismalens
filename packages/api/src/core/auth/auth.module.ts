@@ -4,6 +4,8 @@
 import { Global, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AuthGuard } from "./auth.guard.js";
+import { InstanceController } from "./instance.controller.js";
+import { InstanceIdentity } from "./instance-identity.js";
 import { OperatorController } from "./operator.controller.js";
 import { OperatorResolver } from "./operator.resolver.js";
 import {
@@ -14,8 +16,13 @@ import {
 @Global()
 @Module({
 	imports: [ConfigModule],
-	controllers: [OperatorController, PairingController, PairingRedeemController],
-	providers: [OperatorResolver, AuthGuard],
-	exports: [OperatorResolver, AuthGuard],
+	controllers: [
+		InstanceController,
+		OperatorController,
+		PairingController,
+		PairingRedeemController,
+	],
+	providers: [InstanceIdentity, OperatorResolver, AuthGuard],
+	exports: [InstanceIdentity, OperatorResolver, AuthGuard],
 })
 export class AuthModule {}

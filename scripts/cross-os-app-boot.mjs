@@ -673,7 +673,7 @@ const redeem = await json("/api/pairing/redeem", {
 	body: JSON.stringify({ token: pairToken, name: "Cross-OS App Boot" }),
 });
 const setCookie = redeem.headers.getSetCookie?.() ?? [];
-const deviceCookie = setCookie.find((c) => c.startsWith("prismalens.device="));
+const deviceCookie = setCookie.find((c) => c.startsWith("prismalens.device."));
 const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
 if (redeem.status === 200 && cookie) {
 	ok("POST /api/pairing/redeem 200 with device cookie");

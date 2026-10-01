@@ -69,7 +69,7 @@ dashboard on a single port, creates a SQLite database in `~/.prismalens` on
 first run, and applies its own migrations:
 
 ```bash
-pl up                 # http://localhost:3001
+pl up                 # http://localhost:6473
 pl up --port 8080     # or wherever you like
 ```
 
@@ -95,7 +95,7 @@ HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex dig
 Alertmanager: set `authorization: { credentials: <token> }` on the receiver. One alert by hand:
 
 ```bash
-curl -X POST http://localhost:3001/api/webhooks/prometheus \
+curl -X POST http://localhost:6473/api/webhooks/prometheus \
   -H "Authorization: Bearer $(cat ~/.prismalens/PRISMALENS_WEBHOOK_SECRET_FILE)" \
   -H 'Content-Type: application/json' \
   -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"HighErrorRate","severity":"critical","service":"payments"},"annotations":{"summary":"5xx above 5% for 10 minutes"},"startsAt":"2026-09-18T12:00:00Z"}]}'

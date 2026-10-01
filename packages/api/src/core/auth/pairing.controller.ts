@@ -10,7 +10,6 @@
  */
 
 import { Controller, UseGuards } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	ACCESS_SCOPE,
@@ -25,6 +24,7 @@ import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
+import { InstanceIdentity } from "./instance-identity.js";
 import { Public } from "./public.decorator.js";
 
 @Controller()
@@ -96,15 +96,8 @@ export class PairingController {
 export class PairingRedeemController {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly config: ConfigService,
+		private readonly instance: InstanceIdentity,
 	) {}
-
-	/** `Secure` follows the resolved origin's scheme, never NODE_ENV. */
-	private get secureCookies(): boolean {
-		const publicUrl = this.config.get<string>("PRISMALENS_PUBLIC_URL");
-		if (publicUrl) return publicUrl.startsWith("https://");
-		return this.config.get<string>("PRISMALENS_PROTOCOL") === "https";
-	}
 
 	@Implement(pairingContract.redeem)
 	redeem() {
@@ -120,9 +113,12 @@ export class PairingRedeemController {
 							userAgent: request.headers["user-agent"],
 						},
 					);
+					const own = this.instance.deviceCookie;
+					const secure = this.instance.secureCookies;
+					// Other prismalens.device.* cookies may belong to a live instance on another port (#763).
 					request.res?.append(
 						"Set-Cookie",
-						deviceCookieHeader(redeemed.token, this.secureCookies),
+						deviceCookieHeader(own, redeemed.token, secure),
 					);
 					return {
 						device: { id: redeemed.device.id, name: redeemed.device.name },

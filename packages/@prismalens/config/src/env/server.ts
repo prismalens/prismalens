@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { z } from "zod";
+import { DEFAULT_PORT } from "../utils/instance-file.js";
 
 /**
  * Global configuration schema.
@@ -18,8 +19,10 @@ export const globalSchema = z.object({
 		),
 	PRISMALENS_PORT: z.coerce
 		.number()
-		.default(3001)
-		.describe("API server port (internal, behind reverse proxy)"),
+		.default(DEFAULT_PORT)
+		.describe(
+			"API server port. Overrides the workspace's port (instance.json) for one run.",
+		),
 	PRISMALENS_PROTOCOL: z
 		.enum(["http", "https"])
 		.default("http")

@@ -14,6 +14,7 @@ import {
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
 	checkWebhookToken,
+	checkWebhookUrl,
 } from "./doctor.js";
 
 const FAKE_HANDSHAKE = join(
@@ -207,5 +208,28 @@ describe("doctor — webhook token", () => {
 		expect(checkAfter.hard).toBe(false);
 		expect(checkAfter.detail).toBe(`${expectedFile} (exists)`);
 		expect(checkAfter.detail).not.toContain(secretValue);
+	});
+});
+
+describe("doctor — webhook URL", () => {
+	it("loopback bind: localhost URL and only this machine", () => {
+		const c = checkWebhookUrl("127.0.0.1", "6473", "http");
+		expect(c.name).toBe("Webhook URL");
+		expect(c.detail).toContain(
+			"http://127.0.0.1:6473/api/webhooks/prometheus",
+		);
+		expect(c.detail).toContain("only this machine can reach it");
+		expect(c.detail).toMatch(/LAN or tailnet address/);
+	});
+	it("wildcard bind: a LAN/tailnet placeholder, reachable", () => {
+		const c = checkWebhookUrl("0.0.0.0", "6473", "http");
+		expect(c.detail).toContain("<this machine's LAN or tailnet address>:6473");
+		expect(c.detail).toContain("other machines can reach it");
+	});
+	it("named host: that host's URL", () => {
+		const c = checkWebhookUrl("192.168.1.5", "6473", "https");
+		expect(c.detail).toContain(
+			"https://192.168.1.5:6473/api/webhooks/prometheus",
+		);
 	});
 });

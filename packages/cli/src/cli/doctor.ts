@@ -18,10 +18,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import {
+	DEFAULT_PORT,
 	ensureAppDataDir,
 	getAppDataDir,
 	installChannel,
 	installedService,
+	readInstanceFile,
 	secretFileName,
 	serviceOwnsWorkspace,
 } from "@prismalens/config";
@@ -298,13 +300,49 @@ export function checkService(
 	};
 }
 
+/** What `pl up` would pick, without creating the instance file the doctor only reports on. */
+function workspacePort(): number {
+	const workspace = getAppDataDir();
+	try {
+		const instance = readInstanceFile(workspace);
+		if (instance) return instance.port;
+	} catch {
+		// An invalid instance file fails `pl up` with its own message.
+	}
+	return DEFAULT_PORT;
+}
+
 function checkPortHost(): Check {
-	const port = process.env.PRISMALENS_PORT ?? "3001";
+	const port = process.env.PRISMALENS_PORT ?? String(workspacePort());
 	const host = process.env.PRISMALENS_HOST ?? "127.0.0.1";
 	return {
 		name: "Port/host",
 		pass: true,
 		detail: `${host}:${port}`,
+		hard: false,
+	};
+}
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/** The URL Alertmanager posts to, and whether another machine can reach this bind. */
+export function checkWebhookUrl(
+	host = process.env.PRISMALENS_HOST ?? "127.0.0.1",
+	port = process.env.PRISMALENS_PORT ?? String(workspacePort()),
+	protocol = process.env.PRISMALENS_PROTOCOL === "https" ? "https" : "http",
+): Check {
+	const path = "/api/webhooks/prometheus";
+	const loopback = LOOPBACK.has(host);
+	const wildcard = host === "0.0.0.0" || host === "::";
+	const shown = host.includes(":") ? `[${host}]` : host;
+	return {
+		name: "Webhook URL",
+		pass: true,
+		detail: loopback
+			? `${protocol}://${shown}:${port}${path}; only this machine can reach it. For Alertmanager elsewhere, bind with --host and use this machine's LAN or tailnet address`
+			: wildcard
+				? `${protocol}://<this machine's LAN or tailnet address>:${port}${path}; other machines can reach it`
+				: `${protocol}://${shown}:${port}${path}; machines that can route to ${host} can reach it`,
 		hard: false,
 	};
 }
@@ -318,7 +356,7 @@ export default defineCommand({
 		port: {
 			type: "string",
 			description:
-				"Port `pl up` will listen on (default 3001, or PRISMALENS_PORT)",
+				"Port `pl up` will listen on (default: the workspace's port, or PRISMALENS_PORT)",
 		},
 		host: {
 			type: "string",
@@ -355,6 +393,7 @@ export default defineCommand({
 				...checkAutoSelection(),
 				checkWebhookToken(),
 				checkPortHost(),
+				checkWebhookUrl(),
 				checkService(),
 			];
 
