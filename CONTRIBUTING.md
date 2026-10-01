@@ -329,8 +329,8 @@ Versioning and publishing run through
 4. Every release is a patch: `versioning: always-bump-patch` in
    `release-please-config.json` holds the line at 0.5.x whatever the commit
    types. A minor release means changing that line on purpose. To force one
-   specific version, set `"release-as": "<version>"` on the `packages/cli`
-   entry and remove it once that version publishes. A `Release-As:` commit
+   specific version, set `"release-as": "<version>"` on the `"."`
+   package entry and remove it once that version publishes. A `Release-As:` commit
    footer does not work here: squash commits end with the attribution lines,
    and release-please reads footers only from a commit's last paragraph.
 5. Releases are tagged `v<version>` from 0.5.0 on (`prismalens@<version>`
