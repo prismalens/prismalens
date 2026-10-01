@@ -10,7 +10,6 @@
  * scoped by host and not by port (#763).
  */
 
-import { DEVICE_COOKIE_PREFIX } from "@prismalens/auth";
 import type { Request } from "express";
 
 /** A year. Validity is revocation, not expiry (ADR 0004 §8). */
@@ -54,22 +53,6 @@ export function readDeviceCredential(
 	}
 	const own = readCookie(request.headers.cookie, cookieName);
 	return own ? { token: own, via: "cookie" } : undefined;
-}
-
-/** Every `prismalens.device.*` cookie on the request other than `keep`. */
-export function otherDeviceCookieNames(
-	cookieHeader: string | undefined,
-	keep: string,
-): string[] {
-	if (!cookieHeader) return [];
-	const names = new Set<string>();
-	for (const part of cookieHeader.split(";")) {
-		const name = part.slice(0, Math.max(part.indexOf("="), 0)).trim();
-		if (name !== keep && name.startsWith(`${DEVICE_COOKIE_PREFIX}.`)) {
-			names.add(name);
-		}
-	}
-	return [...names];
 }
 
 export function deviceCookieHeader(

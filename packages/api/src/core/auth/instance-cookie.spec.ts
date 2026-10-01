@@ -100,8 +100,8 @@ describe("GET /api/instance (#763)", () => {
 	});
 });
 
-describe("redeem clears orphaned device cookies (#763)", () => {
-	it("clears every other prismalens.device.* cookie, then sets its own", async () => {
+describe("redeem leaves other instances' device cookies alone (#763)", () => {
+	it("sets only its own cookie; another port's cookie on the same host survives", async () => {
 		const { req, setCookies } = request(
 			`prismalens.device=old; prismalens.device.0123456789ab=orphan; ${OWN}=stale; theme=dark`,
 		);
@@ -114,10 +114,7 @@ describe("redeem clears orphaned device cookies (#763)", () => {
 			{ token: "link" },
 			{ context: { request: req } },
 		);
-		expect(setCookies).toHaveLength(2);
-		expect(setCookies[0]).toMatch(
-			/^prismalens\.device\.0123456789ab=;.*Max-Age=0/,
-		);
-		expect(setCookies[1]).toMatch(new RegExp(`^${OWN}=fresh;`));
+		expect(setCookies).toHaveLength(1);
+		expect(setCookies[0]).toMatch(new RegExp(`^${OWN}=fresh;`));
 	});
 });

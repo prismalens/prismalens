@@ -23,11 +23,7 @@ import { pairingContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
-import {
-	clearDeviceCookieHeader,
-	deviceCookieHeader,
-	otherDeviceCookieNames,
-} from "./device-cookie.js";
+import { deviceCookieHeader } from "./device-cookie.js";
 import { InstanceIdentity } from "./instance-identity.js";
 import { Public } from "./public.decorator.js";
 
@@ -119,16 +115,7 @@ export class PairingRedeemController {
 					);
 					const own = this.instance.deviceCookie;
 					const secure = this.instance.secureCookies;
-					// Orphans from a reset instance (#763).
-					for (const name of otherDeviceCookieNames(
-						request.headers.cookie,
-						own,
-					)) {
-						request.res?.append(
-							"Set-Cookie",
-							clearDeviceCookieHeader(name, secure),
-						);
-					}
+					// Other prismalens.device.* cookies may belong to a live instance on another port (#763).
 					request.res?.append(
 						"Set-Cookie",
 						deviceCookieHeader(own, redeemed.token, secure),

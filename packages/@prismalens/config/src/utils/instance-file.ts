@@ -6,7 +6,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+	linkSync,
+	mkdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export const INSTANCE_FILE = "instance.json";
@@ -72,7 +78,17 @@ export function ensureInstanceFile(workspaceDir: string): InstanceFile {
 	writeFileSync(temp, `${JSON.stringify(created, null, "\t")}\n`, {
 		mode: 0o600,
 	});
-	renameSync(temp, path);
+	// link() never replaces: a process that loses the creation race adopts the winner's id.
+	try {
+		linkSync(temp, path);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+		const winner = readInstanceFile(workspaceDir);
+		if (winner) return winner;
+		throw e;
+	} finally {
+		unlinkSync(temp);
+	}
 	return created;
 }
 

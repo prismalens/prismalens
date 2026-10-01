@@ -7,7 +7,6 @@ import { deviceCookieName } from "@prismalens/auth";
 import {
 	clearDeviceCookieHeader,
 	deviceCookieHeader,
-	otherDeviceCookieNames,
 	readCookie,
 	readDeviceCredential,
 } from "./device-cookie.js";
@@ -105,18 +104,6 @@ describe("readDeviceCredential", () => {
 		expect(
 			readDeviceCredential(fakeRequest({ authorization: "Bearer   " }), OWN),
 		).toBeUndefined();
-	});
-});
-
-describe("otherDeviceCookieNames", () => {
-	it("lists every prismalens.device.* cookie except the one kept", () => {
-		expect(
-			otherDeviceCookieNames(
-				`prismalens.device=a; ${OWN}=b; prismalens.device.0123456789ab=c; prismalens.devices=x; theme=dark`,
-				OWN,
-			),
-		).toEqual(["prismalens.device.0123456789ab"]);
-		expect(otherDeviceCookieNames(undefined, OWN)).toEqual([]);
 	});
 });
 

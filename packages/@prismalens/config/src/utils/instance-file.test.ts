@@ -10,7 +10,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const race = vi.hoisted(() => ({ winner: null as string | null }));
+vi.mock("node:fs", async (importOriginal) => {
+	const fs = await importOriginal<typeof import("node:fs")>();
+	return {
+		...fs,
+		linkSync: (from: string, to: string) => {
+			if (race.winner) fs.writeFileSync(to, race.winner);
+			race.winner = null;
+			fs.linkSync(from, to);
+		},
+	};
+});
 import {
 	DEFAULT_PORT,
 	ensureInstanceFile,
@@ -35,6 +48,18 @@ describe("instance file (#763)", () => {
 		}
 		expect(readdirSync(dir)).toEqual([INSTANCE_FILE]);
 		expect(ensureInstanceFile(dir)).toEqual(created);
+	});
+
+	it("a process that loses the creation race adopts the winner's id, not its own", () => {
+		const dir = workspace();
+		const winner = {
+			instanceId: "11111111-2222-4333-8444-555555555555",
+			port: 7000,
+		};
+		race.winner = JSON.stringify(winner);
+		expect(ensureInstanceFile(dir)).toEqual(winner);
+		expect(readInstanceFile(dir)).toEqual(winner);
+		expect(readdirSync(dir)).toEqual([INSTANCE_FILE]);
 	});
 
 	it("an invalid file is an error naming its path, never replaced", () => {
