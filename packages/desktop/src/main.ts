@@ -9,10 +9,18 @@
  * never embeds the API.
  */
 
-import { type ChildProcess, execFile } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { type ChildProcess, execFile, spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readWorkspaceLockState } from "@prismalens/config";
+import { deviceCookieName } from "@prismalens/auth/device-cookie";
+import {
+	ensureInstanceFile,
+	installedService,
+	readWorkspaceLockState,
+	serviceManagerKind,
+	serviceOwnsWorkspace,
+} from "@prismalens/config";
 import {
 	app,
 	BrowserWindow,
@@ -54,19 +62,33 @@ import {
 	runningLabel,
 	snapshot,
 } from "./notifications.js";
-import { DEVICE_COOKIE, operatorToken } from "./session.js";
 import {
+	fetchInstanceId,
+	LEGACY_DEVICE_COOKIE,
+	OlderBackendError,
+	operatorToken,
+	storedCandidates,
+} from "./session.js";
+import {
+	appendTail,
 	type BackendSpawn,
 	backendSpawn,
 	backendUrl,
+	OLDER_BACKEND_DIALOG,
 	pairOperatorSpawn,
-	pickFreePort,
 	planLaunch,
+	portFree,
+	portTakenDialog,
 	resetWorkspaceSpawn,
+	type StopDialog,
+	serviceStartCommands,
+	stopDialog,
+	type Target,
 } from "./supervisor.js";
 import {
 	availableUpdate,
 	backendVersion,
+	latestReleaseUrl,
 	releaseUrl,
 	updateCheckEnabled,
 } from "./updates.js";
@@ -86,6 +108,10 @@ let stopping = false;
 /** This launcher spawned the backend, rather than attaching to a `pl up`. */
 let owned = false;
 let backendMainPath = "";
+/** The last stderr lines of the owned backend, for the dialog when it stops. */
+let stderrTail: string[] = [];
+/** A stop dialog is up; the poll must not stack a second one. */
+let stopShown = false;
 let running = 0;
 /** A newer release with its downloads attached, once the check has found one. */
 let update: string | null = null;
@@ -101,40 +127,115 @@ function workspaceDir(): string {
 	);
 }
 
+class LaunchRefused extends Error {
+	constructor(readonly dialog: StopDialog) {
+		super(dialog.message);
+	}
+}
+
+/** The owned backend exited while starting; its own stop dialog has the say. */
+class BackendExited extends Error {}
+
+/** Settles when the owned backend exits; `connect` races its health wait against it. */
+let exited: Promise<void> = new Promise(() => {});
+let booted = false;
+
+function protocol(): "http" | "https" {
+	return process.env.PRISMALENS_PROTOCOL === "https" ? "https" : "http";
+}
+
 async function boot(): Promise<void> {
 	const dir = workspaceDir();
-	const plan = planLaunch(readWorkspaceLockState(dir), await pickFreePort());
-	const backendMain = resolveBackendMain({
+	backendMainPath = resolveBackendMain({
 		resourcesPath: process.resourcesPath,
 		env: process.env,
 	});
-	backendMainPath = backendMain;
+	const service = installedService();
+	const plan = planLaunch({
+		lock: readWorkspaceLockState(dir),
+		service,
+		ownsWorkspace: serviceOwnsWorkspace(dir, service),
+		storedPort: ensureInstanceFile(dir).port,
+		protocol: protocol(),
+	});
 	owned = plan.kind === "spawn";
-	if (plan.kind === "spawn") {
-		const spawnPlan = backendSpawn({
+	if (plan.kind === "spawn") await spawnOwned(plan.target);
+	if (plan.kind === "service" && service) startService(service.unitPath);
+	await connect(plan.target);
+}
+
+/** Spawn `pl up` on the workspace's own port, refusing one something else holds. */
+async function spawnOwned(target: Target): Promise<void> {
+	if (!(await portFree(target.port))) {
+		throw new LaunchRefused(
+			portTakenDialog({
+				port: target.port,
+				holderInstanceId: await portHolder(target),
+				instanceFile: join(workspaceDir(), "instance.json"),
+			}),
+		);
+	}
+	stderrTail = [];
+	const backend = startBackend(
+		backendSpawn({
 			execPath: process.execPath,
-			backendMain,
-			port: plan.port,
-			workspaceDir: dir,
+			backendMain: backendMainPath,
+			port: target.port,
+			workspaceDir: workspaceDir(),
 			env: process.env,
 			loginShellPath: await readLoginShellPath(),
-		});
-		child = startBackend(spawnPlan);
-		child.stderr?.on("data", (chunk: Buffer) => {
-			process.stderr.write(chunk);
-		});
-		child.once("exit", (code) => {
-			if (!quitting) {
-				console.error(`prismalens backend exited with ${code}`);
-				app.quit();
-			}
-		});
+		}),
+	);
+	child = backend;
+	owned = true;
+	exited = new Promise((resolve) => backend.once("exit", () => resolve()));
+	backend.stderr?.on("data", (chunk: Buffer) => {
+		process.stderr.write(chunk);
+		stderrTail = appendTail(stderrTail, chunk.toString("utf8"));
+	});
+	backend.once("exit", (code) => {
+		if (child === backend) child = null;
+		if (!quitting) void showStop({ owned: true, code, stderrTail });
+	});
+}
+
+async function portHolder(target: Target): Promise<string | null> {
+	try {
+		return await fetchInstanceId(backendUrl(target));
+	} catch {
+		return null;
 	}
-	baseUrl = backendUrl(plan.port);
-	if (!(await waitForHealth(plan.port, READY_TIMEOUT_MS))) {
-		throw new Error(`Backend not ready at ${baseUrl}`);
+}
+
+/** Start, never enable, the unit `pl service install` wrote (#763). */
+function startService(unitPath: string): void {
+	const kind = serviceManagerKind();
+	if (!kind) return;
+	for (const step of serviceStartCommands(
+		kind,
+		unitPath,
+		process.getuid?.() ?? 0,
+	)) {
+		const result = spawnSync(step.argv[0] as string, step.argv.slice(1), {
+			encoding: "utf8",
+		});
+		if (result.status !== 0 && !step.optional) {
+			throw new Error(
+				`\`${step.argv.join(" ")}\` failed: ${result.stderr || result.error?.message || result.status}`,
+			);
+		}
 	}
-	await pairWindow(backendMain, dir);
+}
+
+async function connect(target: Target): Promise<void> {
+	baseUrl = backendUrl(target);
+	const healthy = await Promise.race([
+		waitForHealth(baseUrl, READY_TIMEOUT_MS),
+		owned ? exited.then(() => null) : new Promise<never>(() => {}),
+	]);
+	if (healthy === null) throw new BackendExited();
+	if (!healthy) throw new Error(`Backend not ready at ${baseUrl}`);
+	await pairWindow(workspaceDir());
 	const [themeCookie] = await session.defaultSession.cookies.get({
 		url: baseUrl,
 		name: THEME_COOKIE,
@@ -143,27 +244,62 @@ async function boot(): Promise<void> {
 	ready = true;
 }
 
+/** The instance id each base URL answered with last, kept beside the cookie jar. */
+function identityPath(): string {
+	return join(app.getPath("userData"), "instances.json");
+}
+
+function readIdentities(): Record<string, string> {
+	try {
+		return JSON.parse(readFileSync(identityPath(), "utf8")) as Record<
+			string,
+			string
+		>;
+	} catch {
+		return {};
+	}
+}
+
+function writeIdentity(url: string, instanceId: string): void {
+	mkdirSync(app.getPath("userData"), { recursive: true });
+	writeFileSync(
+		identityPath(),
+		JSON.stringify({ ...readIdentities(), [url]: instanceId }),
+		{ mode: 0o600 },
+	);
+}
+
 /** The window pairs like any browser (ADR 0004 §8); see `session.ts`. */
-async function pairWindow(backendMain: string, dir: string): Promise<void> {
+async function pairWindow(dir: string): Promise<void> {
 	const jar = session.defaultSession.cookies;
-	const [stored] = await jar.get({ url: baseUrl, name: DEVICE_COOKIE });
+	const instanceId = await fetchInstanceId(baseUrl);
+	const cookieName = deviceCookieName(instanceId);
+	const [stored] = await jar.get({ url: baseUrl, name: cookieName });
+	const [legacy] = await jar.get({ url: baseUrl, name: LEGACY_DEVICE_COOKIE });
 	deviceToken = await operatorToken({
 		baseUrl,
-		storedToken: stored?.value ?? null,
+		cookieName,
+		candidates: storedCandidates({
+			instanceId,
+			expectedId: readIdentities()[baseUrl] ?? null,
+			stored: stored?.value ?? null,
+			legacy: legacy?.value ?? null,
+		}),
 		pairOperator: () =>
 			runForStdout(
 				pairOperatorSpawn({
 					execPath: process.execPath,
-					backendMain,
+					backendMain: backendMainPath,
 					workspaceDir: dir,
 					env: process.env,
 				}),
 			),
 	});
+	if (legacy) await jar.remove(baseUrl, LEGACY_DEVICE_COOKIE);
 	if (deviceToken !== stored?.value) {
 		await jar.set({
 			url: baseUrl,
-			name: DEVICE_COOKIE,
+			name: cookieName,
 			value: deviceToken,
 			path: "/",
 			httpOnly: true,
@@ -172,6 +308,83 @@ async function pairWindow(backendMain: string, dir: string): Promise<void> {
 			expirationDate: Date.now() / 1000 + 365 * 24 * 60 * 60,
 		});
 	}
+	writeIdentity(baseUrl, instanceId);
+}
+
+/** No silent quits: say why the backend stopped and offer the way on. */
+async function showStop(input: {
+	owned: boolean;
+	code: number | null;
+	stderrTail: string[];
+}): Promise<void> {
+	if (stopShown) return;
+	stopShown = true;
+	ready = false;
+	const d = stopDialog(input);
+	const { response } = await dialog.showMessageBox({
+		type: d.kind === "attached-gone" ? "warning" : "error",
+		message: d.message,
+		detail: d.detail,
+		buttons: d.buttons,
+		defaultId: 0,
+		cancelId: d.buttons.length - 1,
+	});
+	stopShown = false;
+	if (response !== 0) {
+		app.quit();
+		return;
+	}
+	if (d.kind === "newer-database") {
+		const found = update ?? (await newerRelease());
+		await shell.openExternal(found ? releaseUrl(found) : latestReleaseUrl());
+		app.quit();
+		return;
+	}
+	try {
+		const target: Target = {
+			protocol: protocol(),
+			host: "127.0.0.1",
+			port: ensureInstanceFile(workspaceDir()).port,
+		};
+		await spawnOwned(target);
+		await connect(target);
+		if (!booted) {
+			afterBoot();
+			return;
+		}
+		refreshTray();
+		if (window) window.loadURL(baseUrl);
+		else openWindow();
+	} catch (error) {
+		await refuse(error);
+	}
+}
+
+async function newerRelease(): Promise<string | null> {
+	const current = backendVersion(backendMainPath);
+	return current ? availableUpdate(current) : null;
+}
+
+/** A launch that cannot go on: its dialog, then quit. */
+async function refuse(error: unknown): Promise<void> {
+	if (error instanceof BackendExited) return;
+	const d =
+		error instanceof LaunchRefused
+			? error.dialog
+			: error instanceof OlderBackendError
+				? OLDER_BACKEND_DIALOG
+				: null;
+	if (d) {
+		await dialog.showMessageBox({
+			type: "error",
+			message: d.message,
+			detail: d.detail,
+			buttons: d.buttons,
+		});
+	} else {
+		dialog.showErrorBox("PrismaLens could not start", String(error));
+	}
+	app.quit();
 }
 
 function runForStdout(plan: BackendSpawn): Promise<string> {
@@ -243,6 +456,7 @@ function openWindow(path = "/"): void {
 		} catch {
 			return { action: "deny" };
 		}
+		// The current base, read per call: a restart or reattach can move it.
 		const external =
 			target.origin !== new URL(baseUrl).origin &&
 			(target.protocol === "http:" || target.protocol === "https:");
@@ -402,7 +616,10 @@ function startPolling(): void {
 				refreshTray();
 			}
 		} catch {
-			// The backend is the source of truth; a missed poll is retried next tick.
+			// A missed poll is retried; an attached backend that is gone is said so.
+			if (ready && !owned && !(await waitForHealth(baseUrl, 3_000))) {
+				void showStop({ owned: false, code: null, stderrTail: [] });
+			}
 		}
 	};
 	setInterval(tick, POLL_MS);
@@ -449,6 +666,14 @@ function startUpdateChecks(): void {
 	void check();
 }
 
+function afterBoot(): void {
+	booted = true;
+	buildTray();
+	openWindow();
+	startPolling();
+	startUpdateChecks();
+}
+
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
@@ -480,14 +705,11 @@ if (!app.requestSingleInstanceLock()) {
 				showInspectElement: !app.isPackaged,
 			});
 			await boot();
-			buildTray();
-			openWindow();
-			startPolling();
-			startUpdateChecks();
+			afterBoot();
 		})
 		.catch((error) => {
 			console.error(error);
-			app.quit();
+			void refuse(error);
 		});
 	app.on("window-all-closed", () => {
 		// Presence: closing the window leaves the tray and the backend running.

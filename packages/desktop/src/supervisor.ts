@@ -10,22 +10,160 @@
  */
 
 import { createServer } from "node:net";
-import type { WorkspaceLockState } from "@prismalens/config";
+import type { InstalledService, WorkspaceLockState } from "@prismalens/config";
+
+/** Where a backend answers. */
+export interface Target {
+	protocol: "http" | "https";
+	host: string;
+	port: number;
+}
 
 export type LaunchPlan =
-	| { kind: "attach"; port: number; pid: number }
-	| { kind: "spawn"; port: number };
+	| { kind: "attach"; target: Target; pid: number }
+	| { kind: "service"; target: Target }
+	| { kind: "spawn"; target: Target };
+
+/** A wildcard or missing bind is reached over loopback. */
+export function reachableHost(host: string | undefined): string {
+	return !host || host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+}
 
 /**
- * A live backend on the workspace is attached to, never duplicated (ADR 0005
- * §8: the lock carries pid and port so a second launcher attaches). Anything
- * else spawns on the requested port.
+ * Attach to the live owner at its real bind (ADR 0005 §8); else start, never
+ * enable, a service that owns the workspace; else spawn on the workspace's own
+ * port, never a random one, so its address and cookies stay put (#763).
  */
-export function planLaunch(lock: WorkspaceLockState, port: number): LaunchPlan {
+export function planLaunch(input: {
+	lock: WorkspaceLockState;
+	service: InstalledService | null;
+	ownsWorkspace: boolean;
+	storedPort: number;
+	protocol: "http" | "https";
+}): LaunchPlan {
+	const { lock, service, protocol } = input;
 	if (lock.kind === "held") {
-		return { kind: "attach", port: lock.owner.port, pid: lock.owner.pid };
+		return {
+			kind: "attach",
+			pid: lock.owner.pid,
+			target: {
+				protocol,
+				host: reachableHost(lock.owner.host),
+				port: lock.owner.port,
+			},
+		};
 	}
-	return { kind: "spawn", port };
+	if (service && input.ownsWorkspace) {
+		return {
+			kind: "service",
+			target: {
+				protocol,
+				host: reachableHost(service.host),
+				port: service.port,
+			},
+		};
+	}
+	return {
+		kind: "spawn",
+		target: { protocol, host: "127.0.0.1", port: input.storedPort },
+	};
+}
+
+/** Start an installed service that is stopped: start only, never enable. */
+export function serviceStartCommands(
+	kind: "systemd" | "launchd",
+	unitPath: string,
+	uid: number,
+): { argv: string[]; optional?: boolean }[] {
+	if (kind === "systemd") {
+		return [{ argv: ["systemctl", "--user", "start", "prismalens.service"] }];
+	}
+	const domain = `gui/${uid}`;
+	return [
+		// Already loaded is fine; kickstart below is what starts it.
+		{ argv: ["launchctl", "bootstrap", domain, unitPath], optional: true },
+		{ argv: ["launchctl", "kickstart", `${domain}/io.prismalens.server`] },
+	];
+}
+
+/** What the launcher tells the operator when it cannot carry on silently. */
+export interface StopDialog {
+	kind:
+		| "newer-database"
+		| "crashed"
+		| "attached-gone"
+		| "older-backend"
+		| "port-taken";
+	message: string;
+	detail: string;
+	buttons: string[];
+}
+
+const NEWER_DATABASE = /written by a newer PrismaLens/i;
+
+/** The dialog for a backend that stopped: one this app owned, or one it attached to. */
+export function stopDialog(input: {
+	owned: boolean;
+	code: number | null;
+	stderrTail: string[];
+}): StopDialog {
+	if (!input.owned) {
+		return {
+			kind: "attached-gone",
+			message: "PrismaLens stopped",
+			detail:
+				"The PrismaLens this window was using is no longer running. Start it here, in this app, or quit.",
+			buttons: ["Start it here", "Quit"],
+		};
+	}
+	const newer = input.stderrTail.find((line) => NEWER_DATABASE.test(line));
+	if (newer) {
+		return {
+			kind: "newer-database",
+			message: "This workspace needs a newer PrismaLens",
+			detail: newer.trim(),
+			buttons: ["Download update", "Quit"],
+		};
+	}
+	const tail = input.stderrTail.join("\n").trim();
+	return {
+		kind: "crashed",
+		message: `PrismaLens stopped (exit code ${input.code ?? "none"})`,
+		detail: tail || "It printed nothing to stderr.",
+		buttons: ["Restart", "Quit"],
+	};
+}
+
+export const OLDER_BACKEND_DIALOG: StopDialog = {
+	kind: "older-backend",
+	message: "This PrismaLens is older than the app; update it.",
+	detail:
+		"It does not answer /api/instance, so the app cannot tell which workspace it is.",
+	buttons: ["Quit"],
+};
+
+/** The workspace's port is held by something that is not this workspace's backend. */
+export function portTakenDialog(input: {
+	port: number;
+	/** Another PrismaLens instance's id, when the holder answered `/api/instance`. */
+	holderInstanceId: string | null;
+	instanceFile: string;
+}): StopDialog {
+	const holder = input.holderInstanceId
+		? `another PrismaLens workspace (instance ${input.holderInstanceId})`
+		: "another program";
+	return {
+		kind: "port-taken",
+		message: `Port ${input.port} is in use by ${holder}`,
+		detail: `This workspace serves on port ${input.port}. Stop what is listening there, or change "port" in ${input.instanceFile}.`,
+		buttons: ["Quit"],
+	};
+}
+
+/** Keep the last `max` stderr lines across chunk boundaries. */
+export function appendTail(tail: string[], chunk: string, max = 20): string[] {
+	const lines = chunk.split(/\r?\n/).filter((l) => l.trim() !== "");
+	return [...tail, ...lines].slice(-max);
 }
 
 export interface BackendSpawn {
@@ -114,19 +252,16 @@ export function resetWorkspaceSpawn(input: {
 	};
 }
 
-/** A free loopback port, asked of the OS. */
-export function pickFreePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
+/** Whether a loopback port can be bound right now. */
+export function portFree(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
 		const server = createServer();
-		server.once("error", reject);
-		server.listen(0, "127.0.0.1", () => {
-			const address = server.address();
-			const port = typeof address === "object" && address ? address.port : 0;
-			server.close(() => (port ? resolve(port) : reject(new Error("no port"))));
-		});
+		server.once("error", () => resolve(false));
+		server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
 	});
 }
 
-export function backendUrl(port: number): string {
-	return `http://127.0.0.1:${port}`;
+export function backendUrl(target: Target): string {
+	const host = target.host.includes(":") ? `[${target.host}]` : target.host;
+	return `${target.protocol}://${host}:${target.port}`;
 }
