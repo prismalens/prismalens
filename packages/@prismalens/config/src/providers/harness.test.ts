@@ -136,6 +136,15 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 			claudeCode: { options: { settingSources: [] } },
 		});
 	});
+
+	it("gemini marks workspace untrusted to keep repo config inert (#634)", () => {
+		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
+			GEMINI_CLI_TRUST_WORKSPACE: "false",
+		});
+		expect(HARNESS_REGISTRY.gemini.readOnlyMechanism).toContain(
+			"GEMINI_CLI_TRUST_WORKSPACE=false",
+		);
+	});
 });
 
 describe("row data every reader needs (#634)", () => {
