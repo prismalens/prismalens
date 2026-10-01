@@ -5,14 +5,25 @@
  * The paired device's credential in the browser: an HttpOnly cookie holding
  * the device token. `SameSite=Lax` keeps a cross-site form POST from carrying
  * it; a non-browser client sends the same token as a Bearer instead.
+ *
+ * The cookie is named per instance (`deviceCookieName`), because cookies are
+ * scoped by host and not by port (#763). A 0.5.0 browser still holds the bare
+ * `prismalens.device`; it is accepted until `whoami` moves it to the new name.
  */
 
+import { DEVICE_COOKIE_PREFIX } from "@prismalens/auth";
 import type { Request } from "express";
 
-export const DEVICE_COOKIE = "prismalens.device";
+/** The 0.5.0 cookie name, read only to upgrade it. */
+export const LEGACY_DEVICE_COOKIE = DEVICE_COOKIE_PREFIX;
 
 /** A year. Validity is revocation, not expiry (ADR 0004 §8). */
 const DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+
+export interface DeviceCredential {
+	token: string;
+	via: "bearer" | "cookie" | "legacy-cookie";
+}
 
 export function readCookie(
 	cookieHeader: string | undefined,
@@ -32,18 +43,52 @@ export function readCookie(
 	return undefined;
 }
 
-/** The device token a request carries, cookie or `Authorization: Bearer`. */
-export function readDeviceToken(request: Request): string | undefined {
+/**
+ * The device token a request carries: `Authorization: Bearer`, else this
+ * instance's cookie, else the 0.5.0 cookie.
+ */
+export function readDeviceCredential(
+	request: Request,
+	cookieName: string,
+): DeviceCredential | undefined {
 	const auth = request.headers.authorization;
 	if (typeof auth === "string" && /^bearer\s+/i.test(auth)) {
-		return auth.replace(/^bearer\s+/i, "").trim() || undefined;
+		const token = auth.replace(/^bearer\s+/i, "").trim();
+		return token ? { token, via: "bearer" } : undefined;
 	}
-	return readCookie(request.headers.cookie, DEVICE_COOKIE);
+	const own = readCookie(request.headers.cookie, cookieName);
+	if (own) return { token: own, via: "cookie" };
+	const legacy = readCookie(request.headers.cookie, LEGACY_DEVICE_COOKIE);
+	return legacy ? { token: legacy, via: "legacy-cookie" } : undefined;
 }
 
-export function deviceCookieHeader(token: string, secure: boolean): string {
+/** Every `prismalens.device*` cookie on the request other than `keep`. */
+export function otherDeviceCookieNames(
+	cookieHeader: string | undefined,
+	keep: string,
+): string[] {
+	if (!cookieHeader) return [];
+	const names = new Set<string>();
+	for (const part of cookieHeader.split(";")) {
+		const name = part.slice(0, Math.max(part.indexOf("="), 0)).trim();
+		if (
+			name !== keep &&
+			(name === DEVICE_COOKIE_PREFIX ||
+				name.startsWith(`${DEVICE_COOKIE_PREFIX}.`))
+		) {
+			names.add(name);
+		}
+	}
+	return [...names];
+}
+
+export function deviceCookieHeader(
+	name: string,
+	token: string,
+	secure: boolean,
+): string {
 	return [
-		`${DEVICE_COOKIE}=${encodeURIComponent(token)}`,
+		`${name}=${encodeURIComponent(token)}`,
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
@@ -52,9 +97,9 @@ export function deviceCookieHeader(token: string, secure: boolean): string {
 	].join("; ");
 }
 
-export function clearDeviceCookieHeader(secure: boolean): string {
+export function clearDeviceCookieHeader(name: string, secure: boolean): string {
 	return [
-		`${DEVICE_COOKIE}=`,
+		`${name}=`,
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
