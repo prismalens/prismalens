@@ -156,3 +156,16 @@ export function browserCommand(
 	}
 	return null;
 }
+
+/** The `pl service install` pointer, for a foreground `pl up` on a platform that has a service. */
+export function serviceHint(input: {
+	platform: NodeJS.Platform;
+	env: NodeJS.ProcessEnv;
+	serviceOwnsWorkspace: boolean;
+}): string | null {
+	if (input.platform !== "linux" && input.platform !== "darwin") return null;
+	if (input.env.PRISMALENS_SERVICE === "1") return null;
+	if (input.env.PRISMALENS_RUN_MODE === "electron") return null;
+	if (input.serviceOwnsWorkspace) return null;
+	return "For a machine that should always be on: pl service install";
+}

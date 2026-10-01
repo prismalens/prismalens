@@ -28,6 +28,7 @@ import {
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
+	serviceHint,
 	TELEMETRY_CONSENT_NOTICE,
 	waitForReady,
 } from "./up-console.js";
@@ -205,6 +206,13 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			const { serviceOwnsWorkspace } = await import("@prismalens/config");
+			const hint = serviceHint({
+				platform: process.platform,
+				env: process.env,
+				serviceOwnsWorkspace: serviceOwnsWorkspace(workspaceDir),
+			});
+			if (hint) consola.info(hint);
 			await printStartupLink(workspaceDir, url, args.open !== false);
 			// One pointer at Settings, never a prompt: consent is an owner
 			// decision and the CLI has no way to take it (#602, ADR 0005).
