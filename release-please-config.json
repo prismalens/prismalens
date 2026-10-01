@@ -4,9 +4,18 @@
 	"bump-minor-pre-major": true,
 	"include-component-in-tag": false,
 	"packages": {
-		"packages/cli": {
+		".": {
 			"package-name": "prismalens",
-			"versioning": "always-bump-patch"
+			"versioning": "always-bump-patch",
+			"exclude-paths": ["docs", ".github", "packages/desktop"],
+			"extra-files": [
+				{
+					"type": "json",
+					"path": "packages/cli/package.json",
+					"jsonpath": "$.version"
+				}
+			],
+			"changelog-path": "packages/cli/CHANGELOG.md"
 		}
 	}
 }
