@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HarnessId } from "@prismalens/config/harness";
+import { HARNESS_AUTO_ORDER, type HarnessId } from "@prismalens/config/harness";
 import type { HarnessSetting, HarnessStatus } from "@prismalens/contracts";
 import { Check, ChevronDown, Sparkles } from "lucide-react";
 import {
@@ -103,14 +103,16 @@ function Kbd({ children }: { children: string }) {
 export function AgentModelPicker({
 	side = "bottom",
 	className,
+	defaultOpen = false,
 }: {
 	side?: "top" | "bottom";
 	className?: string;
+	defaultOpen?: boolean;
 }) {
 	const { harnesses, selection, setting, effective, model, isLoading } =
 		useAgentChoice();
 	const update = useUpdateHarnessSettings();
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState(defaultOpen);
 	const [cursor, setCursor] = useState<{ col: 0 | 1; row: number }>({
 		col: 0,
 		row: 0,
@@ -120,13 +122,20 @@ export function AgentModelPicker({
 	const [chosen, setChosen] = useState<string | null>(null);
 	const settled = chosen === null || setting === chosen;
 
+	const autoHarness = useMemo(() => {
+		const autoId = HARNESS_AUTO_ORDER.find(
+			(id) => harnesses.find((h) => h.id === id)?.installed,
+		);
+		return autoId ? harnesses.find((h) => h.id === autoId) : undefined;
+	}, [harnesses]);
+
 	const agents: Option[] = useMemo(
 		() => [
 			{
 				value: "auto",
 				name: "Auto",
-				line: selection?.harness
-					? `first on PATH, now ${harnesses.find((h) => h.id === selection.harness)?.label ?? selection.harness}`
+				line: autoHarness
+					? `first on PATH, now ${autoHarness.label}`
 					: "first agent found on PATH",
 				disabled: false,
 				active: setting === "auto",
@@ -146,7 +155,7 @@ export function AgentModelPicker({
 				),
 			})),
 		],
-		[harnesses, selection, setting],
+		[autoHarness, harnesses, setting],
 	);
 
 	const models: Option[] = useMemo(() => {
