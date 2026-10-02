@@ -56,6 +56,7 @@ const KNOWN_UPDATES = [
 	"compaction_update",
 	"config_option_update",
 	"current_mode_update",
+	"notice",
 	"plan",
 	"plan_removed",
 	"plan_update",
