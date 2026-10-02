@@ -184,6 +184,46 @@ describe("browserCommand", () => {
 		});
 	});
 
+	it("opens under WSL with wslview when on PATH", () => {
+		expect(
+			browserCommand(
+				"linux",
+				{ WSL_DISTRO_NAME: "Ubuntu", DISPLAY: ":0" },
+				url,
+				{ isOnPath: (bin) => bin === "wslview" },
+			),
+		).toEqual({
+			file: "wslview",
+			args: [url],
+		});
+		expect(
+			browserCommand(
+				"linux",
+				{ WSL_INTEROP: "/run/WSL/1_interop" },
+				url,
+				{ isOnPath: (bin) => bin === "wslview" },
+			),
+		).toEqual({
+			file: "wslview",
+			args: [url],
+		});
+	});
+
+	it("opens under WSL with cmd.exe quoting the URL when wslview is missing", () => {
+		const pairingUrl = "http://localhost:3170/pair#token123&foo=bar";
+		expect(
+			browserCommand(
+				"linux",
+				{ WSL_DISTRO_NAME: "Ubuntu", DISPLAY: ":0" },
+				pairingUrl,
+				{ isOnPath: () => false },
+			),
+		).toEqual({
+			file: "cmd.exe",
+			args: ["/c", "start", '""', `"${pairingUrl}"`],
+		});
+	});
+
 	it("opens nothing on CI or on Linux with no display", () => {
 		expect(browserCommand("darwin", { CI: "true" }, url)).toBeNull();
 		expect(browserCommand("linux", {}, url)).toBeNull();

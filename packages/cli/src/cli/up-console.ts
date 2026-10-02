@@ -8,6 +8,7 @@
  */
 
 import { join } from "node:path";
+import { isOnPath } from "@prismalens/config";
 
 const DEFAULT_LOG_DIR = "logs";
 
@@ -136,6 +137,10 @@ export async function readTelemetryState(
 export const TELEMETRY_CONSENT_NOTICE =
 	"Usage data is off. PrismaLens can count product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
 
+export interface BrowserCommandOptions {
+	isOnPath?: (bin: string, pathEnv?: string) => boolean;
+}
+
 /**
  * The command that opens a URL in the host's browser, or null when there is
  * no browser to open: CI, or Linux with no display (a server, an SSH shell).
@@ -145,11 +150,20 @@ export function browserCommand(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv,
 	url: string,
+	opts: BrowserCommandOptions = {},
 ): { file: string; args: string[] } | null {
 	if (env.CI) return null;
 	if (platform === "darwin") return { file: "open", args: [url] };
 	if (platform === "win32") {
 		return { file: "cmd", args: ["/c", "start", '""', url] };
+	}
+	const isWsl = Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
+	if (isWsl) {
+		const check = opts.isOnPath ?? isOnPath;
+		if (check("wslview", env.PATH)) {
+			return { file: "wslview", args: [url] };
+		}
+		return { file: "cmd.exe", args: ["/c", "start", '""', `"${url}"`] };
 	}
 	if (env.DISPLAY || env.WAYLAND_DISPLAY) {
 		return { file: "xdg-open", args: [url] };
