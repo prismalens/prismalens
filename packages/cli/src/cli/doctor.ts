@@ -247,7 +247,7 @@ export function checkAutoSelection(): Check[] {
 			},
 		];
 	}
-	const model = resolveHarnessModel(selection.harness);
+	const model = resolveHarnessModel(selection.harness, undefined, process.env);
 	return [
 		{
 			name: "Selected harness",
@@ -257,11 +257,13 @@ export function checkAutoSelection(): Check[] {
 		},
 		{
 			name: "Model",
-			pass: model.source === "product-default",
+			pass: model.source === "product-default" || model.source === "env",
 			detail:
-				model.source === "product-default"
-					? `${model.model} (tested default; Settings → Harness → Model overrides it)`
-					: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Harness → Model sets one`,
+				model.source === "env"
+					? `${model.model} (from ${HARNESS_REGISTRY[selection.harness].envModelKey}; Settings → Harness → Model overrides it)`
+					: model.source === "product-default"
+						? `${model.model} (tested default; Settings → Harness → Model overrides it)`
+						: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Harness → Model sets one`,
 			hard: false,
 		},
 	];

@@ -6540,7 +6540,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -7456,7 +7457,8 @@
                                             "enum": [
                                               "operator",
                                               "product-default",
-                                              "harness-default"
+                                              "harness-default",
+                                              "env"
                                             ],
                                             "type": "string"
                                           },
@@ -8391,7 +8393,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -9293,7 +9296,8 @@
                                           "enum": [
                                             "operator",
                                             "product-default",
-                                            "harness-default"
+                                            "harness-default",
+                                            "env"
                                           ],
                                           "type": "string"
                                         },
@@ -10261,7 +10265,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -11531,7 +11536,8 @@
                                             "enum": [
                                               "operator",
                                               "product-default",
-                                              "harness-default"
+                                              "harness-default",
+                                              "env"
                                             ],
                                             "type": "string"
                                           },
@@ -12053,7 +12059,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -13001,7 +13008,8 @@
                                 "enum": [
                                   "operator",
                                   "product-default",
-                                  "harness-default"
+                                  "harness-default",
+                                  "env"
                                 ],
                                 "type": "string"
                               },
@@ -13520,7 +13528,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -24539,6 +24548,28 @@
                           "loginHint": {
                             "type": "string"
                           },
+                          "envModel": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "model": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "model"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -24599,6 +24630,7 @@
                           "defaultModel",
                           "modelVia",
                           "loginHint",
+                          "envModel",
                           "models"
                         ]
                       }
