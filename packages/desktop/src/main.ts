@@ -268,6 +268,15 @@ async function bootWsl(): Promise<void> {
 		});
 	}
 	const plan = planWslLaunch(probe);
+	if (plan.kind !== "attach" && !(await portFree(plan.target.port))) {
+		throw new LaunchRefused(
+			portTakenDialog({
+				port: plan.target.port,
+				holderInstanceId: await portHolder(plan.target),
+				instanceFile: "~/.prismalens/instance.json (in WSL)",
+			}),
+		);
+	}
 	owned = plan.kind === "spawn";
 	if (plan.kind === "spawn") adopt(spawnWsl(wslUp(wsl.distro)));
 	if (plan.kind === "service") await runWsl(wslServiceStart(wsl.distro));
@@ -281,6 +290,10 @@ function spawnWsl(plan: WslRun): ChildProcess {
 		windowsHide: true,
 	});
 	wslPid = null;
+	proc.on("error", (error) => {
+		stderrTail = appendTail(stderrTail, String(error));
+	});
+	proc.stdin?.on("error", () => {});
 	proc.stdout?.on("data", (chunk: Buffer) => {
 		wslPid ??= parseSpawnPid(chunk.toString("utf8"));
 	});
@@ -300,6 +313,7 @@ function runWsl(plan: WslRun): Promise<string> {
 					? reject(new Error(`${error.message}\n${stderr}`.trim()))
 					: resolve(stdout),
 		);
+		proc.stdin?.on("error", () => {});
 		proc.stdin?.end(plan.script);
 	});
 }
