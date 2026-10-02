@@ -50,15 +50,33 @@ export default defineCommand({
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		}
-		const { getAppDataDir } = (await import("@prismalens/config")) as {
+		const { getAppDataDir, readWorkspaceLock } = (await import(
+			"@prismalens/config"
+		)) as {
 			getAppDataDir: () => string;
+			readWorkspaceLock: (dir: string) => { pid: number; port: number } | null;
 		};
 		const dir = resolve(getAppDataDir());
 		const reason = refuseReason(dir);
 		if (reason) {
 			consola.error(reason);
 			process.exit(1);
+			return;
 		}
+
+		const assertUnlocked = (): boolean => {
+			const lock = readWorkspaceLock(dir);
+			if (lock) {
+				consola.error(
+					`PrismaLens is running on this workspace (pid ${lock.pid}, port ${lock.port}). Stop it first.`,
+				);
+				process.exit(1);
+				return false;
+			}
+			return true;
+		};
+
+		if (!assertUnlocked()) return;
 
 		if (!args.yes) {
 			const confirmed = await consola.prompt(
@@ -69,6 +87,7 @@ export default defineCommand({
 				consola.info("Nothing deleted.");
 				return;
 			}
+			if (!assertUnlocked()) return;
 		}
 		rmSync(dir, { recursive: true, force: true });
 		consola.success(`Deleted ${dir}. The next \`pl up\` starts from setup.`);
