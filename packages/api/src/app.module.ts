@@ -117,6 +117,10 @@ const orpcLogger = new Logger({ context: "oRPC" });
 			useFactory: (request: Request) => ({
 				interceptors: [
 					onError((error) => {
+						// Client errors are not server errors; avoid logging them with a stack trace.
+						if (error instanceof ORPCError && error.status < 500) {
+							return;
+						}
 						// Log oRPC errors for debugging
 						orpcLogger.error(`oRPC Error: ${error.message}`, error);
 					}),

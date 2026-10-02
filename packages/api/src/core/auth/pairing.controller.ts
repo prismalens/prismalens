@@ -9,7 +9,7 @@
  * mint another device or revoke one (the non-escalation rule).
  */
 
-import { Controller, UseGuards } from "@nestjs/common";
+import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	ACCESS_SCOPE,
@@ -94,6 +94,8 @@ export class PairingController {
 @UseGuards(MutationThrottleGuard)
 @Controller()
 export class PairingRedeemController {
+	private readonly logger = new Logger(PairingRedeemController.name);
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly instance: InstanceIdentity,
@@ -125,6 +127,7 @@ export class PairingRedeemController {
 					};
 				} catch (error) {
 					if (error instanceof PairingError) {
+						this.logger.warn(error.message);
 						throw new ORPCError("BAD_REQUEST", {
 							message: error.message,
 							data: { reason: error.reason },
