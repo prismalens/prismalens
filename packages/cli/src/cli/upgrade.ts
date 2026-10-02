@@ -14,8 +14,47 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
-import { lockReleased, runAction } from "./service.js";
+import { lockBase } from "./instance-check.js";
+import { installerBinDir, lockReleased, runAction } from "./service.js";
 import { fetchLatestVersion, isNewer, releaseReady } from "./update-notice.js";
+import {
+	awaitTrial,
+	completePendingRestore,
+	finish,
+	readTrial,
+	settleTrial,
+	switchInstallerRuntime,
+	type Trial,
+	takeSnapshot,
+} from "./upgrade-trial.js";
+
+type Config = typeof import("@prismalens/config");
+
+/** How `channel` puts `version` back after a failed trial; a reason when it can't (#766). */
+export function switchBackFor(
+	config: Config,
+	channel: InstallChannel,
+	version: string,
+): () => string | null {
+	return () => {
+		if (channel === "installer") {
+			const binDir = installerBinDir(config);
+			if (!binDir) return "the installer's receipt has no bin_dir";
+			return switchInstallerRuntime({
+				dataDir: config.installerDataDir(),
+				binDir,
+				version,
+			});
+		}
+		if (channel === "npm") {
+			const argv = upgradeArgv("npm", version) as string[];
+			consola.start(`Reinstalling ${version}: ${argv.join(" ")}`);
+			const r = spawnSync(argv[0], argv.slice(1), { stdio: "inherit" });
+			return r.status === 0 ? null : `npm couldn't reinstall ${version}`;
+		}
+		return `${channel} can't reinstall ${version}; install it with the installer or npm`;
+	};
+}
 
 /** argv to run for `channel`, or null when the user has to act (desktop). */
 export function upgradeArgv(
@@ -58,7 +97,7 @@ export default defineCommand({
 	meta: {
 		name: "upgrade",
 		description:
-			"Upgrade PrismaLens the way it was installed (npm, installer, Homebrew or Scoop)",
+			"Upgrade PrismaLens the way it was installed (npm, installer, Homebrew or Scoop). A background service runs the new version on trial and is rolled back, database included, if it doesn't come up",
 	},
 	args: {
 		version: {
@@ -68,6 +107,11 @@ export default defineCommand({
 		check: {
 			type: "boolean",
 			description: "Only say whether a newer version exists",
+		},
+		"trial-seconds": {
+			type: "string",
+			description:
+				"With a background service: how long the new version has to come up before it is rolled back (default 120)",
 		},
 	},
 	async run({ args, cmd }) {
@@ -161,7 +205,57 @@ export default defineCommand({
 			config.serviceOwnsWorkspace(workspace, service);
 		const startService = () =>
 			!viaService || runAction(kind, "start", service.unitPath, uid);
+		const trialMs = Number(args["trial-seconds"] ?? 120) * 1000;
+		if (!(trialMs > 0)) {
+			consola.error("--trial-seconds takes a positive number.");
+			process.exit(1);
+		}
+		const settle = async (trial: Trial) => {
+			const outcome = await settleTrial({
+				workspace,
+				trial,
+				check: () =>
+					awaitTrial({
+						base: lockBase(service as { host?: string; port: number }),
+						instanceId: config.readInstanceFile(workspace)?.instanceId ?? "",
+						version: trial.to,
+						deadlineMs: trialMs,
+					}),
+				stop: () =>
+					runAction(kind as "systemd", "stop", service?.unitPath ?? "", uid),
+				start: startService,
+				switchBack: switchBackFor(
+					config,
+					trial.channel as InstallChannel,
+					trial.from,
+				),
+			});
+			if (outcome.result === "committed") return true;
+			consola.error(
+				outcome.result === "rolled-back"
+					? `${trial.to} didn't come up (${outcome.reason}). The database is restored and ${trial.from} runs again.`
+					: `${trial.to} didn't come up. The database is restored to before the upgrade, but ${outcome.reason}.`,
+			);
+			return false;
+		};
 		if (viaService) {
+			if (completePendingRestore(workspace)) {
+				consola.warn(
+					"Finished restoring the database from an interrupted rollback.",
+				);
+			}
+			const leftover = readTrial(workspace);
+			if (leftover) {
+				consola.warn(
+					`An upgrade from ${leftover.from} to ${leftover.to} didn't finish; checking it first.`,
+				);
+				startService();
+				if (!(await settle(leftover))) process.exit(1);
+				consola.info(
+					"That upgrade is now settled. Run pl upgrade again to continue.",
+				);
+				return;
+			}
 			consola.start("Stopping the background service for the upgrade…");
 			if (!runAction(kind, "stop", service.unitPath, uid)) process.exit(1);
 			await lockReleased(
@@ -177,6 +271,15 @@ export default defineCommand({
 			process.exit(1);
 		}
 
+		// Stopped, so the copy is consistent; the new version migrates only after this (#766).
+		const trial = viaService
+			? takeSnapshot(workspace, {
+					from: current,
+					to: target,
+					channel,
+					startedAt: new Date().toISOString(),
+				})
+			: null;
 		consola.start(
 			`Upgrading ${current} → ${target} with ${channel}: ${argv.join(" ")}`,
 		);
@@ -185,11 +288,22 @@ export default defineCommand({
 			consola.error(
 				`The upgrade command failed${result.error ? `: ${result.error.message}` : ""}. Run it yourself: ${command}`,
 			);
+			if (trial) {
+				finish(workspace, {
+					from: current,
+					to: target,
+					result: "rolled-back",
+					reason: "the upgrade command failed before anything changed",
+					at: new Date().toISOString(),
+				});
+			}
 			startService();
 			process.exit(result.status ?? 1);
 		}
-		if (viaService) {
-			if (!startService()) process.exit(1);
+		if (trial) {
+			consola.start(`Starting ${target} as a trial…`);
+			startService();
+			if (!(await settle(trial))) process.exit(1);
 			consola.success(
 				`Upgraded to ${target}; the background service is running it.`,
 			);

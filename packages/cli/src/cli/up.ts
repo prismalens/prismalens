@@ -33,6 +33,7 @@ import {
 	waitForReady,
 } from "./up-console.js";
 import { updateNotice } from "./update-notice.js";
+import { completePendingRestore } from "./upgrade-trial.js";
 
 const require = createRequire(import.meta.url);
 const READY_TIMEOUT_MS = 60_000;
@@ -153,6 +154,12 @@ export default defineCommand({
 		ensureAppDataDir();
 		const workspaceDir = getAppDataDir();
 		mkdirSync(workspaceDir, { recursive: true });
+		// Before the API opens the database: a rollback cut short finishes first (#766).
+		if (completePendingRestore(workspaceDir)) {
+			consola.warn(
+				"Finished restoring the database from an interrupted upgrade rollback.",
+			);
+		}
 
 		// NO migration code here. The API bootstrap runs the shipped migration
 		// runner (`@prismalens/database/migrator`) before Nest starts, and `pl up`
