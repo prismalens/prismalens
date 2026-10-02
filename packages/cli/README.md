@@ -56,9 +56,9 @@ pl up
 
 | Command | Description |
 | --- | --- |
-| `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473). |
+| `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473); `--tailscale-serve` also publishes it on your tailnet over HTTPS. |
 | `doctor` | Preflight-check the environment: a harness binary on PATH, and its ACP handshake (answers ACP, sign in needed, no answer in 10s, or failed to start). |
-| `pair` | Print a one-time link that pairs another device with this instance, or with `--operator` this machine's own browser. |
+| `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 | `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. |
 | `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. |
