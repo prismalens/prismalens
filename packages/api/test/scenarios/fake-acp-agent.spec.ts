@@ -24,7 +24,7 @@ async function run(
 	for await (const ev of runInvestigation({
 		runId: "11111111-1111-4111-8111-111111111111",
 		context: {
-			alerts: [{ alertname, severity: "critical", labels: {}, annotations: {} }],
+			alerts: [{ alertname, severity: "critical", labels: {}, annotations: {}, startsAt: null }],
 			service: { name: "books" },
 		},
 		harness: "claude-code",

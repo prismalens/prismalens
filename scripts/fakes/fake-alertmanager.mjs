@@ -69,7 +69,8 @@ export async function startFakeAlertmanager(options = {}) {
 				uptime: startedAt.toISOString(),
 			});
 		}
-		if (req.method === "GET" && path === "/-/healthy") return reply(200, "OK");
+		if (req.method === "GET" && (path === "/-/healthy" || path === "/-/ready"))
+			return reply(200, "OK");
 		reply(404, { error: `fake-alertmanager: no route ${req.method} ${path}` });
 	});
 
