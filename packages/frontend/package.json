@@ -9,7 +9,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"start": "node .output/server/index.mjs",
-		"lint": "eslint src",
+		"lint": "biome check src --config-path ../../biome.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:e2e": "playwright test",

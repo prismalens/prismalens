@@ -196,7 +196,7 @@ export class IntegrationsController {
 					const result = await this.integrationsService.testConnection(
 						input.id,
 					);
-					return { success: result.success };
+					return { success: result.success, error: result.error };
 				},
 			),
 
