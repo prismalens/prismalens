@@ -35,7 +35,9 @@ export async function settled(page: Page, timeoutMs = 15_000): Promise<void> {
 		if (open.size > 0) quietSince = Date.now();
 		if (Date.now() > deadline) {
 			throw new Error(
-				`still waiting on ${[...open].map((r) => r.url()).join(", ")}`,
+				`still waiting on ${Array.from(open)
+					.map((r) => r.url())
+					.join(", ")}`,
 			);
 		}
 		await page.waitForTimeout(50);

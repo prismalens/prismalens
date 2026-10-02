@@ -24154,11 +24154,14 @@
                       "type": "string"
                     },
                     "build": {
-                      "enum": [
-                        "release",
-                        "dev"
-                      ],
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "workspaceDir": {
                       "type": "string"
@@ -24900,7 +24903,8 @@
                       ]
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
