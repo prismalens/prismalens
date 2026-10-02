@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { defineBddConfig } from "playwright-bdd";
 import { installFakeAgent } from "../../scripts/fakes/fake-acp-agent.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +102,13 @@ if (!PL_UP) {
 
 const PAIRED_STATE = join(workspaceDir, "paired-state.json");
 
+// Gherkin journeys: `bddgen` compiles e2e/features into specs these projects run.
+const journeysDir = defineBddConfig({
+	features: "e2e/features/*.feature",
+	steps: "e2e/steps/*.ts",
+	outputDir: "e2e/.features-gen",
+});
+
 const baseURL = PL_UP
 	? `http://localhost:${PL_UP_PORT}`
 	: `http://localhost:${FRONTEND_PORT}`;
@@ -162,7 +170,13 @@ export default defineConfig({
 				{
 					// Note: Firefox and WebKit projects are a deliberate follow-up for broader browser coverage.
 					name: "chromium",
-					testIgnore: /pl-up\//,
+					testIgnore: [/pl-up\//, /\.features-gen\//],
+					dependencies: ["pair"],
+					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
+				},
+				{
+					name: "journeys",
+					testDir: journeysDir,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
