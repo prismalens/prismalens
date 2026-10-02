@@ -17,6 +17,12 @@ import {
 	type ProbeOptions,
 	probeInstance,
 } from "./instance-check.js";
+import {
+	ensureServe,
+	removeServe,
+	serveTarget,
+	TailscaleError,
+} from "./tailscale.js";
 
 export default defineCommand({
 	meta: {
@@ -40,6 +46,11 @@ export default defineCommand({
 			description:
 				"A name for the device, shown in Settings until it sends its own",
 		},
+		tailscale: {
+			type: "boolean",
+			description:
+				"A link on this machine's tailnet HTTPS address; sets up `tailscale serve` for the running server if missing",
+		},
 		operator: {
 			type: "boolean",
 			description:
@@ -62,17 +73,45 @@ export default defineCommand({
 			process.exit(1);
 		}
 
-		const { origin, loopback } = resolveOrigin(
-			args.address ? String(args.address) : undefined,
-			lock.port,
-		);
+		if (args.tailscale && args.address) {
+			consola.error("Pass --tailscale or --address, not both.");
+			process.exit(1);
+		}
+		let address = args.address ? String(args.address) : undefined;
+		let createdServe: string | null = null;
+		if (args.tailscale) {
+			try {
+				const target = serveTarget(lock.host, lock.port);
+				const served = ensureServe(target);
+				if (served.created) createdServe = target;
+				if (served.created)
+					consola.info(`Now serving ${served.url} with tailscale serve.`);
+				address = served.url;
+			} catch (error) {
+				if (!(error instanceof TailscaleError)) throw error;
+				consola.error(error.message);
+				process.exit(1);
+			}
+		}
+		const { origin, loopback } = resolveOrigin(address, lock.port);
 		const refusal = await pairRefusal({
 			lock,
 			instanceId: readInstanceFile(workspaceDir)?.instanceId ?? null,
-			address: args.address ? origin : null,
+			address: address ? origin : null,
 		});
 		if (refusal) {
 			consola.error(refusal);
+			if (args.tailscale) {
+				consola.info("Or restart it with `pl up --tailscale-serve`.");
+			}
+			if (createdServe) {
+				try {
+					removeServe(createdServe);
+				} catch (error) {
+					if (!(error instanceof TailscaleError)) throw error;
+					consola.warn(error.message);
+				}
+			}
 			process.exit(1);
 		}
 
