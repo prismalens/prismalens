@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { SIDEBAR_BESIDE, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
+import { LIVE_REFRESH_MS } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
@@ -59,13 +60,13 @@ function SidebarBody({ pathname }: { pathname: string }) {
 	const incidents = useQuery({
 		...orpc.incidents.getStats.queryOptions({ input: {} }),
 		enabled: signedIn,
-		refetchInterval: 30_000,
+		refetchInterval: LIVE_REFRESH_MS,
 	});
 	const about = useAbout(signedIn);
 	const alerts = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
 		enabled: signedIn,
-		refetchInterval: 30_000,
+		refetchInterval: LIVE_REFRESH_MS,
 	});
 	const needsYou = incidents.data
 		? incidents.data.attention.failed_run +
