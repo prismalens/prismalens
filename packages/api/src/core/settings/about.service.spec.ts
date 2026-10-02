@@ -74,6 +74,17 @@ describe("AboutService", () => {
 		expect(a.channel).toBe("installer");
 		expect(a.uninstallCommand).toContain("--uninstall");
 	});
+
+	it("exposes the build commit sha or null on the about endpoint", async () => {
+		const a = await about({}, github(false));
+		expect("build" in a).toBe(true);
+		expect(a.build === null || typeof a.build === "string").toBe(true);
+
+		const service = new AboutService();
+		(service as unknown as { build: string | null }).build = "ccf3624";
+		const custom = await service.get();
+		expect(custom.build).toBe("ccf3624");
+	});
 });
 
 describe("latestBackup", () => {

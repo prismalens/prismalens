@@ -300,7 +300,7 @@ export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
 export const AboutSchema = z.object({
 	version: z.string(),
 	channel: z.enum(["npm", "installer", "homebrew", "scoop", "electron"]),
-	build: z.enum(["release", "dev"]),
+	build: z.string().nullable(),
 	workspaceDir: z.string(),
 	/** Newest `prismalens.db.bak-*` in the workspace, made before a migration. */
 	latestBackup: z.string().nullable(),
