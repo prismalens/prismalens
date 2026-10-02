@@ -116,6 +116,8 @@ const ROOT = resolve(__dirname, "..");
 const CLI_DIR = join(ROOT, "packages", "cli");
 const STAGING = join(CLI_DIR, ".pack-staging");
 
+const NOTICES = "THIRD_PARTY_NOTICES.txt";
+
 /** The node floor of the published package. See ENGINES below. */
 const ENGINES_NODE = ">=24";
 
@@ -518,6 +520,9 @@ function assertTarball(tarball, copiedNames) {
 				"`pl up` cannot create a database",
 		);
 	}
+	if (!has((e) => e === `package/${NOTICES}`)) {
+		fail(`the tarball has no ${NOTICES}`);
+	}
 	if (
 		!has((e) => e === "package/node_modules/@prismalens/api/dist/src/main.js")
 	) {
@@ -631,6 +636,10 @@ export function packCli() {
 		const from = join(CLI_DIR, extra);
 		if (existsSync(from)) cpSync(from, join(STAGING, extra));
 	}
+	// Licences of the third-party code the SPA bundles, written by its Vite build.
+	const notices = join(ROOT, "packages", "frontend", "dist", "client", NOTICES);
+	if (!existsSync(notices)) fail(`${relative(ROOT, notices)} is missing`);
+	cpSync(notices, join(STAGING, NOTICES));
 
 	const stagedModules = join(STAGING, "node_modules", "@prismalens");
 	mkdirSync(stagedModules, { recursive: true });
@@ -762,7 +771,7 @@ export function packCli() {
 		...cliPkg.manifest,
 		dependencies,
 		bundleDependencies: [...copied].sort(),
-		files: ["dist", "NOTICE", "node_modules/@prismalens"],
+		files: ["dist", "NOTICE", NOTICES, "node_modules/@prismalens"],
 		engines: {
 			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
 			// `@prismalens/database` both declare >=24 and are now IN this tarball.

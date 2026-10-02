@@ -6,6 +6,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
  * Overridable so an e2e run (or a second worktree) can take a free port instead
@@ -57,6 +58,7 @@ export default defineConfig({
 		}),
 		viteReact(),
 		tailwindcss(),
+		thirdPartyNotices(),
 	],
 	// Loaded only by the incidents board route; listed so a cold dev server
 	// does not discover it mid-session and reload the page (#743).
