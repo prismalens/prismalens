@@ -135,7 +135,7 @@ function PairAnother() {
 						id="pair-origin"
 						value={origin}
 						onChange={(e) => setOrigin(e.target.value)}
-						placeholder="http://192.168.1.5:6473"
+						placeholder="https://box.tail1234.ts.net"
 					/>
 				</div>
 				<div className="space-y-1">
@@ -156,8 +156,8 @@ function PairAnother() {
 			</form>
 			{loopback && (
 				<p className="text-meta text-muted-foreground">
-					A loopback address reaches only this machine. Use a LAN IP or a
-					tailnet name for another device.
+					A loopback address reaches only this machine. For another device, use
+					the tailnet address from <code>pl up --tailscale-serve</code>.
 				</p>
 			)}
 			{create.isError && <MutationError error={create.error} />}
