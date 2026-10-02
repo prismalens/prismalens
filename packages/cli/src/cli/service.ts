@@ -37,6 +37,7 @@ import {
 	steps,
 } from "./service-unit.js";
 import { healthUrl, waitForReady } from "./up-console.js";
+import { fetchInstance, type Outcome, readOutcome } from "./upgrade-trial.js";
 
 type Config = typeof import("@prismalens/config");
 
@@ -102,7 +103,7 @@ export function runAction(
 	return true;
 }
 
-function installerBinDir(config: Config): string | null {
+export function installerBinDir(config: Config): string | null {
 	const receipt = safeRead(join(config.installerDataDir(), "receipt"));
 	return /^bin_dir=(.+)$/m.exec(receipt)?.[1] ?? null;
 }
@@ -291,6 +292,17 @@ export function runningLine(
 	return `no: ${describeOutcome(identity, base).trim()}`;
 }
 
+/** The last `pl upgrade`'s outcome, for `pl service status` (#766). */
+export function upgradeLine(o: Outcome): string {
+	const when = o.at.slice(0, 16).replace("T", " ");
+	if (o.result === "committed") return `${o.from} → ${o.to} on ${when}`;
+	const what =
+		o.result === "rolled-back"
+			? `rolled back to ${o.from}`
+			: "database restored";
+	return `${o.from} → ${o.to} ${what} on ${when}: ${o.reason ?? "no reason recorded"}`;
+}
+
 const status = defineCommand({
 	meta: {
 		name: "status",
@@ -318,12 +330,18 @@ const status = defineCommand({
 			instanceId: safeInstanceId(config, service.workspace),
 		});
 		const healthy = identity.kind === "ok";
+		const info = healthy ? await fetchInstance(base) : null;
+		const outcome = readOutcome(service.workspace);
 		consola.log(
 			[
 				`Unit:      ${service.unitPath}`,
 				`Workspace: ${service.workspace}`,
 				`Port:      ${service.port}`,
 				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null)}`,
+				...(info && typeof info !== "string"
+					? [`Version:   ${info.version ?? "unknown"}`]
+					: []),
+				...(outcome ? [`Upgrade:   ${upgradeLine(outcome)}`] : []),
 				`Log:       ${join(service.workspace, "logs", "service.log")}`,
 			].join("\n"),
 		);
