@@ -194,16 +194,30 @@ export async function authenticateDevice(
 	token: string,
 	now: Date = new Date(),
 ): Promise<DeviceRecord | null> {
-	if (!token) return null;
+	const result = await authenticateDeviceToken(store, token, now);
+	return result.device;
+}
+
+/** Authenticates a device token, distinguishing revoked devices from unknown tokens. */
+export async function authenticateDeviceToken(
+	store: PairingStore,
+	token: string,
+	now: Date = new Date(),
+): Promise<
+	| { device: DeviceRecord; reason?: never }
+	| { device: null; reason?: "revoked" }
+> {
+	if (!token) return { device: null };
 	const device = await store.findDeviceByHash(hashToken(token));
-	if (!device || device.revokedAt) return null;
+	if (!device) return { device: null };
+	if (device.revokedAt) return { device: null, reason: "revoked" };
 	if (
 		!device.lastSeenAt ||
 		now.getTime() - device.lastSeenAt.getTime() > TOUCH_INTERVAL_MS
 	) {
 		await store.touchDevice(device.id, now);
 	}
-	return device;
+	return { device };
 }
 
 /**

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	ACCESS_SCOPE,
 	authenticateDevice,
+	authenticateDeviceToken,
 	buildPairingUrl,
 	createPairingLink,
 	DEVICE_SCOPES,
@@ -370,6 +371,26 @@ describe("authenticateDevice", () => {
 		// A revoked device (revokedAt set) returns null
 		await store.revokeDevice(redeemed.device.id, new Date());
 		expect(await authenticateDevice(store, redeemed.token)).toBeNull();
+	});
+
+	it("authenticateDeviceToken returns reason revoked when device was revoked", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		const redeemed = await redeemPairingLink(store, {
+			token: link.token,
+			name: "Dev",
+		});
+
+		const active = await authenticateDeviceToken(store, redeemed.token);
+		expect(active.device).not.toBeNull();
+		expect(active.device?.id).toBe(redeemed.device.id);
+
+		await store.revokeDevice(redeemed.device.id, new Date());
+		const revoked = await authenticateDeviceToken(store, redeemed.token);
+		expect(revoked).toEqual({ device: null, reason: "revoked" });
+
+		const unknown = await authenticateDeviceToken(store, "unknown-token");
+		expect(unknown).toEqual({ device: null });
 	});
 
 	it("lastSeenAt is written on first use and NOT rewritten when the last touch is under a minute old (pass now)", async () => {

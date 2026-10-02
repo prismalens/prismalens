@@ -25014,6 +25014,12 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "reason": {
+                      "enum": [
+                        "revoked"
+                      ],
+                      "type": "string"
                     }
                   },
                   "required": [
