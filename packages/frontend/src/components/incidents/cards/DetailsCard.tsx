@@ -51,6 +51,25 @@ export function DetailsCard() {
 		? `${incident.assignedTo.firstName} ${incident.assignedTo.lastName}`
 		: "Unassigned";
 
+	const serviceIntegrations = (
+		incident.service as
+			| (typeof incident.service & {
+					integrations?: Array<{
+						category?: string;
+						templateId?: string;
+						status?: string;
+					}>;
+			  })
+			| undefined
+	)?.integrations;
+	const showMetricsNotConnected =
+		!!serviceIntegrations &&
+		!serviceIntegrations.some(
+			(i) =>
+				(i.category === "metrics" || i.templateId === "prometheus") &&
+				i.status !== "ERROR",
+		);
+
 	return (
 		<Card testId="details-card">
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-muted-foreground">
@@ -62,7 +81,7 @@ export function DetailsCard() {
 				<span className="tabular-nums">
 					{openNow ? "Open" : "Resolved in"} {formatDuration(duration)}
 				</span>
-				<span>Metrics not connected</span>
+				{showMetricsNotConnected && <span>Metrics not connected</span>}
 				<Button
 					variant="ghost"
 					size="xs"
