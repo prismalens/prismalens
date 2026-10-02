@@ -146,13 +146,15 @@ export function channelOfPath(path: string, contents = ""): string {
 export function checkInstalls(
 	path = process.env.PATH ?? "",
 	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+	exists: (p: string) => boolean = existsSync,
 ): Check {
 	const names = platform === "win32" ? ["pl.cmd", "pl.exe"] : ["pl"];
 	const seen = new Map<string, string>();
 	for (const dir of path.split(delimiter).filter(Boolean)) {
 		for (const name of names) {
 			const candidate = join(dir, name);
-			if (!existsSync(candidate)) continue;
+			if (!exists(candidate)) continue;
 			let real = candidate;
 			try {
 				real = realpathSync(candidate);
@@ -176,15 +178,32 @@ export function checkInstalls(
 		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
 		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;
 	});
+	const isWsl = Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
+	const wslHints: string[] = [];
+	if (isWsl) {
+		for (const p of seen.keys()) {
+			if (/^\/mnt\/[a-zA-Z](\/|$)/.test(p)) {
+				wslHints.push(
+					`${p} is the Windows install; it can't run inside WSL. Install PrismaLens inside this distro.`,
+				);
+			}
+		}
+	}
+	const baseDetail =
+		rows.length === 0
+			? `this one (${cliVersion()}) is not on PATH`
+			: rows.length === 1
+				? rows[0]
+				: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`;
+	const detail =
+		wslHints.length > 0
+			? `${baseDetail.replace(/\.?$/, ".")} ${wslHints.join(" ")}`
+			: baseDetail;
+
 	return {
 		name: `PrismaLens ${cliVersion()} (${installChannel()})`,
-		pass: rows.length <= 1,
-		detail:
-			rows.length === 0
-				? `this one (${cliVersion()}) is not on PATH`
-				: rows.length === 1
-					? rows[0]
-					: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`,
+		pass: rows.length <= 1 && wslHints.length === 0,
+		detail,
 		hard: false,
 	};
 }
