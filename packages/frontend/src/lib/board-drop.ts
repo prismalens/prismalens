@@ -22,7 +22,7 @@ export interface DropInput {
 	live: boolean;
 	/** The incident's status admits Resolve. */
 	canResolve: boolean;
-	/** The incident's status admits Reopen (resolved, not closed). */
+	/** The incident's status admits Reopen (resolved or closed, walk u18). */
 	canReopen?: boolean;
 }
 
@@ -46,9 +46,6 @@ export function dropAction({
 		// Concluded is where an open incident with no live run sits, so a
 		// resolved one (in Needs you, awaiting close) lands there reopened.
 		if (canReopen) return { kind: "reopen" };
-		if (from === "resolved") {
-			return { kind: "none", reason: "A closed incident stays closed" };
-		}
 		return {
 			kind: "none",
 			reason: "Concluded follows from a finished investigation",
