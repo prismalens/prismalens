@@ -8,6 +8,20 @@ import {
 	OnModuleInit,
 } from "@nestjs/common";
 import { prisma } from "@prismalens/database";
+import { liveChanges } from "../live/live-changes.js";
+
+/** Every write is noted for the live change stream after it succeeds (walk f27). */
+const db = prisma.$extends({
+	query: {
+		$allModels: {
+			async $allOperations({ model, operation, args, query }) {
+				const result = await query(args);
+				liveChanges.noteWrite(model, operation);
+				return result;
+			},
+		},
+	},
+});
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
@@ -23,102 +37,102 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	get $transaction() {
-		return prisma.$transaction.bind(prisma);
+		return db.$transaction.bind(db);
 	}
 
 	// Forward all Prisma model access
 	get user() {
-		return prisma.user;
+		return db.user;
 	}
 
 	get alert() {
-		return prisma.alert;
+		return db.alert;
 	}
 
 	get alertSourceAlert() {
-		return prisma.alertSourceAlert;
+		return db.alertSourceAlert;
 	}
 
 	get recommendation() {
-		return prisma.recommendation;
+		return db.recommendation;
 	}
 
 	get investigation() {
-		return prisma.investigation;
+		return db.investigation;
 	}
 
 	get investigationEvent() {
-		return prisma.investigationEvent;
+		return db.investigationEvent;
 	}
 
 	/** The dispatch JobStore's table (claim / heartbeat / reclaim). */
 	get job() {
-		return prisma.job;
+		return db.job;
 	}
 
 	get incident() {
-		return prisma.incident;
+		return db.incident;
 	}
 
 	get service() {
-		return prisma.service;
+		return db.service;
 	}
 
 	get integration() {
-		return prisma.integration;
+		return db.integration;
 	}
 
 	get connection() {
-		return prisma.connection;
+		return db.connection;
 	}
 
 	get serviceIntegration() {
-		return prisma.serviceIntegration;
+		return db.serviceIntegration;
 	}
 
 	get event() {
-		return prisma.event;
+		return db.event;
 	}
 
 	get timelineEntry() {
-		return prisma.timelineEntry;
+		return db.timelineEntry;
 	}
 
 	get serviceDependency() {
-		return prisma.serviceDependency;
+		return db.serviceDependency;
 	}
 
 	get setting() {
-		return prisma.setting;
+		return db.setting;
 	}
 
 	get changeEvent() {
-		return prisma.changeEvent;
+		return db.changeEvent;
 	}
 
 	get repository() {
-		return prisma.repository;
+		return db.repository;
 	}
 
 	get serviceRepository() {
-		return prisma.serviceRepository;
+		return db.serviceRepository;
 	}
 
 	get incidentSimilarity() {
-		return prisma.incidentSimilarity;
+		return db.incidentSimilarity;
 	}
 
 	// Device pairing (ADR 0004 §8)
 	get pairingLink() {
-		return prisma.pairingLink;
+		return db.pairingLink;
 	}
 
 	get deviceSession() {
-		return prisma.deviceSession;
+		return db.deviceSession;
 	}
 
 	get verification() {
-		return prisma.verification;
+		return db.verification;
 	}
 
 	async onModuleInit(): Promise<void> {

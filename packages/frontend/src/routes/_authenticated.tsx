@@ -17,6 +17,7 @@ import { useCallback, useState } from "react";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
+import { useLiveChanges } from "@/lib/api/live-refresh";
 
 export const Route = createFileRoute("/_authenticated")({
 	ssr: false,
@@ -32,6 +33,7 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
 	const [helpOpen, setHelpOpen] = useState(false);
 	useGlobalShortcuts(useCallback(() => setHelpOpen(true), []));
+	useLiveChanges();
 	return (
 		<>
 			<Outlet />

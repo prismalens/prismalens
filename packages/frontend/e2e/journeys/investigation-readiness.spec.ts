@@ -3,6 +3,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { settled } from "./settled";
 
 /**
  * #521 — one readiness verdict for the investigation affordance.
@@ -214,12 +215,12 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
@@ -228,7 +229,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 		await expect(boxInvestigateButton(page)).toBeDisabled();
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
@@ -236,6 +237,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 });

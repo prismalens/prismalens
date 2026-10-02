@@ -13,6 +13,7 @@ import {
 	serveInvestigationAs,
 	setTheme,
 } from "./live-stream-fixtures";
+import { settled } from "./settled";
 
 /**
  * #743 — the incident: a band and a run strip that never scroll, a page of
@@ -107,7 +108,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			"Investigate again",
 		);
 
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Read the report: the document on its own route, band and strip still pinned.
 		await page.getByTestId("conclusion-read-report").click();
@@ -141,11 +142,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
 		await page.getByTestId("conversation-view-transcript").click();
 
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		await setTheme(page, "dark");
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 
 	test("the incident tabs: every tab in place, and Esc walks back to the board", async ({
@@ -200,7 +201,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",
 		);
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 
 	test("error — a failed run", async ({ page }) => {
@@ -218,7 +219,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		);
 		await setTheme(page, "light");
 		await expect(page.getByTestId("run-card")).toBeVisible();
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		await page.getByTestId("run-card-open-conversation").click();
 		await expect(page.getByTestId("transcript-end")).toContainText(

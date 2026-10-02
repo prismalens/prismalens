@@ -65,6 +65,7 @@ declare module "@orpc/nest" {
 
 import { AuthGuard, AuthModule } from "./core/auth/index.js";
 import { WorkspaceLockShutdownService } from "./core/lifecycle/workspace-lock-shutdown.service.js";
+import { LiveModule } from "./core/live/live.module.js";
 // Core modules
 import { PrismaModule } from "./core/prisma/prisma.module.js";
 import { SettingsModule } from "./core/settings/settings.module.js";
@@ -159,6 +160,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		// Infrastructure
 		HealthModule,
 		DispatchModule,
+		LiveModule, // change hints for open browsers (walk f27)
 
 		// Single-origin SPA serving (issue #237). `pl up` runs ONE process on ONE
 		// port, so the API also serves the built frontend — there is no Caddy and
