@@ -155,6 +155,11 @@ const install = defineCommand({
 			description: "Port to listen on (default: the workspace's port)",
 		},
 		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
+		"tailscale-serve": {
+			type: "boolean",
+			description:
+				"Publish the service on your tailnet over HTTPS with `tailscale serve`, on every start",
+		},
 		workspace: {
 			type: "string",
 			description:
@@ -222,6 +227,7 @@ const install = defineCommand({
 			host,
 			path: servicePath(process.env.PATH ?? "", process.execPath),
 			env: process.env,
+			tailscaleServe: Boolean(args["tailscale-serve"]),
 		});
 		mkdirSync(dirname(unitPath), { recursive: true });
 		mkdirSync(dirname(plan.logPath), { recursive: true });

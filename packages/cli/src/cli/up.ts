@@ -21,6 +21,13 @@ import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import {
+	ensureServe,
+	serveTarget,
+	TailscaleError,
+	tailnetHostname,
+	withAllowedHost,
+} from "./tailscale.js";
+import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
@@ -112,6 +119,11 @@ export default defineCommand({
 			description:
 				"Open this machine's browser on the startup link (--no-open prints it only)",
 		},
+		"tailscale-serve": {
+			type: "boolean",
+			description:
+				"Publish this run on your tailnet over HTTPS with `tailscale serve` and allow its https://<machine>.<tailnet>.ts.net name",
+		},
 		telemetry: {
 			type: "string",
 			description:
@@ -176,6 +188,27 @@ export default defineCommand({
 			resolvePort(process.env, workspaceDir),
 		);
 		const url = displayUrl(bind);
+		let tailnetUrl: string | null = null;
+		if (args["tailscale-serve"]) {
+			if (bind.protocol === "https") {
+				consola.error(
+					"--tailscale-serve proxies plain HTTP; drop the TLS settings for this run.",
+				);
+				process.exit(1);
+			}
+			try {
+				// Allowlisted before the API reads its env, or the tailnet name gets 403s (#765).
+				process.env.PRISMALENS_ALLOWED_HOSTS = withAllowedHost(
+					process.env.PRISMALENS_ALLOWED_HOSTS,
+					tailnetHostname(),
+				);
+				tailnetUrl = ensureServe(serveTarget(bind.host, bind.port)).url;
+			} catch (error) {
+				if (!(error instanceof TailscaleError)) throw error;
+				consola.error(error.message);
+				process.exit(1);
+			}
+		}
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Logs: ${logDir}`);
 		if (process.env.PRISMALENS_LOG_CONSOLE === "verbose") {
@@ -213,6 +246,10 @@ export default defineCommand({
 		});
 		if (ready) {
 			consola.success(`PrismaLens is ready at ${url}`);
+			if (tailnetUrl) {
+				consola.success(`On your tailnet: ${tailnetUrl}`);
+				consola.info("Pair a device there with `pl pair --tailscale`.");
+			}
 			const { serviceOwnsWorkspace } = await import("@prismalens/config");
 			const hint = serviceHint({
 				platform: process.platform,

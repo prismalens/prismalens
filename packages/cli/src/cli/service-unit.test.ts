@@ -33,6 +33,17 @@ describe("buildPlan", () => {
 		});
 		expect(plan.logPath).toBe("/home/u/.prismalens/logs/service.log");
 	});
+
+	it("runs pl up --tailscale-serve when installed with it (#765)", () => {
+		const served = buildPlan({
+			launcher: "/pl",
+			workspace: "/w",
+			port: 1,
+			path: "/bin",
+			tailscaleServe: true,
+		});
+		expect(served.program).toEqual(["/pl", "up", "--no-open", "--tailscale-serve"]);
+	});
 });
 
 describe("resolveLauncher", () => {

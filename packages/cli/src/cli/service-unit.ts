@@ -37,6 +37,7 @@ export function buildPlan(input: {
 	host?: string;
 	path: string;
 	env?: NodeJS.ProcessEnv;
+	tailscaleServe?: boolean;
 }): ServicePlan {
 	const env: Record<string, string> = {
 		PATH: input.path,
@@ -51,7 +52,12 @@ export function buildPlan(input: {
 		if (value) env[key] = value;
 	}
 	return {
-		program: [input.launcher, "up", "--no-open"],
+		program: [
+			input.launcher,
+			"up",
+			"--no-open",
+			...(input.tailscaleServe ? ["--tailscale-serve"] : []),
+		],
 		env,
 		logPath: join(input.workspace, "logs", "service.log"),
 	};
