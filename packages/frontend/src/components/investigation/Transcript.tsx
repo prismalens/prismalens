@@ -4,7 +4,6 @@
 import { ArrowDown, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CardLink } from "@/components/incidents/cards/Card";
-import { AgentMarkdown } from "@/components/shared/AgentMarkdown";
 import { Mono } from "@/components/shared/Mono";
 import {
 	type ChipTone,
@@ -126,9 +125,12 @@ function TranscriptRow({
 	switch (item.kind) {
 		case "prose":
 			return (
-				<div className={ENTER} data-testid="transcript-prose">
-					<AgentMarkdown text={item.text} className="text-record" />
-				</div>
+				<p
+					className={cn("whitespace-pre-wrap text-record", ENTER)}
+					data-testid="transcript-prose"
+				>
+					{item.text}
+				</p>
 			);
 		case "line":
 			return (
