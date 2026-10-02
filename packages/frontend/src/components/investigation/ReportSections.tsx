@@ -13,7 +13,7 @@ import {
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Check } from "lucide-react";
-
+import { InlineMarkdown } from "@/components/shared/AgentMarkdown";
 import { Mono } from "@/components/shared/Mono";
 import { ProvenanceStamp } from "@/components/shared/ProvenanceStamp";
 import { RecordSection } from "@/components/shared/RecordSection";
@@ -107,7 +107,7 @@ function CulpritRow({ culprit }: { culprit: Culprit }) {
 			</div>
 			<div>
 				<dt className="text-meta text-muted-foreground">Mechanism</dt>
-				<dd>{mechanism ?? "—"}</dd>
+				<dd>{mechanism ? <InlineMarkdown text={mechanism} /> : "—"}</dd>
 			</div>
 		</dl>
 	);
@@ -144,7 +144,7 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 			{investigation.rootCause ? (
 				<div className="rounded-md border border-primary/30 bg-primary/8 p-4">
 					<p className="text-base font-medium leading-snug">
-						{investigation.rootCause}
+						<InlineMarkdown text={investigation.rootCause} />
 					</p>
 					<div className="mt-2 flex flex-wrap items-center gap-2">
 						{investigation.rootCauseCategory && (
@@ -200,7 +200,9 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 								</Mono>
 								<div className="min-w-0 flex-1">
 									<div className="flex flex-wrap items-center gap-2">
-										<span className="font-medium">{step.title}</span>
+										<span className="font-medium">
+											<InlineMarkdown text={step.title} />
+										</span>
 										{step.priority && (
 											<PriorityBadge priority={step.priority} />
 										)}
@@ -208,7 +210,9 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 											not executed by PrismaLens
 										</span>
 									</div>
-									<p className="text-muted-foreground">{step.detail}</p>
+									<p className="text-muted-foreground">
+										<InlineMarkdown text={step.detail} />
+									</p>
 								</div>
 							</li>
 						))}
@@ -249,7 +253,7 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 						>
 							<div className="flex items-start justify-between gap-3">
 								<p className="text-record font-medium">
-									{hypothesis.statement}
+									<InlineMarkdown text={hypothesis.statement} />
 								</p>
 								<StateChip tone={hypothesisStatusTone(hypothesis.status)}>
 									{HYPOTHESIS_STATUS_LABEL[hypothesis.status]}
@@ -265,7 +269,9 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 											<Mono className="text-meta uppercase text-foreground/70">
 												{evidence.direction}
 											</Mono>
-											<span>{evidence.observation}</span>
+											<span>
+												<InlineMarkdown text={evidence.observation} />
+											</span>
 											<Mono className="text-meta">{evidence.source}</Mono>
 										</li>
 									))}
@@ -286,10 +292,12 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 							<div className="flex flex-wrap items-baseline gap-2">
 								<StateChip tone="neutral">ruled out</StateChip>
 								<p className="text-record font-medium text-foreground/80">
-									{item.statement}
+									<InlineMarkdown text={item.statement} />
 								</p>
 							</div>
-							<p className="mt-1 text-record">{item.why}</p>
+							<p className="mt-1 text-record">
+								<InlineMarkdown text={item.why} />
+							</p>
 							{item.evidence.length > 0 && (
 								<ul className="mt-2 space-y-1" data-testid="ruled-out-evidence">
 									{item.evidence.map((ev, j) => (
@@ -298,7 +306,9 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 											className="flex flex-wrap items-baseline gap-x-2 text-meta"
 										>
 											<Mono>{ev.source}</Mono>
-											<span>{ev.observation}</span>
+											<span>
+												<InlineMarkdown text={ev.observation} />
+											</span>
 											<StateChip
 												tone={evidenceStatusTone(ev.status)}
 												className="h-4"
@@ -328,7 +338,9 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 								<StateChip tone="neutral">
 									{change.kind === "change_event" ? "change" : change.kind}
 								</StateChip>
-								<span className="font-medium">{change.title}</span>
+								<span className="font-medium">
+									<InlineMarkdown text={change.title} />
+								</span>
 								<Mono className="text-meta text-muted-foreground">
 									{change.source}
 									{change.serviceName ? ` · ${change.serviceName}` : ""} ·{" "}
@@ -402,7 +414,7 @@ export function SimilarIncidentRow({
 					<Mono className="mr-1 text-muted-foreground">
 						INC-{similar.incidentNumber}
 					</Mono>
-					{similar.title}
+					<InlineMarkdown text={similar.title} />
 				</Link>
 			</div>
 			<div className="flex flex-wrap gap-1">
@@ -415,7 +427,7 @@ export function SimilarIncidentRow({
 			{similar.actualCause && (
 				<p className="text-record">
 					<span className="text-muted-foreground">Actual cause: </span>
-					{similar.actualCause}
+					<InlineMarkdown text={similar.actualCause} />
 				</p>
 			)}
 		</li>

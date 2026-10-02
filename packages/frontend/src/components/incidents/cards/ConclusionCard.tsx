@@ -3,6 +3,7 @@
 
 import { HYPOTHESIS_STATUS_LABEL } from "@prismalens/contracts";
 import { FidelityBadge } from "@/components/investigation/ReportSections";
+import { InlineMarkdown } from "@/components/shared/AgentMarkdown";
 import { StateChip } from "@/components/shared/StateChip";
 import { hypothesisStatusTone } from "@/lib/state-tone";
 import { useIncidentRecord } from "../record-context";
@@ -25,7 +26,7 @@ export function ConclusionCard() {
 								{incident.actualCauseCategory}:{" "}
 							</span>
 						)}
-						{cause}
+						<InlineMarkdown text={cause} />
 					</p>
 				</Card>
 			)}
@@ -82,7 +83,7 @@ function AgentConclusion() {
 						{HYPOTHESIS_STATUS_LABEL[top.status]}
 					</StateChip>
 					<span className="min-w-0 flex-1 truncate" title={top.statement}>
-						{top.statement}
+						<InlineMarkdown text={top.statement} />
 					</span>
 					<span className="shrink-0 text-muted-foreground tabular-nums">
 						{top.evidence.length} evidence
