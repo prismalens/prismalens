@@ -16,7 +16,7 @@ import { LiveSlot } from "@/components/shared/LiveSlot";
 import { StateChip } from "@/components/shared/StateChip";
 import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { LIVE_REFRESH_MS } from "@/lib/api/live-refresh";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertStatusTone, severityTone } from "@/lib/state-tone";
 
@@ -29,11 +29,11 @@ function AlertsOverview() {
 	const { search, listInput } = useAlertWindow();
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const { data: list, isLoading } = useQuery({
 		...orpc.alerts.list.queryOptions({ input: listInput }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const showStats = search.view === "stats";
 	// Below `lg` the list is the page, so there is nothing to land on.

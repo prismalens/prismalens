@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
-import { LIVE_REFRESH_MS } from "@/lib/api/live-refresh";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor } from "@/lib/incident-attention";
 import {
@@ -116,11 +116,11 @@ export function IncidentListPane({
 
 	const { data, isLoading, error } = useQuery({
 		...orpc.incidents.list.queryOptions({ input: listInput }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const { data: stats } = useQuery({
 		...orpc.incidents.getStats.queryOptions({ input: {} }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const nothingYet = stats?.total === 0;
 	const incidents = data?.data ?? [];

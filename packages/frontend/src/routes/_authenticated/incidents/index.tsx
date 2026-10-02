@@ -25,7 +25,7 @@ import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { LIVE_REFRESH_MS } from "@/lib/api/live-refresh";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor } from "@/lib/incident-attention";
 import type { IncidentsSearch } from "./route";
@@ -59,7 +59,7 @@ function IncidentsLanding() {
 		error: listError,
 	} = useQuery({
 		...orpc.incidents.list.queryOptions({ input: listInput }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const keep = {
 		status: search.status,
@@ -276,7 +276,7 @@ function AnalyticsView({
 	const navigate = useNavigate();
 	const stats = useQuery({
 		...orpc.incidents.getStats.queryOptions({ input }),
-		refetchInterval: LIVE_REFRESH_MS,
+		refetchInterval: useLiveRefreshInterval(),
 	});
 	const windowEmpty = listed && loaded.length === 0;
 	const chartDays =
