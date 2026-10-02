@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ago, useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { formatIncidentId } from "@/lib/incident-board";
 import { incidentStatusTone } from "@/lib/state-tone";
 
 export interface IncidentStateBandProps {
@@ -128,7 +129,7 @@ export function IncidentStateBand({
 				</Link>
 			)}
 			<Mono className="shrink-0 text-meta text-muted-foreground">
-				INC-{incident.number}
+				{formatIncidentId(incident.number)}
 			</Mono>
 			<span
 				role="img"

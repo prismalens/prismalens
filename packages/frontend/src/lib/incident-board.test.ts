@@ -5,6 +5,7 @@ import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	boardColumn,
+	formatIncidentId,
 	headlineAddsInfo,
 	rowGlyph,
 	incidentHeadline,
@@ -221,5 +222,13 @@ describe("rowGlyph", () => {
 		);
 		expect(rowGlyph(incident("resolved"))).toBe("ended");
 		expect(rowGlyph(incident("closed"))).toBe("ended");
+	});
+});
+
+describe("formatIncidentId", () => {
+	it("formats the incident number with the INC- prefix", () => {
+		expect(formatIncidentId(2)).toBe("INC-2");
+		expect(formatIncidentId(6)).toBe("INC-6");
+		expect(formatIncidentId(142)).toBe("INC-142");
 	});
 });

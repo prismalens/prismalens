@@ -22,6 +22,11 @@ export const BOARD_COLUMNS: { id: BoardColumn; label: string }[] = [
 	{ id: "resolved", label: "Resolved" },
 ];
 
+/** Formats an incident identifier, e.g. "INC-42". */
+export function formatIncidentId(number: number): string {
+	return `INC-${number}`;
+}
+
 type LatestRun = NonNullable<IncidentWithRelations["investigations"]>[number];
 
 export function latestRun(incident: IncidentWithRelations): LatestRun | null {

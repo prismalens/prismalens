@@ -58,6 +58,7 @@ import {
 	BOARD_COLUMNS,
 	type BoardColumn,
 	boardColumn,
+	formatIncidentId,
 	headlineAddsInfo,
 	incidentHeadline,
 	latestRun,
@@ -603,7 +604,7 @@ function DraggableCard({
 	);
 }
 
-function BoardCardBody({
+export function BoardCardBody({
 	incident,
 	column,
 	now,
@@ -632,6 +633,9 @@ function BoardCardBody({
 					style={{ background: `var(--sev-${incident.severity})` }}
 				/>
 				<p className="line-clamp-2 min-w-0 text-record leading-snug">
+					<Mono className="mr-1.5 text-muted-foreground">
+						{formatIncidentId(incident.number)}
+					</Mono>
 					{incident.title}
 				</p>
 			</div>

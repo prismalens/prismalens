@@ -18,6 +18,7 @@ import {
 	SlidersHorizontal,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,7 @@ import { ago, useNow } from "@/hooks/use-now";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor } from "@/lib/incident-attention";
 import {
+	formatIncidentId,
 	headlineAddsInfo,
 	incidentHeadline,
 	rowGlyph,
@@ -450,7 +452,7 @@ const GLYPH_CLASS = "h-3.5 w-3.5 shrink-0";
  * title. The state, the age and the headline are in the row's hover title
  * and in hidden text for assistive tech.
  */
-function IncidentRowBody({
+export function IncidentRowBody({
 	incident,
 	now,
 	selected,
@@ -487,6 +489,9 @@ function IncidentRowBody({
 					glyph === "ended" && !selected && "text-muted-foreground",
 				)}
 			>
+				<Mono className="mr-1.5 text-muted-foreground">
+					{formatIncidentId(incident.number)}
+				</Mono>
 				{incident.title}
 			</span>
 			<span className="sr-only">
