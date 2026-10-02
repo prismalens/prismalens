@@ -4,7 +4,7 @@
 "use client";
 
 /**
- * Settings → Harness (#337/#609 narrowing of #501/ADR-0031).
+ * Settings → Agent (#337/#609 narrowing of #501/ADR-0031).
  *
  * The tier-2 harness that does the investigative legwork. `GET
  * /settings/harnesses` (ADR 0003 §9) is the only source of truth for what is

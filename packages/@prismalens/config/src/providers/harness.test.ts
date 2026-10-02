@@ -201,8 +201,8 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 
 describe("refuseModel (#639 rec 4)", () => {
 	it("refuses a model on a harness that cannot take one, and nothing else", () => {
-		expect(refuseModel("codex", "synthetic/model-a")).toMatch(
-			/^Codex does not take a model setting/,
+		expect(refuseModel("codex", "synthetic/model-a")).toBe(
+			"Codex picks its own model. Clear synthetic/model-a in the picker above.",
 		);
 		expect(refuseModel("codex", undefined)).toBeNull();
 		expect(refuseModel("codex", "  ")).toBeNull();

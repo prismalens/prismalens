@@ -231,7 +231,7 @@ export async function checkHarnessHandshake(): Promise<Check[]> {
 
 /**
  * Which harness `pl up` would pick, per the shared selection gate, and the model
- * it would ask for. The doctor cannot see the app's persisted Settings → Harness
+ * it would ask for. The doctor cannot see the app's persisted Settings → Agent
  * choice, so it says so: a pin saved there wins over what is printed here.
  */
 export function checkAutoSelection(): Check[] {
@@ -252,7 +252,7 @@ export function checkAutoSelection(): Check[] {
 		{
 			name: "Selected harness",
 			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
+			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Agent wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
 			hard: false,
 		},
 		{
@@ -260,8 +260,8 @@ export function checkAutoSelection(): Check[] {
 			pass: model.source === "product-default",
 			detail:
 				model.source === "product-default"
-					? `${model.model} (tested default; Settings → Harness → Model overrides it)`
-					: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Harness → Model sets one`,
+					? `${model.model} (tested default; Settings → Agent → Model overrides it)`
+					: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Agent → Model sets one`,
 			hard: false,
 		},
 	];

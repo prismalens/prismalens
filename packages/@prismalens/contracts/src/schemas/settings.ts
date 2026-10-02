@@ -60,7 +60,7 @@ export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 export const HarnessSelectionStatusSchema = z.object({
 	runnable: z.boolean(),
 	harness: z.string().nullable(),
-	/** Pinned rather than auto-selected, by PRISMALENS_HARNESS or by Settings → Harness. */
+	/** Pinned rather than auto-selected, by PRISMALENS_HARNESS or by Settings → Agent. */
 	pinned: z.boolean(),
 	pinnedBy: z.enum(["env", "settings"]).nullable(),
 	blockedReason: z.string().nullable(),
