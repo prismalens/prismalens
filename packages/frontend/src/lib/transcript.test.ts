@@ -275,6 +275,36 @@ describe("deriveTranscript", () => {
 			path: "runs/r1/transcript.jsonl",
 		});
 	});
+
+	// Cancellation unwinds through the engine's own "error" event (CANCELLED_MESSAGE,
+	// engine/src/run/investigate.ts); it is not a failure and must not render as one.
+	it("drops the engine's cancellation error, showing only who stopped it", () => {
+		const items = deriveTranscript(
+			[
+				step(0, "Working."),
+				{
+					kind: "error",
+					...base(1),
+					message: "investigation cancelled",
+				},
+			],
+			T0,
+			{
+				run: {
+					status: "cancelled",
+					live: false,
+					startedAt: at(0),
+					completedAt: at(5),
+				},
+			},
+		);
+		expect(items.filter((i) => i.kind === "end")).toHaveLength(1);
+		expect(items.at(-1)).toMatchObject({
+			kind: "end",
+			tone: "stale",
+			text: "Stopped by you at 14:27",
+		});
+	});
 });
 
 describe("runStepText", () => {

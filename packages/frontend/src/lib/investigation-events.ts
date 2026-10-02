@@ -33,6 +33,9 @@ export interface EventRow {
 
 export const REPORT_DRAFTED = "Report drafted";
 
+/** Mirrors the engine's CANCELLED_MESSAGE (@prismalens/engine/src/run/investigate.ts); not importable here (server-only). */
+const CANCELLED_ERROR_MESSAGE = "investigation cancelled";
+
 /**
  * Is this block the report itself? The schema decides — not a guess at two of
  * its field names.
@@ -552,6 +555,9 @@ export function deriveTranscript(
 				break;
 			case "error":
 				closeGroup();
+				// Cancellation unwinds through this same "error" event (f26); the
+				// cancelled block below already renders the one true end line.
+				if (event.message === CANCELLED_ERROR_MESSAGE) break;
 				sawError = true;
 				items.push({
 					kind: "end",
