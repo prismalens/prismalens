@@ -86,12 +86,14 @@ export const HarnessSettingsSchema = z.object({
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
 /** A patch: `models` merges per harness, and `null` clears that harness's model. */
-export const UpdateHarnessSettingsSchema = z.object({
-	harness: HarnessSettingSchema.optional(),
-	models: z
-		.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
-		.optional(),
-});
+export const UpdateHarnessSettingsSchema = z
+	.object({
+		harness: HarnessSettingSchema.optional(),
+		models: z
+			.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
+			.optional(),
+	})
+	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
 
 export const HarnessesResponseSchema = z.object({
