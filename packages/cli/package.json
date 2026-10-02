@@ -1,7 +1,7 @@
 {
 	"name": "prismalens",
 	"version": "0.5.0",
-	"description": "AI root-cause investigation from your terminal — point it at a repo, pipe it an alert, get an evidence-linked report",
+	"description": "Self-hosted incident investigation: an alert arrives, the coding agent you already use investigates a read-only snapshot of the code, and the run, evidence and cause stay on the incident.",
 	"license": "Apache-2.0",
 	"type": "module",
 	"bin": {
