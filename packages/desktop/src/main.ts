@@ -100,6 +100,7 @@ import {
 import {
 	parseDistros,
 	parseProbe,
+	parseSpawnPid,
 	parseWslSettings,
 	planWslLaunch,
 	type WslRun,
@@ -110,6 +111,7 @@ import {
 	wslPairOperator,
 	wslProbe,
 	wslServiceStart,
+	wslStop,
 	wslUp,
 } from "./wsl.js";
 
@@ -164,6 +166,8 @@ let wsl: WslSettings = { enabled: false, distro: null };
 /** Set once at boot: the backend runs inside WSL, not from this app's packed copy. */
 let inWsl = false;
 let distros: string[] = [];
+/** The `pl up` this app spawned inside the distro; killing wsl.exe may not stop it. */
+let wslPid: number | null = null;
 
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
@@ -273,8 +277,12 @@ async function bootWsl(): Promise<void> {
 function spawnWsl(plan: WslRun): ChildProcess {
 	const proc = spawn(plan.command, plan.args, {
 		env: plan.env,
-		stdio: ["pipe", "ignore", "pipe"],
+		stdio: ["pipe", "pipe", "pipe"],
 		windowsHide: true,
+	});
+	wslPid = null;
+	proc.stdout?.on("data", (chunk: Buffer) => {
+		wslPid ??= parseSpawnPid(chunk.toString("utf8"));
 	});
 	proc.stdin?.end(plan.script);
 	return proc;
@@ -884,6 +892,14 @@ if (!app.requestSingleInstanceLock()) {
 		if (stopping) return;
 		stopping = true;
 		running.once("exit", () => app.quit());
+		if (inWsl && wslPid !== null) {
+			const stop = wslStop(wsl.distro, wslPid);
+			spawnSync(stop.command, stop.args, {
+				input: stop.script,
+				windowsHide: true,
+				timeout: 10_000,
+			});
+		}
 		stopBackend(running);
 	});
 }

@@ -4,12 +4,17 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseDistros,
+	PATH_PREAMBLE,
 	parseProbe,
+	parseSpawnPid,
 	parseWslSettings,
 	planWslLaunch,
 	wslActive,
 	wslMenuItems,
+	wslProbe,
 	wslShell,
+	wslStop,
+	wslUp,
 } from "./wsl.js";
 
 const LOCK = '{"pid":42,"port":6480,"host":"127.0.0.1","startedAt":"2026-10-01T00:00:00Z"}';
@@ -102,5 +107,26 @@ describe("wslMenuItems", () => {
 			["Ubuntu", false],
 			["Debian", true],
 		]);
+	});
+});
+
+describe("scripts", () => {
+	it("load nvm and drop Windows PATH entries before anything runs", () => {
+		expect(PATH_PREAMBLE).toContain('. "$NVM_DIR/nvm.sh"');
+		expect(PATH_PREAMBLE).toContain('"$NVM_DIR"/versions/node/*/bin');
+		expect(PATH_PREAMBLE).toContain("grep -v '^/mnt/'");
+		for (const run of [wslProbe("U"), wslUp("U"), wslStop("U", 7)]) {
+			expect(run.script.startsWith(PATH_PREAMBLE)).toBe(true);
+		}
+	});
+
+	it("spawn prints its pid, then execs pl up so the pid is pl's", () => {
+		expect(wslUp(null).script.endsWith('echo "pid=$$"\nexec pl up --no-open\n')).toBe(true);
+		expect(parseSpawnPid("noise\npid=4242\n")).toBe(4242);
+		expect(parseSpawnPid("listening")).toBeNull();
+	});
+
+	it("quit kills only the recorded pid", () => {
+		expect(wslStop("U", 4242).script.endsWith("kill 4242 2>/dev/null\n")).toBe(true);
 	});
 });

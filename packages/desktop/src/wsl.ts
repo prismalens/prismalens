@@ -67,6 +67,20 @@ export function wslShell(distro: string | null): {
 	};
 }
 
+/**
+ * A login shell skips the nvm lines most ~/.bashrc files hold, so load nvm
+ * here; drop /mnt/* PATH entries so `pl` is never Windows' npm shim (#767).
+ */
+export const PATH_PREAMBLE = `export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then . "$NVM_DIR/nvm.sh" >/dev/null 2>&1; nvm use default >/dev/null 2>&1; fi
+if ! command -v node >/dev/null 2>&1; then
+  for b in "$NVM_DIR"/versions/node/*/bin; do [ -x "$b/node" ] && PATH="$b:$PATH"; done
+fi
+PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+PATH=$(printf %s "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd: -)
+export PATH
+`;
+
 /** Reads the distro's default workspace: lock, owner liveness, port, `pl`, service unit. */
 export const PROBE_SCRIPT = `d="\${PRISMALENS_WORKSPACE_DIR:-$HOME/.prismalens}"
 command -v pl >/dev/null 2>&1 && echo "pl=1"
@@ -162,7 +176,7 @@ export interface WslRun extends BackendSpawn {
 
 function run(distro: string | null, script: string): WslRun {
 	const { command, args } = wslShell(distro);
-	return { command, args, env: process.env, script };
+	return { command, args, env: process.env, script: PATH_PREAMBLE + script };
 }
 
 export function wslProbe(distro: string | null): WslRun {
@@ -174,7 +188,18 @@ export function wslServiceStart(distro: string | null): WslRun {
 }
 
 export function wslUp(distro: string | null): WslRun {
-	return run(distro, "exec pl up --no-open\n");
+	return run(distro, `echo "pid=$$"\nexec pl up --no-open\n`);
+}
+
+/** Stop the `pl up` this app spawned; `pid` came from {@link wslUp}'s first line. */
+export function wslStop(distro: string | null, pid: number): WslRun {
+	return run(distro, `kill ${Math.trunc(pid)} 2>/dev/null\n`);
+}
+
+/** The pid line {@link wslUp} prints before it execs `pl up`. */
+export function parseSpawnPid(chunk: string): number | null {
+	const match = /^pid=(\d+)$/m.exec(chunk);
+	return match ? Number(match[1]) : null;
 }
 
 export function wslPairOperator(distro: string | null): WslRun {
