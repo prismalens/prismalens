@@ -189,11 +189,12 @@ export class AcpAdapter {
 	}
 
 	private toolResult(u: AcpUpdate): CanonicalEvent | null {
+		const toolCallId = u.toolCallId ?? "";
+		this.mergeToolMeta(toolCallId, u);
 		const status = u.status ?? "completed";
 		// Emit only on a terminal update; ignore pending/in_progress progress frames
 		// (they would otherwise produce duplicate, partial tool_results).
 		if (status !== "completed" && status !== "failed") return null;
-		const toolCallId = u.toolCallId ?? "";
 		const meta = this.toolMeta.get(toolCallId);
 		const name = meta?.name ?? pickName(u);
 		const ok = status !== "failed";
@@ -211,6 +212,18 @@ export class AcpAdapter {
 				preview,
 			},
 		};
+	}
+
+	/**
+	 * Claude Code opens a call with an empty rawInput and a generic title ("Terminal")
+	 * and sends the command in a later update; keep the fuller one (walk f16).
+	 */
+	private mergeToolMeta(toolCallId: string, u: AcpUpdate): void {
+		const meta = this.toolMeta.get(toolCallId);
+		if (!meta) return;
+		if (Object.keys(toArgs(u.rawInput)).length > 0) meta.rawInput = u.rawInput;
+		const title = typeof u.title === "string" ? u.title.trim() : "";
+		if (title) meta.name = title;
 	}
 
 	/** Common per-event fields shared by every branch-scoped event. */
