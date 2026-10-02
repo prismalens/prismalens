@@ -54,10 +54,10 @@ describe("doctor — harness detection", () => {
 
 		const [selected, model] = checkAutoSelection();
 		expect(selected).toMatchObject({ name: "Selected harness", pass: true });
-		expect(selected?.detail).toContain("Settings → Harness");
+		expect(selected?.detail).toContain("Settings → Agent");
 		expect(model).toMatchObject({ name: "Model", pass: true });
 		expect(model?.detail).toContain(HARNESS_REGISTRY.opencode.defaultModel);
-		expect(model?.detail).toContain("Settings → Harness → Model");
+		expect(model?.detail).toContain("Settings → Agent → Model");
 	});
 
 	it("is a HARD failure, listing every registry harness, when none is on PATH", () => {
