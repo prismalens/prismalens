@@ -81,6 +81,14 @@ Two things to know before running it locally:
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
+Journeys (`packages/frontend/e2e/features/*.feature`) and the API lifecycle scenarios
+(`packages/api/test/scenarios/`) make every precondition through the product: an alert from the
+fake Alertmanager through the real webhook, a run by the fake ACP agent, an operator's click or
+API call. Nothing is seeded or written to the database by hand. The API scenarios start from an
+empty workspace; the e2e stack's demo seed is there only for screens that read. A walk finding is
+fixed together with the journey or scenario that would have caught it. How to write one:
+[`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
+
 ## Database migrations
 
 **Migration history is append-only** (0.5.0 published 2026-09-19). Never delete,
