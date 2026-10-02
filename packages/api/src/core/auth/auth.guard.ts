@@ -37,11 +37,17 @@ export class AuthGuard implements CanActivate {
 		const request = context.switchToHttp().getRequest<Request>();
 
 		try {
-			const operator = await this.operator.resolve(request);
-			if (!operator) {
+			const resolution = await this.operator.resolveWithReason(request);
+			if (!resolution.operator) {
+				if (resolution.reason === "revoked") {
+					throw new UnauthorizedException({
+						message: "Authentication required",
+						reason: "revoked",
+					});
+				}
 				throw new UnauthorizedException("Authentication required");
 			}
-			request.operator = operator;
+			request.operator = resolution.operator;
 			return true;
 		} catch (error) {
 			// Re-throw UnauthorizedException as-is; wrap other errors

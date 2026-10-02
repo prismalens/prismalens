@@ -77,9 +77,33 @@ function PairPage() {
 		});
 	}, [token, operator.isPending, operator.managesPairing, navigate, redeem]);
 
+	return (
+		<PairView token={token} operatorReason={operator.reason} redeem={redeem} />
+	);
+}
+
+export function PairView({
+	token,
+	operatorReason,
+	redeem,
+}: {
+	token: string | null;
+	operatorReason?: string | null;
+	redeem: { isError: boolean; error: Error | null | undefined };
+}) {
 	if (token === null) return null;
 
 	if (!token) {
+		if (operatorReason === "revoked") {
+			return (
+				<Shell title="Device revoked">
+					<p className="text-record text-muted-foreground">
+						This device was revoked on the machine running PrismaLens. Ask for a
+						new pairing link.
+					</p>
+				</Shell>
+			);
+		}
 		return (
 			<Shell title="Nothing to pair">
 				<p className="text-record text-muted-foreground">

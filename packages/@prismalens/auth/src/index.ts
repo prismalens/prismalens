@@ -12,6 +12,7 @@ export { DEVICE_COOKIE_PREFIX, deviceCookieName } from "./device-cookie.js";
 export {
 	ACCESS_SCOPE,
 	authenticateDevice,
+	authenticateDeviceToken,
 	buildPairingUrl,
 	type CreatedPairingLink,
 	createPairingLink,
