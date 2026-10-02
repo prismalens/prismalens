@@ -25,6 +25,7 @@ import {
 	ServiceIntegrationSchema,
 	ServiceIntegrationWithStatusSchema,
 	SuccessResponseSchema,
+	TestConnectionResponseSchema,
 	UpdateConnectionSchema,
 	UpdateIntegrationSchema,
 	UpdateServiceIntegrationSchema,
@@ -142,7 +143,7 @@ export const integrationsContract = {
 			tags: ["integrations"],
 		})
 		.input(IdParamSchema)
-		.output(SuccessResponseSchema),
+		.output(TestConnectionResponseSchema),
 
 	// =========================================================================
 	// GIT PROVIDER ENDPOINTS
