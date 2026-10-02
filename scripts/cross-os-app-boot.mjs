@@ -256,6 +256,21 @@ mkdirSync(workspace, { recursive: true });
 const logPath = join(scratch, "up.log");
 const base = `http://127.0.0.1:${port}`;
 
+// Windows runners occasionally hand this script a pooled keep-alive socket
+// the server already closed; the write goes through but the read then hangs
+// until the OS resets it several seconds later (#742, `fetch failed:
+// ECONNRESET`). undici drops a socket from its pool once it errors, so one
+// retry opens a fresh connection instead of reusing the dead one.
+const rawFetch = fetch;
+globalThis.fetch = async (url, init) => {
+	try {
+		return await rawFetch(url, init);
+	} catch (error) {
+		if (error?.cause?.code !== "ECONNRESET") throw error;
+		return rawFetch(url, init);
+	}
+};
+
 // Strip every inherited PRISMALENS_* key before setting our own. The workspace
 // dir is the ONLY thing that keeps this run away from a developer's real
 // ~/.prismalens database, so an inherited PRISMALENS_DB_URL or a stray
