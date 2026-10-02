@@ -11,7 +11,7 @@
 
 import { type ChildProcess, execFile, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deviceCookieName } from "@prismalens/auth/device-cookie";
 import {
@@ -165,7 +165,8 @@ let defaultDistro: string | null = null;
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
 	return (
-		process.env.PRISMALENS_WORKSPACE_DIR ?? `${app.getPath("home")}/.prismalens`
+		process.env.PRISMALENS_WORKSPACE_DIR ??
+		path.join(app.getPath("home"), ".prismalens")
 	);
 }
 
