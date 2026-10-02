@@ -123,6 +123,35 @@ describe("readOnlyPolicy", () => {
 		expect(readOnlyPolicy(req({ kind: "execute", rawInput: { command: "ls .." } })).allow).toBe(true);
 	});
 
+	it("reads a quoted argument as one word: PromQL in curl is data, not shell (walk f23)", () => {
+		const policy = readOnlyPolicyFor({ cwd: "/work/runs/abc/repo" });
+		for (const command of [
+			`curl -s 'http://localhost:9090/api/v1/query' --data-urlencode 'query=histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{endpoint="/v1/books"}[5m])))'`,
+			`curl -s 'http://localhost:9090/api/v1/query' --data-urlencode 'query=rate(http_requests_total{path="/v1/books"}[5m]) > 0.5'`,
+			"curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=rate(x[5m]) > 0.5'",
+			`curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=up{path=~"/v1/.*"}'`,
+			'echo "a > b"',
+			`curl -s http://x/api/v1/rules | jq '.data.groups[] | select(.name=="a")'`,
+		]) {
+			expect(policy(req({ kind: "execute", rawInput: { command } })), command).toEqual({ allow: true, optionId: "once" });
+		}
+		for (const [command, why] of [
+			["cat '/etc/passwd'", "reads outside the snapshot: /etc/passwd"],
+			['cat "../x"', "reads outside the snapshot: ../x"],
+			["cat '--file=/etc/x'", "reads outside the snapshot: /etc/x"],
+			['cat "$(cat /etc/passwd)"', "reads outside the snapshot: /etc/passwd"],
+			["echo hi > out.txt", "shell command would mutate"],
+			["bash -c 'echo x > /etc/y'", "shell command would mutate"],
+			["sh -c 'rm -rf x'", "shell command would mutate"],
+			["sh -c 'ls'", "shell command would mutate"],
+			['eval "$x"', "shell command would mutate"],
+		] as const) {
+			const d = policy(req({ kind: "execute", rawInput: { command } }));
+			expect(d.allow, command).toBe(false);
+			expect(!d.allow && d.why, command).toBe(why);
+		}
+	});
+
 	it("never picks allow_always", () => {
 		const d = readOnlyPolicy({ options: [options[1], options[0]], toolCall: { kind: "read" } });
 		expect(d).toEqual({ allow: true, optionId: "once" });

@@ -220,6 +220,29 @@ describe("AcpAdapter.normalize", () => {
 		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
 	});
 
+	it("names the policy's reason on a refused call's tool_result (walk f23)", () => {
+		const adapter = new AcpAdapter({
+			...ctx,
+			refusals: new Map([["call_ze0og9u5", "shell command would mutate"]]),
+		});
+		adapter.normalize({ ...lsToolCall, title: "echo x > y", kind: "execute" });
+		const result = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "call_ze0og9u5",
+			status: "failed",
+			content: [
+				{ type: "content", content: { type: "text", text: "User refused permission to run tool" } },
+			],
+		});
+		const text =
+			"Refused by PrismaLens's read-only policy: shell command would mutate. User refused permission to run tool";
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: { ok: false, error: text, preview: text },
+		});
+		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
+	});
+
 	it("ignores non-terminal tool progress frames and unsurfaced updates", () => {
 		const adapter = new AcpAdapter(ctx);
 		expect(
