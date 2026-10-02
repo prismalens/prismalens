@@ -180,5 +180,18 @@ export default defineConfig({
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
+				// Nightly (e2e-responsive.yml), @responsive features only. Chromium for the
+				// iPad too: these check layout at its size, and CI installs one browser.
+				...(["Pixel 7", "iPad (gen 7)"] as const).map((device) => ({
+					name: device,
+					testDir: journeysDir,
+					grep: /@responsive/,
+					dependencies: ["pair"],
+					use: {
+						...devices[device],
+						defaultBrowserType: "chromium" as const,
+						storageState: PAIRED_STATE,
+					},
+				})),
 			],
 });
