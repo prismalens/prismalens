@@ -9,12 +9,7 @@
  * never embeds the API.
  */
 
-import {
-	type ChildProcess,
-	execFile,
-	spawn,
-	spawnSync,
-} from "node:child_process";
+import { type ChildProcess, execFile, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,9 +93,10 @@ import {
 	updateCheckEnabled,
 } from "./updates.js";
 import {
+	nothingRunningChoice,
+	parseDefaultDistro,
 	parseDistros,
 	parseProbe,
-	parseSpawnPid,
 	parseWslSettings,
 	planWslLaunch,
 	type WslRun,
@@ -108,11 +104,9 @@ import {
 	wslActive,
 	wslMenuItems,
 	wslMissingPl,
+	wslNothingRunning,
 	wslPairOperator,
 	wslProbe,
-	wslServiceStart,
-	wslStop,
-	wslUp,
 } from "./wsl.js";
 
 const READY_TIMEOUT_MS = 60_000;
@@ -163,11 +157,10 @@ function saveWslSettings(next: WslSettings): void {
 }
 
 let wsl: WslSettings = { enabled: false, distro: null };
-/** Set once at boot: the backend runs inside WSL, not from this app's packed copy. */
+/** Set once at boot: the window attaches to a `pl` inside WSL, not to this app's packed copy. */
 let inWsl = false;
 let distros: string[] = [];
-/** The `pl up` this app spawned inside the distro; killing wsl.exe may not stop it. */
-let wslPid: number | null = null;
+let defaultDistro: string | null = null;
 
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
@@ -184,6 +177,9 @@ class LaunchRefused extends Error {
 
 /** The owned backend exited while starting; its own stop dialog has the say. */
 class BackendExited extends Error {}
+
+/** The user chose to leave from a boot dialog; the quit or relaunch is already on its way. */
+class Leaving extends Error {}
 
 /** Settles when the owned backend exits; `connect` races its health wait against it. */
 let exited: Promise<void> = new Promise(() => {});
@@ -257,7 +253,10 @@ function adopt(backend: ChildProcess): void {
 	});
 }
 
-/** `pl` inside the chosen distro, in the same order as {@link boot} (#767). */
+/**
+ * Attach to the `pl` running in the chosen distro (#767, walk u20). Nothing
+ * running there is a dialog, never a spawn: the app starts nothing in WSL.
+ */
 async function bootWsl(): Promise<void> {
 	const probe = parseProbe(await runWsl(wslProbe(wsl.distro)));
 	if (!probe.hasPl) {
@@ -268,37 +267,24 @@ async function bootWsl(): Promise<void> {
 		});
 	}
 	const plan = planWslLaunch(probe);
-	if (plan.kind !== "attach" && !(await portFree(plan.target.port))) {
-		throw new LaunchRefused(
-			portTakenDialog({
-				port: plan.target.port,
-				holderInstanceId: await portHolder(plan.target),
-				instanceFile: "~/.prismalens/instance.json (in WSL)",
-			}),
-		);
+	if (plan.kind === "none") {
+		const d = wslNothingRunning(wsl.distro);
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			message: d.message,
+			detail: d.detail,
+			buttons: d.buttons,
+			defaultId: 0,
+			cancelId: d.buttons.length - 1,
+		});
+		const choice = nothingRunningChoice(wsl, response);
+		if (choice.kind === "retry") return bootWsl();
+		if (choice.kind === "relaunch") saveWslSettings(choice.settings);
+		else app.quit();
+		throw new Leaving();
 	}
-	owned = plan.kind === "spawn";
-	if (plan.kind === "spawn") adopt(spawnWsl(wslUp(wsl.distro)));
-	if (plan.kind === "service") await runWsl(wslServiceStart(wsl.distro));
+	owned = false;
 	await connect(plan.target);
-}
-
-function spawnWsl(plan: WslRun): ChildProcess {
-	const proc = spawn(plan.command, plan.args, {
-		env: plan.env,
-		stdio: ["pipe", "pipe", "pipe"],
-		windowsHide: true,
-	});
-	wslPid = null;
-	proc.on("error", (error) => {
-		stderrTail = appendTail(stderrTail, String(error));
-	});
-	proc.stdin?.on("error", () => {});
-	proc.stdout?.on("data", (chunk: Buffer) => {
-		wslPid ??= parseSpawnPid(chunk.toString("utf8"));
-	});
-	proc.stdin?.end(plan.script);
-	return proc;
 }
 
 /** Run a short script in the distro and return its stdout. */
@@ -318,15 +304,30 @@ function runWsl(plan: WslRun): Promise<string> {
 	});
 }
 
-function listDistros(): Promise<string[]> {
+function wslList(args: string[]): Promise<Buffer | null> {
 	return new Promise((resolve) => {
 		execFile(
 			"wsl.exe",
-			["-l", "-q"],
+			args,
 			{ encoding: "buffer", windowsHide: true, timeout: 10_000 },
-			(error, stdout) => resolve(error ? [] : parseDistros(stdout)),
+			(error, stdout) => resolve(error ? null : stdout),
 		);
 	});
+}
+
+/** Every distro, and the one `wsl.exe` marks as its default. */
+async function listDistros(): Promise<{
+	names: string[];
+	defaultName: string | null;
+}> {
+	const [quiet, verbose] = await Promise.all([
+		wslList(["-l", "-q"]),
+		wslList(["-l", "-v"]),
+	]);
+	return {
+		names: quiet ? parseDistros(quiet) : [],
+		defaultName: verbose ? parseDefaultDistro(verbose) : null,
+	};
 }
 
 async function portHolder(target: Target): Promise<string | null> {
@@ -507,7 +508,7 @@ async function newerRelease(): Promise<string | null> {
 
 /** A launch that cannot go on: its dialog, then quit. */
 async function refuse(error: unknown): Promise<void> {
-	if (error instanceof BackendExited) return;
+	if (error instanceof BackendExited || error instanceof Leaving) return;
 	const d =
 		error instanceof LaunchRefused
 			? error.dialog
@@ -619,7 +620,7 @@ function applyTheme(next: Theme): void {
 /** Windows only: the WSL switch and its distro picker (#767). */
 function wslTrayItems(): MenuItemConstructorOptions[] {
 	if (process.platform !== "win32") return [];
-	const items = wslMenuItems(wsl, distros);
+	const items = wslMenuItems(wsl, distros, defaultDistro);
 	return [
 		{ type: "separator" },
 		{
@@ -704,7 +705,8 @@ function buildTray(): void {
 	refresh();
 	if (process.platform === "win32") {
 		void listDistros().then((found) => {
-			distros = found;
+			distros = found.names;
+			defaultDistro = found.defaultName;
 			refresh();
 		});
 	}
@@ -906,14 +908,6 @@ if (!app.requestSingleInstanceLock()) {
 		if (stopping) return;
 		stopping = true;
 		running.once("exit", () => app.quit());
-		if (inWsl && wslPid !== null) {
-			const stop = wslStop(wsl.distro, wslPid);
-			spawnSync(stop.command, stop.args, {
-				input: stop.script,
-				windowsHide: true,
-				timeout: 10_000,
-			});
-		}
 		stopBackend(running);
 	});
 }

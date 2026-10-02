@@ -2,15 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The WSL backend (#767): on Windows the app can run `pl` inside a WSL distro
- * instead of its own packed copy. It replaces the Windows backend rather than
- * sitting beside it: one window, one backend. The distro keeps its own
- * workspace and agent sign-in; the window reaches it through WSL's localhost
- * forwarding. Everything here is pure so it is testable off Windows.
+ * PrismaLens in WSL (#767, walk u20): on Windows the window can attach to a
+ * `pl` already running inside a WSL distro instead of starting its own packed
+ * copy. The app never starts or stops anything in the distro (ADR 0005 §8: a
+ * launcher and a client); the distro keeps its own workspace and agent
+ * sign-in, and the window reaches it through WSL's localhost forwarding.
+ * Everything here is pure so it is testable off Windows.
  */
 
 import type { WorkspaceLockState } from "@prismalens/config";
-import type { BackendSpawn, LaunchPlan } from "./supervisor.js";
+import type { BackendSpawn, Target } from "./supervisor.js";
 
 export interface WslSettings {
 	enabled: boolean;
@@ -42,15 +43,25 @@ export function wslActive(
 	return platform === "win32" && settings.enabled;
 }
 
+function utf16Lines(stdout: Buffer | string): string[] {
+	const text = typeof stdout === "string" ? stdout : stdout.toString("utf16le");
+	return text.replace(/^﻿/, "").replace(/\0/g, "").split(/\r?\n/);
+}
+
 /** `wsl.exe -l -q` prints UTF-16LE, one distro per line. */
 export function parseDistros(stdout: Buffer | string): string[] {
-	const text = typeof stdout === "string" ? stdout : stdout.toString("utf16le");
-	return text
-		.replace(/^﻿/, "")
-		.replace(/\0/g, "")
-		.split(/\r?\n/)
+	return utf16Lines(stdout)
 		.map((line) => line.trim())
 		.filter((line) => line !== "");
+}
+
+/** `wsl.exe -l -v` marks the default distro's row with `*`. */
+export function parseDefaultDistro(stdout: Buffer | string): string | null {
+	for (const line of utf16Lines(stdout)) {
+		const match = /^\s*\*\s+(\S+)/.exec(line);
+		if (match) return match[1];
+	}
+	return null;
 }
 
 /**
@@ -143,30 +154,27 @@ export function parseProbe(stdout: string): WslProbe {
 	};
 }
 
-const DEFAULT_PORT = 6473;
+export type WslPlan =
+	| { kind: "attach"; target: Target; pid: number }
+	| { kind: "none"; reason: "nothing-running" };
 
 /**
- * The same order as the Windows launch: attach to the live owner, else start
- * the distro's service, else spawn `pl up` there. The window always reaches it
- * on localhost, whatever the bind inside the distro.
+ * Attach to the live owner, reached on localhost whatever the bind inside the
+ * distro; anything else is nothing running, which is a dialog, never a spawn.
  */
-export function planWslLaunch(probe: WslProbe): LaunchPlan {
-	const target = (port: number) => ({
-		protocol: "http" as const,
-		host: "localhost",
-		port,
-	});
+export function planWslLaunch(probe: WslProbe): WslPlan {
 	if (probe.lock.kind === "held") {
 		return {
 			kind: "attach",
 			pid: probe.lock.owner.pid,
-			target: target(probe.lock.owner.port),
+			target: {
+				protocol: "http",
+				host: "localhost",
+				port: probe.lock.owner.port,
+			},
 		};
 	}
-	const port = probe.port ?? DEFAULT_PORT;
-	return probe.hasService
-		? { kind: "service", target: target(port) }
-		: { kind: "spawn", target: target(port) };
+	return { kind: "none", reason: "nothing-running" };
 }
 
 /** A script for `wslShell`'s stdin, and the distro it runs in. */
@@ -183,25 +191,6 @@ export function wslProbe(distro: string | null): WslRun {
 	return run(distro, PROBE_SCRIPT);
 }
 
-export function wslServiceStart(distro: string | null): WslRun {
-	return run(distro, "systemctl --user start prismalens.service\n");
-}
-
-export function wslUp(distro: string | null): WslRun {
-	return run(distro, `echo "pid=$$"\nexec pl up --no-open\n`);
-}
-
-/** Stop the `pl up` this app spawned; `pid` came from {@link wslUp}'s first line. */
-export function wslStop(distro: string | null, pid: number): WslRun {
-	return run(distro, `kill ${Math.trunc(pid)} 2>/dev/null\n`);
-}
-
-/** The pid line {@link wslUp} prints before it execs `pl up`. */
-export function parseSpawnPid(chunk: string): number | null {
-	const match = /^pid=(\d+)$/m.exec(chunk);
-	return match ? Number(match[1]) : null;
-}
-
 export function wslPairOperator(distro: string | null): WslRun {
 	return run(distro, "pl pair --operator\n");
 }
@@ -213,10 +202,50 @@ export function wslMissingPl(distro: string | null): {
 	const where = distro ? `the ${distro} WSL distro` : "the default WSL distro";
 	return {
 		message: `PrismaLens is not installed in ${where}`,
-		detail:
-			'Install it there (npm install -g prismalens) so `pl` is on the login shell\'s PATH, or turn off "Run in WSL" in the tray menu.',
+		detail: `Install it there (npm install -g prismalens) so \`pl\` is on the login shell's PATH, or turn off "${WSL_TOGGLE_LABEL}" in the tray menu.`,
 	};
 }
+
+export const NOTHING_RUNNING_BUTTONS = [
+	"Retry",
+	"Use the Windows copy",
+	"Quit",
+] as const;
+
+/** The dialog for a distro with `pl` installed and nothing listening. */
+export function wslNothingRunning(distro: string | null): {
+	message: string;
+	detail: string;
+	buttons: string[];
+} {
+	return {
+		message: `Nothing is running in ${distro ?? "the default WSL distro"}`,
+		detail: "Run `pl up` there, or `pl service install` once. Then Retry.",
+		buttons: [...NOTHING_RUNNING_BUTTONS],
+	};
+}
+
+export type NothingRunningChoice =
+	| { kind: "retry" }
+	| { kind: "relaunch"; settings: WslSettings }
+	| { kind: "quit" };
+
+/** What the dialog's button index means; "Use the Windows copy" turns the switch off. */
+export function nothingRunningChoice(
+	settings: WslSettings,
+	response: number,
+): NothingRunningChoice {
+	switch (NOTHING_RUNNING_BUTTONS[response]) {
+		case "Retry":
+			return { kind: "retry" };
+		case "Use the Windows copy":
+			return { kind: "relaunch", settings: { ...settings, enabled: false } };
+		default:
+			return { kind: "quit" };
+	}
+}
+
+export const WSL_TOGGLE_LABEL = "Use PrismaLens in WSL";
 
 export interface WslMenuItem {
 	label: string;
@@ -225,20 +254,23 @@ export interface WslMenuItem {
 	distro?: string | null;
 }
 
-/** The tray's WSL items: a switch, then one radio per distro (first = WSL's default). */
+/** The tray's WSL items: a switch, then one radio per distro (first = WSL's default, named when known). */
 export function wslMenuItems(
 	settings: WslSettings,
 	distros: string[],
+	defaultDistro: string | null = null,
 ): { toggle: WslMenuItem; distros: WslMenuItem[] } {
 	return {
 		toggle: {
-			label: "Run in WSL",
+			label: WSL_TOGGLE_LABEL,
 			type: "checkbox",
 			checked: settings.enabled,
 		},
 		distros: [
 			{
-				label: "Default distro",
+				label: defaultDistro
+					? `Default distro (${defaultDistro})`
+					: "Default distro",
 				type: "radio",
 				checked: settings.distro === null,
 				distro: null,
