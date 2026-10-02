@@ -14,6 +14,8 @@ export interface RunResult {
 	status: number | null;
 	stdout: string;
 	stderr: string;
+	/** Why spawning failed, when status is null. */
+	error?: NodeJS.ErrnoException;
 }
 
 export type Run = (args: string[]) => RunResult;
@@ -30,6 +32,7 @@ export const runTailscale: Run = (args) => {
 		status: result.error ? null : result.status,
 		stdout: result.stdout ?? "",
 		stderr: result.stderr ?? "",
+		error: result.error as NodeJS.ErrnoException | undefined,
 	};
 };
 
@@ -37,7 +40,14 @@ const NOT_INSTALLED =
 	"The `tailscale` command isn't on PATH. Install Tailscale (https://tailscale.com/download) and log in, then try again.";
 
 function failure(result: RunResult, what: string): TailscaleError {
-	if (result.status === null) return new TailscaleError(NOT_INSTALLED);
+	if (result.status === null) {
+		if (!result.error || result.error.code === "ENOENT") {
+			return new TailscaleError(NOT_INSTALLED);
+		}
+		return new TailscaleError(
+			`\`tailscale ${what}\` could not run: ${result.error.message}`,
+		);
+	}
 	const text = `${result.stderr}\n${result.stdout}`;
 	if (/not logged in|logged out|needs? ?login/i.test(text)) {
 		return new TailscaleError(
@@ -93,7 +103,9 @@ export function currentServeTarget(
 		const config = JSON.parse(result.stdout) as {
 			Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }>;
 		};
-		return config.Web?.[`${hostname}:443`]?.Handlers?.["/"]?.Proxy ?? null;
+		const root = config.Web?.[`${hostname}:443`]?.Handlers?.["/"];
+		if (!root) return null;
+		return root.Proxy ?? "a non-proxy (text or path) handler";
 	} catch {
 		throw new TailscaleError(
 			"`tailscale serve status --json` printed no JSON.",
@@ -123,6 +135,14 @@ export function ensureServe(
 	return { url, created: true };
 }
 
+/** Turn off the :443 mapping, but only while it still points at `target`. */
+export function removeServe(target: string, run: Run = runTailscale): void {
+	const existing = currentServeTarget(tailnetHostname(run), run);
+	if (!existing || !sameTarget(existing, target)) return;
+	const result = run(["serve", "--https=443", "off"]);
+	if (result.status !== 0) throw failure(result, "serve off");
+}
+
 function sameTarget(a: string, b: string): boolean {
 	const norm = (s: string) =>
 		s.replace(/\/$/, "").replace("//localhost:", "//127.0.0.1:");
@@ -131,10 +151,16 @@ function sameTarget(a: string, b: string): boolean {
 
 /** The local URL tailscale should proxy to for a server bound to `host`. */
 export function serveTarget(host: string | undefined, port: number): string {
-	const wildcard =
-		!host || ["0.0.0.0", "::", "[::]", "localhost"].includes(host);
-	const name = wildcard ? "127.0.0.1" : host;
-	return `http://${name.includes(":") ? `[${name}]` : name}:${port}`;
+	// tailscale serve proxies HTTP only to 127.0.0.1/localhost (#768 review).
+	if (
+		host &&
+		!["0.0.0.0", "::", "[::]", "localhost", "127.0.0.1"].includes(host)
+	) {
+		throw new TailscaleError(
+			`tailscale serve can only proxy to 127.0.0.1, but this server is bound to ${host}. Bind to 127.0.0.1 or 0.0.0.0 to use Tailscale.`,
+		);
+	}
+	return `http://127.0.0.1:${port}`;
 }
 
 /** PRISMALENS_ALLOWED_HOSTS with `hostname` added; never widened to `*`. */

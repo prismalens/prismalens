@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	ensureServe,
+	removeServe,
 	type Run,
 	type RunResult,
 	serveTarget,
@@ -96,7 +97,50 @@ describe("serveTarget", () => {
 	it("proxies a wildcard or default bind through loopback", () => {
 		expect(serveTarget("0.0.0.0", 6473)).toBe("http://127.0.0.1:6473");
 		expect(serveTarget(undefined, 6473)).toBe("http://127.0.0.1:6473");
-		expect(serveTarget("::1", 1)).toBe("http://[::1]:1");
+		expect(serveTarget("127.0.0.1", 1)).toBe("http://127.0.0.1:1");
+	});
+
+	it("rejects a bind tailscale serve cannot proxy to", () => {
+		expect(() => serveTarget("192.168.1.5", 1)).toThrow(TailscaleError);
+		expect(() => serveTarget("::1", 1)).toThrow(/only proxy to 127.0.0.1/);
+	});
+});
+
+describe("spawn failures", () => {
+	it("reports a non-ENOENT spawn error instead of a missing CLI", () => {
+		const error = Object.assign(new Error("spawnSync tailscale EACCES"), { code: "EACCES" });
+		const run = fake({ status: { status: null, stdout: "", stderr: "", error } });
+		expect(() => tailnetHostname(run)).toThrow(/could not run: spawnSync tailscale EACCES/);
+	});
+});
+
+describe("non-proxy root handler", () => {
+	it("refuses to replace a text handler on /", () => {
+		const run = fake({
+			"status --json": running,
+			"serve status": ok(
+				JSON.stringify({ Web: { "box.tail1.ts.net:443": { Handlers: { "/": { Text: "hi" } } } } }),
+			),
+		});
+		expect(() => ensureServe("http://127.0.0.1:1", run)).toThrow(/already serves a non-proxy/);
+		expect(run.calls.some((c) => c.includes("--bg"))).toBe(false);
+	});
+});
+
+describe("removeServe", () => {
+	const mapped = (proxy: string) =>
+		ok(JSON.stringify({ Web: { "box.tail1.ts.net:443": { Handlers: { "/": { Proxy: proxy } } } } }));
+
+	it("turns off a mapping that still points at this server", () => {
+		const run = fake({ "status --json": running, "serve status": mapped("http://127.0.0.1:1") });
+		removeServe("http://127.0.0.1:1", run);
+		expect(run.calls).toContainEqual(["serve", "--https=443", "off"]);
+	});
+
+	it("leaves a mapping that now points elsewhere", () => {
+		const run = fake({ "status --json": running, "serve status": mapped("http://127.0.0.1:2") });
+		removeServe("http://127.0.0.1:1", run);
+		expect(run.calls).not.toContainEqual(["serve", "--https=443", "off"]);
 	});
 });
 

@@ -61,7 +61,7 @@ pl up
 | `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 | `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. |
-| `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. |
+| `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. `install --tailscale-serve` publishes it on your tailnet over HTTPS on every start. |
 
 ## Documentation
 

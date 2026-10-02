@@ -17,7 +17,12 @@ import {
 	type ProbeOptions,
 	probeInstance,
 } from "./instance-check.js";
-import { ensureServe, serveTarget, TailscaleError } from "./tailscale.js";
+import {
+	ensureServe,
+	removeServe,
+	serveTarget,
+	TailscaleError,
+} from "./tailscale.js";
 
 export default defineCommand({
 	meta: {
@@ -73,9 +78,12 @@ export default defineCommand({
 			process.exit(1);
 		}
 		let address = args.address ? String(args.address) : undefined;
+		let createdServe: string | null = null;
 		if (args.tailscale) {
 			try {
-				const served = ensureServe(serveTarget(lock.host, lock.port));
+				const target = serveTarget(lock.host, lock.port);
+				const served = ensureServe(target);
+				if (served.created) createdServe = target;
 				if (served.created)
 					consola.info(`Now serving ${served.url} with tailscale serve.`);
 				address = served.url;
@@ -93,6 +101,17 @@ export default defineCommand({
 		});
 		if (refusal) {
 			consola.error(refusal);
+			if (args.tailscale) {
+				consola.info("Or restart it with `pl up --tailscale-serve`.");
+			}
+			if (createdServe) {
+				try {
+					removeServe(createdServe);
+				} catch (error) {
+					if (!(error instanceof TailscaleError)) throw error;
+					consola.warn(error.message);
+				}
+			}
 			process.exit(1);
 		}
 
