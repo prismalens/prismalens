@@ -11,9 +11,10 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
 	ChevronLeft,
 	ChevronRight,
+	Folder,
+	GitBranch,
 	LayoutGrid,
 	List,
-	Loader2,
 	Plus,
 	RefreshCw,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import { ServiceList } from "@/components/services/ServiceList";
 import { tierLabels } from "@/components/services/service-detail.utils";
+import { formatRepoSource } from "@/components/services/source-formatter";
 import { SettingsFrame } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
@@ -159,15 +161,22 @@ const columns: ColumnDef<ServiceWithRelations>[] = [
 			}
 			return (
 				<div className="flex flex-wrap gap-1">
-					{repos.map((sr) => (
-						<span
-							key={sr.repository?.id ?? sr.repositoryId}
-							className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
-						>
-							<span>🔗</span>
-							<Mono>{sr.repository?.fullName ?? sr.repositoryId}</Mono>
-						</span>
-					))}
+					{repos.map((sr) => {
+						const formatted = formatRepoSource(
+							sr.repository ?? { fullName: sr.repositoryId },
+						);
+						const Icon = formatted.kind === "folder" ? Folder : GitBranch;
+						return (
+							<span
+								key={sr.repository?.id ?? sr.repositoryId}
+								title={formatted.title}
+								className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
+							>
+								<Icon className="h-3 w-3 flex-shrink-0" />
+								<Mono>{formatted.label}</Mono>
+							</span>
+						);
+					})}
 				</div>
 			);
 		},

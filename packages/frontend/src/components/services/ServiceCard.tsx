@@ -9,13 +9,14 @@
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, GitBranch } from "lucide-react";
+import { AlertTriangle, Folder, GitBranch } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
 import { type ChipTone, StateChip } from "@/components/shared/StateChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { serviceTypeIcons } from "./service-detail.utils";
+import { formatRepoSource } from "./source-formatter";
 
 export interface ServiceCardProps {
 	service: ServiceWithRelations;
@@ -82,15 +83,20 @@ export function ServiceCard({ service }: ServiceCardProps) {
 				{/* Sources */}
 				{repos.length > 0 && (
 					<div className="flex flex-wrap gap-1">
-						{repos.map((sr) => (
-							<span
-								key={sr.id}
-								className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
-							>
-								<span>🔗</span>
-								<Mono>{sr.repository.fullName}</Mono>
-							</span>
-						))}
+						{repos.map((sr) => {
+							const formatted = formatRepoSource(sr.repository);
+							const Icon = formatted.kind === "folder" ? Folder : GitBranch;
+							return (
+								<span
+									key={sr.id}
+									title={formatted.title}
+									className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
+								>
+									<Icon className="h-3 w-3 flex-shrink-0" />
+									<Mono>{formatted.label}</Mono>
+								</span>
+							);
+						})}
 					</div>
 				)}
 
