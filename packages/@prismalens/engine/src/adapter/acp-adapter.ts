@@ -204,10 +204,9 @@ export class AcpAdapter {
 		const ok = status !== "failed";
 		const why = ok ? undefined : this.ctx.refusals?.get(toolCallId);
 		const harnessText = flattenAcpContent(u.content);
+		// The harness's own refusal text ("User refused permission…") blames a user who never saw the call.
 		const preview = truncate(
-			why
-				? `${REFUSAL_PREFIX}: ${why}.${harnessText ? ` ${harnessText}` : ""}`
-				: harnessText,
+			why ? `${REFUSAL_PREFIX}: ${why}.` : harnessText,
 			this.previewLimit,
 		);
 		return {

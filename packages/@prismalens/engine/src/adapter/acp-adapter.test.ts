@@ -235,7 +235,7 @@ describe("AcpAdapter.normalize", () => {
 			],
 		});
 		const text =
-			"Refused by PrismaLens's read-only policy: shell command would mutate. User refused permission to run tool";
+			"Refused by PrismaLens's read-only policy: shell command would mutate.";
 		expect(result).toMatchObject({
 			kind: "tool_result",
 			result: { ok: false, error: text, preview: text },
