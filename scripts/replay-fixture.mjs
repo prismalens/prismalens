@@ -231,7 +231,7 @@ async function main() {
 			method: "PATCH",
 			body: JSON.stringify({
 				harness: process.env.REPLAY_HARNESS ?? "auto",
-				model,
+				models: { [process.env.REPLAY_HARNESS ?? "opencode"]: model },
 			}),
 		});
 	}
