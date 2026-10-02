@@ -149,7 +149,7 @@ describe("HarnessService", () => {
 				failure: "model-unsupported",
 				harness: "codex",
 				pinnedBy: "settings",
-				reason: expect.stringMatching(/does not take a model/),
+				reason: expect.stringMatching(/picks its own model/),
 			});
 		});
 
