@@ -111,7 +111,7 @@ function IncidentsLanding() {
 			className="flex h-full min-h-0 flex-col"
 			data-testid="incidents-overview"
 		>
-			<div className="flex h-10 shrink-0 items-center gap-3 border-b px-4">
+			<div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-1.5 sm:h-10 sm:flex-nowrap sm:py-0">
 				<h1 className="text-sm font-semibold">Incidents</h1>
 				<Segmented
 					label="View"
@@ -137,7 +137,7 @@ function IncidentsLanding() {
 						</span>
 					</span>
 				)}
-				<div className="ml-auto flex items-center gap-1">
+				<div className="flex w-full items-center gap-1 sm:ml-auto sm:w-auto">
 					{!analytics && (
 						<>
 							<label className="flex w-44 items-center gap-1.5 rounded border bg-background px-2">
@@ -226,7 +226,8 @@ function IncidentsLanding() {
 							{incidents.length} in window
 							{list?.pagination.hasMore ? ", more not shown" : ""}
 						</span>
-						<span className="ml-auto flex items-center gap-1">
+						{/* Keyboard-only hint: hidden on touch (no keys) and below md (no room). */}
+						<span className="ml-auto hidden items-center gap-1 pointer-fine:md:flex">
 							<Mono>1</Mono>
 							<span>to</span>
 							<Mono>4</Mono>
