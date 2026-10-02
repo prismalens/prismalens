@@ -9,13 +9,19 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import type { InstallChannel } from "@prismalens/config";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
 import { lockBase } from "./instance-check.js";
-import { installerBinDir, lockReleased, runAction } from "./service.js";
+import {
+	installerBinDir,
+	lockReleased,
+	runAction,
+	serviceFailed,
+} from "./service.js";
 import { fetchLatestVersion, isNewer, releaseReady } from "./update-notice.js";
 import {
 	awaitTrial,
@@ -220,6 +226,10 @@ export default defineCommand({
 						instanceId: config.readInstanceFile(workspace)?.instanceId ?? "",
 						version: trial.to,
 						deadlineMs: trialMs,
+						logPath: join(workspace, "logs", "service.log"),
+						serviceProbe: viaService
+							? () => serviceFailed(kind, uid)
+							: undefined,
 					}),
 				stop: async () => {
 					if (

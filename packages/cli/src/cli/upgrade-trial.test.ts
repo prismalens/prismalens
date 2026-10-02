@@ -106,6 +106,45 @@ describe("settleTrial", () => {
 		expect(outcome.reason).toContain("homebrew can't reinstall 0.5.1");
 		expect(read("prismalens.db")).toBe("old-db");
 	});
+
+	it("rolls back immediately when service probe reports failed without waiting for timeout", async () => {
+		takeSnapshot(ws, trial);
+		migrate();
+		const logDir = join(ws, "logs");
+		mkdirSync(logDir, { recursive: true });
+		writeFileSync(
+			join(logDir, "service.log"),
+			Array.from({ length: 30 }, (_, i) => `log line ${i + 1}`).join("\n"),
+		);
+
+		const start = Date.now();
+		const outcome = await settleTrial({
+			workspace: ws,
+			trial,
+			check: () =>
+				awaitTrial({
+					base: "http://127.0.0.1:9999",
+					instanceId: "inst",
+					version: "0.5.2",
+					deadlineMs: 60_000,
+					intervalMs: 100,
+					logPath: join(logDir, "service.log"),
+					serviceProbe: () => true,
+				}),
+			stop: () => true,
+			start: () => true,
+			switchBack: () => null,
+		});
+
+		const elapsed = Date.now() - start;
+		expect(elapsed).toBeLessThan(5_000);
+		expect(outcome.result).toBe("rolled-back");
+		expect(outcome.reason).toContain("0.5.2 exited during the trial");
+		expect(outcome.reason).toContain("log line 30");
+		expect(outcome.reason).toContain("log line 11");
+		expect(outcome.reason).not.toContain("log line 10\n");
+		expect(read("prismalens.db")).toBe("old-db");
+	});
 });
 
 describe("snapshot", () => {

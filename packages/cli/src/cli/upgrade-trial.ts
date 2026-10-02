@@ -177,17 +177,43 @@ export async function fetchInstance(
 }
 
 /** Polls until the service is this workspace's instance on `version`; the last miss when the deadline passes. */
-export async function awaitTrial(input: {
+export function readLastLogLines(logPath: string, maxLines = 20): string[] {
+	try {
+		if (!existsSync(logPath)) return [];
+		const content = readFileSync(logPath, "utf8");
+		const lines = content.split("\n").filter((line) => line.length > 0);
+		return lines.slice(-maxLines);
+	} catch {
+		return [];
+	}
+}
+
+export interface AwaitTrialInput {
 	base: string;
 	instanceId: string;
 	version: string;
 	deadlineMs: number;
 	fetchImpl?: typeof fetch;
 	intervalMs?: number;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+	logPath?: string;
+	serviceProbe?: () => boolean | Promise<boolean>;
+}
+
+/** Polls until the service is this workspace's instance on `version`; the last miss when the deadline passes. */
+export async function awaitTrial(
+	input: AwaitTrialInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const end = Date.now() + input.deadlineMs;
 	let reason = "no answer";
 	do {
+		if (input.serviceProbe && (await input.serviceProbe())) {
+			const lines = input.logPath ? readLastLogLines(input.logPath, 20) : [];
+			const logDetail = lines.length > 0 ? `:\n${lines.join("\n")}` : "";
+			return {
+				ok: false,
+				reason: `${input.version} exited during the trial${logDetail}`,
+			};
+		}
 		const info = await fetchInstance(input.base, input.fetchImpl);
 		if (typeof info === "string") reason = `${input.base} ${info}`;
 		else if (info.instanceId !== input.instanceId)

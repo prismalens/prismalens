@@ -103,6 +103,34 @@ export function runAction(
 	return true;
 }
 
+/** True when the service is in a failed or exited state. */
+export function serviceFailed(
+	kind: ReturnType<Config["serviceManagerKind"]> & string,
+	uid: number,
+	execImpl = exec,
+): boolean {
+	if (kind === "systemd") {
+		return execImpl([
+			"systemctl",
+			"--user",
+			"is-failed",
+			"--quiet",
+			"prismalens.service",
+		]).ok;
+	}
+	if (kind === "launchd") {
+		const out = execImpl([
+			"launchctl",
+			"print",
+			`gui/${uid}/io.prismalens.server`,
+		]);
+		if (!out.ok) return true;
+		const match = /last exit (?:status|code) = ([0-9]+)/.exec(out.out);
+		return Boolean(match && match[1] !== "0");
+	}
+	return false;
+}
+
 export function installerBinDir(config: Config): string | null {
 	const receipt = safeRead(join(config.installerDataDir(), "receipt"));
 	return /^bin_dir=(.+)$/m.exec(receipt)?.[1] ?? null;
