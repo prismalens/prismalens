@@ -252,16 +252,16 @@ export function checkAutoSelection(): Check[] {
 		{
 			name: "Selected harness",
 			pass: true,
-			detail: `${selection.harness}${selection.auto ? " (auto; a harness saved under Settings → Harness wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
+			detail: `${selection.harness}${selection.auto ? " (auto; an agent saved under Settings → Agent wins)" : " (pinned by PRISMALENS_HARNESS)"}${testedOf(selection.harness)}`,
 			hard: false,
 		},
 		{
 			name: "Model",
-			pass: model.source === "product-default",
+			pass: true,
 			detail:
 				model.source === "product-default"
-					? `${model.model} (tested default; Settings → Harness → Model overrides it)`
-					: `${selection.harness} has no tested default, so the harness picks its own model unless Settings → Harness → Model sets one`,
+					? `${model.model} (tested default; Settings → Agent → Model overrides it)`
+					: `${HARNESS_REGISTRY[selection.harness].label} picks its own model unless Settings → Agent → Model sets one`,
 			hard: false,
 		},
 	];

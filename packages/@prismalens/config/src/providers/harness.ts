@@ -83,7 +83,7 @@ export interface HarnessDescriptor {
 	defaultModel?: string;
 	readOnlyFidelity: PermissionFidelity;
 	readOnlyMechanism: string;
-	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
+	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
 	tested?: { version: string; date: string };
 	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
@@ -157,15 +157,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// The keyless model every #337 walk and the CI compatibility run used.
-		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"opencode.json permission edit/bash=ask answered by prismalens; webfetch, websearch, external_directory denied; repo config disabled",
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "config",
-		loginHint:
-			"Keyless default model; `opencode auth login` or a provider key in env for others",
+		loginHint: "`opencode auth login`, or a provider key in env",
 		resume: true,
 	},
 	"claude-code": {
@@ -198,7 +195,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"ANTHROPIC_AUTH_TOKEN",
 		],
 		install:
-			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
+			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"ACP session/request_permission answered by prismalens; settingSources: [] keeps repo settings and hooks inert",
@@ -224,7 +221,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
 		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
 		install:
-			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY on a server)",
+			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		readOnlyMechanism:
 			"INITIAL_AGENT_MODE=read-only plus ACP permission answers (codex-acp 1.11.0 applied writes without a request in the #639 gate)",

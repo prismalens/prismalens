@@ -186,12 +186,12 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 		expect(resolveHarnessModel("opencode", " zen/free ")).toEqual({ model: "zen/free", source: "operator" });
 	});
 
-	it("falls back to the row's verified default, never the harness's own", () => {
-		expect(resolveHarnessModel("opencode")).toEqual({
-			model: HARNESS_REGISTRY.opencode.defaultModel,
-			source: "product-default",
-		});
-		expect(HARNESS_REGISTRY.opencode.defaultModel).toBe("opencode/muse-spark-1.3-contributor-free");
+	it("ships no product default for OpenCode, so OpenCode picks its own model", () => {
+		expect(HARNESS_REGISTRY.opencode.defaultModel).toBeUndefined();
+		expect(resolveHarnessModel("opencode")).toEqual({ source: "harness-default" });
+		expect(HARNESS_REGISTRY.opencode.configFiles?.({ cwd: "/r", configDir: "/c", dataDir: "/d" })["opencode.json"]).not.toContain(
+			'"model"',
+		);
 	});
 
 	it("names the harness default as the source when a row has none", () => {
