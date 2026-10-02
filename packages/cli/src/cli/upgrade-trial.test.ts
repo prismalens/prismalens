@@ -197,4 +197,24 @@ describe("switchInstallerRuntime", () => {
 			switchInstallerRuntime({ dataDir: ws, binDir: ws, version: "0.4.0" }),
 		).toContain("no longer keeps 0.4.0");
 	});
+
+	it("restores nothing while the trial can't be stopped", async () => {
+		takeSnapshot(ws, trial);
+		migrate();
+		const start = vi.fn(() => true);
+		const switchBack = vi.fn(() => null);
+		const outcome = await settleTrial({
+			workspace: ws,
+			trial,
+			check: async () => ({ ok: false, reason: "crashed" }),
+			stop: async () => false,
+			start,
+			switchBack,
+		});
+		expect(start).not.toHaveBeenCalled();
+		expect(switchBack).not.toHaveBeenCalled();
+		expect(outcome.reason).toContain("couldn't be stopped");
+		expect(read("prismalens.db")).toBe("new-db");
+		expect(existsSync(join(ws, SNAPSHOT_DIR))).toBe(true);
+	});
 });

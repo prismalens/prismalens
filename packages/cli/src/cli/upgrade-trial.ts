@@ -208,7 +208,8 @@ export interface TrialDeps {
 	trial: Trial;
 	/** Waits for the trial; ok or why not. */
 	check: () => Promise<{ ok: true } | { ok: false; reason: string }>;
-	stop: () => boolean;
+	/** Stops the trial; true only once nothing holds the database. */
+	stop: () => Promise<boolean> | boolean;
 	start: () => boolean;
 	/** Reinstates the previous runtime; a reason when this channel can't. */
 	switchBack: () => string | null;
@@ -227,7 +228,17 @@ export async function settleTrial(deps: TrialDeps): Promise<Outcome> {
 		finish(workspace, outcome);
 		return outcome;
 	}
-	deps.stop();
+	if (!(await deps.stop())) {
+		// Restoring under a live SQLite writer corrupts it; keep the snapshot for a retry.
+		const outcome: Outcome = {
+			...pick(trial),
+			result: "restored-only",
+			reason: `${verdict.reason}; ${trial.to} couldn't be stopped, so nothing is restored yet and pl upgrade retries`,
+			at: at(),
+		};
+		durableWrite(workspace, OUTCOME_FILE, JSON.stringify(outcome));
+		return outcome;
+	}
 	restoreSnapshot(workspace);
 	const blocked = deps.switchBack();
 	const restarted = blocked === null && deps.start();

@@ -221,8 +221,16 @@ export default defineCommand({
 						version: trial.to,
 						deadlineMs: trialMs,
 					}),
-				stop: () =>
-					runAction(kind as "systemd", "stop", service?.unitPath ?? "", uid),
+				stop: async () => {
+					if (
+						!runAction(kind as "systemd", "stop", service?.unitPath ?? "", uid)
+					)
+						return false;
+					const free = () =>
+						config.readWorkspaceLockState(workspace).kind !== "held";
+					await lockReleased(free);
+					return free();
+				},
 				start: startService,
 				switchBack: switchBackFor(
 					config,
