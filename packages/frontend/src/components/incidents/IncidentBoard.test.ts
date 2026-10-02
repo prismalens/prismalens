@@ -13,6 +13,7 @@ function makeIncident(number: number, title: string): IncidentWithRelations {
 		id: `00000000-0000-0000-0000-00000000000${number}`,
 		number,
 		title,
+		description: null,
 		status: "investigating",
 		severity: "critical",
 		priority: "p1",
