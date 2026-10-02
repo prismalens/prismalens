@@ -295,7 +295,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinned: true,
 			pinnedBy: "settings",
 			blockedReason:
-				"Codex does not take a model setting; clear Model for it in Settings → Harness",
+				"Codex picks its own model. Clear vendor/stale in the picker above.",
 		});
 		await openHarnessSettings(page, {
 			harness: "codex",
@@ -303,7 +303,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 
 		await expect(page.getByTestId("harness-selection")).toContainText(
-			"Codex does not take a model setting",
+			"Codex picks its own model",
 		);
 		// A model stored for an agent that cannot take one: clearing it is the
 		// only choice in the model column.

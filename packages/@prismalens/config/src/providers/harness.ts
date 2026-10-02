@@ -413,7 +413,7 @@ export function refuseModel(
 ): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
 	if (row.modelVia !== "unsupported" || !model?.trim()) return null;
-	return `${row.label} does not take a model setting; clear Model for it in Settings → Harness`;
+	return `${row.label} picks its own model. Clear ${model.trim()} in the picker above.`;
 }
 
 /** Why a finished run on `harnessId` cannot be continued, or null when it can (#747). */
