@@ -91,6 +91,18 @@ describe("ensureServe", () => {
 		});
 		expect(() => ensureServe("http://127.0.0.1:6473", run)).toThrow(/not enabled/);
 	});
+
+	it("explains a timeout during cert issuance", () => {
+		const timeoutError = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+		const run = fake({
+			"status --json": running,
+			"serve status --json": ok("{}"),
+			"serve --bg": { status: null, stdout: "", stderr: "", error: timeoutError },
+		});
+		expect(() => ensureServe("http://127.0.0.1:3170", run)).toThrow(
+			"Tailscale is still issuing this machine's HTTPS certificate. Run `tailscale serve --bg --https=443 http://127.0.0.1:3170` once, then rerun.",
+		);
+	});
 });
 
 describe("serveTarget", () => {
