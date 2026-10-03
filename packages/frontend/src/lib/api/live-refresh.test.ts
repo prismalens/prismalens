@@ -3,7 +3,7 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidateTopics } from "./live-refresh";
+import { invalidateTopics, reconnectAsOf } from "./live-refresh";
 import { orpc } from "./orpc-client";
 
 describe("invalidateTopics (walk f27)", () => {
@@ -19,5 +19,16 @@ describe("invalidateTopics (walk f27)", () => {
 			JSON.stringify(orpc.incidents.key()),
 			JSON.stringify(orpc.investigations.key()),
 		]);
+	});
+});
+
+describe("reconnectAsOf", () => {
+	it("says nothing while connected or for the first ten seconds down", () => {
+		expect(reconnectAsOf({ connected: true, lostAt: 0 }, 60_000)).toBeNull();
+		expect(reconnectAsOf({ connected: false, lostAt: 1_000 }, 10_999)).toBeNull();
+	});
+
+	it("names when the screen was last live once the stream has been down ten seconds", () => {
+		expect(reconnectAsOf({ connected: false, lostAt: 1_000 }, 11_000)).toBe(1_000);
 	});
 });

@@ -13,11 +13,14 @@ import {
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
-import { AlertTriangle, Frown, ServerOff } from "lucide-react";
+import { AlertTriangle, ServerOff } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
+import { NewIncidentProvider } from "@/components/shell/NewIncident";
+import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
@@ -41,7 +44,8 @@ var e=document.documentElement;
 var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
-try{if(JSON.parse(localStorage.getItem('pl.layout')||'{}').sidebarFolded){e.setAttribute('data-sidebar-folded','');e.style.setProperty('--sidebar-w','0px');}}catch(_){}
+try{if(JSON.parse(localStorage.getItem('pl.layout')||'{}').sidebarFolded){e.setAttribute('data-sidebar-folded','');}}catch(_){}
+if(location.pathname.indexOf('/settings')===0)e.setAttribute('data-settings','');
 }catch(_){}})();`;
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -81,15 +85,20 @@ function RootLayout() {
 			<body className="font-sans">
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<div className="min-h-dvh bg-background text-foreground">
-							<TitleBarStrip />
-							<Sidebar />
-							<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
-								<div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-									<Outlet />
+						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
+							<NewIncidentProvider>
+								<div className="min-h-dvh bg-canvas text-text-1">
+									<TitleBarStrip />
+									<Sidebar />
+									<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
+										<ReconnectLine />
+										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+											<Outlet />
+										</div>
+									</main>
 								</div>
-							</main>
-						</div>
+							</NewIncidentProvider>
+						</TooltipProvider>
 						<Toaster />
 						<ReactQueryDevtools initialIsOpen={false} />
 					</QueryClientProvider>
@@ -103,14 +112,12 @@ function RootLayout() {
 function NotFound() {
 	return (
 		<div className="flex flex-col items-center justify-center gap-4 py-16">
-			<Frown className="h-16 w-16 text-muted-foreground" />
-			<h1 className="text-4xl font-bold text-foreground">404</h1>
-			<p className="text-xl text-muted-foreground">Page not found</p>
-			<p className="text-muted-foreground text-center max-w-md">
-				The page you're looking for doesn't exist or has been moved.
+			<h1 className="text-display">Nothing here</h1>
+			<p className="max-w-md text-center text-body text-text-2">
+				This address does not match a page. It may have moved.
 			</p>
 			<Button asChild>
-				<Link to="/">Go back home</Link>
+				<Link to="/">Open the board</Link>
 			</Button>
 		</div>
 	);
@@ -125,16 +132,14 @@ function RootError({ error }: ErrorComponentProps) {
 				<head>
 					<HeadContent />
 				</head>
-				<body className="font-sans bg-background">
+				<body className="bg-canvas font-sans">
 					<TitleBarStrip />
 					<div className="flex min-h-screen flex-col items-center justify-center gap-4">
-						<ServerOff className="h-16 w-16 text-destructive" />
-						<h1 className="text-2xl font-bold text-foreground">
-							Connection Error
-						</h1>
-						<p className="text-muted-foreground text-center max-w-md">
-							Unable to connect to the PrismaLens API server. Please ensure the
-							backend is running and try again.
+						<ServerOff className="size-6 text-danger" />
+						<h1 className="text-title">PrismaLens is not answering</h1>
+						<p className="max-w-md text-center text-body text-text-2">
+							The page could not reach the PrismaLens server. Check that it is
+							running, then try again.
 						</p>
 						<Button onClick={() => window.location.reload()}>Try again</Button>
 					</div>
@@ -149,14 +154,12 @@ function RootError({ error }: ErrorComponentProps) {
 			<head>
 				<HeadContent />
 			</head>
-			<body className="font-sans bg-background">
+			<body className="bg-canvas font-sans">
 				<TitleBarStrip />
 				<div className="flex min-h-screen flex-col items-center justify-center gap-4">
-					<AlertTriangle className="h-16 w-16 text-destructive" />
-					<h1 className="text-2xl font-bold text-foreground">
-						Something went wrong
-					</h1>
-					<p className="text-muted-foreground">{getErrorMessage(error)}</p>
+					<AlertTriangle className="size-6 text-danger" />
+					<h1 className="text-title">Something went wrong</h1>
+					<p className="text-body text-text-2">{getErrorMessage(error)}</p>
 					<Button onClick={() => window.location.reload()}>Try again</Button>
 				</div>
 				<Scripts />

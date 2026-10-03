@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
 import {
 	Dialog,
 	DialogContent,
@@ -10,28 +11,21 @@ import {
 } from "@/components/ui/dialog";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 
-function Kbd({ children }: { children: string }) {
-	return (
-		<kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-meta text-foreground">
-			{children}
-		</kbd>
-	);
-}
-
 const ROWS: { keys: string[]; label: string }[] = [
+	{ keys: [NEW_INCIDENT_KEY.toUpperCase()], label: "New incident" },
 	...GO_SHORTCUTS.map((s) => ({
-		keys: ["g", s.key],
+		keys: ["G", s.key.toUpperCase()],
 		label: `Go to ${s.label}`,
 	})),
-	{ keys: ["j", "k"], label: "Move down / up a row" },
+	{ keys: ["J", "K"], label: "Move down or up a row" },
 	{ keys: ["Enter"], label: "Open the highlighted row" },
 	{ keys: ["1", "4"], label: "Jump to a column on the board" },
-	{ keys: ["["], label: "Fold or unfold the sidebar" },
-	{ keys: ["Esc"], label: "Clear the highlight, or go back to the incident" },
+	{ keys: ["["], label: "Fold the sidebar to its icons" },
+	{ keys: ["Esc"], label: "Go back" },
 	{ keys: ["?"], label: "This sheet" },
 ];
 
-/** The keyboard map, opened with `?`. */
+/** The keyboard map, opened with `?`; the only place keys are listed (decision 9). */
 export function ShortcutSheet({
 	open,
 	onOpenChange,
@@ -48,16 +42,21 @@ export function ShortcutSheet({
 						Keys work anywhere you are not typing.
 					</DialogDescription>
 				</DialogHeader>
-				<dl className="space-y-2">
+				<dl>
 					{ROWS.map((row) => (
 						<div
 							key={row.label}
-							className="flex items-center justify-between gap-4"
+							className="flex items-center justify-between gap-4 border-t border-hairline py-2 first:border-t-0"
 						>
-							<dt className="text-record">{row.label}</dt>
-							<dd className="flex items-center gap-1">
+							<dt className="text-body">{row.label}</dt>
+							<dd className="flex items-center gap-1.5">
 								{row.keys.map((k) => (
-									<Kbd key={k}>{k}</Kbd>
+									<kbd
+										key={k}
+										className="inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-surface-3 px-1 font-mono text-meta text-text-2"
+									>
+										{k}
+									</kbd>
 								))}
 							</dd>
 						</div>
