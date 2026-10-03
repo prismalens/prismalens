@@ -215,8 +215,9 @@ export class RepositoriesService {
 
 		if (options?.search) {
 			where.OR = [
-				{ fullName: { contains: options.search, mode: "insensitive" } },
-				{ description: { contains: options.search, mode: "insensitive" } },
+				// SQLite takes no `mode`; its LIKE ignores ASCII case already.
+				{ fullName: { contains: options.search } },
+				{ description: { contains: options.search } },
 			];
 		}
 
