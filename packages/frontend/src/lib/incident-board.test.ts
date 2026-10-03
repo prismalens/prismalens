@@ -5,9 +5,13 @@ import type { IncidentWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	boardColumn,
+	cardWord,
+	clockElapsed,
 	headlineAddsInfo,
-	rowGlyph,
 	incidentHeadline,
+	incidentLineage,
+	orderNeedsYou,
+	rowGlyph,
 	runWord,
 } from "./incident-board";
 
@@ -49,26 +53,26 @@ function incident(
 	} as IncidentWithRelations;
 }
 
-describe("boardColumn", () => {
-	it("puts what wants a human first, with the list's predicate", () => {
+describe("boardColumn (R1a d6)", () => {
+	it("puts what wants a human in Needs you, even while its run is live", () => {
 		expect(boardColumn(incident("triggered"))).toBe("needs_you");
+		expect(boardColumn(incident("triggered", { status: "running" }))).toBe(
+			"needs_you",
+		);
 		expect(boardColumn(incident("investigating", { status: "failed" }))).toBe(
 			"needs_you",
 		);
 		expect(boardColumn(incident("resolved"))).toBe("needs_you");
 	});
 
-	it("puts a live run in Working, whatever the incident's status", () => {
-		expect(boardColumn(incident("resolved", { status: "running" }))).toBe(
-			"working",
-		);
-		expect(boardColumn(incident("closed", { status: "pending" }))).toBe(
-			"working",
-		);
+	it("puts an acknowledged incident with a live run in Working", () => {
 		expect(boardColumn(incident("investigating", { status: "running" }))).toBe(
 			"working",
 		);
 		expect(boardColumn(incident("investigating", { status: "pending" }))).toBe(
+			"working",
+		);
+		expect(boardColumn(incident("closed", { status: "running" }))).toBe(
 			"working",
 		);
 	});
@@ -80,12 +84,94 @@ describe("boardColumn", () => {
 		expect(
 			boardColumn(incident("investigating", { status: "cancelled" })),
 		).toBe("concluded");
+		expect(boardColumn(incident("identified"))).toBe("concluded");
 	});
 
-	it("puts a closed incident in Resolved", () => {
+	it("puts the operator's Resolve in Resolved", () => {
 		expect(boardColumn(incident("closed", { status: "completed" }))).toBe(
 			"resolved",
 		);
+	});
+
+	it("keeps a reopened incident in Needs you until a run starts after the reopen", () => {
+		const reopened = {
+			reopenReason: "operator" as const,
+			reopenedAt: "2026-09-30T15:00:00Z",
+		};
+		expect(
+			boardColumn(
+				incident(
+					"investigating",
+					{ status: "completed", createdAt: "2026-09-30T14:00:00Z" },
+					reopened,
+				),
+			),
+		).toBe("needs_you");
+		expect(
+			cardWord(
+				incident(
+					"investigating",
+					{ status: "completed", createdAt: "2026-09-30T14:00:00Z" },
+					reopened,
+				),
+			),
+		).toEqual({ text: "Reopened by you, cause not confirmed", attention: true });
+		expect(
+			boardColumn(
+				incident(
+					"investigating",
+					{ status: "running", createdAt: "2026-09-30T15:01:00Z" },
+					reopened,
+				),
+			),
+		).toBe("working");
+	});
+});
+
+describe("orderNeedsYou (study-v3 §3.1)", () => {
+	it("lists firing first, then a failed run, then a reopen, then Alerts cleared", () => {
+		const cleared = incident("resolved", undefined, { number: 1 });
+		const reopened = incident("investigating", undefined, {
+			number: 2,
+			reopenReason: "operator",
+			reopenedAt: "2026-09-30T15:00:00Z",
+		});
+		const failed = incident("investigating", { status: "failed" }, { number: 3 });
+		const firing = incident("triggered", undefined, { number: 4 });
+		expect(
+			orderNeedsYou([cleared, reopened, failed, firing]).map((i) => i.number),
+		).toEqual([4, 3, 2, 1]);
+	});
+});
+
+describe("cardWord (study-v3 §4)", () => {
+	it("says what is left to do, never Closed or Awaiting close", () => {
+		expect(cardWord(incident("triggered"))).toEqual({
+			text: "Needs acknowledging",
+			attention: true,
+		});
+		expect(cardWord(incident("resolved"))).toEqual({
+			text: "Alerts cleared, resolve it",
+			attention: false,
+		});
+		expect(
+			cardWord(incident("investigating", { status: "failed" }))?.text,
+		).toBe("Run failed");
+		expect(
+			cardWord(incident("investigating", { status: "completed" }))?.text,
+		).toBe("Acknowledged");
+		expect(cardWord(incident("closed"))).toBeNull();
+	});
+
+	it("reads Back again for a flap refire, not Fired again", () => {
+		expect(
+			cardWord(
+				incident("triggered", undefined, {
+					reopenReason: "flap",
+					reopenedAt: "2026-09-30T15:00:00Z",
+				}),
+			),
+		).toEqual({ text: "Back again", attention: true });
 	});
 });
 
@@ -106,8 +192,13 @@ describe("incidentHeadline", () => {
 			),
 		).toEqual({ lead: "Likely:", text: "TTL cut in 3b7e0d" });
 		expect(
-			incidentHeadline(incident("investigating", { status: "failed" })),
-		).toEqual({ text: "Investigation failed" });
+			incidentHeadline(
+				incident("investigating", {
+					status: "failed",
+					error: "harness exited early (code=1): API Error: 401 invalid x-api-key",
+				}),
+			),
+		).toEqual({ text: "The agent is not signed in to its model provider." });
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -118,7 +209,7 @@ describe("incidentHeadline", () => {
 		).toMatch(/^Stopped by you at \d\d:\d\d$/);
 	});
 
-	it("reads the live sentence, the failure reason and the evidence count", () => {
+	it("reads the live sentence's first clause", () => {
 		expect(
 			incidentHeadline(
 				incident("investigating", {
@@ -128,26 +219,9 @@ describe("incidentHeadline", () => {
 				}),
 			),
 		).toEqual({ text: "Comparing the TTL change in 9f3c1a" });
-		expect(
-			incidentHeadline(
-				incident("investigating", {
-					status: "failed",
-					error: "not logged in; run claude login",
-				}),
-			),
-		).toEqual({ text: "Investigation failed: not logged in" });
-		expect(
-			incidentHeadline(
-				incident("investigating", {
-					status: "completed",
-					rootCause: "cron host clock drift",
-					evidenceCount: 2,
-				}),
-			),
-		).toEqual({ lead: "Likely:", text: "cron host clock drift, 2 evidence" });
 	});
 
-	it("prefers the recorded cause once the incident is closed", () => {
+	it("reads the recorded cause on a Resolved incident, or says none was recorded", () => {
 		expect(
 			incidentHeadline(
 				incident("closed", { status: "completed", rootCause: "x" }, {
@@ -155,71 +229,112 @@ describe("incidentHeadline", () => {
 				}),
 			),
 		).toEqual({ lead: "Cause:", text: "stale JWKS cache" });
+		expect(incidentHeadline(incident("closed"))).toEqual({
+			text: "No cause recorded",
+		});
 	});
 });
 
-describe("runWord", () => {
-	it("gives the run's own word and minutes while live, nothing after", () => {
-		const now = Date.parse("2026-09-30T14:04:30Z");
+describe("incidentLineage (R1a d5, d6)", () => {
+	it("names the incident a new one fired again after, with its cause", () => {
 		expect(
-			runWord(incident("investigating", { status: "running" }), now),
-		).toEqual({ state: "starting", text: "Starting 4m", stale: false });
-		expect(
-			runWord(
-				incident("investigating", {
-					status: "running",
-					lastEventAt: "2026-09-30T14:04:00Z",
+			incidentLineage(
+				incident("triggered", undefined, {
+					priorIncident: {
+						number: 1,
+						status: "closed",
+						actualCause: "pool capped at 10",
+					},
 				}),
-				now,
 			),
-		).toEqual({ state: "working", text: "Working 4m", stale: false });
+		).toEqual({
+			lead: "Fired again:",
+			text: "after INC-1 was resolved, cause: pool capped at 10",
+		});
+	});
+
+	it("points a Resolved incident at the one that fired again after it", () => {
+		const line = incidentLineage(
+			incident("closed", undefined, {
+				refiredAs: {
+					id: "00000000-0000-0000-0000-000000000011",
+					number: 11,
+					createdAt: "2026-09-30T17:40:00Z",
+				},
+			}),
+		);
+		expect(line?.lead).toBe("Fired again as");
+		expect(line?.text).toMatch(/^INC-11, \d\d:\d\d$/);
+	});
+});
+
+describe("runWord (study-v3 §3.1)", () => {
+	const now = Date.parse("2026-09-30T14:04:30Z");
+
+	it("gives the step and a ticking elapsed time while live, nothing after", () => {
 		expect(
-			runWord(
-				incident("investigating", {
-					status: "running",
-					lastEventAt: "2026-09-30T14:01:00Z",
-				}),
-				now,
-			)?.stale,
-		).toBe(true);
+			runWord(incident("investigating", { status: "running" }), now)?.text,
+		).toBe("Starting 4:30");
 		expect(
 			runWord(
 				incident("investigating", {
 					status: "running",
 					lastEventAt: "2026-09-30T14:04:00Z",
-					stopRequestedAt: "2026-09-30T14:04:10Z",
+					latestText: "Reading worker/consumer.py",
 				}),
 				now,
 			)?.text,
-		).toBe("Stopping 4m");
+		).toBe("Reading worker/consumer.py 4:30");
 		expect(
 			runWord(incident("investigating", { status: "cancelled" }), now),
 		).toBeNull();
+	});
+
+	it("reads Working 14m, quiet for 5 once the run goes quiet", () => {
+		const later = Date.parse("2026-09-30T14:14:30Z");
+		const word = runWord(
+			incident("investigating", {
+				status: "running",
+				lastEventAt: "2026-09-30T14:09:00Z",
+				latestText: "Reading",
+			}),
+			later,
+		);
+		expect(word?.text).toBe("Working 14m, quiet for 5");
+		expect(word?.quietFor).toBe(5);
+	});
+
+	it("formats elapsed as m:ss and h:mm:ss", () => {
+		expect(clockElapsed(21)).toBe("0:21");
+		expect(clockElapsed(108)).toBe("1:48");
+		expect(clockElapsed(3729)).toBe("1:02:09");
 	});
 });
 
 describe("headlineAddsInfo", () => {
 	it("drops a headline that only repeats the state word", () => {
-		expect(headlineAddsInfo({ text: "No investigation yet" })).toBe(false);
 		expect(headlineAddsInfo({ text: "Working…" })).toBe(false);
-		expect(headlineAddsInfo({ text: "Investigation failed" })).toBe(false);
+		expect(headlineAddsInfo({ text: "Run failed" })).toBe(false);
+		expect(headlineAddsInfo({ text: "No investigation yet" })).toBe(true);
 		expect(headlineAddsInfo({ lead: "Likely:", text: "TTL cut" })).toBe(true);
-		expect(headlineAddsInfo({ text: "Investigation failed: not logged in" })).toBe(true);
-		expect(headlineAddsInfo({ text: "Comparing the TTL change" })).toBe(true);
 	});
 });
 
-describe("rowGlyph", () => {
-	it("shows a live run first, then what wants a human, then open or ended", () => {
-		expect(rowGlyph(incident("resolved", { status: "running" }))).toBe("live");
-		expect(rowGlyph(incident("triggered"))).toBe("attention");
+describe("rowGlyph (R1a d6)", () => {
+	it("follows the board's column so the sidebar never disagrees", () => {
+		expect(rowGlyph(incident("triggered", { status: "running" }))).toBe(
+			"attention",
+		);
+		expect(rowGlyph(incident("investigating", { status: "running" }))).toBe(
+			"live",
+		);
 		expect(rowGlyph(incident("investigating", { status: "failed" }))).toBe(
 			"attention",
 		);
 		expect(rowGlyph(incident("investigating", { status: "completed" }))).toBe(
 			"open",
 		);
-		expect(rowGlyph(incident("resolved"))).toBe("ended");
+		expect(rowGlyph(incident("resolved"))).toBe("attention");
 		expect(rowGlyph(incident("closed"))).toBe("ended");
 	});
 });

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HYPOTHESIS_STATUS_LABEL } from "@prismalens/contracts";
+import {
+	HYPOTHESIS_STATUS_LABEL,
+	ROOT_CAUSE_CATEGORY_LABEL,
+} from "@prismalens/contracts";
 import { FidelityBadge } from "@/components/investigation/ReportSections";
 import { StateChip } from "@/components/shared/StateChip";
+import { Button } from "@/components/ui/button";
 import { hypothesisStatusTone } from "@/lib/state-tone";
 import { useIncidentRecord } from "../record-context";
 import { Card, CardLink } from "./Card";
@@ -13,19 +17,37 @@ import { Card, CardLink } from "./Card";
  * renders (#743 §3c.2): the culprit sentence and the top hypothesis.
  */
 export function ConclusionCard() {
-	const { incident } = useIncidentRecord();
-	const cause = incident.actualCause ?? incident.actualCauseCategory;
+	const { incident, openEditCause } = useIncidentRecord();
+	const cause = incident.actualCause;
+	const category = incident.actualCauseCategory
+		? ROOT_CAUSE_CATEGORY_LABEL[incident.actualCauseCategory]
+		: null;
+	const resolved = incident.status === "closed";
+	// Open again after Resolve: the old answer reads as Previous cause (R1a d4, d8).
 	return (
 		<>
-			{cause && (
-				<Card title="Actual cause" testId="actual-cause">
-					<p className="text-record">
-						{incident.actualCause && incident.actualCauseCategory && (
-							<span className="text-muted-foreground">
-								{incident.actualCauseCategory}:{" "}
-							</span>
+			{(cause || category || resolved) && (
+				<Card
+					title={resolved ? "Cause" : "Previous cause"}
+					testId={resolved ? "actual-cause" : "previous-cause"}
+					aside={
+						resolved && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={openEditCause}
+								data-testid="edit-cause"
+							>
+								Edit
+							</Button>
+						)
+					}
+				>
+					<p className="text-record" data-testid="cause-text">
+						{category && cause && (
+							<span className="text-text-2">{category}: </span>
 						)}
-						{cause}
+						{cause ?? category ?? "No cause recorded"}
 					</p>
 				</Card>
 			)}

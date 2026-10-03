@@ -3097,6 +3097,65 @@
                         }
                       ]
                     },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -3470,6 +3529,65 @@
                                 "type": "integer",
                                 "minimum": -9007199254740991,
                                 "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reopenedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reopenReason": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "flap",
+                                  "operator"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "timeToClose": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priorIncidentId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
                               },
                               {
                                 "type": "null"
@@ -3899,6 +4017,23 @@
                                     }
                                   ]
                                 },
+                                "rootCauseCategory": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "code",
+                                        "config",
+                                        "infrastructure",
+                                        "external",
+                                        "unknown"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "error": {
                                   "anyOf": [
                                     {
@@ -4026,6 +4161,79 @@
                                 "displayName"
                               ]
                             }
+                          },
+                          "priorIncident": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "number": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "status": {
+                                    "enum": [
+                                      "triggered",
+                                      "investigating",
+                                      "identified",
+                                      "monitoring",
+                                      "resolved",
+                                      "closed"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "actualCause": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "number",
+                                  "status",
+                                  "actualCause"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refiredAs": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "number": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "createdAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "number",
+                                  "createdAt"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -4190,6 +4398,11 @@
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
                         },
+                        "reopened": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
                         "awaiting_close": {
                           "type": "integer",
                           "minimum": -9007199254740991,
@@ -4199,6 +4412,7 @@
                       "required": [
                         "failed_run",
                         "unacknowledged",
+                        "reopened",
                         "awaiting_close"
                       ]
                     },
@@ -4452,6 +4666,65 @@
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
                         },
                         {
                           "type": "null"
@@ -4881,6 +5154,23 @@
                               }
                             ]
                           },
+                          "rootCauseCategory": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "code",
+                                  "config",
+                                  "infrastructure",
+                                  "external",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "error": {
                             "anyOf": [
                               {
@@ -5008,6 +5298,79 @@
                           "displayName"
                         ]
                       }
+                    },
+                    "priorIncident": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "number": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "status": {
+                              "enum": [
+                                "triggered",
+                                "investigating",
+                                "identified",
+                                "monitoring",
+                                "resolved",
+                                "closed"
+                              ],
+                              "type": "string"
+                            },
+                            "actualCause": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "number",
+                            "status",
+                            "actualCause"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refiredAs": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "number",
+                            "createdAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -5114,6 +5477,27 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "actualCause": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "actualCauseCategory": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "code",
+                          "config",
+                          "infrastructure",
+                          "external",
+                          "unknown"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -5326,6 +5710,65 @@
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
                         },
                         {
                           "type": "null"
@@ -5771,6 +6214,65 @@
                         }
                       ]
                     },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -6062,6 +6564,65 @@
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
                         },
                         {
                           "type": "null"
@@ -19305,6 +19866,55 @@
                   },
                   "required": [
                     "token"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/last-delivery": {
+      "get": {
+        "operationId": "webhooks.lastDelivery",
+        "summary": "Read when the webhook last took a delivery, and what it held",
+        "tags": [
+          "webhooks"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "received": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "accepted": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "received",
+                        "accepted"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 }
               }

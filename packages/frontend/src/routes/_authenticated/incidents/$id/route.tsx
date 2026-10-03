@@ -12,11 +12,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { CloseIncidentDialog } from "@/components/incidents/CloseIncidentDialog";
 import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
 import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
+import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import { RunStrip } from "@/components/incidents/RunStrip";
 import {
 	type IncidentRecord,
@@ -119,6 +119,26 @@ function IncidentLayout() {
 			setCloseOpen(false);
 			return invalidateIncident();
 		},
+		onError: (err) =>
+			toast({
+				title: "Not resolved",
+				description: getErrorMessage(err),
+				variant: "destructive",
+			}),
+	});
+	const [editOpen, setEditOpen] = useState(false);
+	const editCause = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () => {
+			setEditOpen(false);
+			return invalidateIncident();
+		},
+		onError: (err) =>
+			toast({
+				title: "Cause not saved",
+				description: getErrorMessage(err),
+				variant: "destructive",
+			}),
 	});
 
 	const [reopenOpen, setReopenOpen] = useState(false);
@@ -162,6 +182,7 @@ function IncidentLayout() {
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
 			resolve: () => resolveMutation.mutate({ id }),
 			openClose: () => setCloseOpen(true),
+			openEditCause: () => setEditOpen(true),
 			openReopen: () => setReopenOpen(true),
 			addNote: (text: string, onDone?: () => void) =>
 				createNote.mutate(
@@ -220,14 +241,12 @@ function IncidentLayout() {
 					runLive={runLive}
 					onAcknowledge={record.acknowledge}
 					onInvestigate={() => record.investigate()}
-					onResolve={record.resolve}
 					onClose={record.openClose}
 					onReopen={record.openReopen}
+					onEditCause={record.openEditCause}
 					isInvestigating={investigateMutation.isPending}
 					investigateDisabled={!agentReady}
 					investigateDisabledReason={blockedReason}
-					backToIncident={here !== null}
-					hideInvestigate={here === null || here === "conversation"}
 				/>
 				<RecordTabs
 					incidentId={id}
@@ -252,11 +271,26 @@ function IncidentLayout() {
 						reopenMutation.mutate({ id, status: "investigating" })
 					}
 				/>
-				<CloseIncidentDialog
+				<ResolveDialog
 					open={closeOpen}
 					onOpenChange={setCloseOpen}
+					incident={incident}
 					isPending={closeMutation.isPending}
 					onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
+				/>
+				<ResolveDialog
+					mode="edit"
+					open={editOpen}
+					onOpenChange={setEditOpen}
+					incident={incident}
+					isPending={editCause.isPending}
+					onConfirm={(cause) =>
+						editCause.mutate({
+							id,
+							actualCause: cause.actualCause ?? "",
+							actualCauseCategory: cause.actualCauseCategory ?? null,
+						})
+					}
 				/>
 			</div>
 		</IncidentRecordContext.Provider>

@@ -314,6 +314,9 @@ describe("AlertsService (BDD)", () => {
 					status: IncidentStatus.triggered,
 					resolvedAt: null,
 					timeToResolve: null,
+					// R1a d4: the card's "Back again" reads these, not resolvedAt.
+					reopenReason: "flap",
+					reopenedAt: expect.any(Date),
 				}),
 			});
 			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({

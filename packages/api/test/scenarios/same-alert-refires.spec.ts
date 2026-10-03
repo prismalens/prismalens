@@ -68,7 +68,73 @@ describe("Walk f32: the same alert fires again after its incident ended", () => 
 		expect(JSON.stringify(timeline)).toContain(firstIncidentId);
 	});
 
-	// Decision 3 (one-step Resolve) re-rules both; the R1 addendum is the reference.
-	it.todo("When it fires again inside the flap window after Resolve, Then … (R1 addendum: reopen or a new linked incident)");
-	it.todo("Given an incident closed with a cause, When its alert fires again, Then … (R1 addendum: what `closed` means after decision 3)");
+});
+
+interface Lineage {
+	id: string;
+	number: number;
+	status: string;
+	reopenReason?: string | null;
+	priorIncident?: { number: number; actualCause: string | null } | null;
+	refiredAs?: { number: number } | null;
+}
+
+describe("R1a: the same alert after the operator's Resolve, and after Alerts cleared", () => {
+	it("Given an incident resolved with a cause, When its alert fires again inside the flap window, Then a new incident names it and it names the new one", async () => {
+		const fired = am.fire({ labels: { alertname: "PoolCapped", severity: "high" } });
+		await deliver();
+		const [first] = await eventually(
+			() => pl.incidentFor(fired.fingerprint),
+			(f) => f.length === 1,
+			"the first incident",
+		);
+		await pl.api(`/incidents/${first.id}/close`, {
+			method: "POST",
+			body: { actualCause: "pool capped at 10" },
+		});
+
+		await deliver();
+		const both = await eventually(
+			() => pl.incidentFor(fired.fingerprint),
+			(f) => f.length === 2,
+			"a new incident after Resolve",
+		);
+		const next = both.find((i) => i.id !== first.id);
+		const after = await pl.api<Lineage>(`/incidents/${next?.id}`);
+		expect(after.status).toBe("triggered");
+		expect(after.priorIncident).toMatchObject({
+			number: first.number,
+			actualCause: "pool capped at 10",
+		});
+		const old = await pl.api<Lineage>(`/incidents/${first.id}`);
+		expect(old.status).toBe("closed");
+		expect(old.refiredAs?.number).toBe(after.number);
+	});
+
+	it("Given an incident whose alerts cleared, When the alert fires again inside the flap window, Then the same incident is Triggered again and marked as a flap", async () => {
+		const fired = am.fire({ labels: { alertname: "QueueLag", severity: "high" } });
+		await deliver();
+		const [incident] = await eventually(
+			() => pl.incidentFor(fired.fingerprint),
+			(f) => f.length === 1,
+			"the incident",
+		);
+		am.clear(fired.fingerprint);
+		await deliver();
+		await eventually(
+			() => pl.api<Lineage>(`/incidents/${incident.id}`),
+			(i) => i.status === "resolved",
+			"Alerts cleared",
+		);
+
+		am.fire({ labels: { alertname: "QueueLag", severity: "high" } });
+		await deliver();
+		const again = await eventually(
+			() => pl.api<Lineage>(`/incidents/${incident.id}`),
+			(i) => i.status === "triggered",
+			"the same incident back",
+		);
+		expect(again.reopenReason).toBe("flap");
+		expect(await pl.incidentFor(fired.fingerprint)).toHaveLength(1);
+	});
 });

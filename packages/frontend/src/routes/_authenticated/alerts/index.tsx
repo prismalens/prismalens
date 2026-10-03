@@ -6,6 +6,7 @@
 import {
 	ALERT_STATUS_LABEL,
 	AlertStatusSchema,
+	OPEN_ALERT_STATUSES,
 	SEVERITY_LABEL,
 	SeveritySchema,
 } from "@prismalens/contracts";
@@ -19,7 +20,6 @@ import {
 	useAlertWindow,
 	usePullAlerts,
 } from "@/components/alerts/AlertListPane";
-import { LiveSlot } from "@/components/shared/LiveSlot";
 import { GroupBySelect } from "@/components/shared/ServiceLanes";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -141,27 +141,10 @@ function AlertNumbers() {
 		refetchInterval: useLiveRefreshInterval(),
 	});
 	const s = stats.data;
-	const slot = (label: string, value: string, note?: string) =>
-		stats.error
-			? ({
-					label,
-					state: "failed",
-					source: "alerts",
-					reason: stats.error.message,
-					onRetry: () => stats.refetch(),
-				} as const)
-			: !s
-				? ({ label, state: "fetching", source: "alerts" } as const)
-				: ({
-						label,
-						state: "live",
-						value,
-						note,
-						source: "alerts",
-						window: "all time",
-						updatedAt: new Date(stats.dataUpdatedAt),
-					} as const);
-
+	// A correlated alert is still firing; only its incident has it (study-v3 §4).
+	const firing = OPEN_ALERT_STATUSES.filter(
+		(st) => st !== "acknowledged",
+	).reduce((n, st) => n + (s?.byStatus[st] ?? 0), 0);
 	return (
 		<div
 			className="min-h-0 flex-1 overflow-y-auto"
@@ -174,22 +157,38 @@ function AlertNumbers() {
 					</p>
 				) : (
 					<>
-						<div className="grid gap-3 sm:grid-cols-3">
-							<LiveSlot
-								{...slot(
-									"Firing",
-									String(s?.byStatus.triggered ?? 0),
-									s ? `of ${s.total}` : undefined,
-								)}
-								data-testid="alerts-stat-firing"
-							/>
-							<LiveSlot
-								{...slot("Acknowledged", String(s?.byStatus.acknowledged ?? 0))}
-							/>
-							<LiveSlot
-								{...slot("Resolved", String(s?.byStatus.resolved ?? 0))}
-							/>
-						</div>
+						{stats.error ? (
+							<p className="text-body text-danger">
+								The numbers did not load: {stats.error.message}.{" "}
+								<button
+									type="button"
+									className="underline"
+									onClick={() => stats.refetch()}
+								>
+									Try again
+								</button>
+							</p>
+						) : (
+							s && (
+								<p
+									className="text-title font-normal text-text-2"
+									data-testid="alerts-stat-firing"
+								>
+									<span className="font-semibold text-text-1 tabular-nums">
+										{firing}
+									</span>{" "}
+									firing of <span className="tabular-nums">{s.total}</span>,{" "}
+									<span className="tabular-nums">
+										{s.byStatus.acknowledged ?? 0}
+									</span>{" "}
+									acknowledged,{" "}
+									<span className="tabular-nums">
+										{s.byStatus.resolved ?? 0}
+									</span>{" "}
+									cleared.
+								</p>
+							)
+						)}
 						{s && (
 							<dl className="mt-8 grid grid-cols-[8rem_1fr] gap-x-6 gap-y-2 text-body">
 								<dt className="text-text-3">By severity</dt>

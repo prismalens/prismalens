@@ -293,7 +293,8 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
 		await page.getByTestId("tab-alerts").click();
-		await expect(page.getByTestId("band-investigate")).toBeDisabled();
+		await page.getByTestId("band-more").click();
+		await expect(page.getByTestId("band-menu-investigate")).toBeDisabled();
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {

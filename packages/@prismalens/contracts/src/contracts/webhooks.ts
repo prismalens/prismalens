@@ -6,6 +6,15 @@
  */
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+
+/** One delivery: when, how many alerts it carried, how many were taken. */
+export const WebhookDeliverySchema = z.object({
+	at: z.string(),
+	received: z.number().int(),
+	accepted: z.number().int(),
+});
+export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
+
 import {
 	GenericWebhookResponseSchema,
 	GenericWebhookSchema,
@@ -72,4 +81,18 @@ export const webhooksContract = {
 		})
 		.input(z.object({}))
 		.output(z.object({ token: z.string() })),
+
+	/**
+	 * The last Alertmanager delivery the webhook took, for Settings, Alert sources.
+	 * GET /webhooks/last-delivery
+	 */
+	lastDelivery: oc
+		.route({
+			method: "GET",
+			path: "/webhooks/last-delivery",
+			summary: "Read when the webhook last took a delivery, and what it held",
+			tags: ["webhooks"],
+		})
+		.input(z.object({}))
+		.output(WebhookDeliverySchema.nullable()),
 };

@@ -13,7 +13,9 @@ import { Implement, implement } from "@orpc/nest";
 import type { PrometheusAlert } from "@prismalens/contracts";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
 import type { GenericWebhookDto, RenderWebhookDto } from "./dto/index.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
@@ -36,6 +38,7 @@ export class WebhooksController {
 		private readonly telemetry: TelemetryService,
 		@Inject(forwardRef(() => AlertPullService))
 		private readonly alertPull: AlertPullService,
+		private readonly prisma: PrismaService,
 	) {}
 
 	@Implement({
@@ -100,6 +103,7 @@ export class WebhooksController {
 					// Stamp what Alertmanager lists while the machine is awake, so an
 					// alert it stops listing overnight can resolve by absence (#605).
 					void this.alertPull.onWebhook();
+					await this.rememberDelivery(alerts.length, alertIds.length);
 
 					return {
 						received: alerts.length,
@@ -128,6 +132,29 @@ export class WebhooksController {
 				return this.formatResponse(result);
 			},
 		);
+	}
+
+	/** Settings, Alert sources reads this back as "Last delivery" (study-v3 §7). Advisory. */
+	private async rememberDelivery(received: number, accepted: number) {
+		const value = JSON.stringify({
+			at: new Date().toISOString(),
+			received,
+			accepted,
+		});
+		await this.prisma.setting
+			.upsert({
+				where: { key: WEBHOOK_LAST_DELIVERY_KEY },
+				update: { value, type: "json" },
+				create: {
+					key: WEBHOOK_LAST_DELIVERY_KEY,
+					value,
+					type: "json",
+					category: "general",
+				},
+			})
+			.catch((err) =>
+				this.logger.warn(`Could not record the last delivery: ${err}`),
+			);
 	}
 
 	/**

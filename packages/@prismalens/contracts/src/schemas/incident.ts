@@ -48,6 +48,15 @@ export const IncidentSchema = z.object({
 	alertCount: z.number().int(),
 	timeToAcknowledge: z.number().int().nullable(),
 	timeToResolve: z.number().int().nullable(),
+	/** When the operator last reopened it, or the source refired it inside the flap window (R1a d4). */
+	reopenedAt: DateStringSchema.nullable().optional(),
+	reopenReason: z.enum(["flap", "operator"]).nullable().optional(),
+	/** The operator's Resolve; `resolvedAt` stays when the alerts cleared. */
+	closedAt: DateStringSchema.nullable().optional(),
+	/** Seconds from the first alert to the operator's Resolve. */
+	timeToClose: z.number().int().nullable().optional(),
+	/** The ended incident whose alert fired again as this one (R1a d5). */
+	priorIncidentId: z.string().uuid().nullable().optional(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -81,6 +90,9 @@ export const UpdateIncidentSchema = z.object({
 	assignedToId: z.string().uuid().optional(),
 	customerImpact: z.string().optional(),
 	tags: z.array(z.string()).optional(),
+	/** Editable after Resolve (R1a d3); an empty string clears it. */
+	actualCause: z.string().trim().max(2000).optional(),
+	actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
 });
 
 // =============================================================================
@@ -102,6 +114,7 @@ const InvestigationRefSchema = z.object({
 	// Rendered by IncidentDetailPanel — omitting it here strips the field at
 	// the oRPC output boundary even though the service selects it.
 	rootCause: z.string().nullable(),
+	rootCauseCategory: RootCauseCategorySchema.nullable().optional(),
 	/** Why the run failed, for the list's headline (#743). */
 	error: z.string().nullable().optional(),
 	harness: z.string().nullable().optional(),
@@ -131,6 +144,24 @@ export const IncidentWithRelationsSchema = IncidentSchema.extend({
 	investigations: z.array(InvestigationRefSchema).optional(),
 	/** Every service the incident touches, its own first. */
 	services: z.array(IncidentServiceRefSchema).optional(),
+	/** The ended incident this one fired again after (R1a d5). */
+	priorIncident: z
+		.object({
+			number: z.number().int(),
+			status: IncidentStatusSchema,
+			actualCause: z.string().nullable(),
+		})
+		.nullable()
+		.optional(),
+	/** The newest incident that names this one as its prior. */
+	refiredAs: z
+		.object({
+			id: z.string().uuid(),
+			number: z.number().int(),
+			createdAt: DateStringSchema,
+		})
+		.nullable()
+		.optional(),
 });
 
 // =============================================================================
@@ -165,6 +196,7 @@ export const IncidentStatsSchema = z.object({
 	attention: z.object({
 		failed_run: z.number().int(),
 		unacknowledged: z.number().int(),
+		reopened: z.number().int(),
 		awaiting_close: z.number().int(),
 	}),
 	/** Mean timeToResolve in seconds over ended incidents that recorded one; null when none did. */

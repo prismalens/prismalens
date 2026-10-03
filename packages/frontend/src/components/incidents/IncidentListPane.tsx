@@ -23,6 +23,7 @@ import { attentionFor } from "@/lib/incident-attention";
 import {
 	headlineAddsInfo,
 	incidentHeadline,
+	orderNeedsYou,
 	rowGlyph,
 	runWord,
 } from "@/lib/incident-board";
@@ -130,7 +131,9 @@ export function IncidentListPane({
 						(i.service?.name ?? "").toLowerCase().includes(needle),
 				)
 			: incidents;
-		const needsYou = visible.filter((i) => attentionFor(i) !== null);
+		const needsYou = orderNeedsYou(
+			visible.filter((i) => attentionFor(i) !== null),
+		);
 		const rest = visible.filter(
 			(i) => attentionFor(i) === null && i.status !== "closed",
 		);

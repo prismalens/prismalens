@@ -31,7 +31,10 @@ export interface IncidentRecord {
 	isInvestigating: boolean;
 	acknowledge: () => void;
 	resolve: () => void;
+	/** The operator's one step, Resolve (R1a): opens the dialog prefilled from the report. */
 	openClose: () => void;
+	/** Edit the recorded cause after Resolve (R1a d3). */
+	openEditCause: () => void;
 	/** Ask to reopen a resolved incident; it starts no run. */
 	openReopen: () => void;
 	addNote: (text: string, onDone?: () => void) => void;

@@ -45,16 +45,16 @@ export interface StateChipProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 /**
- * The one chip for every state in the app: severity, status, run state, liveness.
- * Colour comes from a state token, never from a palette class, so a chip reads the
- * same on every screen and in both themes.
+ * Retired as a tinted chip (study-v3 §2): a state is a coloured word, and the
+ * severity dot is the only filled shape. Kept as a name so the record's screens
+ * PR 3 restyles render as words meanwhile.
  */
 export function StateChip({
 	tone,
 	mono,
 	dashed,
-	pulse,
-	quiet: _quiet,
+	pulse: _pulse,
+	quiet,
 	className,
 	style,
 	children,
@@ -65,19 +65,13 @@ export function StateChip({
 			data-tone={tone}
 			style={{ "--chip": toneVar[tone], ...style } as CSSProperties}
 			className={cn(
-				"inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-[4px] px-1.5 text-meta font-medium leading-none",
-				dashed ? "text-text-3" : "bg-(--chip)/12 text-(--chip)",
+				"inline-flex items-center gap-1 whitespace-nowrap text-meta font-medium",
+				dashed || quiet ? "text-text-3" : "text-(--chip)",
 				mono && "font-mono tabular-nums",
 				className,
 			)}
 			{...props}
 		>
-			{pulse && (
-				<span
-					aria-hidden
-					className="h-1.5 w-1.5 rounded-full bg-(--chip) motion-safe:animate-pulse"
-				/>
-			)}
 			{children}
 		</span>
 	);

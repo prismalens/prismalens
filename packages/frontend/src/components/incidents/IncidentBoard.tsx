@@ -16,9 +16,6 @@ import {
 } from "@dnd-kit/core";
 import {
 	canIncidentAction,
-	INCIDENT_ATTENTION_LABEL,
-	INCIDENT_STATUS_LABEL,
-	type IncidentStatus,
 	type IncidentWithRelations,
 	isWorkflowLive,
 	SEVERITY_LABEL,
@@ -33,16 +30,19 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { ComposerBox } from "@/components/investigation/ComposerBox";
 import { Mono } from "@/components/shared/Mono";
-import { type ChipTone, StateWord } from "@/components/shared/StateChip";
-import { Button } from "@/components/ui/button";
 import {
-	Popover,
-	PopoverAnchor,
-	PopoverContent,
-} from "@/components/ui/popover";
-import { ago, useNow } from "@/hooks/use-now";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useInvestigationReadiness } from "@/lib/api/hooks";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
@@ -50,31 +50,32 @@ import {
 	investigationKeys,
 	useCancelInvestigation,
 } from "@/lib/api/hooks/use-investigations-orpc";
+import { useStreamStatus } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { type DropAction, dropAction } from "@/lib/board-drop";
+import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { attentionFor, attentionTone } from "@/lib/incident-attention";
 import {
 	BOARD_COLUMNS,
 	type BoardColumn,
 	boardColumn,
+	cardWord,
+	clockElapsed,
 	headlineAddsInfo,
 	incidentHeadline,
+	incidentLineage,
+	isWrapUp,
 	latestRun,
+	orderNeedsYou,
 	runWord,
+	shortAge,
 } from "@/lib/incident-board";
-import { incidentStatusTone, runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
+import { ReopenDialog } from "./ReopenDialog";
+import { ResolveDialog } from "./ResolveDialog";
 
-const COLUMN_TONE: Record<BoardColumn, ChipTone> = {
-	needs_you: "critical",
-	working: "active",
-	concluded: "done",
-	resolved: "neutral",
-};
-
-/** Incidents per column, each column in the list's order. */
+/** Incidents per column; Needs you in its order (study-v3 §3.1). */
 export function groupByColumn(
 	incidents: IncidentWithRelations[],
 ): Record<BoardColumn, IncidentWithRelations[]> {
@@ -85,6 +86,7 @@ export function groupByColumn(
 		resolved: [],
 	};
 	for (const i of incidents) out[boardColumn(i)].push(i);
+	out.needs_you = orderNeedsYou(out.needs_you);
 	return out;
 }
 
@@ -152,11 +154,10 @@ interface Dragging {
 	from: BoardColumn;
 }
 
-/** A drop waiting on the operator: pick the agent, confirm a stop or a resolve. */
-type Prompt = { incidentId: string } & (
-	| { kind: "investigate" }
+/** A drop or a card action waiting on the operator. */
+type Prompt = { incident: IncidentWithRelations } & (
 	| { kind: "stop" }
-	| { kind: "reopen" }
+	| { kind: "reopen-investigate" }
 	| { kind: "resolve"; stopFirst: boolean }
 );
 
@@ -166,31 +167,37 @@ function actionFor(d: Dragging, to: BoardColumn): DropAction {
 		from: d.from,
 		to,
 		live: !!run && isWorkflowLive(run.status),
-		canResolve: canIncidentAction("resolve", d.incident.status),
+		canResolve: canIncidentAction("close", d.incident.status),
 		canReopen: canIncidentAction("reopen", d.incident.status),
 	});
 }
 
+/** While the change stream is down, live marks go grey and their clocks stop (study-v3 §6). */
+function useClock(): { now: number | null; offline: number | null } {
+	const now = useNow(1_000);
+	const stream = useStreamStatus();
+	const offline =
+		now !== null && !stream.connected && now - stream.lostAt > 10_000
+			? stream.lostAt
+			: null;
+	return { now: offline ?? now, offline };
+}
+
 /**
- * The board (#743 §3c, layer 0): the landing beside the list. Four columns in
- * the order an SRE asks, from the same query and predicates as the list pane,
- * so a card and its row never disagree. The board scrolls as one region; 1 to
- * 4 put focus on a column's first card. j, k and Enter stay with the list.
- *
- * A card can be dropped on another column; since columns follow state, a drop
- * is one action (`dropAction`), and nothing runs until the operator confirms.
+ * The board (study-v3 §3.1): four columns in the order an SRE asks, from the
+ * same predicates as the sidebar. Needs you is ordered and ends in a quiet
+ * "To wrap up"; a Triggered card carries Acknowledge. A card dropped on a
+ * column does that column's one action; a run starts at once, with no form.
+ * Below `lg` the columns stack with their headings.
  */
 export function IncidentBoard({
 	incidents,
 	search,
-	empty,
 }: {
 	incidents: IncidentWithRelations[];
 	search: IncidentsSearch;
-	/** Shown over the empty columns: the first-run panel, or a window note. */
-	empty?: ReactNode;
 }) {
-	const now = useNow();
+	const { now, offline } = useClock();
 	const columns = useMemo(() => groupByColumn(incidents), [incidents]);
 	const flipRef = useFlip(incidents);
 	const queryClient = useQueryClient();
@@ -198,7 +205,7 @@ export function IncidentBoard({
 	const { isReady, blockedReason } = useInvestigationReadiness();
 	const [dragging, setDragging] = useState<Dragging | null>(null);
 	const [prompt, setPrompt] = useState<Prompt | null>(null);
-	// What a confirmed drop is doing, shown on the card until the list confirms it.
+	// What a confirmed action is doing, on the card until the list confirms it.
 	const [busy, setBusy] = useState<Record<string, string>>({});
 
 	const sensors = useSensors(
@@ -229,18 +236,37 @@ export function IncidentBoard({
 		});
 	};
 	const investigate = useMutation(orpc.incidents.investigate.mutationOptions());
-	const resolve = useMutation(orpc.incidents.resolve.mutationOptions());
-	const reopen = useMutation(orpc.incidents.update.mutationOptions());
+	const close = useMutation(orpc.incidents.close.mutationOptions());
+	const update = useMutation(orpc.incidents.update.mutationOptions());
 	const cancel = useCancelInvestigation();
 
-	const startRun = (incident: IncidentWithRelations, brief: string) => {
-		setPrompt(null);
-		setBusy((b) => ({ ...b, [incident.id]: "Starting…" }));
+	const startRun = (incident: IncidentWithRelations) => {
+		if (!isReady) {
+			// A reopen-and-investigate lands here with the card still busy.
+			void settle(incident.id)();
+			toast({
+				title: "No run started",
+				description: blockedReason,
+				variant: "destructive",
+			});
+			return;
+		}
+		setBusy((b) => ({ ...b, [incident.id]: "Starting" }));
 		investigate.mutate(
-			{ id: incident.id, ...(brief ? { brief } : {}) },
+			{ id: incident.id },
 			{
 				onSuccess: settle(incident.id),
 				onError: fail(incident.id, "Investigation refused"),
+			},
+		);
+	};
+	const acknowledge = (incident: IncidentWithRelations) => {
+		setBusy((b) => ({ ...b, [incident.id]: "Acknowledging" }));
+		update.mutate(
+			{ id: incident.id, status: "investigating" },
+			{
+				onSuccess: settle(incident.id),
+				onError: fail(incident.id, "Not acknowledged"),
 			},
 		);
 	};
@@ -260,23 +286,6 @@ export function IncidentBoard({
 			},
 		);
 	};
-	const resolveIncident = (
-		incident: IncidentWithRelations,
-		stopFirst: boolean,
-	) => {
-		setPrompt(null);
-		setBusy((b) => ({ ...b, [incident.id]: "Resolving…" }));
-		const go = () =>
-			resolve.mutate(
-				{ id: incident.id },
-				{
-					onSuccess: settle(incident.id),
-					onError: fail(incident.id, "Not resolved"),
-				},
-			);
-		if (stopFirst) stopRun(incident, go);
-		else go();
-	};
 
 	const onDragStart = (e: DragStartEvent) => {
 		const incident = incidents.find((i) => i.id === e.active.id);
@@ -289,11 +298,15 @@ export function IncidentBoard({
 		if (!d || !e.over) return;
 		const action = actionFor(d, e.over.id as BoardColumn);
 		if (action.kind === "none") return;
-		const at = { incidentId: d.incident.id };
+		if (action.kind === "investigate") return startRun(d.incident);
 		setPrompt(
 			action.kind === "resolve"
-				? { ...at, kind: "resolve", stopFirst: action.stopFirst }
-				: { ...at, kind: action.kind },
+				? {
+						incident: d.incident,
+						kind: "resolve",
+						stopFirst: action.stopFirst,
+					}
+				: { incident: d.incident, kind: action.kind },
 		);
 	};
 
@@ -314,213 +327,177 @@ export function IncidentBoard({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [flipRef]);
 
-	const promptFor = (incident: IncidentWithRelations): ReactNode => {
-		if (prompt?.incidentId !== incident.id) return null;
-		if (prompt.kind === "investigate") {
-			return (
-				<div className="space-y-2" data-testid="board-investigate-prompt">
-					<p className="text-record font-medium">
-						Investigate INC-{incident.number}
-					</p>
-					<ComposerBox
-						mode="brief"
-						onInvestigate={(brief) => startRun(incident, brief)}
-						isPending={investigate.isPending}
-						blockedReason={isReady ? undefined : blockedReason}
-					/>
-				</div>
-			);
-		}
-		if (prompt.kind === "reopen") {
-			return (
-				<ConfirmBody
-					title={`Reopen INC-${incident.number}?`}
-					body="It goes back to Investigating and its resolve time is cleared."
-					cancel="Cancel"
-					confirm="Reopen"
-					onCancel={() => setPrompt(null)}
-					onConfirm={() => {
+	const card = (incident: IncidentWithRelations, column: BoardColumn) => (
+		<DraggableCard
+			key={incident.id}
+			incident={incident}
+			column={column}
+			now={now}
+			offline={offline}
+			search={search}
+			busy={busy[incident.id]}
+			onAcknowledge={() => acknowledge(incident)}
+		/>
+	);
+	const needs = columns.needs_you.filter((i) => !isWrapUp(i));
+	const wrapUp = columns.needs_you.filter(isWrapUp);
+	const liveMark = columns.working.length > 0;
+
+	return (
+		<DndContext
+			sensors={sensors}
+			onDragStart={onDragStart}
+			onDragEnd={onDragEnd}
+			onDragCancel={() => {
+				setDragging(null);
+				lastDragEnd = Date.now();
+			}}
+		>
+			<div
+				ref={flipRef}
+				className="grid grid-cols-1 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-4"
+				data-testid="incident-board"
+			>
+				{BOARD_COLUMNS.map((column) => (
+					<DropColumn
+						key={column.id}
+						column={column}
+						count={columns[column.id].length}
+						mark={
+							column.id === "working" && liveMark
+								? offline !== null
+									? "off"
+									: "live"
+								: null
+						}
+						action={dragging ? actionFor(dragging, column.id) : null}
+						dragging={dragging?.from === column.id}
+					>
+						{column.id === "needs_you" ? (
+							<>
+								{needs.map((i) => card(i, column.id))}
+								{wrapUp.length > 0 && (
+									<li className="mt-3" data-testid="board-wrap-up">
+										<p className="mb-2 flex h-6 items-center text-meta text-text-3">
+											To wrap up
+										</p>
+										<ul className="flex flex-col gap-2.5">
+											{wrapUp.map((i) => card(i, column.id))}
+										</ul>
+									</li>
+								)}
+							</>
+						) : (
+							columns[column.id].map((i) => card(i, column.id))
+						)}
+					</DropColumn>
+				))}
+			</div>
+			<DragOverlay dropAnimation={prefersReducedMotion() ? null : undefined}>
+				{dragging && (
+					// A picture of the card, not a second card: dnd-kit keeps it ~250ms after the drop (#780).
+					<div className="floating rotate-1 rounded-surface" aria-hidden>
+						<CardBody
+							incident={dragging.incident}
+							column={dragging.from}
+							now={now}
+							offline={offline}
+							overlay
+						/>
+					</div>
+				)}
+			</DragOverlay>
+			{prompt?.kind === "resolve" && (
+				<ResolveDialog
+					open
+					incident={prompt.incident}
+					onOpenChange={(open) => !open && setPrompt(null)}
+					isPending={close.isPending}
+					onConfirm={(cause) => {
+						const { incident, stopFirst } = prompt;
 						setPrompt(null);
-						setBusy((b) => ({ ...b, [incident.id]: "Reopening…" }));
-						reopen.mutate(
+						setBusy((b) => ({ ...b, [incident.id]: "Resolving" }));
+						const go = () =>
+							close.mutate(
+								{ id: incident.id, ...cause },
+								{
+									onSuccess: settle(incident.id),
+									onError: fail(incident.id, "Not resolved"),
+								},
+							);
+						if (stopFirst) stopRun(incident, go);
+						else go();
+					}}
+				/>
+			)}
+			{prompt?.kind === "reopen-investigate" && (
+				<ReopenDialog
+					open
+					investigate
+					incidentNumber={prompt.incident.number}
+					onOpenChange={(open) => !open && setPrompt(null)}
+					onConfirm={() => {
+						const { incident } = prompt;
+						setPrompt(null);
+						setBusy((b) => ({ ...b, [incident.id]: "Reopening" }));
+						update.mutate(
 							{ id: incident.id, status: "investigating" },
 							{
-								onSuccess: settle(incident.id),
+								onSuccess: () => startRun(incident),
 								onError: fail(incident.id, "Not reopened"),
 							},
 						);
 					}}
 				/>
-			);
-		}
-		if (prompt.kind === "stop") {
-			return (
-				<ConfirmBody
-					title="Stop this investigation?"
-					body="The agent stops at its current step. Everything it found so far stays in the conversation. You can start a new investigation afterwards."
-					cancel="Keep going"
-					confirm="Stop"
-					destructive
-					onCancel={() => setPrompt(null)}
-					onConfirm={() => {
-						setPrompt(null);
-						setBusy((b) => ({ ...b, [incident.id]: "Stopping…" }));
-						stopRun(incident);
-					}}
-				/>
-			);
-		}
-		return (
-			<ConfirmBody
-				title={`Resolve INC-${incident.number}?`}
-				body={
-					prompt.stopFirst
-						? "Its investigation is still working. Resolving stops it first."
-						: "It moves to Resolved. Close it from the incident once the fix holds."
-				}
-				cancel="Cancel"
-				confirm={prompt.stopFirst ? "Stop and resolve" : "Resolve"}
-				onCancel={() => setPrompt(null)}
-				onConfirm={() => resolveIncident(incident, prompt.stopFirst)}
-			/>
-		);
-	};
-
-	return (
-		<div className="relative flex min-h-0 flex-1 flex-col">
-			<DndContext
-				sensors={sensors}
-				onDragStart={onDragStart}
-				onDragEnd={onDragEnd}
-				onDragCancel={() => {
-					setDragging(null);
-					lastDragEnd = Date.now();
-				}}
-			>
-				<div
-					ref={flipRef}
-					className="hidden min-h-0 flex-1 overflow-y-auto lg:block"
-					data-testid="incident-board"
-				>
-					<div className="sticky top-0 z-10 grid grid-cols-4 gap-4 bg-background px-4">
-						{BOARD_COLUMNS.map((column) => (
-							<div key={column.id} className="flex h-8 items-center gap-2 px-3">
-								<StateWord tone={COLUMN_TONE[column.id]}>
-									{column.label}
-								</StateWord>
-								<Mono className="ml-auto text-meta text-muted-foreground">
-									{columns[column.id].length}
-								</Mono>
-							</div>
-						))}
-					</div>
-					<div className="grid min-h-[calc(100%-2rem)] grid-cols-4 gap-4 px-4">
-						{BOARD_COLUMNS.map((column) => (
-							<DropColumn
-								key={column.id}
-								column={column}
-								action={dragging ? actionFor(dragging, column.id) : null}
-								dragging={dragging?.from === column.id}
-							>
-								{columns[column.id].map((incident) => (
-									<Popover
-										key={incident.id}
-										open={prompt?.incidentId === incident.id}
-										onOpenChange={(open) => {
-											if (!open) setPrompt(null);
-										}}
-									>
-										<DraggableCard
-											incident={incident}
-											column={column.id}
-											now={now}
-											search={search}
-											busy={busy[incident.id]}
-										/>
-										<PopoverContent
-											align="start"
-											className="w-96 max-w-[calc(100vw-2rem)] p-3"
-											data-testid="board-drop-prompt"
-										>
-											{promptFor(incident)}
-										</PopoverContent>
-									</Popover>
-								))}
-							</DropColumn>
-						))}
-					</div>
-				</div>
-				<DragOverlay dropAnimation={prefersReducedMotion() ? null : undefined}>
-					{dragging && (
-						<div className="rotate-1 rounded-md bg-background shadow-md">
-							<BoardCardBody
-								incident={dragging.incident}
-								column={dragging.from}
-								now={now}
-							/>
-						</div>
-					)}
-				</DragOverlay>
-			</DndContext>
-			{empty && (
-				<div className="absolute inset-0 flex items-start justify-center overflow-y-auto p-4 lg:top-8 lg:pt-10">
-					<div className="w-full max-w-2xl rounded-md border bg-background">
-						{empty}
-					</div>
-				</div>
 			)}
-		</div>
+			<AlertDialog
+				open={prompt?.kind === "stop"}
+				onOpenChange={(open) => !open && setPrompt(null)}
+			>
+				<AlertDialogContent data-testid="board-stop-dialog">
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Stop INC-{prompt?.incident.number}'s run?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							The agent stops at its current step. What it found so far stays in
+							the conversation.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep going</AlertDialogCancel>
+						<AlertDialogAction
+							className="bg-danger text-accent-fg hover:bg-danger/90"
+							onClick={() => {
+								if (!prompt) return;
+								const { incident } = prompt;
+								setPrompt(null);
+								setBusy((b) => ({ ...b, [incident.id]: "Stopping" }));
+								stopRun(incident);
+							}}
+						>
+							Stop
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</DndContext>
 	);
 }
 
-function ConfirmBody({
-	title,
-	body,
-	cancel,
-	confirm,
-	destructive,
-	onCancel,
-	onConfirm,
-}: {
-	title: string;
-	body: string;
-	cancel: string;
-	confirm: string;
-	destructive?: boolean;
-	onCancel: () => void;
-	onConfirm: () => void;
-}) {
-	return (
-		<div className="space-y-3">
-			<div className="space-y-1">
-				<p className="text-record font-medium">{title}</p>
-				<p className="text-record text-muted-foreground">{body}</p>
-			</div>
-			<div className="flex justify-end gap-2">
-				<Button variant="ghost" size="sm" onClick={onCancel}>
-					{cancel}
-				</Button>
-				<Button
-					variant={destructive ? "destructive" : "default"}
-					size="sm"
-					onClick={onConfirm}
-					data-testid="board-drop-confirm"
-				>
-					{confirm}
-				</Button>
-			</div>
-		</div>
-	);
-}
-
-/** A column that takes drops: a quiet tint where a drop does something, dim where it cannot. */
+/** A column: its heading in the foreground, a quiet tint where a drop does something. */
 function DropColumn({
 	column,
+	count,
+	mark,
 	action,
 	dragging,
 	children,
 }: {
 	column: { id: BoardColumn; label: string };
+	count: number;
+	/** Working's 3×12 bar: teal while a run is live, grey while disconnected. */
+	mark: "live" | "off" | null;
 	action: DropAction | null;
 	/** The dragged card came from here. */
 	dragging: boolean;
@@ -530,26 +507,46 @@ function DropColumn({
 	const valid = !!action && action.kind !== "none";
 	const refused = !!action && !dragging && action.kind === "none";
 	return (
-		<ul
-			ref={setNodeRef}
-			aria-label={column.label}
-			data-column={column.id}
-			data-drop={action ? (valid ? "valid" : "refused") : undefined}
-			className={cn(
-				"flex min-w-0 flex-col gap-3 rounded-md pb-3 transition-colors motion-reduce:transition-none",
-				valid && "bg-primary/5",
-				valid && isOver && "bg-primary/10",
-				refused && "opacity-50",
-			)}
+		<section
+			aria-labelledby={`board-${column.id}`}
+			className="min-w-0"
 			data-testid={`board-column-${column.id}`}
 		>
-			{refused && isOver && action.kind === "none" && action.reason && (
-				<li className="px-2 pt-1 text-meta text-muted-foreground">
-					{action.reason}
-				</li>
-			)}
-			{children}
-		</ul>
+			<h2
+				id={`board-${column.id}`}
+				className="mb-2 flex h-6 items-center gap-2 font-medium text-text-1"
+				data-testid="board-column-heading"
+			>
+				{mark && (
+					<span
+						aria-hidden
+						className={cn(
+							"h-3 w-[3px] shrink-0 rounded-full",
+							mark === "live" ? "bg-live" : "bg-text-3",
+						)}
+					/>
+				)}
+				{column.label}
+				<span className="font-normal text-text-3 tabular-nums">{count}</span>
+			</h2>
+			<ul
+				ref={setNodeRef}
+				aria-label={column.label}
+				data-column={column.id}
+				data-drop={action ? (valid ? "valid" : "refused") : undefined}
+				className={cn(
+					"flex min-h-16 flex-col gap-2.5 rounded-surface transition-colors duration-150 motion-reduce:transition-none",
+					valid && "bg-accent/5",
+					valid && isOver && "bg-accent/10",
+					refused && "opacity-50",
+				)}
+			>
+				{refused && isOver && action.kind === "none" && action.reason && (
+					<li className="px-1 text-meta text-text-3">{action.reason}</li>
+				)}
+				{children}
+			</ul>
+		</section>
 	);
 }
 
@@ -557,124 +554,220 @@ function DraggableCard({
 	incident,
 	column,
 	now,
+	offline,
 	search,
 	busy,
+	onAcknowledge,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
+	offline: number | null;
 	search: IncidentsSearch;
 	busy?: string;
+	onAcknowledge: () => void;
 }) {
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
 		id: incident.id,
 		disabled: !!busy,
 	});
-	// The card stays a link to screen readers; dnd-kit would make it a button.
-	const { role: _role, ...dragAttributes } = attributes;
+	// The card's title stays the link screen readers follow; dnd-kit would make the li a button.
+	const { role: _role, tabIndex: _tab, ...dragAttributes } = attributes;
 	return (
-		<PopoverAnchor asChild>
-			<li
-				ref={setNodeRef}
-				data-flip={incident.id}
-				className={cn(isDragging && "opacity-40")}
-			>
-				<Link
-					to="/incidents/$id"
-					params={{ id: incident.id }}
-					search={search}
-					data-testid="board-card"
-					className="block rounded-md outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-					onClickCapture={(e) => {
-						if (Date.now() - lastDragEnd < 300) e.preventDefault();
-					}}
-					{...dragAttributes}
-					{...listeners}
-				>
-					<BoardCardBody
-						incident={incident}
-						column={column}
-						now={now}
-						busy={busy}
-					/>
-				</Link>
-			</li>
-		</PopoverAnchor>
+		<li
+			ref={setNodeRef}
+			data-flip={incident.id}
+			className={cn("relative", isDragging && "opacity-40")}
+			{...dragAttributes}
+			{...listeners}
+		>
+			<CardBody
+				incident={incident}
+				column={column}
+				now={now}
+				offline={offline}
+				busy={busy}
+				link={
+					<Link
+						to="/incidents/$id"
+						params={{ id: incident.id }}
+						search={search}
+						className="outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:ring-2 focus-visible:after:ring-accent"
+						onClickCapture={(e) => {
+							if (Date.now() - lastDragEnd < 300) e.preventDefault();
+						}}
+						data-testid="board-card-link"
+					>
+						{incident.title}
+					</Link>
+				}
+				onAcknowledge={onAcknowledge}
+			/>
+		</li>
 	);
 }
 
-function BoardCardBody({
+/**
+ * One card (study-v3 §3.1): the dot, INC-n and age; the title; the service;
+ * the state word or the live step; the lineage and the headline; Acknowledge
+ * while Triggered. Severity is the dot alone, never a word.
+ */
+function CardBody({
 	incident,
 	column,
 	now,
+	offline,
 	busy,
+	link,
+	onAcknowledge,
+	overlay = false,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
+	offline: number | null;
 	busy?: string;
+	link?: ReactNode;
+	onAcknowledge?: () => void;
+	/** The drag overlay's copy, which must not read as a board card. */
+	overlay?: boolean;
 }) {
-	const why = attentionFor(incident);
-	const word = runWord(incident, now);
+	const word = cardWord(incident);
+	const live = runWord(incident, now);
 	const headline = incidentHeadline(incident);
-	const service = incident.service?.displayName || incident.service?.name;
-
+	const lineage = incidentLineage(incident);
+	const service =
+		incident.service?.displayName ||
+		incident.service?.name ||
+		incident.services?.[0]?.displayName ||
+		incident.services?.[0]?.name;
+	const wrapUp = isWrapUp(incident);
+	const quiet = live?.quietFor !== null && live?.quietFor !== undefined;
 	return (
-		<div
-			className="min-h-[5.5rem] space-y-1.5 rounded-md bg-muted/40 px-3.5 py-3 hover:bg-muted/70"
-			title={`INC-${incident.number}${service ? `, ${service}` : ""}`}
+		<article
+			className="relative min-w-0 rounded-surface bg-surface-2 px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--raised-edge)] transition-colors duration-150 hover:bg-surface-3 motion-reduce:transition-none"
+			data-testid={overlay ? "board-card-overlay" : "board-card"}
+			data-column={column}
+			data-number={incident.number}
 		>
-			<div className="flex items-start gap-2">
+			<div className="flex min-w-0 items-center gap-2 text-meta text-text-3">
 				<span
 					role="img"
 					aria-label={SEVERITY_LABEL[incident.severity]}
-					className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+					className="relative -top-px size-2 shrink-0 rounded-full"
 					style={{ background: `var(--sev-${incident.severity})` }}
+					data-testid="card-dot"
 				/>
-				<p className="line-clamp-2 min-w-0 text-record leading-snug">
-					{incident.title}
-				</p>
-			</div>
-			<div className="flex min-w-0 items-center gap-3 text-meta text-muted-foreground">
-				{column === "needs_you" && why ? (
-					<StateWord quiet tone={attentionTone[why]}>
-						{INCIDENT_ATTENTION_LABEL[why]}
-					</StateWord>
-				) : word ? (
-					<StateWord
-						quiet
-						tone={word.stale ? "stale" : runStateTone(word.state)}
-						pulse
-						className="tabular-nums"
-					>
-						{word.text}
-					</StateWord>
-				) : (
-					<StateWord quiet tone={incidentStatusTone(incident.status)}>
-						{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
-							incident.status}
-					</StateWord>
-				)}
-				{service && <span className="min-w-0 truncate">{service}</span>}
-				<span className="ml-auto shrink-0 tabular-nums">
-					{ago(incident.triggeredAt, now)}
+				<Mono className="shrink-0 text-text-3" data-testid="card-id">
+					INC-{incident.number}
+				</Mono>
+				<span className="ml-auto shrink-0 tabular-nums" data-testid="card-age">
+					{shortAge(incident.triggeredAt, now)}
 				</span>
 			</div>
-			{busy ? (
-				<p className="truncate text-meta text-foreground">{busy}</p>
-			) : (
-				headlineAddsInfo(headline) && (
-					<p
-						className="truncate text-meta text-muted-foreground"
-						data-testid="board-card-headline"
-					>
-						{headline.lead && (
-							<span className="text-foreground">{headline.lead} </span>
-						)}
-						{headline.text}
-					</p>
-				)
+			<div
+				className={cn(
+					"mt-1 [overflow-wrap:anywhere]",
+					wrapUp ? "text-text-2" : "font-medium text-text-1",
+				)}
+				data-testid="card-title"
+			>
+				{link ?? incident.title}
+			</div>
+			{service && (
+				<div className="text-meta text-text-2" data-testid="card-service">
+					{service}
+				</div>
 			)}
-		</div>
+			{(word || live) && (
+				<div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-meta text-text-3">
+					{word && (
+						<span
+							className={cn(
+								"font-medium",
+								word.attention ? "text-danger" : "text-text-2",
+							)}
+							data-testid="card-word"
+						>
+							{word.text}
+						</span>
+					)}
+					{live && (
+						<span
+							className={cn(
+								"inline-flex min-w-0 items-center gap-1.5 tabular-nums",
+								quiet && !offline && "font-medium text-warn",
+							)}
+							data-testid="card-step"
+						>
+							<span
+								aria-hidden
+								className={cn(
+									"h-3 w-[3px] shrink-0 rounded-full",
+									offline !== null
+										? "bg-text-3"
+										: quiet
+											? "bg-warn"
+											: "bg-live",
+								)}
+							/>
+							{offline !== null ? (
+								<span className="min-w-0 truncate">
+									Last seen {formatClock(offline)}
+								</span>
+							) : quiet ? (
+								<span className="min-w-0 truncate">{live.text}</span>
+							) : (
+								<>
+									<span className="min-w-0 truncate">{live.step}</span>
+									<span className="shrink-0">{clockElapsed(live.elapsed)}</span>
+								</>
+							)}
+						</span>
+					)}
+				</div>
+			)}
+			{busy ? (
+				<p className="mt-1.5 text-meta text-text-1">{busy}</p>
+			) : (
+				<>
+					{lineage && (
+						<p
+							className="mt-1.5 line-clamp-2 text-meta text-text-2"
+							data-testid="card-lineage"
+						>
+							<span className="font-medium text-text-1">{lineage.lead}</span>{" "}
+							{lineage.text}
+						</p>
+					)}
+					{!live && headlineAddsInfo(headline) && (
+						<p
+							className="mt-1.5 line-clamp-2 text-meta text-text-2"
+							data-testid="board-card-headline"
+						>
+							{headline.lead && (
+								<span className="font-medium text-text-1">
+									{headline.lead}{" "}
+								</span>
+							)}
+							{headline.text}
+						</p>
+					)}
+				</>
+			)}
+			{incident.status === "triggered" && onAcknowledge && !busy && (
+				<div className="relative z-10 mt-2">
+					<Button
+						variant="secondary"
+						size="sm"
+						onPointerDown={(e) => e.stopPropagation()}
+						onClick={onAcknowledge}
+						data-testid="card-acknowledge"
+					>
+						Acknowledge
+					</Button>
+				</div>
+			)}
+		</article>
 	);
 }
