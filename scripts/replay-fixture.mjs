@@ -227,12 +227,18 @@ async function main() {
 
 	const model = process.env.PRISMALENS_HARNESS_MODEL;
 	if (model) {
+		const pick = process.env.REPLAY_HARNESS ?? "auto";
 		await api("/api/settings/harness", {
 			method: "PATCH",
-			body: JSON.stringify({
-				harness: process.env.REPLAY_HARNESS ?? "auto",
-				models: { [process.env.REPLAY_HARNESS ?? "opencode"]: model },
-			}),
+			body: JSON.stringify({ harness: pick }),
+		});
+		// The model is stored per harness, so it goes under the one selected.
+		const { body: selected } = await api("/api/settings/harnesses");
+		const harness = selected?.selection?.harness;
+		if (!harness) throw new Error(`no harness selected to set ${model} on`);
+		await api("/api/settings/harness", {
+			method: "PATCH",
+			body: JSON.stringify({ models: { [harness]: model } }),
 		});
 	}
 	const { body: service } = await api("/api/services", {

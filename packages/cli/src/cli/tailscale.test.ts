@@ -102,6 +102,9 @@ describe("ensureServe", () => {
 		expect(() => ensureServe("http://127.0.0.1:3170", run)).toThrow(
 			"Tailscale is still issuing this machine's HTTPS certificate. Run `tailscale serve --bg --https=443 http://127.0.0.1:3170` once, then rerun.",
 		);
+		expect(() => ensureServe("http://localhost", run)).toThrow(
+			"Run `tailscale serve --bg --https=443 http://localhost` once",
+		);
 	});
 });
 

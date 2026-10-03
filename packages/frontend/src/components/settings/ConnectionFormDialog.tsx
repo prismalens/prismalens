@@ -322,11 +322,7 @@ export function ConnectionFormDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent
-				className="max-w-md max-h-[85vh] overflow-y-auto"
-				onPointerDownOutside={() => handleOpenChange(false)}
-				onInteractOutside={() => handleOpenChange(false)}
-			>
+			<DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>
 						{mode === "create" ? "Add connection" : "Edit connection"}
