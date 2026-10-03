@@ -116,7 +116,7 @@ export function QueueStats({
 										(k) =>
 											`${stats.attention[k]} ${INCIDENT_ATTENTION_LABEL[k].toLowerCase()}`,
 									)
-									.join(" · ") || "nothing waiting"
+									.join(", ") || "nothing waiting"
 							: undefined,
 					)}
 					data-testid="queue-stat-needs-you"
