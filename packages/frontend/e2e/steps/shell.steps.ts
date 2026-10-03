@@ -319,6 +319,9 @@ Then(
 );
 
 const KEYS = new Set(["Escape", "Enter", "Tab", "?"]);
+const OPENS_ON: Record<string, string> = {
+	"Add a source": "/settings?tab=sources",
+};
 
 /** A key by its name, Back in Settings' bar, else the button with that label, an open dialog's first. */
 When("I press {string}", async ({ page }, key: string) => {
@@ -332,6 +335,8 @@ When("I press {string}", async ({ page }, key: string) => {
 		await p.keyboard.press(key);
 		return;
 	}
+	// A scenario that opens on a press starts where that button lives.
+	if (p.url() === "about:blank" && OPENS_ON[key]) await p.goto(OPENS_ON[key]);
 	const dialog = p.getByRole("dialog");
 	const scope = (await dialog.count()) > 0 ? dialog : p;
 	await scope.getByRole("button", { name: key, exact: true }).first().click();
