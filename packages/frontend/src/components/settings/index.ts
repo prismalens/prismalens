@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 export { AboutSettings, useAbout } from "./AboutSettings";
+export { AlertSources } from "./AlertSources";
 export { ConnectionFormDialog } from "./ConnectionFormDialog";
-export { ConnectionsTab } from "./ConnectionsTab";
 export { DangerZoneSettings } from "./DangerZoneSettings";
 export { HarnessSettings } from "./HarnessSettings";
 export { IntegrationFormDialog } from "./IntegrationFormDialog";

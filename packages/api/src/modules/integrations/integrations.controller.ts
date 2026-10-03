@@ -421,9 +421,18 @@ export class IntegrationsController {
 		const serialized = this.serializeConnection(connection);
 		const { integration } = connection;
 		const template = getTemplate(integration.templateId);
+		// A URL-only source holds no secret: its URL and its network error are what
+		// Settings, Alert sources shows (study-v3 §7). Token errors stay redacted.
+		const urlOnly = template?.urlOnly === true;
 
 		return {
 			...serialized,
+			...(urlOnly
+				? {
+						baseUrl: this.integrationsService.baseUrlOf(connection),
+						lastErrorMessage: connection.lastErrorMessage ?? null,
+					}
+				: {}),
 			integration: this.serializeIntegration(integration),
 			templateId: integration.templateId,
 			templateName: template?.name ?? integration.templateId,

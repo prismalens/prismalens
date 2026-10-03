@@ -440,7 +440,14 @@ export class IntegrationsService implements OnModuleInit {
 			where: { id: connectionId },
 			select: { connectionConfigEnc: true },
 		});
-		if (!conn?.connectionConfigEnc) return null;
+		return conn ? this.baseUrlOf(conn) : null;
+	}
+
+	/** The URL a URL-only source was added with; null when it has none. */
+	baseUrlOf(conn: {
+		connectionConfigEnc: Uint8Array | Buffer | null;
+	}): string | null {
+		if (!conn.connectionConfigEnc) return null;
 		try {
 			const config = this.credentialsService.decrypt<Record<string, unknown>>(
 				Buffer.from(conn.connectionConfigEnc),
