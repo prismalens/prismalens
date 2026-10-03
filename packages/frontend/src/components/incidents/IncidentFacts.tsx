@@ -57,11 +57,12 @@ export function useRanWithoutRepo(investigationId: string | null): boolean {
 
 /** The selected run in a few words: `OpenCode, done in 1m 15s`. */
 export function useRunFact(): string {
-	const { run } = useIncidentRecord();
+	const { run, investigationId } = useIncidentRecord();
 	const now = useNow(1000);
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
-	if (!inv || !run.state) return "None yet";
+	if (!investigationId) return "None yet";
+	if (!inv || !run.state) return "Loading";
 	const took = formatElapsed(runElapsed(inv, now));
 	switch (run.state) {
 		case "starting":

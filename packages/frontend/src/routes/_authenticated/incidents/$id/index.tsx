@@ -4,7 +4,10 @@
  * facts sit in the rail from 1280 and in one details line below it.
  */
 
-import { ROOT_CAUSE_CATEGORY_LABEL } from "@prismalens/contracts";
+import {
+	ROOT_CAUSE_CATEGORY_LABEL,
+	SEVERITY_LABEL,
+} from "@prismalens/contracts";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	useIncidentFacts,
@@ -234,6 +237,12 @@ function ReportBrief() {
 	);
 }
 
+/** When the last alert of a quiet group cleared; its last firing when none recorded it. */
+function clearedAt(g: ReturnType<typeof alertGroups>[number]): number {
+	const at = g.alerts.map((a) => (a.resolvedAt ? Date.parse(a.resolvedAt) : 0));
+	return Math.max(...at) || Date.parse(g.lastAt);
+}
+
 /** The first few rules that fired, with their window; every alert is one tab away. */
 function AlertsBrief() {
 	const { incident } = useIncidentRecord();
@@ -254,7 +263,7 @@ function AlertsBrief() {
 						<li key={g.name} data-testid="overview-alert">
 							<span
 								role="img"
-								aria-label={g.severity}
+								aria-label={SEVERITY_LABEL[g.severity]}
 								className="mt-1.5 size-2 shrink-0 rounded-full"
 								style={{ background: `var(--sev-${g.severity})` }}
 							/>
@@ -263,7 +272,7 @@ function AlertsBrief() {
 								<p className="text-meta text-text-3">
 									{g.firing > 0
 										? `firing since ${formatClock(g.firstAt)}${g.alerts.length > 1 ? `, ${g.alerts.length} alerts` : ""}`
-										: `${formatClock(g.firstAt)} to ${formatClock(g.lastAt)}, cleared`}
+										: `${formatClock(g.firstAt)} to ${formatClock(clearedAt(g))}, cleared`}
 								</p>
 							</div>
 						</li>

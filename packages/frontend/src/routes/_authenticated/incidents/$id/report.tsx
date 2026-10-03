@@ -39,6 +39,7 @@ import {
 	Similar,
 	Why,
 } from "@/components/investigation/ReportSections";
+import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
@@ -151,6 +152,9 @@ function ReportPage({
 		events: run.events,
 	};
 	const later = "max-md:order-2";
+	// Share actions render once: in the rail from 1280, the header from 768, last on the phone.
+	const wide = useMediaQuery(SIDEBAR_FULL);
+	const phone = useMediaQuery(PHONE);
 
 	const rail: Fact[] = [
 		{ label: "Run", value: `Investigation #${number}, done in ${took}` },
@@ -192,25 +196,29 @@ function ReportPage({
 				<FactsRail
 					facts={rail}
 					actions={
-						<>
-							<CopyFixBrief text={brief} className="justify-center" />
-							<div className="flex flex-wrap gap-1 [&>*]:px-1.5">
-								<ExportReportButton investigationId={investigation.id} />
-								{investigation.status === "completed" && (
-									<PostToGitHubButton investigationId={investigation.id} />
-								)}
-							</div>
-						</>
+						wide && (
+							<>
+								<CopyFixBrief text={brief} className="justify-center" />
+								<div className="flex flex-wrap gap-1 [&>*]:px-1.5">
+									<ExportReportButton investigationId={investigation.id} />
+									{investigation.status === "completed" && (
+										<PostToGitHubButton investigationId={investigation.id} />
+									)}
+								</div>
+							</>
+						)
 					}
 				/>
 			}
 		>
-			<div
-				className="-mt-2 mb-3 hidden justify-end gap-1 md:flex xl:hidden"
-				data-testid="report-header-actions"
-			>
-				<ShareActions investigation={investigation} brief={brief} compact />
-			</div>
+			{!wide && !phone && (
+				<div
+					className="-mt-2 mb-3 flex justify-end gap-1"
+					data-testid="report-header-actions"
+				>
+					<ShareActions investigation={investigation} brief={brief} compact />
+				</div>
+			)}
 			<div className="flex flex-col">
 				<Answer report={report} />
 				<Now now={now} severity={incident.severity} />
@@ -231,12 +239,14 @@ function ReportPage({
 					parts={[`Investigation #${number}`, agent, took, access]}
 					className={`${later} xl:hidden`}
 				/>
-				<div
-					className={`${later} mt-3 flex flex-wrap gap-1 md:hidden`}
-					data-testid="report-phone-actions"
-				>
-					<ShareActions investigation={investigation} brief={brief} compact />
-				</div>
+				{phone && (
+					<div
+						className={`${later} mt-3 flex flex-wrap gap-1`}
+						data-testid="report-phone-actions"
+					>
+						<ShareActions investigation={investigation} brief={brief} compact />
+					</div>
+				)}
 			</div>
 		</RecordPage>
 	);
@@ -280,7 +290,9 @@ function NoReportPage() {
 
 	let title: string;
 	let body: ReactNode = null;
-	if (!investigationId || !inv || !run.state) {
+	if (investigationId && (!inv || !run.state)) {
+		title = run.error ? "The run did not load." : "Loading the run.";
+	} else if (!investigationId || !inv || !run.state) {
 		title = "No investigation yet.";
 		body =
 			"The report lands here when one finishes. Brief the agent in the box below to start one.";
