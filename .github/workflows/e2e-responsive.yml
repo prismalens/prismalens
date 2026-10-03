@@ -1,23 +1,23 @@
-name: Playwright E2E
+name: Playwright E2E (phone and tablet)
 
+# The @responsive journeys on Pixel 7 and iPad sizes. Nightly and by hand, never
+# on a PR: no required check depends on it.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  group: e2e-responsive-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  e2e:
-    name: Playwright E2E (Chromium)
+  responsive:
+    name: Playwright E2E (Pixel 7, iPad)
     runs-on: ubuntu-latest
-    # No service containers: dispatch is in-process over a SQLite job table, so the
-    # app boots with no broker.
     steps:
       - uses: actions/checkout@v7
 
@@ -42,14 +42,13 @@ jobs:
       - name: Generate the Gherkin journeys
         run: pnpm --filter @prismalens/frontend exec bddgen
 
-      # Phone and tablet run nightly (e2e-responsive.yml), not per PR.
-      - name: Run Playwright E2E Tests
-        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium --project=journeys
+      - name: Run the @responsive journeys
+        run: pnpm --filter @prismalens/frontend test:e2e --project="Pixel 7" --project="iPad (gen 7)"
 
       - name: Upload Playwright Report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-responsive
           path: packages/frontend/playwright-report/
           retention-days: 7
