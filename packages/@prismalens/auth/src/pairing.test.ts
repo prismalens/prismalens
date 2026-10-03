@@ -15,6 +15,7 @@ import {
 	PAIRING_LINK_TTL_MS,
 	PairingError,
 	type PairingStore,
+	prismaPairingStore,
 	redeemPairingLink,
 	STARTUP_LINK_LABEL,
 } from "./pairing.js";
@@ -375,6 +376,30 @@ describe("renameDevice", () => {
 		);
 		await store.revokeDevice(device.id, new Date());
 		expect(await store.renameDevice(device.id, "Gone")).toBeNull();
+	});
+
+	it("the Prisma store trims the name and refuses a blank one", async () => {
+		const row = {
+			id: "d1",
+			name: "Pixel 9",
+			scopes: "[]",
+			userAgent: null,
+			createdAt: new Date(),
+			lastSeenAt: null,
+			revokedAt: null,
+		};
+		const updateMany = vi.fn(async (args: { data: { name: string } }) => {
+			row.name = args.data.name;
+			return { count: 1 };
+		});
+		const store = prismaPairingStore({
+			deviceSession: { updateMany, findUnique: async () => row },
+		});
+		expect((await store.renameDevice("d1", "  Sumit's phone  "))?.name).toBe(
+			"Sumit's phone",
+		);
+		expect(await store.renameDevice("d1", "   ")).toBeNull();
+		expect(updateMany).toHaveBeenCalledTimes(1);
 	});
 });
 

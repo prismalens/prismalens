@@ -24,7 +24,12 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { backTarget, inAlertRecord, useBack } from "@/hooks/use-back";
+import {
+	alertBackLabel,
+	backTarget,
+	inAlertRecord,
+	useBack,
+} from "@/hooks/use-back";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
@@ -132,13 +137,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 	);
 
 	const target = backTarget(inAlertRecord, "/alerts");
-	const backLabel = (() => {
-		if (alert?.incident && target.startsWith(`/incidents/${alert.incident.id}`))
-			return `Back to INC-${alert.incident.number}`;
-		if (target.startsWith("/incidents")) return "Back to the incident";
-		if (target.startsWith("/alerts")) return "Back to alerts";
-		return "Back";
-	})();
+	const backLabel = alertBackLabel(target, alert?.incident);
 
 	const band = (
 		<div

@@ -32,6 +32,20 @@ export function backTarget(
 	return fallback;
 }
 
+/** What an alert's Back chevron says for `target`, the href it returns to. */
+export function alertBackLabel(
+	target: string,
+	incident?: { id: string; number: number } | null,
+): string {
+	const path = target.split("?")[0] ?? target;
+	if (incident && inIncident(incident.id)(path))
+		return `Back to INC-${incident.number}`;
+	if (path.startsWith("/incidents/")) return "Back to the incident";
+	if (path === "/incidents") return "Back to the board";
+	if (path.startsWith("/alerts")) return "Back to alerts";
+	return "Back";
+}
+
 /** Mounted once in the signed-in layout: keeps the trail Back reads. */
 export function useVisitTrail() {
 	const router = useRouter();
