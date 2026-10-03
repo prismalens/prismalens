@@ -15,7 +15,6 @@ export type ChipTone =
 	| "active"
 	| "done"
 	| "failed"
-	| "primary"
 	| "neutral";
 
 const toneVar: Record<ChipTone, string> = {
@@ -29,7 +28,6 @@ const toneVar: Record<ChipTone, string> = {
 	active: "var(--live)",
 	done: "var(--ok)",
 	failed: "var(--danger)",
-	primary: "var(--accent)",
 	neutral: "var(--text-2)",
 };
 

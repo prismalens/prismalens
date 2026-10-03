@@ -98,7 +98,7 @@ export function AboutSettings() {
 					{update.disabledBy ? (
 						<StateWord tone="neutral">check off</StateWord>
 					) : update.available ? (
-						<StateWord tone="primary">update available</StateWord>
+						<StateWord tone="neutral">update available</StateWord>
 					) : (
 						<StateWord tone="done">up to date</StateWord>
 					)}
