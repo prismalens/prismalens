@@ -5,4 +5,4 @@ contact_links:
     about: Report a vulnerability privately. Do not open a public issue for security problems.
   - name: Question or idea
     url: https://github.com/prismalens/prismalens/discussions
-    about: For open-ended questions, search existing issues and discussions first.
+    about: Ask a question or share an idea in Discussions.

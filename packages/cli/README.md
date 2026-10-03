@@ -1,6 +1,11 @@
 # prismalens
 
-PrismaLens is an AI-powered root-cause investigation tool for on-call engineers. It analyzes firing alerts against your repositories and telemetry, producing an ordered-evidence report that ranks hypotheses by observed evidence without synthetic confidence scores. The CLI runs standalone or boots the full local application.
+PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+coding agent you already use investigates a snapshot of the service's code,
+under a read-only policy. The run, the evidence and an ordered-evidence report (hypotheses ranked by
+the evidence behind them, with no numeric confidence scores) stay on the
+incident. This package is the `pl` command: it starts the app, checks a
+machine, pairs devices and manages a background service.
 
 ## Install
 

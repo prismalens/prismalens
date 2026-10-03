@@ -69,7 +69,7 @@ describe("resolveHarnessSelection", () => {
 		expect(rows[0]).toMatchObject({
 			installed: true,
 			tested: { version: "1.18.30", date: "2026-09-20" },
-			defaultModel: "opencode/muse-spark-1.3-contributor-free",
+			defaultModel: null,
 		});
 		expect(rows[1]).toMatchObject({
 			installed: false,
