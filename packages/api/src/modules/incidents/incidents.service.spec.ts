@@ -309,9 +309,9 @@ describe("IncidentsService", () => {
 			expect(data.timeToClose).toBeGreaterThanOrEqual(120);
 			expect(data.reopenedAt).toBeNull();
 			expect(data.reopenReason).toBeNull();
-			expect(mockTimelineService.create).toHaveBeenCalledWith(
-				expect.objectContaining({ title: "Resolved, cause recorded" }),
-			);
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved, cause recorded" }),
+			});
 		});
 
 		it("names a Resolve with no cause plainly", async () => {
@@ -325,9 +325,9 @@ describe("IncidentsService", () => {
 
 			await service.close("inc-1");
 
-			expect(mockTimelineService.create).toHaveBeenCalledWith(
-				expect.objectContaining({ title: "Resolved" }),
-			);
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved" }),
+			});
 		});
 
 		it("marks a reopen of a Resolved incident as the operator's and keeps its cause", async () => {
@@ -339,11 +339,11 @@ describe("IncidentsService", () => {
 				closedAt: new Date(),
 				actualCause: "pool capped at 10",
 			});
-			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
 
 			await service.update("inc-1", { status: "investigating" });
 
-			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.reopenReason).toBe("operator");
 			expect(data.reopenedAt).toBeInstanceOf(Date);
 			expect(data.closedAt).toBeNull();
@@ -360,11 +360,11 @@ describe("IncidentsService", () => {
 				triggeredAt,
 				resolvedAt: null,
 			});
-			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
 
 			await service.update("inc-1", { status: "investigating" });
 
-			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data).not.toHaveProperty("closedAt");
 			expect(data).not.toHaveProperty("reopenReason");
 		});
@@ -375,11 +375,11 @@ describe("IncidentsService", () => {
 				status: "closed",
 				triggeredAt,
 			});
-			mockPrisma.incident.update.mockResolvedValue({ id: "inc-1" });
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
 
 			await service.update("inc-1", { actualCause: "the pool, not the deploy" });
 
-			const { data } = mockPrisma.incident.update.mock.calls[0][0];
+			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.actualCause).toBe("the pool, not the deploy");
 			expect(data).not.toHaveProperty("status");
 		});
@@ -497,7 +497,7 @@ describe("IncidentsService", () => {
 			expect(mockTx.alertSourceAlert.updateMany).not.toHaveBeenCalled();
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledTimes(1);
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
-				data: expect.objectContaining({ title: "Status changed" }),
+				data: expect.objectContaining({ title: "Resolved" }),
 			});
 		});
 
@@ -512,7 +512,7 @@ describe("IncidentsService", () => {
 				([arg]: [{ data: { title: string } }]) => arg.data.title,
 			);
 			expect(titles).toEqual([
-				"Status changed",
+				"Resolved",
 				"Resolved 1 firing alert with the incident",
 			]);
 		});
