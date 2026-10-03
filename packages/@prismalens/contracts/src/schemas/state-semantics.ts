@@ -141,6 +141,11 @@ export const TERMINAL_WORKFLOW_STATUSES: readonly WorkflowStatus[] = keysWhere(
 	(p) => ENDED_PHASES.has(p),
 );
 
+/** An alert fires until it resolves or is suppressed; `correlated` still fires (walk f14). */
+export function isAlertFiring(status: string): status is AlertStatus {
+	return (OPEN_ALERT_STATUSES as readonly string[]).includes(status);
+}
+
 export function isIncidentOpen(status: string): status is IncidentStatus {
 	return (OPEN_INCIDENT_STATUSES as readonly string[]).includes(status);
 }
@@ -176,8 +181,10 @@ export const INCIDENT_ACTION_FROM: Record<
 	// A resolved incident can be investigated again; its status stays (#743).
 	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
 	resolve: OPEN_INCIDENT_STATUSES,
-	// A resolved incident can go back to work; closed stays final (#743).
-	reopen: ["resolved"],
+	// An ended incident can go back to work, closed included (walk u18); the
+	// operator reopens, a refire never does. A reopened closed incident keeps
+	// its recorded cause until the next Close.
+	reopen: ["resolved", "closed"],
 	close: ["resolved"],
 };
 
@@ -193,14 +200,20 @@ export function canIncidentAction(
  * Resolving and closing keep their own routes (they stamp the times); this is
  * the rule for a status set on `PATCH /incidents/:id`, which the record uses
  * to acknowledge and to move between the working phases. Never backwards to
- * triggered, never out of closed.
+ * triggered; out of closed only into investigating (a reopen).
  */
 export const INCIDENT_STATUS_SET_FROM: Record<
 	IncidentStatus,
 	readonly IncidentStatus[]
 > = {
 	triggered: [],
-	investigating: ["triggered", "identified", "monitoring", "resolved"],
+	investigating: [
+		"triggered",
+		"identified",
+		"monitoring",
+		"resolved",
+		"closed",
+	],
 	identified: ["investigating", "monitoring"],
 	monitoring: ["investigating", "identified"],
 	resolved: INCIDENT_ACTION_FROM.resolve,

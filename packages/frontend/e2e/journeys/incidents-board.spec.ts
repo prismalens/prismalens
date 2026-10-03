@@ -3,6 +3,7 @@
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { settled } from "./settled";
 
 /**
  * #743 — the board: four columns derived from state, beside the list. A card
@@ -47,7 +48,7 @@ test.describe("#743 — the incidents board", () => {
 		for (const id of ["needs_you", "working", "concluded", "resolved"]) {
 			await expect(page.getByTestId(`board-column-${id}`)).toBeVisible();
 		}
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 
 	test("a drop on Working asks for the agent and a brief before it runs", async ({

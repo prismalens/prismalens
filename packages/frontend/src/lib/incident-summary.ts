@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { type IncidentAttention, runState } from "@prismalens/contracts";
+import {
+	type IncidentAttention,
+	isAlertFiring,
+	runState,
+} from "@prismalens/contracts";
 import { failureWords } from "./failure-words";
 
 export interface SummaryInput {
@@ -41,7 +45,7 @@ export function incidentSummary(i: SummaryInput): {
 	next: NextStep;
 } {
 	const lines: string[] = [];
-	const firing = i.alerts.filter((a) => a.status === "triggered").length;
+	const firing = i.alerts.filter((a) => isAlertFiring(a.status)).length;
 	const where = i.services.length > 0 ? ` on ${i.services.join(", ")}` : "";
 	if (i.alerts.length === 0) lines.push("No alerts are correlated.");
 	else {

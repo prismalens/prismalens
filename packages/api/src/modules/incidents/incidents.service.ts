@@ -8,9 +8,10 @@ import {
 	incidentAttention,
 	isIncidentEnded,
 	isWorkflowLive,
+	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
-import type { Alert, Incident, Service } from "@prismalens/database";
+import type { Alert, Incident, Prisma, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -110,13 +111,16 @@ export class IncidentsService {
 					`Created incident INC-${incident.number}: ${incident.title}`,
 				);
 
-				// Create timeline entry
+				const prior = dto.priorIncident;
 				await this.timelineService.create({
 					incidentId: incident.id,
 					type: TimelineEntryType.incident_created,
 					title: "Incident created",
-					description: `Incident INC-${incident.number} was created`,
+					description: prior
+						? `New incident: ${prior.alertName} fired again after INC-${prior.number} was ${prior.status} ${(prior.endedAt ?? new Date()).toISOString()}`
+						: `Incident INC-${incident.number} was created`,
 					source: TimelineSource.system,
+					...(prior ? { metadata: { priorIncidentId: prior.id } } : {}),
 				});
 
 				return incident;
@@ -416,33 +420,86 @@ export class IncidentsService {
 				!!dto.status &&
 				isIncidentEnded(existing.status) &&
 				!isIncidentEnded(dto.status);
+			const ending: "incident-resolved" | "incident-closed" | null =
+				dto.status === existing.status
+					? null
+					: dto.status === "resolved"
+						? "incident-resolved"
+						: dto.status === "closed"
+							? "incident-closed"
+							: null;
 
-			const incident = await this.prisma.incident.update({
-				where: { id },
-				data: updateData,
-			});
-
-			// Create timeline entry for status change
-			if (dto.status && dto.status !== existing.status) {
-				await this.timelineService.create({
-					incidentId: id,
-					type: TimelineEntryType.status_changed,
-					title: reopened ? "Incident reopened" : "Status changed",
-					description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
-					source: TimelineSource.system,
-					metadata: {
-						previousStatus: existing.status,
-						newStatus: dto.status,
-						...(statusNote && { reason: statusNote.reason }),
-					},
+			// One transaction: the row, its status entry and the alerts it ends
+			// commit together, so a failed entry never reports a landed close as
+			// failed (#776 review).
+			const incident = await this.prisma.$transaction(async (tx) => {
+				const row = await tx.incident.update({
+					where: { id },
+					data: updateData,
 				});
-			}
+				if (dto.status && dto.status !== existing.status) {
+					await tx.timelineEntry.create({
+						data: {
+							incidentId: id,
+							type: TimelineEntryType.status_changed,
+							title: reopened ? "Incident reopened" : "Status changed",
+							description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
+							source: TimelineSource.system,
+							metadata: JSON.stringify({
+								previousStatus: existing.status,
+								newStatus: dto.status,
+								...(statusNote && { reason: statusNote.reason }),
+							}),
+						},
+					});
+				}
+				if (ending) await this.resolveFiringAlerts(tx, id, ending);
+				return row;
+			});
 
 			this.logger.log(`Updated incident ${id}`);
 			return incident;
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Resolve and Close end the incident's still-firing alerts with it (walk
+	 * f32); a later refire is a new episode and a new incident, never a count
+	 * on this one. Written in the status write's transaction.
+	 */
+	private async resolveFiringAlerts(
+		tx: Prisma.TransactionClient,
+		incidentId: string,
+		reason: "incident-resolved" | "incident-closed",
+	): Promise<void> {
+		const now = new Date();
+		const firing = await tx.alert.findMany({
+			where: { incidentId, status: { in: [...OPEN_ALERT_STATUSES] } },
+			select: { id: true },
+		});
+		if (firing.length === 0) return;
+		const alertIds = firing.map((a) => a.id);
+		await tx.alert.updateMany({
+			where: { id: { in: alertIds } },
+			data: { status: "resolved", resolvedAt: now, updatedAt: now },
+		});
+		await tx.alertSourceAlert.updateMany({
+			where: { alertId: { in: alertIds }, resolvedAt: null },
+			data: { resolvedAt: now },
+		});
+		await tx.timelineEntry.create({
+			data: {
+				incidentId,
+				type: TimelineEntryType.status_changed,
+				title: `Resolved ${alertIds.length} firing alert${alertIds.length === 1 ? "" : "s"} with the incident`,
+				description: `The incident was ${reason.slice("incident-".length)}, so its alerts no longer fire here; a refire opens a new episode`,
+				source: TimelineSource.system,
+				metadata: JSON.stringify({ reason, alertIds }),
+				occurredAt: now,
+			},
+		});
 	}
 
 	/**

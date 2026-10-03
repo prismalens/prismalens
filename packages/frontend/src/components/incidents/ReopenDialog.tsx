@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 /**
- * Reopen a resolved incident, behind a confirm (#743). It goes back to
- * Investigating; no run starts.
+ * Reopen a resolved or closed incident, behind a confirm (#743, walk u18).
+ * It goes back to Investigating; no run starts.
  */
 export function ReopenDialog({
 	open,

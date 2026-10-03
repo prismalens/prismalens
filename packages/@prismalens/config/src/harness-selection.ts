@@ -14,6 +14,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type HarnessSelectionFailure,
+	harnessEnvModel,
 } from "./providers/harness.js";
 
 // Re-exported so the union stays importable from the module that produces it,
@@ -75,6 +76,8 @@ export interface HarnessSelectionInput {
 	/** Which of the two pinned it; the refusal names that one (#337 run e, G15). */
 	pinSource?: PinSource;
 	isOnPath?: (bin: string) => boolean;
+	/** The host env a run inherits its model from; process.env when absent. */
+	env?: Record<string, string | undefined>;
 }
 
 function pinLabel(source: PinSource, id: string): string {
@@ -97,6 +100,8 @@ export interface HarnessStatus {
 	modelVia: "config" | "env" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: string;
+	/** The model the host env names for this harness (e.g. ANTHROPIC_MODEL); a run with no model set uses it. */
+	envModel: { key: string; model: string } | null;
 }
 
 export function listHarnessStatus(
@@ -115,6 +120,7 @@ export function listHarnessStatus(
 			defaultModel: d.defaultModel ?? null,
 			modelVia: d.modelVia,
 			loginHint: d.loginHint,
+			envModel: harnessEnvModel(id, input.env ?? process.env),
 		};
 	});
 }

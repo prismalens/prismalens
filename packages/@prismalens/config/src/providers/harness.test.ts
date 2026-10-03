@@ -44,6 +44,18 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 		}
 	});
 
+	it("passes a gateway's model keys to Claude Code (walk f18)", () => {
+		expect(
+			getHarnessProviderKeys("claude-code", {
+				ANTHROPIC_BASE_URL: "http://localhost:11434",
+				ANTHROPIC_MODEL: "gemma4:31b-cloud",
+			}),
+		).toEqual({
+			ANTHROPIC_BASE_URL: "http://localhost:11434",
+			ANTHROPIC_MODEL: "gemma4:31b-cloud",
+		});
+	});
+
 	it("omits a provider key the source env does not set", () => {
 		expect(getHarnessProviderKeys("gemini", {})).toEqual({});
 	});
@@ -182,6 +194,22 @@ describe("gateway URL (claude-code)", () => {
 });
 
 describe("resolveHarnessModel (#337 run e, G11)", () => {
+	it("takes the host env's model when the operator set none, and the operator's over it (walk f18)", () => {
+		const env = { ANTHROPIC_MODEL: "gemma4:31b-cloud" };
+		expect(resolveHarnessModel("claude-code", undefined, env)).toEqual({
+			model: "gemma4:31b-cloud",
+			source: "env",
+		});
+		expect(resolveHarnessModel("claude-code", "claude-sonnet-5", env)).toEqual({
+			model: "claude-sonnet-5",
+			source: "operator",
+		});
+		expect(resolveHarnessModel("claude-code", undefined, {})).toEqual({
+			source: "harness-default",
+		});
+	});
+
+
 	it("takes the operator's model first, with its source", () => {
 		expect(resolveHarnessModel("opencode", " zen/free ")).toEqual({ model: "zen/free", source: "operator" });
 	});

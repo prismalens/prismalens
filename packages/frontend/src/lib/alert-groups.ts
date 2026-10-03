@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AlertWithRelations, Severity } from "@prismalens/contracts";
+import {
+	type AlertWithRelations,
+	isAlertFiring,
+	type Severity,
+} from "@prismalens/contracts";
 
 const RANK: Record<Severity, number> = {
 	critical: 0,
@@ -58,7 +62,7 @@ export function alertGroups(alerts: AlertWithRelations[]): AlertGroup[] {
 			by.set(name, g);
 		}
 		g.alerts.push(a);
-		if (a.status === "triggered") g.firing++;
+		if (isAlertFiring(a.status)) g.firing++;
 		if ((RANK[a.severity] ?? 9) < (RANK[g.severity] ?? 9))
 			g.severity = a.severity;
 		if (a.triggeredAt < g.firstAt) g.firstAt = a.triggeredAt;

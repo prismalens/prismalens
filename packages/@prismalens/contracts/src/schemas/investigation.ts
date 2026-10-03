@@ -103,7 +103,7 @@ export const RunFidelitySchema = z.object({
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
 	modelSource: z
-		.enum(["operator", "product-default", "harness-default"])
+		.enum(["operator", "product-default", "harness-default", "env"])
 		.optional(),
 	/** ACP `initialize` `agentInfo.version`; absent when the harness did not report one. */
 	harnessVersion: z.string().optional(),

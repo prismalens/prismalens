@@ -32,6 +32,20 @@ describe("incidentSummary", () => {
 		expect(s.next?.kind).toBe("link-repo");
 	});
 
+	it("counts a correlated alert as firing, not quiet (walk f14)", () => {
+		const s = incidentSummary({
+			now,
+			alerts: [alert("correlated")],
+			services: ["booklogr-api"],
+			runs: [],
+			noRepo: false,
+			attention: null,
+		});
+		expect(s.lines[0]).toBe(
+			"1 of 1 alert firing on booklogr-api, the first 24 hours ago.",
+		);
+	});
+
 	it("puts acknowledging first", () => {
 		const s = incidentSummary({
 			now,

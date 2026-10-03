@@ -62,14 +62,13 @@ describe("dropAction", () => {
 		);
 	});
 
-	it("reopens a resolved incident dropped on Concluded; a closed one stays", () => {
+	it("reopens a resolved or a closed incident dropped on Concluded (walk u18)", () => {
 		expect(drop("needs_you", "concluded", { canReopen: true })).toEqual({
 			kind: "reopen",
 		});
-		const closed = drop("resolved", "concluded", { canReopen: false });
-		expect(closed.kind === "none" && closed.reason).toBe(
-			"A closed incident stays closed",
-		);
+		expect(drop("resolved", "concluded", { canReopen: true })).toEqual({
+			kind: "reopen",
+		});
 	});
 
 	it("gives a one-line reason for every refused move", () => {

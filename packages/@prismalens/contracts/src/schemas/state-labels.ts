@@ -152,6 +152,7 @@ export const MODEL_SOURCE_LABEL: Record<
 	operator: "set in Settings",
 	"product-default": "PrismaLens default",
 	"harness-default": "the agent's default",
+	env: "set in the environment",
 };
 
 export const RUN_STATE_LABEL: Record<RunState, string> = {

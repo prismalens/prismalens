@@ -206,9 +206,11 @@ export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
+	const refusals = new Map<string, string>();
 	const adapter = new AcpAdapter({
 		runId: opts.runId,
 		branchId: "run",
+		refusals,
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	let fidelity = buildRunFidelity(opts.harness, {
@@ -281,6 +283,9 @@ export async function* runInvestigation(
 					}),
 				);
 				if (item.warn) opts.onPolicyWarning?.(item.warn);
+				const refusedId = item.request.toolCall?.toolCallId;
+				if (!item.allowed && item.why && refusedId)
+					refusals.set(refusedId, item.why);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;

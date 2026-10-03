@@ -12,6 +12,7 @@ import {
 	serveAsRunning,
 	setTheme,
 } from "./live-stream-fixtures";
+import { settled } from "./settled";
 
 /**
  * #280 — the investigation stream panel, now the conversation's Ledger view
@@ -289,7 +290,7 @@ test.describe("#280 — the investigation stream panel", () => {
 
 		// Empty: connected, nothing received yet.
 		await reloadInto(page, panel, "dark");
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Single non-root branch: the flat list this PR restores.
 		await reloadInto(page, panel, "light");
@@ -298,7 +299,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		await deliver(page, single.toolResult("search_logs", "412 matching lines"));
 		await deliver(page, single.agentStep("scout", "Narrowing to checkout-api"));
 		await expect(page.getByTestId("branch-tabs")).toHaveCount(0);
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Fanned out: one tab per branch above the ledger.
 		const fanOut = async () => {
@@ -310,7 +311,7 @@ test.describe("#280 — the investigation stream panel", () => {
 			await expect(
 				page.getByTestId("branch-tabs").getByRole("tab"),
 			).toHaveCount(2);
-			await page.waitForLoadState("networkidle");
+			await settled(page);
 		};
 
 		await reloadInto(page, panel, "light");
@@ -329,7 +330,7 @@ test.describe("#280 — the investigation stream panel", () => {
 		await expect(
 			panel.getByText("Error: harness lost the tool socket"),
 		).toBeVisible();
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Failed: an in-stream canonical error event followed by done marker
 		// renders the failure indicator in the panel header (default light & dark).
@@ -347,7 +348,7 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		await reloadInto(page, panel, "dark");
 		const terminalFailDark = eventFactory("b0");
@@ -363,20 +364,20 @@ test.describe("#280 — the investigation stream panel", () => {
 			(payload) => window.__liveStream.deliver(payload),
 			JSON.stringify({ type: "done" }),
 		);
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// SSE failure fallback affordance (#462): default (light) and dark
 		await reloadInto(page, panel, "light");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackLight = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackLight).toBeVisible({ timeout: 20_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		await reloadInto(page, panel, "dark");
 		await page.evaluate(() => window.__liveStream.fail());
 		const fallbackDark = page.getByTestId("investigation-fallback-panel");
 		await expect(fallbackDark).toBeVisible({ timeout: 20_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 
 	test("renders terminal failed state when stream carried error before done marker (#462)", async ({

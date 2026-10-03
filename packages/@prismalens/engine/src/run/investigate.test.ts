@@ -106,6 +106,10 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(report.report.fidelity?.harnessVersion).toBe("0");
 		const results = events.filter((e) => e.kind === "tool_result");
 		expect(results.map((r) => (r.kind === "tool_result" ? r.result.ok : null))).toEqual([true, false]);
+		const refused = results[1];
+		if (refused?.kind !== "tool_result") throw new Error("no refused result");
+		expect(refused.result.preview).toMatch(/^Refused by PrismaLens's read-only policy: shell command would mutate/);
+		expect(refused.result.error).toBe(refused.result.preview);
 		expect(existsSync(join(cwd, "PRISMALENS_SPIKE.txt"))).toBe(false);
 		const decisions = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
 			.split("\n")

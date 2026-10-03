@@ -51,24 +51,32 @@ function oneLine(message: string): string {
 	return message.replace(/\s*\r?\n\s*/g, " ").trim();
 }
 
-function classify(
+export function classify(
 	err: unknown,
 	session: AcpSession,
 	timeoutMs: number,
 ): Pick<HarnessProbeResult, "outcome" | "detail"> {
 	const message = oneLine(err instanceof Error ? err.message : String(err));
+	const isCodexAuth = /CODEX_API_KEY or OPENAI_API_KEY is not set/i.test(
+		message,
+	);
 	if (
 		(err instanceof AcpRpcError && err.code === AUTH_REQUIRED) ||
-		/auth_required|authentication required/i.test(message)
+		/auth_required|authentication required/i.test(message) ||
+		isCodexAuth
 	) {
 		const methods = session.authMethods
 			.map((m) => m.name ?? m.id)
 			.filter(Boolean);
+		const authList =
+			methods.length > 0
+				? methods.join(", ")
+				: isCodexAuth
+					? "API Key, ChatGPT"
+					: null;
 		return {
 			outcome: "sign-in-needed",
-			detail: methods.length
-				? `sign in needed (${methods.join(", ")})`
-				: "sign in needed",
+			detail: authList ? `sign in needed (${authList})` : "sign in needed",
 		};
 	}
 	if (/timed out after/.test(message)) {

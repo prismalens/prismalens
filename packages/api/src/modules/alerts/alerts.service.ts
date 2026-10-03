@@ -18,6 +18,9 @@ import { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 
 export type { Alert };
 
+/** The newest episode row with the status of the incident it sits on. */
+type ExistingAlert = Alert & { incident: { status: string } | null };
+
 /**
  * What a refire of an existing `dedupKey` did, per the #231 rulings. Returned
  * alongside the alert so callers (and tests) can see the branch that ran.
@@ -125,7 +128,11 @@ export class AlertsService {
 	 * Status-aware: `suppressed` never reopens (suppression is forward-only,
 	 * ADR-0028), `resolved` reopens only inside the flap window.
 	 */
-	private classifyRefire(existing: Alert, now: Date): DedupOutcome {
+	private classifyRefire(existing: ExistingAlert, now: Date): DedupOutcome {
+		// A closed incident is final to the source (walk f32): the refire is a
+		// new episode whatever the alert's status or the flap window says.
+		if (existing.incident?.status === IncidentStatus.closed)
+			return "new-episode";
 		if (existing.status === AlertStatus.suppressed) return "counted-suppressed";
 		if (existing.status !== AlertStatus.resolved) return "counted";
 
@@ -152,6 +159,7 @@ export class AlertsService {
 		const existing = await this.prisma.alert.findFirst({
 			where: { dedupKey },
 			orderBy: { triggeredAt: "desc" },
+			include: { incident: { select: { status: true } } },
 		});
 
 		if (existing) {
@@ -188,7 +196,9 @@ export class AlertsService {
 			}
 
 			this.logger.log(
-				`Refire of resolved alert ${existing.id} landed outside the flap window — opening a new episode`,
+				existing.incident?.status === IncidentStatus.closed
+					? `Refire of alert ${existing.id} on closed incident ${existing.incidentId} — opening a new episode`
+					: `Refire of resolved alert ${existing.id} landed outside the flap window — opening a new episode`,
 			);
 		}
 

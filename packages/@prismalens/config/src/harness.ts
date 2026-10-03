@@ -12,6 +12,7 @@ export {
 	type HarnessId,
 	type HarnessRunEnv,
 	type HarnessSelectionFailure,
+	harnessEnvModel,
 	MODEL_SOURCES,
 	type ModelSource,
 	PERMISSION_MODES,

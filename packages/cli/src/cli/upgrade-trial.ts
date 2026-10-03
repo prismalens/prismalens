@@ -17,8 +17,10 @@ import {
 	mkdirSync,
 	openSync,
 	readFileSync,
+	readSync,
 	renameSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -176,18 +178,56 @@ export async function fetchInstance(
 	}
 }
 
-/** Polls until the service is this workspace's instance on `version`; the last miss when the deadline passes. */
-export async function awaitTrial(input: {
+/** How much of the log's end is read for its last lines: rollback never waits on a large log (#776 review). */
+const LOG_TAIL_BYTES = 64 * 1024;
+
+/** The last `maxLines` non-empty lines of `logPath`, read from at most its last 64 KiB. */
+export function readLastLogLines(logPath: string, maxLines = 20): string[] {
+	let fd: number | undefined;
+	try {
+		if (!existsSync(logPath)) return [];
+		const size = statSync(logPath).size;
+		const length = Math.min(size, LOG_TAIL_BYTES);
+		const buffer = Buffer.alloc(length);
+		fd = openSync(logPath, "r");
+		readSync(fd, buffer, 0, length, size - length);
+		const lines = buffer.toString("utf8").split("\n");
+		// A cut first line is partial, so it is dropped.
+		if (length < size) lines.shift();
+		return lines.filter((line) => line.length > 0).slice(-maxLines);
+	} catch {
+		return [];
+	} finally {
+		if (fd !== undefined) closeSync(fd);
+	}
+}
+
+export interface AwaitTrialInput {
 	base: string;
 	instanceId: string;
 	version: string;
 	deadlineMs: number;
 	fetchImpl?: typeof fetch;
 	intervalMs?: number;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+	logPath?: string;
+	serviceProbe?: () => boolean | Promise<boolean>;
+}
+
+/** Polls until the service is this workspace's instance on `version`; the last miss when the deadline passes. */
+export async function awaitTrial(
+	input: AwaitTrialInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
 	const end = Date.now() + input.deadlineMs;
 	let reason = "no answer";
 	do {
+		if (input.serviceProbe && (await input.serviceProbe())) {
+			const lines = input.logPath ? readLastLogLines(input.logPath, 20) : [];
+			const logDetail = lines.length > 0 ? `:\n${lines.join("\n")}` : "";
+			return {
+				ok: false,
+				reason: `${input.version} exited during the trial${logDetail}`,
+			};
+		}
 		const info = await fetchInstance(input.base, input.fetchImpl);
 		if (typeof info === "string") reason = `${input.base} ${info}`;
 		else if (info.instanceId !== input.instanceId)

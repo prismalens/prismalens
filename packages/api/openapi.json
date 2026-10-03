@@ -6540,7 +6540,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -7456,7 +7457,8 @@
                                             "enum": [
                                               "operator",
                                               "product-default",
-                                              "harness-default"
+                                              "harness-default",
+                                              "env"
                                             ],
                                             "type": "string"
                                           },
@@ -8391,7 +8393,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -9293,7 +9296,8 @@
                                           "enum": [
                                             "operator",
                                             "product-default",
-                                            "harness-default"
+                                            "harness-default",
+                                            "env"
                                           ],
                                           "type": "string"
                                         },
@@ -10261,7 +10265,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -11531,7 +11536,8 @@
                                             "enum": [
                                               "operator",
                                               "product-default",
-                                              "harness-default"
+                                              "harness-default",
+                                              "env"
                                             ],
                                             "type": "string"
                                           },
@@ -12053,7 +12059,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -13001,7 +13008,8 @@
                                 "enum": [
                                   "operator",
                                   "product-default",
-                                  "harness-default"
+                                  "harness-default",
+                                  "env"
                                 ],
                                 "type": "string"
                               },
@@ -13520,7 +13528,8 @@
                                       "enum": [
                                         "operator",
                                         "product-default",
-                                        "harness-default"
+                                        "harness-default",
+                                        "env"
                                       ],
                                       "type": "string"
                                     },
@@ -14093,6 +14102,103 @@
                   },
                   "required": [
                     "commentUrl"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/live/changes": {
+      "get": {
+        "operationId": "live.changes",
+        "summary": "Stream which lists changed, as they change",
+        "tags": [
+          "live"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "const": "message"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "topics": {
+                              "type": "array",
+                              "minItems": 1,
+                              "items": {
+                                "enum": [
+                                  "incidents",
+                                  "alerts",
+                                  "investigations"
+                                ],
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "topics"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "retry": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "const": "done"
+                        },
+                        "data": {},
+                        "id": {
+                          "type": "string"
+                        },
+                        "retry": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "event"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "const": "error"
+                        },
+                        "data": {},
+                        "id": {
+                          "type": "string"
+                        },
+                        "retry": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "event"
+                      ]
+                    }
                   ]
                 }
               }
@@ -22474,6 +22580,9 @@
                   "properties": {
                     "success": {
                       "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -24048,11 +24157,14 @@
                       "type": "string"
                     },
                     "build": {
-                      "enum": [
-                        "release",
-                        "dev"
-                      ],
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "workspaceDir": {
                       "type": "string"
@@ -24539,6 +24651,29 @@
                           "loginHint": {
                             "type": "string"
                           },
+                          "envModel": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "model": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "key",
+                                  "model"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -24771,7 +24906,8 @@
                       ]
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }

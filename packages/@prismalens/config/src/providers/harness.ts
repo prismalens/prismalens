@@ -94,6 +94,8 @@ export interface HarnessDescriptor {
 	modelVia: "config" | "env" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: string;
+	/** The host env var naming the model the harness runs when PrismaLens sets none. */
+	envModelKey?: string;
 	/**
 	 * Provider API-key env vars this harness actually reads from the host
 	 * (ADR 0004 §5: allowlist, never `process.env`). Never a bare wildcard —
@@ -192,11 +194,18 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
+		// The model keys too: a gateway serves its own model ids, not Anthropic's (walk f18).
 		providerKeys: [
 			"ANTHROPIC_API_KEY",
 			"ANTHROPIC_BASE_URL",
 			"ANTHROPIC_AUTH_TOKEN",
+			"ANTHROPIC_MODEL",
+			"ANTHROPIC_DEFAULT_OPUS_MODEL",
+			"ANTHROPIC_DEFAULT_SONNET_MODEL",
+			"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+			"CLAUDE_CODE_SUBAGENT_MODEL",
 		],
+		envModelKey: "ANTHROPIC_MODEL",
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
 		readOnlyFidelity: "cooperative",
@@ -324,6 +333,7 @@ export const MODEL_SOURCES = [
 	"operator",
 	"product-default",
 	"harness-default",
+	"env",
 ] as const;
 export type ModelSource = (typeof MODEL_SOURCES)[number];
 
@@ -333,13 +343,26 @@ export interface ResolvedModel {
 	source: ModelSource;
 }
 
-/** Operator setting first, then the row's tested default, then the harness's own. */
+/** The model the host env names for this harness, when it reads one. */
+export function harnessEnvModel(
+	harnessId: HarnessId,
+	env: Record<string, string | undefined>,
+): { key: string; model: string } | null {
+	const key = HARNESS_REGISTRY[harnessId]?.envModelKey;
+	const model = key ? env[key]?.trim() : undefined;
+	return key && model ? { key, model } : null;
+}
+
+/** Operator setting first, then the host env's model, then the row's tested default, then the harness's own. */
 export function resolveHarnessModel(
 	harnessId: HarnessId,
 	operatorModel?: string,
+	env: Record<string, string | undefined> = {},
 ): ResolvedModel {
 	const operator = operatorModel?.trim();
 	if (operator) return { model: operator, source: "operator" };
+	const fromEnv = harnessEnvModel(harnessId, env);
+	if (fromEnv) return { model: fromEnv.model, source: "env" };
 	const row = HARNESS_REGISTRY[harnessId]?.defaultModel;
 	if (row) return { model: row, source: "product-default" };
 	return { source: "harness-default" };
