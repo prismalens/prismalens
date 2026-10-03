@@ -279,10 +279,22 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 					},
 				]
 			: undefined;
+		// FAKE_MODES: the session modes it advertises, comma-separated, the first current.
+		const modeIds = (process.env.FAKE_MODES ?? "").split(",").filter(Boolean);
+		const modes = modeIds.length
+			? {
+					currentModeId: modeIds[0],
+					availableModes: modeIds.map((id) => ({ id, name: id })),
+				}
+			: undefined;
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
-			result: { sessionId: "s1", ...(configOptions ? { configOptions } : {}) },
+			result: {
+				sessionId: "s1",
+				...(configOptions ? { configOptions } : {}),
+				...(modes ? { modes } : {}),
+			},
 		});
 	} else if (msg.method === "session/load") {
 		const sessionId = msg.params?.sessionId;

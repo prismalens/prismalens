@@ -6520,6 +6520,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -7437,6 +7443,12 @@
                                             "type": "string"
                                           },
                                           "mode": {
+                                            "enum": [
+                                              "read-only",
+                                              "read-only-tools",
+                                              "workspace-write",
+                                              "full-access"
+                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -8373,6 +8385,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -9276,6 +9294,12 @@
                                           "type": "string"
                                         },
                                         "mode": {
+                                          "enum": [
+                                            "read-only",
+                                            "read-only-tools",
+                                            "workspace-write",
+                                            "full-access"
+                                          ],
                                           "type": "string"
                                         },
                                         "fidelity": {
@@ -10245,6 +10269,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -11516,6 +11546,12 @@
                                             "type": "string"
                                           },
                                           "mode": {
+                                            "enum": [
+                                              "read-only",
+                                              "read-only-tools",
+                                              "workspace-write",
+                                              "full-access"
+                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -12039,6 +12075,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -12988,6 +13030,12 @@
                                 "type": "string"
                               },
                               "mode": {
+                                "enum": [
+                                  "read-only",
+                                  "read-only-tools",
+                                  "workspace-write",
+                                  "full-access"
+                                ],
                                 "type": "string"
                               },
                               "fidelity": {
@@ -13508,6 +13556,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {

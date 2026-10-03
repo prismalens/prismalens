@@ -12,7 +12,7 @@
 		"lint": "biome check src --config-path ../../biome.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
-		"test:e2e": "playwright test",
+		"test:e2e": "bddgen && playwright test",
 		"clean": "rm -rf dist && rm -rf node_modules"
 	},
 	"dependencies": {
