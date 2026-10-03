@@ -209,9 +209,15 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 			"full-access": {
 				mechanism:
-					"opencode.json edit, bash, webfetch allowed; PrismaLens allows every request it sees and logs it",
+					"opencode.json edit, bash, webfetch, websearch, external_directory allowed; PrismaLens allows every request it sees and logs it",
 				configPatch: {
-					permission: { edit: "allow", bash: "allow", webfetch: "allow" },
+					permission: {
+						edit: "allow",
+						bash: "allow",
+						webfetch: "allow",
+						websearch: "allow",
+						external_directory: "allow",
+					},
 				},
 			},
 		},

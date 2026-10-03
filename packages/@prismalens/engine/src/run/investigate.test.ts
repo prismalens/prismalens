@@ -460,7 +460,7 @@ describe("the run's access level (r4 R4.1)", () => {
 		const runDir = tmp("run");
 		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, access: "full-access" });
 		const config = JSON.parse(readFileSync(join(runDir, "config", "opencode.json"), "utf8"));
-		expect(config.permission).toMatchObject({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "deny" });
+		expect(config.permission).toEqual({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" });
 		const readOnly = tmp("run");
 		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir: readOnly });
 		expect(JSON.parse(readFileSync(join(readOnly, "config", "opencode.json"), "utf8")).permission.edit).toBe("deny");

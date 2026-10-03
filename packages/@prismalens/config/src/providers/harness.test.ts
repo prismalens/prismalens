@@ -268,7 +268,7 @@ describe("access levels (r4 R4.1)", () => {
 		expect(resolvePermissionOutcome("opencode", "read-only").configPatch).toBeUndefined();
 		expect(resolvePermissionOutcome("opencode", "workspace-write").configPatch).toEqual({ permission: { edit: "ask" } });
 		expect(resolvePermissionOutcome("opencode", "full-access").configPatch).toEqual({
-			permission: { edit: "allow", bash: "allow", webfetch: "allow" },
+			permission: { edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" },
 		});
 	});
 
