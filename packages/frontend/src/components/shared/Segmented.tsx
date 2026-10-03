@@ -24,7 +24,7 @@ export function Segmented<T extends string>({
 		<fieldset
 			aria-label={label}
 			className={cn(
-				"flex items-center gap-0.5 rounded-md border p-0.5",
+				"flex items-center rounded-control bg-surface-2 p-0.5 shadow-[inset_0_0_0_1px_var(--raised-edge)]",
 				className,
 			)}
 			data-testid={testId}
@@ -32,10 +32,14 @@ export function Segmented<T extends string>({
 			{options.map((o) => (
 				<Button
 					key={o.value}
-					variant={o.value === value ? "secondary" : "ghost"}
+					variant="ghost"
 					size="xs"
 					aria-pressed={o.value === value}
-					className="h-5 text-meta"
+					className={cn(
+						"h-6 rounded-[4px] px-2.5 text-body",
+						o.value === value &&
+							"bg-surface-4 font-medium text-text-1 hover:bg-surface-4",
+					)}
 					onClick={() => onChange(o.value)}
 					data-testid={testId ? `${testId}-${o.value}` : undefined}
 				>
