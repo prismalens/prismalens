@@ -8,6 +8,7 @@ export {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	HARNESS_SELECTION_FAILURES,
+	type HarnessAccess,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
