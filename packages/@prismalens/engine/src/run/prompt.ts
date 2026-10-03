@@ -55,21 +55,27 @@ export function buildInvestigationPrompt(
 		: "";
 
 	const t = context.telemetry;
+	// With no network, only the addresses remain, for What we could not check (#778).
+	const online = !options.noNetwork;
 	const surfaces: string[] = [];
 	if (t?.prometheusUrl) {
 		surfaces.push(
-			`  - Prometheus    ${t.prometheusUrl}\n      curl -sG '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules`,
+			`  - Prometheus    ${t.prometheusUrl}${
+				online
+					? `\n      curl -sG '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules`
+					: ""
+			}`,
 		);
 	}
 	if (t?.alertmanagerUrl) {
 		surfaces.push(
-			`  - Alertmanager  ${t.alertmanagerUrl}      curl -s '${t.alertmanagerUrl}/api/v2/alerts'`,
+			`  - Alertmanager  ${t.alertmanagerUrl}${online ? `      curl -s '${t.alertmanagerUrl}/api/v2/alerts'` : ""}`,
 		);
 	}
 	if (t?.apiUrl) surfaces.push(`  - Application API ${t.apiUrl}`);
 	if (context.logs?.url) {
 		surfaces.push(
-			`  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}      query recent logs for the affected service`,
+			`  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}${online ? "      query recent logs for the affected service" : ""}`,
 		);
 	}
 	const repos = context.workspace?.repos ?? [];
@@ -99,7 +105,7 @@ export function buildInvestigationPrompt(
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
 		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
-		...(t?.prometheusUrl
+		...(t?.prometheusUrl && online
 			? [
 					"Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.",
 				]

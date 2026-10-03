@@ -142,5 +142,18 @@ describe("buildInvestigationPrompt (#633)", () => {
 			expect(prompt).not.toContain("nothing else is reachable");
 			expect(prompt).toContain("Your sandbox allows no network");
 		});
+
+		it("Given no network, Then the brief keeps the addresses but never tells the agent to query them (#778)", () => {
+			const prompt = buildInvestigationPrompt(
+				{ ...context, logs: { kind: "loki", url: "http://logs.internal" } },
+				"read-only",
+				{ noNetwork: true },
+			);
+			expect(prompt).not.toContain("curl");
+			expect(prompt).not.toContain("Confirm the alert's signal in Prometheus");
+			expect(prompt).not.toContain("query recent logs");
+			for (const address of ["http://prometheus.internal:9090", "http://am.internal:9093", "http://logs.internal"])
+				expect(prompt).toContain(address);
+		});
 	});
 });
