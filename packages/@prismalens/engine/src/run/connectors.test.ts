@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
-import { type ResolvedConnector, telemetryEndpointsFrom } from "./connectors.js";
+import { type ResolvedConnector, telemetryEndpointsFrom, telemetryOrigins } from "./connectors.js";
 
 describe("telemetryEndpointsFrom (#633)", () => {
 	it("returns undefined when connectors array is empty or has none of the observability templates", () => {
@@ -168,5 +168,22 @@ describe("telemetryEndpointsFrom (#633)", () => {
 		expect(warn).toHaveBeenCalledTimes(2);
 		expect(warn.mock.calls.flat().join(" ")).toMatch(/^Prometheus: .*Alertmanager: /);
 		expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
+	});
+});
+
+describe("telemetryOrigins (r4 R4.1)", () => {
+	it("gives each brief address's origin and host, default ports dropped, hosts lowercased", () => {
+		expect(
+			telemetryOrigins({
+				telemetry: { prometheusUrl: "http://Prom.Internal:9090/prom", alertmanagerUrl: "https://am.internal:443" },
+				logs: { kind: "loki", url: "http://logs.internal:80/loki" },
+			}).sort(),
+		).toEqual(["am.internal", "http://logs.internal", "http://prom.internal:9090", "https://am.internal", "logs.internal", "prom.internal:9090"]);
+	});
+
+	it("gives nothing for an empty brief or an address that does not parse", () => {
+		expect(telemetryOrigins({})).toEqual([]);
+		expect(telemetryOrigins({ telemetry: { apiUrl: "not a url" } })).toEqual([]);
+		expect(telemetryOrigins({ telemetry: { apiUrl: "file:///etc/passwd" } })).toEqual([]);
 	});
 });
