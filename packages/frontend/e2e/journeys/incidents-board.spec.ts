@@ -168,7 +168,7 @@ test.describe("#743 — the incidents board", () => {
 		await expect(prompt).toHaveCount(0);
 	});
 
-	test("the sidebar groups incidents by service, folds a group for good, and starts one in a service", async ({
+	test("the sidebar groups incidents by service, folds a group for good, and creates nothing", async ({
 		page,
 	}) => {
 		await page.goto("/incidents");
@@ -213,16 +213,8 @@ test.describe("#743 — the incidents board", () => {
 			.getByTestId("service-lane")
 			.click();
 
-		// The group's + opens New incident with that service picked.
-		const groupWithNew = sidebar
-			.getByTestId("sidebar-group")
-			.filter({ hasText: "API Gateway" });
-		await groupWithNew.hover();
-		await groupWithNew.getByTestId("sidebar-group-new").click();
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
-		await expect(dialog).toContainText("API Gateway");
-		await page.keyboard.press("Escape");
+		// The header's New is the one manual entry (decision 4): a group has no +.
+		await expect(sidebar.getByTestId("sidebar-group-new")).toHaveCount(0);
 
 		// Alerts group by their own service.
 		await page.goto("/alerts");
