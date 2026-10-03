@@ -106,8 +106,9 @@ test.describe("#325 — filtering the services list by team", () => {
 		await page.goto("/services?team=ghosts");
 
 		await expect(page.getByText("checkout-api")).toHaveCount(0);
-		await expect(page.getByText(/no services/i).first()).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("services-empty")).toHaveText(
+			"No service matches.",
+			{ timeout: 15_000 },
+		);
 	});
 });

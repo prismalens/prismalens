@@ -119,8 +119,12 @@ test.describe("#602 — opt-in telemetry", () => {
 		);
 
 		await page.goto("/settings?tab=usage");
-		const checkbox = page.getByLabel("Share usage data");
+		const checkbox = page.getByRole("switch", {
+			name: "Share anonymous usage counts",
+		});
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
+		// The disclosure is folded under the switch (settings.feature); open it.
+		await page.getByTestId("telemetry-disclosure").locator("summary").click();
 		// Each thing the disclosure has to name (#602): what is sent, that the
 		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
 		// Exact, because "what is sent" also appears inside the "Never sent"
@@ -143,7 +147,9 @@ test.describe("#602 — opt-in telemetry", () => {
 		await expect(page.getByText("withdraws consent")).toBeVisible();
 		await expect(checkbox).toBeChecked();
 
-		await page.getByText("Recently sent (1)").click();
+		const recent = page.getByTestId("telemetry-recent");
+		await expect(recent.getByRole("heading")).toHaveText("Recently sent1");
+		await recent.getByText("install_active", { exact: true }).click();
 		await expect(page.getByText('"event": "install_active"')).toBeVisible();
 	});
 });
