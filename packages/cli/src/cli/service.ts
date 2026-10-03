@@ -103,20 +103,33 @@ export function runAction(
 	return true;
 }
 
-/** True when the service is in a failed or exited state. */
+/**
+ * True when the service is down: failed, waiting to restart after a crash,
+ * or exited cleanly, which neither manager restarts (`Restart=on-failure`,
+ * `SuccessfulExit=false`). A service still starting passes (#776 review).
+ */
 export function serviceFailed(
 	kind: ReturnType<Config["serviceManagerKind"]> & string,
 	uid: number,
 	execImpl = exec,
 ): boolean {
 	if (kind === "systemd") {
-		return execImpl([
+		const out = execImpl([
 			"systemctl",
 			"--user",
-			"is-failed",
-			"--quiet",
+			"show",
 			"prismalens.service",
-		]).ok;
+			"-p",
+			"ActiveState",
+			"-p",
+			"SubState",
+		]);
+		if (!out.ok) return true;
+		const active = /^ActiveState=(.*)$/m.exec(out.out)?.[1];
+		const sub = /^SubState=(.*)$/m.exec(out.out)?.[1];
+		return (
+			active === "failed" || active === "inactive" || sub === "auto-restart"
+		);
 	}
 	if (kind === "launchd") {
 		const out = execImpl([
@@ -125,8 +138,9 @@ export function serviceFailed(
 			`gui/${uid}/io.prismalens.server`,
 		]);
 		if (!out.ok) return true;
-		const match = /last exit (?:status|code) = ([0-9]+)/.exec(out.out);
-		return Boolean(match && match[1] !== "0");
+		const exit = /last exit (?:status|code) = ([0-9]+)/.exec(out.out)?.[1];
+		if (exit === undefined) return false;
+		return exit !== "0" || /^\s*state = not running$/m.test(out.out);
 	}
 	return false;
 }

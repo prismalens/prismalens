@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	awaitTrial,
+	readLastLogLines,
 	completePendingRestore,
 	readOutcome,
 	readTrial,
@@ -255,5 +256,23 @@ describe("switchInstallerRuntime", () => {
 		expect(outcome.reason).toContain("couldn't be stopped");
 		expect(read("prismalens.db")).toBe("new-db");
 		expect(existsSync(join(ws, SNAPSHOT_DIR))).toBe(true);
+	});
+});
+
+describe("readLastLogLines (#776 review)", () => {
+	it("reads only the end of a large log", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-log-"));
+		const log = join(dir, "service.log");
+		const filler = `${"x".repeat(199)}\n`.repeat(5_000);
+		writeFileSync(log, `${filler}second to last\nlast\n`);
+		expect(statSync(log).size).toBeGreaterThan(64 * 1024);
+		expect(readLastLogLines(log, 2)).toEqual(["second to last", "last"]);
+		const tail = readLastLogLines(log, 10_000);
+		expect(tail.length).toBeLessThan(400);
+		expect(tail.every((line) => line === "x".repeat(199) || line.includes("last"))).toBe(true);
+	});
+
+	it("returns nothing for a missing log", () => {
+		expect(readLastLogLines(join(tmpdir(), "pl-no-such.log"))).toEqual([]);
 	});
 });
