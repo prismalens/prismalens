@@ -628,3 +628,71 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		);
 	});
 });
+
+describe("IncidentsController - one-step Resolve (R1a)", () => {
+	const id = "123e4567-e89b-12d3-a456-426614174000";
+	const base = {
+		id,
+		number: 1,
+		title: "Pool exhausted",
+		severity: "high",
+		priority: "p2",
+		triggeredAt: new Date("2026-10-02T17:00:00Z"),
+		createdAt: new Date("2026-10-02T17:00:00Z"),
+		updatedAt: new Date("2026-10-02T17:00:00Z"),
+		alertCount: 1,
+	};
+	function handlersFor(status: string) {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue({ ...base, status }),
+			update: vi.fn().mockResolvedValue({ ...base, status }),
+			close: vi.fn().mockResolvedValue({ ...base, status: "closed" }),
+		};
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			{} as InvestigationsService,
+			{} as DispatchService,
+			{} as IntegrationsService,
+			{} as HarnessService,
+		);
+		const procedures = controller.incidents() as unknown as Record<
+			string,
+			{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+		>;
+		return {
+			incidentsService,
+			call: (name: string, input: Record<string, unknown>) =>
+				procedures[name]["~orpc"].handler({ input: { id, ...input } }),
+		};
+	}
+
+	it("resolves from Triggered, Acknowledged and Alerts cleared, never twice", async () => {
+		for (const status of ["triggered", "investigating", "resolved"]) {
+			const { call, incidentsService } = handlersFor(status);
+			await call("close", {});
+			expect(incidentsService.close).toHaveBeenCalledTimes(1);
+		}
+		const { call } = handlersFor("closed");
+		await expect(call("close", {})).rejects.toMatchObject({ code: "CONFLICT" });
+	});
+
+	it("takes an edited cause on a Resolved incident and refuses anything else but Reopen", async () => {
+		const ok = handlersFor("closed");
+		await ok.call("update", { actualCause: "the pool" });
+		expect(ok.incidentsService.update).toHaveBeenCalledWith(id, {
+			actualCause: "the pool",
+		});
+		const refused = handlersFor("closed");
+		await expect(
+			refused.call("update", { customerImpact: "checkout down" }),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		await expect(
+			refused.call("update", { status: "resolved" }),
+		).rejects.toMatchObject({ code: "CONFLICT" });
+		const reopen = handlersFor("closed");
+		await reopen.call("update", { status: "investigating" });
+		expect(reopen.incidentsService.update).toHaveBeenCalledWith(id, {
+			status: "investigating",
+		});
+	});
+});
