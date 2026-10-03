@@ -204,7 +204,7 @@ export function AgentModelPicker({
 				value: "",
 				name: "Agent default",
 				line: effective.envModel
-					? `${effective.envModel.model} · from ${effective.envModel.key}`
+					? `${effective.envModel.model} from ${effective.envModel.key}`
 					: effective.defaultModel
 						? `asks for ${modelName(effective, effective.defaultModel)}`
 						: `whatever ${effective.label} picks`,

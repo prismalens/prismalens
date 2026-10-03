@@ -50,7 +50,7 @@ export function AlertGroupHead({ group }: { group: AlertGroup }) {
 			>
 				{formatClock(group.firstAt)}
 				{group.lastAt !== group.firstAt ? `–${formatClock(group.lastAt)}` : ""}
-				<span className="ml-1.5">· {ago(group.lastAt, now)}</span>
+				<span className="ml-2.5">{ago(group.lastAt, now)}</span>
 			</Mono>
 		</div>
 	);

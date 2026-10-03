@@ -198,7 +198,6 @@ export function HarnessSettings() {
 										</StateWord>
 									)}
 									<span>
-										·{" "}
 										<InlineCode
 											text={
 												harness.installed ? harness.loginHint : harness.install

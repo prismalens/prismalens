@@ -36,11 +36,11 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
 };
 
 export const PRIORITY_LABEL: Record<Priority, string> = {
-	p1: "P1 · Critical",
-	p2: "P2 · High",
-	p3: "P3 · Medium",
-	p4: "P4 · Low",
-	p5: "P5 · Planning",
+	p1: "P1 Critical",
+	p2: "P2 High",
+	p3: "P3 Medium",
+	p4: "P4 Low",
+	p5: "P5 Planning",
 };
 
 export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
