@@ -73,11 +73,12 @@ export const INCIDENT_ACTION_LABEL: Record<IncidentAction, string> = {
 /** A new incident whose alert fired after an earlier one ended (R1a d6). */
 export const REFIRE_LABEL = "Fired again";
 
+/** An alert's end is the source's, so it reads Cleared, never Resolved (study-v3 §4). */
 export const ALERT_STATUS_LABEL: Record<AlertStatus, string> = {
 	triggered: "Triggered",
 	acknowledged: "Acknowledged",
 	correlated: "Correlated",
-	resolved: "Resolved",
+	resolved: "Cleared",
 	suppressed: "Suppressed",
 };
 
