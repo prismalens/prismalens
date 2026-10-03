@@ -2,7 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { backTarget, inAlertRecord, inIncident, inSettings } from "./use-back";
+import {
+	alertBackLabel,
+	backTarget,
+	inAlertRecord,
+	inIncident,
+	inSettings,
+} from "./use-back";
 
 const at = (...hrefs: string[]) =>
 	hrefs.map((href) => ({ href, pathname: href.split("?")[0] ?? href }));
@@ -40,5 +46,26 @@ describe("backTarget", () => {
 		expect(backTarget(inSettings, "/incidents", at("/settings?tab=devices"))).toBe(
 			"/incidents",
 		);
+	});
+});
+
+describe("alertBackLabel", () => {
+	const incident = { id: "1", number: 7 };
+
+	it("names the alert's own incident, a tab of it included", () => {
+		expect(alertBackLabel("/incidents/1/alerts", incident)).toBe("Back to INC-7");
+		expect(alertBackLabel("/incidents/12", incident)).toBe("Back to the incident");
+	});
+
+	it("calls the board the board, query string or not", () => {
+		expect(alertBackLabel("/incidents")).toBe("Back to the board");
+		expect(alertBackLabel("/incidents?state=open", incident)).toBe(
+			"Back to the board",
+		);
+	});
+
+	it("falls back to alerts, else a bare Back", () => {
+		expect(alertBackLabel("/alerts?tab=unmapped")).toBe("Back to alerts");
+		expect(alertBackLabel("/settings")).toBe("Back");
 	});
 });
