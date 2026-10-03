@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import type { Plugin } from "vite";
 
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
@@ -20,14 +21,22 @@ export function packageDirOf(path: string): string | undefined {
 	return name ? clean.slice(0, at + NODE_MODULES.length) + name : undefined;
 }
 
-interface Notice {
+/** Package directories resolved from `root`, for packages whose output has no module id in the bundle. */
+export function resolvePackageDirs(root: string, names: string[]): string[] {
+	const require = createRequire(resolve(root, "package.json"));
+	return names.map((name) =>
+		dirname(require.resolve(`${name}/package.json`)).replace(/\\/g, "/"),
+	);
+}
+
+export interface Notice {
 	name: string;
 	version: string;
 	license: string;
 	text: string;
 }
 
-function readNotice(dir: string): Notice {
+export function readNotice(dir: string): Notice {
 	const manifest = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
 	const file = readdirSync(dir).find((f) => LICENSE_FILE.test(f));
 	const license =
@@ -64,9 +73,15 @@ export function renderNotices(notices: Notice[]): string {
 /**
  * Lists what the client bundle actually contains, from the modules and assets
  * Vite emitted, so build-only packages never appear. Fonts pulled in by a CSS
- * `@import` are seen through their emitted font files.
+ * `@import` are seen through their emitted font files. CSS a plugin generates
+ * (Tailwind's Preflight and utilities) carries no module id, so those packages
+ * are named in `generated`.
  */
-export function thirdPartyNotices(): Plugin {
+export function thirdPartyNotices({
+	generated = [],
+}: {
+	generated?: string[];
+} = {}): Plugin {
 	let root = process.cwd();
 	return {
 		name: "prismalens:third-party-notices",
@@ -76,7 +91,7 @@ export function thirdPartyNotices(): Plugin {
 		},
 		generateBundle(_options, bundle) {
 			if (this.environment.name !== "client") return;
-			const dirs = new Set<string>();
+			const dirs = new Set<string>(resolvePackageDirs(root, generated));
 			for (const output of Object.values(bundle)) {
 				const sources =
 					output.type === "chunk"

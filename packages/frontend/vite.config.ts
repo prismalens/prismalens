@@ -58,7 +58,7 @@ export default defineConfig({
 		}),
 		viteReact(),
 		tailwindcss(),
-		thirdPartyNotices(),
+		thirdPartyNotices({ generated: ["tailwindcss", "tailwindcss-animate"] }),
 	],
 	// Loaded only by the incidents board route; listed so a cold dev server
 	// does not discover it mid-session and reload the page (#743).

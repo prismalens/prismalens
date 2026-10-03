@@ -30,7 +30,7 @@ body:
     id: doctor
     attributes:
       label: "`pl doctor` output"
-      description: Run `pl doctor` (or `npx prismalens doctor`) and paste the full output. It names the version, install channel, coding agents and workspace; it prints file paths, not secret values.
+      description: Run `pl doctor` (or `npx prismalens doctor`) and paste the full output. It names the version, install channel, coding agents and workspace, and prints file paths but no secret values; redact any private paths or workspace names before posting.
       render: shell
     validations:
       required: true
