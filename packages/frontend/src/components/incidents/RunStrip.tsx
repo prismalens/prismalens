@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/popover";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
-import { formatElapsed } from "@/lib/format-time";
+import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
+import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { runStepText } from "@/lib/investigation-events";
 import { runStateTone } from "@/lib/state-tone";
@@ -80,46 +81,61 @@ export function runElapsed(
 /**
  * The run's status (#743 §2), at the right end of the tab row: the
  * investigation's own words, never the incident's: state, agent and model,
- * what it is doing, elapsed, and Stop while it is live.
+ * what it is doing, elapsed, and Stop while it is live. With the stream lost,
+ * the live mark goes grey and the clock stops at when it was last seen.
  */
 export function RunStrip() {
 	const { run } = useIncidentRecord();
 	const now = useNow(1000);
+	const stream = useStreamStatus();
 	const investigation = run.investigation;
 	const who = useRunAgentModel(investigation);
 	if (!investigation || !run.state) return null;
 
 	const state = run.state;
 	const live = isRunStateLive(state);
+	const lostAt = live && now !== null ? reconnectAsOf(stream, now) : null;
 	const step =
-		live && now !== null
+		live && now !== null && lostAt === null
 			? runStepText(run.events, now, { streamLost: run.streamFailed })
 			: null;
 
 	return (
 		<div
-			className="flex h-9 min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap [view-transition-name:run-strip]"
+			className="flex h-9 min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap text-meta text-text-3 [view-transition-name:run-strip]"
 			data-testid="run-strip"
+			data-disconnected={lostAt !== null ? "" : undefined}
 		>
-			<StateWord
-				tone={runStateTone(state)}
-				pulse={live}
-				className="transition-colors duration-200 motion-reduce:transition-none"
-				data-testid="run-strip-state"
-			>
-				{RUN_STATE_LABEL[state]}
-			</StateWord>
-			<span className="hidden min-w-0 shrink items-center gap-1.5 truncate text-meta text-text-2 sm:flex">
-				<span className="text-text-1">{who.agent}</span>
-				<span>{who.model}</span>
+			<span className="inline-flex shrink-0 items-center gap-1.5">
+				{live && (
+					<span
+						aria-hidden
+						className={cn(
+							"h-3 w-[3px] rounded-full transition-colors duration-200 motion-reduce:transition-none",
+							lostAt !== null ? "bg-text-3" : "bg-live",
+						)}
+						data-testid="run-strip-mark"
+					/>
+				)}
+				<StateWord
+					tone={lostAt !== null ? "neutral" : runStateTone(state)}
+					quiet={state === "stopped"}
+					className={cn(state === "stopped" && "text-text-2")}
+					data-testid="run-strip-state"
+				>
+					{RUN_STATE_LABEL[state]}
+				</StateWord>
+			</span>
+			<span className="hidden min-w-0 shrink items-center gap-3 truncate sm:flex">
+				<span>{who.agent}</span>
+				<span className="truncate">{who.model}</span>
 			</span>
 			{step && (
 				<span
 					key={step.text}
 					className={cn(
-						"min-w-0 flex-1 truncate text-meta motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150",
-						"transition-colors duration-300 motion-reduce:transition-none",
-						step.stale ? "text-warn" : "text-text-2",
+						"min-w-0 flex-1 truncate motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150",
+						step.stale && "text-warn",
 					)}
 					data-testid="run-strip-step"
 				>
@@ -128,12 +144,15 @@ export function RunStrip() {
 			)}
 			<span
 				className={cn(
-					"shrink-0 text-meta tabular-nums text-text-2",
+					"shrink-0 font-medium text-text-1 tabular-nums",
 					!step && "flex-1",
+					lostAt !== null && "font-normal text-text-3",
 				)}
 				data-testid="run-strip-elapsed"
 			>
-				{formatElapsed(runElapsed(investigation, now))}
+				{lostAt !== null
+					? `Last seen ${formatClock(lostAt)}`
+					: formatElapsed(runElapsed(investigation, now))}
 			</span>
 			<div className="ml-auto flex shrink-0 items-center gap-1">
 				{live && <StopButton />}
@@ -165,7 +184,7 @@ function StopButton() {
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button
-					variant="outline"
+					variant="ghost"
 					size="xs"
 					className="text-danger hover:text-danger"
 					disabled={stopping}
