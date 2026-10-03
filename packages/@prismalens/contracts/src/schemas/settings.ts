@@ -17,6 +17,21 @@ export const HarnessSettingSchema = z.enum(["auto", ...HARNESS_IDS]);
 export type HarnessSetting = z.infer<typeof HarnessSettingSchema>;
 
 /** One registry row as the doctor and the settings card show it. */
+/** A harness's `thought_level` option over ACP, with its own default (R4.2). */
+export const EffortOptionSchema = z.object({
+	id: z.string(),
+	values: z.array(z.string()),
+	default: z.string().nullable(),
+});
+export type EffortOption = z.infer<typeof EffortOptionSchema>;
+
+/** A starred model, across agents (T3's star tile; R4.2). */
+export const FavouriteModelSchema = z.object({
+	harness: z.enum(HARNESS_IDS),
+	model: z.string().min(1).max(200),
+});
+export type FavouriteModel = z.infer<typeof FavouriteModelSchema>;
+
 export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
@@ -55,6 +70,20 @@ export const HarnessStatusSchema = z.object({
 			}),
 		),
 	}),
+	/**
+	 * What the last readiness check read from the harness itself (R4.2 d4,
+	 * R4.3 d2); null until one has run, which the picker says as "pending a check".
+	 */
+	checked: z
+		.object({
+			at: z.string(),
+			/** The model it reported as current: "Agent default" names this, never a PrismaLens choice. */
+			servedModel: z.string().nullable(),
+			effort: EffortOptionSchema.nullable(),
+			images: z.boolean(),
+		})
+		.nullable()
+		.optional(),
 });
 export type HarnessStatus = z.infer<typeof HarnessStatusSchema>;
 
@@ -82,6 +111,7 @@ export const HarnessSettingsSchema = z.object({
 	harness: HarnessSettingSchema,
 	/** Model id per harness; a harness without one uses its default. */
 	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
+	favourites: z.array(FavouriteModelSchema).optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
@@ -92,6 +122,8 @@ export const UpdateHarnessSettingsSchema = z
 		models: z
 			.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
 			.optional(),
+		/** Replaces the whole list. */
+		favourites: z.array(FavouriteModelSchema).max(100).optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
@@ -121,6 +153,9 @@ export const HarnessProbeResultSchema = z.object({
 	hard: z.literal(false),
 	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
 	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+	servedModel: z.string().nullable().optional(),
+	effort: EffortOptionSchema.nullable().optional(),
+	images: z.boolean().optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 

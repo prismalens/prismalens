@@ -246,6 +246,37 @@ export function selectedModel(
 	return null;
 }
 
+/** The effort a harness offers as a `thought_level` select option (R4.2). */
+export interface AcpOfferedEffort {
+	id: string;
+	values: string[];
+	/** What the harness reports as current at `session/new`: its own default. */
+	default: string | null;
+}
+
+/** The `thought_level` option of a `session/new` answer; null when there is none. */
+export function offeredEffort(
+	configOptions: NewSessionResponse["configOptions"] | unknown,
+): AcpOfferedEffort | null {
+	if (!Array.isArray(configOptions)) return null;
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.category !== "thought_level" || option.type !== "select")
+			continue;
+		const entries = Array.isArray(option.options) ? option.options : [];
+		const values = (entries as Array<Record<string, unknown>>).flatMap((o) =>
+			typeof o?.value === "string" ? [o.value] : [],
+		);
+		if (typeof option.id !== "string" || values.length === 0) continue;
+		return {
+			id: option.id,
+			values,
+			default:
+				typeof option.currentValue === "string" ? option.currentValue : null,
+		};
+	}
+	return null;
+}
+
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
@@ -270,6 +301,10 @@ export class AcpSession {
 	models: AcpOfferedModel[] = [];
 	/** The model `session/new` reported as selected; null when it reported none. */
 	servedModel: string | null = null;
+	/** The `thought_level` option `session/new` offered; null when none. */
+	effort: AcpOfferedEffort | null = null;
+	/** `initialize` advertised `promptCapabilities.image` (R4.3). */
+	takesImages = false;
 	/** The harness advertised `loadSession` at `initialize`. */
 	loadSession = false;
 	/** History updates `session/load` replayed; dropped, never yielded. */
@@ -367,6 +402,8 @@ export class AcpSession {
 			? (init.authMethods as AcpAuthMethod[])
 			: [];
 		this.loadSession = init?.agentCapabilities?.loadSession === true;
+		this.takesImages =
+			init?.agentCapabilities?.promptCapabilities?.image === true;
 		const params = {
 			cwd: config.cwd,
 			mcpServers: [],
@@ -389,6 +426,7 @@ export class AcpSession {
 			})) as Partial<LoadSessionResponse> | null;
 			this.models = offeredModels(loaded?.configOptions);
 			this.servedModel = selectedModel(loaded?.configOptions);
+			this.effort = offeredEffort(loaded?.configOptions);
 			return;
 		}
 		const session = (await this.request(
@@ -401,6 +439,7 @@ export class AcpSession {
 		this.currentSessionId = session.sessionId;
 		this.models = offeredModels(session.configOptions);
 		this.servedModel = selectedModel(session.configOptions);
+		this.effort = offeredEffort(session.configOptions);
 	}
 
 	/** The harness's own session id once `open()` has one. */
