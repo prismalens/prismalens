@@ -16,9 +16,16 @@ test.describe("live updates", () => {
 		page,
 	}) => {
 		const title = `Arrived while watching ${Date.now()}`;
+		const streamOpen = page.waitForResponse((r) =>
+			r.url().includes("/api/live/changes"),
+		);
 		await page.goto("/incidents");
-		await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible();
-		await page.waitForResponse((r) => r.url().includes("/api/live/changes"));
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible();
+		await streamOpen;
 
 		const created = await page.request.post("/api/incidents", {
 			data: { title },
