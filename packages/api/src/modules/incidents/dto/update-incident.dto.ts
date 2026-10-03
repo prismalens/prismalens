@@ -22,6 +22,11 @@ export class UpdateIncidentDto {
 	customerImpact?: string;
 	assignedToId?: string;
 	/** What actually caused it, recorded on close (#338). */
-	actualCause?: string;
-	actualCauseCategory?: string;
+	actualCause?: string | null;
+	actualCauseCategory?: string | null;
+	/** Written by the service itself (R1a d3, d4), never by a request. */
+	closedAt?: Date | null;
+	timeToClose?: number | null;
+	reopenedAt?: Date | null;
+	reopenReason?: "flap" | "operator" | null;
 }

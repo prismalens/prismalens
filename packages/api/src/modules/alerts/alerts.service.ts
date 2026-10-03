@@ -283,6 +283,9 @@ export class AlertsService {
 						status: IncidentStatus.triggered,
 						resolvedAt: null,
 						timeToResolve: null,
+						// The card reads "Back again" from this (R1a d4), not from resolvedAt.
+						reopenedAt: alert.lastOccurrence,
+						reopenReason: "flap",
 						updatedAt: alert.lastOccurrence,
 					},
 				});
