@@ -516,6 +516,8 @@ When(
 		hold(inc(page).title);
 		await openBoard(page);
 		await drag(page, cardOf(page, inc(page).title), column(page, col));
+		// Read at once, not retried: the drop animation's copy lives ~250ms (#780).
+		expect(await cardOf(page, inc(page).title).count()).toBe(1);
 	},
 );
 

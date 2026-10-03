@@ -395,12 +395,14 @@ export function IncidentBoard({
 			</div>
 			<DragOverlay dropAnimation={prefersReducedMotion() ? null : undefined}>
 				{dragging && (
-					<div className="floating rotate-1 rounded-surface">
+					// A picture of the card, not a second card: dnd-kit keeps it ~250ms after the drop (#780).
+					<div className="floating rotate-1 rounded-surface" aria-hidden>
 						<CardBody
 							incident={dragging.incident}
 							column={dragging.from}
 							now={now}
 							offline={offline}
+							overlay
 						/>
 					</div>
 				)}
@@ -618,6 +620,7 @@ function CardBody({
 	busy,
 	link,
 	onAcknowledge,
+	overlay = false,
 }: {
 	incident: IncidentWithRelations;
 	column: BoardColumn;
@@ -626,6 +629,8 @@ function CardBody({
 	busy?: string;
 	link?: ReactNode;
 	onAcknowledge?: () => void;
+	/** The drag overlay's copy, which must not read as a board card. */
+	overlay?: boolean;
 }) {
 	const word = cardWord(incident);
 	const live = runWord(incident, now);
@@ -641,7 +646,7 @@ function CardBody({
 	return (
 		<article
 			className="relative min-w-0 rounded-surface bg-surface-2 px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--raised-edge)] transition-colors duration-150 hover:bg-surface-3 motion-reduce:transition-none"
-			data-testid="board-card"
+			data-testid={overlay ? "board-card-overlay" : "board-card"}
 			data-column={column}
 			data-number={incident.number}
 		>
