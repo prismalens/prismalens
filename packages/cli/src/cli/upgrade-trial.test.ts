@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	awaitTrial,
+	readLastLogLines,
 	completePendingRestore,
 	readOutcome,
 	readTrial,
@@ -104,6 +105,45 @@ describe("settleTrial", () => {
 		expect(start).not.toHaveBeenCalled();
 		expect(outcome.result).toBe("restored-only");
 		expect(outcome.reason).toContain("homebrew can't reinstall 0.5.1");
+		expect(read("prismalens.db")).toBe("old-db");
+	});
+
+	it("rolls back immediately when service probe reports failed without waiting for timeout", async () => {
+		takeSnapshot(ws, trial);
+		migrate();
+		const logDir = join(ws, "logs");
+		mkdirSync(logDir, { recursive: true });
+		writeFileSync(
+			join(logDir, "service.log"),
+			Array.from({ length: 30 }, (_, i) => `log line ${i + 1}`).join("\n"),
+		);
+
+		const start = Date.now();
+		const outcome = await settleTrial({
+			workspace: ws,
+			trial,
+			check: () =>
+				awaitTrial({
+					base: "http://127.0.0.1:9999",
+					instanceId: "inst",
+					version: "0.5.2",
+					deadlineMs: 60_000,
+					intervalMs: 100,
+					logPath: join(logDir, "service.log"),
+					serviceProbe: () => true,
+				}),
+			stop: () => true,
+			start: () => true,
+			switchBack: () => null,
+		});
+
+		const elapsed = Date.now() - start;
+		expect(elapsed).toBeLessThan(5_000);
+		expect(outcome.result).toBe("rolled-back");
+		expect(outcome.reason).toContain("0.5.2 exited during the trial");
+		expect(outcome.reason).toContain("log line 30");
+		expect(outcome.reason).toContain("log line 11");
+		expect(outcome.reason).not.toContain("log line 10\n");
 		expect(read("prismalens.db")).toBe("old-db");
 	});
 });
@@ -216,5 +256,23 @@ describe("switchInstallerRuntime", () => {
 		expect(outcome.reason).toContain("couldn't be stopped");
 		expect(read("prismalens.db")).toBe("new-db");
 		expect(existsSync(join(ws, SNAPSHOT_DIR))).toBe(true);
+	});
+});
+
+describe("readLastLogLines (#776 review)", () => {
+	it("reads only the end of a large log", () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-log-"));
+		const log = join(dir, "service.log");
+		const filler = `${"x".repeat(199)}\n`.repeat(5_000);
+		writeFileSync(log, `${filler}second to last\nlast\n`);
+		expect(statSync(log).size).toBeGreaterThan(64 * 1024);
+		expect(readLastLogLines(log, 2)).toEqual(["second to last", "last"]);
+		const tail = readLastLogLines(log, 10_000);
+		expect(tail.length).toBeLessThan(400);
+		expect(tail.every((line) => line === "x".repeat(199) || line.includes("last"))).toBe(true);
+	});
+
+	it("returns nothing for a missing log", () => {
+		expect(readLastLogLines(join(tmpdir(), "pl-no-such.log"))).toEqual([]);
 	});
 });

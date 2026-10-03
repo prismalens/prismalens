@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { PERMISSION_MODES } from "@prismalens/config/harness";
 /**
  * Investigation, Agent Execution, and Tool Execution schemas
  */
@@ -96,14 +97,15 @@ export const NextStepSchema = z.object({
  */
 export const RunFidelitySchema = z.object({
 	harness: z.string(),
-	mode: z.string(),
+	/** The access level the run was given (r4 R4.1); older records all read "read-only". */
+	mode: z.enum(PERMISSION_MODES),
 	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
 	mechanism: z.string(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
 	modelSource: z
-		.enum(["operator", "product-default", "harness-default"])
+		.enum(["operator", "product-default", "harness-default", "env"])
 		.optional(),
 	/** ACP `initialize` `agentInfo.version`; absent when the harness did not report one. */
 	harnessVersion: z.string().optional(),

@@ -1,0 +1,51 @@
+name: Playwright E2E (phone and tablet)
+
+# The @responsive journeys on Pixel 7 and iPad sizes. Nightly and by hand, never
+# on a PR: no required check depends on it.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-responsive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  responsive:
+    name: Playwright E2E (Pixel 7, iPad)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build monorepo packages
+        run: pnpm build
+
+      - name: Install Playwright Chromium Browser
+        run: pnpm --filter @prismalens/frontend exec playwright install chromium --with-deps
+
+      - name: Run the @responsive journeys
+        run: pnpm --filter @prismalens/frontend test:e2e --project="Pixel 7" --project="iPad (gen 7)"
+
+      - name: Upload Playwright Report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-responsive
+          path: packages/frontend/playwright-report/
+          retention-days: 7

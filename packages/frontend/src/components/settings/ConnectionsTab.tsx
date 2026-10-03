@@ -162,7 +162,10 @@ export function ConnectionsTab() {
 			});
 			setTestResults((prev) => ({
 				...prev,
-				[connectionId]: { success: result.success },
+				[connectionId]: {
+					success: result.success,
+					error: result.error,
+				},
 			}));
 		} catch (err) {
 			setTestResults((prev) => ({

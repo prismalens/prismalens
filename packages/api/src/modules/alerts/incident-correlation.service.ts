@@ -4,6 +4,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import {
+	ENDED_INCIDENT_STATUSES,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
@@ -127,6 +128,23 @@ export class IncidentCorrelationService {
 			}
 		}
 
+		// The same alert's last incident, when it ended: the new one names it
+		// so a refire after Close reads as a second outage, not a swallowed one (walk f32).
+		const prior = alert.fingerprint
+			? await this.prisma.alert.findFirst({
+					where: {
+						fingerprint: alert.fingerprint,
+						id: { not: alert.id },
+						incidentId: { not: null },
+						incident: {
+							status: { in: [...ENDED_INCIDENT_STATUSES] },
+							serviceId: alert.serviceId ?? null,
+						},
+					},
+					include: { incident: true },
+					orderBy: { triggeredAt: "desc" },
+				})
+			: null;
 		const incident = await this.incidentsService.create({
 			title: alert.title,
 			description: alert.description ?? undefined,
@@ -138,6 +156,17 @@ export class IncidentCorrelationService {
 				| "info",
 			serviceId: alert.serviceId ?? undefined,
 			correlationReason: "New alert - no matching open incident",
+			...(prior?.incident
+				? {
+						priorIncident: {
+							id: prior.incident.id,
+							number: prior.incident.number,
+							status: prior.incident.status,
+							endedAt: prior.incident.resolvedAt,
+							alertName: alertName(alert),
+						},
+					}
+				: {}),
 		});
 		await this.incidentsService.addAlert(incident.id, alert.id);
 
@@ -169,4 +198,18 @@ export class IncidentCorrelationService {
 			);
 		}
 	}
+}
+
+/** The rule's name from the label set, else the alert's title. */
+function alertName(alert: Alert): string {
+	try {
+		const labels: unknown = alert.labels ? JSON.parse(alert.labels) : null;
+		if (labels && typeof labels === "object") {
+			const name = (labels as Record<string, unknown>).alertname;
+			if (typeof name === "string" && name) return name;
+		}
+	} catch {
+		// an unreadable label set falls back to the title
+	}
+	return alert.title;
 }

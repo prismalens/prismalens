@@ -11,6 +11,7 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	isAlertFiring,
 	ALERT_ACTION_FROM,
 	ALERT_STATUS_PHASE,
 	canAlertAction,
@@ -79,6 +80,14 @@ describe("state semantics", () => {
 		expect(isWorkflowTerminal("running")).toBe(false);
 	});
 
+	it("counts a correlated alert as firing until it resolves (walk f14)", () => {
+		expect(isAlertFiring("triggered")).toBe(true);
+		expect(isAlertFiring("acknowledged")).toBe(true);
+		expect(isAlertFiring("correlated")).toBe(true);
+		expect(isAlertFiring("resolved")).toBe(false);
+		expect(isAlertFiring("suppressed")).toBe(false);
+	});
+
 	it("keeps alerts open until they resolve or are suppressed", () => {
 		expect(OPEN_ALERT_STATUSES).toEqual(["triggered", "acknowledged", "correlated"]);
 	});
@@ -110,12 +119,14 @@ describe("state semantics", () => {
 		expect(canSetIncidentStatus("identified", "identified")).toBe(true);
 		expect(canSetIncidentStatus("investigating", "triggered")).toBe(false);
 		expect(canSetIncidentStatus("triggered", "closed")).toBe(false);
-		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
 		expect(canSetIncidentStatus("resolved", "closed")).toBe(true);
 		expect(canSetIncidentStatus("resolved", "investigating")).toBe(true);
-		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
+		// A closed incident reopens into investigating and nowhere else (walk u18).
+		expect(canSetIncidentStatus("closed", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("closed", "triggered")).toBe(false);
+		expect(canSetIncidentStatus("closed", "identified")).toBe(false);
 		expect(canIncidentAction("reopen", "resolved")).toBe(true);
-		expect(canIncidentAction("reopen", "closed")).toBe(false);
+		expect(canIncidentAction("reopen", "closed")).toBe(true);
 		expect(canSetIncidentStatus("triggered", "bogus")).toBe(false);
 	});
 

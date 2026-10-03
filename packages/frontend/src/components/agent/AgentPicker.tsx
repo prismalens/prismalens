@@ -70,7 +70,10 @@ export function agentModelLabel(
 	return {
 		agent: effective.label,
 		model:
-			modelName(effective, model || effective.defaultModel) ?? "agent default",
+			modelName(
+				effective,
+				model || effective.envModel?.model || effective.defaultModel,
+			) ?? "agent default",
 	};
 }
 
@@ -191,9 +194,11 @@ export function AgentModelPicker({
 			{
 				value: "",
 				name: "Agent default",
-				line: effective.defaultModel
-					? `asks for ${modelName(effective, effective.defaultModel)}`
-					: `whatever ${effective.label} picks`,
+				line: effective.envModel
+					? `${effective.envModel.model} · from ${effective.envModel.key}`
+					: effective.defaultModel
+						? `asks for ${modelName(effective, effective.defaultModel)}`
+						: `whatever ${effective.label} picks`,
 				disabled: false,
 				active: !model,
 			},

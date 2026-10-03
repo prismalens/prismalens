@@ -468,23 +468,34 @@ export function releaseWorkspaceLock(): boolean {
  * harmless — Windows never delivers `SIGTERM`, and `process.on` accepts it
  * regardless — so no platform branching is needed here.
  *
+ * The first signal also starts a deadline: a shutdown still running after
+ * `deadlineMs` exits anyway, so a service manager's stop never hangs (walk f20).
+ *
  * @returns a disarm function, also reachable as {@link disarmForcedExit}.
  */
 export function armForcedExitOnSecondSignal(
 	signals: readonly NodeJS.Signals[],
+	deadlineMs = 10_000,
 ): () => void {
 	let received = 0;
+	let deadline: NodeJS.Timeout | null = null;
 	const handlers = new Map<NodeJS.Signals, () => void>();
 	for (const signal of signals) {
+		const code = 128 + (SIGNAL_NUMBERS[signal] ?? 15);
 		const handler = () => {
 			received += 1;
-			if (received < 2) return;
-			process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 15));
+			if (received < 2) {
+				deadline = setTimeout(() => process.exit(code), deadlineMs);
+				deadline.unref();
+				return;
+			}
+			process.exit(code);
 		};
 		handlers.set(signal, handler);
 		process.on(signal, handler);
 	}
 	const disarm = () => {
+		if (deadline) clearTimeout(deadline);
 		for (const [signal, handler] of handlers) {
 			process.removeListener(signal, handler);
 		}

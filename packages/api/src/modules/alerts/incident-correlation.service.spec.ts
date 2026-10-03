@@ -261,6 +261,55 @@ describe("IncidentCorrelationService", () => {
 		});
 	});
 
+	describe("a new episode after an ended incident (walk f32)", () => {
+		it("opens a new incident whose opening entry names the closed one", async () => {
+			const alert = alertRow({ id: "alert-new", fingerprint: "fp-1", labels: JSON.stringify({ alertname: "BooklogrLibraryListSlow" }) });
+			const endedAt = new Date("2026-10-01T14:22:00.000Z");
+			mockPrismaService.alert.findFirst
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce({
+					...alertRow({ id: "alert-old", fingerprint: "fp-1", incidentId: "inc-10" }),
+					incident: { id: "inc-10", number: 10, status: "closed", resolvedAt: endedAt },
+				});
+			mockIncidentsService.create.mockResolvedValue({ id: "inc-11", number: 11 });
+
+			const result = await service.correlateAlert(alert);
+
+			expect(result).toMatchObject({ incidentId: "inc-11", isNewIncident: true });
+			expect(mockPrismaService.alert.findFirst).toHaveBeenNthCalledWith(
+				2,
+				expect.objectContaining({
+					where: expect.objectContaining({
+						fingerprint: "fp-1",
+						incident: expect.objectContaining({ status: { in: ["resolved", "closed"] }, serviceId: null }),
+					}),
+				}),
+			);
+			expect(mockIncidentsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					priorIncident: {
+						id: "inc-10",
+						number: 10,
+						status: "closed",
+						endedAt,
+						alertName: "BooklogrLibraryListSlow",
+					},
+				}),
+			);
+		});
+
+		it("names nothing when the fingerprint has no ended incident", async () => {
+			mockPrismaService.alert.findFirst.mockResolvedValue(null);
+			mockIncidentsService.create.mockResolvedValue({ id: "inc-1", number: 1 });
+
+			await service.correlateAlert(alertRow());
+
+			expect(mockIncidentsService.create).toHaveBeenCalledWith(
+				expect.not.objectContaining({ priorIncident: expect.anything() }),
+			);
+		});
+	});
+
 	describe("resolveIncidentIfNoFiringAlerts", () => {
 		it("resolves the incident when no alert on it is still firing", async () => {
 			mockPrismaService.alert.count.mockResolvedValue(0);

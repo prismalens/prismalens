@@ -132,6 +132,14 @@ export const UpdateConnectionSchema = z.object({
 	status: ConnectionStatusSchema.optional(),
 });
 
+export const TestConnectionResponseSchema = z.object({
+	success: z.boolean(),
+	error: z.string().optional(),
+});
+export type TestConnectionResponse = z.infer<
+	typeof TestConnectionResponseSchema
+>;
+
 // =============================================================================
 // OAUTH SCHEMAS
 // =============================================================================

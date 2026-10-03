@@ -158,11 +158,11 @@ export function AboutSettings() {
 				</h3>
 				<dl className="mt-2 divide-y">
 					<Row label="Version">
-						{about.version}
-						{about.build === "dev" && (
-							<span className="ml-2 text-muted-foreground">
-								(development build)
-							</span>
+						<div>{about.version}</div>
+						{about.build && (
+							<div className="text-xs text-muted-foreground">
+								Build {about.build}
+							</div>
 						)}
 					</Row>
 					<Row label="Installed with">{CHANNEL_LABEL[about.channel]}</Row>

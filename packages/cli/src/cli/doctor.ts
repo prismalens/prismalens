@@ -16,7 +16,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, join, posix, win32 } from "node:path";
 import {
 	DEFAULT_PORT,
 	ensureAppDataDir,
@@ -146,13 +146,17 @@ export function channelOfPath(path: string, contents = ""): string {
 export function checkInstalls(
 	path = process.env.PATH ?? "",
 	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+	exists: (p: string) => boolean = existsSync,
 ): Check {
 	const names = platform === "win32" ? ["pl.cmd", "pl.exe"] : ["pl"];
+	// The PATH is the given platform's, so its own path rules read it (#776 review).
+	const paths = platform === "win32" ? win32 : posix;
 	const seen = new Map<string, string>();
-	for (const dir of path.split(delimiter).filter(Boolean)) {
+	for (const dir of path.split(paths.delimiter).filter(Boolean)) {
 		for (const name of names) {
-			const candidate = join(dir, name);
-			if (!existsSync(candidate)) continue;
+			const candidate = paths.join(dir, name);
+			if (!exists(candidate)) continue;
 			let real = candidate;
 			try {
 				real = realpathSync(candidate);
@@ -176,15 +180,32 @@ export function checkInstalls(
 		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
 		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;
 	});
+	const isWsl = Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
+	const wslHints: string[] = [];
+	if (isWsl) {
+		for (const p of seen.keys()) {
+			if (/^\/mnt\/[a-zA-Z](\/|$)/.test(p)) {
+				wslHints.push(
+					`${p} is the Windows install; it can't run inside WSL. Install PrismaLens inside this distro.`,
+				);
+			}
+		}
+	}
+	const baseDetail =
+		rows.length === 0
+			? `this one (${cliVersion()}) is not on PATH`
+			: rows.length === 1
+				? rows[0]
+				: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`;
+	const detail =
+		wslHints.length > 0
+			? `${baseDetail.replace(/\.?$/, ".")} ${wslHints.join(" ")}`
+			: baseDetail;
+
 	return {
 		name: `PrismaLens ${cliVersion()} (${installChannel()})`,
-		pass: rows.length <= 1,
-		detail:
-			rows.length === 0
-				? `this one (${cliVersion()}) is not on PATH`
-				: rows.length === 1
-					? rows[0]
-					: `${rows.length} on PATH, sharing one workspace: ${rows.join("; ")}. An older one stops once a newer one has migrated the database; remove all but one.`,
+		pass: rows.length <= 1 && wslHints.length === 0,
+		detail,
 		hard: false,
 	};
 }
@@ -247,7 +268,7 @@ export function checkAutoSelection(): Check[] {
 			},
 		];
 	}
-	const model = resolveHarnessModel(selection.harness);
+	const model = resolveHarnessModel(selection.harness, undefined, process.env);
 	return [
 		{
 			name: "Selected harness",
@@ -259,9 +280,11 @@ export function checkAutoSelection(): Check[] {
 			name: "Model",
 			pass: true,
 			detail:
-				model.source === "product-default"
-					? `${model.model} (tested default; Settings → Agent → Model overrides it)`
-					: `${HARNESS_REGISTRY[selection.harness].label} picks its own model unless Settings → Agent → Model sets one`,
+				model.source === "env"
+					? `${model.model} (from ${HARNESS_REGISTRY[selection.harness].envModelKey}; Settings → Agent → Model overrides it)`
+					: model.source === "product-default"
+						? `${model.model} (tested default; Settings → Agent → Model overrides it)`
+						: `${HARNESS_REGISTRY[selection.harness].label} picks its own model unless Settings → Agent → Model sets one`,
 			hard: false,
 		},
 	];

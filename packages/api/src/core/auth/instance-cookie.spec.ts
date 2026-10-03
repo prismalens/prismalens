@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Logger } from "@nestjs/common";
 import { call } from "@orpc/server";
 import { deviceCookieName } from "@prismalens/auth";
 import type { Request } from "express";
@@ -116,5 +117,24 @@ describe("redeem leaves other instances' device cookies alone (#763)", () => {
 		);
 		expect(setCookies).toHaveLength(1);
 		expect(setCookies[0]).toMatch(new RegExp(`^${OWN}=fresh;`));
+	});
+
+	it("logs a one-line warn without a stack when redeeming an expired or used link", async () => {
+		const warnSpy = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+		const { req } = request();
+		const { redeemPairingLink, PairingError } = await import("@prismalens/auth");
+		vi.mocked(redeemPairingLink).mockRejectedValueOnce(
+			new PairingError("used", "This pairing link was already used. Create a new one on the host."),
+		);
+		const controller = new PairingRedeemController({} as never, identity);
+		await expect(
+			call(controller.redeem(), { token: "used-token" }, { context: { request: req } }),
+		).rejects.toThrow();
+
+		expect(warnSpy).toHaveBeenCalledWith(
+			"This pairing link was already used. Create a new one on the host.",
+		);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		warnSpy.mockRestore();
 	});
 });

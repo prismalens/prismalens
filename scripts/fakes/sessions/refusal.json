@@ -1,0 +1,50 @@
+{
+	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"turns": [
+		[
+			{ "say": "I'll try a quick fix first, then look at the history.\n" },
+			{
+				"tool": {
+					"id": "toolu_01",
+					"title": "`echo 'CREATE INDEX' > migrations/fix.sql`",
+					"rawInput": { "command": "echo 'CREATE INDEX' > migrations/fix.sql" },
+					"output": ""
+				}
+			},
+			{ "say": "That write was refused, so read-only from here.\n" },
+			{
+				"tool": {
+					"id": "toolu_02",
+					"title": "`git log --oneline -5`",
+					"rawInput": { "command": "git log --oneline -5" },
+					"output": "d37d888 Schema cleanup: drop unused books title index"
+				}
+			},
+			{
+				"report": {
+					"summary": "Read-only look: d37d888 dropped an index the list query uses. A write was refused and not retried.",
+					"rootCause": null,
+					"rootCauseCategory": null,
+					"hypotheses": [
+						{
+							"statement": "The index drop in d37d888 slowed the list query",
+							"status": "speculative",
+							"evidence": [
+								{
+									"observation": "d37d888 is the newest commit",
+									"source": "git log --oneline -5",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "toolu_02"
+								}
+							]
+						}
+					],
+					"ruledOut": [],
+					"coverage": { "queried": ["git log"], "notQueried": ["database"] },
+					"nextSteps": []
+				}
+			}
+		]
+	]
+}

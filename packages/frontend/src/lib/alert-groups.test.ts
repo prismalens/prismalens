@@ -39,6 +39,14 @@ describe("alertGroups", () => {
 		);
 	});
 
+	it("counts a correlated alert as firing (walk f14)", () => {
+		const [g] = alertGroups([
+			alert("HighErrorRate on a: 1", { status: "correlated" }),
+			alert("HighErrorRate on a: 2", { status: "resolved" }),
+		]);
+		expect([g.name, g.alerts.length, g.firing]).toEqual(["HighErrorRate", 2, 1]);
+	});
+
 	it("groups by rule, worst severity and widest window, most firing first", () => {
 		const groups = alertGroups([
 			alert("QueueBacklog on a: 1", { status: "resolved" }),

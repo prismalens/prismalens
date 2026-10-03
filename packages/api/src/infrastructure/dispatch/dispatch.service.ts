@@ -94,7 +94,7 @@ export function resolveHarnessRunModel(
 	operatorModel: string | undefined,
 ): { model?: string; modelSource?: ModelSource } {
 	if (HARNESS_REGISTRY[harnessId].modelVia === "unsupported") return {};
-	const resolved = resolveHarnessModel(harnessId, operatorModel);
+	const resolved = resolveHarnessModel(harnessId, operatorModel, process.env);
 	return {
 		...(resolved.model ? { model: resolved.model } : {}),
 		modelSource: resolved.source,

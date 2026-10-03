@@ -13,6 +13,7 @@ import {
 	checkAutoSelection,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
+	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
 } from "./doctor.js";
@@ -232,5 +233,40 @@ describe("doctor — webhook URL", () => {
 		expect(c.detail).toContain(
 			"https://192.168.1.5:6473/api/webhooks/prometheus",
 		);
+	});
+});
+
+describe("doctor — WSL Windows install hint", () => {
+	it("adds a hint when a pl on PATH lives under /mnt/<drive>/ in WSL", () => {
+		const check = checkInstalls(
+			"/mnt/c/Users/sumit/AppData/Roaming/npm",
+			"linux",
+			{ WSL_DISTRO_NAME: "Ubuntu" },
+			(p) => p === "/mnt/c/Users/sumit/AppData/Roaming/npm/pl",
+		);
+		expect(check.detail).toContain(
+			"/mnt/c/Users/sumit/AppData/Roaming/npm/pl is the Windows install; it can't run inside WSL. Install PrismaLens inside this distro.",
+		);
+		expect(check.pass).toBe(false);
+	});
+
+	it("reads a Windows PATH by Windows rules whatever the host (#776 review)", () => {
+		const check = checkInstalls(
+			"C:\\npm;D:\\bin",
+			"win32",
+			{},
+			(p) => p === "C:\\npm\\pl.cmd",
+		);
+		expect(check.detail).toContain("C:\\npm\\pl.cmd");
+	});
+
+	it("omits the hint when not running in WSL", () => {
+		const check = checkInstalls(
+			"/mnt/c/Users/sumit/AppData/Roaming/npm",
+			"linux",
+			{},
+			(p) => p === "/mnt/c/Users/sumit/AppData/Roaming/npm/pl",
+		);
+		expect(check.detail).not.toContain("is the Windows install");
 	});
 });

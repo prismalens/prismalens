@@ -50,14 +50,34 @@ export default defineCommand({
 		if (args.workspace) {
 			process.env.PRISMALENS_WORKSPACE_DIR = String(args.workspace);
 		}
-		const { getAppDataDir } = (await import("@prismalens/config")) as {
-			getAppDataDir: () => string;
-		};
+		const { getAppDataDir, acquireWorkspaceLock, readWorkspaceLockState } =
+			await import("@prismalens/config");
 		const dir = resolve(getAppDataDir());
 		const reason = refuseReason(dir);
 		if (reason) {
 			consola.error(reason);
 			process.exit(1);
+			return;
+		}
+
+		// Reset holds the workspace lock from here through the delete, so a
+		// `pl up` cannot start in between; an owner it cannot read is never
+		// taken for free (#776 review).
+		const state = readWorkspaceLockState(dir);
+		if (state.kind === "held") {
+			consola.error(
+				`PrismaLens is running on this workspace (pid ${state.owner.pid}, port ${state.owner.port}). Stop it first.`,
+			);
+			process.exit(1);
+			return;
+		}
+		let release: () => void;
+		try {
+			release = acquireWorkspaceLock(dir, { port: 0 });
+		} catch (error) {
+			consola.error(error instanceof Error ? error.message : String(error));
+			process.exit(1);
+			return;
 		}
 
 		if (!args.yes) {
@@ -66,6 +86,7 @@ export default defineCommand({
 				{ type: "confirm", initial: false, cancel: "default" },
 			);
 			if (confirmed !== true) {
+				release();
 				consola.info("Nothing deleted.");
 				return;
 			}

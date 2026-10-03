@@ -4,7 +4,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { probeHarness } from "./harness-doctor.js";
+import type { AcpSession } from "../runner/acp-client.js";
+import { classify, probeHarness } from "./harness-doctor.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -48,6 +49,17 @@ describe("probeHarness", () => {
 			outcome: "sign-in-needed",
 			detail: "sign in needed (Log in with Fake)",
 			hard: false,
+		});
+	});
+
+	it("maps Codex missing-key start error to sign in needed (API Key, ChatGPT)", () => {
+		const session = { authMethods: [] } as unknown as AcpSession;
+		const err = new Error(
+			'Internal error: CODEX_API_KEY or OPENAI_API_KEY is not set — {"envVars":["CODEX_API_KEY","OPENAI_API_KEY"]}',
+		);
+		expect(classify(err, session, 10_000)).toEqual({
+			outcome: "sign-in-needed",
+			detail: "sign in needed (API Key, ChatGPT)",
 		});
 	});
 

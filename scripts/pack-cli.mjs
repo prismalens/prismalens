@@ -550,6 +550,29 @@ function assertTarball(tarball, copiedNames) {
 }
 
 /**
+ * Determine the short commit sha to stamp into the packed CLI.
+ * GITHUB_SHA in CI, else `git rev-parse --short HEAD`, else omitted (undefined).
+ */
+export function resolveBuildSha({ env = process.env, runGit = null } = {}) {
+	if (env.GITHUB_SHA) {
+		return env.GITHUB_SHA.slice(0, 7);
+	}
+	try {
+		const git =
+			runGit ??
+			(() =>
+				execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+				}).trim());
+		const sha = git();
+		return sha || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Determine which npm dist-tag to publish to.
  * Explicit `--tag <tag>` wins. If omitted, a prerelease version string
  * (e.g. `0.5.0-rc.0`) sets the tag (e.g. "rc"); otherwise publishing
@@ -767,6 +790,7 @@ export function packCli() {
 		dependencies[name] = workspace.get(name).manifest.version;
 	}
 
+	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
 		dependencies,
@@ -781,6 +805,9 @@ export function packCli() {
 			node: ENGINES_NODE,
 		},
 	};
+	if (buildSha) {
+		publishManifest.build = buildSha;
+	}
 	publishManifest.devDependencies = undefined;
 	publishManifest.scripts = undefined;
 
