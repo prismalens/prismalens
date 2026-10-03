@@ -10,8 +10,8 @@ import {
 	isIncidentOpen,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { backTarget, inIncident, useBack } from "@/hooks/use-back";
 import { ago, useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { incidentStatusTone } from "@/lib/state-tone";
@@ -43,7 +44,7 @@ export interface IncidentStateBandProps {
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
-	/** On a route under the incident the phone's back goes to the incident, not the list. */
+	/** Unused: Back leaves the incident from every tab (study-v2 §5.1, tabs are never levels). */
 	backToIncident?: boolean;
 	/** The tab has the box, whose own button starts an investigation. */
 	hideInvestigate?: boolean;
@@ -73,11 +74,13 @@ export function IncidentStateBand({
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
-	backToIncident,
 	hideInvestigate,
 }: IncidentStateBandProps) {
 	usePageTitle(`INC-${incident.number} ${incident.title}`);
 	const now = useNow();
+	const leaf = useMemo(() => inIncident(incident.id), [incident.id]);
+	const back = useBack(leaf, "/incidents");
+	const backHref = backTarget(leaf, "/incidents");
 	const handlers: Record<IncidentAction, () => void> = {
 		acknowledge: onAcknowledge,
 		investigate: onInvestigate,
@@ -106,27 +109,20 @@ export function IncidentStateBand({
 			// its controls opt out, and it clears the window controls and a folded sidebar's head.
 			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"
 		>
-			{backToIncident ? (
-				<Link
-					to="/incidents/$id"
-					params={{ id: incident.id }}
-					search={true}
-					aria-label={`Back to INC-${incident.number}`}
-					title="Back to Overview  Esc"
-					className="inline-flex h-7 shrink-0 items-center rounded pr-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+			<Button variant="ghost" size="icon" className="shrink-0" asChild>
+				<a
+					href={backHref}
+					onClick={(e) => {
+						e.preventDefault();
+						back();
+					}}
+					aria-label={backHref === "/incidents" ? "Back to the board" : "Back"}
+					title="Back"
+					data-testid="incident-back"
 				>
-					<ChevronLeft className="h-4 w-4" />
-				</Link>
-			) : (
-				<Link
-					to="/incidents"
-					aria-label="Back to the board"
-					title="Back to the board  Esc"
-					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-				>
-					<ChevronLeft className="h-4 w-4" />
-				</Link>
-			)}
+					<ChevronLeft className="size-4" />
+				</a>
+			</Button>
 			<Mono className="shrink-0 text-meta text-muted-foreground">
 				INC-{incident.number}
 			</Mono>

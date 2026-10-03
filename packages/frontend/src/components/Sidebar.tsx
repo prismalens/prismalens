@@ -2,45 +2,188 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The shell's left bar (#743): the incident list grouped by service, with
- * Alerts, Settings and the theme in its foot. `[` folds it away entirely.
- * Hidden on setup, auth and pairing routes so nothing leads away from a step
- * that must finish. On narrow screens it is a top strip of the three doors.
+ * The shell's left bar (study-v3 §2, study-v2 §2.5 rule 1): four doors, the
+ * one you are in lit by a 2-px accent bar, and under them the list of that
+ * area. Below 1280 it folds to a 56-px icon rail; on the phone the doors are
+ * a labelled strip across the top. Settings swaps the whole bar for its
+ * sections with Back above them. Hidden on pairing, where nothing leads away.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation, useMatch } from "@tanstack/react-router";
-import { Bell, PanelLeft, Settings, Siren } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import {
+	Link,
+	useLocation,
+	useMatch,
+	useNavigate,
+	useSearch,
+} from "@tanstack/react-router";
+import {
+	Bell,
+	Boxes,
+	ChevronLeft,
+	Inbox,
+	Plus,
+	SlidersHorizontal,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect } from "react";
+import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
 import { TelemetryConsent, useAbout } from "@/components/settings";
+import {
+	type SettingsTab,
+	useSettingsSections,
+} from "@/components/settings/SettingsFrame";
+import { Hint } from "@/components/shared/Hint";
+import { useNewIncident } from "@/components/shell/NewIncident";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
+import { inSettings, useBack } from "@/hooks/use-back";
+import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
-import { SIDEBAR_BESIDE, useMediaQuery } from "@/hooks/use-media-query";
+import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
+import { useServices } from "@/lib/api/hooks";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
-export function Sidebar() {
-	const location = useLocation();
-	if (
-		location.pathname.startsWith("/setup") ||
-		location.pathname.startsWith("/auth") ||
-		location.pathname.startsWith("/pair")
-	) {
-		return null;
-	}
-	return <SidebarBody pathname={location.pathname} />;
+type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
+
+interface Door {
+	to: DoorTo;
+	label: string;
+	icon: ReactNode;
+	count?: number;
+	/** A newer release is out (#717). */
+	dot?: boolean;
 }
 
-function SidebarBody({ pathname }: { pathname: string }) {
+const ICON = "size-4 shrink-0 stroke-[1.5]";
+
+function useDoors(signedIn: boolean): Door[] {
+	const interval = useLiveRefreshInterval();
+	const incidents = useQuery({
+		...orpc.incidents.getStats.queryOptions({ input: {} }),
+		enabled: signedIn,
+		refetchInterval: interval,
+	});
+	const alerts = useQuery({
+		...orpc.alerts.getStats.queryOptions({ input: {} }),
+		enabled: signedIn,
+		refetchInterval: interval,
+	});
+	const about = useAbout(signedIn);
+	return [
+		{
+			to: "/incidents",
+			label: "Incidents",
+			icon: <Inbox className={ICON} />,
+			count: incidents.data?.open || undefined,
+		},
+		{
+			to: "/alerts",
+			label: "Alerts",
+			icon: <Bell className={ICON} />,
+			count: alerts.data?.byStatus.triggered || undefined,
+		},
+		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
+		{
+			to: "/settings",
+			label: "Settings",
+			icon: <SlidersHorizontal className={ICON} />,
+			dot: about.data?.update.available === true,
+		},
+	];
+}
+
+const goKey = (label: string) =>
+	GO_SHORTCUTS.find((s) => s.label === label)?.key;
+
+export function Sidebar() {
+	const { pathname } = useLocation();
+	if (pathname.startsWith("/pair")) return null;
+	return <Shell pathname={pathname} />;
+}
+
+function Shell({ pathname }: { pathname: string }) {
 	const { via } = useOperator();
 	const signedIn = via !== null;
-	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
+	const doors = useDoors(signedIn);
+	const settings = inSettings(pathname);
+	const back = useBack(inSettings, "/incidents");
+	useEffect(() => {
+		document.documentElement.toggleAttribute("data-settings", settings);
+	}, [settings]);
+	return (
+		<>
+			<aside
+				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 pt-(--titlebar-h) md:flex"
+				data-testid="sidebar"
+			>
+				{settings ? (
+					<SettingsBar onBack={back} />
+				) : (
+					<MainBar pathname={pathname} doors={doors} signedIn={signedIn} />
+				)}
+			</aside>
+			<PhoneStrip
+				pathname={pathname}
+				doors={doors}
+				settings={settings}
+				onBack={back}
+			/>
+		</>
+	);
+}
 
-	// `[` folds the bar away, unless the operator is typing.
+const isOn = (pathname: string, to: DoorTo) =>
+	pathname === to || pathname.startsWith(`${to}/`);
+
+/** The labels and the list show only at full width; the rail keeps icons. */
+const FULL_ONLY = "max-xl:hidden [[data-sidebar-folded]_&]:hidden";
+
+function MainBar({
+	pathname,
+	doors,
+	signedIn,
+}: {
+	pathname: string;
+	doors: Door[];
+	signedIn: boolean;
+}) {
+	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
+	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
+	useFoldKey(toggleSidebar);
+	return (
+		<>
+			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0 desktop:app-drag">
+				<Link
+					to="/incidents"
+					className="flex items-center gap-2.5 rounded-control text-body font-semibold outline-none focus-visible:ring-2 focus-visible:ring-accent desktop:app-no-drag"
+					aria-label="PrismaLens"
+				>
+					<PrismaLensMark className="size-[18px] shrink-0" />
+					<span className={FULL_ONLY}>PrismaLens</span>
+				</Link>
+			</div>
+			<nav className="grid gap-0.5 px-2" aria-label="Areas">
+				{doors.map((door) => (
+					<DoorLink key={door.to} door={door} on={isOn(pathname, door.to)} />
+				))}
+			</nav>
+			<div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+				{signedIn && full && <AreaList pathname={pathname} />}
+			</div>
+			{full && <TelemetryConsent variant="strip" />}
+			<div className="flex shrink-0 items-center px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
+				<ThemeToggle />
+			</div>
+		</>
+	);
+}
+
+/** `[` folds the bar to its rail, unless the operator is typing. */
+function useFoldKey(toggle: () => void) {
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const t = e.target as HTMLElement | null;
@@ -52,229 +195,287 @@ function SidebarBody({ pathname }: { pathname: string }) {
 			)
 				return;
 			e.preventDefault();
-			toggleSidebar();
+			toggle();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [toggleSidebar]);
-	const incidents = useQuery({
-		...orpc.incidents.getStats.queryOptions({ input: {} }),
-		enabled: signedIn,
-		refetchInterval: useLiveRefreshInterval(),
-	});
-	const about = useAbout(signedIn);
-	const alerts = useQuery({
-		...orpc.alerts.getStats.queryOptions({ input: {} }),
-		enabled: signedIn,
-		refetchInterval: useLiveRefreshInterval(),
-	});
-	const needsYou = incidents.data
-		? incidents.data.attention.failed_run +
-			incidents.data.attention.unacknowledged +
-			incidents.data.attention.awaiting_close
-		: 0;
-	const firing = alerts.data?.byStatus.triggered ?? 0;
-	const wide = useMediaQuery(SIDEBAR_BESIDE);
-	const record = useMatch({
+	}, [toggle]);
+}
+
+function DoorLink({ door, on }: { door: Door; on: boolean }) {
+	const key = goKey(door.label);
+	return (
+		<Hint
+			label={door.label}
+			keys={key ? ["G", key.toUpperCase()] : undefined}
+			side="right"
+		>
+			<Link
+				to={door.to}
+				aria-current={on ? "page" : undefined}
+				aria-label={door.label}
+				data-testid={`nav-${door.label.toLowerCase()}`}
+				className={cn(
+					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
+					on &&
+						"font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+				)}
+			>
+				<span className="relative">
+					{door.icon}
+					{door.dot && (
+						<span
+							aria-hidden
+							className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent"
+							data-testid={`nav-${door.label.toLowerCase()}-dot`}
+						/>
+					)}
+				</span>
+				<span className={FULL_ONLY}>{door.label}</span>
+				{door.dot && <span className="sr-only">, update available</span>}
+				{door.count !== undefined && (
+					<span
+						className={cn(
+							"ml-auto text-meta font-normal text-text-3 tabular-nums",
+							FULL_ONLY,
+						)}
+						data-testid={`nav-${door.label.toLowerCase()}-count`}
+					>
+						{door.count}
+					</span>
+				)}
+			</Link>
+		</Hint>
+	);
+}
+
+/** Under the doors, the list of the area you are in. */
+function AreaList({ pathname }: { pathname: string }) {
+	const incident = useMatch({
 		from: "/_authenticated/incidents/$id",
 		shouldThrow: false,
 	});
-	// Services live inside the settings frame, so Settings stays lit there.
-	const isActive = (to: NavItem["to"]) =>
-		pathname.startsWith(to) ||
-		(to === "/settings" && pathname.startsWith("/services"));
+	const alert = useMatch({
+		from: "/_authenticated/alerts/$id/",
+		shouldThrow: false,
+	});
+	if (isOn(pathname, "/incidents")) {
+		return (
+			<IncidentListPane
+				variant="sidebar"
+				selectedId={incident?.params.id ?? null}
+				keyboard
+			/>
+		);
+	}
+	if (isOn(pathname, "/alerts")) {
+		return (
+			<AlertListPane variant="sidebar" selectedId={alert?.params.id ?? null} />
+		);
+	}
+	if (isOn(pathname, "/services")) return <ServiceList />;
+	return null;
+}
 
-	const items: NavItem[] = [
-		{
-			to: "/incidents",
-			label: "Incidents",
-			icon: <Siren className="h-4 w-4" />,
-			count: needsYou || undefined,
-			countTone: "critical",
-		},
-		{
-			to: "/alerts",
-			label: "Alerts",
-			icon: <Bell className="h-4 w-4" />,
-			count: firing || undefined,
-			countTone: "neutral",
-		},
-		{
-			to: "/settings",
-			label: "Settings",
-			icon: <Settings className="h-4 w-4" />,
-			dot: about.data?.update.available === true,
-		},
-	];
+function ServiceList() {
+	const { data } = useServices();
+	const services = data?.data ?? [];
+	const service = useMatch({
+		from: "/_authenticated/services/$id/",
+		shouldThrow: false,
+	});
+	if (services.length === 0) return null;
+	return (
+		<div className="px-2" data-testid="sidebar-services">
+			<SideLane label="Services" count={services.length} />
+			{services.map((s) => (
+				<Link
+					key={s.id}
+					to="/services/$id"
+					params={{ id: s.id }}
+					search={{ tab: "overview" }}
+					className={cn(
+						"flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+						service?.params.id === s.id && "bg-surface-3 text-text-1",
+					)}
+				>
+					<span className="truncate">{s.displayName || s.name}</span>
+				</Link>
+			))}
+		</div>
+	);
+}
 
-	const nav = (compact: boolean) =>
-		items.map((item) => (
-			<Link
-				key={item.to}
-				to={item.to}
-				aria-current={isActive(item.to) ? "page" : undefined}
-				title={compact ? item.label : undefined}
-				className={cn(
-					"flex items-center gap-2.5 rounded-md px-2 py-1 text-record text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
-					isActive(item.to) && "bg-muted text-foreground",
-				)}
-				data-testid={`nav-${item.label.toLowerCase()}`}
-			>
-				<NavIcon item={item} />
-				<span className="sr-only sm:not-sr-only">{item.label}</span>
-				<NavCount item={item} />
-			</Link>
-		));
+/** A group heading in the sidebar list: a name and a count, in the tertiary colour. */
+export function SideLane({
+	label,
+	count,
+	children,
+}: {
+	label: ReactNode;
+	count?: number;
+	children?: ReactNode;
+}) {
+	return (
+		<div className="flex items-center gap-1.5 px-2.5 pt-3.5 pb-1 text-meta text-text-3">
+			<span className="truncate">{label}</span>
+			{children}
+			{count !== undefined && (
+				<span className="ml-auto tabular-nums">{count}</span>
+			)}
+		</div>
+	);
+}
 
-	// Incidents is the list itself; the other front doors are icons in the foot.
-	const footer = items
-		.filter((item) => item.to !== "/incidents")
-		.map((item) => (
-			<Link
-				key={item.to}
-				to={item.to}
-				aria-current={isActive(item.to) ? "page" : undefined}
-				aria-label={item.label}
-				title={item.label}
-				className={cn(
-					"flex h-8 items-center gap-1.5 rounded-md px-2 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary",
-					isActive(item.to) && "bg-muted text-foreground",
-				)}
-				data-testid={`nav-${item.label.toLowerCase()}`}
-			>
-				<NavIcon item={item} />
-				<NavCount item={item} />
-			</Link>
-		));
-
+/** Settings' bar: Back above the sections; Esc is Back too. */
+function SettingsBar({ onBack }: { onBack: () => void }) {
+	const sections = useSettingsSections();
+	// The bar renders before the settings route matches, so read the search loosely.
+	const { tab } = useSearch({ strict: false }) as { tab?: SettingsTab };
+	const phone = useMediaQuery(PHONE);
+	const current: SettingsTab | undefined = tab ?? "harness";
+	useEscape(onBack, !phone);
 	return (
 		<>
-			{/* One place for the toggle, open or folded: the top-left corner. */}
-			<div
-				className="fixed left-0 top-0 z-50 hidden h-10 items-center gap-1 px-2 md:flex desktop:h-(--titlebar-h) mac:pl-20"
-				data-testid="sidebar-head"
+			<button
+				type="button"
+				onClick={onBack}
+				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent desktop:app-no-drag"
+				data-testid="settings-back"
 			>
-				<Button
-					variant="ghost"
-					size="sm"
-					className="app-no-drag h-7 w-7 p-0"
-					aria-label={sidebarFolded ? "Show the sidebar" : "Hide the sidebar"}
-					aria-expanded={!sidebarFolded}
-					title={sidebarFolded ? "Show the sidebar  [" : "Hide the sidebar  ["}
-					onClick={toggleSidebar}
-					data-testid="sidebar-toggle"
-				>
-					<PanelLeft className="h-4 w-4" />
-				</Button>
-				<Link
-					to="/incidents"
-					className="app-no-drag flex items-center gap-2 px-1 text-sm font-semibold tracking-tight"
-				>
-					<PrismaLensMark className="h-5 w-5 shrink-0" />
-					<span>PrismaLens</span>
-				</Link>
-			</div>
-
-			{!sidebarFolded && (
-				<aside
-					className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col border-r bg-card md:flex"
-					data-testid="sidebar"
-				>
-					<div
-						aria-hidden="true"
-						className="app-drag h-10 shrink-0 desktop:h-(--titlebar-h)"
-					/>
-					{signedIn && wide ? (
-						<IncidentListPane
-							selectedId={record?.params.id ?? null}
-							keyboard={pathname.startsWith("/incidents")}
-							className="min-h-0 flex-1"
-						/>
-					) : (
-						<div className="flex-1" />
-					)}
-					<TelemetryConsent variant="strip" />
-					<div className="flex items-center gap-0.5 border-t px-2 py-1.5">
-						{footer}
-						<div className="ml-auto">
-							<ThemeToggle />
-						</div>
-					</div>
-				</aside>
-			)}
-
-			<div
-				className="flex h-10 items-center gap-1 border-b bg-card px-2 md:hidden"
-				data-testid="topbar"
+				<ChevronLeft className="size-4 text-text-2" />
+				Back
+			</button>
+			<nav
+				className="grid gap-0.5 px-2"
+				aria-label="Settings sections"
+				data-testid="settings-sections"
 			>
-				<Link
-					to="/incidents"
-					className="flex shrink-0 items-center gap-1.5 px-1.5 text-sm font-semibold tracking-tight"
-					aria-label="PrismaLens"
-				>
-					<PrismaLensMark className="h-6 w-6" />
-					<span className="hidden sm:inline">PrismaLens</span>
-				</Link>
-				<nav className="flex min-w-0 flex-1 items-center justify-end gap-0.5 sm:justify-start">
-					{nav(true)}
-				</nav>
-				<ThemeToggle />
-			</div>
+				{sections.map((s) => {
+					const on = s.tab === current;
+					return (
+						<Link
+							key={s.tab}
+							to="/settings"
+							search={{ tab: s.tab }}
+							aria-current={on ? "page" : undefined}
+							data-testid={`settings-nav-${s.tab}`}
+							title={s.label}
+							className={cn(
+								"relative flex flex-col rounded-control px-2.5 py-1.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+								on &&
+									"font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+							)}
+						>
+							<span>{s.label}</span>
+							{s.line && (
+								<small className="text-meta font-normal text-text-3">
+									{s.line}
+								</small>
+							)}
+						</Link>
+					);
+				})}
+			</nav>
 		</>
 	);
 }
 
-interface NavItem {
-	to: "/incidents" | "/alerts" | "/settings";
-	label: string;
-	icon: ReactNode;
-	count?: number;
-	countTone?: "critical" | "neutral";
-	/** A newer release is out (#717). */
-	dot?: boolean;
+function useEscape(handler: () => void, enabled: boolean) {
+	useEffect(() => {
+		if (!enabled) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			const t = e.target as HTMLElement | null;
+			if (
+				t?.tagName === "INPUT" ||
+				t?.tagName === "TEXTAREA" ||
+				t?.tagName === "SELECT" ||
+				t?.isContentEditable
+			)
+				return;
+			if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
+			handler();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [handler, enabled]);
 }
 
-function NavIcon({ item }: { item: NavItem }) {
+/** The phone's doors: a strip across the top with a 10-px label under each, and New. */
+function PhoneStrip({
+	pathname,
+	doors,
+	settings,
+	onBack,
+}: {
+	pathname: string;
+	doors: Door[];
+	settings: boolean;
+	onBack: () => void;
+}) {
+	const newIncident = useNewIncident();
+	const navigate = useNavigate();
+	const { tab } = useSearch({ strict: false }) as { tab?: string };
+	// Inside a section, Back returns to the section list first.
+	const settingsBack = useCallback(() => {
+		if (tab) navigate({ to: "/settings" });
+		else onBack();
+	}, [tab, navigate, onBack]);
 	return (
-		<span className="relative">
-			{item.icon}
-			{item.dot && (
-				<>
-					<span
-						className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary"
-						aria-hidden="true"
-						data-testid={`nav-${item.label.toLowerCase()}-dot`}
-					/>
-					<span className="sr-only">, update available</span>
-				</>
-			)}
-		</span>
-	);
-}
-
-function NavCount({ item }: { item: NavItem }) {
-	if (item.count === undefined) return null;
-	return (
-		<span
-			className={cn(
-				"min-w-5 rounded px-1 text-center text-meta font-medium tabular-nums",
-				item.countTone === "critical"
-					? "bg-sev-critical/15 text-sev-critical"
-					: "bg-muted-foreground/15 text-muted-foreground",
-			)}
+		<div
+			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-4 md:hidden"
+			data-testid="topbar"
 		>
-			{item.count}
-		</span>
+			<Link
+				to="/incidents"
+				aria-label="PrismaLens"
+				className="mr-auto flex items-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
+			>
+				<PrismaLensMark className="size-[22px]" />
+			</Link>
+			{settings ? (
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={settingsBack}
+					aria-label="Back"
+					data-testid="strip-back"
+				>
+					<ChevronLeft className="size-4" />
+				</Button>
+			) : (
+				<nav className="flex items-center" aria-label="Areas">
+					{doors.map((door) => {
+						const on = isOn(pathname, door.to);
+						return (
+							<Link
+								key={door.to}
+								to={door.to}
+								aria-current={on ? "page" : undefined}
+								data-testid={`strip-${door.label.toLowerCase()}`}
+								className={cn(
+									"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
+									on &&
+										"font-medium text-text-1 after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent",
+								)}
+							>
+								{door.icon}
+								<span>{door.label}</span>
+							</Link>
+						);
+					})}
+				</nav>
+			)}
+			<Button
+				size="icon"
+				className="ml-1 size-8"
+				onClick={newIncident}
+				aria-label="New incident"
+				data-testid="strip-new"
+			>
+				<Plus className="size-4" />
+			</Button>
+		</div>
 	);
-}
-
-function getInitials(name: string | null | undefined): string {
-	if (!name) return "?";
-	return name
-		.split(" ")
-		.map((part) => part[0])
-		.filter(Boolean)
-		.slice(0, 2)
-		.join("")
-		.toUpperCase();
 }

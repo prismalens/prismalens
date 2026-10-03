@@ -1,17 +1,12 @@
 /**
- * The settings frame (#523): sections on the left with one line of their state,
- * the chosen section's rows on the right. `tab` names the section.
+ * Settings (#523, study-v3 §2): the sidebar swaps to the sections with Back
+ * above them; the chosen section's rows fill the page. `tab` names it.
  */
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import type { SettingsTab } from "@/components/settings/SettingsFrame";
 
-export type SettingsTab =
-	| "harness"
-	| "integrations"
-	| "connections"
-	| "devices"
-	| "usage"
-	| "about"
-	| "danger";
+export type { SettingsTab };
+
 const TABS: SettingsTab[] = [
 	"harness",
 	"integrations",

@@ -10,10 +10,9 @@ import {
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Plus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-	CreateIncidentDialog,
 	DateRangeFilter,
 	FirstRunPanel,
 	IncidentAnalytics,
@@ -21,9 +20,8 @@ import {
 } from "@/components/incidents";
 import { IncidentBoard } from "@/components/incidents/IncidentBoard";
 import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
-import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
@@ -49,7 +47,6 @@ function IncidentsLanding() {
 		useIncidentWindow();
 	const analytics = search.view === "analytics";
 	const [q, setQ] = useState("");
-	const [createOpen, setCreateOpen] = useState(false);
 	const workspace = useQuery(
 		orpc.incidents.getStats.queryOptions({ input: {} }),
 	);
@@ -115,8 +112,7 @@ function IncidentsLanding() {
 			className="flex h-full min-h-0 flex-col"
 			data-testid="incidents-overview"
 		>
-			<div className="flex h-10 shrink-0 items-center gap-3 border-b px-4">
-				<h1 className="text-sm font-semibold">Incidents</h1>
+			<PageHeader title="Incidents">
 				<Segmented
 					label="View"
 					value={analytics ? "analytics" : "board"}
@@ -141,45 +137,34 @@ function IncidentsLanding() {
 						</span>
 					</span>
 				)}
-				<div className="ml-auto flex items-center gap-1">
-					{!analytics && (
-						<>
-							<label className="flex w-44 items-center gap-1.5 rounded border bg-background px-2">
-								<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-								<input
-									value={q}
-									onChange={(e) => setQ(e.target.value)}
-									placeholder="Filter"
-									aria-label="Filter incidents"
-									className="h-6 min-w-0 flex-1 bg-transparent text-meta outline-none placeholder:text-muted-foreground"
-									data-testid="board-search"
-								/>
-							</label>
-							<select
-								value={windowValue}
-								onChange={(e) => setWindow(e.target.value)}
-								aria-label="Window"
-								className="h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none"
-								data-testid="board-window"
-							>
-								<option value="all">All time</option>
-								<option value="1d">24 hours</option>
-								<option value="7d">7 days</option>
-								<option value="30d">30 days</option>
-							</select>
-						</>
-					)}
-					<Button
-						size="sm"
-						className="h-7"
-						onClick={() => setCreateOpen(true)}
-						data-testid="board-create-incident"
-					>
-						<Plus className="h-3.5 w-3.5" />
-						New
-					</Button>
-				</div>
-			</div>
+				{!analytics && (
+					<div className="ml-auto flex items-center gap-2">
+						<label className="raised flex h-7 w-40 items-center gap-2 rounded-control px-2.5 xl:w-44">
+							<Search className="size-3.5 shrink-0 text-text-3" />
+							<input
+								value={q}
+								onChange={(e) => setQ(e.target.value)}
+								placeholder="Filter"
+								aria-label="Filter incidents"
+								className="h-6 min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-text-3"
+								data-testid="board-search"
+							/>
+						</label>
+						<select
+							value={windowValue}
+							onChange={(e) => setWindow(e.target.value)}
+							aria-label="Window"
+							className="raised h-7 rounded-control px-2 text-body text-text-2 outline-none"
+							data-testid="board-window"
+						>
+							<option value="all">All time</option>
+							<option value="1d">24 hours</option>
+							<option value="7d">7 days</option>
+							<option value="30d">30 days</option>
+						</select>
+					</div>
+				)}
+			</PageHeader>
 
 			{analytics ? (
 				<AnalyticsView
@@ -225,28 +210,13 @@ function IncidentsLanding() {
 							) : undefined
 						}
 					/>
-					<div className="flex h-7 shrink-0 items-center gap-3 px-4 text-meta text-muted-foreground">
-						<span className="tabular-nums">
-							{incidents.length} in window
-							{list?.pagination.hasMore ? ", more not shown" : ""}
-						</span>
-						<span className="ml-auto flex items-center gap-1">
-							<Mono>1</Mono>
-							<span>to</span>
-							<Mono>4</Mono>
-							<span>jump to a column</span>
-						</span>
-					</div>
+					{list?.pagination.hasMore && (
+						<p className="shrink-0 px-6 py-1.5 text-meta text-text-3">
+							The 100 newest in this window
+						</p>
+					)}
 				</>
 			)}
-
-			<CreateIncidentDialog
-				open={createOpen}
-				onOpenChange={setCreateOpen}
-				onCreated={(id) =>
-					navigate({ to: "/incidents/$id", params: { id }, search: keep })
-				}
-			/>
 		</div>
 	);
 }

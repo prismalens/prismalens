@@ -3,6 +3,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { NEW_INCIDENT_KEY } from "@/components/shell/NewIncident";
 
 /** The `g` chords: where each second key goes. Rendered by the `?` sheet too. */
 export const GO_SHORTCUTS = [
@@ -23,11 +24,11 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /**
- * `g` then `i` / `a` / `s` moves between the front doors; `?` opens the
- * shortcut sheet. Mounted once in the authenticated layout. A chord waits one
- * second for its second key, then forgets the first.
+ * `g` then `i` / `a` / `s` moves between the front doors; `c` opens New
+ * incident; `?` opens the shortcut sheet. Mounted once in the authenticated
+ * layout. A chord waits one second for its second key, then forgets the first.
  */
-export function useGlobalShortcuts(onHelp: () => void) {
+export function useGlobalShortcuts(onHelp: () => void, onNew: () => void) {
 	const navigate = useNavigate();
 	const pending = useRef<number | null>(null);
 
@@ -51,6 +52,10 @@ export function useGlobalShortcuts(onHelp: () => void) {
 			} else if (e.key === "?") {
 				e.preventDefault();
 				onHelp();
+			} else if (e.key === NEW_INCIDENT_KEY) {
+				if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
+				e.preventDefault();
+				onNew();
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -58,5 +63,5 @@ export function useGlobalShortcuts(onHelp: () => void) {
 			window.removeEventListener("keydown", onKey);
 			if (pending.current !== null) window.clearTimeout(pending.current);
 		};
-	}, [navigate, onHelp]);
+	}, [navigate, onHelp, onNew]);
 }
