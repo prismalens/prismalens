@@ -25,6 +25,7 @@ export {
 	resolveHarnessModel,
 	resolvePermissionOutcome,
 	resumeBlockedReason,
+	SANDBOX_DEFAULT,
 } from "./providers/harness.js";
 export {
 	annotateModel,

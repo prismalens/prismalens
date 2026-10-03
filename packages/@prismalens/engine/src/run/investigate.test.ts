@@ -437,9 +437,14 @@ describe("the run's access level (r4 R4.1)", () => {
 	});
 
 	it("Given Codex with the sandbox switch off, When a run starts at Read-only, Then agent-full-access and cooperative", () => {
-		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only" }).env;
+		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only", sandbox: false }).env;
 		expect(env.INITIAL_AGENT_MODE).toBe("agent-full-access");
-		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "cooperative" });
+		expect(buildRunFidelity("codex", {}, "read-only", { sandbox: false })).toMatchObject({ mode: "read-only", fidelity: "cooperative" });
+	});
+
+	it("Given no sandbox setting, When Codex starts at Read-only, Then its sandbox stays on (SANDBOX_DEFAULT)", () => {
+		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env;
+		expect(env.INITIAL_AGENT_MODE).toBe("read-only");
 	});
 
 	it("Given Codex with the sandbox switch on, When a run starts at Read-only, Then read-only and enforced", () => {

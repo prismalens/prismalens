@@ -517,6 +517,12 @@ export interface PermissionOutcome {
 	agentMode: string | null;
 }
 
+/**
+ * The sandbox switch when the operator has not set it: on. codex-acp 1.13.1's
+ * agent-full-access mode runs with approvals "never", so Codex would ask the gate nothing; held at on pending the operator.
+ */
+export const SANDBOX_DEFAULT = true;
+
 /** The read levels, where a harness sandbox switch applies. */
 const READ_LEVELS: ReadonlySet<PermissionMode> = new Set([
 	"read-only",
@@ -534,7 +540,10 @@ export function resolvePermissionOutcome(
 ): PermissionOutcome {
 	const row = HARNESS_REGISTRY[harnessId];
 	const access = row.access[mode];
-	const sandbox = options.sandbox && READ_LEVELS.has(mode) ? row.sandbox : null;
+	const sandbox =
+		(options.sandbox ?? SANDBOX_DEFAULT) && READ_LEVELS.has(mode)
+			? row.sandbox
+			: null;
 	return {
 		mode,
 		// Only an OS sandbox the operator switched on is a boundary (r4 R4.1 rev).

@@ -10,6 +10,7 @@ import {
 	resolveHarnessModel,
 	resolvePermissionOutcome,
 	resumeBlockedReason,
+	SANDBOX_DEFAULT,
 } from "./harness.js";
 
 afterEach(() => {
@@ -273,7 +274,7 @@ describe("access levels (r4 R4.1)", () => {
 
 	it("Given Codex with the sandbox switch off, When a run starts at read-only, Then agent-full-access and cooperative", () => {
 		for (const level of ["read-only", "read-only-tools"] as const) {
-			const off = resolvePermissionOutcome("codex", level);
+			const off = resolvePermissionOutcome("codex", level, { sandbox: false });
 			expect(off.env.INITIAL_AGENT_MODE).toBe("agent-full-access");
 			expect(off.fidelity).toBe("cooperative");
 			expect(off.mechanism).toBe("Codex sandbox off (agent-full-access); PrismaLens gate only");
@@ -287,6 +288,14 @@ describe("access levels (r4 R4.1)", () => {
 			expect(on.fidelity).toBe("enforced");
 			expect(on.mechanism).toBe("Codex read-only sandbox (no network)");
 		}
+	});
+
+	it("keeps Codex's sandbox on when the operator has not set the switch (SANDBOX_DEFAULT, pending the operator)", () => {
+		expect(SANDBOX_DEFAULT).toBe(true);
+		expect(resolvePermissionOutcome("codex", "read-only")).toMatchObject({
+			env: { INITIAL_AGENT_MODE: "read-only" },
+			fidelity: "enforced",
+		});
 	});
 
 	it("leaves the write levels alone when the sandbox switch is on, and ignores it for other agents", () => {

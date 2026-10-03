@@ -17,6 +17,7 @@ import {
 	type ModelSource,
 	type PermissionMode,
 	resolvePermissionOutcome,
+	SANDBOX_DEFAULT,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
@@ -63,7 +64,7 @@ export interface RunInvestigationOptions {
 	modelSource?: ModelSource;
 	/** What the agent may touch (r4 R4.1); Read-only when absent. The host checks the ceiling. */
 	access?: PermissionMode;
-	/** The operator's sandbox switch for a harness that has one (Codex); off when absent. */
+	/** The operator's sandbox switch for a harness that has one (Codex); `SANDBOX_DEFAULT` when absent. */
 	sandbox?: boolean;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
@@ -474,7 +475,7 @@ function sandboxWithoutNetwork(
 	access: PermissionMode,
 ): boolean {
 	return !!(
-		opts.sandbox &&
+		(opts.sandbox ?? SANDBOX_DEFAULT) &&
 		HARNESS_REGISTRY[opts.harness].sandbox &&
 		(access === "read-only" || access === "read-only-tools")
 	);
