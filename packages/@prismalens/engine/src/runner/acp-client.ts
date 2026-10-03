@@ -648,8 +648,29 @@ export class AcpSession {
 					this.drift("session/update", "kind", u.kind);
 					this.drift("session/update", "status", u.status);
 				}
+				this.trackMode(u);
 				this.push({ kind: "update", update: update as AcpUpdate });
 			}
+		}
+	}
+
+	/** The harness may change its own mode; `setMode` skips only a mode it knows is current (#778). */
+	private trackMode(u: Record<string, unknown>): void {
+		if (u.sessionUpdate === "current_mode_update" && !this.modes.configId) {
+			const id = u.currentModeId;
+			this.modes = {
+				...this.modes,
+				current: typeof id === "string" ? id : null,
+			};
+		} else if (
+			u.sessionUpdate === "config_option_update" &&
+			this.modes.configId
+		) {
+			const next = offeredModes({
+				configOptions: u.configOptions as NewSessionResponse["configOptions"],
+			});
+			if (next.configId === this.modes.configId)
+				this.modes = { ...this.modes, current: next.current };
 		}
 	}
 

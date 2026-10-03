@@ -367,3 +367,66 @@ describe("AcpSession session/load (#747)", () => {
 		expect(session.loadSession).toBe(true);
 	});
 });
+
+describe("AcpSession setMode (#778)", () => {
+	/** A harness that answers each request and lets the test push its own notifications. */
+	function modalChild(session: Record<string, unknown>) {
+		const sent: Array<{ method?: string; params?: Record<string, unknown> }> = [];
+		const child = quietChild();
+		const stdout = child.stdout as PassThrough;
+		child.stdin = new Writable({
+			write(chunk, _enc, cb) {
+				for (const line of String(chunk).split("\n").filter(Boolean)) {
+					const msg = JSON.parse(line);
+					if (msg.method === undefined) continue;
+					sent.push(msg);
+					const result = msg.method === "initialize" ? { protocolVersion: 1 } : msg.method === "session/new" ? session : {};
+					stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result })}\n`);
+				}
+				cb();
+			},
+		});
+		const notify = (update: Record<string, unknown>) =>
+			stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s1", update } })}\n`);
+		return { child, sent, notify };
+	}
+	const tick = () => new Promise((r) => setTimeout(r, 10));
+
+	it("Given the harness switches mode itself, When the old mode is asked for again, Then set_mode is sent", async () => {
+		const { child, sent, notify } = modalChild({
+			sessionId: "s1",
+			modes: { currentModeId: "default", availableModes: [{ id: "default", name: "Default" }, { id: "bypassPermissions", name: "Bypass" }] },
+		});
+		const session = sessionOver(child);
+		await session.open();
+		expect(await session.setMode("default")).toBe(true);
+		expect(sent.filter((m) => m.method === "session/set_mode")).toHaveLength(0);
+		notify({ sessionUpdate: "current_mode_update", currentModeId: "bypassPermissions" });
+		await tick();
+		expect(await session.setMode("default")).toBe(true);
+		expect(sent.filter((m) => m.method === "session/set_mode").map((m) => m.params?.modeId)).toEqual(["default"]);
+		await session.close();
+	});
+
+	it("Given a mode config option, When the harness reports a new value, Then the old value is asked for again", async () => {
+		const option = (currentValue: string) => ({
+			id: "mode",
+			name: "Mode",
+			category: "mode",
+			type: "select",
+			currentValue,
+			options: [
+				{ value: "read-only", name: "Read only" },
+				{ value: "agent", name: "Agent" },
+			],
+		});
+		const { child, sent, notify } = modalChild({ sessionId: "s1", configOptions: [option("read-only")] });
+		const session = sessionOver(child);
+		await session.open();
+		notify({ sessionUpdate: "config_option_update", configOptions: [option("agent")] });
+		await tick();
+		expect(await session.setMode("read-only")).toBe(true);
+		expect(sent.filter((m) => m.method === "session/set_config_option").map((m) => m.params?.value)).toEqual(["read-only"]);
+		await session.close();
+	});
+});
