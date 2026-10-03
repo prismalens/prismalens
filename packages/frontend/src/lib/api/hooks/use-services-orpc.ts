@@ -77,6 +77,8 @@ export function useCreateService() {
 		...orpc.services.create.mutationOptions(),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
+			// The board's setup line counts services that name their code.
+			queryClient.invalidateQueries({ queryKey: orpc.setup.key() });
 		},
 	});
 }

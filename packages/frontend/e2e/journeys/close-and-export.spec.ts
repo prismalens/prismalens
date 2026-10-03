@@ -5,27 +5,20 @@ import { expect, test } from "@playwright/test";
 
 /**
  * #606 — after the report. Two affordances the journey trace found missing:
- * nothing closed an incident, and a report could not leave the page.
+ * nothing ended an incident, and a report could not leave the page.
  *
  * Both are driven against the real API: the incident is authored by hand (the
- * same path `manual-authorship.spec.ts` uses), resolved, then closed. The
+ * same path `manual-authorship.spec.ts` uses), then resolved in one step. The
  * export button belongs to a completed report, which needs a harness, so the
  * spec asserts the half that is reachable without one: it is absent until a
  * report exists.
  */
 test.describe("#606 — closing an incident and exporting its report", () => {
-	test("resolves, then closes, a hand-authored incident", async ({ page }) => {
+	test("resolves a hand-authored incident in one step", async ({ page }) => {
 		const title = `Pool exhaustion ${Date.now()}`;
 
 		await page.goto("/incidents");
-		await expect(
-			page
-				.getByTestId("incident-list-pane")
-				.getByRole("heading", { name: "Incidents", exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
-		await page.getByTestId("create-incident-button").click();
+		await page.getByTestId("create-incident-button").click({ timeout: 15_000 });
 
 		const dialog = page.getByTestId("create-incident-dialog");
 		await expect(dialog).toBeVisible();
@@ -43,29 +36,22 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			timeout: 15_000,
 		});
 
-		// Close belongs to a resolved incident: it is the step after the
-		// postmortem, so it is not offered while the incident is still open —
-		// it is the band's primary action only once nothing earlier in the
-		// order (investigate/acknowledge/resolve) is still admitted.
-		const close = page.getByTestId("band-close");
-		await expect(close).toHaveCount(0);
+		// The band's one action follows the status: Acknowledge, then Resolve
+		// (R1a d7). Nothing reads "Close" any more.
+		const resolve = page.getByTestId("band-resolve");
+		await expect(resolve).toHaveCount(0);
+		await page.getByTestId("band-acknowledge").click();
+		await expect(resolve).toBeVisible({ timeout: 15_000 });
 
-		// A freshly created (triggered) incident's band admits investigate,
-		// acknowledge and resolve, with investigate primary — resolve sits in
-		// the `band-more` menu, not a standalone button (#523).
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-resolve").click();
-		await expect(close).toBeVisible({ timeout: 15_000 });
-
-		// #338 stacks a dialog on this button: Close asks what actually caused the
-		// incident first. Closing with both fields blank is allowed.
-		await close.click();
-		await page.getByTestId("confirm-close-incident").click();
-		await expect(close).toHaveCount(0, { timeout: 15_000 });
-		// A closed incident can still be investigated again (#743), from the
-		// box on Overview; its status stays closed.
+		// #338's question rides on Resolve; both fields blank is allowed.
+		await resolve.click();
+		await page.getByTestId("confirm-resolve").click();
+		await expect(resolve).toHaveCount(0, { timeout: 15_000 });
+		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
+		await expect(page.getByTestId("band-reopen")).toBeVisible();
+		// A resolved incident can still be investigated again (#743), from the
+		// box on Overview; its status stays Resolved.
 		await expect(page.getByTestId("composer-investigate")).toBeVisible();
-		await expect(page.getByTestId("band-status")).toHaveText("Closed");
 	});
 
 	test("offers no Markdown export while the incident has no report", async ({

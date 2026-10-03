@@ -9,6 +9,7 @@ import {
 	chmodSync,
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
@@ -34,6 +35,22 @@ export function loadSession(nameOrPath) {
 			: join(SESSIONS_DIR, `${nameOrPath}.json`);
 	if (!existsSync(file)) throw new Error(`fake-acp-agent: no session ${file}`);
 	return JSON.parse(readFileSync(file, "utf8"));
+}
+
+const RELEASE_DIR = join(PICKED_DIR, "release");
+
+/** Lets a run held by `waitForRelease` go on: any prompt containing `key` continues. */
+export function releaseRun(key) {
+	mkdirSync(RELEASE_DIR, { recursive: true });
+	writeFileSync(join(RELEASE_DIR, encodeURIComponent(key)), "");
+}
+
+/** @param {string} prompt */
+function releasedFor(prompt) {
+	if (!existsSync(RELEASE_DIR)) return false;
+	return readdirSync(RELEASE_DIR).some((f) =>
+		prompt.includes(decodeURIComponent(f)),
+	);
 }
 
 /**
@@ -142,6 +159,24 @@ function run() {
 					onCancel = () => r(undefined);
 				});
 				return "cancelled";
+			}
+			// Holds the turn until a test drops a file named for this prompt (releaseRun).
+			if (step.waitForRelease) {
+				const released =
+					releasedFor(prompt) ||
+					(await new Promise((r) => {
+						const poll = setInterval(() => {
+							if (releasedFor(prompt)) {
+								clearInterval(poll);
+								r(true);
+							}
+						}, 200);
+						onCancel = () => {
+							clearInterval(poll);
+							r(false);
+						};
+					}));
+				if (!released) return "cancelled";
 			}
 			if (step.stop) return step.stop;
 		}

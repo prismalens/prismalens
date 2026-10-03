@@ -59,6 +59,12 @@ export type IncidentWithRelations = Incident & {
 		alerts: number;
 		investigations: number;
 	};
+	priorIncident?: {
+		number: number;
+		status: string;
+		actualCause: string | null;
+	} | null;
+	refiredAs?: { id: string; number: number; createdAt: Date } | null;
 };
 
 @Injectable()
@@ -102,6 +108,7 @@ export class IncidentsService {
 							correlationReason: dto.correlationReason,
 							tags: dto.tags ? JSON.stringify(dto.tags) : null,
 							customerImpact: dto.customerImpact,
+							priorIncidentId: dto.priorIncident?.id ?? null,
 							alertCount: 0,
 						},
 					});
@@ -117,7 +124,7 @@ export class IncidentsService {
 					type: TimelineEntryType.incident_created,
 					title: "Incident created",
 					description: prior
-						? `New incident: ${prior.alertName} fired again after INC-${prior.number} was ${prior.status} ${(prior.endedAt ?? new Date()).toISOString()}`
+						? `New incident: ${prior.alertName} fired again after INC-${prior.number} ${prior.status === "closed" ? "was resolved" : "had its alerts cleared"} ${(prior.endedAt ?? new Date()).toISOString()}`
 						: `Incident INC-${incident.number} was created`,
 					source: TimelineSource.system,
 					...(prior ? { metadata: { priorIncidentId: prior.id } } : {}),
@@ -179,7 +186,9 @@ export class IncidentsService {
 	/** `findById` plus what the list says about the latest run, so detail and list agree (#743). */
 	async findDetail(id: string): Promise<IncidentWithRelations | null> {
 		const incident = await this.findById(id);
-		return incident ? (await this.withLatestRun([incident]))[0] : null;
+		if (!incident) return null;
+		const [withRun] = await this.withLatestRun([incident]);
+		return (await this.withLineage([withRun]))[0];
 	}
 
 	/**
@@ -265,9 +274,69 @@ export class IncidentsService {
 		]);
 
 		return {
-			data: await this.withLatestRun(await this.withServices(data)),
+			data: await this.withLineage(
+				await this.withLatestRun(await this.withServices(data)),
+			),
 			total,
 		};
+	}
+
+	/**
+	 * The incident this one fired again after, and the newest one that fired
+	 * again after this one (R1a d5), so a card can say both without a request.
+	 */
+	private async withLineage(
+		incidents: IncidentWithRelations[],
+	): Promise<IncidentWithRelations[]> {
+		if (incidents.length === 0) return incidents;
+		const priorIds = [
+			...new Set(
+				incidents.flatMap((i) =>
+					i.priorIncidentId ? [i.priorIncidentId] : [],
+				),
+			),
+		];
+		const [priors, refires] = await Promise.all([
+			this.prisma.incident.findMany({
+				where: { id: { in: priorIds } },
+				select: { id: true, number: true, status: true, actualCause: true },
+			}),
+			this.prisma.incident.findMany({
+				where: { priorIncidentId: { in: incidents.map((i) => i.id) } },
+				select: {
+					id: true,
+					priorIncidentId: true,
+					number: true,
+					createdAt: true,
+				},
+				orderBy: { createdAt: "desc" },
+			}),
+		]);
+		const prior = new Map(priors.map((p) => [p.id, p]));
+		const refired = new Map<
+			string,
+			{ id: string; number: number; createdAt: Date }
+		>();
+		for (const r of refires) {
+			if (r.priorIncidentId && !refired.has(r.priorIncidentId))
+				refired.set(r.priorIncidentId, {
+					id: r.id,
+					number: r.number,
+					createdAt: r.createdAt,
+				});
+		}
+		return incidents.map((incident) => {
+			const p = incident.priorIncidentId
+				? prior.get(incident.priorIncidentId)
+				: undefined;
+			return {
+				...incident,
+				priorIncident: p
+					? { number: p.number, status: p.status, actualCause: p.actualCause }
+					: null,
+				refiredAs: refired.get(incident.id) ?? null,
+			};
+		});
 	}
 
 	/** Attach every service each incident touches: its own first, then its alerts'. */
@@ -382,6 +451,8 @@ export class IncidentsService {
 		id: string,
 		dto: UpdateIncidentDto,
 		statusNote?: StatusNote,
+		/** The timeline entry's title for a status change, when the caller names it. */
+		entryTitle?: string,
 	): Promise<Incident | null> {
 		try {
 			const existing = await this.prisma.incident.findUnique({ where: { id } });
@@ -391,6 +462,8 @@ export class IncidentsService {
 				...dto,
 				updatedAt: new Date(),
 			};
+			// Clearing the recorded cause after Resolve (R1a d3).
+			if (dto.actualCause === "") updateData.actualCause = null;
 
 			if (dto.tags) {
 				updateData.tags = JSON.stringify(dto.tags);
@@ -404,7 +477,8 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (isIncidentEnded(dto.status) && !existing.resolvedAt) {
+				// Only the source's ending is "alerts cleared"; Resolve stamps closedAt.
+				if (dto.status === "resolved" && !existing.resolvedAt) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
@@ -414,6 +488,25 @@ export class IncidentsService {
 				if (isIncidentEnded(existing.status) && !isIncidentEnded(dto.status)) {
 					updateData.resolvedAt = null;
 					updateData.timeToResolve = null;
+				}
+				// Only the operator's Resolve is reopened by hand (R1a d4); the
+				// recorded cause stays as Previous cause until the next Resolve.
+				if (existing.status === "closed" && !isIncidentEnded(dto.status)) {
+					updateData.closedAt = null;
+					updateData.timeToClose = null;
+					updateData.reopenedAt = new Date();
+					updateData.reopenReason = "operator";
+				}
+				// Every path to `closed` records the operator's Resolve (R1a d3).
+				if (dto.status === "closed" && dto.closedAt === undefined) {
+					const now = new Date();
+					updateData.closedAt = now;
+					updateData.timeToClose = Math.max(
+						0,
+						Math.floor((now.getTime() - existing.triggeredAt.getTime()) / 1000),
+					);
+					updateData.reopenedAt = null;
+					updateData.reopenReason = null;
 				}
 			}
 			const reopened =
@@ -442,7 +535,13 @@ export class IncidentsService {
 						data: {
 							incidentId: id,
 							type: TimelineEntryType.status_changed,
-							title: reopened ? "Incident reopened" : "Status changed",
+							title:
+								entryTitle ??
+								(ending === "incident-closed"
+									? "Resolved"
+									: reopened
+										? "Incident reopened"
+										: "Status changed"),
 							description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
 							source: TimelineSource.system,
 							metadata: JSON.stringify({
@@ -458,6 +557,9 @@ export class IncidentsService {
 			});
 
 			this.logger.log(`Updated incident ${id}`);
+			// The fact that one was closed, with no identifier and no content (#602).
+			if (ending === "incident-closed")
+				await this.telemetry.capture("incident_closed", {});
 			return incident;
 		} catch {
 			return null;
@@ -494,7 +596,7 @@ export class IncidentsService {
 				incidentId,
 				type: TimelineEntryType.status_changed,
 				title: `Resolved ${alertIds.length} firing alert${alertIds.length === 1 ? "" : "s"} with the incident`,
-				description: `The incident was ${reason.slice("incident-".length)}, so its alerts no longer fire here; a refire opens a new episode`,
+				description: `${reason === "incident-closed" ? "The incident was resolved" : "The incident's alerts cleared"}, so its alerts no longer fire here; a refire opens a new episode`,
 				source: TimelineSource.system,
 				metadata: JSON.stringify({ reason, alertIds }),
 				occurredAt: now,
@@ -639,28 +741,43 @@ export class IncidentsService {
 	}
 
 	/**
-	 * Close an incident (after postmortem)
+	 * The operator's Resolve (R1a d3), stored as `closed`: from any open status
+	 * or from Alerts cleared, the cause optional. It stamps `closedAt` and
+	 * `timeToClose` and clears the reopen marker; `resolvedAt` keeps meaning
+	 * the alerts cleared.
 	 */
 	async close(
 		id: string,
 		cause: { actualCause?: string; actualCauseCategory?: string } = {},
 	): Promise<Incident | null> {
-		// One update, not two (#667 review). Closing and recording the cause used
-		// to be separate writes, so a failure between them left the incident
-		// closed with the cause silently dropped while the API reported failure —
-		// the one outcome the operator cannot tell from the UI. `update` writes
-		// the status, the resolve timestamps and these fields in a single row
-		// write, so either all of it lands or none of it does.
-		const actualCause = cause.actualCause?.trim() || undefined;
-		const incident = await this.update(id, {
-			status: "closed",
-			...(actualCause ? { actualCause } : {}),
-			...(cause.actualCauseCategory
-				? { actualCauseCategory: cause.actualCauseCategory }
-				: {}),
+		// One update, not two (#667 review): the status, the stamps and the cause
+		// land in a single row write, or none of it does.
+		const existing = await this.prisma.incident.findUnique({
+			where: { id },
+			select: { triggeredAt: true },
 		});
-		// The fact that one was closed, with no identifier and no content (#602).
-		if (incident) await this.telemetry.capture("incident_closed", {});
+		if (!existing) return null;
+		const actualCause = cause.actualCause?.trim() || undefined;
+		const now = new Date();
+		const incident = await this.update(
+			id,
+			{
+				status: "closed",
+				...(actualCause ? { actualCause } : {}),
+				...(cause.actualCauseCategory
+					? { actualCauseCategory: cause.actualCauseCategory }
+					: {}),
+				closedAt: now,
+				timeToClose: Math.max(
+					0,
+					Math.floor((now.getTime() - existing.triggeredAt.getTime()) / 1000),
+				),
+				reopenedAt: null,
+				reopenReason: null,
+			},
+			undefined,
+			actualCause ? "Resolved, cause recorded" : "Resolved",
+		);
 		return incident;
 	}
 
@@ -707,10 +824,12 @@ export class IncidentsService {
 				},
 				select: {
 					status: true,
+					reopenReason: true,
+					reopenedAt: true,
 					investigations: {
 						orderBy: { createdAt: "desc" },
 						take: 1,
-						select: { status: true },
+						select: { status: true, createdAt: true },
 					},
 				},
 			}),
@@ -719,9 +838,19 @@ export class IncidentsService {
 		const statusCounts = Object.fromEntries(
 			byStatus.map((row) => [row.status, row._count]),
 		);
-		const attention = { failed_run: 0, unacknowledged: 0, awaiting_close: 0 };
+		const attention = {
+			failed_run: 0,
+			unacknowledged: 0,
+			reopened: 0,
+			awaiting_close: 0,
+		};
 		for (const row of candidates) {
-			const why = incidentAttention(row.status, row.investigations[0]?.status);
+			const run = row.investigations[0];
+			const why = incidentAttention(row.status, run?.status, {
+				reason: row.reopenReason,
+				at: row.reopenedAt,
+				latestRunAt: run?.createdAt,
+			});
 			if (why) attention[why] += 1;
 		}
 

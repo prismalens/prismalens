@@ -130,6 +130,41 @@ describe("HarnessService", () => {
 			});
 		});
 
+		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "opencode",
+					favourites: [{ harness: "opencode", model: "old/one" }],
+				}),
+			);
+
+			await expect(
+				service().updateSettings({
+					favourites: [
+						{ harness: "opencode", model: "anthropic/claude-sonnet-5-5" },
+						{ harness: "codex", model: "gpt-5.6" },
+						{ harness: "opencode", model: "anthropic/claude-sonnet-5-5" },
+						// biome-ignore lint/suspicious/noExplicitAny: a stored row from a future build
+						{ harness: "nope" as any, model: "x" },
+					],
+				}),
+			).resolves.toEqual({
+				harness: "opencode",
+				favourites: [
+					{ harness: "opencode", model: "anthropic/claude-sonnet-5-5" },
+					{ harness: "codex", model: "gpt-5.6" },
+				],
+			});
+			// A patch without favourites keeps the stored list.
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "opencode", favourites: [{ harness: "codex", model: "gpt-5.6" }] }),
+			);
+			await expect(service().updateSettings({ harness: "codex" })).resolves.toEqual({
+				harness: "codex",
+				favourites: [{ harness: "codex", model: "gpt-5.6" }],
+			});
+		});
+
 		it("drops the old shared `model` key and anything that is not a registry id", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({ harness: "opencode", model: "synthetic/old", models: { nope: "x", opencode: " " } }),
@@ -149,7 +184,7 @@ describe("HarnessService", () => {
 				failure: "model-unsupported",
 				harness: "codex",
 				pinnedBy: "settings",
-				reason: expect.stringMatching(/does not take a model/),
+				reason: expect.stringMatching(/picks its own model/),
 			});
 		});
 

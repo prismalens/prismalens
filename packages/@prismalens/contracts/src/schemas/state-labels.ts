@@ -26,7 +26,11 @@ import type {
 	WorkflowStatus,
 } from "./common.js";
 import type { RunFidelity } from "./investigation.js";
-import type { IncidentAttention, RunState } from "./state-semantics.js";
+import type {
+	IncidentAction,
+	IncidentAttention,
+	RunState,
+} from "./state-semantics.js";
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
 	critical: "Critical",
@@ -37,27 +41,45 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
 };
 
 export const PRIORITY_LABEL: Record<Priority, string> = {
-	p1: "P1 · Critical",
-	p2: "P2 · High",
-	p3: "P3 · Medium",
-	p4: "P4 · Low",
-	p5: "P5 · Planning",
+	p1: "P1 Critical",
+	p2: "P2 High",
+	p3: "P3 Medium",
+	p4: "P4 Low",
+	p5: "P5 Planning",
 };
 
+/**
+ * One word for the end (R1a d1): stored `closed` is the operator's Resolve,
+ * stored `resolved` is the source clearing the alerts. The working phases all
+ * read Acknowledged; the run strip says what the agent is doing.
+ */
 export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
 	triggered: "Triggered",
-	investigating: "Investigating",
-	identified: "Identified",
-	monitoring: "Monitoring",
-	resolved: "Resolved",
-	closed: "Closed",
+	investigating: "Acknowledged",
+	identified: "Acknowledged",
+	monitoring: "Acknowledged",
+	resolved: "Alerts cleared",
+	closed: "Resolved",
 };
 
+/** The band's words; `close` writes `closed`, which the operator calls Resolve. */
+export const INCIDENT_ACTION_LABEL: Record<IncidentAction, string> = {
+	acknowledge: "Acknowledge",
+	investigate: "Investigate",
+	resolve: "Resolve",
+	reopen: "Reopen",
+	close: "Resolve",
+};
+
+/** A new incident whose alert fired after an earlier one ended (R1a d6). */
+export const REFIRE_LABEL = "Fired again";
+
+/** An alert's end is the source's, so it reads Cleared, never Resolved (study-v3 §4). */
 export const ALERT_STATUS_LABEL: Record<AlertStatus, string> = {
 	triggered: "Triggered",
 	acknowledged: "Acknowledged",
 	correlated: "Correlated",
-	resolved: "Resolved",
+	resolved: "Cleared",
 	suppressed: "Suppressed",
 };
 
@@ -166,9 +188,10 @@ export const RUN_STATE_LABEL: Record<RunState, string> = {
 };
 
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
-	failed_run: "Investigation failed",
 	unacknowledged: "Needs acknowledging",
-	awaiting_close: "Awaiting close",
+	failed_run: "Run failed",
+	reopened: "Reopened by you, cause not confirmed",
+	awaiting_close: "Alerts cleared, resolve it",
 };
 
 /** The access level's word, as the box, the run line and the rail say it (r4 R4.1). */

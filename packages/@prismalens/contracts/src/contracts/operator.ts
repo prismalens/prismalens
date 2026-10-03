@@ -21,6 +21,8 @@ const WhoamiSchema = z.object({
 	via: OperatorViaEnum.nullable(),
 	/** What the caller may do; `admin:access` manages pairing. Empty when `via` is null. */
 	scopes: z.array(z.string()),
+	/** When via is null, why authentication failed if known (e.g. "revoked"). */
+	reason: z.enum(["revoked"]).optional(),
 });
 export type Whoami = z.infer<typeof WhoamiSchema>;
 

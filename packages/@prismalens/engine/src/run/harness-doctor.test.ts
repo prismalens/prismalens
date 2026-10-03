@@ -36,6 +36,10 @@ describe("probeHarness", () => {
 			outcome: "answers-acp",
 			detail: "answers ACP, fake 0",
 			hard: false,
+			// What it reported of itself, for the picker (R4.2, R4.3): nothing here.
+			servedModel: null,
+			effort: null,
+			images: false,
 		});
 		expect(result.detail).not.toMatch(/ready/i);
 	});

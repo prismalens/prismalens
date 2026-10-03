@@ -13,7 +13,10 @@ import { IS_PUBLIC_KEY } from "./public.decorator.js";
 describe("AuthGuard", () => {
 	let guard: AuthGuard;
 	let mockReflector: { getAllAndOverride: ReturnType<typeof vi.fn> };
-	let mockOperator: { resolve: ReturnType<typeof vi.fn> };
+	let mockOperator: {
+		resolve: ReturnType<typeof vi.fn>;
+		resolveWithReason: ReturnType<typeof vi.fn>;
+	};
 	let request: Request;
 	let mockContext: ExecutionContext;
 
@@ -23,6 +26,7 @@ describe("AuthGuard", () => {
 		};
 		mockOperator = {
 			resolve: vi.fn(),
+			resolveWithReason: vi.fn(),
 		};
 
 		request = {} as Request;
@@ -59,11 +63,14 @@ describe("AuthGuard", () => {
 			id: "device-1",
 			name: "Ada's phone",
 			scopes: [],
+			userAgent: null,
 			createdAt: new Date(),
 			lastSeenAt: null,
 			revokedAt: null,
 		} as DeviceRecord;
-		mockOperator.resolve.mockResolvedValue({ via: "device", device });
+		mockOperator.resolveWithReason.mockResolvedValue({
+			operator: { via: "device", device },
+		});
 
 		const result = await guard.canActivate(mockContext);
 
@@ -73,7 +80,7 @@ describe("AuthGuard", () => {
 
 	it("resolver returns null -> throws UnauthorizedException", async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
-		mockOperator.resolve.mockResolvedValue(null);
+		mockOperator.resolveWithReason.mockResolvedValue({ operator: null });
 
 		await expect(guard.canActivate(mockContext)).rejects.toThrow(
 			UnauthorizedException,
@@ -83,10 +90,29 @@ describe("AuthGuard", () => {
 		);
 	});
 
+	it("resolver returns revoked reason -> throws UnauthorizedException with reason revoked", async () => {
+		mockReflector.getAllAndOverride.mockReturnValue(false);
+		mockOperator.resolveWithReason.mockResolvedValue({
+			operator: null,
+			reason: "revoked",
+		});
+
+		try {
+			await guard.canActivate(mockContext);
+			expect.unreachable("Expected canActivate to throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(UnauthorizedException);
+			expect((error as UnauthorizedException).getResponse()).toEqual({
+				message: "Authentication required",
+				reason: "revoked",
+			});
+		}
+	});
+
 	it("resolver throws a plain Error -> throws UnauthorizedException (not the raw error)", async () => {
 		mockReflector.getAllAndOverride.mockReturnValue(false);
 		const plainError = new Error("Database outage");
-		mockOperator.resolve.mockRejectedValue(plainError);
+		mockOperator.resolveWithReason.mockRejectedValue(plainError);
 
 		await expect(guard.canActivate(mockContext)).rejects.toThrow(
 			UnauthorizedException,

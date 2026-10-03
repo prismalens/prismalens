@@ -1,275 +1,304 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, CloudDownload, Copy } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
-import { AgentModelPicker } from "@/components/agent/AgentPicker";
+import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { Mono } from "@/components/shared/Mono";
-import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useConnections, useHarnesses, useSetupStatus } from "@/lib/api/hooks";
 import {
-	useConnections,
-	useCreateIncident,
-	useSetupStatus,
-} from "@/lib/api/hooks";
-import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
-import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
-import { orpc } from "@/lib/api/orpc-client";
-import { getErrorMessage } from "@/lib/get-error-message";
+	maskToken,
+	useLastDelivery,
+	useWebhookToken,
+	webhookUrl,
+} from "@/lib/api/hooks/use-webhooks-orpc";
 
-function Row({
+/**
+ * The four steps between a fresh install and a useful run (study-v3 §3.1,
+ * adversarial v2 finding 18). Steps 1 and 2 are two ways to the same thing,
+ * so either one being done counts both.
+ */
+export function useSetupProgress() {
+	const { data: setup } = useSetupStatus();
+	const { data: delivery } = useLastDelivery();
+	const { data: alertmanager } = useConnections({ templateId: "alertmanager" });
+	const { data: prometheus } = useConnections({ templateId: "prometheus" });
+	const { data: harnesses } = useHarnesses();
+	const delivered = !!delivery;
+	const pulling = (alertmanager?.length ?? 0) + (prometheus?.length ?? 0) > 0;
+	const alertsIn = delivered || pulling;
+	const agent = harnesses?.harnesses.find(
+		(h) => h.id === harnesses.selection.harness && h.installed,
+	);
+	const steps = {
+		webhook: delivered,
+		pull: pulling,
+		agent: !!setup?.steps.aiProvider || !!agent,
+		code: !!setup?.steps.codeLocation,
+	};
+	return {
+		loaded: !!setup && !!harnesses,
+		steps,
+		agent,
+		harnesses: harnesses?.harnesses ?? [],
+		done: (alertsIn ? 2 : 0) + (steps.agent ? 1 : 0) + (steps.code ? 1 : 0),
+		alertsIn,
+	};
+}
+
+/**
+ * Above the columns until all four steps are done (study-v3 §3.1): how many,
+ * what the first missing one costs, and the link that does it.
+ */
+export function SetupLine() {
+	const p = useSetupProgress();
+	if (!p.loaded || p.done === 4) return null;
+	const [why, action] = !p.steps.agent
+		? [
+				"no coding agent on this machine, so no run can start.",
+				<Link key="a" to="/settings" search={{ tab: "harness" }}>
+					Set up an agent
+				</Link>,
+			]
+		: !p.alertsIn
+			? [
+					"no alert source yet, so only incidents you create arrive.",
+					<Link key="s" to="/settings" search={{ tab: "sources" }}>
+						Add a source
+					</Link>,
+				]
+			: [
+					"no service names its code yet, so runs read nothing.",
+					<Link key="v" to="/services" search={{ add: "1" }}>
+						Add a service
+					</Link>,
+				];
+	return (
+		<p
+			className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 pb-4 text-meta text-text-2 [&_a]:text-accent [&_a]:hover:underline"
+			data-testid="setup-line"
+		>
+			<span>
+				Setup, {p.done} of 4 done: {why}
+			</span>
+			{action}
+		</p>
+	);
+}
+
+function Step({
+	n,
 	done,
 	title,
 	children,
 	action,
+	keepAction,
+	testId,
 }: {
+	n: number;
 	done: boolean;
 	title: string;
 	children: ReactNode;
 	action?: ReactNode;
+	/** The webhook's URL and token stay copyable once it is in. */
+	keepAction?: boolean;
+	testId: string;
 }) {
 	return (
-		<div className="flex items-start gap-3 border-t py-3 first:border-t-0">
+		<li
+			className="flex items-start gap-3 border-t border-hairline py-3 first:border-t-0"
+			data-testid={testId}
+			data-done={done ? "" : undefined}
+		>
 			<span
-				className={
-					done
-						? "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-run-done/15 text-run-done"
-						: "mt-1 h-2.5 w-2.5 shrink-0 translate-x-0.5 rounded-full border border-muted-foreground/50"
-				}
 				aria-hidden
+				className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-3 text-meta text-text-2 tabular-nums"
 			>
-				{done && <Check className="h-3 w-3" />}
+				{n}
 			</span>
 			<div className="min-w-0 flex-1">
-				<p className="text-record font-medium">{title}</p>
-				<div className="mt-0.5 text-record text-muted-foreground">
-					{children}
-				</div>
+				<p className="font-medium text-text-1">{title}</p>
+				<div className="mt-0.5 text-meta text-text-3">{children}</div>
 			</div>
-			{action && <div className="shrink-0">{action}</div>}
-		</div>
+			<div className="flex shrink-0 flex-col items-stretch gap-1.5">
+				{done && (
+					<span
+						className="text-right text-body font-medium text-ok"
+						data-testid="step-done"
+					>
+						Done
+					</span>
+				)}
+				{(!done || keepAction) && action}
+			</div>
+		</li>
 	);
 }
 
-function CopyUrl({ url, label }: { url: string; label: string }) {
+function CopyButton({
+	value,
+	label,
+	testId,
+}: {
+	value: string;
+	label: string;
+	testId: string;
+}) {
 	const { toast } = useToast();
 	return (
-		<button
-			type="button"
-			onClick={() => {
-				navigator.clipboard?.writeText(url);
-				toast({ title: `Copied the ${label} URL` });
+		<Button
+			variant="secondary"
+			size="sm"
+			onClick={async () => {
+				// No clipboard over plain HTTP on another device; say so, never "Copied".
+				try {
+					if (!navigator.clipboard) throw new Error("no clipboard");
+					await navigator.clipboard.writeText(value);
+					toast({ title: label.replace("Copy", "Copied") });
+				} catch {
+					toast({
+						title: "Not copied",
+						description: "This browser blocked the clipboard.",
+						variant: "destructive",
+					});
+				}
 			}}
-			className="group inline-flex max-w-full items-center gap-1.5 rounded border bg-muted/40 px-2 py-0.5 text-left hover:bg-muted"
-			title={`Copy ${url}`}
+			data-testid={testId}
 		>
-			<Mono className="truncate text-meta">{url}</Mono>
-			<Copy className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-foreground" />
-		</button>
+			{label}
+		</Button>
 	);
 }
 
 /**
- * The starting state: no incidents exist yet. One panel with the three ways to
- * get the first one and what still blocks an investigation, each with its real
- * status. It replaces zero-value numbers and empty charts, which say nothing.
+ * The first run (study-v3 §3.1): no columns, filters or counts, only the four
+ * numbered steps with the system marking each Done, and New in the header as
+ * the one way to make an incident by hand.
  */
 export function FirstRunPanel() {
-	const { toast } = useToast();
-	const queryClient = useQueryClient();
-	const navigate = useNavigate();
-	const create = useCreateIncident();
-	const [title, setTitle] = useState("");
-	const { data: setup } = useSetupStatus();
-	const { data: alertmanager } = useConnections({ templateId: "alertmanager" });
-	const { data: prometheus } = useConnections({ templateId: "prometheus" });
-	const hasSource = (alertmanager?.length ?? 0) + (prometheus?.length ?? 0) > 0;
-	const [origin, setOrigin] = useState<string | null>(null);
-	useEffect(() => setOrigin(window.location.origin), []);
-
-	const pull = useMutation({
-		...orpc.alerts.pull.mutationOptions(),
-		onSuccess: (r) => {
-			toast({
-				title: `Pulled ${r.received + r.caughtUp} alerts, ${r.processed} new`,
-			});
-			queryClient.invalidateQueries({ queryKey: alertKeys.all() });
-			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-		},
-		onError: (e) =>
-			toast({
-				title: "Pull failed",
-				description: getErrorMessage(e),
-				variant: "destructive",
-			}),
-	});
-
-	const agentReady = !!setup?.steps.aiProvider;
-	const codeLinked = !!setup?.steps.codeLocation;
-
+	const p = useSetupProgress();
+	const { data: token } = useWebhookToken();
+	const url = webhookUrl("prometheus");
+	const looked = p.harnesses.map((h) => h.label);
 	return (
 		<div
-			className="mx-auto flex h-full max-w-xl flex-col justify-center px-4 py-8 sm:px-6"
+			className="mx-auto w-full max-w-xl px-4 pt-8 pb-12 md:px-6"
 			data-testid="first-run"
 		>
-			<h2 className="text-center text-xl font-semibold tracking-tight">
-				What is on fire?
-			</h2>
-			<form
-				className="mt-4 rounded-lg border bg-card p-2"
-				onSubmit={(e) => {
-					e.preventDefault();
-					const t = title.trim();
-					if (!t) return;
-					create.mutate(
-						{ title: t },
-						{
-							onSuccess: (incident) =>
-								navigate({
-									to: "/incidents/$id",
-									params: { id: incident.id },
-									search: {},
-								}),
-							onError: (err) =>
-								toast({
-									title: "Could not create the incident",
-									description: getErrorMessage(err),
-									variant: "destructive",
-								}),
-						},
-					);
-				}}
-			>
-				<input
-					value={title}
-					onChange={(e) => setTitle(e.target.value)}
-					placeholder="Describe the incident in one line and press Enter"
-					aria-label="Incident title"
-					className="h-9 w-full bg-transparent px-2 text-record outline-none placeholder:text-muted-foreground"
-					data-testid="first-run-title"
-				/>
-				<div className="flex items-center justify-between gap-2 px-1 pt-1">
-					<AgentModelPicker />
-					<Button
-						type="submit"
-						size="sm"
-						className="h-7"
-						disabled={!title.trim() || create.isPending}
-						data-testid="first-run-submit"
-					>
-						{create.isPending ? "Creating" : "Create"}
-					</Button>
-				</div>
-			</form>
-			<p className="mt-2 text-center text-meta text-muted-foreground">
-				Or let an alert start one:
+			<h2 className="text-display">Get the first alert in</h2>
+			<p className="mt-1.5 text-body text-text-2">
+				PrismaLens hands each alert to your coding agent and keeps the run, the
+				evidence and the cause on the incident.
 			</p>
-
-			<div className="mt-5 rounded-md border px-4">
-				<Row
-					done={false}
-					title="Point a monitor at the webhook"
+			<ol className="mt-6">
+				<Step
+					n={1}
+					done={p.steps.webhook}
+					title="Point Alertmanager at this webhook"
+					testId="first-run-step-1"
+					keepAction
 					action={
-						<Button asChild variant="outline" size="sm" className="h-7">
-							<Link to="/settings" search={{ tab: "integrations" }}>
-								Integrations
+						<>
+							<CopyButton
+								value={url}
+								label="Copy URL"
+								testId="first-run-copy-url"
+							/>
+							{token && (
+								<CopyButton
+									value={token.token}
+									label="Copy token"
+									testId="first-run-copy-token"
+								/>
+							)}
+						</>
+					}
+				>
+					Add a receiver with this URL and the token as the bearer token.
+					<Mono className="mt-1.5 block break-all text-text-1">{url}</Mono>
+					{token ? (
+						<Mono className="mt-1 block text-text-1">
+							{maskToken(token.token)}
+						</Mono>
+					) : (
+						<span className="mt-1 block">
+							The token is under Settings, Alert sources on the machine
+							PrismaLens runs on.
+						</span>
+					)}
+				</Step>
+				<Step
+					n={2}
+					done={p.steps.pull}
+					title="Or pull what is firing now"
+					testId="first-run-step-2"
+					action={
+						<Button asChild variant="secondary" size="sm">
+							<Link to="/settings" search={{ tab: "sources" }}>
+								Add a source
 							</Link>
 						</Button>
 					}
 				>
-					{origin ? (
-						<div className="flex flex-col gap-1">
-							<span>
-								Alertmanager:{" "}
-								<CopyUrl
-									url={`${origin}/api/webhooks/prometheus`}
-									label="Alertmanager webhook"
-								/>
-							</span>
-							<span>
-								Anything else:{" "}
-								<CopyUrl
-									url={`${origin}/api/webhooks/generic`}
-									label="generic webhook"
-								/>
-							</span>
-						</div>
-					) : (
-						<span>The webhook URLs are under Settings → Integrations.</span>
-					)}
-				</Row>
-				<Row
-					done={hasSource}
-					title="Pull what is firing now"
-					action={
-						hasSource ? (
-							<Button
-								size="sm"
-								className="h-7"
-								onClick={() => pull.mutate({})}
-								disabled={pull.isPending}
-								data-testid="first-run-pull"
-							>
-								<CloudDownload className="mr-1 h-3.5 w-3.5" />
-								Pull
-							</Button>
-						) : (
-							<Button asChild variant="outline" size="sm" className="h-7">
-								<Link to="/settings" search={{ tab: "connections" }}>
-									Connect
-								</Link>
-							</Button>
-						)
-					}
-				>
-					{hasSource
-						? "An Alertmanager or Prometheus connection exists; pull its firing alerts."
-						: "Connect Alertmanager or Prometheus and pull its firing alerts."}
-				</Row>
-			</div>
-
-			<h3 className="mt-6 text-record font-medium">For the run to work</h3>
-			<div className="mt-2 rounded-md border px-4">
-				<Row
-					done={agentReady}
+					Connect Alertmanager or Prometheus by URL; PrismaLens pulls the firing
+					alerts and keeps pulling.
+				</Step>
+				<Step
+					n={3}
+					done={p.steps.agent}
 					title="A coding agent on this machine"
+					testId="first-run-step-3"
 					action={
-						!agentReady && (
-							<Button asChild variant="outline" size="sm" className="h-7">
-								<Link to="/settings" search={{ tab: "harness" }}>
-									Agent
-								</Link>
-							</Button>
-						)
+						<Button asChild variant="secondary" size="sm">
+							<Link to="/settings" search={{ tab: "harness" }}>
+								Agent
+							</Link>
+						</Button>
 					}
 				>
-					{agentReady ? (
-						<StateWord tone="done">ready</StateWord>
+					{p.agent ? (
+						<>
+							{p.agent.label} found on this machine. Whether it is signed in
+							shows on the first run. Change it under Settings, Agent.
+						</>
 					) : (
-						"None found on PATH. Install one and pick it under Settings → Agent."
+						<>
+							PrismaLens looks for {looked.join(", ")} on PATH. Install one:
+							{p.harnesses.slice(0, 3).map((h) => (
+								<Mono
+									key={h.id}
+									className="mt-1 block break-all text-text-2"
+									data-testid="first-run-install"
+								>
+									{h.install}
+								</Mono>
+							))}
+						</>
 					)}
-				</Row>
-				<Row
-					done={codeLinked}
+				</Step>
+				<Step
+					n={4}
+					done={p.steps.code}
 					title="A service that names its code"
+					testId="first-run-step-4"
 					action={
-						!codeLinked && (
-							<Button asChild variant="outline" size="sm" className="h-7">
-								<Link to="/services">Services</Link>
-							</Button>
-						)
+						<Button asChild variant="secondary" size="sm">
+							<Link to="/services" search={{ add: "1" }}>
+								Add a service
+							</Link>
+						</Button>
 					}
 				>
-					{codeLinked ? (
-						<StateWord tone="done">linked</StateWord>
-					) : (
-						"Set a repository (a folder or a git URL) on a service; without one an investigation reads no code."
-					)}
-				</Row>
-			</div>
+					Give the service in the alert's <Mono>service</Mono> label a folder or
+					a git URL; the run reads that code.
+				</Step>
+			</ol>
+			<p className="mt-8 text-body text-text-2">
+				No alert source yet? Use{" "}
+				<span className="font-medium text-text-1">New</span> in the header to
+				create an incident by hand and investigate it.
+			</p>
 		</div>
 	);
 }

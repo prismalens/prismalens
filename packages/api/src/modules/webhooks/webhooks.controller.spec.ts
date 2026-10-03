@@ -5,6 +5,7 @@ import type { ExecutionContext } from "@nestjs/common";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { AlertPullService } from "../alerts/alert-pull.service.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
 import { WebhookThrottleGuard } from "./webhook-throttle.guard.js";
@@ -39,8 +40,10 @@ describe("WebhooksController guards (#637 edge 9)", () => {
 
 describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 	let alertPull: { onWebhook: ReturnType<typeof vi.fn> };
+	let prisma: { setting: { upsert: ReturnType<typeof vi.fn> } };
 	beforeEach(() => {
 		alertPull = { onWebhook: vi.fn(() => Promise.resolve()) };
+		prisma = { setting: { upsert: vi.fn(() => Promise.resolve({})) } };
 	});
 
 	function prometheusHandler(service: Partial<WebhooksService>) {
@@ -48,6 +51,7 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 			service as WebhooksService,
 			telemetryStub(),
 			alertPull as unknown as AlertPullService,
+			prisma as unknown as PrismaService,
 		);
 		const procs = controller.webhooks() as unknown as Record<
 			string,
@@ -81,6 +85,16 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 			received: 1,
 			processed: 1,
 			alertIds: ["a1"],
+		});
+		// Settings, Alert sources reads it back as "Last delivery: 1 alert, accepted".
+		const written = prisma.setting.upsert.mock.calls[0]?.[0] as {
+			where: { key: string };
+			create: { value: string };
+		};
+		expect(written.where.key).toBe("WEBHOOK_LAST_DELIVERY");
+		expect(JSON.parse(written.create.value)).toMatchObject({
+			received: 1,
+			accepted: 1,
 		});
 	});
 

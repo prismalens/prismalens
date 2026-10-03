@@ -180,13 +180,35 @@ export const INCIDENT_ACTION_FROM: Record<
 	acknowledge: ["triggered"],
 	// A resolved incident can be investigated again; its status stays (#743).
 	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
+	// The source's own ending (alerts cleared); no operator button writes it.
 	resolve: OPEN_INCIDENT_STATUSES,
-	// An ended incident can go back to work, closed included (walk u18); the
-	// operator reopens, a refire never does. A reopened closed incident keeps
-	// its recorded cause until the next Close.
-	reopen: ["resolved", "closed"],
-	close: ["resolved"],
+	// Only the operator's Resolve (stored `closed`) is undone by Reopen (R1a d4);
+	// on Alerts cleared there is nothing to reopen.
+	reopen: ["closed"],
+	// The operator's one step, shown as Resolve, from every open status and
+	// from Alerts cleared (R1a d2).
+	close: [...OPEN_INCIDENT_STATUSES, "resolved"],
 };
+
+/** The status each action writes; `investigate` leaves the status as it is. */
+export const INCIDENT_ACTION_WRITES: Partial<
+	Record<IncidentAction, IncidentStatus>
+> = {
+	acknowledge: "investigating",
+	resolve: "resolved",
+	reopen: "investigating",
+	close: "closed",
+};
+
+/**
+ * The band's lifecycle actions, in the order its primary is picked (R1a d7).
+ * `resolve` is the source's ending and has no button: its word is "Alerts cleared".
+ */
+export const BAND_ACTIONS: readonly IncidentAction[] = [
+	"acknowledge",
+	"close",
+	"reopen",
+];
 
 export function canIncidentAction(
 	action: IncidentAction,
@@ -245,17 +267,32 @@ export function canAlertAction(action: AlertAction, status: string): boolean {
 export type IncidentAttention =
 	| "unacknowledged"
 	| "failed_run"
+	| "reopened"
 	| "awaiting_close";
 
+/** The order Needs you lists them in (study-v3 §3.1); Alerts cleared sits last, under "To wrap up". */
 export const INCIDENT_ATTENTIONS: readonly IncidentAttention[] = [
-	"failed_run",
 	"unacknowledged",
+	"failed_run",
+	"reopened",
 	"awaiting_close",
 ];
+
+/** Why an incident went back to work, and when (R1a d4); null on one never reopened. */
+export interface IncidentReopen {
+	reason?: string | null;
+	at?: string | Date | null;
+	/** When the incident's latest run started, if it has one. */
+	latestRunAt?: string | Date | null;
+}
+
+const time = (v: string | Date | null | undefined): number =>
+	v ? new Date(v).getTime() : Number.NaN;
 
 export function incidentAttention(
 	status: string,
 	latestRunStatus?: string | null,
+	reopen?: IncidentReopen | null,
 ): IncidentAttention | null {
 	if (status === "resolved") return "awaiting_close";
 	if (!isIncidentOpen(status)) return null;
@@ -263,7 +300,16 @@ export function incidentAttention(
 	if (latestRunStatus === "failed") return "failed_run";
 	if (INCIDENT_STATUS_PHASE[status as IncidentStatus] === "new")
 		return "unacknowledged";
+	if (reopen?.reason === "operator") {
+		const ranSince = time(reopen.latestRunAt) >= time(reopen.at);
+		if (!ranSince) return "reopened";
+	}
 	return null;
+}
+
+/** The source refired inside the flap window and put the incident back (R1a d2). */
+export function isFlapReopen(reopen?: IncidentReopen | null): boolean {
+	return reopen?.reason === "flap";
 }
 
 /**

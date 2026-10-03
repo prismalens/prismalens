@@ -40,7 +40,7 @@ const weightTone: Record<StateWeight, ChipTone> = {
 const phaseTone: Record<StatePhase, ChipTone> = {
 	new: "critical",
 	live: "active",
-	watch: "low",
+	watch: "neutral",
 	done: "done",
 	failed: "failed",
 	closed: "neutral",

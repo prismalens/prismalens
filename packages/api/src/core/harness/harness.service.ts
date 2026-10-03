@@ -17,7 +17,10 @@ import {
 	type HarnessId,
 	refuseModel,
 } from "@prismalens/config/harness";
-import type { HarnessesResponse } from "@prismalens/contracts/schemas";
+import type {
+	FavouriteModel,
+	HarnessesResponse,
+} from "@prismalens/contracts/schemas";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 
@@ -28,12 +31,16 @@ export interface HarnessSettings {
 	harness: "auto" | HarnessId;
 	/** Model id per harness, in that harness's own format; absent means its default. */
 	models?: Partial<Record<HarnessId, string>>;
+	/** Starred models across agents (R4.2), shown first in the picker. */
+	favourites?: FavouriteModel[];
 }
 
 export interface HarnessSettingsPatch {
 	harness?: "auto" | HarnessId;
 	/** Merged per harness; `null` clears that harness's model. */
 	models?: Partial<Record<HarnessId, string | null>>;
+	/** Replaces the whole list. */
+	favourites?: FavouriteModel[];
 }
 
 /** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped. */
@@ -47,6 +54,22 @@ function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 			model.trim()
 		)
 			out[id as HarnessId] = model.trim();
+	}
+	return out;
+}
+
+/** Starred models, deduplicated, each naming a harness this build knows. */
+function cleanFavourites(raw: unknown): FavouriteModel[] {
+	if (!Array.isArray(raw)) return [];
+	const seen = new Set<string>();
+	const out: FavouriteModel[] = [];
+	for (const f of raw as Array<Partial<FavouriteModel>>) {
+		const model = typeof f?.model === "string" ? f.model.trim() : "";
+		if (!model || !HARNESS_IDS.includes(f?.harness as HarnessId)) continue;
+		const key = `${f.harness}\u0000${model}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push({ harness: f.harness as HarnessId, model });
 	}
 	return out;
 }
@@ -71,9 +94,11 @@ export class HarnessService {
 					? (parsed.harness as HarnessSettings["harness"])
 					: "auto";
 			const models = cleanModels(parsed.models);
+			const favourites = cleanFavourites(parsed.favourites);
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
+				...(favourites.length ? { favourites } : {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -83,9 +108,11 @@ export class HarnessService {
 	async updateSettings(patch: HarnessSettingsPatch): Promise<HarnessSettings> {
 		const current = await this.getSettings();
 		const models = cleanModels({ ...current.models, ...patch.models });
+		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const next: HarnessSettings = {
 			harness: patch.harness ?? current.harness,
 			...(Object.keys(models).length ? { models } : {}),
+			...(favourites.length ? { favourites } : {}),
 		};
 		await this.prisma.setting.upsert({
 			where: { key: SETTING_KEY },
@@ -137,6 +164,7 @@ export class HarnessService {
 				return listHarnessStatus().map((h) => ({
 					...h,
 					models: this.models.modelsFor(h.id, catalogue),
+					checked: this.models.checked(h.id),
 				}));
 			})(),
 			selection: selection.runnable

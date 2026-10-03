@@ -1,174 +1,135 @@
 /*
- * PrismaLens Design Tokens - CSS Custom Properties
- * Base: Zinc | Primary: Indigo | Color space: OKLCH
+ * PrismaLens design tokens (study-v3 §2, the v2 §2.4 block). Dark-first.
+ * Light = :root, dark = .dark (the app toggles the class, #423).
  *
- * Light mode = :root (default)
- * Dark mode  = .dark
+ * Surfaces are a four-step ladder, lighter as they rise; hairlines separate
+ * and never enclose. One accent with four jobs; every other colour is a state.
  */
 
 :root {
 	/* Native controls (a <select>'s menu) follow the app's theme, not the OS (#743). */
 	color-scheme: light;
 
-	/* ── Semantic UI Colors ── Light Mode ── */
-	--background: oklch(0.985 0 0);
-	--foreground: oklch(0.141 0.005 285.823);
+	--canvas: oklch(0.985 0 0);
+	--surface-1: oklch(0.965 0.002 285);
+	--surface-2: oklch(1 0 0);
+	--surface-3: oklch(0.94 0.003 285);
+	--surface-4: oklch(0.9 0.004 285);
+	--hairline: oklch(0 0 0 / 0.08);
+	--hairline-strong: oklch(0 0 0 / 0.14);
+	--shadow-float: 0 12px 32px oklch(0 0 0 / 0.14);
+	/* Light only: a raised surface on a near-white canvas needs an edge. */
+	--raised-edge: var(--hairline);
 
-	--card: oklch(0.985 0 0);
-	--card-foreground: oklch(0.141 0.005 285.823);
+	--text-1: oklch(0.18 0.004 285);
+	--text-2: oklch(0.45 0.01 285);
+	--text-3: oklch(0.58 0.012 285);
 
-	--popover: oklch(0.985 0 0);
-	--popover-foreground: oklch(0.141 0.005 285.823);
+	--accent: oklch(0.55 0.2 277);
+	--accent-fg: oklch(0.985 0 0);
+	--live: oklch(0.55 0.11 195);
+	--ok: oklch(0.58 0.14 160);
+	--warn: oklch(0.68 0.15 75);
+	--danger: oklch(0.58 0.22 27);
+	--sev-critical: var(--danger);
+	--sev-high: oklch(0.65 0.17 50);
+	--sev-medium: var(--warn);
+	--sev-low: oklch(0.55 0.13 250);
+	--sev-info: var(--text-3);
 
-	--primary: oklch(0.585 0.233 277.117);
-	--primary-foreground: oklch(0.985 0 0);
-
-	--secondary: oklch(0.92 0.004 286.32);
-	--secondary-foreground: oklch(0.141 0.005 285.823);
-
-	--muted: oklch(0.92 0.004 286.32);
-	--muted-foreground: oklch(0.552 0.016 285.938);
-
-	--accent: oklch(0.92 0.004 286.32);
-	--accent-foreground: oklch(0.141 0.005 285.823);
-
-	--destructive: oklch(0.577 0.245 27.325);
-	--destructive-foreground: oklch(0.985 0 0);
-
-	--success: oklch(0.696 0.17 162.48);
-	--success-foreground: oklch(0.985 0 0);
-
-	--warning: oklch(0.769 0.188 70.08);
-	--warning-foreground: oklch(0.141 0.005 285.823);
-
-	--border: oklch(0.871 0.006 286.286);
-	--input: oklch(0.871 0.006 286.286);
-	--ring: oklch(0.585 0.233 277.117);
-
-	/* ── Chart colors ── */
-	--chart-1: oklch(0.585 0.233 277.117);
-	--chart-2: oklch(0.627 0.265 303.9);
-	--chart-3: oklch(0.696 0.17 162.48);
-	--chart-4: oklch(0.769 0.188 70.08);
-	--chart-5: oklch(0.577 0.245 27.325);
-
-	/* ── Sidebar ── */
-	--sidebar: oklch(0.985 0 0);
-	--sidebar-foreground: oklch(0.141 0.005 285.823);
-	--sidebar-primary: oklch(0.585 0.233 277.117);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.92 0.004 286.32);
-	--sidebar-accent-foreground: oklch(0.141 0.005 285.823);
-	--sidebar-border: oklch(0.871 0.006 286.286);
-	--sidebar-ring: oklch(0.585 0.233 277.117);
-
-	/* ── State tones ── colour is state, never decoration ── */
-	--live: oklch(0.6 0.11 195);
-	--stale: oklch(0.72 0.16 70);
-	--sev-critical: oklch(0.577 0.245 27.325);
-	--sev-high: oklch(0.68 0.19 45);
-	--sev-medium: oklch(0.72 0.15 80);
-	--sev-low: oklch(0.6 0.15 250);
-	--sev-info: oklch(0.552 0.016 285.938);
-	--run-active: oklch(0.6 0.11 195);
-	--run-done: oklch(0.6 0.15 160);
-	--run-failed: oklch(0.577 0.245 27.325);
-
-	/* ── Type scale (4px baseline) ── */
-	--text-record: 0.8125rem;
-	--text-record--line-height: 1.25rem;
-	--text-meta: 0.6875rem;
-	--text-meta--line-height: 1rem;
-	--text-slot: 1.25rem;
-	--text-slot--line-height: 1.5rem;
-
-	/* ── Layout ── */
-	--radius: 0.375rem;
-	--sidebar-w: 18rem;
+	--sidebar-w: 240px;
+	--rail-w: 56px;
+	--header-h: 44px;
+	--reading-w: 46rem;
+	--facts-w: 256px;
 	/* The desktop window's top strip; equals TITLEBAR_HEIGHT in packages/desktop. */
 	--titlebar-h: 0px;
+	/* Set by the reconnect line while it shows; every frame starts below it. */
+	--reconnect-h: 0px;
+	--frame-top: calc(var(--titlebar-h) + var(--reconnect-h));
 
-	/* ── Brand supplementary ── */
-	--pl-investigation-purple: oklch(0.627 0.265 303.9);
-	--pl-success-green: oklch(0.696 0.17 162.48);
-	--pl-warning-amber: oklch(0.769 0.188 70.08);
-	--pl-critical-red: oklch(0.577 0.245 27.325);
+	/*
+	 * Retiring (study-v3 §8): the shadcn names, mapped onto the ladder so the
+	 * screens PR 2 and PR 3 restyle keep rendering in this system until then.
+	 */
+	--background: var(--canvas);
+	--foreground: var(--text-1);
+	--card: var(--surface-2);
+	--card-foreground: var(--text-1);
+	--popover: var(--surface-2);
+	--popover-foreground: var(--text-1);
+	--primary: var(--accent);
+	--primary-foreground: var(--accent-fg);
+	--secondary: var(--surface-3);
+	--secondary-foreground: var(--text-1);
+	--muted: var(--surface-3);
+	--muted-foreground: var(--text-2);
+	--destructive: var(--danger);
+	--destructive-foreground: var(--accent-fg);
+	--border: var(--hairline);
+	--input: var(--hairline-strong);
+	--ring: var(--accent);
+	--stale: var(--warn);
+	--run-active: var(--live);
+	--run-done: var(--ok);
+	--run-failed: var(--danger);
+	--radius: 6px;
 }
 
+/* Inside the Electron window the band or header is the title strip (#752). */
 :root[data-desktop] {
 	--titlebar-h: 2.5rem;
 }
 
-/* A folded sidebar leaves its toggle in a top strip, in the browser too (#743). */
-@media (min-width: 48rem) {
-	:root[data-sidebar-folded] {
-		--titlebar-h: 2.5rem;
+@media (max-width: 1279px) {
+	:root {
+		--sidebar-w: var(--rail-w);
 	}
 }
 
-/* ── Dark Mode ── */
+/* `[` folds the bar to its icon rail at any width. */
+:root[data-sidebar-folded] {
+	--sidebar-w: var(--rail-w);
+}
+
+/* Settings' bar keeps its labels at every width beside the page (the mock's `.side.full`). */
+@media (min-width: 768px) {
+	:root[data-settings] {
+		--sidebar-w: 240px;
+	}
+}
+
+/* The phone: the doors are a strip across the top. */
+@media (max-width: 767px) {
+	:root,
+	:root[data-sidebar-folded] {
+		--sidebar-w: 0px;
+		--frame-top: calc(var(--header-h) + var(--reconnect-h));
+	}
+}
+
 .dark {
 	color-scheme: dark;
-	--background: oklch(0.141 0.005 285.823);
-	--foreground: oklch(0.985 0 0);
 
-	--card: oklch(0.21 0.006 285.885);
-	--card-foreground: oklch(0.985 0 0);
+	--canvas: oklch(0.135 0.004 285);
+	--surface-1: oklch(0.16 0.004 285);
+	--surface-2: oklch(0.19 0.005 285);
+	--surface-3: oklch(0.23 0.006 285);
+	--surface-4: oklch(0.27 0.006 285);
+	--hairline: oklch(1 0 0 / 0.08);
+	--hairline-strong: oklch(1 0 0 / 0.14);
+	--shadow-float: 0 12px 32px oklch(0 0 0 / 0.45);
+	--raised-edge: transparent;
 
-	--popover: oklch(0.21 0.006 285.885);
-	--popover-foreground: oklch(0.985 0 0);
+	--text-1: oklch(0.95 0.003 285);
+	--text-2: oklch(0.74 0.01 285);
+	--text-3: oklch(0.56 0.012 285);
 
-	--primary: oklch(0.585 0.233 277.117);
-	--primary-foreground: oklch(0.985 0 0);
-
-	--secondary: oklch(0.274 0.006 286.033);
-	--secondary-foreground: oklch(0.985 0 0);
-
-	--muted: oklch(0.274 0.006 286.033);
-	--muted-foreground: oklch(0.705 0.015 286.067);
-
-	--accent: oklch(0.274 0.006 286.033);
-	--accent-foreground: oklch(0.985 0 0);
-
-	--destructive: oklch(0.577 0.245 27.325);
-	--destructive-foreground: oklch(0.985 0 0);
-
-	--success: oklch(0.696 0.17 162.48);
-	--success-foreground: oklch(0.985 0 0);
-
-	--warning: oklch(0.769 0.188 70.08);
-	--warning-foreground: oklch(0.141 0.005 285.823);
-
-	--border: oklch(0.274 0.006 286.033);
-	--input: oklch(0.274 0.006 286.033);
-	--ring: oklch(0.673 0.182 276.935);
-
-	/* ── Chart colors (dark) ── */
-	--chart-1: oklch(0.673 0.182 276.935);
-	--chart-2: oklch(0.627 0.265 303.9);
-	--chart-3: oklch(0.696 0.17 162.48);
-	--chart-4: oklch(0.769 0.188 70.08);
-	--chart-5: oklch(0.577 0.245 27.325);
-
-	/* ── State tones (dark) ── */
-	--live: oklch(0.75 0.12 195);
-	--stale: oklch(0.8 0.15 75);
-	--sev-critical: oklch(0.68 0.2 25);
-	--sev-high: oklch(0.75 0.17 50);
-	--sev-medium: oklch(0.82 0.14 85);
-	--sev-low: oklch(0.72 0.13 250);
-	--sev-info: oklch(0.705 0.015 286.067);
-	--run-active: oklch(0.75 0.12 195);
-	--run-done: oklch(0.75 0.15 160);
-	--run-failed: oklch(0.68 0.2 25);
-
-	/* ── Sidebar (dark) ── */
-	--sidebar: oklch(0.141 0.005 285.823);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.585 0.233 277.117);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.274 0.006 286.033);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
-	--sidebar-border: oklch(0.274 0.006 286.033);
-	--sidebar-ring: oklch(0.673 0.182 276.935);
+	--accent: oklch(0.66 0.17 277);
+	--live: oklch(0.78 0.12 195);
+	--ok: oklch(0.76 0.14 160);
+	--warn: oklch(0.8 0.14 80);
+	--danger: oklch(0.7 0.19 25);
+	--sev-high: oklch(0.75 0.16 50);
+	--sev-low: oklch(0.72 0.12 250);
 }

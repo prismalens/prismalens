@@ -42,8 +42,8 @@ export function ProvenanceStamp({
 			<time dateTime={iso} title={iso}>
 				{Number.isNaN(date.getTime()) ? String(capturedAt) : hhmmZ(date)}
 			</time>
-			{source && <span>· {source}</span>}
-			{via && <span>· {via}</span>}
+			{source && <span>{source}</span>}
+			{via && <span>{via}</span>}
 		</span>
 	);
 }

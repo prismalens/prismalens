@@ -27,6 +27,7 @@ export function useOperator() {
 		...query,
 		via: query.data?.via ?? null,
 		managesPairing: query.data?.scopes.includes("admin:access") ?? false,
+		reason: query.data?.reason ?? null,
 	};
 }
 

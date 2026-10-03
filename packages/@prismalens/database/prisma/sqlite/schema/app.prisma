@@ -206,6 +206,11 @@ model Incident {
   alertCount        Int       @default(0)
   timeToAcknowledge Int? // Seconds
   timeToResolve     Int? // Seconds
+  reopenedAt        DateTime? // R1a d4: the operator's Reopen or a flap refire
+  reopenReason      String? // flap, operator
+  closedAt          DateTime? // the operator's Resolve; resolvedAt is when the alerts cleared
+  timeToClose       Int? // Seconds, first alert to the operator's Resolve
+  priorIncidentId   String? // the ended incident whose alert fired again as this one (R1a d5)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -220,6 +225,7 @@ model Incident {
   @@index([priority])
   @@index([serviceId])
   @@index([triggeredAt])
+  @@index([priorIncidentId])
   @@map("incidents")
 }
 

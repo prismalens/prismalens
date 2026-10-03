@@ -13,19 +13,22 @@ import {
 } from "@/components/ui/alert-dialog";
 
 /**
- * Reopen a resolved or closed incident, behind a confirm (#743, walk u18).
- * It goes back to Investigating; no run starts.
+ * Reopen a Resolved incident, behind a confirm (R1a d4, d7). It goes back to
+ * Acknowledged in Needs you; its cause stays as Previous cause. With
+ * `investigate`, the board's drop on Working, a run starts after.
  */
 export function ReopenDialog({
 	open,
 	onOpenChange,
 	incidentNumber,
+	investigate = false,
 	isPending,
 	onConfirm,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	incidentNumber: number;
+	investigate?: boolean;
 	isPending?: boolean;
 	onConfirm: () => void;
 }) {
@@ -33,9 +36,13 @@ export function ReopenDialog({
 		<AlertDialog open={open} onOpenChange={onOpenChange}>
 			<AlertDialogContent data-testid="reopen-dialog">
 				<AlertDialogHeader>
-					<AlertDialogTitle>Reopen INC-{incidentNumber}?</AlertDialogTitle>
+					<AlertDialogTitle>
+						{investigate
+							? `Reopen INC-${incidentNumber} and investigate?`
+							: `Reopen INC-${incidentNumber}?`}
+					</AlertDialogTitle>
 					<AlertDialogDescription>
-						It goes back to Investigating and its resolve time is cleared.
+						Its cause stays as Previous cause until you resolve it again.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
@@ -45,7 +52,7 @@ export function ReopenDialog({
 						onClick={onConfirm}
 						data-testid="confirm-reopen-incident"
 					>
-						Reopen
+						{investigate ? "Reopen and investigate" : "Reopen"}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

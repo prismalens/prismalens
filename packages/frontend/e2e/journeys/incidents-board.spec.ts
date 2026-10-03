@@ -7,8 +7,8 @@ import { settled } from "./settled";
 
 /**
  * #743 — the board: four columns derived from state, beside the list. A card
- * dropped on another column asks for the one action that move means, and
- * nothing runs until the operator confirms it.
+ * dropped on another column does the one action that move means: a run starts
+ * at once, Resolve and Reopen ask first (study-v3 §3.1).
  */
 
 async function createIncident(page: Page, title: string): Promise<string> {
@@ -51,7 +51,7 @@ test.describe("#743 — the incidents board", () => {
 		await settled(page);
 	});
 
-	test("a drop on Working asks for the agent and a brief before it runs", async ({
+	test("a drop on Working starts the run at once; a refusal sends the card back", async ({
 		page,
 	}) => {
 		const title = `Board drop ${Date.now()}`;
@@ -68,8 +68,8 @@ test.describe("#743 — the incidents board", () => {
 						defined: true,
 						code: "PRECONDITION_FAILED",
 						status: 412,
-						message: "No coding agent found on PATH.",
-						data: { failure: "no-harness", reason: "No coding agent found on PATH." },
+						message: "No coding agent on this machine.",
+						data: { failure: "no-harness", reason: "No coding agent on this machine." },
 					}),
 				});
 			},
@@ -82,49 +82,28 @@ test.describe("#743 — the incidents board", () => {
 			.filter({ hasText: title });
 		await expect(card).toBeVisible({ timeout: 15_000 });
 
-		// While dragging, Working takes the drop and Needs you does not.
+		// While dragging, Working takes the drop.
 		const release = await dragTo(
 			page,
 			card,
 			page.getByTestId("board-column-working"),
 		);
-		await expect(page.getByTestId("board-column-working")).toHaveAttribute(
+		await expect(page.getByTestId("board-column-working").locator("[data-drop]")).toHaveAttribute(
 			"data-drop",
 			"valid",
 		);
 		await release();
 
-		const prompt = page.getByTestId("board-drop-prompt");
-		await expect(prompt).toContainText("Investigate INC-");
-		expect(investigateCalls).toHaveLength(0);
-
-		// Escape cancels: nothing ran, the card is where it was.
-		await page.keyboard.press("Escape");
-		await expect(prompt).toHaveCount(0);
-		expect(investigateCalls).toHaveLength(0);
-		await expect(card).toBeVisible();
-
-		// The card animates home from the first drop before it can be picked up again.
-		await page.waitForTimeout(400);
-		// Again, with a brief: the button starts the run with it.
-		const again = await dragTo(
-			page,
-			card,
-			page.getByTestId("board-column-working"),
-		);
-		await again();
-		await prompt.getByTestId("composer-input").fill("Check the 14:00 deploy.");
-		await prompt.getByTestId("composer-investigate").click();
+		// No form and no brief: the run is asked for at once (study-v3 §3.1).
 		await expect.poll(() => investigateCalls.length).toBe(1);
-		expect(investigateCalls[0]).toMatchObject({
-			brief: "Check the 14:00 deploy.",
-		});
+		await expect(page.getByTestId("board-drop-prompt")).toHaveCount(0);
+		expect(investigateCalls[0] ?? {}).not.toHaveProperty("brief");
 		// Refused by the server: the card returns and the reason is told.
 		await expect(page.getByText("Investigation refused").first()).toBeVisible();
 		await expect(card).toBeVisible();
 	});
 
-	test("a drop on Resolved asks first; a drop on Needs you is refused", async ({
+	test("a drop on Resolved opens Resolve; a drop on Needs you is refused", async ({
 		page,
 	}) => {
 		const title = `Board resolve ${Date.now()}`;
@@ -139,15 +118,15 @@ test.describe("#743 — the incidents board", () => {
 			page.getByTestId("board-column-resolved"),
 		);
 		await resolved();
-		const prompt = page.getByTestId("board-drop-prompt");
-		await expect(prompt).toContainText("Resolve INC-");
-		await prompt.getByTestId("board-drop-confirm").click();
+		const dialog = page.getByTestId("resolve-dialog");
+		await expect(dialog).toContainText("Resolve INC-");
+		await dialog.getByTestId("confirm-resolve").click();
 		await expect
 			.poll(async () => {
 				const res = await page.request.get(`/api/incidents/${id}`);
 				return ((await res.json()) as { status: string }).status;
 			})
-			.toBe("resolved");
+			.toBe("closed");
 
 		// A card in Concluded cannot go to Needs you: nothing is asked.
 		const concluded = page
@@ -160,15 +139,16 @@ test.describe("#743 — the incidents board", () => {
 			concluded,
 			page.getByTestId("board-column-needs_you"),
 		);
-		await expect(page.getByTestId("board-column-needs_you")).toHaveAttribute(
+		await expect(page.getByTestId("board-column-needs_you").locator("[data-drop]")).toHaveAttribute(
 			"data-drop",
 			"refused",
 		);
 		await refused();
-		await expect(prompt).toHaveCount(0);
+		await expect(dialog).toHaveCount(0);
+		await expect(page.getByTestId("reopen-dialog")).toHaveCount(0);
 	});
 
-	test("the sidebar groups incidents by service, folds a group for good, and starts one in a service", async ({
+	test("the sidebar groups incidents by service, folds a group for good, and creates nothing", async ({
 		page,
 	}) => {
 		await page.goto("/incidents");
@@ -213,16 +193,8 @@ test.describe("#743 — the incidents board", () => {
 			.getByTestId("service-lane")
 			.click();
 
-		// The group's + opens New incident with that service picked.
-		const groupWithNew = sidebar
-			.getByTestId("sidebar-group")
-			.filter({ hasText: "API Gateway" });
-		await groupWithNew.hover();
-		await groupWithNew.getByTestId("sidebar-group-new").click();
-		const dialog = page.getByTestId("create-incident-dialog");
-		await expect(dialog).toBeVisible();
-		await expect(dialog).toContainText("API Gateway");
-		await page.keyboard.press("Escape");
+		// The header's New is the one manual entry (decision 4): a group has no +.
+		await expect(sidebar.getByTestId("sidebar-group-new")).toHaveCount(0);
 
 		// Alerts group by their own service.
 		await page.goto("/alerts");
@@ -232,7 +204,7 @@ test.describe("#743 — the incidents board", () => {
 		).toBeVisible({ timeout: 15_000 });
 	});
 
-	test("a resolved incident reopens from the band or by a drop on Concluded, without starting a run", async ({
+	test("a resolved incident reopens from the band, or by a drop on Working only after asking", async ({
 		page,
 	}) => {
 		const statusOf = async (id: string) => {
@@ -244,66 +216,57 @@ test.describe("#743 — the incidents board", () => {
 			investigated.push(route.request().url());
 			await route.abort();
 		});
+		const resolveByApi = async (id: string) =>
+			expect(
+				(await page.request.post(`/api/incidents/${id}/close`, { data: {} })).ok(),
+			).toBeTruthy();
 
-		// From the band's menu, behind a confirm.
+		// Reopen is the band's one action on a Resolved incident, behind a confirm.
 		const bandTitle = `Reopen band ${Date.now()}`;
 		const bandId = await createIncident(page, bandTitle);
-		expect(
-			(await page.request.post(`/api/incidents/${bandId}/resolve`)).ok(),
-		).toBeTruthy();
+		await resolveByApi(bandId);
 		await page.goto(`/incidents/${bandId}`);
-		await expect(page.getByTestId("band-close")).toBeVisible({
-			timeout: 15_000,
-		});
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-reopen").click();
+		await page.getByTestId("band-reopen").click({ timeout: 15_000 });
 		const dialog = page.getByTestId("reopen-dialog");
-		await expect(dialog).toContainText(`Reopen INC-`);
+		await expect(dialog).toContainText("Reopen INC-");
 		await expect(dialog).toContainText(
-			"It goes back to Investigating and its resolve time is cleared.",
+			"Its cause stays as Previous cause until you resolve it again.",
 		);
 		await dialog.getByTestId("confirm-reopen-incident").click();
 		await expect.poll(() => statusOf(bandId)).toBe("investigating");
-		await expect(page.getByTestId("band-status")).toHaveText("Investigating");
+		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
 		// No run started: the box still offers Investigate.
 		await expect(page.getByTestId("run-card")).toContainText("No investigation yet");
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",
 		);
 
-		// On the board: a resolved card waits in Needs you; dropped on Concluded
-		// it asks, then reopens.
+		// On the board a Resolved card sits in Resolved; dropped on Working it
+		// asks first, and Cancel leaves it Resolved with no run.
 		const dropTitle = `Reopen drop ${Date.now()}`;
 		const dropId = await createIncident(page, dropTitle);
-		expect(
-			(await page.request.post(`/api/incidents/${dropId}/resolve`)).ok(),
-		).toBeTruthy();
+		await resolveByApi(dropId);
 		await page.goto("/incidents");
 		const card = page
-			.getByTestId("board-column-needs_you")
+			.getByTestId("board-column-resolved")
 			.getByTestId("board-card")
 			.filter({ hasText: dropTitle });
 		await expect(card).toBeVisible({ timeout: 15_000 });
 		const release = await dragTo(
 			page,
 			card,
-			page.getByTestId("board-column-concluded"),
+			page.getByTestId("board-column-working"),
 		);
-		await expect(page.getByTestId("board-column-concluded")).toHaveAttribute(
+		await expect(page.getByTestId("board-column-working").locator("[data-drop]")).toHaveAttribute(
 			"data-drop",
 			"valid",
 		);
 		await release();
-		const prompt = page.getByTestId("board-drop-prompt");
-		await expect(prompt).toContainText("Reopen INC-");
-		await prompt.getByTestId("board-drop-confirm").click();
-		await expect.poll(() => statusOf(dropId)).toBe("investigating");
-		await expect(
-			page
-				.getByTestId("board-column-concluded")
-				.getByTestId("board-card")
-				.filter({ hasText: dropTitle }),
-		).toBeVisible();
+		const ask = page.getByTestId("reopen-dialog");
+		await expect(ask).toContainText(/Reopen INC-\d+ and investigate\?/);
+		await ask.getByRole("button", { name: "Cancel" }).click();
+		await expect(ask).toHaveCount(0);
+		expect(await statusOf(dropId)).toBe("closed");
 		expect(investigated).toHaveLength(0);
 	});
 });

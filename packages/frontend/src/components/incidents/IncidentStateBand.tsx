@@ -2,16 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	BAND_ACTIONS,
 	canIncidentAction,
+	INCIDENT_ACTION_LABEL,
 	INCIDENT_STATUS_LABEL,
 	type IncidentAction,
 	type IncidentStatus,
 	type IncidentWithRelations,
-	isIncidentOpen,
+	REFIRE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { StateWord } from "@/components/shared/StateChip";
 import { Button } from "@/components/ui/button";
@@ -21,83 +24,62 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { backTarget, inIncident, useBack } from "@/hooks/use-back";
 import { ago, useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { formatClock } from "@/lib/format-time";
 import { incidentStatusTone } from "@/lib/state-tone";
 
 export interface IncidentStateBandProps {
 	incident: IncidentWithRelations;
-	/** A run is in flight: Investigate is withheld; Stop lives on the run strip. */
+	/** A run is in flight: Investigate again is withheld; Stop lives on the run strip. */
 	runLive: boolean;
 	onAcknowledge: () => void;
 	onInvestigate: () => void;
-	onResolve: () => void;
+	/** The operator's Resolve (stored `close`). */
 	onClose: () => void;
 	onReopen: () => void;
+	onEditCause: () => void;
 	isInvestigating?: boolean;
 	investigateDisabled?: boolean;
 	investigateDisabledReason?: string;
-	/** On a route under the incident the phone's back goes to the incident, not the list. */
-	backToIncident?: boolean;
-	/** The tab has the box, whose own button starts an investigation. */
-	hideInvestigate?: boolean;
 }
-
-const ACTION_LABEL: Record<IncidentAction, string> = {
-	acknowledge: "Acknowledge",
-	investigate: "Investigate",
-	resolve: "Resolve",
-	close: "Close",
-	reopen: "Reopen",
-};
 
 /**
  * The state band: one row that never wraps. Where you are (id, severity,
- * title, status, age) on the left; one primary action and a menu for the rest
- * on the right. The run's state lives on the run strip under it (#743 §2).
+ * title, status, age) on the left; the one lifecycle action and a menu on the
+ * right (R1a d7). The primary is the first of Acknowledge, Resolve, Reopen the
+ * status admits, the same on every tab, and never Investigate; the run's state
+ * lives on the run strip under it.
  */
 export function IncidentStateBand({
 	incident,
 	runLive,
 	onAcknowledge,
 	onInvestigate,
-	onResolve,
 	onClose,
 	onReopen,
+	onEditCause,
 	isInvestigating,
 	investigateDisabled,
 	investigateDisabledReason,
-	backToIncident,
-	hideInvestigate,
 }: IncidentStateBandProps) {
 	usePageTitle(`INC-${incident.number} ${incident.title}`);
 	const now = useNow();
-	const handlers: Record<IncidentAction, () => void> = {
+	const leaf = useMemo(() => inIncident(incident.id), [incident.id]);
+	const back = useBack(leaf, "/incidents");
+	const backHref = backTarget(leaf, "/incidents");
+	const handlers: Partial<Record<IncidentAction, () => void>> = {
 		acknowledge: onAcknowledge,
-		investigate: onInvestigate,
-		resolve: onResolve,
 		close: onClose,
 		reopen: onReopen,
 	};
-	// The one the status admits first, in the order the incident moves through.
-	// Once resolved, closing is the next step; Investigate stays in the menu (#743).
-	const order: IncidentAction[] = isIncidentOpen(incident.status)
-		? ["investigate", "acknowledge", "resolve", "close"]
-		: ["close", "reopen", "investigate"];
-	const admitted = order.filter(
-		(a) =>
-			canIncidentAction(a, incident.status) &&
-			!(a === "investigate" && (runLive || hideInvestigate)),
+	const primary = BAND_ACTIONS.find((a) =>
+		canIncidentAction(a, incident.status),
 	);
-	const primary = admitted[0];
-	const rest = admitted.slice(1);
-	const primaryBlocked = primary === "investigate" && investigateDisabled;
+	const resolved = incident.status === "closed";
+	const refired = incident.refiredAs;
+	const investigateBlocked = runLive || investigateDisabled || isInvestigating;
 
 	return (
 		<div
@@ -106,27 +88,20 @@ export function IncidentStateBand({
 			// its controls opt out, and it clears the window controls and a folded sidebar's head.
 			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"
 		>
-			{backToIncident ? (
-				<Link
-					to="/incidents/$id"
-					params={{ id: incident.id }}
-					search={true}
-					aria-label={`Back to INC-${incident.number}`}
-					title="Back to Overview  Esc"
-					className="inline-flex h-7 shrink-0 items-center rounded pr-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+			<Button variant="ghost" size="icon" className="shrink-0" asChild>
+				<a
+					href={backHref}
+					onClick={(e) => {
+						e.preventDefault();
+						back();
+					}}
+					aria-label={backHref === "/incidents" ? "Back to the board" : "Back"}
+					title="Back"
+					data-testid="incident-back"
 				>
-					<ChevronLeft className="h-4 w-4" />
-				</Link>
-			) : (
-				<Link
-					to="/incidents"
-					aria-label="Back to the board"
-					title="Back to the board  Esc"
-					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-				>
-					<ChevronLeft className="h-4 w-4" />
-				</Link>
-			)}
+					<ChevronLeft className="size-4" />
+				</a>
+			</Button>
 			<Mono className="shrink-0 text-meta text-muted-foreground">
 				INC-{incident.number}
 			</Mono>
@@ -158,60 +133,57 @@ export function IncidentStateBand({
 
 			<div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-1">
 				{primary && (
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<span data-testid="band-investigate-trigger">
-									<Button
-										size="sm"
-										className="h-7"
-										onClick={handlers[primary]}
-										disabled={
-											primaryBlocked ||
-											(primary === "investigate" && isInvestigating)
-										}
-										data-testid={`band-${primary}`}
-									>
-										{primary === "investigate" && isInvestigating
-											? "Starting"
-											: ACTION_LABEL[primary]}
-									</Button>
-								</span>
-							</TooltipTrigger>
-							{primaryBlocked && investigateDisabledReason && (
-								<TooltipContent>
-									<p>{investigateDisabledReason}</p>
-								</TooltipContent>
-							)}
-						</Tooltip>
-					</TooltipProvider>
+					<Button
+						size="sm"
+						className="h-7"
+						onClick={handlers[primary]}
+						data-testid={`band-${primary === "close" ? "resolve" : primary}`}
+						data-action={primary}
+					>
+						{INCIDENT_ACTION_LABEL[primary]}
+					</Button>
 				)}
-				{rest.length > 0 && (
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="h-7 w-7 p-0"
-								aria-label="More actions"
-								data-testid="band-more"
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 w-7 p-0"
+							aria-label="More actions"
+							data-testid="band-more"
+						>
+							<MoreHorizontal className="h-4 w-4" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-56">
+						<DropdownMenuItem
+							disabled={investigateBlocked}
+							onClick={onInvestigate}
+							title={
+								investigateDisabled ? investigateDisabledReason : undefined
+							}
+							data-testid="band-menu-investigate"
+						>
+							Investigate again
+						</DropdownMenuItem>
+						{resolved && (
+							<DropdownMenuItem
+								onClick={onEditCause}
+								data-testid="band-menu-edit-cause"
 							>
-								<MoreHorizontal className="h-4 w-4" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-44">
-							{rest.map((a) => (
-								<DropdownMenuItem
-									key={a}
-									onClick={handlers[a]}
-									data-testid={`band-menu-${a}`}
-								>
-									{ACTION_LABEL[a]}
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
-				)}
+								Edit cause
+							</DropdownMenuItem>
+						)}
+						{refired && (
+							<DropdownMenuItem asChild data-testid="band-menu-refired">
+								<Link to="/incidents/$id" params={{ id: refired.id }}>
+									{REFIRE_LABEL} as INC-{refired.number},{" "}
+									{formatClock(refired.createdAt)}
+								</Link>
+							</DropdownMenuItem>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
 		</div>
 	);

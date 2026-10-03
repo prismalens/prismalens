@@ -12,6 +12,7 @@ import { telemetryStub } from "../../../test/factories/index.js";
 
 describe("IncidentsService", () => {
 	let service: IncidentsService;
+	let telemetry: TelemetryService;
 
 	// The interactive-transaction client handed to `$transaction(async (tx) => …)`.
 	const mockTx = {
@@ -72,12 +73,13 @@ describe("IncidentsService", () => {
 			async (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
 		);
 
+		telemetry = telemetryStub();
 		const moduleRef = await Test.createTestingModule({
 			providers: [
 				IncidentsService,
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: TimelineService, useValue: mockTimelineService },
-				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: TelemetryService, useValue: telemetry },
 			],
 		}).compile();
 
@@ -214,7 +216,7 @@ describe("IncidentsService", () => {
 	describe("close", () => {
 		const triggeredAt = new Date(Date.now() - 60_000);
 
-		it("stamps resolvedAt when closing an incident that was never resolved", async () => {
+		it("leaves resolvedAt unset when the operator resolves before the alerts cleared", async () => {
 			mockPrisma.incident.findUnique.mockResolvedValue({
 				id: "inc-1",
 				status: "investigating",
@@ -227,6 +229,23 @@ describe("IncidentsService", () => {
 
 			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.status).toBe("closed");
+			expect(data.closedAt).toBeInstanceOf(Date);
+			expect(data).not.toHaveProperty("resolvedAt");
+			expect(data).not.toHaveProperty("timeToResolve");
+		});
+
+		it("stamps resolvedAt when the source's alerts clear", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "investigating",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.resolve("inc-1");
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.resolvedAt).toBeInstanceOf(Date);
 			expect(data.timeToResolve).toBeGreaterThanOrEqual(60);
 		});
@@ -287,6 +306,151 @@ describe("IncidentsService", () => {
 			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.status).toBe("closed");
 			expect(data.resolvedAt).toBeUndefined();
+		});
+	});
+
+	describe("one-step Resolve and Reopen (R1a)", () => {
+		const triggeredAt = new Date(Date.now() - 120_000);
+
+		it("stamps closedAt and timeToClose, clears the reopen marker, and names the entry", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "investigating",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1", { actualCause: "pool capped at 10" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data.closedAt).toBeInstanceOf(Date);
+			expect(data.timeToClose).toBeGreaterThanOrEqual(120);
+			expect(data.reopenedAt).toBeNull();
+			expect(data.reopenReason).toBeNull();
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved, cause recorded" }),
+			});
+		});
+
+		it("names a Resolve with no cause plainly", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "resolved",
+				triggeredAt,
+				resolvedAt: new Date(),
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.close("inc-1");
+
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved" }),
+			});
+		});
+
+		it("marks a reopen of a Resolved incident as the operator's and keeps its cause", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "closed",
+				triggeredAt,
+				resolvedAt: new Date(),
+				closedAt: new Date(),
+				actualCause: "pool capped at 10",
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "investigating" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data.reopenReason).toBe("operator");
+			expect(data.reopenedAt).toBeInstanceOf(Date);
+			expect(data.closedAt).toBeNull();
+			expect(data.timeToClose).toBeNull();
+			// A reopen nulls resolvedAt, as it did before (#743).
+			expect(data.resolvedAt).toBeNull();
+			expect(data).not.toHaveProperty("actualCause");
+		});
+
+		it("a generic update to closed records the Resolve the way close() does", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "triggered",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "closed" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data.closedAt).toBeInstanceOf(Date);
+			expect(data.timeToClose).toBeGreaterThanOrEqual(120);
+			expect(data.reopenedAt).toBeNull();
+			expect(data.reopenReason).toBeNull();
+			expect(data).not.toHaveProperty("resolvedAt");
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved" }),
+			});
+			expect(telemetry.capture).toHaveBeenCalledWith("incident_closed", {});
+		});
+
+		it("stamps no closedAt on a move between working phases", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "triggered",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "investigating" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data).not.toHaveProperty("closedAt");
+			expect(data).not.toHaveProperty("reopenReason");
+		});
+
+		it("stores an edited cause on a Resolved incident without touching its status", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "closed",
+				triggeredAt,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { actualCause: "the pool, not the deploy" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data.actualCause).toBe("the pool, not the deploy");
+			expect(data).not.toHaveProperty("status");
+		});
+
+		it("names the incident a new one fired again after, and the one that fired again after it", async () => {
+			const createdAt = new Date("2026-10-02T17:40:00Z");
+			mockPrisma.incident.findMany
+				.mockResolvedValueOnce([
+					{ id: "inc-11", priorIncidentId: "inc-1", service: null },
+					{ id: "inc-1", priorIncidentId: null, service: null },
+				])
+				.mockResolvedValueOnce([
+					{ id: "inc-1", number: 1, status: "closed", actualCause: "pool capped at 10" },
+				])
+				.mockResolvedValueOnce([
+					{ id: "inc-11", priorIncidentId: "inc-1", number: 11, createdAt },
+				]);
+			mockPrisma.incident.count.mockResolvedValue(2);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data[0].priorIncident).toEqual({
+				number: 1,
+				status: "closed",
+				actualCause: "pool capped at 10",
+			});
+			expect(data[0].refiredAs).toBeNull();
+			expect(data[1].priorIncident).toBeNull();
+			expect(data[1].refiredAs).toEqual({ id: "inc-11", number: 11, createdAt });
 		});
 	});
 
@@ -375,7 +539,7 @@ describe("IncidentsService", () => {
 			expect(mockTx.alertSourceAlert.updateMany).not.toHaveBeenCalled();
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledTimes(1);
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
-				data: expect.objectContaining({ title: "Status changed" }),
+				data: expect.objectContaining({ title: "Resolved" }),
 			});
 		});
 
@@ -390,7 +554,7 @@ describe("IncidentsService", () => {
 				([arg]: [{ data: { title: string } }]) => arg.data.title,
 			);
 			expect(titles).toEqual([
-				"Status changed",
+				"Resolved",
 				"Resolved 1 firing alert with the incident",
 			]);
 		});
@@ -428,10 +592,14 @@ describe("IncidentsService", () => {
 					incidentId: "inc-11",
 					type: TimelineEntryType.incident_created,
 					description:
-						"New incident: BooklogrLibraryListSlow fired again after INC-10 was closed 2026-10-01T14:22:00.000Z",
+						"New incident: BooklogrLibraryListSlow fired again after INC-10 was resolved 2026-10-01T14:22:00.000Z",
 					metadata: { priorIncidentId: "inc-10" },
 				}),
 			);
+			// R1a d5: the card reads the prior from a column, not the timeline.
+			expect(mockTx.incident.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ priorIncidentId: "inc-10" }),
+			});
 		});
 	});
 
@@ -489,7 +657,14 @@ describe("IncidentsService", () => {
 
 			const result = await service.findAll({ limit: 2, offset: 0 });
 
-			expect(result.data).toEqual(incidents.map((i) => ({ ...i, services: [] })));
+			expect(result.data).toEqual(
+				incidents.map((i) => ({
+					...i,
+					services: [],
+					priorIncident: null,
+					refiredAs: null,
+				})),
+			);
 			expect(result.total).toBe(5);
 		});
 
@@ -625,6 +800,14 @@ describe("IncidentsService", () => {
 				{ status: "triggered", investigations: [{ status: "failed" }] },
 				{ status: "investigating", investigations: [{ status: "running" }] },
 				{ status: "resolved", investigations: [{ status: "completed" }] },
+				{
+					status: "investigating",
+					reopenReason: "operator",
+					reopenedAt: new Date("2026-10-02T17:00:00Z"),
+					investigations: [
+						{ status: "completed", createdAt: new Date("2026-10-02T16:00:00Z") },
+					],
+				},
 			]);
 
 			const stats = await service.getStats({});
@@ -634,7 +817,12 @@ describe("IncidentsService", () => {
 				open: 3,
 				byStatus: { triggered: 2, investigating: 1, resolved: 1, closed: 3 },
 				bySeverity: { critical: 1, medium: 6 },
-				attention: { failed_run: 1, unacknowledged: 1, awaiting_close: 1 },
+				attention: {
+					failed_run: 1,
+					unacknowledged: 1,
+					reopened: 1,
+					awaiting_close: 1,
+				},
 				avgTimeToResolve: 900,
 			});
 			expect(mockPrisma.incident.aggregate).toHaveBeenCalledWith(

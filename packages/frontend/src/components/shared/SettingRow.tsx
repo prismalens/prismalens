@@ -31,16 +31,17 @@ export function SettingRow({
 }: SettingRowProps) {
 	return (
 		<div
-			className={cn("border-t py-3 first:border-t-0", className)}
+			className={cn(
+				"border-t border-hairline py-2.5 first:border-t-0",
+				className,
+			)}
 			data-testid={testId}
 		>
 			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
 				<div className="min-w-0 flex-1">
-					<div className="text-record font-medium">{label}</div>
+					<div className="text-body text-text-1">{label}</div>
 					{description && (
-						<div className="mt-0.5 text-meta text-muted-foreground">
-							{description}
-						</div>
+						<div className="mt-0.5 text-meta text-text-3">{description}</div>
 					)}
 				</div>
 				{children && (
@@ -54,29 +55,41 @@ export function SettingRow({
 	);
 }
 
-/** A titled group of setting rows. */
+/** A titled group of setting rows; a count and one quiet action beside the title. */
 export function SettingGroup({
 	title,
+	count,
+	actions,
 	description,
 	children,
 	className,
 	testId,
 }: {
 	title: string;
+	count?: number;
+	actions?: ReactNode;
 	description?: ReactNode;
 	children: ReactNode;
 	className?: string;
 	testId?: string;
 }) {
 	return (
-		<section className={cn("space-y-2", className)} data-testid={testId}>
-			<div>
-				<h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-				{description && (
-					<p className="text-meta text-muted-foreground">{description}</p>
-				)}
+		<section className={cn("mt-8 first:mt-0", className)} data-testid={testId}>
+			<div className="mb-2">
+				<div className="flex min-h-6 items-center justify-between gap-3">
+					<h3 className="flex items-baseline gap-2 text-heading">
+						{title}
+						{count !== undefined && (
+							<span className="font-normal text-text-3 tabular-nums">
+								{count}
+							</span>
+						)}
+					</h3>
+					{actions}
+				</div>
+				{description && <p className="text-meta text-text-3">{description}</p>}
 			</div>
-			<div className="rounded-md border px-4">{children}</div>
+			<div>{children}</div>
 		</section>
 	);
 }

@@ -10,11 +10,20 @@ import { client, orpc } from "./orpc-client";
 export const LIVE_REFRESH_MS = 10_000;
 const RETRY_MS = 3_000;
 
-let connected = false;
+/** The reconnect line shows once the stream has been down this long (study-v2 §6). */
+export const RECONNECT_LINE_AFTER_MS = 10_000;
+
+interface StreamStatus {
+	connected: boolean;
+	/** When the stream last went down, or when this page started waiting for it. */
+	lostAt: number;
+}
+
+let status: StreamStatus = { connected: false, lostAt: Date.now() };
 const listeners = new Set<() => void>();
 function setConnected(next: boolean) {
-	if (connected === next) return;
-	connected = next;
+	if (status.connected === next) return;
+	status = { connected: next, lostAt: next ? status.lostAt : Date.now() };
 	listeners.forEach((l) => {
 		l();
 	});
@@ -28,15 +37,38 @@ function subscribeConnected(l: () => void) {
 export function useLiveRefreshInterval(): number | false {
 	const up = useSyncExternalStore(
 		subscribeConnected,
-		() => connected,
+		() => status.connected,
 		() => false,
 	);
 	return up ? false : LIVE_REFRESH_MS;
 }
 
+const SERVER_STATUS: StreamStatus = { connected: true, lostAt: 0 };
+
+/** Whether the change stream is up, and since when it is not. */
+export function useStreamStatus(): StreamStatus {
+	return useSyncExternalStore(
+		subscribeConnected,
+		() => status,
+		() => SERVER_STATUS,
+	);
+}
+
+/** The time the screen is "as of" when the line should show, else null. */
+export function reconnectAsOf(s: StreamStatus, now: number): number | null {
+	if (s.connected || now - s.lostAt < RECONNECT_LINE_AFTER_MS) return null;
+	return s.lostAt;
+}
+
+// An alert or incident moves the board's setup line and Alert sources' last delivery.
 const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
-	incidents: () => [orpc.incidents.key()],
-	alerts: () => [orpc.alerts.key(), orpc.incidents.key()],
+	incidents: () => [orpc.incidents.key(), orpc.setup.key()],
+	alerts: () => [
+		orpc.alerts.key(),
+		orpc.incidents.key(),
+		orpc.setup.key(),
+		orpc.webhooks.lastDelivery.key(),
+	],
 	investigations: () => [orpc.investigations.key(), orpc.incidents.key()],
 };
 
