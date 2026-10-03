@@ -43,8 +43,7 @@ When("Alertmanager fires {string}", async ({ alertmanager, deliverWebhook, uniqu
 Run it:
 
 ```bash
-pnpm --filter @prismalens/frontend exec bddgen
-pnpm --filter @prismalens/frontend exec playwright test --project=journeys
+pnpm --filter @prismalens/frontend test:e2e --project=journeys  # runs bddgen first
 ```
 
 **The fakes** (`scripts/fakes/`, shared with the API scenarios in `packages/api/test/scenarios/`):

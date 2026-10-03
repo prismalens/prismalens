@@ -5,6 +5,7 @@
  * The one investigation prompt (ADR 0002). Telemetry surfaces appear only when
  * the host configured them; the report contract is the last fenced json block.
  */
+import type { PermissionMode } from "@prismalens/config/harness";
 import type { InvestigationContext } from "@prismalens/contracts/schemas";
 import {
 	renderAlertPayload,
@@ -13,8 +14,33 @@ import {
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
 
+/** What the brief tells the agent about the network and writes, per access level (r4 R4.1). */
+const ACCESS_METHOD: Record<PermissionMode, string[]> = {
+	"read-only": [
+		"Network: only the addresses listed above, with GET; nothing else is reachable at this access level.",
+		"Never modify, deploy, restart, or write anything. Writes will be refused; do not retry them.",
+	],
+	"read-only-tools": [
+		"Network: GET requests to any address, without a request body, and the read commands of the CLIs you are signed in to.",
+		"Never modify, deploy, restart, or write anything. Writes will be refused; do not retry them.",
+	],
+	"workspace-write": [
+		"Network: GET requests to any address, without a request body.",
+		"Write only inside your current working directory, a throwaway copy; you may run its tests. Never deploy or restart anything.",
+	],
+	"full-access": [
+		"Write only inside your current working directory, a throwaway copy. Never deploy or restart anything.",
+	],
+};
+
+/** Replaces the Network line when the harness's own sandbox allows none (r4 R4.1 rev). */
+const NO_NETWORK =
+	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
+
 export function buildInvestigationPrompt(
 	context: InvestigationContext,
+	access: PermissionMode = "read-only",
+	options: { noNetwork?: boolean } = {},
 ): string {
 	const [primary, ...rest] = context.alerts;
 	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
@@ -29,21 +55,27 @@ export function buildInvestigationPrompt(
 		: "";
 
 	const t = context.telemetry;
+	// With no network, only the addresses remain, for What we could not check (#778).
+	const online = !options.noNetwork;
 	const surfaces: string[] = [];
 	if (t?.prometheusUrl) {
 		surfaces.push(
-			`  - Prometheus    ${t.prometheusUrl}\n      curl -s '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules`,
+			`  - Prometheus    ${t.prometheusUrl}${
+				online
+					? `\n      curl -sG '${t.prometheusUrl}/api/v1/query' --data-urlencode 'query=<promql>'   ·   /api/v1/rules`
+					: ""
+			}`,
 		);
 	}
 	if (t?.alertmanagerUrl) {
 		surfaces.push(
-			`  - Alertmanager  ${t.alertmanagerUrl}      curl -s '${t.alertmanagerUrl}/api/v2/alerts'`,
+			`  - Alertmanager  ${t.alertmanagerUrl}${online ? `      curl -s '${t.alertmanagerUrl}/api/v2/alerts'` : ""}`,
 		);
 	}
 	if (t?.apiUrl) surfaces.push(`  - Application API ${t.apiUrl}`);
 	if (context.logs?.url) {
 		surfaces.push(
-			`  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}      query recent logs for the affected service`,
+			`  - Logs (${context.logs.kind ?? "log system"})   ${context.logs.url}${online ? "      query recent logs for the affected service" : ""}`,
 		);
 	}
 	const repos = context.workspace?.repos ?? [];
@@ -73,7 +105,7 @@ export function buildInvestigationPrompt(
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
 		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
-		...(t?.prometheusUrl
+		...(t?.prometheusUrl && online
 			? [
 					"Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.",
 				]
@@ -81,7 +113,9 @@ export function buildInvestigationPrompt(
 		"After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
 		`Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about, then READ that code path's handler and the configuration it depends on. Use git log and git blame on the files you read; a recent change is a suspect.`,
 		"Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
-		"Never modify, deploy, restart, or write anything. Writes will be refused; do not retry them.",
+		...ACCESS_METHOD[access].map((line) =>
+			options.noNetwork && line.startsWith("Network:") ? NO_NETWORK : line,
+		),
 	];
 	const methodBlock = methodSteps
 		.map((step, i) => `  ${i + 1}. ${step}`)

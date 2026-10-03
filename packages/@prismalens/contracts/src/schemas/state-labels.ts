@@ -7,6 +7,7 @@
  * enum: adding a value fails the build here until it has a label.
  */
 
+import type { PermissionMode } from "@prismalens/config/harness";
 import type { z } from "zod";
 import type {
 	AlertStatus,
@@ -169,6 +170,34 @@ export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
 	unacknowledged: "Needs acknowledging",
 	awaiting_close: "Awaiting close",
 };
+
+/** The access level's word, as the box, the run line and the rail say it (r4 R4.1). */
+export const ACCESS_LABEL: Record<PermissionMode, string> = {
+	"read-only": "Read-only",
+	"read-only-tools": "Read-only with your tools",
+	"workspace-write": "Edit the copy",
+	"full-access": "Full access",
+};
+
+/**
+ * One line per level for the box and its menu. Framed as the guardrail the gate
+ * is (ADR 0004 §3, r4 R4.1 rev); `access-line.test.ts` checks every refusal it
+ * names against the red-team corpus, so no absolute word belongs here.
+ */
+export const ACCESS_LINE: Record<PermissionMode, string> = {
+	"read-only":
+		"Reads the copied code and queries the telemetry addresses in the brief. PrismaLens refuses writes, installs, other addresses and other ways out that it can see. A guardrail for an honest agent, not a sandbox.",
+	"read-only-tools":
+		"Reads the copied code, queries any address with GET and runs the read commands of the CLIs you are signed in to. PrismaLens refuses writes, installs, request bodies and other ways out that it can see. A guardrail for an honest agent, not a sandbox.",
+	"workspace-write":
+		"Edits the run's throwaway copy, runs its tests and queries any address with GET. PrismaLens refuses writes outside the copy, installs, request bodies and other ways out that it can see. A guardrail for an honest agent, not a sandbox.",
+	"full-access":
+		"Lets the agent do anything on this machine. PrismaLens allows every request and logs it.",
+};
+
+/** The tooltip's and Settings → Agent's second sentence under an access line. */
+export const ACCESS_BOUNDARY_NOTE =
+	"An operating-system boundary needs Codex's sandbox (Settings, Agent) or a container.";
 
 export interface EnumOption<V extends string> {
 	value: V;
