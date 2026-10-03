@@ -15,7 +15,10 @@
 import { z } from "zod";
 import bundled from "./model-catalogue.json" with { type: "json" };
 
-/** `current` or `legacy`; any other word a newer file uses is kept as written. */
+/**
+ * `current`, `legacy`, or `training` for a tier that pays for itself with your
+ * prompts (R4.2); any other word a newer file uses is kept as written.
+ */
 const ModelEntrySchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),

@@ -20,14 +20,27 @@ export class HarnessProbeService {
 
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
 		const result = await probeHarness(id);
-		if (result.outcome === "answers-acp")
+		if (result.outcome === "answers-acp") {
 			this.models.remember(id, result.models);
+			this.models.rememberCheck(id, {
+				servedModel: result.servedModel ?? null,
+				effort: result.effort ?? null,
+				images: result.images === true,
+			});
+		}
 		return {
 			id: result.id,
 			outcome: result.outcome,
 			detail: result.detail,
 			hard: result.hard,
 			...(result.models?.length ? { models: result.models } : {}),
+			...(result.outcome === "answers-acp"
+				? {
+						servedModel: result.servedModel ?? null,
+						effort: result.effort ?? null,
+						images: result.images === true,
+					}
+				: {}),
 		};
 	}
 }

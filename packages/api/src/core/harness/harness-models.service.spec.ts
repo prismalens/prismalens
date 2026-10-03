@@ -54,4 +54,26 @@ describe("HarnessModelsService (#639)", () => {
 		service.remember("opencode", []);
 		expect(service.modelsFor("opencode").source).toBe("catalogue");
 	});
+
+	it("says nothing was checked until a check answers, then what the harness reported (R4.2, R4.3)", () => {
+		expect(service.checked("codex")).toBeNull();
+		service.rememberCheck("codex", {
+			servedModel: "gpt-5.6",
+			effort: { id: "reasoning_effort", values: ["low", "medium", "high"], default: "medium" },
+			images: true,
+		});
+		expect(service.checked("codex")).toMatchObject({
+			servedModel: "gpt-5.6",
+			effort: { default: "medium" },
+			images: true,
+		});
+		expect(service.checked("opencode")).toBeNull();
+	});
+
+	it("marks the training tier the catalogue flags, never guessed from the id", () => {
+		service.remember("opencode", [
+			{ id: "opencode/muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 (free)" },
+		]);
+		expect(service.modelsFor("opencode").entries[0]?.status).toBe("training");
+	});
 });

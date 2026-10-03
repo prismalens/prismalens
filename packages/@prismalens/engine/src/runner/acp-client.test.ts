@@ -23,6 +23,7 @@ import {
 	type AcpDrift,
 	AcpSession,
 	type AcpStreamItem,
+	offeredEffort,
 	offeredModels,
 	selectedModel,
 } from "./acp-client.js";
@@ -292,6 +293,27 @@ describe("offeredModels (#639)", () => {
 		]);
 		expect(offeredModels(undefined)).toEqual([]);
 		expect(offeredModels({ not: "an array" })).toEqual([]);
+	});
+});
+
+describe("offeredEffort (R4.2)", () => {
+	it("reads the thought_level select option with the harness's own default", () => {
+		expect(
+			offeredEffort([
+				{ id: "model", type: "select", category: "model", currentValue: "m1", options: [] },
+				{
+					id: "reasoning_effort",
+					type: "select",
+					category: "thought_level",
+					currentValue: "medium",
+					options: [{ value: "low" }, { value: "medium" }, { value: "high" }, "garbage"],
+				},
+			]),
+		).toEqual({ id: "reasoning_effort", values: ["low", "medium", "high"], default: "medium" });
+		expect(
+			offeredEffort([{ id: "e", type: "select", category: "thought_level", options: [] }]),
+		).toBeNull();
+		expect(offeredEffort(undefined)).toBeNull();
 	});
 });
 
