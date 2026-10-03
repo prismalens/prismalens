@@ -232,6 +232,8 @@ export class ScenarioApp {
 	}
 }
 
+const POLL_MS = 500;
+
 export async function eventually<T>(
 	read: () => Promise<T>,
 	ok: (value: T) => boolean,
@@ -243,7 +245,9 @@ export async function eventually<T>(
 	while (Date.now() < deadline) {
 		last = await read();
 		if (ok(last)) return last;
-		await new Promise((r) => setTimeout(r, 100));
+		// One oRPC handler serves a whole contract, so polls share its 10/s throttle
+		// bucket with the test's next call; 100ms polling tripped 429s on macOS CI.
+		await new Promise((r) => setTimeout(r, POLL_MS));
 	}
 	throw new Error(
 		`timed out after ${timeoutMs}ms waiting for ${what}; last: ${JSON.stringify(last)}`,
