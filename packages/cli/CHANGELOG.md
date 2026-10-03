@@ -1,5 +1,82 @@
 # prismalens
 
+## [0.5.1](https://github.com/prismalens/prismalens/compare/v0.5.0...v0.5.1) (2026-10-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **harness:** supported agents on their own sign-in, no safety verdict, no placement ([#634](https://github.com/prismalens/prismalens/issues/634)) (#707)
+* **auth:** no account on the instance; the host pairs through a startup link ([#698](https://github.com/prismalens/prismalens/issues/698)) (#701)
+* remove the sandbox providers and every promise about them ([#682](https://github.com/prismalens/prismalens/issues/682))
+
+### Features
+
+* [#673](https://github.com/prismalens/prismalens/issues/673) readiness: pairing proven on the packed tarball, fidelity line, stranger-repo replay ([#711](https://github.com/prismalens/prismalens/issues/711)) ([280c2e8](https://github.com/prismalens/prismalens/commit/280c2e85d666c31b9e40cc4c2d90af90b7ff6021))
+* a run reads every repo the incident touches, and a finished investigation takes a follow-up in the same session ([#747](https://github.com/prismalens/prismalens/issues/747)) ([#751](https://github.com/prismalens/prismalens/issues/751)) ([905b8da](https://github.com/prismalens/prismalens/commit/905b8da26a39bd29382a1574b87f9fdc07e1b246))
+* **alerts:** an incident resolves when no connected Alertmanager lists its alerts any more ([#605](https://github.com/prismalens/prismalens/issues/605)) ([#728](https://github.com/prismalens/prismalens/issues/728)) ([0e9c74b](https://github.com/prismalens/prismalens/commit/0e9c74b32a52251d17055aa26617bc3848df8348))
+* **auth:** devices pair with the host ([#698](https://github.com/prismalens/prismalens/issues/698)) ([#700](https://github.com/prismalens/prismalens/issues/700)) ([5fea4ec](https://github.com/prismalens/prismalens/commit/5fea4ecb4a17eae59413d646c96bed0c65219087))
+* **auth:** no account on the instance; the host pairs through a startup link ([#698](https://github.com/prismalens/prismalens/issues/698)) ([#701](https://github.com/prismalens/prismalens/issues/701)) ([c8f9ea6](https://github.com/prismalens/prismalens/commit/c8f9ea6f4a9f8f9cb8fa00ff533f64e1f34c119b))
+* Claude Code on a laptop runs on the user's own sign-in ([#663](https://github.com/prismalens/prismalens/issues/663)) ([35df29e](https://github.com/prismalens/prismalens/commit/35df29e915a0da3b098cb2734275930eee001d29))
+* **cli:** a failed service upgrade rolls back to the previous version and database ([#766](https://github.com/prismalens/prismalens/issues/766)) ([#770](https://github.com/prismalens/prismalens/issues/770)) ([ccf3624](https://github.com/prismalens/prismalens/commit/ccf362409be0e0b7fcdaf16d098ecc85e1eb7dc4))
+* **cli:** pl service runs PrismaLens in the background on Linux and macOS ([#732](https://github.com/prismalens/prismalens/issues/732)) ([#735](https://github.com/prismalens/prismalens/issues/735)) ([0f88ed0](https://github.com/prismalens/prismalens/commit/0f88ed0936940339f977139bdc87fb01487cf519))
+* **cli:** reach the box from anywhere over Tailscale HTTPS ([#765](https://github.com/prismalens/prismalens/issues/765)) ([#768](https://github.com/prismalens/prismalens/issues/768)) ([db4d899](https://github.com/prismalens/prismalens/commit/db4d899267a24c23330ebd40863c6f79b61bbf10))
+* close an incident, export the report as Markdown, pl reset, update notice ([#661](https://github.com/prismalens/prismalens/issues/661)) ([8bd230a](https://github.com/prismalens/prismalens/commit/8bd230a493e422451035578f5460d18c9cc44210))
+* **desktop:** a branded window frame with native controls in the app's colours ([#736](https://github.com/prismalens/prismalens/issues/736)) ([#737](https://github.com/prismalens/prismalens/issues/737)) ([96b99b4](https://github.com/prismalens/prismalens/commit/96b99b40d86d565b8dd1269b010f5c707586425d))
+* **desktop:** the Electron launcher spawns the backend and adds presence ([#83](https://github.com/prismalens/prismalens/issues/83)) ([#702](https://github.com/prismalens/prismalens/issues/702)) ([2199435](https://github.com/prismalens/prismalens/commit/2199435e1826941859e9f1859be3aacd5326d150))
+* filter the services list by team ([#671](https://github.com/prismalens/prismalens/issues/671)) ([f8319ff](https://github.com/prismalens/prismalens/commit/f8319ff795abf78ec56679d583a3af480eb1ef4a))
+* **frontend,brand:** the refraction mark in the app, a favicon, and the new banners ([#703](https://github.com/prismalens/prismalens/issues/703)) ([d809685](https://github.com/prismalens/prismalens/commit/d809685371591c7eacfb5f64529933feada7f560))
+* **frontend,desktop:** production UX pass on web and desktop; the mobile top bar fits 375px ([#723](https://github.com/prismalens/prismalens/issues/723)) ([#726](https://github.com/prismalens/prismalens/issues/726)) ([32fb7c6](https://github.com/prismalens/prismalens/commit/32fb7c660215b963bdc0d4002f1650983ae20f4a))
+* **frontend:** a run strip, bounded incident cards, a chat conversation with its box, and the board ([#743](https://github.com/prismalens/prismalens/issues/743)) ([#750](https://github.com/prismalens/prismalens/issues/750)) ([5fba10a](https://github.com/prismalens/prismalens/commit/5fba10a690f7d7108958b11cd3a4afc037fdad89))
+* **frontend:** one sidebar, incident tabs, and an Overview that opens with a summary ([#743](https://github.com/prismalens/prismalens/issues/743)) ([#748](https://github.com/prismalens/prismalens/issues/748)) ([da22975](https://github.com/prismalens/prismalens/commit/da229753cda2ba26d9c19422600afdc9b5d73f1c))
+* **frontend:** one visual system and one shell — sidebar doors, Back everywhere, Alerts and devices redesigned ([#779](https://github.com/prismalens/prismalens/issues/779)) ([85636b3](https://github.com/prismalens/prismalens/commit/85636b3727ea38f8798d9a3edfe5bf12be9f41e4))
+* **frontend:** Settings sections, Alert sources, Services on one page and the agent picker ([#781](https://github.com/prismalens/prismalens/issues/781)) ([75ae038](https://github.com/prismalens/prismalens/commit/75ae038b64def06bd25d6b0bf0da8ed69f3d3d2a))
+* **frontend:** the board, first run, Analytics and one-step Resolve ([#780](https://github.com/prismalens/prismalens/issues/780)) ([266d896](https://github.com/prismalens/prismalens/commit/266d89667bee82505fbcdc9bc412a4c663fddf57))
+* **frontend:** the reshape — 32 surfaces to 17 ([#523](https://github.com/prismalens/prismalens/issues/523)) ([#694](https://github.com/prismalens/prismalens/issues/694)) ([4685bca](https://github.com/prismalens/prismalens/commit/4685bcac073438474b7b9679c58233491b2827c1))
+* harness admission as data — SDK types, version in the record, per-row sign-in and model, Windows shims ([#681](https://github.com/prismalens/prismalens/issues/681)) ([b64ea46](https://github.com/prismalens/prismalens/commit/b64ea46be4c970b843cff254b1a9fa41814ebc43))
+* **harness:** a model catalogue, models per agent, drift logged, a run refuses what the agent lacks ([#639](https://github.com/prismalens/prismalens/issues/639)) ([#704](https://github.com/prismalens/prismalens/issues/704)) ([2c968a2](https://github.com/prismalens/prismalens/commit/2c968a2e086275fdd1a1f7902c677eaaeb7ba405))
+* **harness:** Gemini CLI never loads the incident repo's own config ([#634](https://github.com/prismalens/prismalens/issues/634)) ([#755](https://github.com/prismalens/prismalens/issues/755)) ([fc27a89](https://github.com/prismalens/prismalens/commit/fc27a895c45f09d4edb25aa8ff7afd5753437560))
+* **harness:** record the model the agent reports, flag a substitution, and drop the read-only claim from the report chip ([#639](https://github.com/prismalens/prismalens/issues/639)) ([#727](https://github.com/prismalens/prismalens/issues/727)) ([06d319d](https://github.com/prismalens/prismalens/commit/06d319d596ce0d20e6b8d225571490021d23bce6))
+* **harness:** supported agents on their own sign-in, no safety verdict, no placement ([#634](https://github.com/prismalens/prismalens/issues/634)) ([#707](https://github.com/prismalens/prismalens/issues/707)) ([cd00535](https://github.com/prismalens/prismalens/commit/cd00535b22633cf98c5d587fe0d25066ee831521))
+* **install:** the whole lifecycle on every channel: pl upgrade, PATH, fallback, rollback, uninstall, and guards for two copies and downgrades ([#717](https://github.com/prismalens/prismalens/issues/717)) ([#721](https://github.com/prismalens/prismalens/issues/721)) ([46d360e](https://github.com/prismalens/prismalens/commit/46d360eb1837e41ed981f4a731cac4d4899f373a))
+* message a running investigation, stop it from anywhere, run state in its own words ([#743](https://github.com/prismalens/prismalens/issues/743)) ([#744](https://github.com/prismalens/prismalens/issues/744)) ([ce41bca](https://github.com/prismalens/prismalens/commit/ce41bca457c8b063d4a9ff520d10d137a10e1d23))
+* opt-in PostHog telemetry, asked once, off by default ([#666](https://github.com/prismalens/prismalens/issues/666)) ([5bbc739](https://github.com/prismalens/prismalens/commit/5bbc73967e35efa07190a65a55100d4fcfa109f2))
+* post a completed report as a comment on a GitHub issue or PR ([#679](https://github.com/prismalens/prismalens/issues/679)) ([e48cb26](https://github.com/prismalens/prismalens/commit/e48cb261a147a603547067fac93e59ffdc8e6422))
+* pull alerts on open from Alertmanager, catch up from Prometheus ([#680](https://github.com/prismalens/prismalens/issues/680)) ([b6e6a77](https://github.com/prismalens/prismalens/commit/b6e6a7792478d1608b4289ea7197c396a3ae1695))
+* rebrand to the p-lens glint mark ([#745](https://github.com/prismalens/prismalens/issues/745)) ([#746](https://github.com/prismalens/prismalens/issues/746)) ([2e72095](https://github.com/prismalens/prismalens/commit/2e7209572ef3ff271ca29e255f6390fecedf3cc2))
+* record the actual cause on close and cite it in similar incidents ([#667](https://github.com/prismalens/prismalens/issues/667)) ([f2c33a0](https://github.com/prismalens/prismalens/commit/f2c33a0bf5448cbd4d9e3499f8efb8e79f583654))
+* screens reach one PrismaLens per workspace without breaking each other ([#763](https://github.com/prismalens/prismalens/issues/763)) ([#764](https://github.com/prismalens/prismalens/issues/764)) ([90e021b](https://github.com/prismalens/prismalens/commit/90e021b46ec09055e2341fe51c8dcd51e9d8f454))
+* telemetry and host facts reach the run ([#678](https://github.com/prismalens/prismalens/issues/678)) ([8cb9712](https://github.com/prismalens/prismalens/commit/8cb9712c52ccb9aa0eaf0853acee7f15adbfa583))
+* **telemetry:** EU project, day timestamps, run mode and build, daily presence, recently sent ([#602](https://github.com/prismalens/prismalens/issues/602)) ([#716](https://github.com/prismalens/prismalens/issues/716)) ([3a30a11](https://github.com/prismalens/prismalens/commit/3a30a1134f4ef27f4697805d6a025033a8c34bab))
+* the incident band in the desktop title strip, and a follow-up that ends early puts its run back ([#752](https://github.com/prismalens/prismalens/issues/752)) ([#756](https://github.com/prismalens/prismalens/issues/756)) ([bd56d18](https://github.com/prismalens/prismalens/commit/bd56d186e551ca185ae1c3f82c0d0a68807a54e5))
+* workspace lock, pl reset-password, cancel reaches the clone, safe resets ([#662](https://github.com/prismalens/prismalens/issues/662)) ([f6cc503](https://github.com/prismalens/prismalens/commit/f6cc50330f6780727dec0a3bc5793f8cd6ffe45e))
+
+
+### Bug Fixes
+
+* a flap refire reopens its resolved incident, and an env-supplied model is never reported as substituted ([#741](https://github.com/prismalens/prismalens/issues/741)) ([8769049](https://github.com/prismalens/prismalens/commit/87690499865914fbf6b165a8ce96c2326f84fa48))
+* **alerts,engine:** two services in one grouped delivery stay two incidents; host facts stay inferred ([#633](https://github.com/prismalens/prismalens/issues/633)) ([#706](https://github.com/prismalens/prismalens/issues/706)) ([2283839](https://github.com/prismalens/prismalens/commit/22838392567fb1ef97d461982c060078a085dd77))
+* **api:** an alert arriving mid-investigation is visible, not silently dropped ([#669](https://github.com/prismalens/prismalens/issues/669)) ([53bb654](https://github.com/prismalens/prismalens/commit/53bb65435daf5e920da4f0fe1cf07999f9243958))
+* **ci:** retry a reset connection in the app-boot smoke script ([#772](https://github.com/prismalens/prismalens/issues/772)) ([4a7f8cc](https://github.com/prismalens/prismalens/commit/4a7f8ccd8297db47729c02d6befdeffcdb2b6b13))
+* **cli:** the consent line no longer calls usage events anonymous ([#731](https://github.com/prismalens/prismalens/issues/731)) ([f4fc7e2](https://github.com/prismalens/prismalens/commit/f4fc7e2bdf6ef8917e936e60db968e26c41022ff))
+* **desktop:** rebuild better-sqlite3 for Electron when no prebuilt exists ([533230c](https://github.com/prismalens/prismalens/commit/533230ce4917f2a004a2d70db7cdd58687402402))
+* **engine:** access levels and an honest read-only guardrail, tested against a red-team corpus ([#778](https://github.com/prismalens/prismalens/issues/778)) ([ca53c86](https://github.com/prismalens/prismalens/commit/ca53c86b8a684e3a733a148da307ce9eee5102f2))
+* **engine:** an EPIPE no longer hides why the harness died ([#670](https://github.com/prismalens/prismalens/issues/670)) ([9999722](https://github.com/prismalens/prismalens/commit/9999722674050b503491b09ec3d5c86227246756))
+* **engine:** the deadline kills the harness's process group, and shutdown reaps it ([#693](https://github.com/prismalens/prismalens/issues/693)) ([843f349](https://github.com/prismalens/prismalens/commit/843f3491905060c5c23e661c529655b9e1103834))
+* **engine:** the permission policy judges the real path, not the lexical one ([#685](https://github.com/prismalens/prismalens/issues/685)) ([ddaa8d0](https://github.com/prismalens/prismalens/commit/ddaa8d0f3aa662a044e555d6348cb168b50459d3))
+* **frontend:** a list row stays lit only while the pointer or the keyboard cursor is on it ([#738](https://github.com/prismalens/prismalens/issues/738)) ([#739](https://github.com/prismalens/prismalens/issues/739)) ([59ebec9](https://github.com/prismalens/prismalens/commit/59ebec9f54084ba947bd10741b4209b11766b7c2))
+* **frontend:** hide the report JSON that follows prose in the progress panel ([#660](https://github.com/prismalens/prismalens/issues/660)) ([d9c5223](https://github.com/prismalens/prismalens/commit/d9c522303a9e18580ce47b3d68a6c79e07e534a4))
+* GitLab/Bitbucket token usernames, deepagents row runs dcode --acp, codex read-only mode ([#665](https://github.com/prismalens/prismalens/issues/665)) ([21e16ed](https://github.com/prismalens/prismalens/commit/21e16ed63b67655f85fbfe6efd821ca33e9aec31))
+* harness behind a proxy, capped alert text, resolution before firing ([#664](https://github.com/prismalens/prismalens/issues/664)) ([2ddbe4c](https://github.com/prismalens/prismalens/commit/2ddbe4cd531393bf6bc809e9214bb66d374bbe7d))
+* **integrations:** refuse an unusable installation token, interpolate a templated tokenUrl ([#668](https://github.com/prismalens/prismalens/issues/668)) ([06d1017](https://github.com/prismalens/prismalens/commit/06d10172fc2ae4250c56fd2732b42cc512cc66ba))
+* **pair:** point other devices at Tailscale, not a LAN IP ([#774](https://github.com/prismalens/prismalens/issues/774)) ([e25dcef](https://github.com/prismalens/prismalens/commit/e25dcef1b08d55b65c4b3ddc0096777c746dc686))
+* SQL keeps LF on every checkout, so Windows builds' migration checksums match the published ones ([#722](https://github.com/prismalens/prismalens/issues/722)) ([9d17e9f](https://github.com/prismalens/prismalens/commit/9d17e9f5ebfc536efeb39b7cd7a790825812ff24))
+* the 0.5.1 walk's code defects — alert lifecycle, follow-ups, live updates, agent access, stop and reset ([#776](https://github.com/prismalens/prismalens/issues/776)) ([6929f0e](https://github.com/prismalens/prismalens/commit/6929f0e2bdb7787a1b932acd7962b8a1b9719a07))
+
+
+### Code Refactoring
+
+* remove the sandbox providers and every promise about them ([#682](https://github.com/prismalens/prismalens/issues/682)) ([e70f87e](https://github.com/prismalens/prismalens/commit/e70f87ec814f882b257ac1bdada841a604c21ebb))
+
 ## [0.5.0](https://github.com/prismalens/prismalens/compare/prismalens@0.5.0-rc.3...v0.5.0) (2026-09-19)
 
 
