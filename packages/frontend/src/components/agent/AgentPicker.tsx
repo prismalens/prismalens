@@ -222,8 +222,19 @@ export function AgentModelPicker({
 		const listed = agent.models.entries.map((m) =>
 			entry(agent, m.id, providerOf(agent.id, m.id)),
 		);
-		return [...starred, ...listed].filter(keep);
-	}, [harnesses, favourites, shown, agent, q]);
+		// A stored id the agent no longer lists stays choosable, and says so (#639).
+		const stored = models[agent.id as HarnessId];
+		const unknown =
+			stored && !agent.models.entries.some((m) => m.id === stored)
+				? [
+						{
+							...entry(agent, stored, providerOf(agent.id, stored)),
+							sub: "not in the agent's list",
+						},
+					]
+				: [];
+		return [...starred, ...unknown, ...listed].filter(keep);
+	}, [harnesses, favourites, shown, agent, q, models]);
 
 	const chosen = (h: HarnessStatus, id: string) =>
 		(setting === h.id || (setting === "auto" && effective?.id === h.id)) &&
@@ -384,6 +395,19 @@ export function AgentModelPicker({
 									{agent.label} uses its own model.
 								</p>
 							)}
+							{agent &&
+								modelState(agent) !== "list" &&
+								models[agent.id as HarnessId] && (
+									// A model stored for an agent that cannot take one blocks its runs (#639).
+									<ModelRow
+										active={false}
+										chosen={false}
+										name={`Clear ${models[agent.id as HarnessId]}`}
+										sub={`${agent.label} picks its own model`}
+										onPick={() => pick(agent, "")}
+										testId="model-clear"
+									/>
+								)}
 							{defaultRow && agent && (
 								<ModelRow
 									active={cursor === index++}
