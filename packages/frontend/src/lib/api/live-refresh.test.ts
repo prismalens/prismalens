@@ -17,6 +17,8 @@ describe("invalidateTopics (walk f27)", () => {
 		expect(keys).toEqual([
 			JSON.stringify(orpc.alerts.key()),
 			JSON.stringify(orpc.incidents.key()),
+			JSON.stringify(orpc.setup.key()),
+			JSON.stringify(orpc.webhooks.lastDelivery.key()),
 			JSON.stringify(orpc.investigations.key()),
 		]);
 	});

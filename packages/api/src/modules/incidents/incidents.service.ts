@@ -64,7 +64,7 @@ export type IncidentWithRelations = Incident & {
 		status: string;
 		actualCause: string | null;
 	} | null;
-	refiredAs?: { number: number; createdAt: Date } | null;
+	refiredAs?: { id: string; number: number; createdAt: Date } | null;
 };
 
 @Injectable()
@@ -303,15 +303,24 @@ export class IncidentsService {
 			}),
 			this.prisma.incident.findMany({
 				where: { priorIncidentId: { in: incidents.map((i) => i.id) } },
-				select: { priorIncidentId: true, number: true, createdAt: true },
+				select: {
+					id: true,
+					priorIncidentId: true,
+					number: true,
+					createdAt: true,
+				},
 				orderBy: { createdAt: "desc" },
 			}),
 		]);
 		const prior = new Map(priors.map((p) => [p.id, p]));
-		const refired = new Map<string, { number: number; createdAt: Date }>();
+		const refired = new Map<
+			string,
+			{ id: string; number: number; createdAt: Date }
+		>();
 		for (const r of refires) {
 			if (r.priorIncidentId && !refired.has(r.priorIncidentId))
 				refired.set(r.priorIncidentId, {
+					id: r.id,
 					number: r.number,
 					createdAt: r.createdAt,
 				});

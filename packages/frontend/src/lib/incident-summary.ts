@@ -103,7 +103,7 @@ export function incidentSummary(i: SummaryInput): {
 					: i.attention === "awaiting_close"
 						? {
 								kind: "close",
-								text: "Close it with the actual cause recorded.",
+								text: "Its alerts cleared. Resolve it, with the cause if you know it.",
 							}
 						: state === "done"
 							? { kind: "resolve", text: "Check the conclusion, then resolve." }

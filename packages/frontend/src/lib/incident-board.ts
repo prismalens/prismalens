@@ -2,15 +2,20 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	INCIDENT_ATTENTION_LABEL,
+	INCIDENT_STATUS_LABEL,
+	type IncidentStatus,
 	type IncidentWithRelations,
 	isIncidentOpen,
 	isWorkflowLive,
+	REFIRE_LABEL,
 	RUN_STATE_LABEL,
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
+import { failureWords } from "./failure-words";
 import { formatClock } from "./format-time";
-import { attentionFor } from "./incident-attention";
+import { attentionFor, attentionRank, isBackAgain } from "./incident-attention";
 import { STALE_AFTER_S } from "./investigation-events";
 
 export type BoardColumn = "needs_you" | "working" | "concluded" | "resolved";
@@ -29,17 +34,32 @@ export function latestRun(incident: IncidentWithRelations): LatestRun | null {
 }
 
 /**
- * Which board column an incident sits in, from the same predicates as the list
- * pane so a card and its row never disagree (#743 §3c). A live run puts it in
- * Working whatever its status; an open incident with no live run and nothing
- * asking for a human is Concluded, whatever its run did.
+ * Which board column an incident sits in (R1a d6): what wants a human first,
+ * even while its run is live, then a live run, then Resolved for the
+ * operator's end, else Concluded. The list, the sidebar and the board all
+ * read this one predicate.
  */
 export function boardColumn(incident: IncidentWithRelations): BoardColumn {
+	if (attentionFor(incident) !== null) return "needs_you";
 	const run = latestRun(incident);
 	if (run && isWorkflowLive(run.status)) return "working";
-	if (attentionFor(incident) !== null) return "needs_you";
 	if (!isIncidentOpen(incident.status)) return "resolved";
 	return "concluded";
+}
+
+/** Needs you in its order; Alerts cleared last, under "To wrap up". Stable otherwise. */
+export function orderNeedsYou(
+	incidents: IncidentWithRelations[],
+): IncidentWithRelations[] {
+	return incidents
+		.map((incident, i) => ({ incident, i, rank: attentionRank(incident) }))
+		.sort((a, b) => a.rank - b.rank || a.i - b.i)
+		.map((x) => x.incident);
+}
+
+/** Alerts cleared: the one Needs you kind that is paperwork, not fire. */
+export function isWrapUp(incident: IncidentWithRelations): boolean {
+	return attentionFor(incident) === "awaiting_close";
 }
 
 /** The run's own state for a list row or a board card (#743 §2). */
@@ -57,26 +77,92 @@ export function firstClause(text: string): string {
 	return cut > 0 ? line.slice(0, cut) : line;
 }
 
-/** `Working 4m`: the run word with minutes since the run started, while live. */
+/** `0:21`, `14:02`, `1:02:09`: a run's elapsed time on a card. */
+export function clockElapsed(seconds: number): string {
+	const s = Math.max(0, Math.floor(seconds));
+	const h = Math.floor(s / 3600);
+	const m = Math.floor((s % 3600) / 60);
+	const ss = String(s % 60).padStart(2, "0");
+	return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
+/** `1m`, `41m`, `3h`, `2d`: an incident's age on a card, no "ago". */
+export function shortAge(at: string | Date, now: number | null): string {
+	if (now === null) return "";
+	const s = Math.max(0, Math.round((now - new Date(at).getTime()) / 1000));
+	if (s < 60) return `${s}s`;
+	if (s < 3600) return `${Math.floor(s / 60)}m`;
+	if (s < 86_400) return `${Math.floor(s / 3600)}h`;
+	return `${Math.floor(s / 86_400)}d`;
+}
+
+export interface RunWord {
+	state: RunState;
+	/** What the agent is doing now, or the run word while it has said nothing. */
+	step: string;
+	/** Seconds since the run started; frozen at the last event while disconnected. */
+	elapsed: number;
+	/** Minutes since the last event, once past STALE_AFTER_S; null while it talks. */
+	quietFor: number | null;
+	/** `Working 14m, quiet for 5`: the whole line in the warning colour when quiet. */
+	text: string;
+}
+
+/**
+ * The live run's line on a card (study-v3 §3.1, §4): the step and its ticking
+ * elapsed time; once the run goes quiet, "Working 14m, quiet for 5".
+ */
 export function runWord(
 	incident: IncidentWithRelations,
 	now: number | null,
-): { state: RunState; text: string; stale: boolean } | null {
+): RunWord | null {
 	const run = latestRun(incident);
 	if (!run || !isWorkflowLive(run.status)) return null;
 	const state = listRunState(run);
-	const minutes =
-		now === null
-			? 0
-			: Math.max(
-					0,
-					Math.floor((now - new Date(run.createdAt).getTime()) / 60_000),
-				);
-	const stale =
-		now !== null &&
-		!!run.lastEventAt &&
-		now - new Date(run.lastEventAt).getTime() > STALE_AFTER_S * 1000;
-	return { state, text: `${RUN_STATE_LABEL[state]} ${minutes}m`, stale };
+	const at = now ?? new Date(run.createdAt).getTime();
+	const elapsed = (at - new Date(run.createdAt).getTime()) / 1000;
+	const quiet =
+		now !== null && run.lastEventAt
+			? (now - new Date(run.lastEventAt).getTime()) / 1000
+			: 0;
+	const quietFor = quiet > STALE_AFTER_S ? Math.floor(quiet / 60) : null;
+	const word = RUN_STATE_LABEL[state];
+	const step =
+		state === "working" && run.latestText ? firstClause(run.latestText) : word;
+	const minutes = Math.max(0, Math.floor(elapsed / 60));
+	return {
+		state,
+		step,
+		elapsed,
+		quietFor,
+		text:
+			quietFor !== null
+				? `${word} ${minutes}m, quiet for ${quietFor}`
+				: `${step} ${clockElapsed(elapsed)}`,
+	};
+}
+
+/** The card's state word (study-v3 §4): what is left to do, never the stored status. */
+export function cardWord(
+	incident: IncidentWithRelations,
+): { text: string; attention: boolean } | null {
+	const why = attentionFor(incident);
+	if (why === "unacknowledged" && isBackAgain(incident))
+		return { text: "Back again", attention: true };
+	if (why)
+		return {
+			text: INCIDENT_ATTENTION_LABEL[why],
+			attention: why !== "awaiting_close",
+		};
+	const column = boardColumn(incident);
+	if (column === "concluded")
+		return {
+			text:
+				INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+				incident.status,
+			attention: false,
+		};
+	return null;
 }
 
 export interface Headline {
@@ -86,12 +172,10 @@ export interface Headline {
 }
 
 const SAYS_NOTHING_NEW = new Set([
-	"No investigation yet",
 	"Starting…",
 	"Working…",
 	"Stopping…",
-	"Investigation failed",
-	"Done, no cause named",
+	"Run failed",
 ]);
 
 /** Whether a headline tells more than the state word beside it (#743). */
@@ -100,22 +184,21 @@ export function headlineAddsInfo(h: Headline): boolean {
 }
 
 /**
- * The agent's one-line headline for a row or card (#743 §3c). Only what the
- * list payload carries: the latest run's status, its root cause and times.
+ * The agent's one-line headline for a row or card (#743 §3c, R1a d6). Only
+ * what the list payload carries: the latest run, the recorded cause.
  */
 export function incidentHeadline(incident: IncidentWithRelations): Headline {
 	const run = latestRun(incident);
-	// A run started after the incident was resolved speaks for it again.
-	const runAfterResolve =
+	// A run started after Resolve speaks for the incident again.
+	const endedAt = incident.closedAt ?? incident.resolvedAt;
+	const runAfterEnd =
 		!!run &&
-		!!incident.resolvedAt &&
-		new Date(run.createdAt).getTime() > new Date(incident.resolvedAt).getTime();
-	if (
-		!isIncidentOpen(incident.status) &&
-		incident.actualCause &&
-		!runAfterResolve
-	) {
-		return { lead: "Cause:", text: incident.actualCause };
+		!!endedAt &&
+		new Date(run.createdAt).getTime() > new Date(endedAt).getTime();
+	if (incident.status === "closed" && !runAfterEnd) {
+		return incident.actualCause
+			? { lead: "Cause:", text: incident.actualCause }
+			: { text: "No cause recorded" };
 	}
 	if (!run) return { text: "No investigation yet" };
 	switch (run.status) {
@@ -134,35 +217,58 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 					: "Stopped by you",
 			};
 		case "failed":
+			// A known failure in plain words, else the harness's own first line.
 			return {
-				text: run.error
-					? `Investigation failed: ${firstClause(run.error)}`
-					: "Investigation failed",
+				text: run.error ? failureWords(run.error).what : "Run failed",
 			};
 		case "completed":
 			return run.rootCause
-				? {
-						lead: "Likely:",
-						text: run.evidenceCount
-							? `${run.rootCause}, ${run.evidenceCount} evidence`
-							: run.rootCause,
-					}
+				? { lead: "Likely:", text: run.rootCause }
 				: { text: "Done, no cause named" };
 		default:
 			return { text: run.status };
 	}
 }
 
+/**
+ * Where this incident sits relative to its refires (R1a d5, d6): the incident
+ * it fired again after, or the one that fired again after it.
+ */
+export function incidentLineage(
+	incident: IncidentWithRelations,
+): Headline | null {
+	const after = incident.refiredAs;
+	if (after && !isIncidentOpen(incident.status))
+		return {
+			lead: `${REFIRE_LABEL} as`,
+			text: `INC-${after.number}, ${formatClock(after.createdAt)}`,
+		};
+	const prior = incident.priorIncident;
+	if (prior && isIncidentOpen(incident.status)) {
+		const ended =
+			prior.status === "closed"
+				? `after INC-${prior.number} was resolved`
+				: `after INC-${prior.number}'s alerts cleared`;
+		return {
+			lead: `${REFIRE_LABEL}:`,
+			text: prior.actualCause ? `${ended}, cause: ${prior.actualCause}` : ended,
+		};
+	}
+	return null;
+}
+
 export type RowGlyph = "live" | "attention" | "open" | "ended";
 
-/**
- * The sidebar row's one glyph (#743): a live run, something that wants a
- * human, an open incident with nothing live, or one that is resolved or closed.
- */
+/** The sidebar row's bar, from the board's column so the two never disagree (R1a d6). */
 export function rowGlyph(incident: IncidentWithRelations): RowGlyph {
-	const run = latestRun(incident);
-	if (run && isWorkflowLive(run.status)) return "live";
-	const why = attentionFor(incident);
-	if (why === "unacknowledged" || why === "failed_run") return "attention";
-	return isIncidentOpen(incident.status) ? "open" : "ended";
+	switch (boardColumn(incident)) {
+		case "needs_you":
+			return "attention";
+		case "working":
+			return "live";
+		case "resolved":
+			return "ended";
+		default:
+			return "open";
+	}
 }

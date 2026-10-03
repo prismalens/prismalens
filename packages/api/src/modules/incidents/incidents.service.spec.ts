@@ -395,7 +395,7 @@ describe("IncidentsService", () => {
 					{ id: "inc-1", number: 1, status: "closed", actualCause: "pool capped at 10" },
 				])
 				.mockResolvedValueOnce([
-					{ priorIncidentId: "inc-1", number: 11, createdAt },
+					{ id: "inc-11", priorIncidentId: "inc-1", number: 11, createdAt },
 				]);
 			mockPrisma.incident.count.mockResolvedValue(2);
 
@@ -408,7 +408,7 @@ describe("IncidentsService", () => {
 			});
 			expect(data[0].refiredAs).toBeNull();
 			expect(data[1].priorIncident).toBeNull();
-			expect(data[1].refiredAs).toEqual({ number: 11, createdAt });
+			expect(data[1].refiredAs).toEqual({ id: "inc-11", number: 11, createdAt });
 		});
 	});
 

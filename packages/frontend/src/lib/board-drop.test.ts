@@ -18,12 +18,19 @@ const drop = (
 	});
 
 describe("dropAction", () => {
-	it("investigates whatever lands in Working", () => {
+	it("starts a run on whatever open card lands in Working, with no form", () => {
 		expect(drop("needs_you", "working")).toEqual({ kind: "investigate" });
 		expect(drop("concluded", "working")).toEqual({ kind: "investigate" });
-		expect(drop("resolved", "working", { canResolve: false })).toEqual({
-			kind: "investigate",
-		});
+	});
+
+	it("asks to reopen a Resolved card dropped on Working (R1a d4)", () => {
+		expect(
+			drop("resolved", "working", { canResolve: false, canReopen: true }),
+		).toEqual({ kind: "reopen-investigate" });
+	});
+
+	it("refuses a second run while one is live", () => {
+		expect(drop("needs_you", "working", { live: true }).kind).toBe("none");
 	});
 
 	it("stops a run dropped from Working on Concluded", () => {
@@ -32,7 +39,7 @@ describe("dropAction", () => {
 		});
 	});
 
-	it("resolves, stopping a live run first", () => {
+	it("resolves in one step from any open column, stopping a live run first", () => {
 		expect(drop("needs_you", "resolved")).toEqual({
 			kind: "resolve",
 			stopFirst: false,
@@ -47,38 +54,19 @@ describe("dropAction", () => {
 		});
 	});
 
-	it("refuses Needs you, leaving Resolved sideways, and a drop in place", () => {
-		expect(drop("concluded", "needs_you").kind).toBe("none");
-		expect(drop("working", "needs_you").kind).toBe("none");
-		expect(drop("resolved", "needs_you").kind).toBe("none");
-		expect(drop("resolved", "concluded").kind).toBe("none");
-		expect(drop("resolved", "needs_you", { canReopen: true }).kind).toBe(
-			"none",
-		);
-		expect(drop("needs_you", "concluded").kind).toBe("none");
-		expect(drop("working", "working")).toEqual({ kind: "none" });
-		expect(drop("needs_you", "resolved", { canResolve: false }).kind).toBe(
-			"none",
-		);
-	});
-
-	it("reopens a resolved or a closed incident dropped on Concluded (walk u18)", () => {
-		expect(drop("needs_you", "concluded", { canReopen: true })).toEqual({
-			kind: "reopen",
-		});
-		expect(drop("resolved", "concluded", { canReopen: true })).toEqual({
-			kind: "reopen",
-		});
-	});
-
-	it("gives a one-line reason for every refused move", () => {
-		for (const [from, to] of [
-			["concluded", "needs_you"],
-			["resolved", "concluded"],
-			["needs_you", "concluded"],
+	it("refuses Needs you, a Resolved card sideways, and a drop in place, each with a reason", () => {
+		for (const [from, to, opts] of [
+			["concluded", "needs_you", {}],
+			["working", "needs_you", {}],
+			["resolved", "needs_you", { canReopen: true }],
+			["resolved", "concluded", { canReopen: true }],
+			["needs_you", "concluded", {}],
+			["needs_you", "resolved", { canResolve: false }],
 		] as const) {
-			const action = drop(from, to);
-			expect(action.kind === "none" && action.reason).toBeTruthy();
+			const action = drop(from, to, opts);
+			expect(action.kind, `${from} -> ${to}`).toBe("none");
+			expect(action.kind === "none" && action.reason, `${from} -> ${to}`).toBeTruthy();
 		}
+		expect(drop("working", "working")).toEqual({ kind: "none" });
 	});
 });

@@ -155,7 +155,11 @@ export const IncidentWithRelationsSchema = IncidentSchema.extend({
 		.optional(),
 	/** The newest incident that names this one as its prior. */
 	refiredAs: z
-		.object({ number: z.number().int(), createdAt: DateStringSchema })
+		.object({
+			id: z.string().uuid(),
+			number: z.number().int(),
+			createdAt: DateStringSchema,
+		})
 		.nullable()
 		.optional(),
 });
