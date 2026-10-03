@@ -132,6 +132,9 @@ describe("readOnlyPolicy", () => {
 			`curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=up{path=~"/v1/.*"}'`,
 			'echo "a > b"',
 			`curl -s http://x/api/v1/rules | jq '.data.groups[] | select(.name=="a")'`,
+			"git log -1 2>&1",
+			"ls src &>/dev/null",
+			'echo "$(git rev-parse HEAD) > done"',
 		]) {
 			expect(policy(req({ kind: "execute", rawInput: { command } })), command).toEqual({ allow: true, optionId: "once" });
 		}
@@ -145,6 +148,14 @@ describe("readOnlyPolicy", () => {
 			["sh -c 'rm -rf x'", "shell command would mutate"],
 			["sh -c 'ls'", "shell command would mutate"],
 			['eval "$x"', "shell command would mutate"],
+			["echo hi>out.txt", "shell command would mutate"],
+			["echo hi 2>out.txt", "shell command would mutate"],
+			["echo hi 2>/dev/null>out.txt", "shell command would mutate"],
+			['to"uch" out.txt', "shell command would mutate"],
+			["'rm' -rf src", "shell command would mutate"],
+			["r\\m -rf src", "shell command would mutate"],
+			['echo "$(printf ok > out.txt)"', "shell command would mutate"],
+			['echo "`printf ok > out.txt`"', "shell command would mutate"],
 		] as const) {
 			const d = policy(req({ kind: "execute", rawInput: { command } }));
 			expect(d.allow, command).toBe(false);

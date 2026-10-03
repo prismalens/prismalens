@@ -46,12 +46,28 @@ const NAMED_KINDS = new Set(["read", "search", "think", "execute"]);
 /**
  * Shell commands that change the tree, the repo, or the machine. A regex is a
  * guardrail, not a boundary; it exists so an honest agent gets a clean refusal
- * instead of a failed write. It runs on the marked text, so a quoted `>` is
- * data; `sh -c` and `eval` are refused outright because their argument is a
- * second shell this rule cannot read (walk f23).
+ * instead of a failed write. It runs on `shellText`, so a quoted `>` is data
+ * and any other `>` is a write wherever it sits (`echo hi>out`); `sh -c` and
+ * `eval` are refused outright because their argument is a second shell this
+ * rule cannot read (walk f23).
  */
 const MUTATING_SHELL =
-	/(^|[\s;&|(])(>|>>|\b(?:ba|z|da|k)?sh\s+-[A-Za-z]*c\b|\beval\b|\btee\b|\btouch\b|\brm\b|\bmv\b|\bcp\b|\bmkdir\b|\bchmod\b|\bchown\b|\bln\b|\bsed\s+-i|\bperl\s+-i|\bgit\s+(commit|push|pull|fetch|checkout|switch|reset|clean|rebase|merge|stash|apply|am|cherry-pick|tag\s+\S|branch(?!\s*(?:$|-(?:a|r|v+|l|-list|-all|-remotes|-show-current|-contains|-merged|-no-merged|-points-at)\b)))|\bnpm\s+(install|i|ci|uninstall|publish)|\bpnpm\s+(install|i|add|remove|publish)|\byarn\b|\bpip\s+install|\bapt(-get)?\b|\bbrew\b|\bdocker\b|\bkubectl\s+(apply|delete|scale|rollout|edit|patch|create|exec|cp)|\bhelm\s+(install|upgrade|uninstall|rollback)|\bterraform\s+(apply|destroy)|\bsystemctl\b|\bkill(all)?\b|\bcurl\b[^|]*\s(-X|--request)\s*(POST|PUT|PATCH|DELETE)|\bwget\b)/i;
+	/>|(^|[\s;&|(])(\b(?:ba|z|da|k)?sh\s+-[A-Za-z]*c\b|\beval\b|\btee\b|\btouch\b|\brm\b|\bmv\b|\bcp\b|\bmkdir\b|\bchmod\b|\bchown\b|\bln\b|\bsed\s+-i|\bperl\s+-i|\bgit\s+(commit|push|pull|fetch|checkout|switch|reset|clean|rebase|merge|stash|apply|am|cherry-pick|tag\s+\S|branch(?!\s*(?:$|-(?:a|r|v+|l|-list|-all|-remotes|-show-current|-contains|-merged|-no-merged|-points-at)\b)))|\bnpm\s+(install|i|ci|uninstall|publish)|\bpnpm\s+(install|i|add|remove|publish)|\byarn\b|\bpip\s+install|\bapt(-get)?\b|\bbrew\b|\bdocker\b|\bkubectl\s+(apply|delete|scale|rollout|edit|patch|create|exec|cp)|\bhelm\s+(install|upgrade|uninstall|rollback)|\bterraform\s+(apply|destroy)|\bsystemctl\b|\bkill(all)?\b|\bcurl\b[^|]*\s(-X|--request)\s*(POST|PUT|PATCH|DELETE)|\bwget\b)/i;
+
+/** Redirections that write nothing: to `/dev/null`, or a descriptor duplicated or closed. */
+const HARMLESS_REDIRECT = /(?:\d*|&)>>?\s*\/dev\/null\b|\d*>&(?:\d+|-)/g;
+
+/**
+ * The command as the mutation rule reads it: quoted metacharacters marked,
+ * harmless redirections dropped, and quote joins and backslashes removed so
+ * `to"uch"` and `r\m` read as the command the shell runs (#776 review).
+ */
+function shellText(command: string): string {
+	return markLiterals(command)
+		.replace(HARMLESS_REDIRECT, " ")
+		.replace(/\\(.)/gs, "$1")
+		.replaceAll(GLUE, "");
+}
 
 function commandOf(req: PermissionRequest): string {
 	const tc = req.toolCall ?? {};
@@ -221,8 +237,6 @@ const EXPANDING = "*?[{=<>()'\"`;&|";
 const LITERAL =
 	"\uE000\uE001\uE002\uE003\uE004\uE005\uE006\uE007\uE008\uE009\uE00A\uE00B\uE00C\uE00D";
 const GLUE = "\uE00E";
-/** Inside double quotes `$(…)` and backticks still run, so those stay separators there. */
-const DOUBLE_QUOTE_KEEPS = "()`";
 /** Past this many candidate paths the word is refused rather than judged. */
 const EXPANSION_LIMIT = 10_000;
 
@@ -231,6 +245,8 @@ const EXPANSION_LIMIT = 10_000;
  * for its stand-in; same length. Quoting follows the shell: nothing escapes
  * inside single quotes, and elsewhere a backslash makes the next character
  * literal, a quote included, so `\'` never opens a quoted region (#685 review).
+ * A `$(…)` or backtick inside double quotes still runs, so its body is read
+ * as unquoted shell again (#776 review).
  */
 function markLiterals(text: string): string {
 	const mark = (ch: string) => {
@@ -238,26 +254,42 @@ function markLiterals(text: string): string {
 		return k >= 0 ? LITERAL[k] : ch;
 	};
 	let out = "";
-	let quote: "'" | '"' | null = null;
+	const stack: ("'" | '"' | "(" | "`")[] = [];
 	for (let i = 0; i < text.length; i++) {
 		const c = text[i];
-		if (quote === "'") {
+		const top = stack.at(-1);
+		if (top === "'") {
 			if (c === "'") {
-				quote = null;
+				stack.pop();
 				out += GLUE;
 			} else out += mark(c);
 		} else if (c === "\\" && i + 1 < text.length) {
 			out += c + mark(text[i + 1]);
 			i++;
-		} else if (quote === '"') {
+		} else if (top === '"') {
 			if (c === '"') {
-				quote = null;
+				stack.pop();
 				out += GLUE;
-			} else out += DOUBLE_QUOTE_KEEPS.includes(c) ? c : mark(c);
+			} else if (c === "$" && text[i + 1] === "(") {
+				stack.push("(");
+				out += "$(";
+				i++;
+			} else if (c === "`") {
+				stack.push("`");
+				out += c;
+			} else out += mark(c);
 		} else if (c === "'" || c === '"') {
-			quote = c;
+			stack.push(c);
 			out += GLUE;
-		} else out += c;
+		} else {
+			if (c === "(") stack.push("(");
+			else if (c === ")" && top === "(") stack.pop();
+			else if (c === "`") {
+				if (top === "`") stack.pop();
+				else stack.push("`");
+			}
+			out += c;
+		}
 	}
 	return out;
 }
@@ -518,9 +550,9 @@ function decide(
 	if (MUTATING_KINDS.has(kind)) why = `tool kind "${kind}" is a write`;
 	else if (NETWORK_KINDS.has(kind))
 		why = `tool kind "${kind}" reaches the network`;
-	else if (kind === "execute" && MUTATING_SHELL.test(markLiterals(command)))
+	else if (kind === "execute" && MUTATING_SHELL.test(shellText(command)))
 		why = "shell command would mutate";
-	else if (!kind && MUTATING_SHELL.test(markLiterals(command)))
+	else if (!kind && MUTATING_SHELL.test(shellText(command)))
 		why = "command would mutate";
 	else {
 		const outside = outsideSnapshot(req, cwd);
