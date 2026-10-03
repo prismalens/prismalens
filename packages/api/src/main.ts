@@ -3,7 +3,7 @@
 
 import * as fs from "node:fs";
 import { ValidationPipe } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config/dist/index.js";
+import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import {
 	buildPairingUrl,
