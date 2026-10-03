@@ -25,6 +25,10 @@ export {
 	RecommendationCard,
 	type RecommendationCardProps,
 } from "./RecommendationCard";
+export {
+	RecommendationsList,
+	type RecommendationsListProps,
+} from "./RecommendationsList";
 export { ReopenDialog } from "./ReopenDialog";
 export { ResolveDialog } from "./ResolveDialog";
 export { TimelineTab, type TimelineTabProps } from "./TimelineTab";

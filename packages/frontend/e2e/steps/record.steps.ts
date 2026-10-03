@@ -14,6 +14,7 @@ import { Given, Then, When } from "./fixtures";
 import {
 	cardOf,
 	detail,
+	ensureService,
 	fireIncident,
 	incidentByTitle,
 	LIVE,
@@ -68,16 +69,22 @@ async function reportFrom(
 	},
 	done: (status: string) => boolean,
 ) {
-	const made = await fireIncident(
-		page,
-		world.alertmanager,
-		world.deliverWebhook,
-		{
-			name: world.unique(o.name),
-			service: LIVE,
-			session: o.session,
-		},
-	);
+	// fireIncident picks among product.ts's sessions; these reports have their own.
+	await ensureService(page, { ...LIVE, trigger: "always" });
+	const labels = {
+		alertname: world.unique(o.name),
+		severity: "critical",
+		service: LIVE.name,
+	};
+	const listed = world.alertmanager.fire({
+		labels,
+		annotations: { summary: `fake-session:${o.session}` },
+	});
+	await world.deliverWebhook([listed.fingerprint]);
+	const made = {
+		...(await incidentByTitle(page, labels.alertname)),
+		labels,
+	};
 	await waitForRun(
 		page,
 		made.id,
@@ -192,6 +199,9 @@ Given(
 			},
 		);
 		expect(res.ok(), await res.text()).toBe(true);
+		const { investigationId } = (await res.json()) as {
+			investigationId: string;
+		};
 		await waitForRun(
 			page,
 			made.id,
@@ -199,7 +209,10 @@ Given(
 			"the live run",
 		);
 		await installApiSwitch(page);
-		await page.goto(`/incidents/${made.id}/conversation`);
+		// Pinned: a run the service started on intake must not be the one the strip follows.
+		await page.goto(
+			`/incidents/${made.id}/conversation?investigation=${investigationId}`,
+		);
 		await expect(page.getByTestId("run-strip-mark")).toBeVisible({
 			timeout: 20_000,
 		});
@@ -375,6 +388,7 @@ Then(
 	async ({ page }, text: string) => {
 		await expect(page.getByTestId("incident-summary")).toContainText(
 			/An investigation is working now: [^.]+\./,
+			{ timeout: 15_000 },
 		);
 		await expect(page.getByTestId("overview-report")).toContainText(text);
 	},

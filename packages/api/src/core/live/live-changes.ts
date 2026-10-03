@@ -13,7 +13,7 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	AlertSourceAlert: "alerts",
 	Investigation: "investigations",
 	// A ticked Do now step is shared across browsers (study-v3 §3.2).
-	Recommendation: "investigations",
+	Recommendation: "incidents",
 };
 
 const WRITE_OPERATIONS = new Set([

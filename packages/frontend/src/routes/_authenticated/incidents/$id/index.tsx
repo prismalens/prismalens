@@ -78,12 +78,18 @@ function Summary() {
 		run.state === "working" ||
 		run.state === "stopping";
 	const step =
-		live && now !== null ? (runStepText(run.events, now)?.text ?? null) : null;
+		live && now !== null
+			? (runStepText(run.events, now)?.text ?? "starting")
+			: null;
+	// The selected run's own status is fresher than the incident's list of runs.
+	const fresh = run.investigation;
 	const { lines, next } = incidentSummary({
 		now: now ?? Date.now(),
 		alerts: incident.alerts ?? [],
 		services: incidentServices(incident).map((s) => s.name),
-		runs,
+		runs: runs.map((r) =>
+			fresh && r.id === fresh.id ? { ...r, status: fresh.status } : r,
+		),
 		noRepo,
 		attention: attentionFor(incident),
 		step,

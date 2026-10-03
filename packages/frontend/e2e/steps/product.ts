@@ -142,8 +142,7 @@ export async function fireIncident(
 		name: string;
 		service: { name: string; displayName: string };
 		severity?: string;
-		/** A session under scripts/fakes/sessions, by file name. */
-		session?: string;
+		session?: "live" | "success" | "failure";
 		quiet?: boolean;
 	},
 ): Promise<Made> {
