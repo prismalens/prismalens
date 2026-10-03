@@ -60,11 +60,14 @@ const NAMED_KINDS = new Set(["read", "search", "think", "execute"]);
  * so a quoted `>` is data (walk f23).
  */
 const FILE_WRITES =
-	/(^|[\s;&|(])(\btee\b|\btouch\b|\brm\b|\brmdir\b|\bmv\b|\bcp\b|\bmkdir\b|\bchmod\b|\bchown\b|\bln\b|\btruncate\b|\bdd\b|\bshred\b|\bpatch\b|\bc?split\b|\bzip\b|\bsed\s+-i|\bperl\s+-i|\bgit\s+(commit|push|pull|fetch|checkout|switch|reset|clean|rebase|merge|stash|apply|am|cherry-pick|tag\s+\S|branch(?!\s*(?:$|-(?:a|r|v+|l|-list|-all|-remotes|-show-current|-contains|-merged|-no-merged|-points-at)\b))))/i;
+	/(^|[\s;&|(])((tee|touch|rm|rmdir|mv|cp|mkdir|chmod|chown|ln|truncate|dd|shred|patch|c?split|zip)(?![\w./-])|\bsed\s+-i|\bperl\s+-i|\bgit\s+(commit|push|pull|fetch|checkout|switch|reset|clean|rebase|merge|stash|apply|am|cherry-pick|tag\s+\S|branch(?!\s*(?:$|-(?:a|r|v+|l|-list|-all|-remotes|-show-current|-contains|-merged|-no-merged|-points-at)\b))))/i;
 
-/** Installers and machine changes, refused below Full access wherever the words appear; a net under the parsed rules. */
+/**
+ * Installers and machine changes, refused below Full access wherever the words appear; a net under the parsed rules.
+ * A name ends where a filename could not go on (`yarn.lock` is not yarn), and `yarn test` is left to the test-runner rule.
+ */
 const MACHINE_WRITES =
-	/(^|[\s;&|(])(\bnpm\s+(install|i|ci|uninstall|publish)\b|\bpnpm\s+(install|i|add|remove|publish)\b|\byarn\b|\bpip3?\s+install\b|\bapt(-get)?\b|\bbrew\b|\bkubectl\s+(apply|delete|scale|rollout|edit|patch|create|exec|cp)\b|\bhelm\s+(install|upgrade|uninstall|rollback)\b|\bterraform\s+(apply|destroy)\b|\bsystemctl\b|\bp?kill(all)?\b)/i;
+	/(^|[\s;&|(])(npm\s+(install|i|ci|uninstall|publish)|pnpm\s+(install|i|add|remove|publish)|yarn(?![\w./-])(?!\s+(test|run\s+test)(?![\w./-]))|pip3?\s+install|apt(-get)?|brew|kubectl\s+(apply|delete|scale|rollout|edit|patch|create|exec|cp)|helm\s+(install|upgrade|uninstall|rollback)|terraform\s+(apply|destroy)|systemctl|p?kill(all)?)(?![\w./-])/i;
 
 function commandOf(req: PermissionRequest): string {
 	const tc = req.toolCall ?? {};
@@ -915,7 +918,6 @@ const positionals = (args: Word[]): Word[] => args.filter((a) => !isFlag(a));
 interface Ctx {
 	level: PermissionMode;
 	origins: Set<string>;
-	hosts: Set<string>;
 	/** Paths the command names inside an argument (`-d @file`), judged by the path rule. */
 	extraPaths: string[];
 }
@@ -1892,7 +1894,13 @@ function readCurl(args: Word[]): Request {
 	const long = (opt: string, value: Word | undefined) => {
 		const v = value?.text ?? "";
 		if (opt === "get") r.get = true;
-		else if (CURL_DATA.test(opt) || CURL_ALWAYS_BODY.test(opt)) {
+		// These read a file named after `@` and send or print it (#778).
+		else if ((opt === "header" || opt === "write-out") && v.startsWith("@"))
+			r.dataPaths.push(v.slice(1));
+		else if (opt === "url-query") {
+			const at = v.indexOf("@");
+			if (at >= 0) r.dataPaths.push(v.slice(at + 1));
+		} else if (CURL_DATA.test(opt) || CURL_ALWAYS_BODY.test(opt)) {
 			r.body = true;
 			if (CURL_ALWAYS_BODY.test(opt)) r.method = r.method ?? "POST";
 			const at = v.indexOf("@");
@@ -1904,6 +1912,8 @@ function readCurl(args: Word[]): Request {
 		else if (CURL_OUTPUT.test(opt) && !NOT_A_FILE.has(v)) r.output = true;
 	};
 	const LONG_OF: Record<string, string> = {
+		H: "header",
+		w: "write-out",
 		d: "data",
 		F: "form",
 		T: "upload-file",
@@ -2031,10 +2041,7 @@ function readWget(args: Word[]): Request {
 /** The origin a URL word reaches, or why it cannot be read: curl and wget take a bare host as http. */
 function urlOrigin(
 	w: Word,
-):
-	| { origin: string; host: string; schemeless: boolean }
-	| { unreadable: string }
-	| { scheme: string } {
+): { origin: string } | { unreadable: string } | { scheme: string } {
 	const text = w.text;
 	// `file:/etc/x` needs no slashes; a colon before a digit is a port.
 	const named = /^([A-Za-z][A-Za-z0-9+.-]*):(?!\d)/.exec(text);
@@ -2051,7 +2058,7 @@ function urlOrigin(
 		return { unreadable: text };
 	try {
 		const url = new URL(full);
-		return { origin: url.origin, host: url.host, schemeless: !scheme };
+		return { origin: url.origin };
 	} catch {
 		return { unreadable: text };
 	}
@@ -2066,10 +2073,8 @@ function judgeUrl(w: Word, ctx: Ctx): string | null {
 		return /^https?:\/\//i.test(w.text) ? null : WHY.routing;
 	}
 	if (ctx.level !== "read-only") return null;
-	const allowed = u.schemeless
-		? ctx.hosts.has(u.host)
-		: ctx.origins.has(u.origin);
-	return allowed ? null : WHY.host(u.origin);
+	// A bare host is http to curl and wget, so it matches only an http brief origin (#778).
+	return ctx.origins.has(u.origin) ? null : WHY.host(u.origin);
 }
 
 function judgeHttpClient(cmd: Simple, ctx: Ctx): string | null {
@@ -2285,7 +2290,7 @@ export interface ReadOnlyPolicyOptions {
 	cwd?: string;
 	/** The run's access level (r4 R4.1); Read-only when absent. */
 	level?: PermissionMode;
-	/** The brief's telemetry origins and hosts (`telemetryOrigins`); the only addresses Read-only reaches. */
+	/** The brief's telemetry origins (`telemetryOrigins`); a bare `host[:port]` means http. The only addresses Read-only reaches. */
 	allowedOrigins?: readonly string[];
 }
 
@@ -2293,19 +2298,18 @@ export function readOnlyPolicyFor(
 	options: ReadOnlyPolicyOptions = {},
 ): PermissionPolicy {
 	const origins = new Set<string>();
-	const hosts = new Set<string>();
 	for (const entry of options.allowedOrigins ?? []) {
 		try {
-			const url = new URL(entry);
+			const url = new URL(
+				/^https?:\/\//i.test(entry) ? entry : `http://${entry}`,
+			);
 			origins.add(url.origin);
-			hosts.add(url.host);
 		} catch {
-			hosts.add(entry.toLowerCase());
+			// not an address
 		}
 	}
 	const level = options.level ?? "read-only";
-	return (req) =>
-		decide(req, options.cwd, { level, origins, hosts, extraPaths: [] });
+	return (req) => decide(req, options.cwd, { level, origins, extraPaths: [] });
 }
 
 export const readOnlyPolicy: PermissionPolicy = readOnlyPolicyFor();

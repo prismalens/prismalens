@@ -58,8 +58,8 @@ export function telemetryEndpointsFrom(
 
 /**
  * Where a Read-only run may reach (r4 R4.1): the origin of every telemetry
- * address in the brief, and its host (`name[:port]`) so a URL written without
- * a scheme is matched too. An address that does not parse adds nothing.
+ * address in the brief. A URL written without a scheme is http, so it matches
+ * only an http origin (#778). An address that does not parse adds nothing.
  */
 export function telemetryOrigins(
 	context: Pick<InvestigationContext, "telemetry" | "logs">,
@@ -77,7 +77,6 @@ export function telemetryOrigins(
 			const url = new URL(raw);
 			if (url.protocol !== "http:" && url.protocol !== "https:") continue;
 			out.add(url.origin);
-			out.add(url.host);
 		} catch {
 			// not an address the brief can name
 		}
