@@ -4,6 +4,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the settings frame", () => {
+	// Agent default saves the rail's agent as the choice; later scenarios expect Auto.
+	test.afterEach(async ({ page }) => {
+		await page.request.patch("/api/settings/harness", {
+			data: { harness: "auto", models: { opencode: null } },
+		});
+	});
+
 	test("Settings swaps the sidebar for its sections, the agent picker sets a model, Services is its own door", async ({
 		page,
 	}) => {
