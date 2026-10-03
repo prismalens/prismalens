@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ALERT_STATUS_LABEL,
 	ALERT_STATUS_PHASE,
 	type AlertStatus,
 	type AlertWithRelations,
@@ -14,7 +13,6 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Fragment, useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
-import { StateWord } from "@/components/shared/StateChip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
@@ -24,7 +22,6 @@ import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertLanes } from "@/lib/service-lanes";
-import { alertStatusTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 import type { AlertsSearch } from "@/routes/_authenticated/alerts/route";
 
@@ -218,10 +215,6 @@ export function AlertListPane({
 					</span>
 					{!sidebar && (
 						<span className="mt-0.5 flex min-w-0 items-center gap-2.5 text-meta">
-							<StateWord tone={alertStatusTone(alert.status)}>
-								{ALERT_STATUS_LABEL[alert.status as AlertStatus] ??
-									alert.status}
-							</StateWord>
 							{alert.incident && (
 								<Mono className="shrink-0 text-text-3">
 									INC-{alert.incident.number}

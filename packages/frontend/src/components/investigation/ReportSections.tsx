@@ -145,7 +145,7 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 					</p>
 					<div className="mt-2 flex flex-wrap items-center gap-2">
 						{investigation.rootCauseCategory && (
-							<StateChip tone="primary">
+							<StateChip tone="neutral">
 								{ROOT_CAUSE_CATEGORY_LABEL[investigation.rootCauseCategory]}
 							</StateChip>
 						)}
