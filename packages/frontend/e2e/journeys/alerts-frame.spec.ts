@@ -37,14 +37,17 @@ test.describe("#523 — the alerts frame", () => {
 		await expect(page.locator("#identity")).toBeVisible();
 	});
 
-	test("stats view shows numbers and live slots", async ({ page }) => {
+	test("stats view shows the numbers as one line", async ({ page }) => {
 		await page.goto("/alerts?view=stats");
 		await expect(page.getByTestId("alerts-frame")).toBeVisible({ timeout: 20_000 });
 
 		const overview = page.getByTestId("alerts-overview");
 		await expect(overview).toBeVisible({ timeout: 20_000 });
-		await expect(overview.getByTestId("live-slot").filter({ hasText: "Firing" })).toBeVisible();
-		await expect(overview.getByTestId("live-slot")).toHaveCount(3);
+		// One sentence, not three framed tiles (study-v3 §2: no number in a box).
+		await expect(overview.getByTestId("alerts-stat-firing")).toHaveText(
+			/^\d+ firing of \d+, \d+ acknowledged, \d+ cleared\.$/,
+		);
+		await expect(overview.getByTestId("live-slot")).toHaveCount(0);
 	});
 
 	test("an alert leaves Acknowledge to its incident; Resolve is in its menu", async ({

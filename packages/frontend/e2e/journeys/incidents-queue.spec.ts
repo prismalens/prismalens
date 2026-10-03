@@ -5,9 +5,9 @@ import { expect, type Page, test } from "@playwright/test";
 import { setTheme } from "./live-stream-fixtures";
 
 /**
- * #523 S2/final — the incidents queue: three live numbers reached through the
- * overview, the rows that need a human grouped above the rest in the fixed
- * left pane, and the same keyboard surface every list in the app shares.
+ * #523 S2/final — the incidents queue: the rows that need a human grouped
+ * above the rest in the fixed left pane, and the same keyboard surface every
+ * list in the app shares. Its numbers moved to Analytics (analytics.feature).
  *
  * "A failed run" needs an investigation the demo seed never wrote (its two
  * seeded investigations both completed). Rather than actually driving a run
@@ -40,7 +40,7 @@ function row(page: Page, title: string) {
 }
 
 test.describe("#523 S2/final — the incidents queue", () => {
-	test("stats, grouping and the keyboard surface", async ({ page }) => {
+	test("grouping and the keyboard surface", async ({ page }) => {
 		const stamp = Date.now();
 		const triggeredTitle = `Queue triggered ${stamp}`;
 		const failedRunTitle = `Queue failed run ${stamp}`;
@@ -113,17 +113,6 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await expect(paneHeading(page)).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 
-		// The three live numbers, reached through the overview.
-		const stats = page.getByTestId("queue-stats");
-		await expect(stats).toBeVisible();
-		const slots = stats.getByTestId("live-slot");
-		await expect(slots).toHaveCount(3);
-		for (let i = 0; i < 3; i++) {
-			await expect(slots.nth(i)).toHaveAttribute("data-state", "live", {
-				timeout: 15_000,
-			});
-		}
-
 		// The sidebar groups by service; these hand-made incidents have none, so
 		// they sit in No service. Closed ones wait below it in Settled, folded.
 		const groups = page.getByTestId("sidebar-group");
@@ -152,7 +141,7 @@ test.describe("#523 S2/final — the incidents queue", () => {
 			"Needs acknowledging",
 		);
 		await expect(failedRow.getByTestId("incident-attention")).toHaveText(
-			"Investigation failed",
+			"Run failed",
 		);
 		await expect(triggeredRow).toHaveAttribute("title", /INC-\d+/);
 
@@ -162,18 +151,6 @@ test.describe("#523 S2/final — the incidents queue", () => {
 			expect(box).not.toBeNull();
 			expect(box?.y ?? 0).toBeLessThan(closedY);
 		}
-
-		// The "Open" slot filters, and ended rows (resolved and closed)
-		// disappear. The router serialises a string search param as JSON, so
-		// `open=1` reaches the URL as `open=%221%22`, not a bare `1`.
-		await page.getByTestId("queue-stat-open").click();
-		await expect(page).toHaveURL(/[?&]open=/);
-		await expect(closedRow).toHaveCount(0);
-		await expect(resolvedRow).toHaveCount(0);
-		await expect(triggeredRow).toBeVisible();
-		await expect(failedRow).toBeVisible();
-		await page.getByTestId("queue-stat-open").click();
-		await expect(page).not.toHaveURL(/[?&]open=/);
 
 		// `?` opens the shortcut sheet.
 		await page.keyboard.press("?");
