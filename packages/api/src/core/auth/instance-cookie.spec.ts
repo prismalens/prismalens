@@ -42,9 +42,14 @@ function request(cookie?: string): { req: Request; setCookies: string[] } {
 	return { req, setCookies };
 }
 
-function whoami(operator: Operator | null) {
+function whoami(operator: Operator | null, reason?: "revoked") {
 	const resolver = {
 		resolve: vi.fn().mockResolvedValue(operator),
+		resolveWithReason: vi.fn().mockResolvedValue(
+			operator
+				? { operator }
+				: { operator: null, ...(reason ? { reason } : {}) },
+		),
 	} as unknown as OperatorResolver;
 	const controller = new OperatorController(resolver, identity);
 	return (req: Request) =>
@@ -82,6 +87,12 @@ describe("whoami renews the device cookie (#763)", () => {
 		const result = await whoami(null)(nobody.req);
 		expect(nobody.setCookies).toEqual([]);
 		expect(result).toEqual({ via: null, scopes: [] });
+	});
+
+	it("reports reason: revoked when resolver indicates revocation", async () => {
+		const revoked = request();
+		const result = await whoami(null, "revoked")(revoked.req);
+		expect(result).toEqual({ via: null, scopes: [], reason: "revoked" });
 	});
 });
 

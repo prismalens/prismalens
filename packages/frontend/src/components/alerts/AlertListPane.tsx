@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ALERT_STATUS_LABEL,
 	ALERT_STATUS_PHASE,
 	type AlertStatus,
 	type AlertWithRelations,
@@ -11,37 +10,33 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { BarChart3, CloudDownload, SlidersHorizontal } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
-import {
-	GroupBySelect,
-	LaneHeader,
-	useLaneFolded,
-} from "@/components/shared/ServiceLanes";
-import { StateWord } from "@/components/shared/StateChip";
-import { Button } from "@/components/ui/button";
+import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { alertLanes } from "@/lib/service-lanes";
-import { alertStatusTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
-import { AlertFilters } from "./AlertFilters";
+import type { AlertsSearch } from "@/routes/_authenticated/alerts/route";
 
 export interface AlertListPaneProps {
 	selectedId: string | null;
 	className?: string;
+	/** In the sidebar one line a row; as a page, the state, incident and age under it. */
+	variant?: "sidebar" | "page";
 }
 
 /** The list query from the frame's search. `unassigned` filters server-side (limit caps at 100). */
 export function useAlertWindow() {
-	const search = useSearch({ from: "/_authenticated/alerts" });
+	// The sidebar renders the list before the alerts route matches.
+	const search: AlertsSearch =
+		useSearch({ from: "/_authenticated/alerts", shouldThrow: false }) ?? {};
 	return {
 		search,
 		listInput: {
@@ -71,37 +66,11 @@ export function orderAlerts(alerts: AlertWithRelations[]) {
 	);
 }
 
-/**
- * The intake queue as a pane: every alert in the window, the ones still firing
- * first, one row each, beside the selected alert's record.
- */
-export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
-	const navigate = useNavigate();
+/** Pulls the firing alerts from every configured source now. */
+export function usePullAlerts() {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
-	const now = useNow();
-	const { search, listInput } = useAlertWindow();
-	const keep = {
-		tab: search.tab,
-		status: search.status,
-		severity: search.severity,
-		view: search.view,
-	};
-	const [filtersOpen, setFiltersOpen] = useState(
-		!!(search.status || search.severity),
-	);
-
-	const { data, isLoading, error } = useQuery(
-		orpc.alerts.list.queryOptions({ input: listInput }),
-	);
-	const { data: stats } = useQuery(
-		orpc.alerts.getStats.queryOptions({ input: {} }),
-	);
-	const alerts = data?.data ?? [];
-	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
-	const firing = rows.filter((a) => a.status === "triggered").length;
-
-	const pull = useMutation({
+	return useMutation({
 		...orpc.alerts.pull.mutationOptions(),
 		onSuccess: (result) => {
 			if (result.errors.length > 0 && result.sources === 0) {
@@ -134,6 +103,51 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 				variant: "destructive",
 			}),
 	});
+}
+
+const GROUPS: {
+	phase: (s: AlertStatus) => boolean;
+	label: string;
+	testId: string;
+}[] = [
+	{ phase: (s) => s === "triggered", label: "Firing", testId: "group-firing" },
+	{
+		phase: (s) => s !== "triggered" && PHASE_ORDER[ALERT_STATUS_PHASE[s]] < 3,
+		label: "In play",
+		testId: "group-in-play",
+	},
+	{
+		phase: (s) => PHASE_ORDER[ALERT_STATUS_PHASE[s]] >= 3,
+		label: "Ended",
+		testId: "group-ended",
+	},
+];
+
+/**
+ * The alert list: firing first, one row each. The sidebar's list from 1280,
+ * and the page itself on narrower screens, never both (study-v3 §8).
+ */
+export function AlertListPane({
+	selectedId,
+	className,
+	variant = "page",
+}: AlertListPaneProps) {
+	const navigate = useNavigate();
+	const now = useNow();
+	const sidebar = variant === "sidebar";
+	const { search, listInput } = useAlertWindow();
+	const keep = {
+		tab: search.tab,
+		status: search.status,
+		severity: search.severity,
+	};
+	const interval = useLiveRefreshInterval();
+	const { data, isLoading, error } = useQuery({
+		...orpc.alerts.list.queryOptions({ input: listInput }),
+		refetchInterval: interval,
+	});
+	const alerts = data?.data ?? [];
+	const rows = useMemo(() => orderAlerts(alerts), [alerts]);
 
 	const open = (alert: AlertWithRelations) =>
 		navigate({ to: "/alerts/$id", params: { id: alert.id }, search: keep });
@@ -141,13 +155,20 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 	const grouped = alertsGroupBy === "service";
 	const laneFolded = useLaneFolded("alerts");
 	const lanes = useMemo(
-		() => (grouped ? alertLanes(rows) : []),
+		() =>
+			grouped
+				? alertLanes(rows).map((l) => ({ ...l, testId: "service-group" }))
+				: GROUPS.map((g) => ({
+						id: g.label,
+						name: g.label,
+						testId: g.testId,
+						items: rows.filter((a) => g.phase(a.status as AlertStatus)),
+					})).filter((g) => g.items.length > 0),
 		[grouped, rows],
 	);
 	const flat = useMemo(
-		() =>
-			grouped ? lanes.flatMap((l) => (laneFolded(l.id) ? [] : l.items)) : rows,
-		[grouped, lanes, laneFolded, rows],
+		() => lanes.flatMap((l) => (laneFolded(l.id) ? [] : l.items)),
+		[lanes, laneFolded],
 	);
 	const { cursor, pointAt } = useListKeyboard(flat.length, (i) => {
 		const row = flat[i];
@@ -156,6 +177,9 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 
 	const alertRow = (alert: AlertWithRelations, index: number) => {
 		const selected = alert.id === selectedId;
+		const service = alert.service
+			? alert.service.displayName || alert.service.name
+			: null;
 		return (
 			<Link
 				key={alert.id}
@@ -166,263 +190,100 @@ export function AlertListPane({ selectedId, className }: AlertListPaneProps) {
 				aria-current={selected ? "page" : undefined}
 				data-testid="alert-row-link"
 				data-cursor={cursor === index ? "true" : undefined}
+				title={alert.title}
 				className={cn(
-					"block border-b px-3 py-2 outline-none hover:bg-muted/60",
-					cursor === index && "bg-muted/60",
-					selected &&
-						"bg-primary/8 hover:bg-primary/8 shadow-[inset_2px_0_0_var(--primary)]",
+					"flex min-w-0 items-start gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+					sidebar ? "mx-2 py-1.5" : "mx-2 py-2",
+					cursor === index && "bg-surface-3",
+					selected && "bg-surface-3 text-text-1",
 				)}
 			>
-				<div className="flex items-start gap-2">
-					<span
-						role="img"
-						aria-label={SEVERITY_LABEL[alert.severity]}
-						title={SEVERITY_LABEL[alert.severity]}
-						className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-						style={{ background: `var(--sev-${alert.severity})` }}
-					/>
-					<div className="min-w-0 flex-1">
-						<p
-							className="truncate text-record font-medium leading-snug"
-							title={alert.title}
-						>
-							{alert.title}
-						</p>
-						<div className="mt-0.5 flex items-center gap-x-2 text-meta text-muted-foreground">
-							<StateWord tone={alertStatusTone(alert.status)}>
-								{ALERT_STATUS_LABEL[alert.status as AlertStatus] ??
-									alert.status}
-							</StateWord>
+				<span
+					role="img"
+					aria-label={SEVERITY_LABEL[alert.severity]}
+					className="mt-1.5 size-2 shrink-0 rounded-full"
+					style={{ background: `var(--sev-${alert.severity})` }}
+				/>
+				<span className="min-w-0 flex-1">
+					<span className="flex min-w-0 items-baseline gap-1.5">
+						<span className="min-w-0 truncate">{alert.title}</span>
+						{sidebar && service && (
+							<span className="min-w-8 shrink-[3] truncate text-meta text-text-3">
+								{service}
+							</span>
+						)}
+					</span>
+					{!sidebar && (
+						<span className="mt-0.5 flex min-w-0 items-center gap-2.5 text-meta">
 							{alert.incident && (
-								<Mono className="shrink-0">INC-{alert.incident.number}</Mono>
+								<Mono className="shrink-0 text-text-3">
+									INC-{alert.incident.number}
+								</Mono>
 							)}
-							{alert.service && (
-								<span className="truncate">
-									{alert.service.displayName || alert.service.name}
-								</span>
+							{service && (
+								<span className="truncate text-text-2">{service}</span>
 							)}
-							<span className="ml-auto shrink-0 tabular-nums">
+							<span className="ml-auto shrink-0 text-text-3 tabular-nums">
 								{ago(alert.triggeredAt, now)}
 							</span>
-						</div>
-					</div>
-				</div>
+						</span>
+					)}
+				</span>
 			</Link>
 		);
 	};
 
-	const setFilter = (patch: Partial<typeof search>) =>
-		navigate({
-			to: ".",
-			search: (prev) => ({ ...prev, ...patch }),
-			replace: true,
-		});
-
+	let index = 0;
 	return (
-		<aside
-			className={cn("flex flex-col bg-background", className)}
+		<section
+			className={cn("flex min-h-0 flex-col", className)}
 			data-testid="alert-list-pane"
+			aria-label="Alerts"
 		>
-			<div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-				<h1 className="text-sm font-semibold">Alerts</h1>
-				<div className="flex items-center gap-1">
-					<Button
-						variant="ghost"
-						size="sm"
-						className="h-7 w-7 p-0"
-						aria-label="Filters"
-						aria-pressed={filtersOpen}
-						onClick={() => setFiltersOpen((v) => !v)}
-						data-testid="alert-list-filters-toggle"
-					>
-						<SlidersHorizontal className="h-3.5 w-3.5" />
-					</Button>
-					<Button
-						asChild
-						variant={search.view === "stats" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-7 w-7 p-0"
-					>
-						<Link
-							to="/alerts"
-							search={{ ...keep, view: "stats" }}
-							aria-label="Numbers"
-							data-testid="alerts-view-stats"
-						>
-							<BarChart3 className="h-3.5 w-3.5" />
-						</Link>
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						className="h-7"
-						onClick={() => pull.mutate({})}
-						disabled={pull.isPending}
-						data-testid="alerts-pull"
-					>
-						<CloudDownload
-							className={cn(
-								"mr-1 h-3.5 w-3.5",
-								pull.isPending && "motion-safe:animate-pulse",
-							)}
-						/>
-						Pull
-					</Button>
-				</div>
-			</div>
-
-			<div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
-				<Tabs
-					value={search.tab ?? "all"}
-					onValueChange={(v) =>
-						setFilter({ tab: v === "unmapped" ? "unmapped" : undefined })
-					}
-				>
-					<TabsList className="h-7">
-						<TabsTrigger value="all" className="h-6 text-meta">
-							All Alerts
-						</TabsTrigger>
-						<TabsTrigger value="unmapped" className="h-6 text-meta">
-							Unmapped
-						</TabsTrigger>
-					</TabsList>
-				</Tabs>
-				<GroupBySelect />
-			</div>
-
-			{filtersOpen && (
-				<div className="border-b px-3 py-2" data-testid="alert-list-filters">
-					<AlertFilters
-						status={search.status ?? "all"}
-						severity={search.severity ?? "all"}
-						onStatusChange={(status) =>
-							setFilter({ status: status === "all" ? undefined : status })
-						}
-						onSeverityChange={(severity) =>
-							setFilter({ severity: severity === "all" ? undefined : severity })
-						}
-						onClear={() =>
-							setFilter({ status: undefined, severity: undefined })
-						}
-					/>
-				</div>
-			)}
-
-			<div className="min-h-0 flex-1 overflow-y-auto" data-testid="alert-list">
+			<div
+				className={cn("min-h-0 flex-1", !sidebar && "overflow-y-auto pb-6")}
+				data-testid="alert-list"
+			>
 				{isLoading && (
-					<div className="space-y-2 p-3">
-						{[1, 2, 3, 4, 5].map((k) => (
-							<Skeleton key={k} className="h-11" />
+					<div className="space-y-3 px-4 py-2">
+						{[1, 2, 3, 4].map((k) => (
+							<Skeleton key={k} className="h-3" />
 						))}
 					</div>
 				)}
 				{error && (
-					<p className="p-3 text-record text-run-failed">
+					<p className="px-4 py-2 text-body text-text-1">
 						The list did not load: {error.message}
 					</p>
 				)}
 				{!isLoading && !error && rows.length === 0 && (
-					<div className="p-3" data-testid="alerts-empty-state">
-						<p className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
-							No alerts found. Point an alert source at the webhook, or pull
-							from Alertmanager.
-						</p>
-					</div>
+					<p
+						className="px-4 py-2 text-body text-text-2"
+						data-testid="alerts-empty-state"
+					>
+						No alerts found. Sources are under Settings, Integrations.
+					</p>
 				)}
-				{grouped &&
-					(() => {
-						let index = 0;
-						return lanes.map((lane) => (
-							<Fragment key={lane.id}>
-								<LaneHeader
-									view="alerts"
-									id={lane.id}
-									name={lane.name}
-									count={lane.items.length}
-									className="sticky top-0 z-10 bg-background"
-								/>
-								{!laneFolded(lane.id) &&
-									lane.items.map((alert) => alertRow(alert, index++))}
-							</Fragment>
-						));
-					})()}
-				{!grouped &&
-					rows.map((alert, index) => {
-						const firstEnded =
-							index > 0 &&
-							PHASE_ORDER[ALERT_STATUS_PHASE[alert.status]] >= 3 &&
-							PHASE_ORDER[ALERT_STATUS_PHASE[rows[index - 1].status]] < 3;
-						return (
-							<Fragment key={alert.id}>
-								{index === 0 && firing > 0 && (
-									<GroupLabel
-										label="Firing"
-										count={firing}
-										testId="group-firing"
-									/>
-								)}
-								{index === firing &&
-									firing > 0 &&
-									index < rows.length &&
-									PHASE_ORDER[ALERT_STATUS_PHASE[alert.status]] < 3 && (
-										<GroupLabel
-											label="In play"
-											count={
-												rows.filter(
-													(a) =>
-														a.status !== "triggered" &&
-														PHASE_ORDER[ALERT_STATUS_PHASE[a.status]] < 3,
-												).length
-											}
-											testId="group-in-play"
-										/>
-									)}
-								{firstEnded && (
-									<GroupLabel
-										label="Ended"
-										count={
-											rows.filter(
-												(a) => PHASE_ORDER[ALERT_STATUS_PHASE[a.status]] >= 3,
-											).length
-										}
-										testId="group-ended"
-									/>
-								)}
-								{alertRow(alert, index)}
-							</Fragment>
-						);
-					})}
+				{lanes.map((lane) => (
+					<Fragment key={lane.id}>
+						<div className="px-2" data-testid={lane.testId}>
+							<LaneHeader
+								view="alerts"
+								id={lane.id}
+								name={lane.name}
+								count={lane.items.length}
+							/>
+						</div>
+						{!laneFolded(lane.id) &&
+							lane.items.map((alert) => alertRow(alert, index++))}
+					</Fragment>
+				))}
+				{data?.pagination.hasMore && (
+					<p className="px-4 py-2 text-meta text-text-3">
+						The 100 newest in this window
+					</p>
+				)}
 			</div>
-
-			<div className="flex items-center justify-between border-t px-3 py-1.5 text-meta text-muted-foreground">
-				<span>
-					<span data-testid="alerts-total-count">
-						{stats?.total ?? rows.length}
-					</span>{" "}
-					total
-					{data?.pagination.hasMore ? " · more not shown" : ""}
-				</span>
-				<span>j k ↵</span>
-			</div>
-		</aside>
-	);
-}
-
-function GroupLabel({
-	label,
-	count,
-	testId,
-}: {
-	label: string;
-	count: number;
-	testId: string;
-}) {
-	return (
-		<div
-			className="sticky top-0 z-10 border-b bg-muted/40 px-3 py-1 text-meta font-medium text-muted-foreground backdrop-blur"
-			data-testid={testId}
-		>
-			{label} <span className="tabular-nums">{count}</span>
-		</div>
+		</section>
 	);
 }

@@ -12,7 +12,7 @@ import { StateChip } from "./StateChip";
 export type LiveSlotState = "live" | "fetching" | "failed" | "not-configured";
 
 interface LiveSlotBase {
-	/** What is being measured, e.g. `p99 latency · checkout-api`. */
+	/** What is being measured, e.g. `p99 latency of checkout-api`. */
 	label: string;
 	className?: string;
 }
@@ -70,14 +70,13 @@ export function LiveSlot(props: LiveSlotProps) {
 			data-testid="live-slot"
 			data-state={props.state}
 			className={cn(
-				"grid min-h-[5.5rem] grid-rows-[auto_1fr_auto] gap-1 rounded-md border bg-card px-3 py-2",
-				props.state === "not-configured" && "border-dashed bg-transparent",
-				props.state === "failed" && "border-stale/50",
+				"grid min-h-[5.5rem] grid-rows-[auto_1fr_auto] gap-1 rounded-surface px-3 py-2",
+				props.state !== "not-configured" && "raised",
 				className,
 			)}
 		>
 			<div className="flex items-center justify-between gap-2">
-				<span className="truncate text-record font-medium">{label}</span>
+				<span className="truncate text-meta text-text-3">{label}</span>
 				{props.state === "live" && (
 					<StateChip tone="live" pulse>
 						live
@@ -99,7 +98,7 @@ export function LiveSlot(props: LiveSlotProps) {
 			{props.state === "live" && (
 				<div className="flex items-end justify-between gap-3">
 					<div className="flex items-baseline gap-2">
-						<span className="font-mono text-slot tabular-nums text-foreground">
+						<span className="text-display tabular-nums text-text-1">
 							{props.value}
 						</span>
 						{props.note && (
@@ -127,10 +126,10 @@ export function LiveSlot(props: LiveSlotProps) {
 
 			<div className="flex items-center justify-between gap-2 text-meta text-muted-foreground tabular-nums">
 				{props.state === "live" && (
-					<span className="truncate">
-						{props.source}
-						{props.window && ` · ${props.window}`}
-						{now !== null && ` · updated ${ago(props.updatedAt, now)}`}
+					<span className="flex min-w-0 gap-2.5 truncate">
+						<span>{props.source}</span>
+						{props.window && <span>{props.window}</span>}
+						{now !== null && <span>updated {ago(props.updatedAt, now)}</span>}
 					</span>
 				)}
 				{props.state === "fetching" && (

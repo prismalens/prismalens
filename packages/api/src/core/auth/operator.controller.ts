@@ -29,7 +29,8 @@ export class OperatorController {
 			whoami: implement(operatorContract.whoami).handler(
 				async ({ context }) => {
 					const request = context.request as Request;
-					const operator = await this.operator.resolve(request);
+					const resolution = await this.operator.resolveWithReason(request);
+					const operator = resolution.operator;
 					// Sliding expiry: a browser that keeps visiting keeps its cookie.
 					if (operator && operator.credential.via !== "bearer") {
 						request.res?.append(
@@ -44,6 +45,7 @@ export class OperatorController {
 					return {
 						via: operator?.via ?? null,
 						scopes: operator?.device.scopes ?? [],
+						...(resolution.reason ? { reason: resolution.reason } : {}),
 					};
 				},
 			),

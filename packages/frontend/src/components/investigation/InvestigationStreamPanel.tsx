@@ -141,10 +141,10 @@ export function InvestigationStreamPanel({
 						</span>
 					)}
 					{folded && chain.length > 0 && (
-						<Mono className="truncate text-meta text-muted-foreground">
-							{chain.join(" → ")}
-							{duration ? ` · ${duration}` : ""}
-						</Mono>
+						<span className="flex min-w-0 gap-2.5 text-meta text-muted-foreground">
+							<Mono className="truncate">{chain.join(", ")}</Mono>
+							{duration && <span className="shrink-0">{duration}</span>}
+						</span>
 					)}
 				</div>
 				{collapsible && (

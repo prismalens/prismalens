@@ -46,10 +46,7 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
 						</span>
 						{modelSubstituted(fidelity) && (
-							<>
-								<span className="opacity-60">·</span>
-								<span>model substituted</span>
-							</>
+							<span className="ml-1">model substituted</span>
 						)}
 					</StateChip>
 				</TooltipTrigger>
@@ -148,7 +145,7 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 					</p>
 					<div className="mt-2 flex flex-wrap items-center gap-2">
 						{investigation.rootCauseCategory && (
-							<StateChip tone="primary">
+							<StateChip tone="neutral">
 								{ROOT_CAUSE_CATEGORY_LABEL[investigation.rootCauseCategory]}
 							</StateChip>
 						)}
@@ -329,12 +326,13 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 									{change.kind === "change_event" ? "change" : change.kind}
 								</StateChip>
 								<span className="font-medium">{change.title}</span>
-								<Mono className="text-meta text-muted-foreground">
-									{change.source}
-									{change.serviceName ? ` · ${change.serviceName}` : ""} ·{" "}
-									{formatDateTime(change.timestamp)} · hypothesis #
-									{change.hypothesisIndex + 1} · {change.matchedOn}
-								</Mono>
+								<span className="flex flex-wrap gap-x-2.5 text-meta text-muted-foreground">
+									<Mono>{change.source}</Mono>
+									{change.serviceName && <span>{change.serviceName}</span>}
+									<span>{formatDateTime(change.timestamp)}</span>
+									<span>hypothesis {change.hypothesisIndex + 1}</span>
+									<span>{change.matchedOn}</span>
+								</span>
 							</li>
 						))}
 					</ul>

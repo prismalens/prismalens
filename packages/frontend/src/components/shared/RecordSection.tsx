@@ -32,20 +32,17 @@ export function RecordSection({
 		<section
 			id={id}
 			aria-labelledby={`${id}-title`}
-			className={cn(
-				"scroll-mt-24 border-t pt-4 first:border-t-0 first:pt-0",
-				className,
-			)}
+			className={cn("mt-8 scroll-mt-24 first:mt-0", className)}
 			{...props}
 		>
-			<div className="mb-3 flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<div className="mb-2 flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1">
 				<h2
 					id={`${id}-title`}
-					className="flex shrink-0 items-baseline gap-2 text-sm font-medium text-foreground"
+					className="flex shrink-0 items-baseline gap-2 text-heading text-text-1"
 				>
 					{title}
 					{count !== undefined && (
-						<span className="text-meta font-normal text-muted-foreground tabular-nums">
+						<span className="text-body font-normal text-text-3 tabular-nums">
 							{count}
 						</span>
 					)}

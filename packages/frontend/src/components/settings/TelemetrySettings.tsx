@@ -68,6 +68,7 @@ export function TelemetryConsent({
 					</Button>
 					<Button
 						size="sm"
+						variant="secondary"
 						className="h-6 flex-1 px-2 text-meta"
 						disabled={update.isPending}
 						onClick={() => update.mutate({ enabled: true })}

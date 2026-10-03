@@ -7,31 +7,32 @@ import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * Primary is the one accent fill on a screen; secondary is the hover surface
+ * with no border; ghost is text; destructive fills red only inside its confirm.
+ */
 const buttonVariants = cva(
-	"inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-record font-medium whitespace-nowrap transition-all motion-reduce:transition-none outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-body font-medium whitespace-nowrap transition-colors motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
 	{
 		variants: {
 			variant: {
-				default: "bg-primary text-primary-foreground hover:bg-primary/90",
-				destructive:
-					"bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
-				outline:
-					"border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-				secondary:
-					"bg-secondary text-secondary-foreground hover:bg-secondary/80",
-				ghost:
-					"hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-				link: "text-primary underline-offset-4 hover:underline",
+				default: "bg-accent text-accent-fg hover:bg-accent/90",
+				destructive: "bg-danger text-accent-fg hover:bg-danger/90",
+				danger: "text-danger hover:bg-surface-3",
+				outline: "bg-surface-3 text-text-1 hover:bg-surface-4",
+				secondary: "bg-surface-3 text-text-1 hover:bg-surface-4",
+				ghost: "text-text-2 hover:bg-surface-3 hover:text-text-1",
+				link: "text-accent underline-offset-4 hover:underline",
 			},
 			size: {
-				default: "h-8 px-3 has-[>svg]:px-2.5",
-				xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-				sm: "h-7 gap-1.5 rounded-md px-2.5 has-[>svg]:px-2",
-				lg: "h-9 rounded-md px-5 has-[>svg]:px-4",
-				icon: "size-8",
-				"icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-				"icon-sm": "size-7",
-				"icon-lg": "size-10",
+				default: "h-7 px-2.5",
+				xs: "h-6 gap-1 px-2 text-meta [&_svg:not([class*='size-'])]:size-3",
+				sm: "h-6 gap-1 px-2 text-meta",
+				lg: "h-8 px-3",
+				icon: "size-7",
+				"icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
+				"icon-sm": "size-6",
+				"icon-lg": "size-8",
 			},
 		},
 		defaultVariants: {

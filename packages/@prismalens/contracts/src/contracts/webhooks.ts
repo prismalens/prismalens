@@ -5,6 +5,7 @@
  * Webhook route contracts
  */
 import { oc } from "@orpc/contract";
+import { z } from "zod";
 import {
 	GenericWebhookResponseSchema,
 	GenericWebhookSchema,
@@ -56,4 +57,19 @@ export const webhooksContract = {
 		})
 		.input(RenderWebhookSchema)
 		.output(RenderWebhookResponseSchema),
+
+	/**
+	 * The token a webhook sender presents. The operator's only (a loopback or
+	 * signed-in caller, never a paired device), like managing pairing.
+	 * GET /webhooks/token
+	 */
+	token: oc
+		.route({
+			method: "GET",
+			path: "/webhooks/token",
+			summary: "Read the token webhook senders present",
+			tags: ["webhooks"],
+		})
+		.input(z.object({}))
+		.output(z.object({ token: z.string() })),
 };

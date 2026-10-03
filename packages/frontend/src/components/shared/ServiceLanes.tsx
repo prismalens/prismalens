@@ -4,7 +4,6 @@
 import { ChevronRight } from "lucide-react";
 import { type GroupView, useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { cn } from "@/lib/utils";
-import { Mono } from "./Mono";
 
 /** Group the alerts pane by service or not; remembered (#743). */
 export function GroupBySelect({ className }: { className?: string }) {
@@ -17,7 +16,7 @@ export function GroupBySelect({ className }: { className?: string }) {
 			}
 			aria-label="Group by"
 			className={cn(
-				"h-6 rounded border bg-background px-1 text-meta text-muted-foreground outline-none",
+				"h-6 rounded-control bg-surface-2 px-1.5 text-meta text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
 				className,
 			)}
 			data-testid="group-by-alerts"
@@ -53,17 +52,21 @@ export function LaneHeader({
 			aria-expanded={!isFolded}
 			onClick={() => toggleLane(view, id)}
 			className={cn(
-				"flex w-full items-center gap-1.5 px-3 py-1 text-left text-meta font-medium text-muted-foreground hover:text-foreground",
+				"group/lane flex w-full items-center gap-1 rounded-control px-2.5 pt-3.5 pb-1 text-left text-meta text-text-3 outline-none hover:text-text-2 focus-visible:ring-2 focus-visible:ring-accent",
 				className,
 			)}
 			data-testid="service-lane"
 			data-lane={id}
 		>
-			<ChevronRight
-				className={cn("h-3 w-3 shrink-0", !isFolded && "rotate-90")}
-			/>
 			<span className="truncate">{name}</span>
-			<Mono className="ml-1 font-normal">{count}</Mono>
+			<ChevronRight
+				aria-hidden
+				className={cn(
+					"size-3 shrink-0",
+					isFolded ? "" : "rotate-90 opacity-0 group-hover/lane:opacity-100",
+				)}
+			/>
+			<span className="ml-auto tabular-nums">{count}</span>
 		</button>
 	);
 }

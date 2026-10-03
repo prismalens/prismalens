@@ -9,6 +9,6 @@ import { useEffect } from "react";
  */
 export function usePageTitle(title: string | null | undefined): void {
 	useEffect(() => {
-		document.title = title ? `${title} · PrismaLens` : "PrismaLens";
+		document.title = title ? `${title} – PrismaLens` : "PrismaLens";
 	}, [title]);
 }

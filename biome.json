@@ -17,7 +17,9 @@
 			"!packages/@prismalens/engine/eval/captures",
 			"!packages/@prismalens/engine/src/run/__fixtures__/red-team-corpus.json",
 			"!packages/frontend/src/app.css",
-			"!packages/frontend/src/styles/tailwind-preset.css"
+			"!packages/frontend/src/styles/tailwind-preset.css",
+			"!**/app.css",
+			"!**/tailwind-preset.css"
 		]
 	},
 	"formatter": {
