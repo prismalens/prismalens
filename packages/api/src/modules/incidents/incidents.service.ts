@@ -477,7 +477,8 @@ export class IncidentsService {
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
-				if (isIncidentEnded(dto.status) && !existing.resolvedAt) {
+				// Only the source's ending is "alerts cleared"; Resolve stamps closedAt.
+				if (dto.status === "resolved" && !existing.resolvedAt) {
 					updateData.resolvedAt = new Date();
 					updateData.timeToResolve = Math.floor(
 						(Date.now() - existing.triggeredAt.getTime()) / 1000,
@@ -495,6 +496,17 @@ export class IncidentsService {
 					updateData.timeToClose = null;
 					updateData.reopenedAt = new Date();
 					updateData.reopenReason = "operator";
+				}
+				// Every path to `closed` records the operator's Resolve (R1a d3).
+				if (dto.status === "closed" && dto.closedAt === undefined) {
+					const now = new Date();
+					updateData.closedAt = now;
+					updateData.timeToClose = Math.max(
+						0,
+						Math.floor((now.getTime() - existing.triggeredAt.getTime()) / 1000),
+					);
+					updateData.reopenedAt = null;
+					updateData.reopenReason = null;
 				}
 			}
 			const reopened =
@@ -525,7 +537,11 @@ export class IncidentsService {
 							type: TimelineEntryType.status_changed,
 							title:
 								entryTitle ??
-								(reopened ? "Incident reopened" : "Status changed"),
+								(ending === "incident-closed"
+									? "Resolved"
+									: reopened
+										? "Incident reopened"
+										: "Status changed"),
 							description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
 							source: TimelineSource.system,
 							metadata: JSON.stringify({
@@ -541,6 +557,9 @@ export class IncidentsService {
 			});
 
 			this.logger.log(`Updated incident ${id}`);
+			// The fact that one was closed, with no identifier and no content (#602).
+			if (ending === "incident-closed")
+				await this.telemetry.capture("incident_closed", {});
 			return incident;
 		} catch {
 			return null;
@@ -759,8 +778,6 @@ export class IncidentsService {
 			undefined,
 			actualCause ? "Resolved, cause recorded" : "Resolved",
 		);
-		// The fact that one was closed, with no identifier and no content (#602).
-		if (incident) await this.telemetry.capture("incident_closed", {});
 		return incident;
 	}
 

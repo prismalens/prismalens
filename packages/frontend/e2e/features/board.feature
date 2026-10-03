@@ -54,3 +54,10 @@ Feature: Board
     Given INC-1 is Resolved
     When I drag its card to "Working"
     Then a dialog asks "Reopen INC-1 and investigate?"
+
+  Scenario: Reopen and investigate with no agent frees the card
+    Given INC-1 is Resolved with a cause
+    And no coding agent is on PATH
+    When I drag its card to "Working"
+    And I confirm the reopen
+    Then a toast reads "No run started" and the card no longer reads "Reopening"

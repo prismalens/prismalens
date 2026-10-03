@@ -150,9 +150,19 @@ function CopyButton({
 		<Button
 			variant="secondary"
 			size="sm"
-			onClick={() => {
-				void navigator.clipboard?.writeText(value);
-				toast({ title: `${label.replace("Copy", "Copied")}` });
+			onClick={async () => {
+				// No clipboard over plain HTTP on another device; say so, never "Copied".
+				try {
+					if (!navigator.clipboard) throw new Error("no clipboard");
+					await navigator.clipboard.writeText(value);
+					toast({ title: label.replace("Copy", "Copied") });
+				} catch {
+					toast({
+						title: "Not copied",
+						description: "This browser blocked the clipboard.",
+						variant: "destructive",
+					});
+				}
 			}}
 			data-testid={testId}
 		>

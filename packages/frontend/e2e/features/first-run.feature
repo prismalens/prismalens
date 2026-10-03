@@ -11,6 +11,11 @@ Feature: First run
     And step 1 offers "Copy URL" and "Copy token" separately
     And the only way to create an incident by hand is "New" in the header
 
+  Scenario: A blocked clipboard never reads "Copied"
+    When I open the board in a browser that blocks the clipboard
+    And I press "Copy URL" in step 1
+    Then a toast reads "Not copied" and none reads "Copied URL"
+
   Scenario: Unfinished steps stay visible after the first incident
     Given a coding agent is on PATH and no service names its code
     When the first alert arrives

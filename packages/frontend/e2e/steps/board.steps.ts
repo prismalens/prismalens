@@ -554,6 +554,20 @@ Then("a dialog asks {string}", async ({ page }, question: string) => {
 	);
 });
 
+When("I confirm the reopen", async ({ page }) => {
+	await page.getByTestId("confirm-reopen-incident").click();
+});
+
+Then(
+	'a toast reads "No run started" and the card no longer reads "Reopening"',
+	async ({ page }) => {
+		await expect(page.getByText("No run started").first()).toBeVisible();
+		const card = cardOf(page, inc(page).title);
+		await expect(card).toBeVisible();
+		await expect(card).not.toContainText("Reopening", { timeout: 10_000 });
+	},
+);
+
 // --- Phone --------------------------------------------------------------------
 
 Given(
@@ -681,6 +695,32 @@ Then(
 		await expect(
 			step.getByRole("button", { name: "Copy token" }),
 		).toBeVisible();
+	},
+);
+
+When(
+	"I open the board in a browser that blocks the clipboard",
+	async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(navigator, "clipboard", {
+				value: undefined,
+				configurable: true,
+			});
+		});
+		await page.goto("/incidents");
+		await expect(page.getByTestId("first-run")).toBeVisible();
+	},
+);
+
+When('I press "Copy URL" in step 1', async ({ page }) => {
+	await page.getByTestId("first-run-copy-url").click();
+});
+
+Then(
+	'a toast reads "Not copied" and none reads "Copied URL"',
+	async ({ page }) => {
+		await expect(page.getByText("Not copied").first()).toBeVisible();
+		await expect(page.getByText("Copied URL")).toHaveCount(0);
 	},
 );
 
@@ -849,6 +889,27 @@ Then(
 		const answer = page.getByTestId("analytics-answer");
 		await expect(answer).toContainText("3 incidents, all resolved");
 		await expect(answer).toContainText(/to resolve/);
+	},
+);
+
+When(
+	"I pick 24 hours on the board and switch to Analytics",
+	async ({ page }) => {
+		await page.goto("/incidents");
+		await page.getByTestId("board-window").selectOption("1d");
+		await page.getByTestId("incidents-view-analytics").click();
+		await expect(page.getByTestId("analytics-answer")).toBeVisible();
+	},
+);
+
+Then(
+	"the window reads {string} and a bar per day covers {int} days",
+	async ({ page }, label: string, days: number) => {
+		const window = page.getByTestId("board-window");
+		await expect(window.locator("option:checked")).toHaveText(label);
+		await expect(
+			page.getByTestId("analytics-days").locator("span"),
+		).toHaveCount(days);
 	},
 );
 
