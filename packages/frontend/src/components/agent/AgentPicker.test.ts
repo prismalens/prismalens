@@ -53,6 +53,10 @@ vi.mock("@/components/ui/popover", () => ({
 	PopoverContent: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock("@/components/shared/Hint", () => ({
+	Hint: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: mockHarnessesData,
@@ -66,7 +70,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 }));
 
-describe("AgentModelPicker Auto row (f9)", () => {
+describe("AgentModelPicker Auto line (f9)", () => {
 	beforeEach(() => {
 		mockSettingsData = {
 			harness: "codex",
@@ -109,7 +113,7 @@ describe("AgentModelPicker Auto row (f9)", () => {
 		};
 	});
 
-	it("shows the agent Auto would pick (first on PATH) in the Auto row, not the chosen one", () => {
+	it("shows the agent Auto would pick (first on PATH) on the Auto line, not the chosen one", () => {
 		// Codex chosen, OpenCode first on PATH -> Auto row reads "now OpenCode"
 		const html = renderToStaticMarkup(
 			React.createElement(AgentModelPicker, { defaultOpen: true }),
@@ -117,5 +121,7 @@ describe("AgentModelPicker Auto row (f9)", () => {
 
 		expect(html).toContain("now OpenCode");
 		expect(html).not.toContain("now Codex");
+		// Codex is pinned, so the line offers the way back to Auto.
+		expect(html).toContain("Use Auto");
 	});
 });

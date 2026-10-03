@@ -1,33 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-	FolderGit2,
-	GitBranch,
-	Info,
-	Link2,
-	MoreHorizontal,
-	Pencil,
-	Search,
-	type Server,
-	Trash2,
-} from "lucide-react";
-import { useState } from "react";
+import { isIncidentOpen } from "@prismalens/contracts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { useEffect, useState } from "react";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
-import { ServiceDependenciesTab } from "@/components/services/ServiceDependenciesTab";
+import { ServiceCodeSection } from "@/components/services/ServiceCodeSection";
+import { ServiceDependenciesSection } from "@/components/services/ServiceDependenciesSection";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import { ServiceIntegrationsTab } from "@/components/services/ServiceIntegrationsTab";
-import { ServiceInvestigationTab } from "@/components/services/ServiceInvestigationTab";
-import { ServiceOverviewTab } from "@/components/services/ServiceOverviewTab";
-import { ServiceRepositoriesTab } from "@/components/services/ServiceRepositoriesTab";
-import { tierLabels } from "@/components/services/service-detail.utils";
-import { SettingsFrame } from "@/components/settings/SettingsFrame";
+import { ServiceIncidentsSection } from "@/components/services/ServiceIncidentsSection";
+import { ServiceInvestigationsSection } from "@/components/services/ServiceInvestigationsSection";
+import { ServiceTelemetrySection } from "@/components/services/ServiceTelemetrySection";
+import {
+	kindWord,
+	tierMeaning,
+	tierWord,
+} from "@/components/services/service-detail.utils";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
-import { Mono } from "@/components/shared/Mono";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -35,238 +28,231 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { backTarget, useBack } from "@/hooks/use-back";
+import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useRemoveServiceDependency,
 	useServiceIntegrations,
 } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
-import { cn } from "@/lib/utils";
-
-type ServiceTab =
-	| "overview"
-	| "repositories"
-	| "integrations"
-	| "investigation"
-	| "dependencies";
-
-const TABS: { value: ServiceTab; label: string; icon: typeof Server }[] = [
-	{ value: "overview", label: "Overview", icon: Info },
-	{ value: "repositories", label: "Repositories", icon: FolderGit2 },
-	{ value: "integrations", label: "Integrations", icon: Link2 },
-	{ value: "investigation", label: "Investigation", icon: Search },
-	{ value: "dependencies", label: "Dependencies", icon: GitBranch },
-];
-
-const tierTones: Record<string, ChipTone> = {
-	tier_1: "critical",
-	tier_2: "high",
-	tier_3: "medium",
-	tier_4: "neutral",
-};
 
 export const Route = createFileRoute("/_authenticated/services/$id/")({
-	validateSearch: (search: Record<string, unknown>) => ({
-		tab: (TABS.some((t) => t.value === search.tab)
-			? (search.tab as ServiceTab)
-			: "overview") as ServiceTab,
-	}),
-	component: ServiceDetailPage,
+	// `tab` is accepted and ignored so links from before the one-page layout resolve.
+	validateSearch: (search: Record<string, unknown>): { tab?: string } =>
+		typeof search.tab === "string" ? { tab: search.tab } : {},
+	component: ServicePage,
 });
 
-function ServiceDetailPage() {
-	const { id } = Route.useParams();
-	const { tab } = Route.useSearch();
-	const navigate = useNavigate({ from: "/services/$id/" });
-	const [showEditDialog, setShowEditDialog] = useState(false);
-	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-	const [removingDepId, setRemovingDepId] = useState<string | null>(null);
+/** A service record is a leaf; Back leaves it for wherever you came from. */
+const inServiceRecord = (pathname: string) => pathname.startsWith("/services/");
 
-	// Fetch service details
+const DAY = 86_400_000;
+
+/**
+ * One service, one page (study-v3 §7, decision 1): what a run reads and what
+ * the service depends on, in named sections with no tabs. The band carries
+ * Back, the name, its kind, tier and team, Edit and the rest in a menu.
+ */
+function ServicePage() {
+	const { id } = Route.useParams();
+	const navigate = useNavigate();
+	const back = useBack(inServiceRecord, "/services");
+	const [editing, setEditing] = useState(false);
+	const [deleting, setDeleting] = useState(false);
+	const [removing, setRemoving] = useState<{ from: string; to: string } | null>(
+		null,
+	);
 	const {
 		data: service,
 		isLoading,
 		error,
-		refetch,
 	} = useQuery(orpc.services.get.queryOptions({ input: { id } }));
-
-	// Fetch topology
 	const { data: topology } = useQuery({
 		...orpc.services.getTopology.queryOptions({ input: { id } }),
 		enabled: !!service,
 	});
-
-	// Fetch service integrations
-	const { data: integrations = [], isLoading: isLoadingIntegrations } =
-		useServiceIntegrations(id);
-
+	const { data: integrations = [] } = useServiceIntegrations(id);
+	const { data: incidents } = useQuery(
+		orpc.incidents.list.queryOptions({
+			input: { serviceId: id, limit: 100 },
+		}),
+	);
 	const removeDep = useRemoveServiceDependency();
+	const queryClient = useQueryClient();
+	usePageTitle(service ? `${service.name}, Services` : "Services");
 
-	const handleRemoveDependency = () => {
-		if (!removingDepId) return;
-		removeDep.mutate(
-			{ id, dependencyId: removingDepId },
-			{
-				onSuccess: () => {
-					setRemovingDepId(null);
-					refetch();
-				},
-			},
-		);
-	};
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			const t = e.target as HTMLElement | null;
+			if (
+				t?.tagName === "INPUT" ||
+				t?.tagName === "TEXTAREA" ||
+				t?.isContentEditable
+			)
+				return;
+			if (
+				document.querySelector("[role=dialog], [role=alertdialog], [role=menu]")
+			)
+				return;
+			back();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [back]);
 
-	if (isLoading) {
-		return <ServiceDetailSkeleton />;
-	}
-
+	if (isLoading) return <ServiceDetailSkeleton />;
 	if (error || !service) {
 		return (
-			<div className="flex flex-col items-center justify-center py-12">
-				<p className="text-lg font-medium text-destructive">
-					Failed to load service
-				</p>
-				<p className="text-record text-muted-foreground">
-					{error?.message || "Service not found"}
+			<div className="p-6">
+				<p className="text-body text-danger">
+					This service did not load: {error?.message ?? "not found"}
 				</p>
 			</div>
 		);
 	}
 
-	const actions = (
-		<>
-			<Button
-				variant="outline"
-				size="sm"
-				className="h-7"
-				onClick={() => setShowEditDialog(true)}
-			>
-				<Pencil className="mr-1 h-3.5 w-3.5" />
-				Edit
-			</Button>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button
-						variant="outline"
-						size="sm"
-						className="h-7 w-7 p-0"
-						aria-label="More"
-					>
-						<MoreHorizontal className="h-4 w-4" />
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end">
-					<DropdownMenuItem
-						className="text-destructive"
-						onClick={() => setShowDeleteDialog(true)}
-					>
-						<Trash2 className="mr-2 h-4 w-4" />
-						Delete service
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
-		</>
-	);
+	const rows = incidents?.data ?? [];
+	const open = rows.filter((i) => isIncidentOpen(i.status)).length;
+	const recent = rows.filter(
+		(i) => Date.now() - new Date(i.triggeredAt).getTime() < 30 * DAY,
+	).length;
+	const backHref = backTarget(inServiceRecord, "/services");
 
 	return (
-		<>
-			<SettingsFrame
-				section="services"
-				title={service.displayName || service.name}
-				intro={
-					<span className="flex flex-wrap items-center gap-2">
-						<Link to="/services" className="hover:underline">
-							Services
-						</Link>
-						<span>/</span>
-						<Mono>{service.name}</Mono>
-						<StateChip tone={tierTones[service.tier] || "neutral"}>
-							{tierLabels[service.tier] || service.tier}
-						</StateChip>
-						<StateChip tone="neutral" className="capitalize">
-							{service.type}
-						</StateChip>
-						{service.team && <span>{service.team}</span>}
-					</span>
-				}
-				actions={actions}
+		<div
+			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
+			data-testid="service-page"
+		>
+			<header
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 px-3 md:px-4 desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
+				data-testid="service-band"
 			>
-				<div className="flex flex-wrap gap-1 border-b" role="tablist">
-					{TABS.map((t) => (
-						<button
-							key={t.value}
-							type="button"
-							role="tab"
-							aria-selected={tab === t.value}
-							onClick={() => navigate({ search: { tab: t.value } })}
-							className={cn(
-								"-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-record",
-								tab === t.value
-									? "border-primary text-foreground"
-									: "border-transparent text-muted-foreground hover:text-foreground",
-							)}
+				<Button variant="ghost" size="icon" className="shrink-0" asChild>
+					<a
+						href={backHref}
+						onClick={(e) => {
+							e.preventDefault();
+							back();
+						}}
+						aria-label={
+							backHref === "/services" ? "Back to the services" : "Back"
+						}
+						data-testid="service-back"
+					>
+						<ChevronLeft className="size-4" />
+					</a>
+				</Button>
+				<h1 className="min-w-0 truncate text-title">{service.name}</h1>
+				<span
+					className="flex min-w-0 items-baseline gap-2.5 text-meta"
+					data-testid="service-meta"
+				>
+					<span className="text-text-2">{kindWord(service.type)}</span>
+					<span className="text-text-3" title={tierMeaning(service.tier)}>
+						{tierWord(service.tier)}
+					</span>
+					{service.team && (
+						<span className="truncate text-text-3 max-sm:hidden">
+							{service.team}
+						</span>
+					)}
+				</span>
+				<span className="flex-1" />
+				<Button
+					variant="secondary"
+					size="sm"
+					onClick={() => setEditing(true)}
+					data-testid="service-edit"
+				>
+					Edit
+				</Button>
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button variant="ghost" size="icon-sm" aria-label="More">
+							<MoreHorizontal />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						<DropdownMenuItem
+							className="text-danger"
+							onClick={() => setDeleting(true)}
 						>
-							<t.icon className="h-3.5 w-3.5" />
-							{t.label}
-						</button>
-					))}
+							Delete service
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</header>
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-3 pb-12 md:px-6">
+					<p className="text-body text-text-1" data-testid="service-summary">
+						{service.description ? `${service.description} ` : ""}
+						{open === 1 ? "1 incident open" : `${open} incidents open`},{" "}
+						{recent} in 30 days.
+					</p>
+					<div className="mt-8">
+						<ServiceCodeSection service={service} />
+						<ServiceTelemetrySection
+							serviceId={id}
+							integrations={integrations}
+						/>
+						<ServiceDependenciesSection
+							serviceId={id}
+							topology={topology}
+							onRemove={setRemoving}
+						/>
+						<RecordSection id="deployments" title="Deployments">
+							<p className="text-body text-text-2">None recorded.</p>
+						</RecordSection>
+						<ServiceInvestigationsSection
+							serviceId={id}
+							metadata={service.metadata}
+						/>
+						<ServiceIncidentsSection
+							incidents={rows}
+							total={incidents?.pagination.total ?? rows.length}
+						/>
+					</div>
 				</div>
-				{tab === "overview" && (
-					<ServiceOverviewTab
-						service={service}
-						topology={topology}
-						integrations={integrations}
-					/>
-				)}
-				{tab === "repositories" && (
-					<ServiceRepositoriesTab serviceId={id} service={service} />
-				)}
-				{tab === "integrations" && (
-					<ServiceIntegrationsTab
-						serviceId={id}
-						serviceType={service.type}
-						integrations={integrations}
-						isLoading={isLoadingIntegrations}
-					/>
-				)}
-				{tab === "investigation" && (
-					<ServiceInvestigationTab serviceId={id} metadata={service.metadata} />
-				)}
-				{tab === "dependencies" && (
-					<ServiceDependenciesTab
-						serviceId={id}
-						topology={topology}
-						onRemoveDependency={(depId) => setRemovingDepId(depId)}
-						onRefresh={() => refetch()}
-					/>
-				)}
-			</SettingsFrame>
+			</div>
 
-			{/* Dialogs */}
 			<ServiceFormDialog
-				open={showEditDialog}
-				onOpenChange={setShowEditDialog}
+				open={editing}
+				onOpenChange={setEditing}
 				service={service}
-				onSuccess={() => refetch()}
 			/>
 			<DeleteServiceDialog
-				open={showDeleteDialog}
-				onOpenChange={setShowDeleteDialog}
+				open={deleting}
+				onOpenChange={setDeleting}
 				serviceId={service.id}
 				serviceName={service.displayName || service.name}
 				onSuccess={() => navigate({ to: "/services" })}
 			/>
 			<DestructiveConfirm
-				open={!!removingDepId}
-				onOpenChange={(open) => {
-					if (!open) setRemovingDepId(null);
-				}}
-				title="Remove dependency?"
+				open={!!removing}
+				onOpenChange={(o) => !o && setRemoving(null)}
+				title="Remove this dependency?"
 				description={
 					<p>The edge between the two services goes; both services stay.</p>
 				}
 				confirmLabel="Remove"
-				onConfirm={handleRemoveDependency}
+				onConfirm={() =>
+					removing &&
+					removeDep.mutate(
+						{ id: removing.from, dependencyId: removing.to },
+						{
+							onSuccess: () => {
+								setRemoving(null);
+								// The edge may be the other service's; this page's topology moves too.
+								queryClient.invalidateQueries({
+									queryKey: orpc.services.key(),
+								});
+							},
+						},
+					)
+				}
 				isPending={removeDep.isPending}
 			/>
-		</>
+		</div>
 	);
 }

@@ -16,17 +16,17 @@
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { AlertTriangle, Loader2, RadioTower } from "lucide-react";
+import type { HarnessStatus } from "@prismalens/contracts";
 import { useState } from "react";
+import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
-	useAgentChoice,
+	BOUNDARY_NOTE,
+	READ_ONLY_LINE,
 } from "@/components/agent/AgentPicker";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
-import { StateWord } from "@/components/shared/StateChip";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
 	useCheckHarness,
@@ -46,7 +46,6 @@ interface ProbeState {
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
 	const { isLoading: settingsLoading } = useHarnessSettings();
-	const { effective } = useAgentChoice();
 	const checkHarness = useCheckHarness();
 	const [probes, setProbes] = useState<Partial<Record<HarnessId, ProbeState>>>(
 		{},
@@ -80,140 +79,112 @@ export function HarnessSettings() {
 	const selection = data?.selection;
 
 	if (isLoading || settingsLoading) {
-		return (
-			<div
-				className="flex items-center justify-center py-12"
-				data-testid="harness-settings"
-			>
-				<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
-			</div>
-		);
+		return <div data-testid="harness-settings" />;
 	}
 
 	return (
-		<div className="space-y-6" data-testid="harness-settings">
+		<div data-testid="harness-settings">
 			{isError && (
-				<Alert data-testid="harness-status-error">
-					<AlertTriangle className="h-4 w-4" />
-					<AlertTitle>Agent status unavailable</AlertTitle>
-					<AlertDescription>
-						PrismaLens could not read the agent status on this machine.{" "}
-						<button
-							type="button"
-							className="underline"
-							onClick={() => refetch()}
-						>
-							Try again
-						</button>
-					</AlertDescription>
-				</Alert>
+				<p
+					className="mb-4 text-body text-danger"
+					data-testid="harness-status-error"
+				>
+					PrismaLens could not read the agent status on this machine.{" "}
+					<button type="button" className="underline" onClick={() => refetch()}>
+						Try again
+					</button>
+				</p>
 			)}
-			{!isError &&
-				harnesses.length > 0 &&
-				harnesses.every((h) => !h.installed) && (
-					<Alert data-testid="harness-none-available">
-						<AlertTriangle className="h-4 w-4" />
-						<AlertTitle>No investigation agent is on this machine</AlertTitle>
-						<AlertDescription>
-							Runs cannot start until one of the agents below is installed.
-						</AlertDescription>
-					</Alert>
-				)}
 			{selection?.pinned && selection.pinnedBy === "env" && (
-				<Alert data-testid="harness-pinned-notice">
-					<AlertTriangle className="h-4 w-4" />
-					<AlertTitle>PRISMALENS_HARNESS overrides this choice</AlertTitle>
-					<AlertDescription>
-						The environment variable decides which agent runs on this machine.
-						Unset it to let the choice here take effect.
-					</AlertDescription>
-				</Alert>
+				<p
+					className="mb-4 text-body text-warn"
+					data-testid="harness-pinned-notice"
+				>
+					PRISMALENS_HARNESS decides which agent runs on this machine; unset it
+					to let the choice here take effect.
+				</p>
 			)}
 
-			<SettingGroup
-				title="Runs"
-				description="What the next investigation starts with. The same control sits where a run starts on an incident."
-			>
+			<SettingGroup title="Next run">
 				<SettingRow
 					label="Agent and model"
-					description="Auto takes the first agent on PATH."
+					description={
+						selection?.runnable === false
+							? (selection.blockedReason ?? "Would not start right now.")
+							: "The same control sits in the box on an incident."
+					}
 					testId="harness-run-row"
 				>
 					<AgentModelPicker />
 				</SettingRow>
 				<SettingRow
-					label="Next run"
-					description={
-						selection?.runnable
-							? `Would start with ${effective?.label ?? selection.harness}.`
-							: (selection?.blockedReason ?? "Would not start right now.")
-					}
-					testId="harness-selection"
+					label="Access level"
+					description={`${READ_ONLY_LINE} ${BOUNDARY_NOTE}`}
+					testId="harness-access"
 				>
-					{selection?.runnable ? (
-						<StateWord tone="done">ready</StateWord>
-					) : (
-						<StateWord tone="failed">blocked</StateWord>
-					)}
+					<span className="text-body text-text-2">Read-only</span>
 				</SettingRow>
 			</SettingGroup>
 
-			<SettingGroup
-				title="Agents on this machine"
-				description="Installed means the binary is on PATH; tested means CI ran an investigation through that version. Each agent runs with its own behaviour and permissions, as it would in your terminal."
-				testId="harness-registry"
-			>
+			<SettingGroup title="Agents on this machine" testId="harness-registry">
+				{harnesses.length > 0 && harnesses.every((h) => !h.installed) && (
+					<p
+						className="pb-2 text-body text-text-2"
+						data-testid="harness-none-available"
+					>
+						None found on PATH. Runs start once one of these is installed.
+					</p>
+				)}
 				{harnesses.map((harness) => {
 					const harnessId = harness.id as HarnessId;
 					const probe = probes[harnessId];
 					const checking =
 						checkHarness.isPending && checkHarness.variables?.id === harnessId;
-					const isSelected = selection?.harness === harness.id;
+					const inUse = selection?.harness === harness.id;
 					return (
 						<SettingRow
 							key={harness.id}
+							testId={`harness-row-${harness.id}`}
 							label={
-								<span className="flex items-center gap-2">
+								<span className="flex flex-wrap items-baseline gap-x-2">
+									<AgentMark id={harness.id} className="relative top-0.5" />
 									{harness.label}
-									<Mono className="text-meta font-normal text-muted-foreground">
-										{harness.binary}
-									</Mono>
-									{isSelected && <StateWord tone="live">in use</StateWord>}
+									{harness.installed ? (
+										harness.tested && (
+											<span
+												className="text-meta text-text-3"
+												title={harness.tested.date}
+												data-testid={`harness-tested-${harness.id}`}
+											>
+												{harness.tested.version}
+											</span>
+										)
+									) : (
+										<span className="text-text-3">not installed</span>
+									)}
+									{inUse && (
+										<span className="text-meta font-medium text-ok">
+											in use
+										</span>
+									)}
 								</span>
 							}
 							description={
-								<span className="flex flex-wrap items-center gap-x-2">
-									{harness.installed ? (
-										<StateWord tone="done">installed</StateWord>
-									) : (
-										<StateWord tone="neutral">not installed</StateWord>
-									)}
-									{harness.tested && (
-										<StateWord
-											tone="neutral"
-											title={harness.tested.date}
-											data-testid={`harness-tested-${harness.id}`}
-										>
-											tested {harness.tested.version}
-										</StateWord>
-									)}
-									<span>
-										<InlineCode
-											text={
-												harness.installed ? harness.loginHint : harness.install
-											}
-										/>
-									</span>
-								</span>
+								harness.installed ? (
+									<>
+										{capabilities(harness)}{" "}
+										<InlineCode text={harness.loginHint} />
+									</>
+								) : (
+									<Mono className="break-all">{harness.install}</Mono>
+								)
 							}
 							below={
 								probe && !checking ? (
 									<p
 										className={cn(
 											"text-meta",
-											probe.answers
-												? "text-muted-foreground"
-												: "text-run-failed",
+											probe.answers ? "text-text-3" : "text-danger",
 										)}
 										data-testid={`harness-check-result-${harness.id}`}
 									>
@@ -224,19 +195,13 @@ export function HarnessSettings() {
 						>
 							{harness.installed && (
 								<Button
-									variant="outline"
+									variant="ghost"
 									size="sm"
-									className="h-7"
 									onClick={() => handleCheck(harnessId)}
 									disabled={checking}
 									data-testid={`harness-check-${harness.id}`}
 								>
-									{checking ? (
-										<Loader2 className="mr-1.5 h-3 w-3 motion-safe:animate-spin" />
-									) : (
-										<RadioTower className="mr-1.5 h-3 w-3" />
-									)}
-									Check readiness
+									{checking ? "Checking" : "Check"}
 								</Button>
 							)}
 						</SettingRow>
@@ -245,4 +210,23 @@ export function HarnessSettings() {
 			</SettingGroup>
 		</div>
 	);
+}
+
+/** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
+function capabilities(h: HarnessStatus): string {
+	const model =
+		h.modelVia === "config"
+			? "Takes a model through its config."
+			: h.modelVia === "env"
+				? "Takes a model through its environment."
+				: h.id === "deepagents"
+					? "Uses its own model."
+					: "Model: pending a check.";
+	const effort = h.checked?.effort
+		? ` Effort over ACP: ${h.checked.effort.values.join(", ")}.`
+		: "";
+	const images = h.checked
+		? ` Images: ${h.checked.images ? "yes" : "no"}.`
+		: " Images: not checked yet.";
+	return `${model}${effort}${images}`;
 }

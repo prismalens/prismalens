@@ -28,6 +28,7 @@ import { type ReactNode, useCallback, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
+import { kindWord } from "@/components/services/service-detail.utils";
 import { TelemetryConsent, useAbout } from "@/components/settings";
 import {
 	type SettingsTab,
@@ -293,13 +294,17 @@ function ServiceList() {
 					key={s.id}
 					to="/services/$id"
 					params={{ id: s.id }}
-					search={{ tab: "overview" }}
 					className={cn(
 						"flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
 						service?.params.id === s.id && "bg-surface-3 text-text-1",
 					)}
 				>
-					<span className="truncate">{s.displayName || s.name}</span>
+					<span className="min-w-0 truncate">
+						{s.name}
+						<span className="ml-1.5 text-meta text-text-3">
+							{kindWord(s.type)}
+						</span>
+					</span>
 				</Link>
 			))}
 		</div>
