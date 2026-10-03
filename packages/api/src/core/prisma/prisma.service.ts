@@ -10,7 +10,7 @@ import {
 import { prisma } from "@prismalens/database";
 import { liveChanges } from "../live/live-changes.js";
 
-/** Every write is noted for the live change stream after it succeeds (walk f27). */
+/** Every write is noted for the live change stream after it succeeds, a transaction's after it commits (walk f27). */
 const db = prisma.$extends({
 	query: {
 		$allModels: {
@@ -37,7 +37,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	get $transaction() {
-		return db.$transaction.bind(db);
+		const bound = db.$transaction.bind(db);
+		const run = bound as (...args: unknown[]) => Promise<unknown>;
+		return ((...args: unknown[]) =>
+			liveChanges.afterCommit(() => run(...args))) as typeof bound;
 	}
 
 	// Forward all Prisma model access
