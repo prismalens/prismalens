@@ -124,6 +124,9 @@ export class ServicesService {
 					repositories: {
 						include: { repository: true },
 					},
+					// The list says what each depends on and what uses it (study-v3 §7).
+					dependencies: true,
+					dependents: true,
 				},
 				orderBy: [{ tier: "asc" }, { name: "asc" }],
 				take: options?.limit,

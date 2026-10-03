@@ -2,21 +2,20 @@
 // Copyright 2026 Sumit Patel
 
 import type { ReactNode } from "react";
+import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { useAbout } from "@/components/settings/AboutSettings";
 import { useDevices } from "@/components/settings/DevicesTab";
+import { useTelemetrySettings } from "@/components/settings/TelemetrySettings";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
-import {
-	useConnections,
-	useIntegrations,
-	useInvestigationReadiness,
-} from "@/lib/api/hooks";
+import { useConnections, useIntegrations } from "@/lib/api/hooks";
+import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 
 export type SettingsTab =
 	| "harness"
+	| "sources"
 	| "integrations"
-	| "connections"
 	| "devices"
 	| "usage"
 	| "about"
@@ -36,34 +35,43 @@ export interface SettingsSectionItem {
  * Settings swaps it in, and the phone's landing page (study-v3 §2).
  */
 export function useSettingsSections(): SettingsSectionItem[] {
-	const readiness = useInvestigationReadiness();
+	const { effective } = useAgentChoice();
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
+	const { data: delivery } = useLastDelivery();
 	const { managesPairing } = useOperator();
 	const { data: devices } = useDevices(managesPairing);
 	const { data: about } = useAbout();
+	const { query: telemetry } = useTelemetrySettings();
+	const pulled = (connections ?? []).filter((c) =>
+		PULL_TEMPLATES.has(c.templateId ?? ""),
+	).length;
+	const named = (integrations ?? [])
+		.filter((i) => !PULL_TEMPLATES.has(i.templateId))
+		.map((i) => i.label);
 	return [
+		{ tab: "harness", label: "Agent", line: effective?.label ?? "None found" },
 		{
-			tab: "harness",
-			label: "Agent",
-			line: readiness.isReady ? "Ready" : "Not ready",
+			tab: "sources",
+			label: "Alert sources",
+			line: [
+				delivery ? "webhook" : "",
+				pulled ? `${pulled} source${pulled === 1 ? "" : "s"}` : "",
+			]
+				.filter(Boolean)
+				.join(", "),
 		},
-		{
-			tab: "integrations",
-			label: "Integrations",
-			line: integrations ? `${integrations.length} configured` : "",
-		},
-		{
-			tab: "connections",
-			label: "Connections",
-			line: connections ? `${connections.length} connected` : "",
-		},
+		{ tab: "integrations", label: "Integrations", line: named.join(", ") },
 		{
 			tab: "devices",
 			label: "Devices",
 			line: devices ? `${devices.devices.length} paired` : "",
 		},
-		{ tab: "usage", label: "Usage data", line: "Off until you say yes" },
+		{
+			tab: "usage",
+			label: "Usage data",
+			line: telemetry.data ? (telemetry.data.enabled ? "on" : "off") : "",
+		},
 		{
 			tab: "about",
 			label: "About",
@@ -74,6 +82,12 @@ export function useSettingsSections(): SettingsSectionItem[] {
 		{ tab: "danger", label: "Danger zone", line: "" },
 	];
 }
+
+/** Templates whose connections are alert sources PrismaLens pulls from. */
+export const PULL_TEMPLATES: ReadonlySet<string> = new Set([
+	"alertmanager",
+	"prometheus",
+]);
 
 /**
  * The content of a Settings section, or of Services, which keeps this frame

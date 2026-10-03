@@ -114,8 +114,8 @@ export function useInvestigationReadiness(): InvestigationReadiness {
 	const fallback = isLoading
 		? "Checking whether a coding agent is usable…"
 		: isError
-			? "Could not check agent status — retry from Settings → Harness."
-			: "No coding agent is available — see Settings → Harness.";
+			? "Could not check agent status — retry from Settings → Agent."
+			: "No coding agent is available — see Settings → Agent.";
 
 	return {
 		isReady: false,

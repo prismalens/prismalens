@@ -238,8 +238,16 @@ export function useDeleteConnection() {
  * Test a connection health
  */
 export function useTestConnection() {
+	const queryClient = useQueryClient();
+
+	// The test writes the connection's status and last error.
 	return useMutation({
 		...orpc.integrations.testConnection.mutationOptions(),
+		onSettled: () => {
+			queryClient.invalidateQueries({
+				queryKey: integrationsKeys.connections.all(),
+			});
+		},
 	});
 }
 

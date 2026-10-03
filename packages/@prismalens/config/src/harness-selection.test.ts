@@ -50,7 +50,7 @@ describe("resolveHarnessSelection", () => {
 		const fromSettings = resolveHarnessSelection({ envHarness: "codex", pinSource: "settings", isOnPath: onPath([]) });
 		expect(fromSettings.runnable).toBe(false);
 		if (!fromSettings.runnable) {
-			expect(fromSettings.reason).toContain("Settings → Harness");
+			expect(fromSettings.reason).toContain("Settings → Agent");
 			expect(fromSettings.reason).not.toContain("PRISMALENS_HARNESS");
 			expect(fromSettings.pinnedBy).toBe("settings");
 		}

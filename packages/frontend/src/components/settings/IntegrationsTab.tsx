@@ -5,85 +5,73 @@
 
 import type {
 	AuthTemplateResponse,
+	ConnectionWithIntegration,
 	Integration,
 } from "@prismalens/contracts/schemas";
 import { useNavigate } from "@tanstack/react-router";
-import {
-	CheckCircle,
-	Copy,
-	Link2,
-	Loader2,
-	Pencil,
-	Plus,
-	Trash2,
-	Zap,
-} from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
-import { Mono } from "@/components/shared/Mono";
-import { StateChip } from "@/components/shared/StateChip";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
 	useConnections,
+	useDeleteConnection,
 	useDeleteIntegration,
 	useIntegrations,
 	useTemplates,
+	useTestConnection,
 } from "@/lib/api/hooks";
+import { cn } from "@/lib/utils";
+import { ConnectionFormDialog } from "./ConnectionFormDialog";
+import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
 import { IntegrationFormDialog } from "./IntegrationFormDialog";
-import { getTemplateIcon } from "./integration-utils";
+import { PULL_TEMPLATES } from "./SettingsFrame";
 
+const STATUS_WORD: Record<string, string> = {
+	ACTIVE: "connected",
+	TOKEN_EXPIRED: "token expired",
+	REFRESH_FAILED: "refresh failed",
+	CREDENTIALS_INVALID: "credentials invalid",
+	REVOKED: "revoked",
+	ERROR: "error",
+	PENDING: "pending",
+};
+
+/**
+ * The integrations that are not alert sources (GitHub and the like), each
+ * with the accounts behind it as rows, so there is no Connections tab.
+ */
 export function IntegrationsTab() {
-	const { data: integrations, isLoading } = useIntegrations();
+	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
 	const { data: templates } = useTemplates();
-	const deleteIntegration = useDeleteIntegration();
 	const navigate = useNavigate();
+	const deleteIntegration = useDeleteIntegration();
+	const deleteConnection = useDeleteConnection();
+	const test = useTestConnection();
 
-	const [showAddDialog, setShowAddDialog] = useState(false);
-	const [showEditDialog, setShowEditDialog] = useState(false);
-	const [editTarget, setEditTarget] = useState<Integration | null>(null);
+	const [adding, setAdding] = useState(false);
+	const [editing, setEditing] = useState<Integration | null>(null);
+	const [connectFor, setConnectFor] = useState<string | null>(null);
+	const [editConnection, setEditConnection] =
+		useState<ConnectionWithIntegration | null>(null);
+	const [removeIntegration, setRemoveIntegration] = useState<string | null>(
+		null,
+	);
+	const [removeConnection, setRemoveConnection] = useState<string | null>(null);
 
-	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-	const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-	const [deleteError, setDeleteError] = useState<Error | null>(null);
-
-	// Webhook URLs
-	const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-	const webhookBaseUrl =
-		typeof window !== "undefined"
-			? `${window.location.origin}/api/webhooks`
-			: "/api/webhooks";
-
-	const handleCopyUrl = async (url: string, id: string) => {
-		try {
-			await navigator.clipboard.writeText(url);
-			setCopiedUrl(id);
-			setTimeout(() => setCopiedUrl(null), 2000);
-		} catch {
-			// Clipboard API may not be available
-		}
-	};
-
-	// Count connections per integration
-	const connectionCounts = new Map<string, number>();
-	connections?.forEach((c) => {
-		const count = connectionCounts.get(c.integrationId) ?? 0;
-		connectionCounts.set(c.integrationId, count + 1);
-	});
-
-	const handleDelete = async () => {
-		if (!deleteTargetId) return;
-		setDeleteError(null);
-		try {
-			await deleteIntegration.mutateAsync({ id: deleteTargetId });
-			setShowDeleteDialog(false);
-			setDeleteTargetId(null);
-		} catch (err) {
-			setDeleteError(
-				err instanceof Error ? err : new Error("Failed to delete integration"),
-			);
-		}
-	};
+	const shown = (integrations ?? []).filter(
+		(i) => !PULL_TEMPLATES.has(i.templateId),
+	);
+	const accounts = (id: string) =>
+		(connections ?? []).filter((c) => c.integrationId === id);
 
 	const handleCreated = async (
 		integrationId: string,
@@ -116,246 +104,178 @@ export function IntegrationsTab() {
 				const { redirectUrl } = await res.json();
 				window.location.href = redirectUrl;
 			} catch {
-				// Integration was created, user can trigger OAuth from connections
+				// The integration is saved; its account can be connected from its row.
 			}
 		}
 	};
 
-	const handleEditIntegration = (integration: Integration) => {
-		setEditTarget(integration);
-		setShowEditDialog(true);
-	};
-
-	const deleteTarget = integrations?.find((i) => i.id === deleteTargetId);
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center py-12">
-				<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
-
 	return (
-		<div className="space-y-6">
-			{/* Webhook URLs */}
-			<div className="rounded-md border bg-card p-4 space-y-4">
-				<div className="flex items-center gap-2">
-					<Link2 className="h-5 w-5 text-muted-foreground" />
-					<h3 className="text-sm font-semibold tracking-tight">Webhook URLs</h3>
-				</div>
-				<p className="text-record text-muted-foreground">
-					Copy these URLs into your monitoring tools to send alerts to
-					PrismaLens. Each delivery must send the webhook token as{" "}
-					<Mono>Authorization: Bearer &lt;token&gt;</Mono> or as the basic auth
-					password, or use it as the HMAC-SHA256 key over the raw body and send{" "}
-					<Mono>X-Hub-Signature-256: sha256=&lt;hex digest&gt;</Mono>. The token
-					is in <Mono>&lt;workspace&gt;/PRISMALENS_WEBHOOK_SECRET_FILE</Mono>;
-					pl up prints the workspace path.
-				</p>
-				<div className="space-y-3">
-					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-						<div className="flex items-center gap-3">
-							<Zap className="h-5 w-5 text-muted-foreground" />
-							<div>
-								<p className="font-medium text-record">
-									Prometheus Alertmanager
-								</p>
-								<Mono className="text-xs text-muted-foreground break-all">
-									{webhookBaseUrl}/prometheus
-								</Mono>
-							</div>
-						</div>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() =>
-								handleCopyUrl(`${webhookBaseUrl}/prometheus`, "prometheus")
-							}
-						>
-							{copiedUrl === "prometheus" ? (
-								<CheckCircle className="h-4 w-4 text-muted-foreground" />
-							) : (
-								<Copy className="h-4 w-4" />
+		<SettingGroup
+			title="Integrations"
+			count={shown.length || undefined}
+			testId="integrations-list"
+			actions={
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() => setAdding(true)}
+					data-testid="add-integration"
+				>
+					Add an integration
+				</Button>
+			}
+			description={
+				shown.length === 0
+					? "None yet. A git host lets a service name its code by URL."
+					: undefined
+			}
+		>
+			{shown.map((integration) => {
+				const template = templates?.find(
+					(t) => t.id === integration.templateId,
+				);
+				const rows = accounts(integration.id);
+				return (
+					<div key={integration.id} data-testid="integration-row">
+						<SettingRow
+							label={integration.label}
+							description={`${template?.name ?? integration.templateId}, ${template?.authModeLabel ?? ""}`.replace(
+								/, $/,
+								"",
 							)}
-						</Button>
-					</div>
-
-					<div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-						<div className="flex items-center gap-3">
-							<Link2 className="h-5 w-5 text-muted-foreground" />
-							<div>
-								<p className="font-medium text-record">Generic webhook</p>
-								<Mono className="text-xs text-muted-foreground break-all">
-									{webhookBaseUrl}/generic
-								</Mono>
-							</div>
-						</div>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() =>
-								handleCopyUrl(`${webhookBaseUrl}/generic`, "generic")
-							}
 						>
-							{copiedUrl === "generic" ? (
-								<CheckCircle className="h-4 w-4 text-muted-foreground" />
-							) : (
-								<Copy className="h-4 w-4" />
-							)}
-						</Button>
-					</div>
-				</div>
-			</div>
-
-			{/* Integrations List */}
-			<div className="rounded-md border bg-card p-4 space-y-4">
-				<div className="flex items-center justify-between">
-					<h3 className="text-sm font-semibold tracking-tight">Integrations</h3>
-					{/* The empty state below carries the only Add button. */}
-					{integrations && integrations.length > 0 && (
-						<Button onClick={() => setShowAddDialog(true)}>
-							<Plus className="h-4 w-4 mr-2" />
-							Add integration
-						</Button>
-					)}
-				</div>
-				<p className="text-record text-muted-foreground">
-					Register external service providers. Connections are managed in the
-					Connections tab.
-				</p>
-
-				{integrations && integrations.length > 0 ? (
-					<div className="border rounded-lg overflow-hidden">
-						<table className="w-full">
-							<thead>
-								<tr className="border-b bg-muted/50">
-									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
-										Provider
-									</th>
-									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
-										Label
-									</th>
-									<th className="text-left text-record font-medium text-muted-foreground px-4 py-3">
-										Auth mode
-									</th>
-									<th className="text-center text-record font-medium text-muted-foreground px-4 py-3">
-										Connections
-									</th>
-									<th className="text-right text-record font-medium text-muted-foreground px-4 py-3">
-										Actions
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{integrations.map((integration) => {
-									const template = templates?.find(
-										(t) => t.id === integration.templateId,
-									);
-									const connCount = connectionCounts.get(integration.id) ?? 0;
-
-									return (
-										<tr
-											key={integration.id}
-											className="border-b last:border-b-0"
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setConnectFor(integration.id)}
+							>
+								Connect an account
+							</Button>
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button variant="ghost" size="icon-sm" aria-label="More">
+										<MoreHorizontal />
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end">
+									<DropdownMenuItem onClick={() => setEditing(integration)}>
+										Edit
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										className="text-danger"
+										onClick={() => setRemoveIntegration(integration.id)}
+									>
+										Remove
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</SettingRow>
+						{rows.map((c) => (
+							<SettingRow
+								key={c.id}
+								className="pl-4"
+								label={
+									<span className="flex flex-wrap items-baseline gap-x-2">
+										{c.label}
+										<span
+											className={cn(
+												"text-meta font-medium",
+												c.status === "ACTIVE" ? "text-ok" : "text-danger",
+											)}
 										>
-											<td className="px-4 py-3">
-												<div className="flex items-center gap-2">
-													<span className="text-muted-foreground">
-														{getTemplateIcon(integration.templateId)}
-													</span>
-													<span className="font-medium text-record">
-														{template?.name ?? integration.templateId}
-													</span>
-												</div>
-											</td>
-											<td className="px-4 py-3 text-record">
-												{integration.label}
-											</td>
-											<td className="px-4 py-3">
-												<StateChip tone="neutral">
-													{template?.authModeLabel ?? "—"}
-												</StateChip>
-											</td>
-											<td className="px-4 py-3 text-center text-record">
-												<Mono>{connCount}</Mono>
-											</td>
-											<td className="px-4 py-3 text-right">
-												<div className="flex items-center justify-end gap-1">
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleEditIntegration(integration)}
-													>
-														<Pencil className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => {
-															setDeleteTargetId(integration.id);
-															setDeleteError(null);
-															setShowDeleteDialog(true);
-														}}
-													>
-														<Trash2 className="h-4 w-4 text-destructive" />
-													</Button>
-												</div>
-											</td>
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
+											{STATUS_WORD[c.status] ?? c.status.toLowerCase()}
+										</span>
+									</span>
+								}
+								description={
+									test.variables?.id === c.id && test.data
+										? test.data.success
+											? "Answered just now."
+											: test.data.error
+										: undefined
+								}
+							>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={test.isPending}
+									onClick={() => test.mutate({ id: c.id })}
+								>
+									Test
+								</Button>
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button variant="ghost" size="icon-sm" aria-label="More">
+											<MoreHorizontal />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end">
+										<DropdownMenuItem onClick={() => setEditConnection(c)}>
+											Edit
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											className="text-danger"
+											onClick={() => setRemoveConnection(c.id)}
+										>
+											Remove
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</SettingRow>
+						))}
 					</div>
-				) : (
-					<div
-						className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-4"
-						data-testid="integrations-empty"
-					>
-						<p className="text-record text-muted-foreground">
-							No integrations registered yet.
-						</p>
-						<Button onClick={() => setShowAddDialog(true)}>
-							<Plus className="h-4 w-4 mr-2" />
-							Add integration
-						</Button>
-					</div>
-				)}
-			</div>
+				);
+			})}
 
-			{/* Form dialog for create and edit */}
 			<IntegrationFormDialog
-				open={showAddDialog}
-				onOpenChange={setShowAddDialog}
+				open={adding}
+				onOpenChange={setAdding}
 				mode="create"
 				onCreated={handleCreated}
 			/>
-
 			<IntegrationFormDialog
-				open={showEditDialog}
-				onOpenChange={(open) => {
-					setShowEditDialog(open);
-					if (!open) setEditTarget(null);
-				}}
+				open={!!editing}
+				onOpenChange={(open) => !open && setEditing(null)}
 				mode="edit"
-				integration={editTarget}
+				integration={editing}
 			/>
-
+			<ConnectionFormDialog
+				open={!!connectFor}
+				onOpenChange={(open) => !open && setConnectFor(null)}
+				mode="create"
+				preselectedIntegrationId={connectFor ?? undefined}
+			/>
+			<ConnectionFormDialog
+				open={!!editConnection}
+				onOpenChange={(open) => !open && setEditConnection(null)}
+				mode="edit"
+				connection={editConnection}
+			/>
 			<DeleteIntegrationDialog
-				open={showDeleteDialog}
-				onOpenChange={setShowDeleteDialog}
-				integrationId={deleteTargetId}
-				integrationLabel={deleteTarget?.label}
-				error={deleteError}
-				onDelete={handleDelete}
-				onCancel={() => {
-					setShowDeleteDialog(false);
-					setDeleteTargetId(null);
-					setDeleteError(null);
+				open={!!removeIntegration}
+				onOpenChange={(open) => !open && setRemoveIntegration(null)}
+				integrationId={removeIntegration}
+				integrationLabel={
+					shown.find((i) => i.id === removeIntegration)?.label ?? undefined
+				}
+				onDelete={async () => {
+					if (removeIntegration)
+						await deleteIntegration.mutateAsync({ id: removeIntegration });
 				}}
+				onCancel={() => setRemoveIntegration(null)}
 				isDeleting={deleteIntegration.isPending}
 			/>
-		</div>
+			<DeleteConnectionDialog
+				open={!!removeConnection}
+				onOpenChange={(open) => !open && setRemoveConnection(null)}
+				connectionId={removeConnection}
+				onDelete={async () => {
+					if (removeConnection)
+						await deleteConnection.mutateAsync({ id: removeConnection });
+				}}
+				onCancel={() => setRemoveConnection(null)}
+				isDeleting={deleteConnection.isPending}
+			/>
+		</SettingGroup>
 	);
 }

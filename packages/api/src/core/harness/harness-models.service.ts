@@ -35,11 +35,29 @@ export class HarnessModelsService {
 	/** Where the operator's drop-in lives; a field so a test can point it elsewhere. */
 	workspaceDir: () => string = getAppDataDir;
 
+	private readonly checks = new Map<
+		HarnessId,
+		NonNullable<HarnessStatus["checked"]>
+	>();
+
 	/** Remember what a readiness check saw the harness offer. An empty list forgets. */
 	remember(id: HarnessId, models: { id: string; name: string }[] | undefined) {
 		if (models?.length)
 			this.offered.set(id, { at: new Date().toISOString(), models });
 		else this.offered.delete(id);
+	}
+
+	/** What the check read from the harness itself: its current model, effort option and image capability. */
+	rememberCheck(
+		id: HarnessId,
+		facts: Omit<NonNullable<HarnessStatus["checked"]>, "at">,
+	) {
+		this.checks.set(id, { at: new Date().toISOString(), ...facts });
+	}
+
+	/** Null until a readiness check has answered for this harness. */
+	checked(id: HarnessId): HarnessStatus["checked"] {
+		return this.checks.get(id) ?? null;
 	}
 
 	/** Read per call, so an edited drop-in applies without a restart. */

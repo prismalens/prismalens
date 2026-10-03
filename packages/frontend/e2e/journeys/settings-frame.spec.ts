@@ -4,6 +4,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the settings frame", () => {
+	// Agent default saves the rail's agent as the choice; later scenarios expect Auto.
+	test.afterEach(async ({ page }) => {
+		await page.request.patch("/api/settings/harness", {
+			data: { harness: "auto", models: { opencode: null } },
+		});
+	});
+
 	test("Settings swaps the sidebar for its sections, the agent picker sets a model, Services is its own door", async ({
 		page,
 	}) => {
@@ -19,8 +26,8 @@ test.describe("#523 — the settings frame", () => {
 		const sections = sidebar.getByTestId("settings-sections");
 		for (const [tab, label] of [
 			["harness", "Agent"],
+			["sources", "Alert sources"],
 			["integrations", "Integrations"],
-			["connections", "Connections"],
 			["devices", "Devices"],
 			["usage", "Usage data"],
 			["about", "About"],
@@ -48,16 +55,13 @@ test.describe("#523 — the settings frame", () => {
 
 		const pickerList = page.getByTestId("agent-picker-list");
 		await expect(pickerList).toBeVisible();
-		// Choosing an agent saves at once and moves to its model column; a
-		// model is picked by name, and choosing one closes the picker.
-		const autoOption = page.getByTestId("agent-option-auto");
-		await expect(autoOption).toBeVisible();
-		await autoOption.click();
-		const models = pickerList.getByRole("listbox", { name: /^Model/ });
-		if ((await models.count()) > 0) {
-			const firstModel = models.getByRole("option").first();
-			await firstModel.click();
+		// The rail opens on the agent the next run uses; Agent default saves at
+		// once and closes the picker.
+		const def = pickerList.getByTestId("model-default");
+		if ((await def.count()) > 0) {
+			await def.click();
 			await expect(pickerList).toHaveCount(0);
+			await expect(page.getByTestId("model-pill")).toHaveText("Agent default");
 		} else {
 			await page.keyboard.press("Escape");
 			await expect(pickerList).toHaveCount(0);
@@ -73,16 +77,12 @@ test.describe("#523 — the settings frame", () => {
 			"aria-current",
 			"page",
 		);
-		await expect(page.getByTestId("settings-frame")).toBeVisible();
+		await expect(page.getByTestId("services-page")).toBeVisible();
 
-		// Open a service detail: its tabs are role="tab" buttons
-		const serviceLink = page.locator("table tbody tr a").first();
-		if (await serviceLink.isVisible()) {
-			await serviceLink.click();
-			await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);
-			const tabs = page.getByRole("tab");
-			await expect(tabs.filter({ hasText: "Overview" })).toBeVisible();
-			await expect(tabs.filter({ hasText: "Repositories" })).toBeVisible();
-		}
+		// A service is one page, with no tabs (services.feature).
+		await page.getByTestId("service-row-link").first().click();
+		await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);
+		await expect(page.getByTestId("service-page")).toBeVisible();
+		await expect(page.getByRole("tab")).toHaveCount(0);
 	});
 });

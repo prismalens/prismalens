@@ -132,7 +132,7 @@ export function DevicesTab() {
 					)
 				}
 				confirmLabel="Revoke"
-				onConfirm={() => revoking && revoke.mutate({ id: revoking.id })}
+				onConfirm={() => revoking && revoke.mutateAsync({ id: revoking.id })}
 				isPending={revoke.isPending}
 				error={revoke.error}
 			/>
