@@ -32,7 +32,7 @@ async function readyServer(): Promise<{
 }
 
 test.describe("Alert sources, a pulled-from row (#781 review)", () => {
-	test("Test refreshes the row's state, and Remove asks first", async ({
+	test("Test refreshes the row's state, and Remove asks first and survives a failure", async ({
 		page,
 	}) => {
 		const am = await readyServer();
@@ -64,12 +64,35 @@ test.describe("Alert sources, a pulled-from row (#781 review)", () => {
 			await confirm.getByRole("button", { name: "Cancel" }).click();
 			await expect(row).toHaveCount(1);
 
+			// A failed delete keeps the dialog open with the error inside it.
+			const deleteRoute = (url: URL) =>
+				url.pathname.startsWith("/api/integrations/connections/");
+			await page.route(deleteRoute, (route) =>
+				route.request().method() === "DELETE"
+					? route.fulfill({
+							status: 409,
+							contentType: "application/json",
+							body: JSON.stringify({
+								defined: false,
+								code: "CONFLICT",
+								status: 409,
+								message: "Connection is in use",
+							}),
+						})
+					: route.fallback(),
+			);
 			await row.getByRole("button", { name: "More" }).click();
 			await page.getByRole("menuitem", { name: "Remove" }).click();
-			await page
-				.getByRole("alertdialog")
-				.getByRole("button", { name: "Delete" })
-				.click();
+			await confirm.getByRole("button", { name: "Delete" }).click();
+			await expect(confirm).toBeVisible();
+			await expect(confirm.getByRole("alert")).toContainText(
+				"Connection is in use",
+			);
+			await expect(row).toHaveCount(1);
+			await page.unroute(deleteRoute);
+
+			await confirm.getByRole("button", { name: "Delete" }).click();
+			await expect(confirm).toBeHidden();
 			await expect(row).toHaveCount(0);
 		} finally {
 			const list = (await (

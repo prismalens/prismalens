@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Loader2 } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { type MouseEvent, type ReactNode, useId, useState } from "react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -24,7 +24,11 @@ export interface DestructiveConfirmProps {
 	description: ReactNode;
 	/** The verb on the red button. Same word as the thing that opened the dialog. */
 	confirmLabel: string;
-	onConfirm: () => void;
+	/**
+	 * Return the mutation's promise to keep the dialog open until it settles: it closes on
+	 * success and shows the error inside on failure. A void return closes at once.
+	 */
+	onConfirm: () => unknown;
 	onCancel?: () => void;
 	isPending?: boolean;
 	/** Disables the confirm button while something the body needs is still loading. */
@@ -34,6 +38,34 @@ export interface DestructiveConfirmProps {
 	confirmWord?: string;
 	/** Extra body: an impact summary, a list of what goes with it. */
 	children?: ReactNode;
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as { then?: unknown }).then === "function"
+	);
+}
+
+/**
+ * Runs the confirm handler. Returns false when it settled synchronously (the dialog closes
+ * as before), or the settling promise after calling `onPending` (the dialog stays open).
+ */
+export function runConfirm(
+	onConfirm: () => unknown,
+	handlers: {
+		onPending: () => void;
+		onSuccess: () => void;
+		onFailure: (error: Error) => void;
+	},
+): false | Promise<void> {
+	const result = onConfirm();
+	if (!isThenable(result)) return false;
+	handlers.onPending();
+	return Promise.resolve(result).then(handlers.onSuccess, (e: unknown) =>
+		handlers.onFailure(e instanceof Error ? e : new Error(String(e))),
+	);
 }
 
 /**
@@ -55,12 +87,38 @@ export function DestructiveConfirm({
 	children,
 }: DestructiveConfirmProps) {
 	const [typed, setTyped] = useState("");
+	const [settling, setSettling] = useState(false);
+	const [failure, setFailure] = useState<Error | null>(null);
 	const inputId = useId();
 	const armed = !confirmWord || typed === confirmWord;
+	const pending = isPending || settling;
+	const shownError =
+		(typeof error === "string" ? new Error(error) : error) ?? failure;
 
 	const handleOpenChange = (next: boolean) => {
-		if (!next) setTyped("");
+		if (!next && settling) return;
+		if (!next) {
+			setTyped("");
+			setFailure(null);
+		}
 		onOpenChange(next);
+	};
+
+	const handleConfirm = (event: MouseEvent) => {
+		setFailure(null);
+		const settled = runConfirm(onConfirm, {
+			onPending: () => setSettling(true),
+			onSuccess: () => {
+				setSettling(false);
+				setTyped("");
+				onOpenChange(false);
+			},
+			onFailure: (e) => {
+				setSettling(false);
+				setFailure(e);
+			},
+		});
+		if (settled) event.preventDefault();
 	};
 
 	return (
@@ -92,25 +150,25 @@ export function DestructiveConfirm({
 					</div>
 				)}
 
-				<MutationError
-					error={typeof error === "string" ? new Error(error) : (error ?? null)}
-				/>
+				<MutationError error={shownError} />
 
 				<AlertDialogFooter>
 					<AlertDialogCancel
 						onClick={() => {
 							setTyped("");
+							setFailure(null);
 							onCancel?.();
 						}}
+						disabled={settling}
 					>
 						Cancel
 					</AlertDialogCancel>
 					<AlertDialogAction
-						onClick={onConfirm}
+						onClick={handleConfirm}
 						className="bg-danger text-accent-fg hover:bg-danger/90"
-						disabled={!armed || isPending || isLoading}
+						disabled={!armed || pending || isLoading}
 					>
-						{isPending && (
+						{pending && (
 							<Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
 						)}
 						{confirmLabel}

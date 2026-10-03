@@ -22,24 +22,12 @@ export function DangerZoneSettings() {
 	const resetData = useResetData();
 	const factoryReset = useFactoryReset();
 
-	const handleResetData = async () => {
-		try {
-			await resetData.mutateAsync({ confirmation: "RESET" });
-			setShowResetDialog(false);
-		} catch {
-			// error is surfaced via resetData.error
-		}
-	};
+	const handleResetData = () =>
+		resetData.mutateAsync({ confirmation: "RESET" });
 
 	const handleFactoryReset = async () => {
-		try {
-			await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
-			setShowFactoryResetDialog(false);
-			// Redirect to setup wizard
-			window.location.href = "/setup";
-		} catch {
-			// error is surfaced via factoryReset.error
-		}
+		await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
+		window.location.href = "/setup";
 	};
 
 	return (

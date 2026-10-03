@@ -377,18 +377,13 @@ function ServicesPage() {
 
 	const handleConfirmDelete = async () => {
 		if (!itemToDelete) return;
-		try {
-			if (itemToDelete.id) {
-				await deleteRepository.mutateAsync({ id: itemToDelete.id });
-			}
-			setVcsScannedRepos((prev) =>
-				prev.filter((r) => r.key !== itemToDelete.key),
-			);
-			setItemToDelete(null);
-			await refetchRepos();
-		} catch {
-			// handled
+		if (itemToDelete.id) {
+			await deleteRepository.mutateAsync({ id: itemToDelete.id });
 		}
+		setVcsScannedRepos((prev) =>
+			prev.filter((r) => r.key !== itemToDelete.key),
+		);
+		await refetchRepos();
 	};
 
 	return (

@@ -278,20 +278,7 @@ function SourceRow({
 				onOpenChange={setRemoving}
 				connectionId={connection.id}
 				error={remove.error}
-				onDelete={() =>
-					remove.mutate(
-						{ id: connection.id },
-						{
-							onSuccess: () => setRemoving(false),
-							onError: (e) =>
-								toast({
-									title: "Remove failed",
-									description: getErrorMessage(e),
-									variant: "destructive",
-								}),
-						},
-					)
-				}
+				onDelete={() => remove.mutateAsync({ id: connection.id })}
 				onCancel={() => setRemoving(false)}
 				isDeleting={remove.isPending}
 			/>

@@ -3,7 +3,6 @@
 
 "use client";
 
-import { useState } from "react";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { useDeleteService } from "@/lib/api/hooks";
 
@@ -22,18 +21,11 @@ export function DeleteServiceDialog({
 	serviceName,
 	onSuccess,
 }: DeleteServiceDialogProps) {
-	const [error, setError] = useState<string | null>(null);
 	const deleteService = useDeleteService();
 
 	const handleDelete = async () => {
-		setError(null);
-		try {
-			await deleteService.mutateAsync({ id: serviceId });
-			onOpenChange(false);
-			onSuccess?.();
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to delete service");
-		}
+		await deleteService.mutateAsync({ id: serviceId });
+		onSuccess?.();
 	};
 
 	return (
@@ -50,7 +42,6 @@ export function DeleteServiceDialog({
 			confirmLabel="Delete"
 			onConfirm={handleDelete}
 			isPending={deleteService.isPending}
-			error={error}
 		/>
 	);
 }

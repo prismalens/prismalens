@@ -66,7 +66,6 @@ export function IntegrationsTab() {
 		null,
 	);
 	const [removeConnection, setRemoveConnection] = useState<string | null>(null);
-	const [error, setError] = useState<Error | null>(null);
 
 	const shown = (integrations ?? []).filter(
 		(i) => !PULL_TEMPLATES.has(i.templateId),
@@ -164,10 +163,7 @@ export function IntegrationsTab() {
 									</DropdownMenuItem>
 									<DropdownMenuItem
 										className="text-danger"
-										onClick={() => {
-											setError(null);
-											setRemoveIntegration(integration.id);
-										}}
+										onClick={() => setRemoveIntegration(integration.id)}
 									>
 										Remove
 									</DropdownMenuItem>
@@ -219,10 +215,7 @@ export function IntegrationsTab() {
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											className="text-danger"
-											onClick={() => {
-												setError(null);
-												setRemoveConnection(c.id);
-											}}
+											onClick={() => setRemoveConnection(c.id)}
 										>
 											Remove
 										</DropdownMenuItem>
@@ -265,15 +258,9 @@ export function IntegrationsTab() {
 				integrationLabel={
 					shown.find((i) => i.id === removeIntegration)?.label ?? undefined
 				}
-				error={error}
 				onDelete={async () => {
-					if (!removeIntegration) return;
-					try {
+					if (removeIntegration)
 						await deleteIntegration.mutateAsync({ id: removeIntegration });
-						setRemoveIntegration(null);
-					} catch (e) {
-						setError(e instanceof Error ? e : new Error(String(e)));
-					}
 				}}
 				onCancel={() => setRemoveIntegration(null)}
 				isDeleting={deleteIntegration.isPending}
@@ -282,15 +269,9 @@ export function IntegrationsTab() {
 				open={!!removeConnection}
 				onOpenChange={(open) => !open && setRemoveConnection(null)}
 				connectionId={removeConnection}
-				error={error}
 				onDelete={async () => {
-					if (!removeConnection) return;
-					try {
+					if (removeConnection)
 						await deleteConnection.mutateAsync({ id: removeConnection });
-						setRemoveConnection(null);
-					} catch (e) {
-						setError(e instanceof Error ? e : new Error(String(e)));
-					}
 				}}
 				onCancel={() => setRemoveConnection(null)}
 				isDeleting={deleteConnection.isPending}

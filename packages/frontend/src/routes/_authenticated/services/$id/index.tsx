@@ -238,18 +238,12 @@ function ServicePage() {
 				confirmLabel="Remove"
 				onConfirm={() =>
 					removing &&
-					removeDep.mutate(
-						{ id: removing.from, dependencyId: removing.to },
-						{
-							onSuccess: () => {
-								setRemoving(null);
-								// The edge may be the other service's; this page's topology moves too.
-								queryClient.invalidateQueries({
-									queryKey: orpc.services.key(),
-								});
-							},
-						},
-					)
+					removeDep
+						.mutateAsync({ id: removing.from, dependencyId: removing.to })
+						// The edge may be the other service's; this page's topology moves too.
+						.then(() =>
+							queryClient.invalidateQueries({ queryKey: orpc.services.key() }),
+						)
 				}
 				isPending={removeDep.isPending}
 			/>
