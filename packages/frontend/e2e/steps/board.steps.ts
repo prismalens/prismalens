@@ -352,9 +352,22 @@ Then(
 Then(
 	"no column or card says {string} or {string}",
 	async ({ page }, a: string, b: string) => {
-		const board = page.getByTestId("incident-board");
-		await expect(board).not.toContainText(a);
-		await expect(board).not.toContainText(b);
+		// Titles and services are the alert's words, not the board's: another
+		// scenario's incident may be titled "Closed without a cause".
+		const words = () =>
+			page.getByTestId("incident-board").evaluate((board) => {
+				const copy = board.cloneNode(true) as HTMLElement;
+				copy
+					.querySelectorAll(
+						'[data-testid="card-title"], [data-testid="card-service"]',
+					)
+					.forEach((el) => {
+						el.remove();
+					});
+				return copy.textContent ?? "";
+			});
+		await expect.poll(words).not.toContain(a);
+		await expect.poll(words).not.toContain(b);
 	},
 );
 
@@ -740,6 +753,7 @@ When("I add a service with a folder", async ({ page, unique }) => {
 		.getByTestId("setup-line")
 		.getByRole("link", { name: "Add a service" })
 		.click();
+	await page.getByRole("button", { name: "Add service", exact: true }).click();
 	const dialog = page.getByRole("dialog");
 	await dialog.locator("#name").fill(unique("pr2-folder-service"));
 	await dialog
@@ -1155,7 +1169,7 @@ Then("the alert reads resolved with the incident", async ({ page }) => {
 	const alert = (await detail(page, inc(page).id)).alerts?.[0];
 	expect(alert?.status).toBe("resolved");
 	await page.goto(`/alerts/${alert?.id}`);
-	await expect(page.getByTestId("alert-state")).toHaveText("Resolved");
+	await expect(page.getByTestId("alert-state")).toHaveText("Cleared");
 });
 
 Given(
