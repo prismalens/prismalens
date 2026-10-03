@@ -609,10 +609,16 @@ Then(
 			await picker(page).getByTestId(`rail-${id}`).click();
 			const chip = picker(page).getByTestId("access-chip");
 			await expect(chip).toHaveText("Read-only");
-			await chip.hover();
-			await expect(page.getByTestId("hint").last()).toContainText(
-				"Reads the copied code and queries the telemetry addresses in the brief",
-			);
+			// After the rail click the panel can still reflow (Codex's effort row), so
+			// a first hover may miss the chip; hover again until the hint shows.
+			await expect(async () => {
+				await page.mouse.move(0, 0);
+				await chip.hover();
+				await expect(page.getByTestId("hint").last()).toContainText(
+					"Reads the copied code and queries the telemetry addresses in the brief",
+					{ timeout: 1_500 },
+				);
+			}).toPass({ timeout: 10_000 });
 			await page.mouse.move(0, 0);
 		}
 	},
