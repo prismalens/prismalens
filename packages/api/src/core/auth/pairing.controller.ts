@@ -10,16 +10,18 @@
  */
 
 import { Controller, Logger, UseGuards } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
+	type DeviceRecord,
 	PairingError,
 	prismaPairingStore,
 	redeemPairingLink,
 } from "@prismalens/auth";
-import { pairingContract } from "@prismalens/contracts";
+import { pairingContract, webhooksContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
@@ -29,7 +31,10 @@ import { Public } from "./public.decorator.js";
 
 @Controller()
 export class PairingController {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly config: ConfigService,
+	) {}
 
 	private get store() {
 		return prismaPairingStore(this.prisma);
@@ -58,14 +63,22 @@ export class PairingController {
 					const request = context.request as Request;
 					operatorOnly(request);
 					const devices = await this.store.listDevices();
-					return {
-						devices: devices.map((d) => ({
-							id: d.id,
-							name: d.name,
-							createdAt: d.createdAt.toISOString(),
-							lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
-						})),
-					};
+					const self = request.operator?.device.id;
+					return { devices: devices.map((d) => deviceOut(d, self)) };
+				},
+			),
+
+			renameDevice: implement(pairingContract.manage.renameDevice).handler(
+				async ({ input, context }) => {
+					const request = context.request as Request;
+					operatorOnly(request);
+					const device = await this.store.renameDevice(input.id, input.name);
+					if (!device) {
+						throw new ORPCError("NOT_FOUND", {
+							message: "No such device, or it is revoked.",
+						});
+					}
+					return deviceOut(device, request.operator?.device.id);
 				},
 			),
 
@@ -83,6 +96,31 @@ export class PairingController {
 			),
 		};
 	}
+
+	@Implement(webhooksContract.token)
+	webhookToken() {
+		return implement(webhooksContract.token).handler(async ({ context }) => {
+			operatorOnly(context.request as Request);
+			const token = this.config.get<string>("PRISMALENS_WEBHOOK_SECRET");
+			if (!token) {
+				throw new ORPCError("NOT_FOUND", {
+					message: "This instance has no webhook token.",
+				});
+			}
+			return { token };
+		});
+	}
+}
+
+function deviceOut(d: DeviceRecord, self: string | undefined) {
+	return {
+		id: d.id,
+		name: d.name,
+		userAgent: d.userAgent,
+		current: d.id === self,
+		createdAt: d.createdAt.toISOString(),
+		lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
+	};
 }
 
 /**

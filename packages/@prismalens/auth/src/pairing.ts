@@ -18,6 +18,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
+import { hostname } from "node:os";
 
 /** What a paired device may do. Minting links and revoking devices are not on it. */
 export const DEVICE_SCOPES = [
@@ -36,8 +37,8 @@ export const ACCESS_SCOPE = "admin:access";
  */
 export const OPERATOR_SCOPES = [...DEVICE_SCOPES, ACCESS_SCOPE] as const;
 
-/** The name a startup link gives the device that redeems it. */
-export const STARTUP_LINK_LABEL = "This machine";
+/** The name a startup link gives the device that redeems it: the host's own name. */
+export const STARTUP_LINK_LABEL = hostname() || "This machine";
 
 export const PAIRING_LINK_TTL_MS = 15 * 60 * 1000;
 
@@ -68,6 +69,7 @@ export interface DeviceRecord {
 	id: string;
 	name: string;
 	scopes: string[];
+	userAgent: string | null;
 	createdAt: Date;
 	lastSeenAt: Date | null;
 	revokedAt: Date | null;
@@ -96,6 +98,8 @@ export interface PairingStore {
 	findDeviceByHash(tokenHash: string): Promise<DeviceRecord | null>;
 	touchDevice(id: string, at: Date): Promise<void>;
 	listDevices(): Promise<DeviceRecord[]>;
+	/** Null when there is no such device or it is revoked. */
+	renameDevice(id: string, name: string): Promise<DeviceRecord | null>;
 	revokeDevice(id: string, at: Date): Promise<DeviceRecord | null>;
 }
 
@@ -173,12 +177,9 @@ export async function redeemPairingLink(
 	const device = await store.redeemLink({
 		linkId: link.id,
 		tokenHash: hashToken(deviceToken),
-		// "This machine · Firefox on Linux": the operator's label says whose, the
-		// client's own name says which browser, so two devices stay apart (#763).
-		name:
-			[...new Set([link.label, input.name.trim()])]
-				.filter(Boolean)
-				.join(" · ") || "Paired device",
+		// The operator's label wins, else the device's own name ("Pixel 9"); the
+		// device list shows the browser from the user agent beside it (#763).
+		name: link.label?.trim() || input.name.trim() || "Paired device",
 		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});
@@ -230,6 +231,7 @@ export function prismaPairingStore(prisma: unknown): PairingStore {
 		id: row.id,
 		name: row.name,
 		scopes: parseScopes(row.scopes),
+		userAgent: row.userAgent,
 		createdAt: row.createdAt,
 		lastSeenAt: row.lastSeenAt,
 		revokedAt: row.revokedAt,
@@ -279,6 +281,15 @@ export function prismaPairingStore(prisma: unknown): PairingStore {
 					orderBy: { createdAt: "asc" },
 				})
 			).map(toDevice),
+		renameDevice: async (id, name) => {
+			const renamed = await db.deviceSession.updateMany({
+				where: { id, revokedAt: null },
+				data: { name },
+			});
+			if (renamed.count !== 1) return null;
+			const row = await db.deviceSession.findUnique({ where: { id } });
+			return row ? toDevice(row) : null;
+		},
 		revokeDevice: async (id, at) => {
 			const revoked = await db.deviceSession.updateMany({
 				where: { id, revokedAt: null },
@@ -306,6 +317,7 @@ interface DeviceRow {
 	id: string;
 	name: string;
 	scopes: string;
+	userAgent: string | null;
 	createdAt: Date;
 	lastSeenAt: Date | null;
 	revokedAt: Date | null;
@@ -340,7 +352,7 @@ interface PrismaPairingClient {
 		}): Promise<DeviceRow>;
 		updateMany(args: {
 			where: { id: string; revokedAt: null };
-			data: { revokedAt: Date };
+			data: { revokedAt: Date } | { name: string };
 		}): Promise<{ count: number }>;
 	};
 	$transaction<T>(
