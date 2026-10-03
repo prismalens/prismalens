@@ -233,7 +233,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 
 	if (isLoading) {
 		return (
-			<div className="flex h-full flex-col" data-testid="alert-detail">
+			<div className="flex h-full flex-col" data-testid="alert-detail-loading">
 				{band}
 				<div className="mx-auto w-full max-w-(--reading-w) space-y-3 px-6 pt-4">
 					<Skeleton className="h-3 w-1/3" />
