@@ -21,6 +21,8 @@ export interface Step {
 	stderr?: string;
 	exit?: number;
 	waitForCancel?: boolean;
+	/** Hold until `releaseRun(key)` names a key the first prompt contains. */
+	waitForRelease?: boolean;
 	stop?: string;
 }
 
@@ -36,6 +38,7 @@ export interface FakeSession {
 export const SESSIONS_DIR: string;
 export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
+export function releaseRun(key: string): void;
 export function installFakeAgent(
 	binDir: string,
 	opts?: { session?: string; binaries?: string[] },

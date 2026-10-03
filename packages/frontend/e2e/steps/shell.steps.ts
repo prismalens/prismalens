@@ -318,14 +318,28 @@ Then(
 	},
 );
 
+const KEYS = new Set(["Escape", "Enter", "Tab", "?"]);
+const OPENS_ON: Record<string, string> = {
+	"Add a source": "/settings?tab=sources",
+};
+
+/** A key by its name, Back in Settings' bar, else the button with that label, an open dialog's first. */
 When("I press {string}", async ({ page }, key: string) => {
 	const p = here(page);
 	if (key === "Back") {
 		await p.getByTestId("settings-back").click();
 		return;
 	}
-	await p.mouse.move(0, 0);
-	await p.keyboard.press(key);
+	if (KEYS.has(key) || key.length === 1) {
+		await p.mouse.move(0, 0);
+		await p.keyboard.press(key);
+		return;
+	}
+	// A scenario that opens on a press starts where that button lives.
+	if (p.url() === "about:blank" && OPENS_ON[key]) await p.goto(OPENS_ON[key]);
+	const dialog = p.getByRole("dialog");
+	const scope = (await dialog.count()) > 0 ? dialog : p;
+	await scope.getByRole("button", { name: key, exact: true }).first().click();
 });
 
 When("I open Settings and press Escape", async ({ page }) => {
@@ -426,11 +440,12 @@ Then(
 	},
 );
 
+// On the phone the board's columns stack and are the list (study-v3 §3.1, PR 2).
 Then("the incident list is the page", async ({ page }) => {
 	await expect(
-		page.getByTestId("incidents-frame").getByTestId("incident-list-pane"),
+		page.getByTestId("incidents-frame").getByTestId("incident-board"),
 	).toBeVisible();
-	await expect(page.getByTestId("incidents-overview")).toHaveCount(0);
+	await expect(page.getByTestId("sidebar")).toBeHidden();
 });
 
 Given(
@@ -479,12 +494,12 @@ When("I press the chevron at the left of the band", async ({ page }) => {
 Then("I am on the incident list", async ({ page }) => {
 	const p = here(page);
 	await expect.poll(() => pathOf(p)).toBe("/incidents");
-	await expect(p.getByTestId("incident-list-pane").first()).toBeVisible();
+	await expect(p.getByTestId("incident-board").first()).toBeVisible();
 });
 
 When("I press {string} in the strip", async ({ page }, _label: string) => {
 	await page.goto("/incidents");
-	await expect(page.getByTestId("incident-list-pane")).toBeVisible();
+	await expect(page.getByTestId("incident-board")).toBeVisible();
 	await page.getByTestId("topbar").getByTestId("strip-new").click();
 });
 
@@ -508,7 +523,7 @@ Then(
 
 When("I press Settings in the strip", async ({ page }) => {
 	await page.goto("/incidents");
-	await expect(page.getByTestId("incident-list-pane")).toBeVisible();
+	await expect(page.getByTestId("incident-board")).toBeVisible();
 	await page.getByTestId("topbar").getByTestId("strip-settings").click();
 });
 
@@ -610,7 +625,7 @@ Then(
 	async ({ page }) => {
 		const phone = here(page);
 		await expect(phone).toHaveURL(/\/incidents$/);
-		await expect(phone.getByTestId("incident-list-pane")).toBeVisible();
+		await expect(phone.getByTestId("incident-board")).toBeVisible();
 		await page.goto("/settings?tab=devices");
 		await expect(
 			page
