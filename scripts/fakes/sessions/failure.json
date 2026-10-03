@@ -1,0 +1,21 @@
+{
+	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"turns": [
+		[
+			{ "say": "Checking the service.\n" },
+			{
+				"tool": {
+					"id": "toolu_01",
+					"title": "`ls`",
+					"rawInput": { "command": "ls" },
+					"output": "api\nREADME.md"
+				}
+			},
+			{ "delayMs": 50 },
+			{
+				"stderr": "API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}"
+			},
+			{ "exit": 1 }
+		]
+	]
+}
