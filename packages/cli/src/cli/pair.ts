@@ -39,7 +39,7 @@ export default defineCommand({
 		address: {
 			type: "string",
 			description:
-				"The address the other device will open, e.g. http://192.168.1.5:6473 (default: this machine's loopback, which reaches only this machine)",
+				"An address the other device will open, e.g. a reverse proxy or tailnet IP; prefer --tailscale (default: this machine's loopback, which reaches only this machine)",
 		},
 		label: {
 			type: "string",
@@ -137,7 +137,7 @@ export default defineCommand({
 			);
 			if (loopback && !args.operator) {
 				consola.warn(
-					"This address reaches only this machine. Pass --address with an address the other device can reach (LAN IP, tailnet name).",
+					"This address reaches only this machine. For another device, pass --tailscale, or --address with an address it can reach.",
 				);
 			}
 		} catch (error) {

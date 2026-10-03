@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
-import { createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
+import { buildRunFidelity, createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
 
 const FAKE = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "fake-acp-harness.mjs");
 
@@ -376,5 +376,100 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 	it("passes no executable when none is on PATH", () => {
 		const env = envFor(tmp("empty-path"));
 		expect(env.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
+	});
+});
+
+describe("the run's access level (r4 R4.1)", () => {
+	const wireOut = (runDir: string) =>
+		readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => e.m);
+
+	it("defaults to Read-only: the write is refused and the report records the level", async () => {
+		const { events } = await collect("ok");
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity?.mode).toBe("read-only");
+	});
+
+	it("Given Edit the copy, When the agent writes inside the copy, Then the gate allows it", async () => {
+		const { events, runDir } = await collect("ok", { access: "workspace-write" });
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity?.mode).toBe("workspace-write");
+		const decisions = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(JSON.parse(l).m) as { permission?: unknown; allowed?: boolean })
+			.filter((e) => e.permission !== undefined);
+		expect(decisions.map((d) => d.allowed)).toEqual([true, true]);
+	});
+
+	it("Given Full access on Claude Code, When the harness offers bypassPermissions, Then session/set_mode asks for it", async () => {
+		const { events, runDir } = await collect("ok", {
+			harness: "claude-code",
+			access: "full-access",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default,bypassPermissions" },
+		});
+		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
+		expect(sent.find((m) => m.method === "session/set_mode")?.params?.modeId).toBe("bypassPermissions");
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ mode: "full-access" });
+		expect(report.report.fidelity?.mechanism).toContain("mode bypassPermissions");
+		expect(report.report.fidelity?.mechanism).not.toContain("not offered");
+	});
+
+	it("Given a mode the harness does not offer, Then the run says the gate is the only layer and sends no set_mode", async () => {
+		const warnings: string[] = [];
+		const { events, runDir } = await collect("ok", {
+			harness: "claude-code",
+			onPolicyWarning: (m) => warnings.push(m),
+		});
+		expect(wireOut(runDir).some((m) => m.includes("session/set_mode"))).toBe(false);
+		expect(warnings).toContain("mode default not offered, gate only");
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity?.mechanism).toMatch(/mode default not offered, gate only$/);
+	});
+
+	it("Given Codex with the sandbox switch off, When a run starts at Read-only, Then agent-full-access and cooperative", () => {
+		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only", sandbox: false }).env;
+		expect(env.INITIAL_AGENT_MODE).toBe("agent-full-access");
+		expect(buildRunFidelity("codex", {}, "read-only", { sandbox: false })).toMatchObject({ mode: "read-only", fidelity: "cooperative" });
+	});
+
+	it("Given no sandbox setting, When Codex starts at Read-only, Then its sandbox stays on (SANDBOX_DEFAULT)", () => {
+		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env;
+		expect(env.INITIAL_AGENT_MODE).toBe("read-only");
+	});
+
+	it("Given Codex with the sandbox switch on, When a run starts at Read-only, Then read-only and enforced", () => {
+		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only", sandbox: true }).env;
+		expect(env.INITIAL_AGENT_MODE).toBe("read-only");
+		expect(buildRunFidelity("codex", {}, "read-only", { sandbox: true })).toMatchObject({
+			fidelity: "enforced",
+			mechanism: "Codex read-only sandbox (no network)",
+		});
+	});
+
+	it("merges a level's config patch into the harness's own config file", () => {
+		const runDir = tmp("run");
+		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, access: "full-access" });
+		const config = JSON.parse(readFileSync(join(runDir, "config", "opencode.json"), "utf8"));
+		expect(config.permission).toEqual({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" });
+		const readOnly = tmp("run");
+		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir: readOnly });
+		expect(JSON.parse(readFileSync(join(readOnly, "config", "opencode.json"), "utf8")).permission.edit).toBe("deny");
+	});
+
+	it("Given Codex's sandbox on at a read level, Then What we could not check names it", async () => {
+		const { events } = await collect("ok", { harness: "codex", sandbox: true });
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.coverage.notQueried).toContain("Codex's sandbox allows no network");
 	});
 });

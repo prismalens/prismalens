@@ -480,6 +480,10 @@ RESET_OUT=$("$BIN/pl" reset --yes --workspace "$UP_DIR/workspace" 2>&1)
 RESET_EXIT=$?
 set -e
 [ "$RESET_EXIT" -ne 0 ] || fail "pl reset --yes deleted a running workspace: $RESET_OUT"
+case "$RESET_OUT" in
+*"PrismaLens is running on this workspace"*) ;;
+*) fail "pl reset failed without the running-workspace refusal: $RESET_OUT" ;;
+esac
 [ -f "$UP_DIR/workspace/prismalens.db" ] || fail "pl reset refused but the database is gone"
 echo "    refused: $(echo "$RESET_OUT" | tail -1)"
 
@@ -518,6 +522,7 @@ until [ -f "$OPENED" ] || [ "$i" -ge 30 ]; do
 	sleep 1
 done
 [ -f "$OPENED" ] || fail "the change stream never opened: $(cat "$SCRATCH/holder.log")"
+kill -0 "$HOLDER_PID" 2>/dev/null || fail "the change stream closed before SIGTERM: $(cat "$SCRATCH/holder.log")"
 
 kill -TERM "$UP_PID"
 i=0

@@ -7081,6 +7081,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -7998,6 +8004,12 @@
                                             "type": "string"
                                           },
                                           "mode": {
+                                            "enum": [
+                                              "read-only",
+                                              "read-only-tools",
+                                              "workspace-write",
+                                              "full-access"
+                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -8934,6 +8946,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -9837,6 +9855,12 @@
                                           "type": "string"
                                         },
                                         "mode": {
+                                          "enum": [
+                                            "read-only",
+                                            "read-only-tools",
+                                            "workspace-write",
+                                            "full-access"
+                                          ],
                                           "type": "string"
                                         },
                                         "fidelity": {
@@ -10806,6 +10830,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -12077,6 +12107,12 @@
                                             "type": "string"
                                           },
                                           "mode": {
+                                            "enum": [
+                                              "read-only",
+                                              "read-only-tools",
+                                              "workspace-write",
+                                              "full-access"
+                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -12600,6 +12636,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -13549,6 +13591,12 @@
                                 "type": "string"
                               },
                               "mode": {
+                                "enum": [
+                                  "read-only",
+                                  "read-only-tools",
+                                  "workspace-write",
+                                  "full-access"
+                                ],
                                 "type": "string"
                               },
                               "fidelity": {
@@ -14069,6 +14117,12 @@
                                       "type": "string"
                                     },
                                     "mode": {
+                                      "enum": [
+                                        "read-only",
+                                        "read-only-tools",
+                                        "workspace-write",
+                                        "full-access"
+                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -25311,7 +25365,8 @@
                               {
                                 "type": "null"
                               }
-                            ]
+                            ],
+                            "default": null
                           },
                           "models": {
                             "type": "object",
@@ -25373,7 +25428,6 @@
                           "defaultModel",
                           "modelVia",
                           "loginHint",
-                          "envModel",
                           "models"
                         ]
                       }

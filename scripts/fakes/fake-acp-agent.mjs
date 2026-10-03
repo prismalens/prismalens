@@ -65,12 +65,12 @@ export function installFakeAgent(binDir, opts = {}) {
 		const target = join(binDir, bin);
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" --session ${session} "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" --session "${session}" "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" --session ${session} %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" --session "${session}" %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));

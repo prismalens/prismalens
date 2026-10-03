@@ -1073,7 +1073,10 @@ describe("AlertsService (BDD)", () => {
 			await incidents.resolve("inc-1");
 			expect(incident.status).toBe(IncidentStatus.resolved);
 			expect(incident.resolvedAt).toEqual(new Date("2026-09-27T09:09:21.000Z"));
-			expect(timeline.create).toHaveBeenCalledTimes(2);
+			const statusEntries = db.timelineEntry.create.mock.calls.filter(
+				([arg]: [{ data: { title: string } }]) => arg.data.title === "Status changed",
+			);
+			expect(statusEntries).toHaveLength(2);
 			vi.useRealTimers();
 		});
 	});

@@ -279,6 +279,7 @@ function PairAnother() {
 							className="mt-1"
 							value={origin}
 							onChange={(e) => setOrigin(e.target.value)}
+							placeholder="https://box.tail1234.ts.net"
 						/>
 					</div>
 				)}
@@ -293,8 +294,8 @@ function PairAnother() {
 			</form>
 			{loopback && LOOPBACK.test(origin) && (
 				<p className="mt-2 text-meta text-text-3">
-					This address reaches only this machine. Use a LAN address or a tailnet
-					name for another device.
+					This address reaches only this machine. For another device, use the
+					tailnet address from <code>pl up --tailscale-serve</code>.
 				</p>
 			)}
 			{create.isError && (
