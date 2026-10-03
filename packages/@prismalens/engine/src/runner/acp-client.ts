@@ -231,6 +231,51 @@ export function offeredModels(
 }
 
 /**
+ * How a session takes a mode: a `mode`-category select config option (ACP's
+ * preferred shape) or the `modes` list of `session/new`. Ids only; empty when neither.
+ */
+interface AcpModeSurface {
+	configId: string | null;
+	ids: string[];
+	current: string | null;
+}
+
+export function offeredModes(
+	answer: Partial<NewSessionResponse> | Partial<LoadSessionResponse> | null,
+): AcpModeSurface {
+	const options = Array.isArray(answer?.configOptions)
+		? (answer.configOptions as Array<Record<string, unknown>>)
+		: [];
+	for (const option of options) {
+		if (option?.category !== "mode" || option.type !== "select") continue;
+		const ids = (Array.isArray(option.options) ? option.options : [])
+			.flatMap((e: Record<string, unknown>) =>
+				Array.isArray(e?.options)
+					? (e.options as Array<Record<string, unknown>>)
+					: [e],
+			)
+			.flatMap((o) => (typeof o?.value === "string" ? [o.value] : []));
+		return {
+			configId: typeof option.id === "string" ? option.id : null,
+			ids,
+			current:
+				typeof option.currentValue === "string" ? option.currentValue : null,
+		};
+	}
+	const modes = answer?.modes;
+	return {
+		configId: null,
+		ids: Array.isArray(modes?.availableModes)
+			? modes.availableModes.flatMap((m) =>
+					typeof m?.id === "string" ? [m.id] : [],
+				)
+			: [],
+		current:
+			typeof modes?.currentModeId === "string" ? modes.currentModeId : null,
+	};
+}
+
+/**
  * The model a `session/new` answer says is selected: the `currentValue` of its
  * `model` select option. Null when the harness reports none (#639).
  */
@@ -272,6 +317,8 @@ export class AcpSession {
 	servedModel: string | null = null;
 	/** The harness advertised `loadSession` at `initialize`. */
 	loadSession = false;
+	/** The modes `session/new` (or `session/load`) offered. */
+	private modes: AcpModeSurface = { configId: null, ids: [], current: null };
 	/** History updates `session/load` replayed; dropped, never yielded. */
 	replayed = 0;
 
@@ -389,6 +436,7 @@ export class AcpSession {
 			})) as Partial<LoadSessionResponse> | null;
 			this.models = offeredModels(loaded?.configOptions);
 			this.servedModel = selectedModel(loaded?.configOptions);
+			this.modes = offeredModes(loaded);
 			return;
 		}
 		const session = (await this.request(
@@ -401,6 +449,36 @@ export class AcpSession {
 		this.currentSessionId = session.sessionId;
 		this.models = offeredModels(session.configOptions);
 		this.servedModel = selectedModel(session.configOptions);
+		this.modes = offeredModes(session);
+	}
+
+	/**
+	 * Ask for an access mode (r4 R4.1): `session/set_config_option` when the mode
+	 * is a config option, else `session/set_mode`. False when the harness never offered it.
+	 */
+	async setMode(modeId: string): Promise<boolean> {
+		if (!this.currentSessionId || !this.modes.ids.includes(modeId))
+			return false;
+		if (this.modes.current === modeId) return true;
+		const timeout = this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+		if (this.modes.configId)
+			await this.request(
+				"session/set_config_option",
+				{
+					sessionId: this.currentSessionId,
+					configId: this.modes.configId,
+					value: modeId,
+				},
+				timeout,
+			);
+		else
+			await this.request(
+				"session/set_mode",
+				{ sessionId: this.currentSessionId, modeId },
+				timeout,
+			);
+		this.modes = { ...this.modes, current: modeId };
+		return true;
 	}
 
 	/** The harness's own session id once `open()` has one. */
