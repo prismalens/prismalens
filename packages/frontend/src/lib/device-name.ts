@@ -34,3 +34,35 @@ export function guessDeviceName(
 	if (browser && system) return `${browser} on ${system}`;
 	return browser ?? system;
 }
+
+/** "Pixel 9" from an Android user agent that still names its model; reduced ones say "K". */
+export function modelFromUserAgent(userAgent: string): string | undefined {
+	const model = userAgent.match(/Android [\d.]+; ([^;)]+)\)/)?.[1]?.trim();
+	if (model && model !== "K") return model.replace(/ Build\/.*$/, "");
+	if (/iPhone/.test(userAgent)) return "iPhone";
+	if (/iPad/.test(userAgent)) return "iPad";
+	return undefined;
+}
+
+interface HighEntropyNavigator {
+	userAgentData?: {
+		getHighEntropyValues(hints: string[]): Promise<{ model?: string }>;
+	};
+}
+
+/**
+ * The name a device pairs under: its model where the browser tells it (client
+ * hints, then the user agent), else "Chrome on Linux". The list shows the
+ * browser beside it either way.
+ */
+export async function pairingName(nav: Navigator): Promise<string | undefined> {
+	try {
+		const hints = await (
+			nav as Navigator & HighEntropyNavigator
+		).userAgentData?.getHighEntropyValues(["model"]);
+		if (hints?.model) return hints.model;
+	} catch {
+		// Client hints refused: fall back to the user agent.
+	}
+	return modelFromUserAgent(nav.userAgent) ?? guessDeviceName(nav.userAgent);
+}
