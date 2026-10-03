@@ -232,10 +232,22 @@ export async function sidewaysOverflow(page: Page): Promise<number> {
 	);
 }
 
+/** A box that held still for 300 ms: the setup line can land after the board and push every card down. */
+async function settledBox(page: Page, l: Locator) {
+	let last = await l.boundingBox();
+	for (let i = 0; i < 20; i++) {
+		await page.waitForTimeout(300);
+		const now = await l.boundingBox();
+		if (now && now.x === last?.x && now.y === last?.y) return now;
+		last = now;
+	}
+	throw new Error("the card never held still");
+}
+
 /** Drags with the mouse in steps, the way dnd-kit's pointer sensor needs. */
 export async function drag(page: Page, from: Locator, to: Locator) {
-	const a = await from.boundingBox();
-	const b = await to.boundingBox();
+	const a = await settledBox(page, from);
+	const b = await settledBox(page, to);
 	if (!a || !b) throw new Error("nothing to drag or nowhere to drop");
 	await page.mouse.move(a.x + a.width / 2, a.y + 12);
 	await page.mouse.down();
