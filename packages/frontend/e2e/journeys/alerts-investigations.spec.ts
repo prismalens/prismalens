@@ -18,11 +18,11 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// 3. Open the culprit investigation's report (d0111111) and verify the
 		//    culprit fields. The report is a route under its incident (#743),
-		//    and the section is `#report`.
+		//    its answer first (study-v3 §3.2).
 		await page.goto(
 			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
 		);
-		await expect(page.locator("#report")).toBeVisible({
+		await expect(page.getByTestId("report-answer")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
@@ -42,7 +42,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		await page.goto(
 			"/incidents/b0222222-2222-4222-8222-222222222222/report?investigation=d0222222-2222-4222-8222-222222222222",
 		);
-		await expect(page.locator("#report")).toBeVisible({
+		await expect(page.getByTestId("report-answer")).toBeVisible({
 			timeout: 15_000,
 		});
 		// Scoped to the report: the list row's headline carries the same cause.
@@ -294,7 +294,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(page.locator("#report")).toBeVisible({
+		await expect(page.getByTestId("report-answer")).toBeVisible({
 			timeout: 15_000,
 		});
 		await setTheme("light");

@@ -236,7 +236,9 @@ test.describe("#743 — the incidents board", () => {
 		await expect.poll(() => statusOf(bandId)).toBe("investigating");
 		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
 		// No run started: the box still offers Investigate.
-		await expect(page.getByTestId("run-card")).toContainText("No investigation yet");
+		await expect(page.getByTestId("overview-report")).toContainText(
+			"No investigation yet",
+		);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",
 		);

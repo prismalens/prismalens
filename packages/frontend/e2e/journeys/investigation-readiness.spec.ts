@@ -224,7 +224,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-card")).toContainText("No investigation yet", {
+		await expect(page.getByTestId("overview-report")).toContainText("No investigation yet", {
 			timeout: 15_000,
 		});
 		await expect(boxInvestigateButton(page)).toBeDisabled();
