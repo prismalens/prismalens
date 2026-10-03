@@ -6,7 +6,7 @@ import {
 	SEVERITY_LABEL,
 	type Severity,
 } from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useNow } from "@/hooks/use-now";
@@ -37,6 +37,8 @@ function useWindow(from: Date, to: Date | undefined, filter: string) {
 			},
 		}),
 		refetchInterval: useLiveRefreshInterval(),
+		// The window moves every minute; keep the figures up while the next key loads.
+		placeholderData: keepPreviousData,
 	});
 	const needle = filter.trim().toLowerCase();
 	const rows = useMemo(

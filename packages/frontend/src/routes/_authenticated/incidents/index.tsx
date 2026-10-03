@@ -99,6 +99,10 @@ function IncidentsLanding() {
 	const windows: WindowKey[] = analytics
 		? ["7d", "30d", "90d"]
 		: ["all", "1d", "7d", "30d"];
+	// The board's 24 hours or All time reads as Analytics' 30 days, label and figures alike.
+	const viewKey: WindowKey = windows.includes(windowKey)
+		? windowKey
+		: windows[1];
 
 	return (
 		<div
@@ -140,7 +144,7 @@ function IncidentsLanding() {
 								/>
 							</label>
 							<select
-								value={windows.includes(windowKey) ? windowKey : windows[1]}
+								value={viewKey}
 								onChange={(e) => setWindow(e.target.value as WindowKey)}
 								aria-label="Window"
 								className="raised h-7 rounded-control px-2 text-body text-text-2 outline-none"
@@ -163,7 +167,7 @@ function IncidentsLanding() {
 				) : analytics ? (
 					<IncidentAnalytics
 						filter={q}
-						days={WINDOWS[windowKey].days || 30}
+						days={WINDOWS[viewKey].days}
 						onWiden={() => setWindow("90d")}
 					/>
 				) : (

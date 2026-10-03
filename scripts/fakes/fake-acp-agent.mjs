@@ -162,15 +162,20 @@ function run() {
 			}
 			// Holds the turn until a test drops a file named for this prompt (releaseRun).
 			if (step.waitForRelease) {
-				const released = await new Promise((r) => {
-					onCancel = () => r(false);
-					const poll = setInterval(() => {
-						if (releasedFor(prompt)) {
+				const released =
+					releasedFor(prompt) ||
+					(await new Promise((r) => {
+						const poll = setInterval(() => {
+							if (releasedFor(prompt)) {
+								clearInterval(poll);
+								r(true);
+							}
+						}, 200);
+						onCancel = () => {
 							clearInterval(poll);
-							r(true);
-						}
-					}, 200);
-				});
+							r(false);
+						};
+					}));
 				if (!released) return "cancelled";
 			}
 			if (step.stop) return step.stop;

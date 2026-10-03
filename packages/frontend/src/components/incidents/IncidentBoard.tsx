@@ -242,6 +242,8 @@ export function IncidentBoard({
 
 	const startRun = (incident: IncidentWithRelations) => {
 		if (!isReady) {
+			// A reopen-and-investigate lands here with the card still busy.
+			void settle(incident.id)();
 			toast({
 				title: "No run started",
 				description: blockedReason,

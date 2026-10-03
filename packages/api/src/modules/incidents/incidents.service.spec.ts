@@ -12,6 +12,7 @@ import { telemetryStub } from "../../../test/factories/index.js";
 
 describe("IncidentsService", () => {
 	let service: IncidentsService;
+	let telemetry: TelemetryService;
 
 	// The interactive-transaction client handed to `$transaction(async (tx) => …)`.
 	const mockTx = {
@@ -72,12 +73,13 @@ describe("IncidentsService", () => {
 			async (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
 		);
 
+		telemetry = telemetryStub();
 		const moduleRef = await Test.createTestingModule({
 			providers: [
 				IncidentsService,
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: TimelineService, useValue: mockTimelineService },
-				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: TelemetryService, useValue: telemetry },
 			],
 		}).compile();
 
@@ -214,7 +216,7 @@ describe("IncidentsService", () => {
 	describe("close", () => {
 		const triggeredAt = new Date(Date.now() - 60_000);
 
-		it("stamps resolvedAt when closing an incident that was never resolved", async () => {
+		it("leaves resolvedAt unset when the operator resolves before the alerts cleared", async () => {
 			mockPrisma.incident.findUnique.mockResolvedValue({
 				id: "inc-1",
 				status: "investigating",
@@ -227,6 +229,23 @@ describe("IncidentsService", () => {
 
 			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.status).toBe("closed");
+			expect(data.closedAt).toBeInstanceOf(Date);
+			expect(data).not.toHaveProperty("resolvedAt");
+			expect(data).not.toHaveProperty("timeToResolve");
+		});
+
+		it("stamps resolvedAt when the source's alerts clear", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "investigating",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.resolve("inc-1");
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
 			expect(data.resolvedAt).toBeInstanceOf(Date);
 			expect(data.timeToResolve).toBeGreaterThanOrEqual(60);
 		});
@@ -353,7 +372,30 @@ describe("IncidentsService", () => {
 			expect(data).not.toHaveProperty("actualCause");
 		});
 
-		it("stamps closedAt only through close(), never through a generic update", async () => {
+		it("a generic update to closed records the Resolve the way close() does", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "triggered",
+				triggeredAt,
+				resolvedAt: null,
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { status: "closed" });
+
+			const { data } = mockTx.incident.update.mock.calls[0][0];
+			expect(data.closedAt).toBeInstanceOf(Date);
+			expect(data.timeToClose).toBeGreaterThanOrEqual(120);
+			expect(data.reopenedAt).toBeNull();
+			expect(data.reopenReason).toBeNull();
+			expect(data).not.toHaveProperty("resolvedAt");
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({ title: "Resolved" }),
+			});
+			expect(telemetry.capture).toHaveBeenCalledWith("incident_closed", {});
+		});
+
+		it("stamps no closedAt on a move between working phases", async () => {
 			mockPrisma.incident.findUnique.mockResolvedValue({
 				id: "inc-1",
 				status: "triggered",
