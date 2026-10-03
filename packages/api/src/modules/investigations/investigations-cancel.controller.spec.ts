@@ -11,7 +11,7 @@
  */
 
 import { Test, type TestingModule } from "@nestjs/testing";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { ORPCError } from "@orpc/nest";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
@@ -68,7 +68,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 			],
 		})
-			.overrideGuard(ThrottlerGuard)
+			.overrideGuard(MutationThrottleGuard)
 			.useValue({ canActivate: () => true })
 			.compile();
 		controller = module.get(InvestigationsController);

@@ -22,10 +22,15 @@ import {
 	runWithWideEventSync,
 } from "./integrations/standalone/index.js";
 
+// The file is written by pino-roll in a worker thread whose cold start grows with
+// runner load (0.1s idle, 0.6s at 3x CPU oversubscription, >3s on a busy macOS
+// runner), so poll on the content and let the suite timeout be the only ceiling.
+const FILE_WAIT_MS = 20_000;
+
 async function waitForFileContent(
 	filePath: string,
 	minLines = 1,
-	timeoutMs = 3000,
+	timeoutMs = FILE_WAIT_MS,
 ): Promise<string> {
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
@@ -41,7 +46,7 @@ async function waitForFileContent(
 	return existsSync(filePath) ? readFileSync(filePath, "utf-8") : "";
 }
 
-describe("Pino Logger Integration", () => {
+describe("Pino Logger Integration", { timeout: FILE_WAIT_MS + 10_000 }, () => {
 	let testDir: string;
 	const originalEnv = { ...process.env };
 

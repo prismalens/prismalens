@@ -62,6 +62,12 @@ async function rewriteJsonResponse(
 ): Promise<void> {
 	try {
 		const response = await route.fetch();
+		// A 429 or 500 rewritten into a 200 is a run with no id, which the page
+		// keys every panel by; pass errors through as the API sent them.
+		if (!response.ok()) {
+			await route.fulfill({ response });
+			return;
+		}
 		const body = (await response.json()) as Record<string, unknown>;
 		await route.fulfill({
 			status: 200,

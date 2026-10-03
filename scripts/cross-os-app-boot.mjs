@@ -91,7 +91,7 @@
  *   PL_APP_BOOT_GLOBAL_PREFIX  override for `npm prefix -g`
  */
 
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import {
 	createWriteStream,
 	existsSync,
@@ -104,6 +104,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 // The Part A assertion sequence, shared with scripts/packed-smoke.sh (#551).
 // Relative to this module's own URL, so it resolves whatever the cwd is — and
 // it is why this job's sparse-checkout list carries a second entry.
@@ -124,6 +125,7 @@ const die = (message) => {
 	process.exit(1);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Locate the global install
@@ -144,6 +146,16 @@ function runShim(file, args) {
 		WIN ? ["/d", "/s", "/c", file, ...args] : args,
 		{ encoding: "utf8", windowsHide: true },
 	).trim();
+}
+
+/** runShim without blocking the loop, for calls between HTTP requests (see processTable). */
+async function runShimAsync(file, args) {
+	const { stdout } = await execFileAsync(
+		WIN ? "cmd.exe" : file,
+		WIN ? ["/d", "/s", "/c", file, ...args] : args,
+		{ encoding: "utf8", windowsHide: true },
+	);
+	return stdout.trim();
 }
 
 const npmOut = (args) => runShim(WIN ? "npm.cmd" : "npm", args);
@@ -321,8 +333,13 @@ const dumpLog = (lines = 60) => {
 // Process-tree bookkeeping (for the orphan assertion)
 // ---------------------------------------------------------------------------
 
-/** [pid, ppid] for every process on the machine. */
-function processTable() {
+/**
+ * [pid, ppid] for every process on the machine. Async on purpose: a cold
+ * PowerShell CIM query takes 3-6s on windows-latest, and blocking the loop that
+ * long keeps undici from retiring a keep-alive socket the server already closed
+ * at its 5s keepAliveTimeout, so the next request reads ECONNRESET.
+ */
+async function processTable() {
 	const pairs = [];
 	let out;
 	try {
@@ -332,7 +349,7 @@ function processTable() {
 			// as \" on the command line, and powershell.exe's handling of that is
 			// famously unreliable. `-join ' '` needs only single quotes, which pass
 			// through untouched.
-			out = execFileSync(
+			({ stdout: out } = await execFileAsync(
 				"powershell.exe",
 				[
 					"-NoProfile",
@@ -341,11 +358,11 @@ function processTable() {
 					"Get-CimInstance Win32_Process | ForEach-Object { ($_.ProcessId, $_.ParentProcessId) -join ' ' }",
 				],
 				{ encoding: "utf8", windowsHide: true },
-			);
+			));
 		} else {
-			out = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
+			({ stdout: out } = await execFileAsync("ps", ["-A", "-o", "pid=,ppid="], {
 				encoding: "utf8",
-			});
+			}));
 		}
 	} catch {
 		return pairs;
@@ -358,9 +375,9 @@ function processTable() {
 }
 
 /** Every transitive child of `root`, per one snapshot of the process table. */
-function descendantsOf(root) {
+async function descendantsOf(root) {
 	const byParent = new Map();
-	for (const [pid, ppid] of processTable()) {
+	for (const [pid, ppid] of await processTable()) {
 		if (!byParent.has(ppid)) byParent.set(ppid, []);
 		byParent.get(ppid).push(pid);
 	}
@@ -393,15 +410,14 @@ const isAlive = (pid) => {
  * orphan check unable to fail.
  *
  * Polling is confined to the fork phase, and starts only once the investigation
- * has been requested. `processTable` uses execFileSync, which BLOCKS the event
- * loop — on Windows each PowerShell CIM query costs hundreds of milliseconds,
- * and a sampler running through the HTTP section would be measuring the
- * assertions' own latency. Nothing forks before the fork phase, so sampling
- * earlier would only cost time to observe nothing.
+ * has been requested. On Windows each PowerShell CIM query costs seconds, and a
+ * sampler running through the HTTP section would be measuring the assertions'
+ * own latency. Nothing forks before the fork phase, so sampling earlier would
+ * only cost time to observe nothing.
  */
 const seenDescendants = new Set();
-const sample = () => {
-	for (const pid of descendantsOf(child.pid)) seenDescendants.add(pid);
+const sample = async () => {
+	for (const pid of await descendantsOf(child.pid)) seenDescendants.add(pid);
 };
 let sampler = null;
 const stopSampling = () => {
@@ -665,7 +681,7 @@ deep.status === 200 && isHtml(deepBody)
 		);
 
 console.log("==> an authenticated /api call succeeds after pairing");
-const pairOut = runShim(shim, ["pair", "--workspace", workspace]);
+const pairOut = await runShimAsync(shim, ["pair", "--workspace", workspace]);
 const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 
 const redeem = await json("/api/pairing/redeem", {
@@ -791,7 +807,7 @@ await assertRefusalGate({
 });
 
 console.log("==> shutdown leaves nothing behind");
-sample();
+await sample();
 const observed = [...seenDescendants];
 // One process, one database (0005 §1-2): nothing forks, so zero observed
 // descendants here is the correct outcome, not a precondition failure. The
