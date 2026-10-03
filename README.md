@@ -5,12 +5,15 @@
   </picture>
 </p>
 
-PrismaLens investigates a firing alert the way an on-call engineer would: it
-reads the repo, queries your read-only telemetry, and comes back with an
-**ordered-evidence report** — hypotheses ranked most to least plausible, each
-backed by evidence it actually gathered, with no fake numeric confidence
-scores. It's open source (Apache-2.0), local-first, and BYO-key — no
-PrismaLens account, no subscription. Before you run it on your machine, read
+PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+coding agent you already use reads a snapshot of the service's code, under a
+read-only policy, and writes an **ordered-evidence report**: hypotheses ranked from most to least
+plausible, each backed by evidence the agent gathered, with no numeric
+confidence scores. The run, the evidence and the cause stay on the incident.
+
+It is open source (Apache-2.0). There is no PrismaLens account, no subscription
+and no model bill from us: the agent signs in with its own provider. Before you
+run it on your machine, read
 **[what PrismaLens reads and never does](https://docs.prismalens.io/trust/)**.
 
 > [!WARNING]
@@ -60,7 +63,7 @@ scoop install prismalens
 
 Unsigned zips for macOS, Windows and Linux are attached to each
 [GitHub Release](https://github.com/prismalens/prismalens/releases); your OS
-will warn before opening one. Signed installers come with #697.
+will warn before opening one. Signed installers are planned.
 
 ## Quick start
 
@@ -107,10 +110,10 @@ A fresh install has nothing pointed at it, so no incidents arrive on their own.
 You do not need an Alertmanager to see it work:
 
 1. **Install and start.** `npm install -g prismalens`, then `pl up`; it opens
-   your browser on the link that pairs it, no account. `pl doctor` says whether a coding agent is on PATH, which model
-   a run will ask it for. With OpenCode the
-   model is `opencode/muse-spark-1.3-contributor-free`, keyless, unless you set
-   another under Settings → Agent → Model.
+   your browser on the link that pairs it, no account. `pl doctor` says
+   whether a coding agent is on PATH and which model a run will ask it for.
+   PrismaLens sets no model of its own: the agent picks its default model
+   unless you set one under Settings → Agent → Model.
 2. **Point a service at its code.** Services, then Add Service, then set
    **Repository** to a folder (`~/code/payments`) or a git URL
    (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
@@ -140,19 +143,14 @@ Investigation tab (open the service from an incident, or from Settings →
 Services): always, critical and high, critical only, never. When the policy says
 no, the incident's timeline names the policy and where to change it.
 
-### Or just the CLI
+### Check a machine first
 
-The same binary is a standalone investigator that needs nothing running:
+`pl doctor` needs nothing running. It reports the Node version, the
+workspace, which coding agents are on PATH and whether each answers an ACP
+handshake, the model a run will ask for, and the webhook URL:
 
 ```bash
 npx prismalens doctor
-```
-
-`doctor` checks that a harness binary is on PATH and answers an ACP handshake, then `pl up` boots the app
-(API and dashboard on one port, SQLite, no external services):
-
-```bash
-pl up
 ```
 
 Both `prismalens` and the shorter `pl` alias point at the same binary. Full
@@ -197,13 +195,13 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
   never reads or stores one.
 - **Runtime gate, not read-only.** Every ACP permission request is answered in
   PrismaLens code: edit, delete and move tools and mutating shell commands are
-  refused. It is a guardrail; `Bash` walks through text rules. There is no sandbox: the agent runs as your user on the machine that runs `pl up`, with an allowlisted environment and its working directory on a throwaway clone of the repo. Give it read-only credentials and pick that machine accordingly.
+  refused. It is a guardrail; `Bash` walks through text rules. There is no sandbox: the agent runs as your user on the machine that runs `pl up`, with an allowlisted environment and its working directory on a throwaway clone of the repo.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
   with supporting/contradicting evidence per hypothesis — never a numeric
   confidence number.
-- **Every run is durable.** Events, session metadata, and the final report
-  are written to `~/.prismalens/runs/<runId>/` regardless of how the run was
-  invoked (terminal, or driven live over JSON-RPC by an app).
+- **Every run is durable.** Events, session metadata and the final report
+  are written to `~/.prismalens/runs/<runId>/`, and the report can be
+  exported as Markdown from the incident.
 
 ## Monorepo layout
 
@@ -213,19 +211,21 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
 | `packages/@prismalens/engine` | The investigation run: ACP session, permission policy, stream adapter, report validation, child launch. |
 | `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
 | `packages/@prismalens/config` | Shared config and environment-variable resolution. |
-| `packages/@prismalens/auth` | Auth configuration and client (Better Auth), for the in-development server. |
+| `packages/@prismalens/auth` | Device pairing and sessions (Better Auth). |
 | `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
-| `packages/@prismalens/integrations` | Integration templates, OAuth2 flows, credential encryption, for the in-development server. |
+| `packages/@prismalens/integrations` | Integration templates, OAuth2 flows and credential encryption. |
 | `packages/@prismalens/logger` | Pino-based structured logging with log rotation and secret redaction, shared across packages. |
 | `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
 | `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
+| `packages/desktop` | The desktop app (preview): an Electron window on the same server `pl up` runs. |
 
-Only `packages/cli` is published, under the name `prismalens`. Everything else
-is `private: true` and travels INSIDE that one tarball as bundled dependencies.
+Only `packages/cli` is published to npm, under the name `prismalens`. The
+other packages are private and travel inside that one tarball, except the
+desktop app, which is released as its own zips.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing workflows, and contribution guidelines. To work on the CLI specifically, see [`packages/cli/README.md`](packages/cli/README.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing workflows, and contribution guidelines.
 
 ## Links
 
@@ -238,4 +238,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing work
 
 ## License
 
-[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE).
+[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). Each release
+carries `THIRD_PARTY_NOTICES.txt` with the licences of the third-party code
+bundled into the dashboard.

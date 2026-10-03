@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea or improvement for prismalens.
+description: Suggest an idea or improvement for PrismaLens.
 labels: ["enhancement"]
 body:
   - type: textarea
@@ -14,7 +14,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What you would like prismalens to do. Sketches and example flows welcome.
+      description: What you would like PrismaLens to do. Sketches and example flows welcome.
     validations:
       required: false
   - type: textarea
@@ -24,18 +24,3 @@ body:
       description: Other approaches or tools you have tried or thought about.
     validations:
       required: false
-  - type: checkboxes
-    id: scope
-    attributes:
-      label: Fit
-      description: prismalens is a local-first, human-initiated SRE investigation tool that reaches systems through the user's own CLIs under read-only credentials.
-      options:
-        - label: This fits prismalens's scope (local-first, evidence-linked incident investigation).
-          required: false
-  - type: textarea
-    id: docs-impact
-    attributes:
-      label: Docs impact
-      description: Which doc surfaces will this touch (specific files/sections)? 'none' must be justified.
-    validations:
-      required: true

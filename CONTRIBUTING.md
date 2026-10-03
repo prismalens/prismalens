@@ -36,7 +36,7 @@ required of you until then.
 
 ## Development setup
 
-Requirements: **Node >= 22** and **pnpm** (this repo pins pnpm via the
+Requirements: **Node 24** (see `.nvmrc`) and **pnpm** (this repo pins pnpm via the
 `packageManager` field; `corepack enable` will select the right version). It is
 a Turborepo monorepo (NestJS API + TanStack Start UI, with Prisma/SQLite).
 

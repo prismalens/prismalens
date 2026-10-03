@@ -46,7 +46,17 @@
 		],
 		"asar": true,
 		"mac": {
-			"target": "dir"
+			"target": "dir",
+			"extraResources": [
+				{
+					"from": "node_modules/electron/dist/LICENSE",
+					"to": "LICENSE.electron.txt"
+				},
+				{
+					"from": "node_modules/electron/dist/LICENSES.chromium.html",
+					"to": "LICENSES.chromium.html"
+				}
+			]
 		},
 		"linux": {
 			"target": "dir",

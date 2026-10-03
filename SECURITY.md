@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-prismalens is pre-1.0 and under active development. Security fixes land on the
-latest line of development; there are no maintained older releases yet.
+PrismaLens is pre-1.0. Security fixes land in the latest 0.5.x release; older
+releases do not get fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| latest `main` / `first` | yes |
-| older snapshots | no — please update |
+| latest 0.5.x release | yes |
+| anything older | no — please upgrade (`pl upgrade`) |
 
 ## Reporting a vulnerability
 
@@ -25,7 +25,7 @@ Please include:
 
 - A description of the issue and its impact.
 - Steps to reproduce or a proof of concept.
-- The prismalens version/commit and your environment.
+- The PrismaLens version (`pl --version`), how you installed it, and your OS.
 - Any suggested remediation, if you have one.
 
 Do **not** include real secrets, tokens, or private content in your report.
@@ -36,22 +36,39 @@ Do **not** include real secrets, tokens, or private content in your report.
 - An assessment of severity and a fix plan for confirmed issues.
 - Credit in the release notes if you would like it.
 
-## Scope notes
+## How PrismaLens works
 
-prismalens is a local-first SRE incident-investigation app. It runs on the
-operator's machine and reaches their observability/infrastructure systems
-**through the user's own CLIs**, by design under **read-only credentials**, and
-uses a **bring-your-own-key** model for the LLM backend. The areas where a
-vulnerability would be most impactful — and where reports are especially
-valuable — are:
+PrismaLens is a self-hosted incident investigator. `pl up` runs the API and the
+dashboard as one process on the user's machine, with a SQLite database in the
+workspace (`~/.prismalens` by default). For each investigation it takes a
+snapshot of the service's repository and starts the coding agent the user
+installed, over the Agent Client Protocol (ACP), with that snapshot as its
+working directory. PrismaLens answers the agent's permission requests under a
+read-only policy. The agent signs in to its own provider; PrismaLens never
+reads or stores that login, and never calls a model itself.
 
-- **Credential handling** — leakage of API keys, tokens, or connection strings
-  into logs, telemetry, reports, or the UI.
-- **Shell / command execution** — command injection in the shell-first integration
-  layer, a harness child reaching an env var outside its allowlist, or any path
-  that turns a read-only integration into a write.
-- **Secret exposure in artifacts** — investigation reports or stored state that
-  capture sensitive values they should have redacted.
-- **Path traversal** in any file-write path.
+## Scope
 
-Reports that strengthen those guarantees are prioritized.
+Reports in these areas are especially valuable:
+
+- **Pairing links and device cookies** — a one-time pairing link that works
+  twice, outlives its expiry or can be guessed; a device cookie that can be
+  stolen, replayed or forged; any path to the dashboard or API without a
+  paired device.
+- **The Alertmanager webhook token** — a webhook delivery accepted without the
+  token, or a way to learn the token.
+- **Binding beyond loopback** — anything that becomes reachable, or weaker,
+  when `pl up` binds another address with `--host`.
+- **Tailscale serve** — anything exposed, or trusted, wrongly when PrismaLens
+  is published on a tailnet with `--tailscale-serve`.
+- **The read-only command policy** — a way to make the agent edit, delete or
+  move files, or run a mutating shell command, without the policy refusing it.
+  The policy is a guardrail that matches on command text, not a sandbox, so a
+  bypass is in scope.
+- **The agent's environment** — the agent receiving an environment variable
+  outside its allowlist, or reading files outside its snapshot through
+  PrismaLens.
+- **Workspace data at rest** — secrets, integration credentials or report
+  contents stored in the workspace in a form they should not be, and secrets
+  that reach logs, reports or the UI.
+- **Path traversal** in any file read or write PrismaLens performs.
