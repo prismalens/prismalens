@@ -173,6 +173,6 @@ export function resolveHarnessSelection(
 	return {
 		runnable: false,
 		failure: "no-harness",
-		reason: `No coding agent found on PATH. Install one: ${installHints()}.`,
+		reason: `No coding agent on this machine. Install one: ${installHints()}.`,
 	};
 }

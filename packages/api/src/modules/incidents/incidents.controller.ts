@@ -474,6 +474,7 @@ export class IncidentsController {
 		if (incident.refiredAs !== undefined) {
 			serialized.refiredAs = incident.refiredAs
 				? {
+						id: incident.refiredAs.id,
 						number: incident.refiredAs.number,
 						createdAt: iso(incident.refiredAs.createdAt),
 					}
