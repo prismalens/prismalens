@@ -5,8 +5,9 @@
  * The page a pairing link opens (ADR 0004 §8). The token rides in the URL
  * fragment, so it never reaches a server log. The page reads it, drops it
  * from the address bar and redeems it at once, the way t3code does: no
- * form, no click. The device's name is the link's label, or one guessed
- * from the browser. What is left on screen is only what went wrong.
+ * form, no click. The device's name is the link's label, else its model, else
+ * its browser. What is left on screen is only what went wrong, and the two
+ * ways to get a new link.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +19,7 @@ import { MutationError } from "@/components/shared/MutationError";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
-import { guessDeviceName } from "@/lib/device-name";
+import { pairingName } from "@/lib/device-name";
 
 export const Route = createFileRoute("/pair")({
 	ssr: false,
@@ -68,19 +69,35 @@ function PairPage() {
 			navigate({ to: "/" });
 			return;
 		}
-		redeem.mutate({
-			token,
-			name:
+		void (async () => {
+			const name =
 				typeof navigator === "undefined"
 					? undefined
-					: guessDeviceName(navigator.userAgent),
-		});
+					: await pairingName(navigator);
+			redeem.mutate({ token, name });
+		})();
 	}, [token, operator.isPending, operator.managesPairing, navigate, redeem]);
 
 	return (
 		<PairView token={token} operatorReason={operator.reason} redeem={redeem} />
 	);
 }
+
+type LinkProblem = "used" | "expired" | "invalid";
+
+function linkProblem(error: unknown): LinkProblem | null {
+	const reason = (error as { data?: { reason?: unknown } } | null)?.data
+		?.reason;
+	return reason === "used" || reason === "expired" || reason === "invalid"
+		? reason
+		: null;
+}
+
+const PROBLEM_TITLE: Record<LinkProblem, string> = {
+	used: "This link has been used.",
+	expired: "This link has expired.",
+	invalid: "This link is not valid.",
+};
 
 export function PairView({
 	token,
@@ -97,43 +114,66 @@ export function PairView({
 		if (operatorReason === "revoked") {
 			return (
 				<Shell title="Device revoked">
-					<p className="text-record text-muted-foreground">
+					<p className="mt-2 text-body text-text-2">
 						This device was revoked on the machine running PrismaLens. Ask for a
 						new pairing link.
 					</p>
+					<GetANewOne />
 				</Shell>
 			);
 		}
 		return (
 			<Shell title="Nothing to pair">
-				<p className="text-record text-muted-foreground">
-					This page needs a pairing link. On the machine running PrismaLens,
-					open the link <code>pl up</code> printed, or create one: Settings →
-					Devices, or <code>pl pair</code>.
+				<p className="mt-2 text-body text-text-2">
+					This page opens a pairing link, and none came with it.
 				</p>
+				<GetANewOne />
 			</Shell>
 		);
 	}
 
 	if (redeem.isError) {
+		const problem = linkProblem(redeem.error);
 		return (
-			<Shell title="Could not pair">
-				<MutationError error={redeem.error} />
-				<p className="text-record text-muted-foreground">
-					A link works once, for 15 minutes. Create a new one on the machine
-					running prismalens: Settings → Devices, or <code>pl pair</code>.
-				</p>
+			<Shell title={problem ? PROBLEM_TITLE[problem] : "Could not pair"}>
+				{problem ? (
+					<p className="mt-2 text-body text-text-2" data-testid="pair-problem">
+						A pairing link works once, for 15 minutes.
+					</p>
+				) : (
+					<MutationError error={redeem.error} className="mt-3" />
+				)}
+				<GetANewOne />
 			</Shell>
 		);
 	}
 
 	return (
 		<Shell title="Pairing this device">
-			<div className="flex items-center gap-2 text-record text-muted-foreground">
-				<Loader2 className="h-4 w-4 motion-safe:animate-spin" />
-				Pairing…
-			</div>
+			<p className="mt-2 flex items-center gap-2 text-body text-text-2">
+				<Loader2 className="size-3.5 motion-safe:animate-spin" />
+				Pairing
+			</p>
 		</Shell>
+	);
+}
+
+/** The two ways to get a link, said once on every page that needs one. */
+function GetANewOne() {
+	return (
+		<section className="mt-8" data-testid="pair-get-new">
+			<h2 className="mb-2 text-heading">Get a new one</h2>
+			<ul>
+				<li className="border-t border-hairline py-2.5 text-body first:border-t-0">
+					On the machine running PrismaLens, open Settings, Devices, and press
+					Create a link.
+				</li>
+				<li className="border-t border-hairline py-2.5 text-body">
+					Or run <code>pl pair --tailscale</code> there and open the link it
+					prints on this device.
+				</li>
+			</ul>
+		</section>
 	);
 }
 
@@ -145,13 +185,13 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="fixed inset-0 overflow-y-auto bg-background px-4">
-			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center space-y-4 py-8">
-				<div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-					<PrismaLensMark className="h-7 w-7" />
+		<div className="fixed inset-0 overflow-y-auto bg-canvas px-6">
+			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center py-8">
+				<div className="mb-6 flex items-center gap-2.5 text-body font-semibold">
+					<PrismaLensMark className="size-[18px]" />
 					PrismaLens
 				</div>
-				<h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+				<h1 className="text-display">{title}</h1>
 				{children}
 			</div>
 		</div>
