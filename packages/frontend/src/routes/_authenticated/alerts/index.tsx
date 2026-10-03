@@ -6,6 +6,7 @@
 import {
 	ALERT_STATUS_LABEL,
 	AlertStatusSchema,
+	OPEN_ALERT_STATUSES,
 	SEVERITY_LABEL,
 	SeveritySchema,
 } from "@prismalens/contracts";
@@ -140,6 +141,10 @@ function AlertNumbers() {
 		refetchInterval: useLiveRefreshInterval(),
 	});
 	const s = stats.data;
+	// A correlated alert is still firing; only its incident has it (study-v3 §4).
+	const firing = OPEN_ALERT_STATUSES.filter(
+		(st) => st !== "acknowledged",
+	).reduce((n, st) => n + (s?.byStatus[st] ?? 0), 0);
 	return (
 		<div
 			className="min-h-0 flex-1 overflow-y-auto"
@@ -170,7 +175,7 @@ function AlertNumbers() {
 									data-testid="alerts-stat-firing"
 								>
 									<span className="font-semibold text-text-1 tabular-nums">
-										{s.byStatus.triggered ?? 0}
+										{firing}
 									</span>{" "}
 									firing of <span className="tabular-nums">{s.total}</span>,{" "}
 									<span className="tabular-nums">
