@@ -364,7 +364,10 @@ async function mapRepository(json, cookie) {
 		const res = await json("/api/settings/harness", {
 			method: "PATCH",
 			headers: { cookie },
-			body: JSON.stringify({ harness: "auto", model }),
+			body: JSON.stringify({
+				harness: "auto",
+				models: { [process.env.PRISMALENS_HARNESS ?? "opencode"]: model },
+			}),
 		});
 		if (res.status !== 200) {
 			throw new Error(
