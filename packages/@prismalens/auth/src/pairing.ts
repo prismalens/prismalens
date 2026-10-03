@@ -282,9 +282,11 @@ export function prismaPairingStore(prisma: unknown): PairingStore {
 				})
 			).map(toDevice),
 		renameDevice: async (id, name) => {
+			const trimmed = name.trim();
+			if (!trimmed) return null;
 			const renamed = await db.deviceSession.updateMany({
 				where: { id, revokedAt: null },
-				data: { name },
+				data: { name: trimmed },
 			});
 			if (renamed.count !== 1) return null;
 			const row = await db.deviceSession.findUnique({ where: { id } });

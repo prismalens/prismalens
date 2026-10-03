@@ -114,7 +114,7 @@ export interface HarnessDescriptor {
 		offMode: "agent-full-access";
 		onMechanism: string;
 	};
-	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs it on every push for rows with a keyless model. */
+	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
 	tested?: { version: string; date: string };
 	/**
 	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
@@ -190,8 +190,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// The keyless model every #337 walk and the CI compatibility run used.
-		defaultModel: "opencode/muse-spark-1.3-contributor-free",
 		readOnlyFidelity: "cooperative",
 		access: {
 			"read-only": {
@@ -223,8 +221,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "config",
-		loginHint:
-			"Keyless default model; `opencode auth login` or a provider key in env for others",
+		loginHint: "`opencode auth login`, or a provider key in env",
 		resume: true,
 	},
 	"claude-code": {
@@ -264,7 +261,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		envModelKey: "ANTHROPIC_MODEL",
 		install:
-			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY on a server)",
+			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		// `plan` is never set: it rewrites the system prompt into planning (r4 R4.1).
 		access: {
@@ -308,7 +305,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
 		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
 		install:
-			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY on a server)",
+			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
 		readOnlyFidelity: "cooperative",
 		// codex-acp 1.13.1 mode ids are read-only, agent and agent-full-access; its
 		// read-only and agent modes are both a workspace-write sandbox with no network.
