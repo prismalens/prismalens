@@ -108,10 +108,12 @@ export class ServicesService {
 			...(options?.team && { team: options.team }),
 		};
 
+		// SQLite has no `mode` on string filters (Prisma throws "Unknown argument");
+		// its LIKE is already case-insensitive for ASCII.
 		if (options?.search) {
 			where.OR = [
-				{ name: { contains: options.search, mode: "insensitive" } },
-				{ displayName: { contains: options.search, mode: "insensitive" } },
+				{ name: { contains: options.search } },
+				{ displayName: { contains: options.search } },
 			];
 		}
 
