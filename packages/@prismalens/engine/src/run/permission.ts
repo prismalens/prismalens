@@ -2200,6 +2200,19 @@ function judgeWrites(cmd: Simple, level: PermissionMode): string | null {
 	return null;
 }
 
+/**
+ * The text rules applied to the command as the shell runs it, quotes and
+ * escapes removed, so `to"uch"` or `r\m` is still touch or rm (#776 review).
+ * Only a match at the command word counts; `grep rm` is a read.
+ */
+function judgeWriteVerb(cmd: Simple, level: PermissionMode): string | null {
+	const line = [cmd.name, ...cmd.args.map((a) => a.text)].join(" ");
+	if (MACHINE_WRITES.exec(line)?.index === 0) return WHY.mutate;
+	if (!atLeast(level, "workspace-write") && FILE_WRITES.exec(line)?.index === 0)
+		return WHY.mutate;
+	return null;
+}
+
 function judgeExecute(
 	command: string,
 	ctx: Ctx,
@@ -2245,7 +2258,8 @@ function judgeExecute(
 			judgeNetworkClient(cmd) ??
 			judgeTool(cmd, ctx.level) ??
 			judgeHttpClient(cmd, ctx) ??
-			judgeWrites(cmd, ctx.level);
+			judgeWrites(cmd, ctx.level) ??
+			judgeWriteVerb(cmd, ctx.level);
 		if (why) return why;
 		const url = cmd.args.findIndex(
 			(a) => a.text === "--url" || a.text.startsWith("--url="),

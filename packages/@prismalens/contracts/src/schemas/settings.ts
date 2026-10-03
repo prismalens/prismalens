@@ -37,8 +37,11 @@ export const HarnessStatusSchema = z.object({
 	modelVia: z.enum(["config", "env", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: z.string(),
-	/** The model the host env names for this harness; a run with no model set uses it (walk f18). */
-	envModel: z.object({ key: z.string(), model: z.string() }).nullable(),
+	/** The model the host env names for this harness; a run with no model set uses it (walk f18). Absent from older APIs. */
+	envModel: z
+		.object({ key: z.string(), model: z.string() })
+		.nullable()
+		.default(null),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model

@@ -16,7 +16,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, join, posix, win32 } from "node:path";
 import {
 	DEFAULT_PORT,
 	ensureAppDataDir,
@@ -150,10 +150,12 @@ export function checkInstalls(
 	exists: (p: string) => boolean = existsSync,
 ): Check {
 	const names = platform === "win32" ? ["pl.cmd", "pl.exe"] : ["pl"];
+	// The PATH is the given platform's, so its own path rules read it (#776 review).
+	const paths = platform === "win32" ? win32 : posix;
 	const seen = new Map<string, string>();
-	for (const dir of path.split(delimiter).filter(Boolean)) {
+	for (const dir of path.split(paths.delimiter).filter(Boolean)) {
 		for (const name of names) {
-			const candidate = join(dir, name);
+			const candidate = paths.join(dir, name);
 			if (!exists(candidate)) continue;
 			let real = candidate;
 			try {

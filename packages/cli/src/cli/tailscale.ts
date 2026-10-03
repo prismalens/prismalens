@@ -133,22 +133,13 @@ export function ensureServe(
 	const result = run(["serve", "--bg", "--https=443", target]);
 	if (result.status !== 0) {
 		if (result.error?.code === "ETIMEDOUT") {
-			const port = extractPort(target);
 			throw new TailscaleError(
-				`Tailscale is still issuing this machine's HTTPS certificate. Run \`tailscale serve --bg --https=443 http://127.0.0.1:${port}\` once, then rerun.`,
+				`Tailscale is still issuing this machine's HTTPS certificate. Run \`tailscale serve --bg --https=443 ${target}\` once, then rerun.`,
 			);
 		}
 		throw failure(result, "serve");
 	}
 	return { url, created: true };
-}
-
-function extractPort(target: string): string {
-	try {
-		return new URL(target).port;
-	} catch {
-		return target.match(/:(\d+)/)?.[1] ?? "";
-	}
 }
 
 /** Turn off the :443 mapping, but only while it still points at `target`. */

@@ -45,7 +45,7 @@ describe("refuseReason", () => {
 		writeFileSync(
 			join(ws, "prismalens.lock"),
 			JSON.stringify({
-				pid: process.pid,
+				pid: process.ppid,
 				port: 6473,
 				startedAt: new Date().toISOString(),
 			}),
@@ -98,6 +98,59 @@ describe("refuseReason", () => {
 			expect(existsSync(ws)).toBe(false);
 		} finally {
 			exitSpy.mockRestore();
+		}
+	});
+
+	it("refuses a lock it cannot read rather than deleting under it (#776 review)", async () => {
+		const ws = join(base, "ws-unreadable");
+		mkdirSync(ws);
+		writeFileSync(join(ws, "prismalens.db"), "");
+		writeFileSync(join(ws, "prismalens.lock"), "{not json");
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation((() => undefined as never));
+		const errorSpy = vi.spyOn(consola, "error").mockImplementation(() => {});
+		try {
+			await resetCommand.run!({
+				args: { yes: true, workspace: ws },
+				rawArgs: [],
+				cmd: resetCommand,
+			});
+			expect(exitSpy).toHaveBeenCalledWith(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				expect.stringMatching(/cannot be read yet/),
+			);
+			expect(existsSync(join(ws, "prismalens.db"))).toBe(true);
+		} finally {
+			exitSpy.mockRestore();
+			errorSpy.mockRestore();
+		}
+	});
+
+	it("holds the lock while it asks, so a pl up started meanwhile is refused", async () => {
+		const ws = join(base, "ws-held-by-reset");
+		mkdirSync(ws);
+		writeFileSync(join(ws, "prismalens.db"), "");
+		const { readWorkspaceLockState } = await import("@prismalens/config");
+		let seen: string | undefined;
+		const promptSpy = vi.spyOn(consola, "prompt").mockImplementation((async () => {
+			const state = readWorkspaceLockState(ws);
+			seen = state.kind === "held" ? String(state.owner.pid) : state.kind;
+			return false;
+		}) as typeof consola.prompt);
+		const infoSpy = vi.spyOn(consola, "info").mockImplementation(() => {});
+		try {
+			await resetCommand.run!({
+				args: { workspace: ws },
+				rawArgs: [],
+				cmd: resetCommand,
+			});
+			expect(seen).toBe(String(process.pid));
+			expect(readWorkspaceLockState(ws).kind).toBe("free");
+			expect(existsSync(join(ws, "prismalens.db"))).toBe(true);
+		} finally {
+			promptSpy.mockRestore();
+			infoSpy.mockRestore();
 		}
 	});
 });
