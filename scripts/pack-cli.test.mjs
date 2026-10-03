@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resolvePublishTag } from "./pack-cli.mjs";
+import { resolveBuildSha, resolvePublishTag } from "./pack-cli.mjs";
 
 test("returns 'latest' for a plain release version without prerelease tag", () => {
 	const tag = resolvePublishTag({
@@ -71,4 +71,29 @@ test("explicit --tag permits publishing unrecognized prerelease versions", () =>
 		version: "0.5.0-0",
 	});
 	assert.equal(tag, "next");
+});
+
+test("resolveBuildSha prefers GITHUB_SHA sliced to short sha in CI", () => {
+	const sha = resolveBuildSha({
+		env: { GITHUB_SHA: "1234567890abcdef1234567890abcdef12345678" },
+	});
+	assert.equal(sha, "1234567");
+});
+
+test("resolveBuildSha falls back to git rev-parse --short HEAD", () => {
+	const sha = resolveBuildSha({
+		env: {},
+		runGit: () => "abcdef1",
+	});
+	assert.equal(sha, "abcdef1");
+});
+
+test("resolveBuildSha returns undefined when git fails and GITHUB_SHA is absent", () => {
+	const sha = resolveBuildSha({
+		env: {},
+		runGit: () => {
+			throw new Error("fatal: not a git repository");
+		},
+	});
+	assert.equal(sha, undefined);
 });

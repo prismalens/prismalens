@@ -4,6 +4,7 @@
 import { Link } from "@tanstack/react-router";
 import { useNow } from "@/hooks/use-now";
 import { attentionFor } from "@/lib/incident-attention";
+import { incidentLineage } from "@/lib/incident-board";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
 import { useIncidentRecord } from "../record-context";
@@ -37,12 +38,18 @@ export function SummaryBlock() {
 		attention: attentionFor(incident),
 	});
 	const serviceId = incident.service?.id;
+	const lineage = incidentLineage(incident);
 	return (
 		<section
 			className="space-y-1.5 px-1 pb-1"
 			aria-label="Summary"
 			data-testid="incident-summary"
 		>
+			{lineage && (
+				<p className="text-record" data-testid="incident-lineage">
+					<span className="font-medium">{lineage.lead}</span> {lineage.text}
+				</p>
+			)}
 			<p className="text-record leading-relaxed">{lines.join(" ")}</p>
 			{next && (
 				<p className="text-record" data-testid="incident-next">

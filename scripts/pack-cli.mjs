@@ -116,6 +116,8 @@ const ROOT = resolve(__dirname, "..");
 const CLI_DIR = join(ROOT, "packages", "cli");
 const STAGING = join(CLI_DIR, ".pack-staging");
 
+const NOTICES = "THIRD_PARTY_NOTICES.txt";
+
 /** The node floor of the published package. See ENGINES below. */
 const ENGINES_NODE = ">=24";
 
@@ -518,6 +520,9 @@ function assertTarball(tarball, copiedNames) {
 				"`pl up` cannot create a database",
 		);
 	}
+	if (!has((e) => e === `package/${NOTICES}`)) {
+		fail(`the tarball has no ${NOTICES}`);
+	}
 	if (
 		!has((e) => e === "package/node_modules/@prismalens/api/dist/src/main.js")
 	) {
@@ -542,6 +547,29 @@ function assertTarball(tarball, copiedNames) {
 		}
 	}
 	return entries;
+}
+
+/**
+ * Determine the short commit sha to stamp into the packed CLI.
+ * GITHUB_SHA in CI, else `git rev-parse --short HEAD`, else omitted (undefined).
+ */
+export function resolveBuildSha({ env = process.env, runGit = null } = {}) {
+	if (env.GITHUB_SHA) {
+		return env.GITHUB_SHA.slice(0, 7);
+	}
+	try {
+		const git =
+			runGit ??
+			(() =>
+				execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+				}).trim());
+		const sha = git();
+		return sha || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -631,6 +659,10 @@ export function packCli() {
 		const from = join(CLI_DIR, extra);
 		if (existsSync(from)) cpSync(from, join(STAGING, extra));
 	}
+	// Licences of the third-party code the SPA bundles, written by its Vite build.
+	const notices = join(ROOT, "packages", "frontend", "dist", "client", NOTICES);
+	if (!existsSync(notices)) fail(`${relative(ROOT, notices)} is missing`);
+	cpSync(notices, join(STAGING, NOTICES));
 
 	const stagedModules = join(STAGING, "node_modules", "@prismalens");
 	mkdirSync(stagedModules, { recursive: true });
@@ -758,11 +790,12 @@ export function packCli() {
 		dependencies[name] = workspace.get(name).manifest.version;
 	}
 
+	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
 		dependencies,
 		bundleDependencies: [...copied].sort(),
-		files: ["dist", "NOTICE", "node_modules/@prismalens"],
+		files: ["dist", "NOTICE", NOTICES, "node_modules/@prismalens"],
 		engines: {
 			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
 			// `@prismalens/database` both declare >=24 and are now IN this tarball.
@@ -772,6 +805,9 @@ export function packCli() {
 			node: ENGINES_NODE,
 		},
 	};
+	if (buildSha) {
+		publishManifest.build = buildSha;
+	}
 	publishManifest.devDependencies = undefined;
 	publishManifest.scripts = undefined;
 

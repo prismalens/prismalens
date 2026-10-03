@@ -11,7 +11,7 @@
 
 import { type ChildProcess, execFile, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deviceCookieName } from "@prismalens/auth/device-cookie";
 import {
@@ -27,6 +27,7 @@ import {
 	dialog,
 	ipcMain,
 	Menu,
+	type MenuItemConstructorOptions,
 	Notification,
 	nativeImage,
 	nativeTheme,
@@ -91,6 +92,22 @@ import {
 	releaseUrl,
 	updateCheckEnabled,
 } from "./updates.js";
+import {
+	nothingRunningChoice,
+	parseDefaultDistro,
+	parseDistros,
+	parseProbe,
+	parseWslSettings,
+	planWslLaunch,
+	type WslRun,
+	type WslSettings,
+	wslActive,
+	wslMenuItems,
+	wslMissingPl,
+	wslNothingRunning,
+	wslPairOperator,
+	wslProbe,
+} from "./wsl.js";
 
 const READY_TIMEOUT_MS = 60_000;
 const POLL_MS = 15_000;
@@ -119,10 +136,37 @@ let theme: Theme = "dark";
 /** Rebuilds the tray menu; set once the tray exists. */
 let refreshTray: () => void = () => {};
 
+function wslSettingsPath(): string {
+	return join(app.getPath("userData"), "wsl.json");
+}
+
+function readWslSettings(): WslSettings {
+	try {
+		return parseWslSettings(readFileSync(wslSettingsPath(), "utf8"));
+	} catch {
+		return parseWslSettings(null);
+	}
+}
+
+/** A switch takes effect on relaunch: one backend per app, never two at once. */
+function saveWslSettings(next: WslSettings): void {
+	mkdirSync(app.getPath("userData"), { recursive: true });
+	writeFileSync(wslSettingsPath(), JSON.stringify(next));
+	app.relaunch();
+	app.quit();
+}
+
+let wsl: WslSettings = { enabled: false, distro: null };
+/** Set once at boot: the window attaches to a `pl` inside WSL, not to this app's packed copy. */
+let inWsl = false;
+let distros: string[] = [];
+let defaultDistro: string | null = null;
+
 function workspaceDir(): string {
 	// Same default as `pl up`, so the CLI and the app share one workspace.
 	return (
-		process.env.PRISMALENS_WORKSPACE_DIR ?? `${app.getPath("home")}/.prismalens`
+		process.env.PRISMALENS_WORKSPACE_DIR ??
+		path.join(app.getPath("home"), ".prismalens")
 	);
 }
 
@@ -135,6 +179,9 @@ class LaunchRefused extends Error {
 /** The owned backend exited while starting; its own stop dialog has the say. */
 class BackendExited extends Error {}
 
+/** The user chose to leave from a boot dialog; the quit or relaunch is already on its way. */
+class Leaving extends Error {}
+
 /** Settles when the owned backend exits; `connect` races its health wait against it. */
 let exited: Promise<void> = new Promise(() => {});
 let booted = false;
@@ -144,6 +191,9 @@ function protocol(): "http" | "https" {
 }
 
 async function boot(): Promise<void> {
+	wsl = readWslSettings();
+	inWsl = wslActive(process.platform, wsl);
+	if (inWsl) return bootWsl();
 	const dir = workspaceDir();
 	backendMainPath = resolveBackendMain({
 		resourcesPath: process.resourcesPath,
@@ -174,17 +224,23 @@ async function spawnOwned(target: Target): Promise<void> {
 			}),
 		);
 	}
-	stderrTail = [];
-	const backend = startBackend(
-		backendSpawn({
-			execPath: process.execPath,
-			backendMain: backendMainPath,
-			port: target.port,
-			workspaceDir: workspaceDir(),
-			env: process.env,
-			loginShellPath: await readLoginShellPath(),
-		}),
+	adopt(
+		startBackend(
+			backendSpawn({
+				execPath: process.execPath,
+				backendMain: backendMainPath,
+				port: target.port,
+				workspaceDir: workspaceDir(),
+				env: process.env,
+				loginShellPath: await readLoginShellPath(),
+			}),
+		),
 	);
+}
+
+/** Track an owned backend: its stderr tail, and a stop dialog when it exits. */
+function adopt(backend: ChildProcess): void {
+	stderrTail = [];
 	child = backend;
 	owned = true;
 	exited = new Promise((resolve) => backend.once("exit", () => resolve()));
@@ -196,6 +252,83 @@ async function spawnOwned(target: Target): Promise<void> {
 		if (child === backend) child = null;
 		if (!quitting) void showStop({ owned: true, code, stderrTail });
 	});
+}
+
+/**
+ * Attach to the `pl` running in the chosen distro (#767, walk u20). Nothing
+ * running there is a dialog, never a spawn: the app starts nothing in WSL.
+ */
+async function bootWsl(): Promise<void> {
+	const probe = parseProbe(await runWsl(wslProbe(wsl.distro)));
+	if (!probe.hasPl) {
+		throw new LaunchRefused({
+			kind: "crashed",
+			...wslMissingPl(wsl.distro),
+			buttons: ["Quit"],
+		});
+	}
+	const plan = planWslLaunch(probe);
+	if (plan.kind === "none") {
+		const d = wslNothingRunning(wsl.distro);
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			message: d.message,
+			detail: d.detail,
+			buttons: d.buttons,
+			defaultId: 0,
+			cancelId: d.buttons.length - 1,
+		});
+		const choice = nothingRunningChoice(wsl, response);
+		if (choice.kind === "retry") return bootWsl();
+		if (choice.kind === "relaunch") saveWslSettings(choice.settings);
+		else app.quit();
+		throw new Leaving();
+	}
+	owned = false;
+	await connect(plan.target);
+}
+
+/** Run a short script in the distro and return its stdout. */
+function runWsl(plan: WslRun): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const proc = execFile(
+			plan.command,
+			plan.args,
+			{ env: plan.env, windowsHide: true, timeout: 60_000 },
+			(error, stdout, stderr) =>
+				error
+					? reject(new Error(`${error.message}\n${stderr}`.trim()))
+					: resolve(stdout),
+		);
+		proc.stdin?.on("error", () => {});
+		proc.stdin?.end(plan.script);
+	});
+}
+
+function wslList(args: string[]): Promise<Buffer | null> {
+	return new Promise((resolve) => {
+		execFile(
+			"wsl.exe",
+			args,
+			{ encoding: "buffer", windowsHide: true, timeout: 10_000 },
+			(error, stdout) => resolve(error ? null : stdout),
+		);
+	});
+}
+
+/** Every distro, and the one `wsl.exe` marks as its default. */
+async function listDistros(): Promise<{
+	names: string[];
+	defaultName: string | null;
+}> {
+	const [quiet, verbose] = await Promise.all([
+		wslList(["-l", "-q"]),
+		wslList(["-l", "-v"]),
+	]);
+	return {
+		names: quiet ? parseDistros(quiet) : [],
+		defaultName: verbose ? parseDefaultDistro(verbose) : null,
+	};
 }
 
 async function portHolder(target: Target): Promise<string | null> {
@@ -283,14 +416,16 @@ async function pairWindow(dir: string): Promise<void> {
 			stored: stored?.value ?? null,
 		}),
 		pairOperator: () =>
-			runForStdout(
-				pairOperatorSpawn({
-					execPath: process.execPath,
-					backendMain: backendMainPath,
-					workspaceDir: dir,
-					env: process.env,
-				}),
-			),
+			inWsl
+				? runWsl(wslPairOperator(wsl.distro))
+				: runForStdout(
+						pairOperatorSpawn({
+							execPath: process.execPath,
+							backendMain: backendMainPath,
+							workspaceDir: dir,
+							env: process.env,
+						}),
+					),
 	});
 	if (deviceToken !== stored?.value) {
 		await jar.set({
@@ -337,6 +472,17 @@ async function showStop(input: {
 		return;
 	}
 	try {
+		if (inWsl) {
+			await bootWsl();
+			if (!booted) {
+				afterBoot();
+				return;
+			}
+			refreshTray();
+			if (window) window.loadURL(baseUrl);
+			else openWindow();
+			return;
+		}
 		const target: Target = {
 			protocol: protocol(),
 			host: "127.0.0.1",
@@ -363,7 +509,7 @@ async function newerRelease(): Promise<string | null> {
 
 /** A launch that cannot go on: its dialog, then quit. */
 async function refuse(error: unknown): Promise<void> {
-	if (error instanceof BackendExited) return;
+	if (error instanceof BackendExited || error instanceof Leaving) return;
 	const d =
 		error instanceof LaunchRefused
 			? error.dialog
@@ -472,6 +618,39 @@ function applyTheme(next: Theme): void {
 		window.setTitleBarOverlay(titleBarOverlay(next));
 }
 
+/** Windows only: the WSL switch and its distro picker (#767). */
+function wslTrayItems(): MenuItemConstructorOptions[] {
+	if (process.platform !== "win32") return [];
+	const items = wslMenuItems(wsl, distros, defaultDistro);
+	return [
+		{ type: "separator" },
+		{
+			label: items.toggle.label,
+			type: "checkbox",
+			checked: items.toggle.checked,
+			click: () => saveWslSettings({ ...wsl, enabled: !wsl.enabled }),
+		},
+		{
+			label: "WSL distro",
+			submenu: items.distros.map((item) => ({
+				label: item.label,
+				type: "radio",
+				checked: item.checked,
+				click: () => {
+					if (item.distro === wsl.distro) return;
+					const next = { ...wsl, distro: item.distro ?? null };
+					if (wsl.enabled) saveWslSettings(next);
+					else {
+						writeFileSync(wslSettingsPath(), JSON.stringify(next));
+						wsl = next;
+						refreshTray();
+					}
+				},
+			})),
+		},
+	];
+}
+
 function buildTray(): void {
 	tray = new Tray(trayIcon());
 	tray.setToolTip("PrismaLens");
@@ -510,12 +689,13 @@ function buildTray(): void {
 						refresh();
 					},
 				},
+				...wslTrayItems(),
 				{ type: "separator" },
 				{
 					label: owned
 						? "Reset workspace…"
 						: "Reset workspace… (stop `pl up` first)",
-					enabled: owned,
+					enabled: owned && !inWsl,
 					click: () => void confirmReset(),
 				},
 				{ label: "Quit", click: () => app.quit() },
@@ -524,6 +704,13 @@ function buildTray(): void {
 	};
 	refreshTray = refresh;
 	refresh();
+	if (process.platform === "win32") {
+		void listDistros().then((found) => {
+			distros = found.names;
+			defaultDistro = found.defaultName;
+			refresh();
+		});
+	}
 	tray.on("click", () => openWindow());
 }
 

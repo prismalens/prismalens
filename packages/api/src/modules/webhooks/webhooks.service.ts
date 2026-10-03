@@ -352,11 +352,14 @@ export class WebhooksService {
 			return { alertId: resolved?.id ?? null, isNew: false };
 		}
 
+		// One alert, one identity on every ingest path: the dedup key carries the
+		// source, so a catch-up row named "prometheus-catchup" was a second alert
+		// and a phantom incident (walk f17). The Event row keeps the path name.
 		const genericDto: GenericWebhookDto = {
 			title: alert.labels?.alertname ?? "Prometheus Alert",
 			description: alert.annotations?.description ?? alert.annotations?.summary,
 			severity: mapPrometheusLabelToSeverity(alert.labels?.severity),
-			source: opts.source,
+			source: "prometheus",
 			// Alertmanager's link back to the firing expression (#592).
 			sourceUrl: httpUrlOrNull(alert.generatorURL) ?? undefined,
 			labels: alert.labels,
@@ -376,7 +379,7 @@ export class WebhooksService {
 			// The alert and its incident are still recorded — the
 			// resolve path below looks the alert up by fingerprint —
 			// but an episode that is already over starts no run.
-			{ autoInvestigate },
+			{ autoInvestigate, eventSource: opts.source },
 		);
 
 		// Its resolution already came, out of order (#633 edge 10).
@@ -408,7 +411,10 @@ export class WebhooksService {
 	async processGenericWebhook(
 		dto: GenericWebhookDto,
 		idempotencyKey?: string,
-		options: { autoInvestigate?: boolean } = {},
+		{
+			eventSource,
+			...options
+		}: { autoInvestigate?: boolean; eventSource?: string } = {},
 	): Promise<WebhookResult> {
 		dto = {
 			...dto,
@@ -419,7 +425,7 @@ export class WebhooksService {
 		// 1. Create immutable event record
 		const ingested = await this.ingestEvent(idempotencyKey, () =>
 			this.eventsService.create({
-				source: dto.source ?? "webhook",
+				source: eventSource ?? dto.source ?? "webhook",
 				sourceEventId: dto.sourceEventId,
 				idempotencyKey,
 				eventType: "alert",

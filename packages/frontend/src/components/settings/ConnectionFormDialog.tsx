@@ -47,8 +47,19 @@ import { getTemplateIcon } from "./integration-utils";
 /** Prefix to distinguish new-template selections from existing integration IDs */
 const NEW_TEMPLATE_PREFIX = "new:";
 
-/** Auth modes that can be fully set up in a single dialog (no integration-level credentials needed) */
-const SIMPLE_AUTH_MODES = new Set(["api_key", "basic"]);
+export function filterAvailableTemplates(
+	templates?: AuthTemplateResponse[],
+	integrations?: Integration[],
+): AuthTemplateResponse[] {
+	if (!templates || !integrations) return [];
+	const existingTemplateIds = new Set(
+		integrations.map((i: Integration) => i.templateId),
+	);
+	return templates.filter(
+		(t: AuthTemplateResponse) =>
+			t.connectionCreationMode === "form" && !existingTemplateIds.has(t.id),
+	);
+}
 
 export interface ConnectionFormDialogProps {
 	open: boolean;
@@ -134,18 +145,11 @@ export function ConnectionFormDialog({
 					: selectedIntegration?.templateId),
 	);
 
-	// Simple auth templates without an existing integration
-	const availableTemplates = useMemo(() => {
-		if (!templates || !integrations) return [];
-		const existingTemplateIds = new Set(
-			integrations.map((i: Integration) => i.templateId),
-		);
-		return templates.filter(
-			(t: AuthTemplateResponse) =>
-				SIMPLE_AUTH_MODES.has(t.connectionCreationMode) &&
-				!existingTemplateIds.has(t.id),
-		);
-	}, [templates, integrations]);
+	// Form-based auth templates without an existing integration
+	const availableTemplates = useMemo(
+		() => filterAvailableTemplates(templates, integrations),
+		[templates, integrations],
+	);
 
 	const handleOpenChange = (nextOpen: boolean) => {
 		if (!nextOpen) {

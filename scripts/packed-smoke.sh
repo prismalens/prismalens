@@ -474,6 +474,69 @@ PRISMALENS_SMOKE_BASE="http://127.0.0.1:$PORT" node "$HTTP_PROBE_MJS" "$UP_LOG" 
 }
 rm -f "$HTTP_PROBE_MJS"
 
+echo "==> pl reset refuses while pl up runs on the workspace (walk f34)"
+set +e
+RESET_OUT=$("$BIN/pl" reset --yes --workspace "$UP_DIR/workspace" 2>&1)
+RESET_EXIT=$?
+set -e
+[ "$RESET_EXIT" -ne 0 ] || fail "pl reset --yes deleted a running workspace: $RESET_OUT"
+case "$RESET_OUT" in
+*"PrismaLens is running on this workspace"*) ;;
+*) fail "pl reset failed without the running-workspace refusal: $RESET_OUT" ;;
+esac
+[ -f "$UP_DIR/workspace/prismalens.db" ] || fail "pl reset refused but the database is gone"
+echo "    refused: $(echo "$RESET_OUT" | tail -1)"
+
+echo "==> SIGTERM with a browser's change stream open exits within 5 s (walk f20)"
+HOLDER_MJS="$SCRATCH/hold-live-stream.mjs"
+cat > "$HOLDER_MJS" <<'HOLD'
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+
+const [base, plBin, workspace, openedFile] = process.argv.slice(2);
+const pairOut = execFileSync(plBin, ["pair", "--workspace", workspace], { encoding: "utf8" });
+const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
+const redeem = await fetch(`${base}/api/pairing/redeem`, {
+	method: "POST",
+	headers: { "content-type": "application/json", origin: base },
+	body: JSON.stringify({ token, name: "live stream holder" }),
+});
+const cookie = (redeem.headers.getSetCookie() ?? [])
+	.find((c) => c.startsWith("prismalens.device."))
+	?.split(";")[0];
+if (!cookie) throw new Error(`redeem ${redeem.status}: no device cookie`);
+const res = await fetch(`${base}/api/live/changes`, { headers: { cookie } });
+if (res.status !== 200) throw new Error(`/api/live/changes answered ${res.status}`);
+writeFileSync(openedFile, "open");
+for await (const _ of res.body ?? []) {
+	// Hold the stream the way an open tab does; the server ends it.
+}
+HOLD
+OPENED="$SCRATCH/live-stream-open"
+node "$HOLDER_MJS" "http://127.0.0.1:$PORT" "$BIN/pl" "$UP_DIR/workspace" "$OPENED" > "$SCRATCH/holder.log" 2>&1 &
+HOLDER_PID=$!
+i=0
+until [ -f "$OPENED" ] || [ "$i" -ge 30 ]; do
+	kill -0 "$HOLDER_PID" 2>/dev/null || fail "the stream holder died: $(cat "$SCRATCH/holder.log")"
+	i=$((i + 1))
+	sleep 1
+done
+[ -f "$OPENED" ] || fail "the change stream never opened: $(cat "$SCRATCH/holder.log")"
+kill -0 "$HOLDER_PID" 2>/dev/null || fail "the change stream closed before SIGTERM: $(cat "$SCRATCH/holder.log")"
+
+kill -TERM "$UP_PID"
+i=0
+while kill -0 "$UP_PID" 2>/dev/null && [ "$i" -lt 50 ]; do
+	i=$((i + 1))
+	sleep 0.1
+done
+if kill -0 "$UP_PID" 2>/dev/null; then
+	tail -20 "$UP_LOG" >&2
+	fail "pl up was still running 5 s after SIGTERM with a change stream open"
+fi
+echo "    exited in about $((i / 10)).$((i % 10)) s"
+kill "$HOLDER_PID" 2>/dev/null || true
+
 stop_up
 
 echo "SMOKE OK (node $(node --version))"

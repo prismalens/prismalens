@@ -101,7 +101,8 @@ rest are advisory or out-of-band and cannot affect a merge.
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
 | `ci.yml` | `pull_request`, `push` | build, test, lint, pack; aggregates to `CI gate` |
-| `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite |
+| `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
+| `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
 | `release.yml` | `push`, `release` | release-please release PR on push; npm publish on release published |

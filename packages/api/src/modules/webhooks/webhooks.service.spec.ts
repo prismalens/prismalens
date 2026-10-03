@@ -487,6 +487,25 @@ describe("WebhooksService", () => {
 			expect(alertsService.resolveSourceAlert).toHaveBeenCalledWith("fp-1");
 		});
 
+		it("gives a webhook alert and its catch-up the one identity, and keeps the path on the Event (walk f17)", async () => {
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+			await service.processPrometheusAlert(firing, {
+				idempotencyKey: `prometheus-catchup:fp-1:${STARTS}`,
+				source: "prometheus-catchup",
+				autoInvestigate: false,
+			});
+
+			const created = vi.mocked(alertsService.create).mock.calls.map((c) => c[0]);
+			expect(created).toHaveLength(2);
+			expect(created.map((dto) => dto.source)).toEqual(["prometheus", "prometheus"]);
+			expect(created[1].labels).toEqual(created[0].labels);
+			const events = vi.mocked(eventsService.create).mock.calls.map((c) => c[0]);
+			expect(events.map((e) => e.source)).toEqual(["prometheus", "prometheus-catchup"]);
+		});
+
 		it("leaves an ordinary firing open", async () => {
 			const result = await service.processPrometheusAlert(firing, {
 				source: "prometheus",

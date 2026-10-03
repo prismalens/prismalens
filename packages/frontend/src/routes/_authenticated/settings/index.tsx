@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
 	AboutSettings,
@@ -10,7 +10,12 @@ import {
 } from "@/components/settings";
 import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
 import { DevicesTab } from "@/components/settings/DevicesTab";
-import { SettingsFrame } from "@/components/settings/SettingsFrame";
+import {
+	SettingsFrame,
+	useSettingsSections,
+} from "@/components/settings/SettingsFrame";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/settings/")({
@@ -35,8 +40,7 @@ const SECTIONS = {
 	},
 	devices: {
 		title: "Devices",
-		intro:
-			"Phones and computers paired with this instance. Pair one with a one-time link; revoke it here.",
+		intro: "Phones and computers paired with this instance.",
 	},
 	usage: {
 		title: "Usage data",
@@ -55,7 +59,9 @@ const SECTIONS = {
 } as const;
 
 function SettingsPage() {
-	const { tab = "harness" } = useSearch({ from: "/_authenticated/settings" });
+	const { tab: picked } = useSearch({ from: "/_authenticated/settings" });
+	const tab = picked ?? "harness";
+	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
 
 	// Actions on other screens change what these sections show; refetch on entry.
@@ -63,6 +69,9 @@ function SettingsPage() {
 		queryClient.invalidateQueries({ queryKey: orpc.integrations.key() });
 		queryClient.invalidateQueries({ queryKey: orpc.settings.key() });
 	}, [queryClient]);
+
+	// On the phone Settings lands on its sections; one opens, Back returns here.
+	if (phone && !picked) return <SectionList />;
 
 	const section = SECTIONS[tab];
 	return (
@@ -75,5 +84,37 @@ function SettingsPage() {
 			{tab === "about" && <AboutSettings />}
 			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>
+	);
+}
+
+function SectionList() {
+	const sections = useSettingsSections();
+	return (
+		<div
+			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas"
+			data-testid="settings-frame"
+		>
+			<PageHeader title="Settings" />
+			<nav
+				className="min-h-0 flex-1 overflow-y-auto px-4 pb-12"
+				aria-label="Settings sections"
+				data-testid="settings-section-list"
+			>
+				{sections.map((s) => (
+					<Link
+						key={s.tab}
+						to="/settings"
+						search={{ tab: s.tab }}
+						className="block border-t border-hairline py-2.5 outline-none first:border-t-0 focus-visible:ring-2 focus-visible:ring-accent"
+						data-testid={`settings-section-${s.tab}`}
+					>
+						<span className="block text-body">{s.label}</span>
+						{s.line && (
+							<span className="block text-meta text-text-3">{s.line}</span>
+						)}
+					</Link>
+				))}
+			</nav>
+		</div>
 	);
 }

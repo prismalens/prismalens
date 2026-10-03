@@ -6,8 +6,11 @@ import {
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
+	PERMISSION_MODES,
 	resolveHarnessModel,
+	resolvePermissionOutcome,
 	resumeBlockedReason,
+	SANDBOX_DEFAULT,
 } from "./harness.js";
 
 afterEach(() => {
@@ -42,6 +45,18 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 		} finally {
 			HARNESS_REGISTRY["claude-code"].providerKeys = original;
 		}
+	});
+
+	it("passes a gateway's model keys to Claude Code (walk f18)", () => {
+		expect(
+			getHarnessProviderKeys("claude-code", {
+				ANTHROPIC_BASE_URL: "http://localhost:11434",
+				ANTHROPIC_MODEL: "gemma4:31b-cloud",
+			}),
+		).toEqual({
+			ANTHROPIC_BASE_URL: "http://localhost:11434",
+			ANTHROPIC_MODEL: "gemma4:31b-cloud",
+		});
 	});
 
 	it("omits a provider key the source env does not set", () => {
@@ -96,10 +111,8 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
 	});
 
-	it("codex starts in its own read-only mode (#634)", () => {
-		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBe(
-			"read-only",
-		);
+	it("codex's mode comes from the access level, not its base env (r4 R4.1 rev)", () => {
+		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBeUndefined();
 	});
 
 	it("deepagents runs dcode's ACP server with no MCP servers (#634)", () => {
@@ -141,20 +154,19 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
 			GEMINI_CLI_TRUST_WORKSPACE: "false",
 		});
-		expect(HARNESS_REGISTRY.gemini.readOnlyMechanism).toContain(
+		expect(HARNESS_REGISTRY.gemini.access["read-only"].mechanism).toContain(
 			"GEMINI_CLI_TRUST_WORKSPACE=false",
 		);
 	});
 });
 
 describe("row data every reader needs (#634)", () => {
-	it("gives every row a non-empty loginHint and readOnlyMechanism", () => {
+	it("gives every row a non-empty loginHint and a mechanism at every access level", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			expect(descriptor.loginHint.length, `${id} loginHint`).toBeGreaterThan(0);
-			expect(
-				descriptor.readOnlyMechanism.length,
-				`${id} readOnlyMechanism`,
-			).toBeGreaterThan(0);
+			for (const level of PERMISSION_MODES) {
+				expect(descriptor.access[level].mechanism.length, `${id} ${level}`).toBeGreaterThan(0);
+			}
 		}
 	});
 
@@ -182,16 +194,32 @@ describe("gateway URL (claude-code)", () => {
 });
 
 describe("resolveHarnessModel (#337 run e, G11)", () => {
+	it("takes the host env's model when the operator set none, and the operator's over it (walk f18)", () => {
+		const env = { ANTHROPIC_MODEL: "gemma4:31b-cloud" };
+		expect(resolveHarnessModel("claude-code", undefined, env)).toEqual({
+			model: "gemma4:31b-cloud",
+			source: "env",
+		});
+		expect(resolveHarnessModel("claude-code", "claude-sonnet-5", env)).toEqual({
+			model: "claude-sonnet-5",
+			source: "operator",
+		});
+		expect(resolveHarnessModel("claude-code", undefined, {})).toEqual({
+			source: "harness-default",
+		});
+	});
+
+
 	it("takes the operator's model first, with its source", () => {
 		expect(resolveHarnessModel("opencode", " zen/free ")).toEqual({ model: "zen/free", source: "operator" });
 	});
 
-	it("falls back to the row's verified default, never the harness's own", () => {
-		expect(resolveHarnessModel("opencode")).toEqual({
-			model: HARNESS_REGISTRY.opencode.defaultModel,
-			source: "product-default",
-		});
-		expect(HARNESS_REGISTRY.opencode.defaultModel).toBe("opencode/muse-spark-1.3-contributor-free");
+	it("ships no product default for OpenCode, so OpenCode picks its own model", () => {
+		expect(HARNESS_REGISTRY.opencode.defaultModel).toBeUndefined();
+		expect(resolveHarnessModel("opencode")).toEqual({ source: "harness-default" });
+		expect(HARNESS_REGISTRY.opencode.configFiles?.({ cwd: "/r", configDir: "/c", dataDir: "/d" })["opencode.json"]).not.toContain(
+			'"model"',
+		);
 	});
 
 	it("names the harness default as the source when a row has none", () => {
@@ -217,5 +245,65 @@ describe("resumeBlockedReason (#747)", () => {
 		expect(resumeBlockedReason("deepagents")).toBe(
 			"deepagents can't reopen a finished session, so a new run starts from the report.",
 		);
+	});
+});
+
+describe("access levels (r4 R4.1)", () => {
+	it("offers the four levels, Read-only first", () => {
+		expect(PERMISSION_MODES).toEqual(["read-only", "read-only-tools", "workspace-write", "full-access"]);
+	});
+
+	it("records the level and the second layer it set", () => {
+		const outcome = resolvePermissionOutcome("claude-code", "full-access");
+		expect(outcome).toMatchObject({ mode: "full-access", agentMode: "bypassPermissions", fidelity: "cooperative" });
+		expect(resolvePermissionOutcome("claude-code").agentMode).toBe("default");
+		expect(resolvePermissionOutcome("deepagents", "read-only").mechanism).toContain("enforced by PrismaLens only");
+		expect(resolvePermissionOutcome("deepagents", "read-only").agentMode).toBeNull();
+	});
+
+	it("tightens OpenCode's edit to deny at the read levels and opens it with the level", () => {
+		const row = HARNESS_REGISTRY.opencode;
+		const config = JSON.parse(row.configFiles?.({ configDir: "/c", dataDir: "/d", cwd: "/w" })["opencode.json"] ?? "{}");
+		expect(config.permission).toMatchObject({ edit: "deny", bash: "ask", webfetch: "deny" });
+		expect(resolvePermissionOutcome("opencode", "read-only").configPatch).toBeUndefined();
+		expect(resolvePermissionOutcome("opencode", "workspace-write").configPatch).toEqual({ permission: { edit: "ask" } });
+		expect(resolvePermissionOutcome("opencode", "full-access").configPatch).toEqual({
+			permission: { edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" },
+		});
+	});
+
+	it("Given Codex with the sandbox switch off, When a run starts at read-only, Then agent-full-access and cooperative", () => {
+		for (const level of ["read-only", "read-only-tools"] as const) {
+			const off = resolvePermissionOutcome("codex", level, { sandbox: false });
+			expect(off.env.INITIAL_AGENT_MODE).toBe("agent-full-access");
+			expect(off.fidelity).toBe("cooperative");
+			expect(off.mechanism).toBe("Codex sandbox off (agent-full-access); PrismaLens gate only");
+		}
+	});
+
+	it("Given Codex with the sandbox switch on, When a run starts at read-only, Then read-only and enforced", () => {
+		for (const level of ["read-only", "read-only-tools"] as const) {
+			const on = resolvePermissionOutcome("codex", level, { sandbox: true });
+			expect(on.env.INITIAL_AGENT_MODE).toBe("read-only");
+			expect(on.fidelity).toBe("enforced");
+			expect(on.mechanism).toBe("Codex read-only sandbox (no network)");
+		}
+	});
+
+	it("keeps Codex's sandbox on when the operator has not set the switch (SANDBOX_DEFAULT, pending the operator)", () => {
+		expect(SANDBOX_DEFAULT).toBe(true);
+		expect(resolvePermissionOutcome("codex", "read-only")).toMatchObject({
+			env: { INITIAL_AGENT_MODE: "read-only" },
+			fidelity: "enforced",
+		});
+	});
+
+	it("leaves the write levels alone when the sandbox switch is on, and ignores it for other agents", () => {
+		expect(resolvePermissionOutcome("codex", "workspace-write", { sandbox: true })).toMatchObject({
+			env: { INITIAL_AGENT_MODE: "agent" },
+			fidelity: "cooperative",
+		});
+		expect(resolvePermissionOutcome("codex", "full-access", { sandbox: true }).env.INITIAL_AGENT_MODE).toBe("agent-full-access");
+		expect(resolvePermissionOutcome("opencode", "read-only", { sandbox: true }).fidelity).toBe("cooperative");
 	});
 });

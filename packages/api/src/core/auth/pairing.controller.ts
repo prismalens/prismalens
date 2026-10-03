@@ -9,18 +9,21 @@
  * mint another device or revoke one (the non-escalation rule).
  */
 
-import { Controller, UseGuards } from "@nestjs/common";
+import { Controller, Logger, UseGuards } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
 	ACCESS_SCOPE,
 	buildPairingUrl,
 	createPairingLink,
+	type DeviceRecord,
 	PairingError,
 	prismaPairingStore,
 	redeemPairingLink,
 } from "@prismalens/auth";
-import { pairingContract } from "@prismalens/contracts";
+import { pairingContract, webhooksContract } from "@prismalens/contracts";
 import type { Request } from "express";
+import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
@@ -29,7 +32,10 @@ import { Public } from "./public.decorator.js";
 
 @Controller()
 export class PairingController {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly config: ConfigService,
+	) {}
 
 	private get store() {
 		return prismaPairingStore(this.prisma);
@@ -58,14 +64,22 @@ export class PairingController {
 					const request = context.request as Request;
 					operatorOnly(request);
 					const devices = await this.store.listDevices();
-					return {
-						devices: devices.map((d) => ({
-							id: d.id,
-							name: d.name,
-							createdAt: d.createdAt.toISOString(),
-							lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
-						})),
-					};
+					const self = request.operator?.device.id;
+					return { devices: devices.map((d) => deviceOut(d, self)) };
+				},
+			),
+
+			renameDevice: implement(pairingContract.manage.renameDevice).handler(
+				async ({ input, context }) => {
+					const request = context.request as Request;
+					operatorOnly(request);
+					const device = await this.store.renameDevice(input.id, input.name);
+					if (!device) {
+						throw new ORPCError("NOT_FOUND", {
+							message: "No such device, or it is revoked.",
+						});
+					}
+					return deviceOut(device, request.operator?.device.id);
 				},
 			),
 
@@ -83,6 +97,51 @@ export class PairingController {
 			),
 		};
 	}
+
+	@Implement(webhooksContract.lastDelivery)
+	webhookLastDelivery() {
+		return implement(webhooksContract.lastDelivery).handler(async () => {
+			const row = await this.prisma.setting.findUnique({
+				where: { key: WEBHOOK_LAST_DELIVERY_KEY },
+			});
+			if (!row) return null;
+			try {
+				const v = JSON.parse(row.value) as Record<string, unknown>;
+				return typeof v.at === "string" &&
+					typeof v.received === "number" &&
+					typeof v.accepted === "number"
+					? { at: v.at, received: v.received, accepted: v.accepted }
+					: null;
+			} catch {
+				return null;
+			}
+		});
+	}
+
+	@Implement(webhooksContract.token)
+	webhookToken() {
+		return implement(webhooksContract.token).handler(async ({ context }) => {
+			operatorOnly(context.request as Request);
+			const token = this.config.get<string>("PRISMALENS_WEBHOOK_SECRET");
+			if (!token) {
+				throw new ORPCError("NOT_FOUND", {
+					message: "This instance has no webhook token.",
+				});
+			}
+			return { token };
+		});
+	}
+}
+
+function deviceOut(d: DeviceRecord, self: string | undefined) {
+	return {
+		id: d.id,
+		name: d.name,
+		userAgent: d.userAgent,
+		current: d.id === self,
+		createdAt: d.createdAt.toISOString(),
+		lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
+	};
 }
 
 /**
@@ -94,6 +153,8 @@ export class PairingController {
 @UseGuards(MutationThrottleGuard)
 @Controller()
 export class PairingRedeemController {
+	private readonly logger = new Logger(PairingRedeemController.name);
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly instance: InstanceIdentity,
@@ -125,6 +186,7 @@ export class PairingRedeemController {
 					};
 				} catch (error) {
 					if (error instanceof PairingError) {
+						this.logger.warn(error.message);
 						throw new ORPCError("BAD_REQUEST", {
 							message: error.message,
 							data: { reason: error.reason },

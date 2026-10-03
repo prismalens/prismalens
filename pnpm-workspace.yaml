@@ -9,7 +9,7 @@ catalog:
   '@orpc/contract': ^1.15.4
   '@orpc/openapi-client': ^1.15.4
   '@types/node': ^26.6.3
-  dotenv: ^17.4.2
+  dotenv: ^18.0.4
   eslint: ^10.11.0
   rxjs: ^7.8.2
   tsx: ^4.23.15

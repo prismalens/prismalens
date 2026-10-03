@@ -1,6 +1,11 @@
 # prismalens
 
-PrismaLens is an AI-powered root-cause investigation tool for on-call engineers. It analyzes firing alerts against your repositories and telemetry, producing an ordered-evidence report that ranks hypotheses by observed evidence without synthetic confidence scores. The CLI runs standalone or boots the full local application.
+PrismaLens is a self-hosted incident investigator. When an alert arrives, the
+coding agent you already use investigates a snapshot of the service's code,
+under a read-only policy. The run, the evidence and an ordered-evidence report (hypotheses ranked by
+the evidence behind them, with no numeric confidence scores) stay on the
+incident. This package is the `pl` command: it starts the app, checks a
+machine, pairs devices and manages a background service.
 
 ## Install
 
@@ -56,12 +61,12 @@ pl up
 
 | Command | Description |
 | --- | --- |
-| `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473). |
+| `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473); `--tailscale-serve` also publishes it on your tailnet over HTTPS. |
 | `doctor` | Preflight-check the environment: a harness binary on PATH, and its ACP handshake (answers ACP, sign in needed, no answer in 10s, or failed to start). |
-| `pair` | Print a one-time link that pairs another device with this instance, or with `--operator` this machine's own browser. |
+| `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
-| `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. |
-| `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. |
+| `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. A background service tries the new version first and goes back to the old one and its database if it fails. |
+| `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. `install --tailscale-serve` publishes it on your tailnet over HTTPS on every start. |
 
 ## Documentation
 

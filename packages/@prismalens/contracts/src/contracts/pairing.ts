@@ -16,6 +16,10 @@ import { z } from "zod";
 const DeviceSchema = z.object({
 	id: z.string(),
 	name: z.string(),
+	/** The browser it paired from; the list reads "Chrome on Android" out of it. */
+	userAgent: z.string().nullable(),
+	/** The device this request came from. */
+	current: z.boolean(),
 	createdAt: z.string(),
 	lastSeenAt: z.string().nullable(),
 });
@@ -70,6 +74,17 @@ const manageContract = {
 		})
 		.input(z.object({}))
 		.output(z.object({ devices: z.array(DeviceSchema) })),
+
+	/** PATCH /pairing/devices/{id} */
+	renameDevice: oc
+		.route({
+			method: "PATCH",
+			path: "/pairing/devices/{id}",
+			summary: "Rename a paired device",
+			tags: ["pairing"],
+		})
+		.input(z.object({ id: z.string(), name: z.string().trim().min(1).max(80) }))
+		.output(DeviceSchema),
 
 	/** DELETE /pairing/devices/{id} */
 	revokeDevice: oc

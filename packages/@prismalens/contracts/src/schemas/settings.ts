@@ -37,6 +37,11 @@ export const HarnessStatusSchema = z.object({
 	modelVia: z.enum(["config", "env", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: z.string(),
+	/** The model the host env names for this harness; a run with no model set uses it (walk f18). Absent from older APIs. */
+	envModel: z
+		.object({ key: z.string(), model: z.string() })
+		.nullable()
+		.default(null),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model
@@ -84,12 +89,14 @@ export const HarnessSettingsSchema = z.object({
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
 /** A patch: `models` merges per harness, and `null` clears that harness's model. */
-export const UpdateHarnessSettingsSchema = z.object({
-	harness: HarnessSettingSchema.optional(),
-	models: z
-		.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
-		.optional(),
-});
+export const UpdateHarnessSettingsSchema = z
+	.object({
+		harness: HarnessSettingSchema.optional(),
+		models: z
+			.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema.nullable())
+			.optional(),
+	})
+	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
 
 export const HarnessesResponseSchema = z.object({
@@ -296,7 +303,7 @@ export type TelemetrySettings = z.infer<typeof TelemetrySettingsSchema>;
 export const AboutSchema = z.object({
 	version: z.string(),
 	channel: z.enum(["npm", "installer", "homebrew", "scoop", "electron"]),
-	build: z.enum(["release", "dev"]),
+	build: z.string().nullable(),
 	workspaceDir: z.string(),
 	/** Newest `prismalens.db.bak-*` in the workspace, made before a migration. */
 	latestBackup: z.string().nullable(),

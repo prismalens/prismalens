@@ -15,8 +15,11 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { ShortcutSheet } from "@/components/shared/ShortcutSheet";
+import { useNewIncident } from "@/components/shell/NewIncident";
+import { useVisitTrail } from "@/hooks/use-back";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { readOperator } from "@/hooks/use-operator";
+import { useLiveChanges } from "@/lib/api/live-refresh";
 
 export const Route = createFileRoute("/_authenticated")({
 	ssr: false,
@@ -31,7 +34,12 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
 	const [helpOpen, setHelpOpen] = useState(false);
-	useGlobalShortcuts(useCallback(() => setHelpOpen(true), []));
+	useGlobalShortcuts(
+		useCallback(() => setHelpOpen(true), []),
+		useNewIncident(),
+	);
+	useLiveChanges();
+	useVisitTrail();
 	return (
 		<>
 			<Outlet />

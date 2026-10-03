@@ -8,10 +8,12 @@ export {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	HARNESS_SELECTION_FAILURES,
+	type HarnessAccess,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
 	type HarnessSelectionFailure,
+	harnessEnvModel,
 	MODEL_SOURCES,
 	type ModelSource,
 	PERMISSION_MODES,
@@ -23,6 +25,7 @@ export {
 	resolveHarnessModel,
 	resolvePermissionOutcome,
 	resumeBlockedReason,
+	SANDBOX_DEFAULT,
 } from "./providers/harness.js";
 export {
 	annotateModel,

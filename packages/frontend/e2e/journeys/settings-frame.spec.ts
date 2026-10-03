@@ -4,7 +4,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the settings frame", () => {
-	test("pane sections with status lines, agent picker and model pill, services inside frame", async ({
+	test("Settings swaps the sidebar for its sections, the agent picker sets a model, Services is its own door", async ({
 		page,
 	}) => {
 		await page.goto("/settings");
@@ -12,38 +12,29 @@ test.describe("#523 — the settings frame", () => {
 			timeout: 15_000,
 		});
 
-		const pane = page.getByTestId("settings-pane");
-		await expect(pane).toBeVisible();
-
-		// 1. Pane sections with their labels and status lines
-		const harnessNav = page.getByTestId("settings-nav-harness");
-		await expect(harnessNav).toBeVisible();
-		await expect(harnessNav).toContainText("Agent");
-
-		const integrationsNav = page.getByTestId("settings-nav-integrations");
-		await expect(integrationsNav).toBeVisible();
-		await expect(integrationsNav).toContainText("Integrations");
-
-		const connectionsNav = page.getByTestId("settings-nav-connections");
-		await expect(connectionsNav).toBeVisible();
-		await expect(connectionsNav).toContainText("Connections");
-
-		const servicesNav = page.getByTestId("settings-nav-services");
-		await expect(servicesNav).toBeVisible();
-		await expect(servicesNav).toContainText("Services");
-		await expect(servicesNav).toContainText("what a run may read");
-
-		const usageNav = page.getByTestId("settings-nav-usage");
-		await expect(usageNav).toBeVisible();
-		await expect(usageNav).toContainText("Usage data");
-		await expect(usageNav).toContainText("usage counts");
-
-		await expect(page.getByTestId("settings-nav-about")).toContainText(/version|available/);
-
-		const dangerNav = page.getByTestId("settings-nav-danger");
-		await expect(dangerNav).toBeVisible();
-		await expect(dangerNav).toContainText("Danger zone");
-		await expect(dangerNav).toContainText("reset");
+		// 1. The sidebar is the section list now, with Back above it (study-v3 §2)
+		const sidebar = page.getByTestId("sidebar");
+		await expect(sidebar.getByTestId("settings-back")).toBeVisible();
+		await expect(sidebar.getByTestId("nav-incidents")).toHaveCount(0);
+		const sections = sidebar.getByTestId("settings-sections");
+		for (const [tab, label] of [
+			["harness", "Agent"],
+			["integrations", "Integrations"],
+			["connections", "Connections"],
+			["devices", "Devices"],
+			["usage", "Usage data"],
+			["about", "About"],
+			["danger", "Danger zone"],
+		]) {
+			await expect(sections.getByTestId(`settings-nav-${tab}`)).toContainText(
+				label,
+			);
+		}
+		await expect(sections.getByTestId("settings-nav-harness")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		await expect(sections.getByTestId("settings-nav-services")).toHaveCount(0);
 
 		// 2. Agent picker choose and model pill set
 		await page.goto("/settings?tab=harness");
@@ -73,22 +64,22 @@ test.describe("#523 — the settings frame", () => {
 		}
 		await expect(page.getByTestId("model-pill")).toBeVisible();
 
-		// 3. Services lives inside the settings frame
-		await servicesNav.click();
+		// 3. Back leaves Settings; Services is a door of its own (decision 1)
+		await sidebar.getByTestId("settings-back").click();
+		await expect(page).not.toHaveURL(/\/settings/);
+		await sidebar.getByTestId("nav-services").click();
 		await expect(page).toHaveURL(/\/services/);
+		await expect(sidebar.getByTestId("nav-services")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
 		await expect(page.getByTestId("settings-frame")).toBeVisible();
-		await expect(page.getByTestId("settings-pane")).toBeVisible();
-		await expect(servicesNav).toHaveAttribute("aria-current", "page");
 
-		// Open a service detail - it stays inside settings frame
+		// Open a service detail: its tabs are role="tab" buttons
 		const serviceLink = page.locator("table tbody tr a").first();
 		if (await serviceLink.isVisible()) {
 			await serviceLink.click();
 			await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);
-			await expect(page.getByTestId("settings-frame")).toBeVisible();
-			await expect(page.getByTestId("settings-pane")).toBeVisible();
-
-			// Tabs are role="tab" buttons
 			const tabs = page.getByRole("tab");
 			await expect(tabs.filter({ hasText: "Overview" })).toBeVisible();
 			await expect(tabs.filter({ hasText: "Repositories" })).toBeVisible();

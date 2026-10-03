@@ -88,6 +88,8 @@ export function useAddRepositorySource() {
 				queryKey: serviceKeys.detail(variables.serviceId),
 			});
 			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
+			// A service that names its code is the board's fourth setup step.
+			queryClient.invalidateQueries({ queryKey: orpc.setup.key() });
 		},
 	});
 }

@@ -12,7 +12,7 @@
 
 import { Injectable } from "@nestjs/common";
 import {
-	authenticateDevice,
+	authenticateDeviceToken,
 	type DeviceRecord,
 	prismaPairingStore,
 } from "@prismalens/auth";
@@ -33,6 +33,11 @@ export interface Operator {
 	credential: DeviceCredential;
 }
 
+export interface OperatorResolution {
+	operator: Operator | null;
+	reason?: "revoked";
+}
+
 @Injectable()
 export class OperatorResolver {
 	constructor(
@@ -41,15 +46,25 @@ export class OperatorResolver {
 	) {}
 
 	async resolve(request: Request): Promise<Operator | null> {
+		const { operator } = await this.resolveWithReason(request);
+		return operator;
+	}
+
+	async resolveWithReason(request: Request): Promise<OperatorResolution> {
 		const credential = readDeviceCredential(
 			request,
 			this.instance.deviceCookie,
 		);
-		if (!credential) return null;
-		const device = await authenticateDevice(
+		if (!credential) return { operator: null };
+		const result = await authenticateDeviceToken(
 			prismaPairingStore(this.prisma),
 			credential.token,
 		);
-		return device ? { via: "device", device, credential } : null;
+		if (!result.device) {
+			return { operator: null, reason: result.reason };
+		}
+		return {
+			operator: { via: "device", device: result.device, credential },
+		};
 	}
 }

@@ -15,7 +15,6 @@ export type ChipTone =
 	| "active"
 	| "done"
 	| "failed"
-	| "primary"
 	| "neutral";
 
 const toneVar: Record<ChipTone, string> = {
@@ -25,12 +24,11 @@ const toneVar: Record<ChipTone, string> = {
 	low: "var(--sev-low)",
 	info: "var(--sev-info)",
 	live: "var(--live)",
-	stale: "var(--stale)",
-	active: "var(--run-active)",
-	done: "var(--run-done)",
-	failed: "var(--run-failed)",
-	primary: "var(--primary)",
-	neutral: "var(--muted-foreground)",
+	stale: "var(--warn)",
+	active: "var(--live)",
+	done: "var(--ok)",
+	failed: "var(--danger)",
+	neutral: "var(--text-2)",
 };
 
 export interface StateChipProps extends HTMLAttributes<HTMLSpanElement> {
@@ -47,16 +45,16 @@ export interface StateChipProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 /**
- * The one chip for every state in the app: severity, status, run state, liveness.
- * Colour comes from a state token, never from a palette class, so a chip reads the
- * same on every screen and in both themes.
+ * Retired as a tinted chip (study-v3 §2): a state is a coloured word, and the
+ * severity dot is the only filled shape. Kept as a name so the record's screens
+ * PR 3 restyles render as words meanwhile.
  */
 export function StateChip({
 	tone,
 	mono,
 	dashed,
-	pulse,
-	quiet: _quiet,
+	pulse: _pulse,
+	quiet,
 	className,
 	style,
 	children,
@@ -67,28 +65,21 @@ export function StateChip({
 			data-tone={tone}
 			style={{ "--chip": toneVar[tone], ...style } as CSSProperties}
 			className={cn(
-				"inline-flex h-5 items-center gap-1 whitespace-nowrap rounded border px-1.5 text-meta font-medium leading-none",
-				"border-(--chip)/35 bg-(--chip)/12 text-(--chip)",
-				dashed && "border-dashed bg-transparent",
+				"inline-flex items-center gap-1 whitespace-nowrap text-meta font-medium",
+				dashed || quiet ? "text-text-3" : "text-(--chip)",
 				mono && "font-mono tabular-nums",
 				className,
 			)}
 			{...props}
 		>
-			{pulse && (
-				<span
-					aria-hidden
-					className="h-1.5 w-1.5 rounded-full bg-(--chip) motion-safe:animate-pulse"
-				/>
-			)}
 			{children}
 		</span>
 	);
 }
 
 /**
- * A state as a coloured word with a dot, for dense rows where a chip is too loud.
- * Same tone tokens as the chip, so the colour means the same thing everywhere.
+ * A state as a coloured word (study-v2 §2.5 rule 9). No dot: the severity dot is
+ * the only filled circle in the app. Same tone tokens as the chip.
  */
 export function StateWord({
 	tone,
@@ -104,19 +95,13 @@ export function StateWord({
 			data-tone={tone}
 			style={{ "--chip": toneVar[tone], ...style } as CSSProperties}
 			className={cn(
-				"inline-flex items-center gap-1.5 whitespace-nowrap text-meta",
-				quiet ? "text-muted-foreground" : "font-medium text-(--chip)",
+				"inline-flex items-center gap-1.5 whitespace-nowrap text-meta font-medium",
+				quiet ? "text-text-2" : "text-(--chip)",
 				className,
 			)}
+			data-pulse={pulse ? "" : undefined}
 			{...props}
 		>
-			<span
-				aria-hidden
-				className={cn(
-					"h-1.5 w-1.5 shrink-0 rounded-full bg-(--chip)",
-					pulse && "motion-safe:animate-pulse",
-				)}
-			/>
 			{children}
 		</span>
 	);

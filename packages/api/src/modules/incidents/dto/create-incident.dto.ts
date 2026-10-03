@@ -25,6 +25,15 @@ export class CreateIncidentDto {
 	/** Why alerts were grouped together */
 	correlationReason?: string;
 
+	/** The ended incident the same alert last belonged to; the opening entry names it (walk f32). */
+	priorIncident?: {
+		id: string;
+		number: number;
+		status: string;
+		endedAt: Date | null;
+		alertName: string;
+	};
+
 	/** Tags for categorization */
 	tags?: string[];
 

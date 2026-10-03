@@ -126,7 +126,7 @@ describe("reportToMarkdown", () => {
 	it("flags a model the agent swapped for another (#639)", () => {
 		const fidelity = {
 			harness: "opencode",
-			mode: "read-only",
+			mode: "read-only" as const,
 			fidelity: "cooperative" as const,
 			mechanism: "permission policy",
 			model: "gemma4:31b",
