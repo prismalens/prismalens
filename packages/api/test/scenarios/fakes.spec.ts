@@ -72,26 +72,29 @@ describe("the fake Alertmanager", () => {
 			});
 		});
 		await new Promise<void>((r) => sink.listen(0, "127.0.0.1", r));
-		const { port } = sink.address() as { port: number };
-		const hook = `http://127.0.0.1:${port}/api/webhooks/prometheus`;
+		try {
+			const { port } = sink.address() as { port: number };
+			const hook = `http://127.0.0.1:${port}/api/webhooks/prometheus`;
 
-		am = await startFakeAlertmanager();
-		const a = am.fire({ labels: { alertname: "HighLatency", service: "api" } });
-		am.fire({ labels: { alertname: "HighLatency", service: "web" } });
-		await am.post(hook, "t0ken");
-		am.clear(a.fingerprint);
-		await am.post(hook, "t0ken");
-		sink.close();
+			am = await startFakeAlertmanager();
+			const a = am.fire({ labels: { alertname: "HighLatency", service: "api" } });
+			am.fire({ labels: { alertname: "HighLatency", service: "web" } });
+			await am.post(hook, "t0ken");
+			am.clear(a.fingerprint);
+			await am.post(hook, "t0ken");
 
-		expect(received[0].auth).toBe("Bearer t0ken");
-		expect(received[0].body).toMatchObject({
-			version: "4",
-			status: "firing",
-			commonLabels: { alertname: "HighLatency" },
-		});
-		expect(received[0].body.alerts).toHaveLength(2);
-		const second = received[1].body.alerts as Array<{ status: string; fingerprint: string }>;
-		expect(second.map((x) => x.status).sort()).toEqual(["firing", "resolved"]);
-		expect(second.find((x) => x.status === "resolved")?.fingerprint).toBe(a.fingerprint);
+			expect(received[0].auth).toBe("Bearer t0ken");
+			expect(received[0].body).toMatchObject({
+				version: "4",
+				status: "firing",
+				commonLabels: { alertname: "HighLatency" },
+			});
+			expect(received[0].body.alerts).toHaveLength(2);
+			const second = received[1].body.alerts as Array<{ status: string; fingerprint: string }>;
+			expect(second.map((x) => x.status).sort()).toEqual(["firing", "resolved"]);
+			expect(second.find((x) => x.status === "resolved")?.fingerprint).toBe(a.fingerprint);
+		} finally {
+			await new Promise<void>((r) => sink.close(() => r()));
+		}
 	});
 });
