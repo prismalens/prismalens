@@ -13,7 +13,7 @@ import {
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
@@ -101,16 +101,16 @@ export function RunStrip() {
 			className="flex h-9 min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap [view-transition-name:run-strip]"
 			data-testid="run-strip"
 		>
-			<StateChip
+			<StateWord
 				tone={runStateTone(state)}
 				pulse={live}
 				className="transition-colors duration-200 motion-reduce:transition-none"
 				data-testid="run-strip-state"
 			>
 				{RUN_STATE_LABEL[state]}
-			</StateChip>
-			<span className="hidden min-w-0 shrink items-center gap-1.5 truncate text-meta text-muted-foreground sm:flex">
-				<span className="text-foreground">{who.agent}</span>
+			</StateWord>
+			<span className="hidden min-w-0 shrink items-center gap-1.5 truncate text-meta text-text-2 sm:flex">
+				<span className="text-text-1">{who.agent}</span>
 				<span>{who.model}</span>
 			</span>
 			{step && (
@@ -119,7 +119,7 @@ export function RunStrip() {
 					className={cn(
 						"min-w-0 flex-1 truncate text-meta motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150",
 						"transition-colors duration-300 motion-reduce:transition-none",
-						step.stale ? "text-stale" : "text-muted-foreground",
+						step.stale ? "text-warn" : "text-text-2",
 					)}
 					data-testid="run-strip-step"
 				>
@@ -128,7 +128,7 @@ export function RunStrip() {
 			)}
 			<span
 				className={cn(
-					"shrink-0 text-meta tabular-nums text-muted-foreground",
+					"shrink-0 text-meta tabular-nums text-text-2",
 					!step && "flex-1",
 				)}
 				data-testid="run-strip-elapsed"
@@ -167,7 +167,7 @@ function StopButton() {
 				<Button
 					variant="outline"
 					size="xs"
-					className="text-run-failed hover:text-run-failed"
+					className="text-danger hover:text-danger"
 					disabled={stopping}
 					data-testid="run-stop"
 				>
@@ -186,8 +186,8 @@ function StopButton() {
 				}}
 			>
 				<div className="space-y-1">
-					<p className="text-record font-medium">Stop this investigation?</p>
-					<p className="text-record text-muted-foreground">
+					<p className="text-body font-medium">Stop this investigation?</p>
+					<p className="text-body text-text-2">
 						The agent stops at its current step. Everything it found so far
 						stays in the conversation. You can start a new investigation
 						afterwards.

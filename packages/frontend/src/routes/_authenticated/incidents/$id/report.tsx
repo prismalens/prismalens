@@ -64,7 +64,7 @@ function ReportRoute() {
 			<div className="mx-auto max-w-[52rem] space-y-6 px-4 py-4 sm:px-6">
 				{!done || !investigation ? (
 					<p
-						className="rounded-md border border-dashed p-3 text-record text-muted-foreground"
+						className="rounded-md border border-dashed p-3 text-body text-text-2"
 						data-testid="report-empty"
 					>
 						{!investigationId
@@ -78,7 +78,7 @@ function ReportRoute() {
 								<button
 									type="button"
 									onClick={() => selectRun(lastGoodRun.id)}
-									className="text-primary hover:underline"
+									className="text-accent hover:underline"
 									data-testid="report-last-good"
 								>
 									Read the report from investigation #
@@ -89,7 +89,7 @@ function ReportRoute() {
 					</p>
 				) : (
 					<>
-						<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-text-2">
 							<span className="tabular-nums">Investigation #{number}</span>
 							<span>
 								{who.agent} {who.model}

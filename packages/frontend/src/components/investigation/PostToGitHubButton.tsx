@@ -131,14 +131,14 @@ export function PostToGitHubButton({
 					<div className="space-y-4 py-4">
 						{notConfigured && (
 							<div
-								className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+								className="rounded-md bg-danger/10 p-3 text-sm text-danger"
 								data-testid="post-report-github-not-configured"
 							>
 								No GitHub connection is configured (
 								<Link
 									to="/settings"
 									search={{ tab: "integrations" }}
-									className="underline font-medium hover:text-destructive/80"
+									className="underline font-medium hover:text-danger/80"
 								>
 									Settings → Integrations
 								</Link>
@@ -161,7 +161,7 @@ export function PostToGitHubButton({
 								disabled={postMutation.isPending}
 							/>
 							{validationError && (
-								<p className="text-xs text-destructive">{validationError}</p>
+								<p className="text-xs text-danger">{validationError}</p>
 							)}
 						</div>
 					</div>

@@ -8,7 +8,7 @@ import {
 } from "@prismalens/contracts";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
@@ -27,7 +27,7 @@ function Clock({ at }: { at: string }) {
 	const now = useNow();
 	return (
 		<span
-			className="font-mono text-meta text-muted-foreground tabular-nums"
+			className="font-mono text-meta text-text-2 tabular-nums"
 			title={ago(at, now)}
 		>
 			{formatClock(at)}
@@ -46,7 +46,7 @@ function EntryRow({
 	const by = who(entry);
 	return (
 		<li
-			className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 py-0.5 text-record"
+			className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 py-0.5 text-body"
 			data-testid="timeline-row"
 		>
 			<Clock at={entry.occurredAt} />
@@ -61,12 +61,12 @@ function EntryRow({
 					{entry.title}
 				</span>
 				{full && entry.description && !note && (
-					<span className="block truncate text-meta text-muted-foreground">
+					<span className="block truncate text-meta text-text-2">
 						{entry.description}
 					</span>
 				)}
 			</span>
-			<span className="text-meta text-muted-foreground">{by}</span>
+			<span className="text-meta text-text-2">{by}</span>
 		</li>
 	);
 }
@@ -90,7 +90,7 @@ function InvestigationRow({
 				onClick={() => setOpen((v) => !v)}
 				aria-expanded={open}
 				disabled={!full}
-				className="grid w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 rounded py-0.5 text-left text-record enabled:hover:bg-muted/60"
+				className="grid w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 rounded py-0.5 text-left text-body enabled:hover:bg-surface-3/60"
 			>
 				<Clock at={item.at} />
 				<span className="flex min-w-0 items-baseline gap-2">
@@ -102,9 +102,7 @@ function InvestigationRow({
 							{RUN_STATE_LABEL[state]}
 						</StateWord>
 					)}
-					{reason && (
-						<span className="truncate text-muted-foreground">{reason}</span>
-					)}
+					{reason && <span className="truncate text-text-2">{reason}</span>}
 					{item.noRepo && (
 						<StateWord tone="stale" className="shrink-0">
 							No repository
@@ -114,7 +112,7 @@ function InvestigationRow({
 				{full ? (
 					<ChevronRight
 						className={cn(
-							"h-3.5 w-3.5 self-center text-muted-foreground",
+							"h-3.5 w-3.5 self-center text-text-2",
 							open && "rotate-90",
 						)}
 					/>

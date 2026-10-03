@@ -69,7 +69,7 @@ export function DynamicCredentialForm({
 						<div key={field.name} className="space-y-2">
 							<Label>{field.label}</Label>
 							<div className="flex items-center gap-2">
-								<code className="flex-1 text-xs bg-muted p-2 rounded break-all">
+								<code className="flex-1 text-xs bg-surface-3 p-2 rounded break-all">
 									{displayValue}
 								</code>
 								{displayValue && (
@@ -84,9 +84,7 @@ export function DynamicCredentialForm({
 								)}
 							</div>
 							{field.description && (
-								<p className="text-xs text-muted-foreground">
-									{field.description}
-								</p>
+								<p className="text-xs text-text-2">{field.description}</p>
 							)}
 						</div>
 					);
@@ -96,7 +94,7 @@ export function DynamicCredentialForm({
 					<div key={field.name} className="space-y-2">
 						<Label htmlFor={`cred-${field.name}`}>
 							{field.label}
-							{isRequired && <span className="text-destructive ml-1">*</span>}
+							{isRequired && <span className="text-danger ml-1">*</span>}
 						</Label>
 						{field.type === "textarea" ? (
 							<>
@@ -111,7 +109,7 @@ export function DynamicCredentialForm({
 									aria-describedby={ariaDescribedBy}
 									aria-invalid={shouldShowError ? true : undefined}
 								/>
-								<label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+								<label className="inline-flex items-center gap-1.5 text-xs text-text-2 hover:text-text-1 cursor-pointer">
 									<Upload className="h-3.5 w-3.5" />
 									<span>Upload file</span>
 									<input
@@ -150,16 +148,13 @@ export function DynamicCredentialForm({
 							<p
 								id={`cred-${field.name}-error`}
 								role="alert"
-								className="text-record text-destructive"
+								className="text-body text-danger"
 							>
 								{error}
 							</p>
 						)}
 						{field.description && (
-							<p
-								id={`cred-${field.name}-desc`}
-								className="text-xs text-muted-foreground"
-							>
+							<p id={`cred-${field.name}-desc`} className="text-xs text-text-2">
 								{field.description}
 							</p>
 						)}

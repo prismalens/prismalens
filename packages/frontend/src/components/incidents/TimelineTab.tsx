@@ -164,7 +164,7 @@ export function TimelineTab({
 
 			{/* Timeline Entries */}
 			{sortedEntries.length === 0 ? (
-				<p className="flex items-center gap-2 rounded-md border border-dashed p-3 text-record text-muted-foreground">
+				<p className="flex items-center gap-2 rounded-md border border-dashed p-3 text-body text-text-2">
 					<ClipboardList className="h-4 w-4 shrink-0" />
 					Nothing recorded yet. Status changes, runs and alerts land here on
 					their own, and so do your notes.
@@ -173,7 +173,7 @@ export function TimelineTab({
 				<div className="space-y-4">
 					{Array.from(groupedEntries.entries()).map(([dateKey, dayEntries]) => (
 						<section key={dateKey}>
-							<h3 className="sticky top-0 bg-background py-1 text-meta font-medium text-muted-foreground">
+							<h3 className="sticky top-0 bg-canvas py-1 text-meta font-medium text-text-2">
 								{formatDateHeader(dayEntries[0].occurredAt)}
 							</h3>
 							<TimelineList items={groupTimeline(dayEntries, runs)} full />

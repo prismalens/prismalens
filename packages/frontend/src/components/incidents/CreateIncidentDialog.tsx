@@ -231,7 +231,7 @@ export function CreateIncidentDialog({
 									))}
 								</SelectContent>
 							</Select>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-text-2">
 								An investigation reads the code at the service's local checkout.
 								Without a service it runs unmapped.
 							</p>
@@ -239,7 +239,7 @@ export function CreateIncidentDialog({
 
 						{error && (
 							<p
-								className="text-sm text-destructive"
+								className="text-sm text-danger"
 								data-testid="create-incident-error"
 								role="alert"
 							>

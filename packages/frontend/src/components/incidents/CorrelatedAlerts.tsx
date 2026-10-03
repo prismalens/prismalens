@@ -8,7 +8,7 @@ import {
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { Mono } from "@/components/shared/Mono";
-import { StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
 import { type AlertGroup, alertDetail, alertGroups } from "@/lib/alert-groups";
 import { formatClock } from "@/lib/format-time";
@@ -22,7 +22,7 @@ export interface CorrelatedAlertsProps {
 export function AlertGroupHead({ group }: { group: AlertGroup }) {
 	const now = useNow();
 	return (
-		<div className="flex min-w-0 items-center gap-2 text-record">
+		<div className="flex min-w-0 items-center gap-2 text-body">
 			<span
 				role="img"
 				aria-label={SEVERITY_LABEL[group.severity]}
@@ -31,7 +31,7 @@ export function AlertGroupHead({ group }: { group: AlertGroup }) {
 				style={{ background: `var(--sev-${group.severity})` }}
 			/>
 			<span className="min-w-0 truncate font-medium">{group.name}</span>
-			<span className="shrink-0 text-meta text-muted-foreground tabular-nums">
+			<span className="shrink-0 text-meta text-text-2 tabular-nums">
 				{group.alerts.length > 1 ? `×${group.alerts.length}` : ""}
 			</span>
 			<StateWord
@@ -45,7 +45,7 @@ export function AlertGroupHead({ group }: { group: AlertGroup }) {
 					: "Quiet"}
 			</StateWord>
 			<Mono
-				className="ml-auto shrink-0 text-muted-foreground"
+				className="ml-auto shrink-0 text-text-2"
 				title={`First ${new Date(group.firstAt).toLocaleString()}, last ${new Date(group.lastAt).toLocaleString()}`}
 			>
 				{formatClock(group.firstAt)}
@@ -60,7 +60,7 @@ export function AlertGroupHead({ group }: { group: AlertGroup }) {
 export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 	if (alerts.length === 0) {
 		return (
-			<p className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
+			<p className="rounded-md border border-dashed p-3 text-body text-text-2">
 				No alerts are correlated to this incident yet. Alerts that match land
 				here on intake.
 			</p>
@@ -84,7 +84,7 @@ export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 								<Link
 									to="/alerts/$id"
 									params={{ id: alert.id }}
-									className="min-w-0 flex-1 truncate text-muted-foreground hover:text-primary hover:underline"
+									className="min-w-0 flex-1 truncate text-text-2 hover:text-accent hover:underline"
 									title={alert.title}
 								>
 									{alertDetail(alert, group.name)}
@@ -98,9 +98,7 @@ export function CorrelatedAlerts({ alerts }: CorrelatedAlertsProps) {
 									</StateWord>
 								)}
 								{alert.source && (
-									<Mono className="shrink-0 text-muted-foreground">
-										{alert.source}
-									</Mono>
+									<Mono className="shrink-0 text-text-2">{alert.source}</Mono>
 								)}
 							</li>
 						))}

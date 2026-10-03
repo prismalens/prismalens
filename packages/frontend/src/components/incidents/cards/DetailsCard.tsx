@@ -4,7 +4,7 @@
 import { isIncidentOpen } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { formatDateTime } from "@/lib/format-time";
@@ -24,8 +24,8 @@ function formatDuration(ms: number | null): string {
 function Detail({ label, children }: { label: string; children: ReactNode }) {
 	return (
 		<div className="flex min-w-0 items-baseline justify-between gap-3 py-1">
-			<dt className="shrink-0 text-meta text-muted-foreground">{label}</dt>
-			<dd className="min-w-0 truncate text-right text-record">{children}</dd>
+			<dt className="shrink-0 text-meta text-text-2">{label}</dt>
+			<dd className="min-w-0 truncate text-right text-body">{children}</dd>
 		</div>
 	);
 }
@@ -53,8 +53,8 @@ export function DetailsCard() {
 
 	return (
 		<Card testId="details-card">
-			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-muted-foreground">
-				<span className="text-foreground">{service ?? "No service"}</span>
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-text-2">
+				<span className="text-text-1">{service ?? "No service"}</span>
 				<span className="tabular-nums">
 					{incident.alertCount} alert{incident.alertCount === 1 ? "" : "s"}
 				</span>
@@ -71,7 +71,7 @@ export function DetailsCard() {
 				<Button
 					variant="ghost"
 					size="xs"
-					className="ml-auto text-meta text-primary"
+					className="ml-auto text-meta text-accent"
 					aria-expanded={open}
 					onClick={() => setOpen((v) => !v)}
 					data-testid="details-toggle"
@@ -82,9 +82,7 @@ export function DetailsCard() {
 			{open && (
 				<div data-testid="details-open">
 					{incident.description && (
-						<p className="mb-2 text-record text-muted-foreground">
-							{incident.description}
-						</p>
+						<p className="mb-2 text-body text-text-2">{incident.description}</p>
 					)}
 					<dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
 						<Detail label="Triggered">
@@ -126,7 +124,7 @@ export function DetailsCard() {
 									to="/services/$id"
 									params={{ id: incident.service.id }}
 									search={{ tab: "overview" }}
-									className="text-primary hover:underline"
+									className="text-accent hover:underline"
 								>
 									{service}
 								</Link>
@@ -139,7 +137,7 @@ export function DetailsCard() {
 							<Link
 								to="/settings"
 								search={{ tab: "integrations" }}
-								className="text-primary hover:underline"
+								className="text-accent hover:underline"
 							>
 								Connect in Settings
 							</Link>
@@ -147,38 +145,38 @@ export function DetailsCard() {
 					</dl>
 					{incident.tags && incident.tags.length > 0 && (
 						<div className="mt-2 flex flex-wrap items-center gap-1">
-							<span className="mr-1 text-meta text-muted-foreground">Tags</span>
+							<span className="mr-1 text-meta text-text-2">Tags</span>
 							{incident.tags.map((tag) => (
-								<StateChip key={tag} tone="neutral" mono>
+								<StateWord key={tag} tone="neutral" mono>
 									{tag}
-								</StateChip>
+								</StateWord>
 							))}
 						</div>
 					)}
 					{incident.affectedSystems && incident.affectedSystems.length > 0 && (
 						<div className="mt-2 flex flex-wrap items-center gap-1">
-							<span className="mr-1 text-meta text-muted-foreground">
+							<span className="mr-1 text-meta text-text-2">
 								Affected systems
 							</span>
 							{incident.affectedSystems.map((system) => (
-								<StateChip key={system} tone="neutral" mono dashed>
+								<StateWord key={system} tone="neutral" mono quiet>
 									{system}
-								</StateChip>
+								</StateWord>
 							))}
 						</div>
 					)}
 					{incident.customerImpact && (
 						<div className="mt-2">
-							<p className="text-meta text-muted-foreground">Customer impact</p>
-							<p className="text-record">{incident.customerImpact}</p>
+							<p className="text-meta text-text-2">Customer impact</p>
+							<p className="text-body">{incident.customerImpact}</p>
 						</div>
 					)}
 					{incident.correlationReason && (
 						<div className="mt-2">
-							<p className="text-meta text-muted-foreground">
+							<p className="text-meta text-text-2">
 								Why these alerts are one incident
 							</p>
-							<p className="text-record">{incident.correlationReason}</p>
+							<p className="text-body">{incident.correlationReason}</p>
 						</div>
 					)}
 				</div>

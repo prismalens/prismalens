@@ -5,7 +5,7 @@ import {
 	INCIDENT_ATTENTION_LABEL,
 	type IncidentAttention,
 } from "@prismalens/contracts";
-import { StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { attentionFor, attentionTone } from "@/lib/incident-attention";
 import { useIncidentRecord } from "../record-context";
@@ -54,7 +54,7 @@ export function NeedsYouCard() {
 			testId="needs-you-card"
 		>
 			<div className="flex items-center gap-3">
-				<p className="min-w-0 flex-1 text-record">{WHY[why]}</p>
+				<p className="min-w-0 flex-1 text-body">{WHY[why]}</p>
 				<Button size="sm" onClick={action.run} data-testid="needs-you-action">
 					{action.label}
 				</Button>

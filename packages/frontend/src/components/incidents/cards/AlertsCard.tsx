@@ -29,9 +29,7 @@ export function AlertsCard() {
 			testId="alerts-card"
 		>
 			{alerts.length === 0 ? (
-				<p className="text-record text-muted-foreground">
-					No alerts are correlated yet.
-				</p>
+				<p className="text-body text-text-2">No alerts are correlated yet.</p>
 			) : (
 				<ul className="space-y-1.5">
 					{groups.slice(0, 3).map((g) => (

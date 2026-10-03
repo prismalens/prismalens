@@ -27,19 +27,15 @@ export function ApiStatusCheck() {
 
 	if (isLoading) {
 		return (
-			<div className="text-sm text-muted-foreground">
-				Checking API connection...
-			</div>
+			<div className="text-sm text-text-2">Checking API connection...</div>
 		);
 	}
 
 	if (isError) {
-		return <div className="text-sm text-run-failed">API disconnected</div>;
+		return <div className="text-sm text-danger">API disconnected</div>;
 	}
 
 	return (
-		<div className="text-sm text-muted-foreground">
-			API connected: {data?.status}
-		</div>
+		<div className="text-sm text-text-2">API connected: {data?.status}</div>
 	);
 }

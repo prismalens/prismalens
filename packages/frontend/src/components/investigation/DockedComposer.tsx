@@ -39,7 +39,7 @@ export function DockedComposer({
 
 	return (
 		<div
-			className={cn("shrink-0 bg-background px-4 pt-1 pb-3 sm:px-6", className)}
+			className={cn("shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6", className)}
 			data-testid="docked-composer"
 		>
 			<div className={cn("mx-auto", width)}>

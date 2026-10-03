@@ -34,7 +34,7 @@ export function ProvenanceStamp({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-1 font-mono text-meta text-muted-foreground tabular-nums",
+				"inline-flex items-center gap-1 font-mono text-meta text-text-2 tabular-nums",
 				className,
 			)}
 		>

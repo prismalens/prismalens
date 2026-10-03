@@ -46,20 +46,20 @@ export function SummaryBlock() {
 			data-testid="incident-summary"
 		>
 			{lineage && (
-				<p className="text-record" data-testid="incident-lineage">
+				<p className="text-body" data-testid="incident-lineage">
 					<span className="font-medium">{lineage.lead}</span> {lineage.text}
 				</p>
 			)}
-			<p className="text-record leading-relaxed">{lines.join(" ")}</p>
+			<p className="text-body leading-relaxed">{lines.join(" ")}</p>
 			{next && (
-				<p className="text-record" data-testid="incident-next">
-					<span className="text-muted-foreground">Next: </span>
+				<p className="text-body" data-testid="incident-next">
+					<span className="text-text-2">Next: </span>
 					{next.kind === "link-repo" && serviceId ? (
 						<Link
 							to="/services/$id"
 							search={{ tab: "repositories" }}
 							params={{ id: serviceId }}
-							className="text-primary hover:underline"
+							className="text-accent hover:underline"
 						>
 							{next.text}
 						</Link>
@@ -67,7 +67,7 @@ export function SummaryBlock() {
 						<button
 							type="button"
 							onClick={record.acknowledge}
-							className="text-primary hover:underline"
+							className="text-accent hover:underline"
 						>
 							{next.text}
 						</button>
@@ -75,7 +75,7 @@ export function SummaryBlock() {
 						<button
 							type="button"
 							onClick={record.openClose}
-							className="text-primary hover:underline"
+							className="text-accent hover:underline"
 						>
 							{next.text}
 						</button>

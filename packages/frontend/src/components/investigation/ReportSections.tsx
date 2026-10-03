@@ -17,7 +17,7 @@ import { AlertTriangle, Check } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
 import { ProvenanceStamp } from "@/components/shared/ProvenanceStamp";
 import { RecordSection } from "@/components/shared/RecordSection";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
 	Tooltip,
@@ -40,7 +40,7 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 		<TooltipProvider>
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<StateChip tone={modelSubstituted(fidelity) ? "stale" : "neutral"}>
+					<StateWord tone={modelSubstituted(fidelity) ? "stale" : "neutral"}>
 						<span className="font-mono">
 							{fidelity.harness}
 							{fidelity.harnessVersion && ` ${fidelity.harnessVersion}`}
@@ -48,7 +48,7 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 						{modelSubstituted(fidelity) && (
 							<span className="ml-1">model substituted</span>
 						)}
-					</StateChip>
+					</StateWord>
 				</TooltipTrigger>
 				<TooltipContent className="max-w-xs">
 					<p>
@@ -65,7 +65,7 @@ export function FidelityBadge({ fidelity }: { fidelity: RunFidelity }) {
 					</p>
 					{fidelity.servedModel &&
 						(modelSubstituted(fidelity) ? (
-							<p className="text-stale" data-testid="fidelity-substituted">
+							<p className="text-warn" data-testid="fidelity-substituted">
 								The agent ran{" "}
 								<span className="font-mono">{fidelity.servedModel}</span>{" "}
 								instead
@@ -91,19 +91,19 @@ function CulpritRow({ culprit }: { culprit: Culprit }) {
 	const { service, changeRef, mechanism } = culprit;
 	if (!service && !changeRef && !mechanism) return null;
 	return (
-		<dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-record sm:grid-cols-3">
+		<dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-body sm:grid-cols-3">
 			<div>
-				<dt className="text-meta text-muted-foreground">Service</dt>
+				<dt className="text-meta text-text-2">Service</dt>
 				<dd className="font-mono">{service ?? "—"}</dd>
 			</div>
 			<div>
-				<dt className="text-meta text-muted-foreground">Change ref</dt>
+				<dt className="text-meta text-text-2">Change ref</dt>
 				<dd className="truncate font-mono" title={changeRef ?? undefined}>
 					{changeRef ?? "—"}
 				</dd>
 			</div>
 			<div>
-				<dt className="text-meta text-muted-foreground">Mechanism</dt>
+				<dt className="text-meta text-text-2">Mechanism</dt>
 				<dd>{mechanism ?? "—"}</dd>
 			</div>
 		</dl>
@@ -139,22 +139,22 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 			}
 		>
 			{investigation.rootCause ? (
-				<div className="rounded-md border border-primary/30 bg-primary/8 p-4">
+				<div className="rounded-md border border-accent/30 bg-accent/8 p-4">
 					<p className="text-base font-medium leading-snug">
 						{investigation.rootCause}
 					</p>
 					<div className="mt-2 flex flex-wrap items-center gap-2">
 						{investigation.rootCauseCategory && (
-							<StateChip tone="neutral">
+							<StateWord tone="neutral">
 								{ROOT_CAUSE_CATEGORY_LABEL[investigation.rootCauseCategory]}
-							</StateChip>
+							</StateWord>
 						)}
 						<ProvenanceStamp capturedAt={completedAt} source="report" />
 					</div>
 					{report?.culprit && <CulpritRow culprit={report.culprit} />}
 				</div>
 			) : (
-				<p className="text-record text-muted-foreground">
+				<p className="text-body text-text-2">
 					{investigation.status === "completed"
 						? "The investigation finished without naming a root cause. The evidence below is what it found."
 						: "The investigation failed before a root cause was found."}
@@ -162,24 +162,24 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 			)}
 
 			{report && (
-				<div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-record">
-					<span className="text-muted-foreground">Grounded in</span>
+				<div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-body">
+					<span className="text-text-2">Grounded in</span>
 					{report.coverage.queried.length > 0 ? (
 						report.coverage.queried.map((source) => (
-							<StateChip key={source} tone="done" mono>
+							<StateWord key={source} tone="done" mono>
 								{source}
-							</StateChip>
+							</StateWord>
 						))
 					) : (
-						<span className="text-muted-foreground">nothing recorded</span>
+						<span className="text-text-2">nothing recorded</span>
 					)}
 					{report.coverage.notQueried.length > 0 && (
 						<>
-							<span className="ml-2 text-muted-foreground">Not queried</span>
+							<span className="ml-2 text-text-2">Not queried</span>
 							{report.coverage.notQueried.map((source) => (
-								<StateChip key={source} tone="neutral" mono dashed>
+								<StateWord key={source} tone="neutral" mono quiet>
 									{source}
-								</StateChip>
+								</StateWord>
 							))}
 						</>
 					)}
@@ -188,24 +188,22 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 
 			{report && report.nextSteps.length > 0 && (
 				<div className="mt-4" data-testid="next-steps">
-					<h3 className="mb-2 text-record font-medium">Next steps</h3>
+					<h3 className="mb-2 text-body font-medium">Next steps</h3>
 					<ol className="space-y-2">
 						{report.nextSteps.map((step, i) => (
-							<li key={`${i}-${step.title}`} className="flex gap-3 text-record">
-								<Mono className="w-4 shrink-0 text-muted-foreground">
-									{i + 1}
-								</Mono>
+							<li key={`${i}-${step.title}`} className="flex gap-3 text-body">
+								<Mono className="w-4 shrink-0 text-text-2">{i + 1}</Mono>
 								<div className="min-w-0 flex-1">
 									<div className="flex flex-wrap items-center gap-2">
 										<span className="font-medium">{step.title}</span>
 										{step.priority && (
 											<PriorityBadge priority={step.priority} />
 										)}
-										<span className="font-mono text-meta text-muted-foreground">
+										<span className="font-mono text-meta text-text-2">
 											not executed by PrismaLens
 										</span>
 									</div>
-									<p className="text-muted-foreground">{step.detail}</p>
+									<p className="text-text-2">{step.detail}</p>
 								</div>
 							</li>
 						))}
@@ -214,7 +212,7 @@ export function ReportSection({ investigation }: ReportSectionProps) {
 			)}
 
 			{investigation.error && (
-				<p className="mt-3 rounded border border-run-failed/30 bg-run-failed/8 p-3 font-mono text-meta text-run-failed">
+				<p className="mt-3 rounded border border-danger/30 bg-danger/8 p-3 font-mono text-meta text-danger">
 					{investigation.error}
 				</p>
 			)}
@@ -242,24 +240,22 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 					{report.hypotheses.map((hypothesis, i) => (
 						<li
 							key={`${i}-${hypothesis.statement}`}
-							className="rounded-md border border-l-2 border-l-run-done/70 p-3"
+							className="rounded-md border border-l-2 border-l-ok/70 p-3"
 						>
 							<div className="flex items-start justify-between gap-3">
-								<p className="text-record font-medium">
-									{hypothesis.statement}
-								</p>
-								<StateChip tone={hypothesisStatusTone(hypothesis.status)}>
+								<p className="text-body font-medium">{hypothesis.statement}</p>
+								<StateWord tone={hypothesisStatusTone(hypothesis.status)}>
 									{HYPOTHESIS_STATUS_LABEL[hypothesis.status]}
-								</StateChip>
+								</StateWord>
 							</div>
 							{hypothesis.evidence.length > 0 && (
 								<ul className="mt-2 space-y-1">
 									{hypothesis.evidence.map((evidence, j) => (
 										<li
 											key={`${j}-${evidence.observation}`}
-											className="flex flex-wrap items-baseline gap-x-2 text-record text-muted-foreground"
+											className="flex flex-wrap items-baseline gap-x-2 text-body text-text-2"
 										>
-											<Mono className="text-meta uppercase text-foreground/70">
+											<Mono className="text-meta uppercase text-text-1/70">
 												{evidence.direction}
 											</Mono>
 											<span>{evidence.observation}</span>
@@ -278,15 +274,15 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 					{report.ruledOut.map((item, i) => (
 						<div
 							key={`${i}-${item.statement}`}
-							className="rounded-md border border-l-2 border-l-border p-3 text-muted-foreground"
+							className="rounded-md border border-l-2 border-l-hairline p-3 text-text-2"
 						>
 							<div className="flex flex-wrap items-baseline gap-2">
-								<StateChip tone="neutral">ruled out</StateChip>
-								<p className="text-record font-medium text-foreground/80">
+								<StateWord tone="neutral">ruled out</StateWord>
+								<p className="text-body font-medium text-text-1/80">
 									{item.statement}
 								</p>
 							</div>
-							<p className="mt-1 text-record">{item.why}</p>
+							<p className="mt-1 text-body">{item.why}</p>
 							{item.evidence.length > 0 && (
 								<ul className="mt-2 space-y-1" data-testid="ruled-out-evidence">
 									{item.evidence.map((ev, j) => (
@@ -296,12 +292,12 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 										>
 											<Mono>{ev.source}</Mono>
 											<span>{ev.observation}</span>
-											<StateChip
+											<StateWord
 												tone={evidenceStatusTone(ev.status)}
 												className="h-4"
 											>
 												{EVIDENCE_STATUS_LABEL[ev.status]}
-											</StateChip>
+											</StateWord>
 										</li>
 									))}
 								</ul>
@@ -313,20 +309,20 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 
 			{changes.length > 0 && (
 				<div className="mt-3">
-					<h3 className="mb-2 text-record font-medium">
+					<h3 className="mb-2 text-body font-medium">
 						Changes correlated with a hypothesis
 					</h3>
 					<ul className="space-y-1">
 						{changes.map((change) => (
 							<li
 								key={`${change.kind}-${change.id}`}
-								className="flex flex-wrap items-baseline gap-x-2 text-record"
+								className="flex flex-wrap items-baseline gap-x-2 text-body"
 							>
-								<StateChip tone="neutral">
+								<StateWord tone="neutral">
 									{change.kind === "change_event" ? "change" : change.kind}
-								</StateChip>
+								</StateWord>
 								<span className="font-medium">{change.title}</span>
-								<span className="flex flex-wrap gap-x-2.5 text-meta text-muted-foreground">
+								<span className="flex flex-wrap gap-x-2.5 text-meta text-text-2">
 									<Mono>{change.source}</Mono>
 									{change.serviceName && <span>{change.serviceName}</span>}
 									<span>{formatDateTime(change.timestamp)}</span>
@@ -367,10 +363,10 @@ export function EvidenceSection({ investigation }: ReportSectionProps) {
 				</Alert>
 			) : (
 				<p
-					className="mt-3 flex items-center gap-2 border-t border-dashed pt-2 text-meta text-muted-foreground"
+					className="mt-3 flex items-center gap-2 border-t border-dashed pt-2 text-meta text-text-2"
 					data-testid="flagged-content"
 				>
-					<Check className="h-3.5 w-3.5 text-run-done" />
+					<Check className="h-3.5 w-3.5 text-ok" />
 					Content integrity: 0 items flagged across alert payloads and
 					repository files
 					<Mono className="ml-auto text-meta">report.flaggedContent</Mono>
@@ -391,28 +387,26 @@ export function SimilarIncidentRow({
 	return (
 		<li className="space-y-1 py-2 first:pt-0 last:pb-0">
 			<div className="flex items-baseline gap-2">
-				<Mono className="text-meta text-muted-foreground">#{similar.rank}</Mono>
+				<Mono className="text-meta text-text-2">#{similar.rank}</Mono>
 				<Link
 					to="/incidents/$id"
 					params={{ id: similar.incidentId }}
-					className="min-w-0 truncate text-record font-medium hover:underline"
+					className="min-w-0 truncate text-body font-medium hover:underline"
 				>
-					<Mono className="mr-1 text-muted-foreground">
-						INC-{similar.incidentNumber}
-					</Mono>
+					<Mono className="mr-1 text-text-2">INC-{similar.incidentNumber}</Mono>
 					{similar.title}
 				</Link>
 			</div>
 			<div className="flex flex-wrap gap-1">
 				{similar.matchedOn.map((reason) => (
-					<StateChip key={reason} tone="neutral">
+					<StateWord key={reason} tone="neutral">
 						{reason}
-					</StateChip>
+					</StateWord>
 				))}
 			</div>
 			{similar.actualCause && (
-				<p className="text-record">
-					<span className="text-muted-foreground">Actual cause: </span>
+				<p className="text-body">
+					<span className="text-text-2">Actual cause: </span>
 					{similar.actualCause}
 				</p>
 			)}

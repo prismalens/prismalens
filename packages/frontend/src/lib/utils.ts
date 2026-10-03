@@ -4,12 +4,21 @@
 import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
-// The custom type scale (`tokens.css`) must merge as font sizes; unknown
-// `text-*` classes default to colours, so `text-record text-muted-foreground`
-// used to drop the size.
+// The custom type scale (`tailwind-preset.css`) must merge as font sizes;
+// unknown `text-*` classes default to colours, so `text-body text-text-2`
+// would drop the size.
 const twMerge = extendTailwindMerge({
 	extend: {
-		classGroups: { "font-size": ["text-record", "text-meta", "text-slot"] },
+		classGroups: {
+			"font-size": [
+				"text-display",
+				"text-title",
+				"text-heading",
+				"text-body",
+				"text-meta",
+				"text-mono",
+			],
+		},
 	},
 });
 

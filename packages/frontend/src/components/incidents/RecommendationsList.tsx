@@ -15,7 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle, Clock, Lightbulb, Play, XCircle } from "lucide-react";
 import { Mono } from "@/components/shared/Mono";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,7 +52,7 @@ export function RecommendationsList({
 	if (recommendations.length === 0) {
 		return (
 			<Card>
-				<CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+				<CardContent className="flex flex-col items-center justify-center py-12 text-text-2">
 					<Lightbulb className="h-12 w-12 mb-4 opacity-50" />
 					<p className="text-lg font-medium">No recommendations yet</p>
 					<p className="text-sm">
@@ -70,7 +70,7 @@ export function RecommendationsList({
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<div className="text-record text-muted-foreground">
+				<div className="text-body text-text-2">
 					{recommendations.length} recommendation
 					{recommendations.length !== 1 ? "s" : ""}
 					{pendingCount > 0 && ` (${pendingCount} pending)`}
@@ -87,25 +87,23 @@ export function RecommendationsList({
 					const isActionable = rec.actionable && isPending;
 
 					return (
-						<Card key={rec.id} className={isPending ? "border-primary/50" : ""}>
+						<Card key={rec.id} className={isPending ? "border-accent/50" : ""}>
 							<CardHeader className="pb-2">
 								<div className="flex items-start justify-between gap-4">
 									<div className="space-y-1">
 										<CardTitle className="text-base font-medium flex items-center gap-2">
-											<Lightbulb className="h-4 w-4 text-stale" />
+											<Lightbulb className="h-4 w-4 text-warn" />
 											{rec.title}
 										</CardTitle>
 										{rec.description && (
-											<p className="text-record text-muted-foreground">
-												{rec.description}
-											</p>
+											<p className="text-body text-text-2">{rec.description}</p>
 										)}
 									</div>
 									<div className="flex flex-col items-end gap-1">
-										<StateChip tone={recommendationPriorityTone(rec.priority)}>
+										<StateWord tone={recommendationPriorityTone(rec.priority)}>
 											{rec.priority.charAt(0).toUpperCase() +
 												rec.priority.slice(1)}
-										</StateChip>
+										</StateWord>
 										{rec.category && (
 											<Badge variant="outline" className="text-xs">
 												{categoryLabels[rec.category] || rec.category}
@@ -116,7 +114,7 @@ export function RecommendationsList({
 							</CardHeader>
 							<CardContent>
 								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-4 text-record text-muted-foreground">
+									<div className="flex items-center gap-4 text-body text-text-2">
 										<span className="flex items-center gap-1">
 											{icon}
 											{statusLabel}
@@ -161,7 +159,7 @@ export function RecommendationsList({
 									)}
 								</div>
 								{rec.implementedAt && rec.implementedBy && (
-									<div className="mt-2 text-xs text-muted-foreground">
+									<div className="mt-2 text-xs text-text-2">
 										Implemented by {rec.implementedBy} on{" "}
 										<Mono>{formatDate(rec.implementedAt)}</Mono>
 									</div>

@@ -220,10 +220,10 @@ function IncidentLayout() {
 	if (error || !incident || !record) {
 		return (
 			<div className="flex h-full flex-col items-center justify-center p-8">
-				<p className="text-lg font-medium text-run-failed">
+				<p className="text-lg font-medium text-danger">
 					Failed to load incident
 				</p>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-sm text-text-2">
 					{error?.message || "Incident not found"}
 				</p>
 			</div>

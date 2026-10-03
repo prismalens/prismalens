@@ -152,7 +152,7 @@ export function DataTable<TData, TValue>({
 							<TableRow>
 								<TableCell
 									colSpan={columns.length}
-									className="h-24 text-center text-muted-foreground"
+									className="h-24 text-center text-text-2"
 								>
 									{emptyMessage}
 								</TableCell>
@@ -163,7 +163,7 @@ export function DataTable<TData, TValue>({
 			</div>
 			{enablePagination && table.getPageCount() > 1 && (
 				<div className="flex items-center justify-between px-2">
-					<p className="text-sm text-muted-foreground">
+					<p className="text-sm text-text-2">
 						Page {table.getState().pagination.pageIndex + 1} of{" "}
 						{table.getPageCount()}
 					</p>

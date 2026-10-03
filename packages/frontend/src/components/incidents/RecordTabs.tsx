@@ -71,10 +71,10 @@ export function RecordTabs({
 
 	const tab = (active: boolean) =>
 		cn(
-			"inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-record outline-none focus-visible:ring-2 focus-visible:ring-primary",
+			"inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-accent",
 			active
-				? "border-primary font-medium text-foreground"
-				: "border-transparent text-muted-foreground hover:text-foreground",
+				? "border-accent font-medium text-text-1"
+				: "border-transparent text-text-2 hover:text-text-1",
 		);
 
 	return (
@@ -107,13 +107,13 @@ export function RecordTabs({
 						aria-current={here === r ? "page" : undefined}
 						className={cn(
 							tab(here === r),
-							here !== r && dimmed.includes(r) && "text-muted-foreground/50",
+							here !== r && dimmed.includes(r) && "text-text-2/50",
 						)}
 						data-testid={`tab-${r}`}
 					>
 						{NAMES[r]}
 						{counts[r] !== undefined && (
-							<span className="text-meta tabular-nums text-muted-foreground">
+							<span className="text-meta tabular-nums text-text-2">
 								{counts[r]}
 							</span>
 						)}

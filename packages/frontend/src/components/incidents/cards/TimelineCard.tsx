@@ -28,11 +28,9 @@ export function TimelineCard({ rows = 3 }: { rows?: number }) {
 		>
 			<NoteField />
 			{timelineLoading ? (
-				<p className="text-record text-muted-foreground">Loading…</p>
+				<p className="text-body text-text-2">Loading…</p>
 			) : shown.length === 0 ? (
-				<p className="text-record text-muted-foreground">
-					Nothing recorded yet.
-				</p>
+				<p className="text-body text-text-2">Nothing recorded yet.</p>
 			) : (
 				<TimelineList items={shown} />
 			)}

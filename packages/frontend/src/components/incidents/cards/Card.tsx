@@ -39,21 +39,19 @@ export function Card({
 		<section
 			className={cn(
 				"min-w-0 space-y-2 rounded-md p-3",
-				!tone && "bg-muted/40",
-				tone === "failed" && "bg-run-failed/10",
+				!tone && "bg-surface-3/40",
+				tone === "failed" && "bg-danger/10",
 				tone === "critical" && "bg-sev-critical/8",
-				tone === "done" && "bg-run-done/8",
+				tone === "done" && "bg-ok/8",
 				className,
 			)}
 			data-testid={testId}
 		>
 			{title && (
 				<div className="flex min-h-6 items-center gap-2">
-					<h2 className="text-record font-medium">{title}</h2>
+					<h2 className="text-body font-medium">{title}</h2>
 					{count !== undefined && (
-						<span className="text-meta text-muted-foreground tabular-nums">
-							{count}
-						</span>
+						<span className="text-meta text-text-2 tabular-nums">{count}</span>
 					)}
 					{aside && (
 						<div className="ml-auto flex shrink-0 items-center gap-2">
@@ -85,7 +83,7 @@ export function CardLink({
 			params={{ id: incidentId }}
 			search={true}
 			viewTransition
-			className="text-meta whitespace-nowrap text-primary hover:underline"
+			className="text-meta whitespace-nowrap text-accent hover:underline"
 			data-testid={testId}
 		>
 			{children}

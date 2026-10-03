@@ -36,9 +36,9 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 					{items.map((item) => (
 						<div
 							key={item.id}
-							className="flex items-center gap-2 text-xs text-muted-foreground"
+							className="flex items-center gap-2 text-xs text-text-2"
 						>
-							<span className="flex-shrink-0 text-foreground">{icon}</span>
+							<span className="flex-shrink-0 text-text-1">{icon}</span>
 							<span>{item.label}</span>
 							{item.badge && (
 								<Badge variant="outline" className="text-xs px-1 py-0">
@@ -54,7 +54,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 						type="button"
 						aria-expanded={expanded}
 						onClick={() => setExpanded((v) => !v)}
-						className="flex items-center gap-1.5 font-medium text-record hover:text-foreground/80 transition-colors w-full text-left"
+						className="flex items-center gap-1.5 font-medium text-body hover:text-text-1/80 transition-colors w-full text-left"
 					>
 						<span className="flex-shrink-0">{icon}</span>
 						<span>
@@ -68,7 +68,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 						/>
 					</button>
 					{expanded && (
-						<div className="ml-5 text-muted-foreground text-xs space-y-0.5">
+						<div className="ml-5 text-text-2 text-xs space-y-0.5">
 							{items.slice(0, EXPANDED_LIMIT).map((item) => (
 								<div key={item.id} className="flex items-center gap-2">
 									<span>{item.label}</span>
@@ -80,7 +80,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 								</div>
 							))}
 							{count > EXPANDED_LIMIT && (
-								<div className="text-muted-foreground/70">
+								<div className="text-text-2/70">
 									and {count - EXPANDED_LIMIT} more...
 								</div>
 							)}
@@ -105,9 +105,9 @@ export function DeletionImpactSection({
 		impact.repositories.length > 0 || impact.affectedServices.length > 0;
 
 	return (
-		<div className="space-y-2 py-2 text-record">
+		<div className="space-y-2 py-2 text-body">
 			{showConnections && impact.connections.length > 0 && (
-				<div className="text-record font-medium">
+				<div className="text-body font-medium">
 					{impact.connections.length} connection
 					{impact.connections.length !== 1 ? "s" : ""}
 				</div>
@@ -141,7 +141,7 @@ export function DeletionImpactSection({
 			)}
 
 			{hasResources && (
-				<div className="flex items-center gap-2 text-destructive text-xs pt-1">
+				<div className="flex items-center gap-2 text-danger text-xs pt-1">
 					<AlertTriangle className="h-3 w-3 flex-shrink-0" />
 					This action cannot be undone.
 				</div>

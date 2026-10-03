@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ago, useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
-import { StateChip } from "./StateChip";
+import { StateWord } from "./StateWord";
 
 export type LiveSlotState = "live" | "fetching" | "failed" | "not-configured";
 
@@ -78,20 +78,20 @@ export function LiveSlot(props: LiveSlotProps) {
 			<div className="flex items-center justify-between gap-2">
 				<span className="truncate text-meta text-text-3">{label}</span>
 				{props.state === "live" && (
-					<StateChip tone="live" pulse>
+					<StateWord tone="live" pulse>
 						live
-					</StateChip>
+					</StateWord>
 				)}
 				{props.state === "fetching" && (
-					<StateChip tone="neutral">fetching</StateChip>
+					<StateWord tone="neutral">fetching</StateWord>
 				)}
 				{props.state === "failed" && (
-					<StateChip tone="stale">fetch failed</StateChip>
+					<StateWord tone="stale">fetch failed</StateWord>
 				)}
 				{props.state === "not-configured" && (
-					<StateChip tone="neutral" dashed>
+					<StateWord tone="neutral" quiet>
 						not configured
-					</StateChip>
+					</StateWord>
 				)}
 			</div>
 
@@ -102,7 +102,7 @@ export function LiveSlot(props: LiveSlotProps) {
 							{props.value}
 						</span>
 						{props.note && (
-							<span className="font-mono text-meta text-muted-foreground">
+							<span className="font-mono text-meta text-text-2">
 								{props.note}
 							</span>
 						)}
@@ -114,17 +114,13 @@ export function LiveSlot(props: LiveSlotProps) {
 				<Skeleton className="h-6 w-24 self-center" />
 			)}
 			{props.state === "failed" && (
-				<p className="self-center text-record text-foreground">
-					{props.reason}
-				</p>
+				<p className="self-center text-body text-text-1">{props.reason}</p>
 			)}
 			{props.state === "not-configured" && (
-				<p className="self-center text-record text-muted-foreground">
-					{props.reason}
-				</p>
+				<p className="self-center text-body text-text-2">{props.reason}</p>
 			)}
 
-			<div className="flex items-center justify-between gap-2 text-meta text-muted-foreground tabular-nums">
+			<div className="flex items-center justify-between gap-2 text-meta text-text-2 tabular-nums">
 				{props.state === "live" && (
 					<span className="flex min-w-0 gap-2.5 truncate">
 						<span>{props.source}</span>

@@ -5,7 +5,7 @@
 
 import { Link2 } from "lucide-react";
 import { GithubIcon } from "@/components/icons/github-icon";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { type StateTone, StateWord } from "@/components/shared/StateWord";
 
 /**
  * Shared utilities for Integrations and Connections settings tabs.
@@ -18,10 +18,10 @@ export function getTemplateIcon(templateId: string) {
 	return <Link2 className="h-5 w-5" />;
 }
 
-// Connection status badge rendered via StateChip primitive
+// Connection status as a coloured word
 export function ConnectionStatusBadge({ status }: { status: string }) {
 	const s = status.toUpperCase();
-	let tone: ChipTone = "neutral";
+	let tone: StateTone = "neutral";
 	let label = status.replace(/_/g, " ").toLowerCase();
 
 	if (s === "ACTIVE") {
@@ -38,5 +38,5 @@ export function ConnectionStatusBadge({ status }: { status: string }) {
 		tone = "neutral";
 	}
 
-	return <StateChip tone={tone}>{label}</StateChip>;
+	return <StateWord tone={tone}>{label}</StateWord>;
 }

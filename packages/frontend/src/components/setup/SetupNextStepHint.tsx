@@ -93,7 +93,7 @@ export function SetupNextStepHint({
 
 	return (
 		<div className={className}>
-			<p className="text-sm text-muted-foreground">{hint.message}</p>
+			<p className="text-sm text-text-2">{hint.message}</p>
 			<div className="mt-3 flex flex-wrap justify-center gap-2">
 				{hint.actions}
 			</div>

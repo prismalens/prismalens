@@ -5,7 +5,7 @@ import { RUN_STATE_LABEL, runState } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Mono } from "@/components/shared/Mono";
-import { StateChip, StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
@@ -44,7 +44,7 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 	if (!investigationId) {
 		return (
 			<Card title="Investigation" testId="run-card">
-				<p className="text-record text-muted-foreground">
+				<p className="text-body text-text-2">
 					No investigation yet.
 					{!inPanel && " Start one from the box below."}
 				</p>
@@ -55,7 +55,7 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 	if (!investigation || !run.state) {
 		return (
 			<Card title="Investigation" testId="run-card">
-				<p className="text-record text-muted-foreground">
+				<p className="text-body text-text-2">
 					{run.error
 						? "The investigation did not load."
 						: "Loading the investigation…"}
@@ -82,16 +82,16 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 			<Card title="Investigation" count={events} aside={open} testId="run-card">
 				<p
 					key={run.latestText ?? "starting"}
-					className="line-clamp-2 min-h-10 text-record motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+					className="line-clamp-2 min-h-10 text-body motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
 					data-testid="run-card-latest"
 				>
 					{run.latestText ?? "Starting the agent…"}
 				</p>
-				<div className="flex items-center gap-2 text-meta text-muted-foreground">
+				<div className="flex items-center gap-2 text-meta text-text-2">
 					<span
 						className={cn(
 							"tabular-nums transition-colors duration-300 motion-reduce:transition-none",
-							age !== null && age > STALE_AFTER_S && "text-stale",
+							age !== null && age > STALE_AFTER_S && "text-warn",
 						)}
 					>
 						{age === null
@@ -99,9 +99,9 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 							: `Last step ${formatElapsed(age)} ago`}
 					</span>
 					{run.streamFailed && (
-						<StateChip tone="stale" data-testid="run-card-polling">
+						<StateWord tone="stale" data-testid="run-card-polling">
 							polling
-						</StateChip>
+						</StateWord>
 					)}
 				</div>
 				{earlier}
@@ -113,7 +113,7 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 		return (
 			<Card title="Investigation" count={events} aside={open} testId="run-card">
 				{run.latestText && (
-					<p className="line-clamp-2 text-record">{run.latestText}</p>
+					<p className="line-clamp-2 text-body">{run.latestText}</p>
 				)}
 				<StateWord tone="stale">
 					Stopped by you
@@ -143,7 +143,7 @@ export function RunCard({ inPanel = false }: { inPanel?: boolean }) {
 
 	return (
 		<Card title="Investigation" count={events} aside={open} testId="run-card">
-			<p className="flex items-center gap-2 text-meta text-muted-foreground">
+			<p className="flex items-center gap-2 text-meta text-text-2">
 				<StateWord tone="done">Done</StateWord>
 				<span className="tabular-nums">
 					in {formatElapsed(runElapsed(investigation, now))}
@@ -172,7 +172,7 @@ function OtherInvestigations() {
 	if (others.length === 0) return null;
 	return (
 		<div className="space-y-0.5 pt-1" data-testid="run-card-others">
-			<p className="text-meta text-muted-foreground">Other investigations</p>
+			<p className="text-meta text-text-2">Other investigations</p>
 			{(all ? others : others.slice(0, 3)).map(({ r, n }) => {
 				const state = runState(r.status, { hasEvents: true });
 				return (
@@ -186,19 +186,19 @@ function OtherInvestigations() {
 								search: { investigation: r.id },
 							})
 						}
-						className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-meta hover:bg-muted"
+						className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-meta hover:bg-surface-3"
 						data-testid="run-card-other"
 					>
-						<span className="tabular-nums text-foreground">#{n}</span>
+						<span className="tabular-nums text-text-1">#{n}</span>
 						<StateWord tone={runStateTone(state)} className="shrink-0">
 							{RUN_STATE_LABEL[state]}
 						</StateWord>
 						{state === "failed" && (
-							<span className="min-w-0 truncate text-muted-foreground">
+							<span className="min-w-0 truncate text-text-2">
 								{failureWords(r.error).what}
 							</span>
 						)}
-						<span className="ml-auto shrink-0 text-muted-foreground">
+						<span className="ml-auto shrink-0 text-text-2">
 							{ago(r.createdAt, now)}
 						</span>
 					</button>
@@ -208,7 +208,7 @@ function OtherInvestigations() {
 				<button
 					type="button"
 					onClick={() => setAll((v) => !v)}
-					className="px-1 text-meta text-primary hover:underline"
+					className="px-1 text-meta text-accent hover:underline"
 				>
 					{all ? "Show fewer" : `Show ${others.length - 3} more`}
 				</button>
@@ -222,17 +222,15 @@ function FailedLines({ error }: { error: string | null | undefined }) {
 	const words = failureWords(error);
 	return (
 		<div className="space-y-1" data-testid="run-card-failure">
-			<p className="text-record">
+			<p className="text-body">
 				<StateWord tone="failed" className="mr-2">
 					Failed
 				</StateWord>
 				{words.what}
 			</p>
-			{words.next && (
-				<p className="text-meta text-muted-foreground">{words.next}</p>
-			)}
+			{words.next && <p className="text-meta text-text-2">{words.next}</p>}
 			{error && (
-				<details className="text-meta text-muted-foreground">
+				<details className="text-meta text-text-2">
 					<summary className="cursor-pointer select-none">The error</summary>
 					<Mono className="mt-1 block whitespace-pre-wrap break-words">
 						{error}
@@ -251,7 +249,7 @@ function NoRepoLine() {
 	const serviceId = incident.service?.id;
 	return (
 		<p
-			className="rounded border border-stale/40 bg-stale/10 px-2 py-1 text-meta"
+			className="rounded border border-warn/40 bg-warn/10 px-2 py-1 text-meta"
 			data-testid="run-card-no-repo"
 		>
 			No repository linked, so the agent read no code.{" "}
@@ -260,7 +258,7 @@ function NoRepoLine() {
 					to="/services/$id"
 					search={{ tab: "repositories" }}
 					params={{ id: serviceId }}
-					className="text-primary hover:underline"
+					className="text-accent hover:underline"
 				>
 					Link one
 				</Link>

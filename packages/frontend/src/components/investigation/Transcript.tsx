@@ -5,11 +5,7 @@ import { ArrowDown, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CardLink } from "@/components/incidents/cards/Card";
 import { Mono } from "@/components/shared/Mono";
-import {
-	type ChipTone,
-	StateChip,
-	StateWord,
-} from "@/components/shared/StateChip";
+import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
@@ -20,7 +16,7 @@ import {
 import { INITIAL_TAIL_FOLLOW, nextTailFollow } from "@/lib/stream-autoscroll";
 import { cn } from "@/lib/utils";
 
-const OPERATOR_TONE: Record<OperatorState, ChipTone> = {
+const OPERATOR_TONE: Record<OperatorState, StateTone> = {
 	queued: "stale",
 	sent_now: "active",
 	delivered: "active",
@@ -126,7 +122,7 @@ function TranscriptRow({
 		case "prose":
 			return (
 				<p
-					className={cn("whitespace-pre-wrap text-record", ENTER)}
+					className={cn("whitespace-pre-wrap text-body", ENTER)}
 					data-testid="transcript-prose"
 				>
 					{item.text}
@@ -135,7 +131,7 @@ function TranscriptRow({
 		case "line":
 			return (
 				<p
-					className={cn("text-meta text-muted-foreground", ENTER)}
+					className={cn("text-meta text-text-2", ENTER)}
 					data-testid="transcript-line"
 				>
 					{item.text}
@@ -146,20 +142,17 @@ function TranscriptRow({
 		case "divider":
 			return (
 				<div
-					className="flex items-center gap-3 py-1 text-meta text-muted-foreground"
+					className="flex items-center gap-3 py-1 text-meta text-text-2"
 					data-testid="transcript-divider"
 				>
-					<span className="h-px flex-1 bg-border" />
+					<span className="h-px flex-1 bg-hairline" />
 					<span>{item.text}</span>
-					<span className="h-px flex-1 bg-border" />
+					<span className="h-px flex-1 bg-hairline" />
 				</div>
 			);
 		case "thought":
 			return (
-				<p
-					className="text-meta text-muted-foreground"
-					data-testid="transcript-thought"
-				>
+				<p className="text-meta text-text-2" data-testid="transcript-thought">
 					Thought for {formatElapsed(item.seconds)}
 				</p>
 			);
@@ -168,7 +161,7 @@ function TranscriptRow({
 				<p
 					className={cn(
 						"flex items-center gap-1.5 text-meta tabular-nums transition-colors duration-300 motion-reduce:transition-none",
-						item.stale ? "text-stale" : "text-muted-foreground",
+						item.stale ? "text-warn" : "text-text-2",
 					)}
 					data-testid="transcript-thinking"
 				>
@@ -183,28 +176,28 @@ function TranscriptRow({
 			return (
 				<div
 					className={cn(
-						"rounded-r-md border-l-2 border-primary bg-primary/6 px-3 py-1.5",
+						"rounded-r-md border-l-2 border-accent bg-accent/6 px-3 py-1.5",
 						ENTER,
 					)}
 					data-testid="transcript-operator"
 					data-state={item.state}
 				>
-					<div className="flex items-center gap-2 text-meta text-muted-foreground">
-						<span className="font-medium text-foreground">You</span>
+					<div className="flex items-center gap-2 text-meta text-text-2">
+						<span className="font-medium text-text-1">You</span>
 						<span className="tabular-nums">{formatClock(item.at)}</span>
 						<span className="ml-auto flex items-center gap-2">
 							{item.state === "queued" && <span>until the agent pauses</span>}
-							<StateChip
+							<StateWord
 								key={item.state}
 								tone={OPERATOR_TONE[item.state]}
 								pulse={item.state === "delivered" || item.state === "sent_now"}
 								className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
 							>
 								{OPERATOR_STATE_LABEL[item.state]}
-							</StateChip>
+							</StateWord>
 						</span>
 					</div>
-					<p className="whitespace-pre-wrap text-record">{item.text}</p>
+					<p className="whitespace-pre-wrap text-body">{item.text}</p>
 				</div>
 			);
 		case "end":
@@ -218,9 +211,7 @@ function TranscriptRow({
 							{item.text}
 						</StateWord>
 						{item.detail && (
-							<span className="text-muted-foreground tabular-nums">
-								{item.detail}
-							</span>
+							<span className="text-text-2 tabular-nums">{item.detail}</span>
 						)}
 						{item.report && (
 							<CardLink incidentId={incidentId} to="report">
@@ -229,7 +220,7 @@ function TranscriptRow({
 						)}
 					</p>
 					{item.path && (
-						<p className="text-meta text-muted-foreground">
+						<p className="text-meta text-text-2">
 							The raw wire transcript is at <Mono>{item.path}</Mono> under the
 							workspace directory that pl up printed at start.
 						</p>
@@ -239,7 +230,7 @@ function TranscriptRow({
 		case "empty":
 			return (
 				<p
-					className="py-6 text-center text-record text-muted-foreground"
+					className="py-6 text-center text-body text-text-2"
 					data-testid="transcript-empty"
 				>
 					{item.text}
@@ -260,15 +251,15 @@ function ToolGroup({
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen((v) => !v)}
-				className="flex h-5 max-w-full items-center gap-1.5 truncate text-meta text-muted-foreground hover:text-foreground"
+				className="flex h-5 max-w-full items-center gap-1.5 truncate text-meta text-text-2 hover:text-text-1"
 			>
 				<ChevronRight className={cn("h-3 w-3 shrink-0", open && "rotate-90")} />
-				<span key={item.count} className="shrink-0 text-foreground/80">
+				<span key={item.count} className="shrink-0 text-text-1/80">
 					Ran {item.count} tool{item.count === 1 ? "" : "s"}
 				</span>
 				{item.summary && <span className="truncate">{item.summary}</span>}
 				{item.failed > 0 && (
-					<span className="shrink-0 text-run-failed">{item.failed} failed</span>
+					<span className="shrink-0 text-danger">{item.failed} failed</span>
 				)}
 			</button>
 			{open && (
@@ -281,15 +272,13 @@ function ToolGroup({
 							<span
 								className={cn(
 									"font-mono",
-									row.ok === false ? "text-run-failed" : "text-foreground",
+									row.ok === false ? "text-danger" : "text-text-1",
 								)}
 							>
 								{row.message}
 							</span>
 							{row.detail && (
-								<span className="ml-2 truncate text-muted-foreground">
-									{row.detail}
-								</span>
+								<span className="ml-2 truncate text-text-2">{row.detail}</span>
 							)}
 						</li>
 					))}

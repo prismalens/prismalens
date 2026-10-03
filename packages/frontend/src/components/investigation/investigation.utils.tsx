@@ -6,7 +6,7 @@ import {
 	type WorkflowStatus,
 } from "@prismalens/contracts";
 import { Activity, AlertCircle, CheckCircle, Clock } from "lucide-react";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { recommendationPriorityTone, runStatusTone } from "@/lib/state-tone";
 
 const statusIcons: Record<string, typeof CheckCircle> = {
@@ -21,17 +21,17 @@ export function InvestigationStatusBadge({ status }: { status: string }) {
 	const label = WORKFLOW_STATUS_LABEL[status as WorkflowStatus] ?? status;
 
 	return (
-		<StateChip tone={runStatusTone(status)}>
+		<StateWord tone={runStatusTone(status)}>
 			<Icon className="w-3 h-3 mr-1" />
 			{label}
-		</StateChip>
+		</StateWord>
 	);
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
 	return (
-		<StateChip tone={recommendationPriorityTone(priority)}>
+		<StateWord tone={recommendationPriorityTone(priority)}>
 			{priority}
-		</StateChip>
+		</StateWord>
 	);
 }

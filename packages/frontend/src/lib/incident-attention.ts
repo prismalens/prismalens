@@ -8,7 +8,7 @@ import {
 	incidentAttention,
 	isFlapReopen,
 } from "@prismalens/contracts";
-import type { ChipTone } from "@/components/shared/StateChip";
+import type { StateTone } from "@/components/shared/StateWord";
 
 /** Why this incident wants a human: the same predicate the stats route counts with. */
 export function attentionFor(
@@ -37,7 +37,7 @@ export function isBackAgain(incident: IncidentWithRelations): boolean {
 }
 
 /** Red means a human is needed now (study-v3 §2); Alerts cleared is paperwork, in the plain colour. */
-export const attentionTone: Record<IncidentAttention, ChipTone> = {
+export const attentionTone: Record<IncidentAttention, StateTone> = {
 	unacknowledged: "failed",
 	failed_run: "failed",
 	reopened: "failed",

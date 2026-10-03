@@ -46,7 +46,7 @@ export interface ComposerBoxProps {
 
 function Kbd({ children }: { children: ReactNode }) {
 	return (
-		<kbd className="inline-flex h-4 items-center rounded border bg-muted px-1 font-mono text-[10px] text-foreground">
+		<kbd className="inline-flex h-4 items-center rounded border bg-surface-3 px-1 font-mono text-[10px] text-text-1">
 			{children}
 		</kbd>
 	);
@@ -145,17 +145,14 @@ export function ComposerBox({
 			}}
 		>
 			{note && (
-				<p
-					className="px-2 text-meta text-muted-foreground"
-					data-testid="composer-note"
-				>
+				<p className="px-2 text-meta text-text-2" data-testid="composer-note">
 					{note}
 				</p>
 			)}
 			<div
 				className={cn(
-					"flex flex-col gap-1 rounded-md border bg-background p-1",
-					"focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
+					"flex flex-col gap-1 rounded-md border bg-canvas p-1",
+					"focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/50",
 				)}
 				data-mode={mode}
 			>
@@ -174,7 +171,7 @@ export function ComposerBox({
 								: "Brief"
 					}
 					data-testid="composer-input"
-					className="min-h-7 w-full resize-none bg-transparent px-2 py-1 text-record outline-none placeholder:text-muted-foreground"
+					className="min-h-7 w-full resize-none bg-transparent px-2 py-1 text-body outline-none placeholder:text-text-2"
 				/>
 				<div className="flex min-w-0 items-center gap-1">
 					{talking ? (
@@ -188,7 +185,7 @@ export function ComposerBox({
 					<span className="ml-auto flex shrink-0 items-center gap-2">
 						{mode === "live" && waiting > 0 && (
 							<span
-								className="text-meta text-stale tabular-nums"
+								className="text-meta text-warn tabular-nums"
 								data-testid="composer-waiting"
 							>
 								{waiting} waiting
@@ -241,13 +238,13 @@ export function ComposerBox({
 				</div>
 			</div>
 			{blocked ? (
-				<p className="px-2 text-meta text-muted-foreground">{blockedReason}</p>
+				<p className="px-2 text-meta text-text-2">{blockedReason}</p>
 			) : (
 				// Always laid out, shown on focus: a line that appeared under a
 				// click would move the button away from the pointer.
 				<div
 					className={cn(
-						"flex flex-wrap gap-x-4 gap-y-0.5 px-2 text-meta text-muted-foreground",
+						"flex flex-wrap gap-x-4 gap-y-0.5 px-2 text-meta text-text-2",
 						!focused && "invisible",
 					)}
 					aria-hidden={!focused}
@@ -292,7 +289,7 @@ export function ComposerBox({
 			)}
 			{undeliverable && (
 				<div
-					className="flex flex-wrap items-center gap-2 px-2 text-meta text-run-failed"
+					className="flex flex-wrap items-center gap-2 px-2 text-meta text-danger"
 					data-testid="composer-undeliverable"
 				>
 					The investigation ended before your message reached it.
@@ -300,7 +297,7 @@ export function ComposerBox({
 						<Button
 							variant="outline"
 							size="xs"
-							className="text-foreground"
+							className="text-text-1"
 							onClick={() => onSaveAsNote(undeliverable)}
 						>
 							Save as note

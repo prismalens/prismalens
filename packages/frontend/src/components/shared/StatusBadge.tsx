@@ -8,7 +8,7 @@ import {
 	type IncidentStatus,
 } from "@prismalens/contracts";
 import { alertStatusTone, incidentStatusTone } from "@/lib/state-tone";
-import { StateChip } from "./StateChip";
+import { StateWord } from "./StateWord";
 
 export interface StatusBadgeProps {
 	status: AlertStatus | IncidentStatus;
@@ -32,8 +32,8 @@ export function StatusBadge({ status, kind, className }: StatusBadgeProps) {
 		: (INCIDENT_STATUS_LABEL[status as IncidentStatus] ?? status);
 	const tone = asAlert ? alertStatusTone(status) : incidentStatusTone(status);
 	return (
-		<StateChip tone={tone} className={className}>
+		<StateWord tone={tone} className={className}>
 			{label}
-		</StateChip>
+		</StateWord>
 	);
 }

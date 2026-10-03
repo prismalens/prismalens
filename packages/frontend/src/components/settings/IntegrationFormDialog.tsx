@@ -261,17 +261,15 @@ export function IntegrationFormDialog({
 									key={template.id}
 									type="button"
 									onClick={() => handlePickTemplate(template)}
-									className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors text-left"
+									className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-surface-3/50 transition-colors text-left"
 								>
 									<div className="flex items-center gap-3">
-										<div className="text-muted-foreground">
+										<div className="text-text-2">
 											{getTemplateIcon(template.id)}
 										</div>
 										<div>
-											<p className="font-medium text-record">{template.name}</p>
-											<p className="text-xs text-muted-foreground">
-												{template.category}
-											</p>
+											<p className="font-medium text-body">{template.name}</p>
+											<p className="text-xs text-text-2">{template.category}</p>
 										</div>
 									</div>
 									<Badge variant="outline" className="text-xs shrink-0">
@@ -288,7 +286,7 @@ export function IntegrationFormDialog({
 							<Button
 								variant="ghost"
 								size="sm"
-								className="gap-1 text-xs -ml-2 text-muted-foreground"
+								className="gap-1 text-xs -ml-2 text-text-2"
 								onClick={() => setStep("pick-template")}
 							>
 								<ArrowLeft className="h-3.5 w-3.5" />
@@ -302,7 +300,7 @@ export function IntegrationFormDialog({
 									mode === "edit" ? "editIntegrationLabel" : "integrationLabel"
 								}
 							>
-								Label <span className="text-destructive">*</span>
+								Label <span className="text-danger">*</span>
 							</Label>
 							<Input
 								id={
@@ -314,9 +312,7 @@ export function IntegrationFormDialog({
 								aria-invalid={showErrors && !label.trim() ? true : undefined}
 							/>
 							{showErrors && !label.trim() && (
-								<p className="text-record text-destructive">
-									Label is required
-								</p>
+								<p className="text-body text-danger">Label is required</p>
 							)}
 						</div>
 
@@ -326,7 +322,7 @@ export function IntegrationFormDialog({
 								<>
 									{mode === "edit" && (
 										<div className="space-y-1">
-											<Label className="text-record text-muted-foreground">
+											<Label className="text-body text-text-2">
 												Leave fields blank to keep existing values
 											</Label>
 										</div>
@@ -344,12 +340,12 @@ export function IntegrationFormDialog({
 						{selectedTemplate.connectionCreationMode === "oauth_redirect" && (
 							<div className="space-y-3">
 								<div className="space-y-1">
-									<p className="text-xs text-muted-foreground">
+									<p className="text-xs text-text-2">
 										Enter the OAuth App credentials from {selectedTemplate.name}
 										.
 									</p>
 									{mode === "edit" && (
-										<Label className="text-record text-muted-foreground">
+										<Label className="text-body text-text-2">
 											Leave fields blank to keep existing values
 										</Label>
 									)}
@@ -360,7 +356,7 @@ export function IntegrationFormDialog({
 										href={selectedTemplate.docsUrl}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+										className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
 									>
 										<span>View setup documentation</span>
 										<ExternalLink className="h-3 w-3" />
@@ -375,7 +371,7 @@ export function IntegrationFormDialog({
 									>
 										Client ID
 										{mode === "create" && (
-											<span className="text-destructive ml-1">*</span>
+											<span className="text-danger ml-1">*</span>
 										)}
 									</Label>
 									<Input
@@ -392,7 +388,7 @@ export function IntegrationFormDialog({
 										}
 									/>
 									{mode === "create" && showErrors && !oauthClientId && (
-										<p className="text-record text-destructive">
+										<p className="text-body text-danger">
 											Client ID is required
 										</p>
 									)}
@@ -408,7 +404,7 @@ export function IntegrationFormDialog({
 									>
 										Client Secret
 										{mode === "create" && (
-											<span className="text-destructive ml-1">*</span>
+											<span className="text-danger ml-1">*</span>
 										)}
 									</Label>
 									<Input
@@ -430,7 +426,7 @@ export function IntegrationFormDialog({
 										}
 									/>
 									{mode === "create" && showErrors && !oauthClientSecret && (
-										<p className="text-record text-destructive">
+										<p className="text-body text-danger">
 											Client Secret is required
 										</p>
 									)}

@@ -24,10 +24,10 @@ function EmptyStateContent({
 	actions,
 }: Omit<EmptyStateProps, "variant" | "colSpan">) {
 	return (
-		<div className="flex flex-wrap items-center justify-center gap-3 rounded-md border border-dashed p-4 text-muted-foreground">
+		<div className="flex flex-wrap items-center justify-center gap-3 rounded-md border border-dashed p-4 text-text-2">
 			<div className="flex items-center gap-3">
 				{Icon && <Icon className={cn("h-8 w-8 opacity-50", iconClassName)} />}
-				<p className="text-record">
+				<p className="text-body">
 					{title}
 					{description ? ` ${description}` : ""}
 				</p>

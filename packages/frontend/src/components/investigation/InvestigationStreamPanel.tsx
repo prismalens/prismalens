@@ -14,7 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Mono } from "@/components/shared/Mono";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -118,30 +118,28 @@ export function InvestigationStreamPanel({
 			<div className="flex min-h-9 items-center justify-between gap-3 border-b px-3 py-1.5">
 				<div className="flex min-w-0 items-center gap-2">
 					{status === "streaming" && (
-						<StateChip tone="active" pulse>
+						<StateWord tone="active" pulse>
 							streaming
-						</StateChip>
+						</StateWord>
 					)}
 					{status === "connecting" && (
-						<StateChip tone="neutral">connecting</StateChip>
+						<StateWord tone="neutral">connecting</StateWord>
 					)}
 					{status === "completed" && (
-						<StateChip tone="done">completed</StateChip>
+						<StateWord tone="done">completed</StateWord>
 					)}
-					{status === "failed" && <StateChip tone="failed">failed</StateChip>}
+					{status === "failed" && <StateWord tone="failed">failed</StateWord>}
 					{isMultiBranch && (
-						<StateChip tone="neutral" mono data-testid="stream-branch-badge">
+						<StateWord tone="neutral" mono data-testid="stream-branch-badge">
 							<GitBranch className="h-3 w-3" />
 							{branches.length} branches
-						</StateChip>
+						</StateWord>
 					)}
 					{latestText && (
-						<span className="truncate text-meta text-muted-foreground">
-							{latestText}
-						</span>
+						<span className="truncate text-meta text-text-2">{latestText}</span>
 					)}
 					{folded && chain.length > 0 && (
-						<span className="flex min-w-0 gap-2.5 text-meta text-muted-foreground">
+						<span className="flex min-w-0 gap-2.5 text-meta text-text-2">
 							<Mono className="truncate">{chain.join(", ")}</Mono>
 							{duration && <span className="shrink-0">{duration}</span>}
 						</span>
@@ -171,7 +169,7 @@ export function InvestigationStreamPanel({
 							status === "connecting" && (
 								<p
 									data-testid="stream-panel-connecting"
-									className="py-4 text-center text-record text-muted-foreground"
+									className="py-4 text-center text-body text-text-2"
 								>
 									Connecting to stream...
 								</p>
@@ -190,35 +188,31 @@ export function InvestigationStreamPanel({
 }
 
 const ICON_MAP: Record<EventRowData["icon"], React.ReactNode> = {
-	activity: <Activity className="h-3.5 w-3.5 text-run-active shrink-0" />,
-	brain: <Brain className="h-3.5 w-3.5 text-primary shrink-0" />,
+	activity: <Activity className="h-3.5 w-3.5 text-live shrink-0" />,
+	brain: <Brain className="h-3.5 w-3.5 text-accent shrink-0" />,
 	tool: <Wrench className="h-3.5 w-3.5 text-sev-low shrink-0" />,
-	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-run-done shrink-0" />,
-	warning: <AlertTriangle className="h-3.5 w-3.5 text-stale shrink-0" />,
-	check: <CheckCircle className="h-3.5 w-3.5 text-run-done shrink-0" />,
+	lightbulb: <Lightbulb className="h-3.5 w-3.5 text-ok shrink-0" />,
+	warning: <AlertTriangle className="h-3.5 w-3.5 text-warn shrink-0" />,
+	check: <CheckCircle className="h-3.5 w-3.5 text-ok shrink-0" />,
 };
 
 function EventRow({ row }: { row: EventRowData }) {
 	return (
 		<div
 			data-testid="stream-event-row"
-			className="flex items-start gap-2 py-1 text-record"
+			className="flex items-start gap-2 py-1 text-body"
 		>
 			<span className="mt-0.5">{ICON_MAP[row.icon]}</span>
 			<div className="min-w-0">
 				<span
 					className={
-						row.icon === "tool"
-							? "font-mono text-foreground"
-							: "text-foreground"
+						row.icon === "tool" ? "font-mono text-text-1" : "text-text-1"
 					}
 				>
 					{row.message}
 				</span>
 				{row.detail && (
-					<p className="truncate text-meta text-muted-foreground">
-						{row.detail}
-					</p>
+					<p className="truncate text-meta text-text-2">{row.detail}</p>
 				)}
 			</div>
 		</div>

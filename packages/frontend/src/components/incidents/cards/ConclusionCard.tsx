@@ -6,7 +6,7 @@ import {
 	ROOT_CAUSE_CATEGORY_LABEL,
 } from "@prismalens/contracts";
 import { FidelityBadge } from "@/components/investigation/ReportSections";
-import { StateChip } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { hypothesisStatusTone } from "@/lib/state-tone";
 import { useIncidentRecord } from "../record-context";
@@ -43,7 +43,7 @@ export function ConclusionCard() {
 						)
 					}
 				>
-					<p className="text-record" data-testid="cause-text">
+					<p className="text-body" data-testid="cause-text">
 						{category && cause && (
 							<span className="text-text-2">{category}: </span>
 						)}
@@ -66,7 +66,7 @@ function AgentConclusion() {
 	if (state === "starting" || state === "working" || state === "stopping") {
 		return (
 			<Card title="Conclusion" testId="conclusion-card">
-				<p className="text-record text-muted-foreground">Nothing yet</p>
+				<p className="text-body text-text-2">Nothing yet</p>
 			</Card>
 		);
 	}
@@ -95,18 +95,18 @@ function AgentConclusion() {
 				</>
 			}
 		>
-			<p className="line-clamp-2 text-record font-medium">
+			<p className="line-clamp-2 text-body font-medium">
 				{culprit ?? "The investigation finished without naming a root cause."}
 			</p>
 			{top && (
 				<div className="flex min-w-0 items-center gap-2 text-meta">
-					<StateChip tone={hypothesisStatusTone(top.status)}>
+					<StateWord tone={hypothesisStatusTone(top.status)}>
 						{HYPOTHESIS_STATUS_LABEL[top.status]}
-					</StateChip>
+					</StateWord>
 					<span className="min-w-0 flex-1 truncate" title={top.statement}>
 						{top.statement}
 					</span>
-					<span className="shrink-0 text-muted-foreground tabular-nums">
+					<span className="shrink-0 text-text-2 tabular-nums">
 						{top.evidence.length} evidence
 						{refuted > 0 ? `, ${refuted} refuted` : ""}
 					</span>

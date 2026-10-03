@@ -22,7 +22,7 @@ export function NoteField() {
 	return (
 		<form
 			onSubmit={submit}
-			className="flex items-center gap-1 rounded-md border bg-background py-0.5 pr-0.5 pl-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+			className="flex items-center gap-1 rounded-md border bg-canvas py-0.5 pr-0.5 pl-2 focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/50"
 			data-testid="note-field"
 		>
 			<input
@@ -31,7 +31,7 @@ export function NoteField() {
 				disabled={isSavingNote}
 				placeholder="Add a note"
 				aria-label="Add a note to the timeline"
-				className="h-7 min-w-0 flex-1 bg-transparent text-record outline-none placeholder:text-muted-foreground disabled:opacity-60"
+				className="h-7 min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-text-2 disabled:opacity-60"
 				data-testid="note-input"
 			/>
 			<Button
