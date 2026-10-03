@@ -105,15 +105,14 @@ export class RecommendationsService {
 		dto: UpdateRecommendationDto,
 	): Promise<Recommendation | null> {
 		try {
+			// A tick stamps when it was done; unticking clears it (study-v3 §3.2, Do now).
 			const updateData: Record<string, unknown> = {
-				...dto,
-				updatedAt: new Date(),
+				...(dto.status !== undefined && { status: dto.status }),
+				...(dto.priority !== undefined && { priority: dto.priority }),
+				...(dto.status === RecommendationStatus.completed
+					? { implementedAt: new Date() }
+					: dto.status !== undefined && { implementedAt: null }),
 			};
-
-			// Track completion
-			if (dto.status === RecommendationStatus.completed) {
-				updateData.completedAt = new Date();
-			}
 
 			const recommendation = await this.prisma.recommendation.update({
 				where: { id },

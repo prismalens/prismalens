@@ -173,7 +173,11 @@ export function ConversationRoute() {
 						</p>
 					</div>
 				) : view === "transcript" ? (
-					<Transcript items={items} incidentId={incident.id} />
+					<Transcript
+						items={items}
+						incidentId={incident.id}
+						focus={search.call}
+					/>
 				) : (
 					<LedgerView events={events} />
 				)}

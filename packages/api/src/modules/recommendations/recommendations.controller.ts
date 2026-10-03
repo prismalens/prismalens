@@ -118,7 +118,7 @@ export class RecommendationsController {
 			metadata: rec.metadata ? JSON.parse(rec.metadata) : null,
 			createdAt: rec.createdAt?.toISOString(),
 			updatedAt: rec.updatedAt?.toISOString(),
-			completedAt: rec.completedAt?.toISOString() ?? null,
+			implementedAt: rec.implementedAt?.toISOString() ?? null,
 		} as unknown as Recommendation;
 	}
 

@@ -12,8 +12,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
+import type { RecordRoute } from "@/components/incidents/RecordLayout";
 import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
@@ -47,7 +47,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	component: IncidentLayout,
 });
 
-const SUB_ROUTES: CardRoute[] = [
+const SUB_ROUTES: RecordRoute[] = [
 	"conversation",
 	"report",
 	"alerts",

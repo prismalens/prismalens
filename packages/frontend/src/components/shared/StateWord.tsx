@@ -15,6 +15,7 @@ export type StateTone =
 	| "active"
 	| "done"
 	| "failed"
+	| "accent"
 	| "neutral";
 
 const toneVar: Record<StateTone, string> = {
@@ -28,6 +29,7 @@ const toneVar: Record<StateTone, string> = {
 	active: "var(--live)",
 	done: "var(--ok)",
 	failed: "var(--danger)",
+	accent: "var(--accent)",
 	neutral: "var(--text-2)",
 };
 

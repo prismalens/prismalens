@@ -264,6 +264,21 @@ describe("deriveTranscript", () => {
 		);
 	});
 
+	it("ends a stopped run once, never also as Failed (walk f26)", () => {
+		const cancelled: CanonicalEvent = {
+			kind: "error",
+			...base(40),
+			message: "investigation cancelled",
+		} as CanonicalEvent;
+		const items = deriveTranscript([step(0, "Working."), cancelled], T0, {
+			run: { status: "cancelled", live: false, completedAt: at(49) },
+		});
+		const ends = items.filter((i) => i.kind === "end");
+		expect(ends).toHaveLength(1);
+		expect(ends[0]).toMatchObject({ tone: "stale" });
+		expect(JSON.stringify(items)).not.toContain("Failed");
+	});
+
 	it("ends a failed run with its error and the transcript path", () => {
 		const items = deriveTranscript([step(0, "Working.")], T0, {
 			run: { status: "failed", live: false, error: "not logged in", id: "r1" },

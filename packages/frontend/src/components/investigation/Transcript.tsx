@@ -3,7 +3,7 @@
 
 import { ArrowDown, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CardLink } from "@/components/incidents/cards/Card";
+import { RecordLink } from "@/components/incidents/RecordLayout";
 import { Mono } from "@/components/shared/Mono";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
@@ -41,9 +41,12 @@ function prefersReducedMotion(): boolean {
 export function Transcript({
 	items,
 	incidentId,
+	focus,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
+	/** A tool call to open and scroll to, from a report's evidence link. */
+	focus?: string;
 }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	// Sampled while the reader scrolls: at append time the growth itself reads as a scroll-up (#280).
@@ -91,7 +94,12 @@ export function Transcript({
 			>
 				<div className="mx-auto flex max-w-3xl flex-col gap-2.5">
 					{items.map((item) => (
-						<TranscriptRow key={item.key} item={item} incidentId={incidentId} />
+						<TranscriptRow
+							key={item.key}
+							item={item}
+							incidentId={incidentId}
+							focus={focus}
+						/>
 					))}
 				</div>
 			</div>
@@ -114,9 +122,11 @@ export function Transcript({
 function TranscriptRow({
 	item,
 	incidentId,
+	focus,
 }: {
 	item: TranscriptItem;
 	incidentId: string;
+	focus?: string;
 }) {
 	switch (item.kind) {
 		case "prose":
@@ -138,7 +148,7 @@ function TranscriptRow({
 				</p>
 			);
 		case "tools":
-			return <ToolGroup item={item} />;
+			return <ToolGroup item={item} focus={focus} />;
 		case "divider":
 			return (
 				<div
@@ -214,9 +224,13 @@ function TranscriptRow({
 							<span className="text-text-2 tabular-nums">{item.detail}</span>
 						)}
 						{item.report && (
-							<CardLink incidentId={incidentId} to="report">
+							<RecordLink
+								className="text-meta"
+								incidentId={incidentId}
+								to="report"
+							>
 								Read the report
-							</CardLink>
+							</RecordLink>
 						)}
 					</p>
 					{item.path && (
@@ -241,12 +255,23 @@ function TranscriptRow({
 
 function ToolGroup({
 	item,
+	focus,
 }: {
 	item: Extract<TranscriptItem, { kind: "tools" }>;
+	focus?: string;
 }) {
-	const [open, setOpen] = useState(false);
+	const cited = !!focus && item.callIds.includes(focus);
+	const [open, setOpen] = useState(cited);
+	const ref = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (cited) ref.current?.scrollIntoView({ block: "center" });
+	}, [cited]);
 	return (
-		<div data-testid="transcript-tools">
+		<div
+			ref={ref}
+			data-testid="transcript-tools"
+			data-cited={cited ? "" : undefined}
+		>
 			<button
 				type="button"
 				aria-expanded={open}

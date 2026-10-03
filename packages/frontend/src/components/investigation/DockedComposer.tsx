@@ -33,8 +33,11 @@ export function DockedComposer({
 	const { toast } = useToast();
 	const who = useRunAgentModel(run.investigation);
 	const live = !!run.state && isRunStateLive(run.state);
+	// A failed run offers a new investigation first (R4.4, the failed report).
 	const mode = composerMode(
-		investigationId ? { live, resumable: run.resumable } : null,
+		investigationId
+			? { live, resumable: run.resumable && run.state !== "failed" }
+			: null,
 	);
 
 	return (

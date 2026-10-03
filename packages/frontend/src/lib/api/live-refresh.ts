@@ -69,7 +69,11 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 		orpc.setup.key(),
 		orpc.webhooks.lastDelivery.key(),
 	],
-	investigations: () => [orpc.investigations.key(), orpc.incidents.key()],
+	investigations: () => [
+		orpc.investigations.key(),
+		orpc.incidents.key(),
+		orpc.recommendations.key(),
+	],
 };
 
 export function invalidateTopics(

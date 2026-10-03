@@ -4,9 +4,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { CARD_ROUTES, type CardRoute } from "./cards/Card";
+import { RECORD_ROUTES, type RecordRoute } from "./RecordLayout";
 
-const NAMES: Record<CardRoute, string> = {
+const NAMES: Record<RecordRoute, string> = {
 	conversation: "Conversation",
 	report: "Report",
 	alerts: "Alerts",
@@ -38,10 +38,10 @@ export function RecordTabs({
 	status,
 }: {
 	incidentId: string;
-	here: CardRoute | null;
-	counts: Partial<Record<CardRoute, number>>;
+	here: RecordRoute | null;
+	counts: Partial<Record<RecordRoute, number>>;
 	/** Tabs with nothing in them yet: still reachable, drawn quieter. */
-	dimmed?: CardRoute[];
+	dimmed?: RecordRoute[];
 	status: ReactNode;
 }) {
 	const navigate = useNavigate();
@@ -97,10 +97,10 @@ export function RecordTabs({
 				>
 					Overview
 				</Link>
-				{(Object.keys(NAMES) as CardRoute[]).map((r) => (
+				{(Object.keys(NAMES) as RecordRoute[]).map((r) => (
 					<Link
 						key={r}
-						to={CARD_ROUTES[r]}
+						to={RECORD_ROUTES[r]}
 						params={{ id: incidentId }}
 						search={true}
 						viewTransition

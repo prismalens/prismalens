@@ -2,18 +2,22 @@
 // Copyright 2026 Sumit Patel
 
 import { useMutation } from "@tanstack/react-query";
-import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { download } from "@/lib/download";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { cn } from "@/lib/utils";
 
 /** Downloads the server-rendered Markdown of a completed report (#606). */
 export function ExportReportButton({
 	investigationId,
+	label = "Export Markdown",
+	className,
 }: {
 	investigationId: string;
+	label?: string;
+	className?: string;
 }) {
 	const { toast } = useToast();
 	const exportMutation = useMutation({
@@ -31,13 +35,12 @@ export function ExportReportButton({
 		<Button
 			variant="ghost"
 			size="sm"
-			className="h-7 px-2 text-meta"
+			className={cn("h-7 px-2 text-body text-text-2", className)}
 			onClick={() => exportMutation.mutate({ id: investigationId })}
 			disabled={exportMutation.isPending}
 			data-testid="export-report-markdown"
 		>
-			<Download className="mr-1.5 h-3.5 w-3.5" />
-			Export Markdown
+			{label}
 		</Button>
 	);
 }
