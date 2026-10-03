@@ -181,17 +181,16 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
 
-		// `[` folds the sidebar away and back; its toggle never moves.
+		// `[` folds the sidebar to its 56-px icon rail and back (study-v3 §2).
 		const sidebar = page.getByTestId("sidebar");
-		const toggle = page.getByTestId("sidebar-toggle");
 		await expect(sidebar).toBeVisible();
-		const open = await toggle.boundingBox();
+		const width = async () => (await sidebar.boundingBox())?.width;
+		expect(await width()).toBe(240);
 		await page.keyboard.press("[");
-		await expect(sidebar).toHaveCount(0);
-		await expect(toggle).toHaveAttribute("aria-expanded", "false");
-		expect(await toggle.boundingBox()).toEqual(open);
-		await toggle.click();
-		await expect(sidebar).toBeVisible();
+		await expect.poll(width).toBe(56);
+		await expect(sidebar.getByTestId("nav-alerts")).toBeVisible();
+		await page.keyboard.press("[");
+		await expect.poll(width).toBe(240);
 
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");

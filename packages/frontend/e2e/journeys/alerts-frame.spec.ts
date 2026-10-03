@@ -4,37 +4,33 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("#523 — the alerts frame", () => {
-	test("alerts frame layout, rows, and alert record", async ({ page }) => {
-		// 1. /alerts redirects to the top alert
+	test("one alert list, in the sidebar; the page holds the window's controls", async ({
+		page,
+	}) => {
+		// 1. /alerts stays the list's area; at this width the sidebar holds the list (study-v3 §8)
 		await page.goto("/alerts");
-		await expect(page).toHaveURL(/\/alerts\/[0-9a-f-]{36}/, { timeout: 15_000 });
-
-		// 2. The frame and left pane
 		const frame = page.getByTestId("alerts-frame");
 		await expect(frame).toBeVisible({ timeout: 15_000 });
-		const pane = page.getByTestId("alert-list-pane");
+		await expect(page).toHaveURL(/\/alerts$/);
+		const pane = page.getByTestId("sidebar").getByTestId("alert-list-pane");
 		await expect(pane).toBeVisible();
+		await expect(page.getByTestId("alert-list-pane")).toHaveCount(1);
 
-		// Header buttons
+		// Header controls
 		await expect(page.getByTestId("alert-list-filters-toggle")).toBeVisible();
-		await expect(page.getByTestId("alerts-view-stats")).toBeVisible();
 		await expect(page.getByTestId("alerts-pull")).toBeVisible();
-
-		// Tabs
-		await expect(page.getByRole("tab", { name: "All Alerts" })).toBeVisible();
+		await expect(page.getByTestId("alerts-total-count")).toBeVisible();
+		await expect(page.getByRole("tab", { name: "All alerts" })).toBeVisible();
 		await expect(page.getByRole("tab", { name: "Unmapped" })).toBeVisible();
 
 		// Group labels and rows (firing first)
-		await expect(page.getByTestId("group-firing")).toBeVisible();
-		const rows = page.getByTestId("alert-row-link");
+		await expect(pane.getByTestId("group-firing")).toBeVisible();
+		const rows = pane.getByTestId("alert-row-link");
 		await expect(rows.first()).toBeVisible();
-		const count = await rows.count();
-		expect(count).toBeGreaterThan(0);
+		expect(await rows.count()).toBeGreaterThan(0);
 
-		// Total count in footer
-		await expect(page.getByTestId("alerts-total-count")).toBeVisible();
-
-		// 3. The alert record in the centre
+		// 2. The alert record fills the page
+		await rows.first().click();
 		const detail = page.getByTestId("alert-detail");
 		await expect(detail).toBeVisible();
 		await expect(detail.getByRole("heading").first()).toBeVisible();
@@ -51,23 +47,22 @@ test.describe("#523 — the alerts frame", () => {
 		await expect(overview.getByTestId("live-slot")).toHaveCount(3);
 	});
 
-	test("acknowledging and resolving an alert from its record", async ({ page }) => {
-		// Use a specific firing alert from seed
+	test("an alert leaves Acknowledge to its incident; Resolve is in its menu", async ({
+		page,
+	}) => {
 		await page.goto("/alerts");
-		await expect(page.getByTestId("alerts-frame")).toBeVisible({ timeout: 30_000 });
-		await expect(page).toHaveURL(/\/alerts\/[0-9a-f-]{36}/, { timeout: 30_000 });
-
+		const pane = page.getByTestId("sidebar").getByTestId("alert-list-pane");
+		await pane
+			.getByTestId("alert-row-link")
+			.filter({ hasText: "Storm alert #1:" })
+			.click();
 		const detail = page.getByTestId("alert-detail");
 		await expect(detail).toBeVisible({ timeout: 15_000 });
 
-		const ackBtn = page.getByTestId("alert-acknowledge");
-		if (await ackBtn.isVisible()) {
-			await ackBtn.click();
-			// After acknowledge, resolve button remains available
-			await expect(page.getByTestId("alert-resolve")).toBeVisible({ timeout: 15_000 });
-		} else {
-			await expect(page.getByTestId("alert-resolve")).toBeVisible();
-		}
+		await expect(detail.getByTestId("alert-open-incident")).toHaveText("Open INC-1");
+		await expect(page.getByTestId("alert-acknowledge")).toHaveCount(0);
+		await detail.getByTestId("alert-more").click();
+		await expect(page.getByTestId("alert-resolve")).toBeVisible();
 	});
 
 	test("empty — no alerts found", async ({ page }) => {

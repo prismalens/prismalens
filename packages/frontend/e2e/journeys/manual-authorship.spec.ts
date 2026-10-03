@@ -250,7 +250,8 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page.getByTestId("incidents-empty-state")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("incidents-empty-create")).toBeVisible();
+		// The header's New is the one manual entry (decision 4), empty or not.
+		await expect(page.getByTestId("incidents-empty-create")).toHaveCount(0);
 	});
 
 	/**
