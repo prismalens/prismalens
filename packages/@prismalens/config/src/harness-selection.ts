@@ -52,7 +52,7 @@ export function resolveOnPath(
 	return null;
 }
 
-/** Who pinned the harness: the env var, or the persisted Settings → Harness choice. */
+/** Who pinned the harness: the env var, or the persisted Settings → Agent choice. */
 export type PinSource = "env" | "settings";
 
 export type HarnessSelection =
@@ -82,7 +82,7 @@ export interface HarnessSelectionInput {
 
 function pinLabel(source: PinSource, id: string): string {
 	return source === "settings"
-		? `Harness pinned to "${id}" under Settings → Harness`
+		? `Harness pinned to "${id}" under Settings → Agent`
 		: `PRISMALENS_HARNESS="${id}"`;
 }
 

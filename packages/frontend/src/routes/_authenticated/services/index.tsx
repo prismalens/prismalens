@@ -1,34 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	ServiceTier,
-	ServiceType,
-	ServiceWithRelations,
-} from "@prismalens/contracts";
+import type { ServiceWithRelations } from "@prismalens/contracts";
+import { isIncidentOpen } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import type { ColumnDef } from "@tanstack/react-table";
-import {
-	ChevronLeft,
-	ChevronRight,
-	LayoutGrid,
-	List,
-	Loader2,
-	Plus,
-	RefreshCw,
-} from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
-import { ServiceList } from "@/components/services/ServiceList";
-import { tierLabels } from "@/components/services/service-detail.utils";
-import { SettingsFrame } from "@/components/settings/SettingsFrame";
+import {
+	codeWhere,
+	kindWord,
+	tierMeaning,
+	tierWord,
+} from "@/components/services/service-detail.utils";
+import { PULL_TEMPLATES } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
-import { type ChipTone, StateChip } from "@/components/shared/StateChip";
+import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
-import { DataTable } from "@/components/ui/data-table";
-import { DebouncedSearchInput } from "@/components/ui/debounced-search-input";
 import {
 	Select,
 	SelectContent,
@@ -36,6 +27,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useBatchCreateRepositories,
 	useConnections,
@@ -46,133 +38,27 @@ import {
 	useServices,
 	useServiceTeams,
 } from "@/lib/api/hooks";
-import { client } from "@/lib/api/orpc-client";
-import { cn } from "@/lib/utils";
+import { client, orpc } from "@/lib/api/orpc-client";
 
-const PAGE_SIZE = 25;
-
-const serviceTypes: { value: ServiceType | "all"; label: string }[] = [
-	{ value: "all", label: "All Types" },
-	{ value: "service", label: "Service" },
-	{ value: "database", label: "Database" },
-	{ value: "queue", label: "Queue" },
-	{ value: "cache", label: "Cache" },
-	{ value: "gateway", label: "Gateway" },
-	{ value: "external", label: "External" },
-	{ value: "infrastructure", label: "Infrastructure" },
-];
-
-const serviceTiers: { value: ServiceTier | "all"; label: string }[] = [
-	{ value: "all", label: "All Tiers" },
-	{ value: "tier_1", label: "Tier 1 - Critical" },
-	{ value: "tier_2", label: "Tier 2 - High" },
-	{ value: "tier_3", label: "Tier 3 - Medium" },
-	{ value: "tier_4", label: "Tier 4 - Low" },
-];
-
-const tierTones: Record<string, ChipTone> = {
-	tier_1: "critical",
-	tier_2: "high",
-	tier_3: "medium",
-	tier_4: "neutral",
-};
+const PAGE_SIZE = 50;
 
 type ServicesSearch = {
-	type?: string;
-	tier?: string;
 	team?: string;
 	search?: string;
 	page?: number;
-	view?: "table" | "grid";
+	/** `1` opens the add dialog: the board's setup line links here. */
+	add?: "1";
 };
 
 export const Route = createFileRoute("/_authenticated/services/")({
 	validateSearch: (raw: Record<string, unknown>): ServicesSearch => ({
-		type: typeof raw.type === "string" ? raw.type : undefined,
-		tier: typeof raw.tier === "string" ? raw.tier : undefined,
 		team: typeof raw.team === "string" ? raw.team : undefined,
 		search: typeof raw.search === "string" ? raw.search : undefined,
-		page: typeof raw.page === "number" ? raw.page : 1,
-		view: raw.view === "grid" || raw.view === "table" ? raw.view : "table",
+		page: typeof raw.page === "number" ? raw.page : undefined,
+		add: raw.add === "1" ? "1" : undefined,
 	}),
 	component: ServicesPage,
 });
-
-const columns: ColumnDef<ServiceWithRelations>[] = [
-	{
-		accessorKey: "name",
-		header: "Name",
-		cell: ({ row }) => {
-			const s = row.original;
-			return (
-				<Link
-					to="/services/$id"
-					params={{ id: s.id }}
-					search={{ tab: "overview" }}
-					className="hover:text-primary"
-				>
-					<div>
-						<p className="font-medium">{s.displayName || s.name}</p>
-						{s.displayName && (
-							<Mono className="text-xs text-muted-foreground block">
-								{s.name}
-							</Mono>
-						)}
-					</div>
-				</Link>
-			);
-		},
-	},
-	{
-		accessorKey: "type",
-		header: "Type",
-		cell: ({ row }) => (
-			<StateChip tone="neutral" className="capitalize">
-				{row.original.type}
-			</StateChip>
-		),
-	},
-	{
-		accessorKey: "tier",
-		header: "Tier",
-		cell: ({ row }) => (
-			<StateChip tone={tierTones[row.original.tier] || "neutral"}>
-				{tierLabels[row.original.tier] || row.original.tier}
-			</StateChip>
-		),
-	},
-	{
-		accessorKey: "team",
-		header: "Team",
-		cell: ({ row }) => (
-			<span className="text-muted-foreground">{row.original.team || "—"}</span>
-		),
-	},
-	{
-		id: "sources",
-		header: "Sources",
-		cell: ({ row }) => {
-			const s = row.original;
-			const repos = s.repositories ?? [];
-			if (repos.length === 0) {
-				return <span className="text-muted-foreground">—</span>;
-			}
-			return (
-				<div className="flex flex-wrap gap-1">
-					{repos.map((sr) => (
-						<span
-							key={sr.repository?.id ?? sr.repositoryId}
-							className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs text-muted-foreground"
-						>
-							<span>🔗</span>
-							<Mono>{sr.repository?.fullName ?? sr.repositoryId}</Mono>
-						</span>
-					))}
-				</div>
-			);
-		},
-	},
-];
 
 interface ReviewItem {
 	key: string;
@@ -200,16 +86,31 @@ function toTitleCase(str: string): string {
 }
 
 function ServicesPage() {
+	usePageTitle("Services");
 	const searchParams = Route.useSearch();
 	const navigate = useNavigate({ from: "/services/" });
-	const [showAddDialog, setShowAddDialog] = useState(false);
+	const [showAddDialog, setShowAddDialog] = useState(searchParams.add === "1");
+	useEffect(() => {
+		if (searchParams.add === "1") {
+			setShowAddDialog(true);
+			navigate({
+				search: (p: ServicesSearch) => ({ ...p, add: undefined }),
+				replace: true,
+			});
+		}
+	}, [searchParams.add, navigate]);
 
-	const typeFilter = (searchParams.type || "all") as ServiceType | "all";
-	const tierFilter = (searchParams.tier || "all") as ServiceTier | "all";
 	const teamFilter = searchParams.team || "all";
 	const currentPage = searchParams.page ?? 1;
-	const view = searchParams.view ?? "table";
 	const offset = (currentPage - 1) * PAGE_SIZE;
+	const [q, setQ] = useState(searchParams.search ?? "");
+	// The search this input last wrote; any other URL value came from a link or Back.
+	const wrote = useRef(searchParams.search);
+	useEffect(() => {
+		if (searchParams.search === wrote.current) return;
+		wrote.current = searchParams.search;
+		setQ(searchParams.search ?? "");
+	}, [searchParams.search]);
 
 	// Review queue state
 	const [vcsScannedRepos, setVcsScannedRepos] = useState<ReviewItem[]>([]);
@@ -219,28 +120,28 @@ function ServicesPage() {
 	>({});
 	const [itemToDelete, setItemToDelete] = useState<ReviewItem | null>(null);
 
-	// Navigate helper
 	const updateSearch = useCallback(
 		(updates: Partial<ServicesSearch>) => {
 			navigate({
-				search: (prev: ServicesSearch) => ({
-					...prev,
-					...updates,
-				}),
+				search: (prev: ServicesSearch) => ({ ...prev, ...updates }),
+				replace: true,
 			});
 		},
 		[navigate],
 	);
+	useEffect(() => {
+		const next = q.trim() || undefined;
+		// A no-op write lands 250 ms after mount and cancels a row click whose
+		// route is still loading (shell-pr2.feature, Back from a service).
+		if (next === searchParams.search) return;
+		const t = setTimeout(() => {
+			wrote.current = next;
+			updateSearch({ search: next, page: undefined });
+		}, 250);
+		return () => clearTimeout(t);
+	}, [q, searchParams.search, updateSearch]);
 
-	// Debounced search
-	const handleSearchChange = useCallback(
-		(value: string) => {
-			updateSearch({ search: value || undefined, page: 1 });
-		},
-		[updateSearch],
-	);
-
-	// Connections for VCS scanning
+	// Connections for VCS scanning, and the telemetry every run is told about
 	const { data: allConnections = [] } = useConnections();
 	const vcsConnections = useMemo(
 		() =>
@@ -254,18 +155,21 @@ function ServicesPage() {
 			),
 		[allConnections],
 	);
+	const telemetry = allConnections
+		.filter((c) => PULL_TEMPLATES.has(c.templateId ?? ""))
+		.map((c) => c.label);
 
-	// Unlinked DB repositories
 	const { data: repoResponse, refetch: refetchRepos } = useRepositories({
 		limit: 100,
 	});
-	const unlinkedDbRepos = useMemo(() => {
-		return (repoResponse?.data ?? []).filter(
-			(r) => !r.services || r.services.length === 0,
-		);
-	}, [repoResponse]);
+	const unlinkedDbRepos = useMemo(
+		() =>
+			(repoResponse?.data ?? []).filter(
+				(r) => !r.services || r.services.length === 0,
+			),
+		[repoResponse],
+	);
 
-	// Fetch services with server-side filtering
 	const {
 		data: response,
 		isLoading,
@@ -273,17 +177,22 @@ function ServicesPage() {
 	} = useServices({
 		limit: PAGE_SIZE,
 		offset,
-		type: typeFilter !== "all" ? typeFilter : undefined,
-		tier: tierFilter !== "all" ? tierFilter : undefined,
 		team: teamFilter !== "all" ? teamFilter : undefined,
 		search: searchParams.search || undefined,
 	});
-
-	// Fetch all services for linking dropdown
 	const { data: allServicesResponse } = useServices({ limit: 100 });
 	const allServices = allServicesResponse?.data ?? [];
+	const nameOf = new Map(allServices.map((s) => [s.id, s.name]));
+	const { data: openIncidents } = useQuery(
+		orpc.incidents.list.queryOptions({ input: { open: true, limit: 100 } }),
+	);
+	const openBy = new Map<string, number>();
+	for (const i of openIncidents?.data ?? []) {
+		if (!isIncidentOpen(i.status)) continue;
+		for (const s of i.services ?? [])
+			openBy.set(s.id, (openBy.get(s.id) ?? 0) + 1);
+	}
 
-	// Service teams
 	const { data: teamsResponse } = useServiceTeams();
 	const teams = teamsResponse?.teams ?? [];
 	const teamOptions =
@@ -294,31 +203,11 @@ function ServicesPage() {
 	const services = response?.data ?? [];
 	const total = response?.total ?? 0;
 	const totalPages = Math.ceil(total / PAGE_SIZE);
-	const showingFrom = total > 0 ? offset + 1 : 0;
-	const showingTo = Math.min(offset + PAGE_SIZE, total);
 
-	const hasFilters =
-		typeFilter !== "all" ||
-		tierFilter !== "all" ||
-		teamFilter !== "all" ||
-		!!searchParams.search;
-
-	const handleClearFilters = () => {
-		updateSearch({
-			type: undefined,
-			tier: undefined,
-			team: undefined,
-			search: undefined,
-			page: 1,
-		});
-	};
-
-	// Mutations for review queue actions
 	const linkRepository = useLinkRepository();
 	const createService = useCreateService();
 	const deleteRepository = useDeleteRepository();
 	const batchCreateRepositories = useBatchCreateRepositories();
-
 	// Combine unlinked DB repos and scanned VCS repos into reviewItems
 	const reviewItems = useMemo<ReviewItem[]>(() => {
 		const items: ReviewItem[] = [];
@@ -488,316 +377,325 @@ function ServicesPage() {
 
 	const handleConfirmDelete = async () => {
 		if (!itemToDelete) return;
-		try {
-			if (itemToDelete.id) {
-				await deleteRepository.mutateAsync({ id: itemToDelete.id });
-			}
-			setVcsScannedRepos((prev) =>
-				prev.filter((r) => r.key !== itemToDelete.key),
-			);
-			setItemToDelete(null);
-			await refetchRepos();
-		} catch {
-			// handled
+		if (itemToDelete.id) {
+			await deleteRepository.mutateAsync({ id: itemToDelete.id });
 		}
+		setVcsScannedRepos((prev) =>
+			prev.filter((r) => r.key !== itemToDelete.key),
+		);
+		await refetchRepos();
 	};
 
 	return (
-		<SettingsFrame
-			section="services"
-			title="Services"
-			intro={`${total} in the catalog. A run reads the repository a service names; nothing else.`}
-			actions={
-				<Button
-					size="sm"
-					className="h-7"
-					onClick={() => setShowAddDialog(true)}
-				>
-					<Plus className="mr-1 h-3.5 w-3.5" />
-					Add service
-				</Button>
-			}
+		<div
+			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
+			data-testid="services-page"
 		>
-			{/* Review Queue */}
-			<RecordSection
-				id="review-queue"
-				title="Waiting for a decision"
-				count={reviewItems.length}
-				actions={
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={handleFetchVcs}
-						disabled={isFetchingVcs}
-					>
-						<RefreshCw
-							className={cn(
-								"mr-1.5 h-3.5 w-3.5",
-								isFetchingVcs && "motion-safe:animate-spin",
-							)}
+			<PageHeader title="Services">
+				<div className="flex basis-full items-center gap-2 md:ml-auto md:basis-auto">
+					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
+						<Search className="size-3.5 shrink-0 text-text-3" />
+						<input
+							value={q}
+							onChange={(e) => setQ(e.target.value)}
+							placeholder="Filter"
+							aria-label="Filter services"
+							className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
+							data-testid="services-search"
 						/>
-						Fetch from VCS
-					</Button>
-				}
-			>
-				{reviewItems.length === 0 ? (
-					<div
-						className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-4"
-						data-testid="review-queue-empty"
-					>
-						<p className="text-record text-muted-foreground">
-							Nothing waiting. Fetch from VCS to find repositories without a
-							service.
+					</label>
+					{teamOptions.length > 0 && (
+						<Select
+							value={teamFilter}
+							onValueChange={(v) =>
+								updateSearch({
+									team: v === "all" ? undefined : v,
+									page: undefined,
+								})
+							}
+						>
+							<SelectTrigger
+								className="h-7 w-auto min-w-28"
+								aria-label="Team"
+								data-testid="services-team-filter"
+							>
+								<SelectValue placeholder="Every team" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">Every team</SelectItem>
+								{teamOptions.map((t) => (
+									<SelectItem key={t} value={t}>
+										{t}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					)}
+				</div>
+			</PageHeader>
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				<div className="px-4 pt-3 pb-12 md:px-6">
+					<div className="mb-2 flex min-h-6 items-center justify-between gap-3">
+						<h2 className="text-heading" data-testid="services-count">
+							{isLoading
+								? "Services"
+								: `${total} service${total === 1 ? "" : "s"}`}
+						</h2>
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => setShowAddDialog(true)}
+							data-testid="add-service"
+						>
+							Add a service
+						</Button>
+					</div>
+					{!isLoading && services.length === 0 && (
+						<p className="text-body text-text-2" data-testid="services-empty">
+							{searchParams.search || teamFilter !== "all"
+								? "No service matches."
+								: "No services yet. A service names the code a run reads and the telemetry it may query."}
 						</p>
-					</div>
-				) : (
-					<div className="space-y-2">
-						{reviewItems.map((item) => {
-							const selectedSvcId = selectedServiceForRepo[item.key] ?? "";
-							return (
-								<div
-									key={item.key}
-									className="flex flex-wrap items-center justify-between gap-3 p-3 border rounded-lg bg-card"
+					)}
+					<ul data-testid="services-list">
+						{services.map((s) => (
+							<ServiceRow
+								key={s.id}
+								service={s}
+								open={openBy.get(s.id) ?? 0}
+								telemetry={telemetry}
+								nameOf={nameOf}
+							/>
+						))}
+					</ul>
+					{totalPages > 1 && (
+						<div className="mt-3 flex items-center gap-3 text-meta text-text-3">
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={currentPage <= 1}
+								onClick={() => updateSearch({ page: currentPage - 1 })}
+							>
+								Previous
+							</Button>
+							<span>
+								Page {currentPage} of {totalPages}
+							</span>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={currentPage >= totalPages}
+								onClick={() => updateSearch({ page: currentPage + 1 })}
+							>
+								Next
+							</Button>
+						</div>
+					)}
+
+					{(reviewItems.length > 0 || vcsConnections.length > 0) && (
+						<RecordSection
+							id="review-queue"
+							className="mt-10"
+							title="Repositories no service names"
+							count={reviewItems.length || undefined}
+							actions={
+								vcsConnections.length > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={handleFetchVcs}
+										disabled={isFetchingVcs}
+									>
+										{isFetchingVcs ? "Fetching" : "Fetch from the git host"}
+									</Button>
+								)
+							}
+						>
+							{reviewItems.length === 0 ? (
+								<p
+									className="text-body text-text-2"
+									data-testid="review-queue-empty"
 								>
-									<div className="flex items-center gap-2.5 min-w-0">
-										<StateChip tone="neutral">{item.source}</StateChip>
-										<Mono className="font-medium text-sm truncate">
-											{item.fullName}
-										</Mono>
-									</div>
-									<div className="flex flex-wrap items-center gap-2">
-										<div className="flex items-center gap-1.5">
-											<Select
-												value={selectedSvcId}
-												onValueChange={(val) =>
-													setSelectedServiceForRepo((prev) => ({
-														...prev,
-														[item.key]: val,
-													}))
-												}
+									None waiting.
+								</p>
+							) : (
+								<ul>
+									{reviewItems.map((item) => {
+										const selected = selectedServiceForRepo[item.key] ?? "";
+										return (
+											<li
+												key={item.key}
+												className="flex flex-col gap-2 border-t border-hairline py-2.5 first:border-t-0 sm:flex-row sm:items-center"
 											>
-												<SelectTrigger className="w-44 h-8 text-xs">
-													<SelectValue placeholder="Select service..." />
-												</SelectTrigger>
-												<SelectContent>
-													{allServices.map((s) => (
-														<SelectItem key={s.id} value={s.id}>
-															{s.displayName || s.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-											<Button
-												size="sm"
-												variant="outline"
-												className="h-8 text-xs"
-												disabled={!selectedSvcId || linkRepository.isPending}
-												onClick={() => handleLinkToService(item, selectedSvcId)}
-											>
-												Link
-											</Button>
-										</div>
-										<Button
-											size="sm"
-											variant="outline"
-											className="h-8 text-xs"
-											onClick={() => handleImportAsService(item)}
-											disabled={createService.isPending}
-										>
-											Import as service
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											className="h-8 text-xs text-destructive hover:text-destructive"
-											onClick={() => setItemToDelete(item)}
-										>
-											Delete
-										</Button>
-									</div>
-								</div>
-							);
-						})}
-					</div>
-				)}
-			</RecordSection>
-
-			{/* Filters */}
-			<div className="flex flex-wrap items-center gap-2">
-				<DebouncedSearchInput
-					value={searchParams.search ?? ""}
-					onValueChange={handleSearchChange}
-					placeholder="Search services…"
-					className="w-full sm:w-48"
-				/>
-
-				<Select
-					value={typeFilter}
-					onValueChange={(value) =>
-						updateSearch({
-							type: value === "all" ? undefined : value,
-							page: 1,
-						})
-					}
-				>
-					<SelectTrigger className="w-32">
-						<SelectValue placeholder="Filter by type" />
-					</SelectTrigger>
-					<SelectContent>
-						{serviceTypes.map((type) => (
-							<SelectItem key={type.value} value={type.value}>
-								{type.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-
-				<Select
-					value={tierFilter}
-					onValueChange={(value) =>
-						updateSearch({
-							tier: value === "all" ? undefined : value,
-							page: 1,
-						})
-					}
-				>
-					<SelectTrigger className="w-32">
-						<SelectValue placeholder="Filter by tier" />
-					</SelectTrigger>
-					<SelectContent>
-						{serviceTiers.map((tier) => (
-							<SelectItem key={tier.value} value={tier.value}>
-								{tier.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-
-				{(teamOptions.length > 0 || teamFilter !== "all") && (
-					<Select
-						value={teamFilter}
-						onValueChange={(value) =>
-							updateSearch({
-								team: value === "all" ? undefined : value,
-								page: 1,
-							})
-						}
-					>
-						<SelectTrigger className="w-36" data-testid="services-team-filter">
-							<SelectValue placeholder="Filter by team" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All teams</SelectItem>
-							{teamOptions.map((team) => (
-								<SelectItem key={team} value={team}>
-									{team}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				)}
-
-				{hasFilters && (
-					<Button variant="ghost" size="sm" onClick={handleClearFilters}>
-						Clear filters
-					</Button>
-				)}
-
-				<div className="ml-auto flex items-center gap-1">
-					<Button
-						variant={view === "table" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-8 w-8 p-0"
-						onClick={() => updateSearch({ view: "table" })}
-					>
-						<List className="h-4 w-4" />
-					</Button>
-					<Button
-						variant={view === "grid" ? "secondary" : "ghost"}
-						size="sm"
-						className="h-8 w-8 p-0"
-						onClick={() => updateSearch({ view: "grid" })}
-					>
-						<LayoutGrid className="h-4 w-4" />
-					</Button>
+												<div className="min-w-0 flex-1">
+													<Mono className="block truncate text-text-1">
+														{item.fullName}
+													</Mono>
+													{item.description && (
+														<p className="truncate text-meta text-text-3">
+															{item.description}
+														</p>
+													)}
+												</div>
+												<div className="flex flex-wrap items-center gap-2">
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => handleImportAsService(item)}
+													>
+														Make it a service
+													</Button>
+													<Select
+														value={selected}
+														onValueChange={(v) => {
+															setSelectedServiceForRepo((prev) => ({
+																...prev,
+																[item.key]: v,
+															}));
+															void handleLinkToService(item, v);
+														}}
+													>
+														<SelectTrigger
+															className="h-7 w-auto min-w-32"
+															aria-label={`Give ${item.fullName} to a service`}
+														>
+															<SelectValue placeholder="Give it to" />
+														</SelectTrigger>
+														<SelectContent>
+															{allServices.map((svc) => (
+																<SelectItem key={svc.id} value={svc.id}>
+																	{svc.name}
+																</SelectItem>
+															))}
+														</SelectContent>
+													</Select>
+													<Button
+														variant="danger"
+														size="sm"
+														onClick={() => setItemToDelete(item)}
+													>
+														Remove
+													</Button>
+												</div>
+											</li>
+										);
+									})}
+								</ul>
+							)}
+						</RecordSection>
+					)}
 				</div>
 			</div>
 
-			{/* Content */}
-			{view === "table" ? (
-				<DataTable
-					columns={columns}
-					data={services}
-					isLoading={isLoading}
-					emptyMessage="No services found"
-					onRowClick={(row) =>
-						navigate({
-							to: "/services/$id",
-							params: { id: row.id },
-							search: { tab: "overview" },
-						})
-					}
-				/>
-			) : (
-				<ServiceList services={services} isLoading={isLoading} />
-			)}
-
-			{/* Pagination */}
-			{total > PAGE_SIZE && (
-				<div className="flex items-center justify-between">
-					<p className="text-record text-muted-foreground">
-						Showing {showingFrom}–{showingTo} of {total} services
-					</p>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={currentPage <= 1}
-							onClick={() => updateSearch({ page: currentPage - 1 })}
-						>
-							<ChevronLeft className="h-4 w-4 mr-1" />
-							Previous
-						</Button>
-						<span className="text-record text-muted-foreground">
-							Page {currentPage} of {totalPages}
-						</span>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={currentPage >= totalPages}
-							onClick={() => updateSearch({ page: currentPage + 1 })}
-						>
-							Next
-							<ChevronRight className="h-4 w-4 ml-1" />
-						</Button>
-					</div>
-				</div>
-			)}
-
-			{/* Dialogs */}
 			<ServiceFormDialog
 				open={showAddDialog}
 				onOpenChange={setShowAddDialog}
 				onSuccess={() => refetchServices()}
 			/>
-
-			{/* Delete repository confirmation */}
 			<DestructiveConfirm
 				open={!!itemToDelete}
 				onOpenChange={(open) => {
 					if (!open) setItemToDelete(null);
 				}}
-				title="Delete repository?"
+				title="Remove this repository?"
 				description={
 					<p>
 						<strong>{itemToDelete?.fullName}</strong> leaves PrismaLens. The
 						repository on GitHub or GitLab is untouched.
 					</p>
 				}
-				confirmLabel="Delete"
+				confirmLabel="Remove"
 				onConfirm={handleConfirmDelete}
 				isPending={deleteRepository.isPending}
 			/>
-		</SettingsFrame>
+		</div>
+	);
+}
+
+/**
+ * One service (study-v3 §7): its name, kind, tier and team; the code a run
+ * reads, its telemetry and its neighbours; and how many incidents are open.
+ */
+function ServiceRow({
+	service,
+	open,
+	telemetry,
+	nameOf,
+}: {
+	service: ServiceWithRelations;
+	open: number;
+	telemetry: string[];
+	nameOf: Map<string, string>;
+}) {
+	const code = codeWhere(service);
+	const uses = (service.dependencies ?? []).flatMap((d) => {
+		const n = nameOf.get(d.dependencyId);
+		return n ? [n] : [];
+	});
+	const usedBy = (service.dependents ?? []).flatMap((d) => {
+		const n = nameOf.get(d.dependentId);
+		return n ? [n] : [];
+	});
+	return (
+		<li
+			className="border-t border-hairline first:border-t-0"
+			data-testid="service-row"
+		>
+			<Link
+				to="/services/$id"
+				params={{ id: service.id }}
+				className="-mx-2 flex items-start gap-3 rounded-control px-2 py-2.5 outline-none hover:bg-surface-1 focus-visible:ring-2 focus-visible:ring-accent"
+				data-testid="service-row-link"
+			>
+				<div className="min-w-0 flex-1">
+					<p className="flex flex-wrap items-baseline gap-x-2">
+						<span
+							className="font-medium text-text-1"
+							data-testid="service-name"
+						>
+							{service.name}
+						</span>
+						<span className="text-meta text-text-2" data-testid="service-kind">
+							{kindWord(service.type)}
+						</span>
+						<span
+							className="text-meta text-text-3"
+							title={tierMeaning(service.tier)}
+						>
+							{tierWord(service.tier)}
+						</span>
+						{service.team && (
+							<span className="text-meta text-text-3">{service.team}</span>
+						)}
+					</p>
+					<p
+						className="mt-0.5 text-meta text-text-2"
+						data-testid="service-line"
+					>
+						{code ? (
+							<Mono className="break-all" data-testid="service-code">
+								{code}
+							</Mono>
+						) : (
+							"No code"
+						)}
+						.{" "}
+						<span data-testid="service-telemetry">
+							{telemetry.length
+								? `Telemetry from ${telemetry.join(", ")}.`
+								: "No telemetry."}
+						</span>
+						{uses.length > 0 && ` Depends on ${uses.join(", ")}.`}
+						{usedBy.length > 0 && ` Used by ${usedBy.join(", ")}.`}
+					</p>
+				</div>
+				<span
+					className="shrink-0 pt-0.5 text-meta text-text-3 tabular-nums"
+					data-testid="service-open"
+				>
+					{open ? `${open} open` : "none open"}
+				</span>
+			</Link>
+		</li>
 	);
 }

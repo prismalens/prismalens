@@ -8,7 +8,7 @@ import {
 	IntegrationsSettings,
 	TelemetrySettings,
 } from "@/components/settings";
-import { ConnectionsTab } from "@/components/settings/ConnectionsTab";
+import { AlertSources } from "@/components/settings/AlertSources";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import {
 	SettingsFrame,
@@ -26,17 +26,16 @@ const SECTIONS = {
 	harness: {
 		title: "Agent",
 		intro:
-			"The coding agent a run rents to read the repo and the telemetry. It signs in on its own; a key is not always needed.",
+			"The coding agent a run rents to read the code and the telemetry. It signs in on its own; PrismaLens never checks or holds its login.",
+	},
+	sources: {
+		title: "Alert sources",
+		intro:
+			"Where alerts come from. Alertmanager can push to the webhook, or PrismaLens pulls from a URL.",
 	},
 	integrations: {
 		title: "Integrations",
-		intro:
-			"Where alerts come from, where the report goes, and which git host holds the code.",
-	},
-	connections: {
-		title: "Connections",
-		intro:
-			"The accounts and tokens behind each integration. One integration can have several.",
+		intro: "Where the report goes, and which git host holds the code.",
 	},
 	devices: {
 		title: "Devices",
@@ -44,8 +43,7 @@ const SECTIONS = {
 	},
 	usage: {
 		title: "Usage data",
-		intro:
-			"Counts of what gets used and whether runs finish. Off until you say yes.",
+		intro: undefined,
 	},
 	about: {
 		title: "About",
@@ -78,7 +76,7 @@ function SettingsPage() {
 		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
 			{tab === "harness" && <HarnessSettings />}
 			{tab === "integrations" && <IntegrationsSettings />}
-			{tab === "connections" && <ConnectionsTab />}
+			{tab === "sources" && <AlertSources />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "about" && <AboutSettings />}

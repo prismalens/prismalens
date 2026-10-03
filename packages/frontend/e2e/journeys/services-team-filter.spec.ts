@@ -106,8 +106,33 @@ test.describe("#325 — filtering the services list by team", () => {
 		await page.goto("/services?team=ghosts");
 
 		await expect(page.getByText("checkout-api")).toHaveCount(0);
-		await expect(page.getByText(/no services/i).first()).toBeVisible({
-			timeout: 15_000,
+		await expect(page.getByTestId("services-empty")).toHaveText(
+			"No service matches.",
+			{ timeout: 15_000 },
+		);
+	});
+});
+
+test.describe("the services filter follows the URL (#781 review)", () => {
+	test("a link that drops the search empties the filter and keeps it empty", async ({
+		page,
+	}) => {
+		await serveCatalog(page, ["platform"], {
+			platform: ["gateway", "scheduler"],
 		});
+
+		await page.goto("/services?search=gate");
+		const input = page.getByTestId("services-search");
+		await expect(input).toHaveValue("gate", { timeout: 15_000 });
+
+		await page
+			.getByTestId("sidebar")
+			.getByRole("link", { name: "Services", exact: true })
+			.click();
+		await expect(input).toHaveValue("");
+		// The debounce would have written the stale value back by now.
+		await page.waitForTimeout(600);
+		await expect(page).not.toHaveURL(/search=/);
+		await expect(input).toHaveValue("");
 	});
 });

@@ -3,7 +3,6 @@
 
 "use client";
 
-import { AlertTriangle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
 	CHANNEL_LABEL,
@@ -11,6 +10,7 @@ import {
 	useAbout,
 } from "@/components/settings/AboutSettings";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { useFactoryReset, useResetData } from "@/lib/api/hooks";
 
@@ -22,77 +22,41 @@ export function DangerZoneSettings() {
 	const resetData = useResetData();
 	const factoryReset = useFactoryReset();
 
-	const handleResetData = async () => {
-		try {
-			await resetData.mutateAsync({ confirmation: "RESET" });
-			setShowResetDialog(false);
-		} catch {
-			// error is surfaced via resetData.error
-		}
-	};
+	const handleResetData = () =>
+		resetData.mutateAsync({ confirmation: "RESET" });
 
 	const handleFactoryReset = async () => {
-		try {
-			await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
-			setShowFactoryResetDialog(false);
-			// Redirect to setup wizard
-			window.location.href = "/setup";
-		} catch {
-			// error is surfaced via factoryReset.error
-		}
+		await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
+		window.location.href = "/setup";
 	};
 
 	return (
 		<>
-			<div className="rounded-lg border border-destructive/30 bg-card p-6 space-y-6">
-				<div className="flex items-center gap-2">
-					<AlertTriangle className="h-5 w-5 text-destructive" />
-					<h3 className="text-sm font-semibold tracking-tight text-destructive">
-						Danger zone
-					</h3>
-				</div>
-				<div className="space-y-4">
-					{/* Reset Data */}
-					<div className="flex justify-between items-center p-4 border rounded-lg">
-						<div>
-							<h4 className="text-record font-medium text-foreground">
-								Reset all data
-							</h4>
-							<p className="text-record text-muted-foreground">
-								Delete all alerts, incidents, and investigations. Services and
-								integrations will be preserved.
-							</p>
-						</div>
-						<Button
-							variant="destructive"
-							onClick={() => setShowResetDialog(true)}
-						>
-							<Trash2 className="mr-2 h-4 w-4" />
-							Reset data
-						</Button>
-					</div>
-
-					{/* Factory Reset */}
-					<div className="flex justify-between items-center p-4 border rounded-lg">
-						<div>
-							<h4 className="text-record font-medium text-foreground">
-								Factory reset
-							</h4>
-							<p className="text-record text-muted-foreground">
-								Reset data, plus every service, integration, connection and
-								setting. Paired devices stay paired.
-							</p>
-						</div>
-						<Button
-							variant="destructive"
-							onClick={() => setShowFactoryResetDialog(true)}
-						>
-							<AlertTriangle className="mr-2 h-4 w-4" />
-							Factory reset
-						</Button>
-					</div>
-				</div>
-			</div>
+			<SettingGroup title="Records" testId="danger-zone">
+				<SettingRow
+					label="Reset all data"
+					description="Delete every alert, incident and investigation. Services, integrations and settings stay."
+				>
+					<Button
+						variant="danger"
+						onClick={() => setShowResetDialog(true)}
+						data-testid="reset-data"
+					>
+						Reset data
+					</Button>
+				</SettingRow>
+				<SettingRow
+					label="Factory reset"
+					description="Reset data, plus every service, integration, connection and setting. Paired devices stay paired."
+				>
+					<Button
+						variant="danger"
+						onClick={() => setShowFactoryResetDialog(true)}
+					>
+						Factory reset
+					</Button>
+				</SettingRow>
+			</SettingGroup>
 
 			<DestructiveConfirm
 				open={showResetDialog}
@@ -118,26 +82,25 @@ export function DangerZoneSettings() {
 			/>
 
 			{about && (
-				<div className="mt-4 rounded-md border bg-card p-4 space-y-3 text-record">
-					<h3 className="text-sm font-semibold tracking-tight text-foreground">
-						Uninstall PrismaLens
-					</h3>
-					<p className="text-muted-foreground">
-						This copy was installed with {CHANNEL_LABEL[about.channel]}. Stop{" "}
-						<code>pl up</code>, then run:
+				<SettingGroup title="Uninstall PrismaLens">
+					<SettingRow
+						label={`Installed with ${CHANNEL_LABEL[about.channel]}`}
+						description={
+							about.channel === "electron"
+								? "Quit PrismaLens from the tray, then delete the app."
+								: "Stop pl up, then run this."
+						}
+						below={
+							about.channel !== "electron" && (
+								<CommandLine command={about.uninstallCommand} />
+							)
+						}
+					/>
+					<p className="mt-1 text-meta text-text-3">
+						Uninstalling keeps your workspace ({about.workspaceDir}). Factory
+						reset first if you want the data gone as well.
 					</p>
-					{about.channel === "electron" ? (
-						<p className="text-foreground">
-							Quit PrismaLens from the tray, then delete the app.
-						</p>
-					) : (
-						<CommandLine command={about.uninstallCommand} />
-					)}
-					<p className="text-muted-foreground">
-						Uninstalling keeps your workspace (<code>{about.workspaceDir}</code>
-						). Factory reset first if you want the data gone as well.
-					</p>
-				</div>
+				</SettingGroup>
 			)}
 
 			<DestructiveConfirm

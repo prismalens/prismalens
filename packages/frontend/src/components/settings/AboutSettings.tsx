@@ -5,7 +5,7 @@ import type { About } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { StateWord } from "@/components/shared/StateChip";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatDateTime } from "@/lib/format-time";
@@ -32,11 +32,11 @@ export function CommandLine({ command }: { command: string }) {
 	const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 	return (
 		<div className="flex items-center gap-2">
-			<code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md border bg-muted px-3 py-2 font-mono text-xs text-foreground">
+			<code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-control bg-surface-2 px-3 py-1.5 font-mono text-meta text-text-1">
 				{command}
 			</code>
 			<Button
-				variant="outline"
+				variant="ghost"
 				size="icon"
 				aria-label={copied === "copied" ? "Copied" : "Copy command"}
 				onClick={() => {
@@ -56,136 +56,100 @@ export function CommandLine({ command }: { command: string }) {
 	);
 }
 
-function Row({
-	label,
-	children,
-}: {
-	label: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="grid grid-cols-[9rem_1fr] gap-3 py-2 sm:grid-cols-[11rem_1fr]">
-			<dt className="text-muted-foreground">{label}</dt>
-			<dd className="min-w-0 break-words text-foreground">{children}</dd>
-		</div>
-	);
-}
-
 export function AboutSettings() {
 	const { data: about, isError } = useAbout();
 
 	if (isError) {
 		return (
-			<div className="rounded-md border bg-card p-4 text-record text-destructive">
+			<p className="text-body text-danger">
 				Couldn't read this install's details. Reload to try again.
-			</div>
+			</p>
 		);
 	}
-	if (!about) {
-		return (
-			<div className="h-48 motion-safe:animate-pulse rounded-lg border bg-card" />
-		);
-	}
+	if (!about) return null;
 
 	const { update } = about;
 	return (
-		<div className="space-y-4 text-record">
-			<div className="rounded-md border bg-card p-4 space-y-4">
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<h3 className="text-sm font-semibold tracking-tight text-foreground">
-						Updates
-					</h3>
-					{update.disabledBy ? (
-						<StateWord tone="neutral">check off</StateWord>
-					) : update.available ? (
-						<StateWord tone="neutral">update available</StateWord>
-					) : (
-						<StateWord tone="done">up to date</StateWord>
-					)}
-				</div>
-				{update.disabledBy ? (
-					<p className="text-muted-foreground">
-						The update check is off because <code>{update.disabledBy}</code> is
-						set. Unset it to hear about new releases.
-					</p>
-				) : update.available && update.latest ? (
-					<>
-						<p className="text-foreground">
-							PrismaLens {update.latest} is available. You have {about.version}.
-							{update.releaseNotesUrl && (
-								<a
-									className="ml-2 inline-flex items-center gap-1 text-primary hover:underline"
-									href={update.releaseNotesUrl}
-									target="_blank"
-									rel="noreferrer"
-								>
-									Release notes <ExternalLink className="h-3 w-3" />
-								</a>
-							)}
-						</p>
-						{about.channel !== "electron" && (
-							<p className="text-muted-foreground">
-								Stop <code>pl up</code>, then run this. It upgrades with{" "}
-								{CHANNEL_LABEL[about.channel]}, the way this copy was installed.
-							</p>
-						)}
-						{about.channel === "electron" ? (
-							<p className="text-foreground">
-								Download the new desktop app from the release notes above.
-							</p>
-						) : (
-							<CommandLine command="pl upgrade" />
-						)}
-					</>
-				) : (
-					<p className="text-muted-foreground">
-						You're on the newest release.
-						{update.checkedAt &&
-							` Checked ${formatDateTime(update.checkedAt)}.`}
-					</p>
-				)}
-				{!update.disabledBy && (
-					<p className="text-xs text-muted-foreground">
-						PrismaLens asks GitHub once a day which release is newest. The
-						request carries nothing about you or this install.
-					</p>
-				)}
-			</div>
-
-			<div className="rounded-md border bg-card p-4">
-				<h3 className="text-sm font-semibold tracking-tight text-foreground">
-					This install
-				</h3>
-				<dl className="mt-2 divide-y">
-					<Row label="Version">
-						<div>{about.version}</div>
-						{about.build && (
-							<div className="text-xs text-muted-foreground">
-								Build {about.build}
-							</div>
-						)}
-					</Row>
-					<Row label="Installed with">{CHANNEL_LABEL[about.channel]}</Row>
-					<Row label="Workspace">
-						<code className="font-mono text-xs">{about.workspaceDir}</code>
-					</Row>
-					<Row label="Last database backup">
-						{about.latestBackup ? (
+		<>
+			<SettingGroup title="Updates" testId="about-updates">
+				<SettingRow
+					label={
+						update.disabledBy
+							? "The update check is off"
+							: update.available && update.latest
+								? `PrismaLens ${update.latest} is available`
+								: "You're on the newest release"
+					}
+					description={
+						update.disabledBy ? (
 							<>
-								<code className="font-mono text-xs">{about.latestBackup}</code>
-								<p className="mt-1 text-xs text-muted-foreground">
-									Made before the last migration. Restore it in place of{" "}
-									<code>prismalens.db</code> to go back a version.
-								</p>
+								<code>{update.disabledBy}</code> is set. Unset it to hear about
+								new releases.
+							</>
+						) : update.available ? (
+							<>
+								You have {about.version}.{" "}
+								{about.channel === "electron"
+									? "Download the new desktop app from the release notes."
+									: `Stop pl up, then run this. It upgrades with ${CHANNEL_LABEL[about.channel]}, the way this copy was installed.`}
 							</>
 						) : (
-							<span className="text-muted-foreground">
-								None yet; one is made before each migration
-							</span>
-						)}
-					</Row>
-				</dl>
-			</div>
-		</div>
+							<>
+								PrismaLens asks GitHub once a day which release is newest; the
+								request carries nothing about you or this install.
+								{update.checkedAt &&
+									` Checked ${formatDateTime(update.checkedAt)}.`}
+							</>
+						)
+					}
+					below={
+						update.available &&
+						about.channel !== "electron" && <CommandLine command="pl upgrade" />
+					}
+				>
+					{update.available && update.releaseNotesUrl && (
+						<a
+							className="inline-flex items-center gap-1 text-body text-accent hover:underline"
+							href={update.releaseNotesUrl}
+							target="_blank"
+							rel="noreferrer"
+						>
+							Release notes <ExternalLink className="size-3" />
+						</a>
+					)}
+				</SettingRow>
+			</SettingGroup>
+			<SettingGroup title="This install" testId="about-install">
+				<SettingRow
+					label="Version"
+					description={about.build ? `Build ${about.build}` : undefined}
+				>
+					<span className="text-body text-text-1">{about.version}</span>
+				</SettingRow>
+				<SettingRow label="Installed with">
+					<span className="text-body text-text-1">
+						{CHANNEL_LABEL[about.channel]}
+					</span>
+				</SettingRow>
+				<SettingRow
+					label="Workspace"
+					description={<code className="break-all">{about.workspaceDir}</code>}
+				/>
+				<SettingRow
+					label="Last database backup"
+					description={
+						about.latestBackup ? (
+							<>
+								<code className="break-all">{about.latestBackup}</code>. Made
+								before the last migration; restore it in place of{" "}
+								<code>prismalens.db</code> to go back a version.
+							</>
+						) : (
+							"None yet; one is made before each migration."
+						)
+					}
+				/>
+			</SettingGroup>
+		</>
 	);
 }

@@ -112,6 +112,8 @@ export const ConnectionSchema = z.object({
 });
 
 export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
+	/** A URL-only source's URL (Alertmanager, Prometheus); absent for the rest. */
+	baseUrl: z.string().nullable().optional(),
 	integration: IntegrationSchema.optional(),
 	templateId: z.string().optional(),
 	templateName: z.string().optional(),

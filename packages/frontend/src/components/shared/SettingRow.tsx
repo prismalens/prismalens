@@ -55,15 +55,19 @@ export function SettingRow({
 	);
 }
 
-/** A titled group of setting rows. */
+/** A titled group of setting rows; a count and one quiet action beside the title. */
 export function SettingGroup({
 	title,
+	count,
+	actions,
 	description,
 	children,
 	className,
 	testId,
 }: {
 	title: string;
+	count?: number;
+	actions?: ReactNode;
 	description?: ReactNode;
 	children: ReactNode;
 	className?: string;
@@ -72,7 +76,17 @@ export function SettingGroup({
 	return (
 		<section className={cn("mt-8 first:mt-0", className)} data-testid={testId}>
 			<div className="mb-2">
-				<h3 className="text-heading">{title}</h3>
+				<div className="flex min-h-6 items-center justify-between gap-3">
+					<h3 className="flex items-baseline gap-2 text-heading">
+						{title}
+						{count !== undefined && (
+							<span className="font-normal text-text-3 tabular-nums">
+								{count}
+							</span>
+						)}
+					</h3>
+					{actions}
+				</div>
 				{description && <p className="text-meta text-text-3">{description}</p>}
 			</div>
 			<div>{children}</div>

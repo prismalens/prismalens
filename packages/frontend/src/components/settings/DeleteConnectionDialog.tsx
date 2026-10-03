@@ -12,8 +12,9 @@ interface DeleteConnectionDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	connectionId: string | null;
-	error: Error | null;
-	onDelete: () => void;
+	error?: Error | null;
+	/** Closes the dialog when it resolves; a rejection shows inside it. */
+	onDelete: () => Promise<unknown>;
 	onCancel: () => void;
 	isDeleting: boolean;
 }

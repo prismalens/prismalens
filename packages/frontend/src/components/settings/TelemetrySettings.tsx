@@ -5,9 +5,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MutationError } from "@/components/shared/MutationError";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { orpc } from "@/lib/api/orpc-client";
 
 /**
@@ -116,90 +116,118 @@ export function TelemetryConsent({
 	);
 }
 
+/**
+ * Settings, Usage data (decision 8, study-v3 §7): one line naming what is
+ * sent under the install id, one switch, the full disclosure folded under a
+ * link, and what was recently sent below.
+ */
 export function TelemetrySettings() {
 	const { query, update } = useTelemetrySettings();
 	const settings = query.data;
-
+	const sent = settings?.recentlySent ?? [];
 	return (
-		<div className="rounded-md border bg-card p-4 space-y-4 text-record">
-			<h3 className="text-sm font-semibold tracking-tight text-foreground">
-				Usage data
-			</h3>
-			<p className="text-muted-foreground">{TELEMETRY_SUMMARY}</p>
-			<div className="space-y-2 text-muted-foreground">
-				<p className="font-medium text-foreground">What is sent</p>
-				<ul className="list-disc space-y-1 pl-5">
-					{TELEMETRY_SENT.map((item) => (
-						<li key={item}>{item}</li>
-					))}
-				</ul>
-			</div>
-			<p className="text-muted-foreground">{TELEMETRY_NEVER_SENT}</p>
-			<div className="space-y-2 text-muted-foreground">
-				<p className="font-medium text-foreground">
-					The install id, and your consent
-				</p>
-				<p>
-					The install id is random, but it is the same on every event this
-					install sends — which is what makes it possible to count installs
-					rather than events. That makes it pseudonymous rather than anonymous,
-					so it is treated as personal data, and your consent — the checkbox
-					below — is the only basis on which any of it is collected. It is not
-					joined to an account or a profile, and the IP address a request
-					arrives from is discarded rather than stored or resolved to a
-					location.
-				</p>
-				<p>
-					Events are kept for as long as PostHog's plan retains them — at least
-					one year on the plan we use — and are not joined to anything else.
-					Clearing the checkbox withdraws consent and stops collection from that
-					moment. A factory reset deletes the id with everything else, so a
-					reset install starts over as a new, unrelated one.
-				</p>
-			</div>
-			<div className="flex items-center gap-2">
-				<Checkbox
+		<>
+			<SettingRow
+				label={<label htmlFor="telemetry-enabled">Share usage counts</label>}
+				description="Which features get used and whether runs finish, under a random install id. Never an alert, code, a prompt or a report."
+				testId="telemetry-row"
+			>
+				<Switch
 					id="telemetry-enabled"
 					checked={settings?.enabled ?? false}
 					disabled={!settings || settings.forcedOff || update.isPending}
-					onCheckedChange={(checked) =>
-						update.mutate({ enabled: checked === true })
-					}
+					onCheckedChange={(checked) => update.mutate({ enabled: checked })}
+					data-testid="telemetry-switch"
 				/>
-				<Label htmlFor="telemetry-enabled">Share usage data</Label>
-			</div>
-			<details className="space-y-2">
-				<summary className="cursor-pointer font-medium text-foreground">
-					Recently sent ({settings?.recentlySent.length ?? 0})
-				</summary>
-				<p className="text-muted-foreground">
-					The last 20 events exactly as sent, less the PostHog project key, kept
-					in memory until PrismaLens restarts.
-				</p>
-				{!settings?.recentlySent.length ? (
-					<p className="text-muted-foreground">
-						Nothing sent since PrismaLens started.
-					</p>
-				) : (
-					<div className="space-y-2">
-						{settings.recentlySent.map((entry, index) => (
-							<pre
-								key={index}
-								className="max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md border bg-muted/40 p-3 font-mono text-meta text-muted-foreground"
-							>
-								{JSON.stringify(entry.payload, null, 2)}
-							</pre>
-						))}
-					</div>
-				)}
-			</details>
+			</SettingRow>
 			{settings?.forcedOff && (
-				<p className="text-muted-foreground">
+				<p className="text-meta text-text-3">
 					Off for this process: <code>PRISMALENS_TELEMETRY=off</code> or{" "}
 					<code>pl up --telemetry=off</code> is set.
 				</p>
 			)}
 			<MutationError error={update.error} />
-		</div>
+			<details
+				className="group border-t border-hairline py-2.5 text-body"
+				data-testid="telemetry-disclosure"
+			>
+				<summary className="cursor-pointer list-none text-accent hover:underline [&::-webkit-details-marker]:hidden">
+					What is sent, what never is, and how consent works
+				</summary>
+				<div className="mt-3 space-y-3 text-text-2">
+					<div>
+						<p className="font-medium text-text-1">What is sent</p>
+						<ul className="mt-1 list-disc space-y-1 pl-5">
+							{TELEMETRY_SENT.map((item) => (
+								<li key={item}>{item}</li>
+							))}
+						</ul>
+					</div>
+					<div>
+						<p className="font-medium text-text-1">What is never sent</p>
+						<p className="mt-1">{TELEMETRY_NEVER_SENT}</p>
+					</div>
+					<div>
+						<p className="font-medium text-text-1">
+							The install id, and your consent
+						</p>
+						<p className="mt-1">
+							The install id is random, but it is the same on every event this
+							install sends, which is what makes it possible to count installs
+							rather than events. That makes it pseudonymous rather than
+							anonymous, so it is treated as personal data, and your consent,
+							the switch above, is the only basis on which any of it is
+							collected. It is not joined to an account or a profile, and the IP
+							address a request arrives from is discarded rather than stored or
+							resolved to a location.
+						</p>
+					</div>
+					<div>
+						<p className="font-medium text-text-1">How long it is kept</p>
+						<p className="mt-1">
+							Events are kept for as long as PostHog's plan retains them, at
+							least one year on the plan we use, and are not joined to anything
+							else. Turning the switch off withdraws consent and stops
+							collection from that moment. A factory reset deletes the id with
+							everything else, so a reset install starts over as a new,
+							unrelated one.
+						</p>
+					</div>
+				</div>
+			</details>
+			<SettingGroup
+				title="Recently sent"
+				count={sent.length || undefined}
+				testId="telemetry-recent"
+			>
+				{sent.length === 0 ? (
+					<p className="text-body text-text-2">
+						Nothing sent since PrismaLens started.
+					</p>
+				) : (
+					<ul className="space-y-2">
+						{sent.map((entry, index) => (
+							<li
+								key={`${index}-${String(entry.payload.event ?? "")}`}
+								data-testid="telemetry-sent"
+							>
+								<details>
+									<summary className="cursor-pointer text-body text-text-1">
+										{String(entry.payload.event ?? "event")}
+									</summary>
+									<pre className="mt-1 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-control bg-surface-2 p-3 font-mono text-meta text-text-2">
+										{JSON.stringify(entry.payload, null, 2)}
+									</pre>
+								</details>
+							</li>
+						))}
+					</ul>
+				)}
+				<p className="mt-2 text-meta text-text-3">
+					The last 20 events exactly as sent, less the PostHog project key, kept
+					in memory until PrismaLens restarts.
+				</p>
+			</SettingGroup>
+		</>
 	);
 }

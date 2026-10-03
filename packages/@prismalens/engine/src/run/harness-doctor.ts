@@ -20,6 +20,7 @@ import {
 	type HarnessId,
 } from "@prismalens/config/harness";
 import {
+	type AcpOfferedEffort,
 	type AcpOfferedModel,
 	AcpRpcError,
 	AcpSession,
@@ -45,6 +46,10 @@ export interface HarnessProbeResult {
 	hard: false;
 	/** The models the harness itself offered on `session/new`; absent when it did not answer. */
 	models?: AcpOfferedModel[];
+	/** What it reported as its current model, its effort option and whether it takes images (R4.2, R4.3). */
+	servedModel?: string | null;
+	effort?: AcpOfferedEffort | null;
+	images?: boolean;
 }
 
 function oneLine(message: string): string {
@@ -159,6 +164,9 @@ export async function probeHarness(
 				detail,
 				hard: false,
 				...(session.models.length ? { models: session.models } : {}),
+				servedModel: session.servedModel,
+				effort: session.effort,
+				images: session.takesImages,
 			};
 		} catch (err) {
 			return { id: harness, ...classify(err, session, timeoutMs), hard: false };

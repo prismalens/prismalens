@@ -114,6 +114,7 @@ export const test = base.extend<Fixtures>({
 				data: {
 					harness: "auto",
 					models: { opencode: null, "claude-code": null, codex: null },
+					favourites: [],
 				},
 			});
 		}

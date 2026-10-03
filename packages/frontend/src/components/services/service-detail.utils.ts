@@ -1,36 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Box, Database, ExternalLink, Globe, Server, Zap } from "lucide-react";
-import { createElement } from "react";
+import {
+	SERVICE_TIER_METADATA,
+	SERVICE_TYPE_LABEL,
+	type ServiceTier,
+	type ServiceType,
+	type ServiceWithRelations,
+} from "@prismalens/contracts";
 
-export const serviceTypeIcons: Record<string, React.ReactNode> = {
-	service: createElement(Server, { className: "h-5 w-5" }),
-	database: createElement(Database, { className: "h-5 w-5" }),
-	queue: createElement(Zap, { className: "h-5 w-5" }),
-	cache: createElement(Box, { className: "h-5 w-5" }),
-	gateway: createElement(Globe, { className: "h-5 w-5" }),
-	external: createElement(ExternalLink, { className: "h-5 w-5" }),
-	infrastructure: createElement(Server, { className: "h-5 w-5" }),
-};
+/** `Tier 1`, the meta word a row and the band show; its meaning in the title. */
+export function tierWord(tier: string): string {
+	return /^tier_\d$/.test(tier) ? tier.replace("tier_", "Tier ") : tier;
+}
 
-export const tierLabels: Record<string, string> = {
-	tier_1: "Critical",
-	tier_2: "High",
-	tier_3: "Medium",
-	tier_4: "Low",
-};
+export function tierMeaning(tier: string): string {
+	return SERVICE_TIER_METADATA[tier as ServiceTier]?.description ?? "";
+}
 
-export function formatTimeAgo(dateStr: string): string {
-	const date = new Date(dateStr);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMins = Math.floor(diffMs / 60000);
-	if (diffMins < 1) return "just now";
-	if (diffMins < 60) return `${diffMins}m ago`;
-	const diffHours = Math.floor(diffMins / 60);
-	if (diffHours < 24) return `${diffHours}h ago`;
-	const diffDays = Math.floor(diffHours / 24);
-	if (diffDays < 30) return `${diffDays}d ago`;
-	return date.toLocaleDateString();
+/** `Service`, `Database`, `Gateway`: the kind of thing a service is (decision 1). */
+export function kindWord(type: string): string {
+	return SERVICE_TYPE_LABEL[type as ServiceType] ?? type;
+}
+
+/** Where its code is: a folder path, or host/owner/repo for a git URL. */
+export function codeWhere(service: ServiceWithRelations): string | null {
+	const repo =
+		service.repositories?.find((r) => r.isPrimary) ?? service.repositories?.[0];
+	if (!repo) return null;
+	const r = repo.repository;
+	if (r.sourceKind === "folder")
+		return repo.subPath ? `${r.url}/${repo.subPath}` : r.url;
+	return r.url
+		.replace(/^(https?:\/\/|git@)/, "")
+		.replace(/\.git$/, "")
+		.replace(":", "/");
 }
