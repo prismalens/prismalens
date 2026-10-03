@@ -63,6 +63,7 @@ describe("AuthGuard", () => {
 			id: "device-1",
 			name: "Ada's phone",
 			scopes: [],
+			userAgent: null,
 			createdAt: new Date(),
 			lastSeenAt: null,
 			revokedAt: null,
