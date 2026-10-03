@@ -24671,7 +24671,8 @@
                               {
                                 "type": "null"
                               }
-                            ]
+                            ],
+                            "default": null
                           },
                           "models": {
                             "type": "object",
@@ -24733,7 +24734,6 @@
                           "defaultModel",
                           "modelVia",
                           "loginHint",
-                          "envModel",
                           "models"
                         ]
                       }
