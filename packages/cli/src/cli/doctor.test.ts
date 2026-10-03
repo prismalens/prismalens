@@ -249,6 +249,16 @@ describe("doctor — WSL Windows install hint", () => {
 		expect(check.pass).toBe(false);
 	});
 
+	it("reads a Windows PATH by Windows rules whatever the host (#776 review)", () => {
+		const check = checkInstalls(
+			"C:\\npm;D:\\bin",
+			"win32",
+			{},
+			(p) => p === "C:\\npm\\pl.cmd",
+		);
+		expect(check.detail).toContain("C:\\npm\\pl.cmd");
+	});
+
 	it("omits the hint when not running in WSL", () => {
 		const check = checkInstalls(
 			"/mnt/c/Users/sumit/AppData/Roaming/npm",

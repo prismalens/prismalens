@@ -15,7 +15,9 @@ import {
 	type HarnessId,
 	type HarnessRunEnv,
 	type ModelSource,
+	type PermissionMode,
 	resolvePermissionOutcome,
+	SANDBOX_DEFAULT,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
@@ -27,6 +29,7 @@ import type {
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
 import { AcpSession, type AcpStreamItem } from "../runner/acp-client.js";
+import { telemetryOrigins } from "./connectors.js";
 import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
 import { buildInvestigationPrompt } from "./prompt.js";
 import {
@@ -59,6 +62,10 @@ export interface RunInvestigationOptions {
 	model?: string;
 	/** Where `model` came from; recorded in the run's fidelity. */
 	modelSource?: ModelSource;
+	/** What the agent may touch (r4 R4.1); Read-only when absent. The host checks the ceiling. */
+	access?: PermissionMode;
+	/** The operator's sandbox switch for a harness that has one (Codex); `SANDBOX_DEFAULT` when absent. */
+	sandbox?: boolean;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
 	limits?: RunLimits;
@@ -146,8 +153,10 @@ export function isCancelledError(message: string): boolean {
 export function buildRunFidelity(
 	harness: HarnessId,
 	model?: { id?: string; source?: ModelSource },
+	access: PermissionMode = "read-only",
+	options: { sandbox?: boolean } = {},
 ): RunFidelity {
-	const outcome = resolvePermissionOutcome(harness, "read-only");
+	const outcome = resolvePermissionOutcome(harness, access, options);
 	return {
 		harness,
 		mode: outcome.mode,
@@ -166,8 +175,25 @@ export function buildRunFidelity(
  */
 export type PrepareRunEnvOptions = Pick<
 	RunInvestigationOptions,
-	"harness" | "descriptor" | "cwd" | "runDir" | "model" | "env"
+	| "harness"
+	| "descriptor"
+	| "cwd"
+	| "runDir"
+	| "model"
+	| "env"
+	| "access"
+	| "sandbox"
 >;
+
+/** `patch` merged into `base`, objects key by key; anything else replaced. */
+function deepMerge(base: unknown, patch: unknown): unknown {
+	if (!isPlainObject(base) || !isPlainObject(patch)) return patch;
+	const out: Record<string, unknown> = { ...base };
+	for (const [k, v] of Object.entries(patch)) out[k] = deepMerge(base[k], v);
+	return out;
+}
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -189,15 +215,28 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 	};
+	const layer = resolvePermissionOutcome(
+		opts.harness,
+		opts.access ?? "read-only",
+		{ sandbox: opts.sandbox },
+	);
 	for (const [rel, content] of Object.entries(
 		descriptor.configFiles?.(runEnv) ?? {},
 	)) {
 		const path = join(configDir, rel);
 		mkdirSync(join(path, ".."), { recursive: true });
-		writeFileSync(path, content);
+		const patched =
+			layer.configPatch && rel.endsWith(".json")
+				? JSON.stringify(
+						deepMerge(JSON.parse(content), layer.configPatch),
+						null,
+						2,
+					)
+				: content;
+		writeFileSync(path, patched);
 	}
 	return {
-		env: { ...(opts.env ?? {}), ...descriptor.acpEnv(runEnv) },
+		env: { ...(opts.env ?? {}), ...descriptor.acpEnv(runEnv), ...layer.env },
 		runEnv,
 	};
 }
@@ -213,10 +252,16 @@ export async function* runInvestigation(
 		refusals,
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
-	let fidelity = buildRunFidelity(opts.harness, {
-		id: opts.model,
-		source: opts.modelSource,
+	const access = opts.access ?? "read-only";
+	const layer = resolvePermissionOutcome(opts.harness, access, {
+		sandbox: opts.sandbox,
 	});
+	let fidelity = buildRunFidelity(
+		opts.harness,
+		{ id: opts.model, source: opts.modelSource },
+		access,
+		{ sandbox: opts.sandbox },
+	);
 	const { env, runEnv } = prepareRunEnv(opts);
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	const wire = (direction: "in" | "out", line: string): void => {
@@ -236,7 +281,13 @@ export async function* runInvestigation(
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission: opts.permission ?? readOnlyPolicyFor({ cwd: opts.cwd }),
+		permission:
+			opts.permission ??
+			readOnlyPolicyFor({
+				cwd: opts.cwd,
+				level: access,
+				allowedOrigins: telemetryOrigins(opts.context),
+			}),
 		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -316,6 +367,12 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
+		// The harness's own mode is the second layer; the gate answers either way.
+		if (layer.agentMode && !(await session.setMode(layer.agentMode))) {
+			const note = `mode ${layer.agentMode} not offered, gate only`;
+			opts.onPolicyWarning?.(note);
+			fidelity = { ...fidelity, mechanism: `${fidelity.mechanism}; ${note}` };
+		}
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
@@ -335,7 +392,9 @@ export async function* runInvestigation(
 			if (brief) yield adapter.operatorMessage(brief, "queue", true);
 			outcome = yield* consume(
 				session.prompt(
-					buildInvestigationPrompt(opts.context) +
+					buildInvestigationPrompt(opts.context, access, {
+						noNetwork: sandboxWithoutNetwork(opts, access),
+					}) +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 				),
@@ -398,7 +457,9 @@ export async function* runInvestigation(
 			return;
 		}
 		yield adapter.branchDone(mapStopReason(outcome.stop));
-		yield adapter.report(stampReport(parsed.report, fidelity));
+		yield adapter.report(
+			stampReport(withSandboxGap(parsed.report, opts, access), fidelity),
+		);
 	} catch (err) {
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
@@ -406,6 +467,36 @@ export async function* runInvestigation(
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}
+}
+
+/** The operator switched on a harness sandbox that has no network at this level. */
+function sandboxWithoutNetwork(
+	opts: Pick<RunInvestigationOptions, "harness" | "sandbox">,
+	access: PermissionMode,
+): boolean {
+	return !!(
+		(opts.sandbox ?? SANDBOX_DEFAULT) &&
+		HARNESS_REGISTRY[opts.harness].sandbox &&
+		(access === "read-only" || access === "read-only-tools")
+	);
+}
+
+/** A sandbox with no network at a read level is named under What we could not check (r4 R4.1 rev). */
+function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
+	report: R,
+	opts: Pick<RunInvestigationOptions, "harness" | "sandbox">,
+	access: PermissionMode,
+): R {
+	if (!sandboxWithoutNetwork(opts, access)) return report;
+	const gap = `${HARNESS_REGISTRY[opts.harness].label}'s sandbox allows no network`;
+	if (report.coverage.notQueried.includes(gap)) return report;
+	return {
+		...report,
+		coverage: {
+			...report.coverage,
+			notQueried: [...report.coverage.notQueried, gap],
+		},
+	};
 }
 
 function drain(steer: SteerPort | undefined): string[] {

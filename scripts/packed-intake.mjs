@@ -361,13 +361,20 @@ async function main() {
 async function mapRepository(json, cookie) {
 	const model = process.env.PRISMALENS_HARNESS_MODEL;
 	if (model) {
+		// The model is stored per harness, so it goes under the one auto selects.
+		const selected = await json("/api/settings/harnesses", {
+			headers: { cookie },
+		});
+		const harness = (await selected.json()).selection?.harness;
+		if (selected.status !== 200 || !harness) {
+			throw new Error(
+				`GET /api/settings/harnesses named no harness to set ${model} on (status ${selected.status})`,
+			);
+		}
 		const res = await json("/api/settings/harness", {
 			method: "PATCH",
 			headers: { cookie },
-			body: JSON.stringify({
-				harness: "auto",
-				models: { [process.env.PRISMALENS_HARNESS ?? "opencode"]: model },
-			}),
+			body: JSON.stringify({ harness: "auto", models: { [harness]: model } }),
 		});
 		if (res.status !== 200) {
 			throw new Error(
@@ -375,7 +382,7 @@ async function mapRepository(json, cookie) {
 			);
 		}
 		console.log(
-			`[packed-intake] OK   PATCH /api/settings/harness model=${model}`,
+			`[packed-intake] OK   PATCH /api/settings/harness ${harness} model=${model}`,
 		);
 	}
 

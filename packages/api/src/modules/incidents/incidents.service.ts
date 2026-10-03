@@ -510,36 +510,35 @@ export class IncidentsService {
 							? "incident-closed"
 							: null;
 
-			const incident = ending
-				? await this.prisma.$transaction(async (tx) => {
-						const row = await tx.incident.update({
-							where: { id },
-							data: updateData,
-						});
-						await this.resolveFiringAlerts(tx, id, ending);
-						return row;
-					})
-				: await this.prisma.incident.update({
-						where: { id },
-						data: updateData,
-					});
-
-			// Create timeline entry for status change
-			if (dto.status && dto.status !== existing.status) {
-				await this.timelineService.create({
-					incidentId: id,
-					type: TimelineEntryType.status_changed,
-					title:
-						entryTitle ?? (reopened ? "Incident reopened" : "Status changed"),
-					description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
-					source: TimelineSource.system,
-					metadata: {
-						previousStatus: existing.status,
-						newStatus: dto.status,
-						...(statusNote && { reason: statusNote.reason }),
-					},
+			// One transaction: the row, its status entry and the alerts it ends
+			// commit together, so a failed entry never reports a landed close as
+			// failed (#776 review).
+			const incident = await this.prisma.$transaction(async (tx) => {
+				const row = await tx.incident.update({
+					where: { id },
+					data: updateData,
 				});
-			}
+				if (dto.status && dto.status !== existing.status) {
+					await tx.timelineEntry.create({
+						data: {
+							incidentId: id,
+							type: TimelineEntryType.status_changed,
+							title:
+								entryTitle ??
+								(reopened ? "Incident reopened" : "Status changed"),
+							description: `Status changed from ${existing.status} to ${dto.status}${statusNote ? `: ${statusNote.text}` : ""}`,
+							source: TimelineSource.system,
+							metadata: JSON.stringify({
+								previousStatus: existing.status,
+								newStatus: dto.status,
+								...(statusNote && { reason: statusNote.reason }),
+							}),
+						},
+					});
+				}
+				if (ending) await this.resolveFiringAlerts(tx, id, ending);
+				return row;
+			});
 
 			this.logger.log(`Updated incident ${id}`);
 			return incident;

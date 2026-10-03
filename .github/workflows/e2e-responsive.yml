@@ -39,9 +39,6 @@ jobs:
       - name: Install Playwright Chromium Browser
         run: pnpm --filter @prismalens/frontend exec playwright install chromium --with-deps
 
-      - name: Generate the Gherkin journeys
-        run: pnpm --filter @prismalens/frontend exec bddgen
-
       - name: Run the @responsive journeys
         run: pnpm --filter @prismalens/frontend test:e2e --project="Pixel 7" --project="iPad (gen 7)"
 

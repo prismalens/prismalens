@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import { runInvestigation } from "@prismalens/engine";
@@ -85,4 +87,19 @@ describe("the fake ACP agent through the real engine", () => {
 		expect(JSON.stringify(events)).toContain("Was anything else deployed?");
 		expect(events.at(-1)?.kind).toBe("branch_done");
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"Given a session file under a path with a space, Then the installed wrapper hands the whole path to the agent",
+		() => {
+			const spaced = join(root, "with space");
+			mkdirSync(spaced);
+			const session = join(spaced, "success.json");
+			const here = dirname(fileURLToPath(import.meta.url));
+			copyFileSync(join(here, "../../../../scripts/fakes/sessions/success.json"), session);
+			const [bin] = installFakeAgent(mkdtempSync(join(root, "bin-")), { session, binaries: ["opencode"] });
+			const out = spawnSync(bin, [], { input: "", encoding: "utf8", timeout: 10_000 });
+			expect(out.stderr).not.toContain("no session");
+			expect(out.status).toBe(0);
+		},
+	);
 });

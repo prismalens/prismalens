@@ -88,24 +88,18 @@ describe("ConnectionFormDialog (f13)", () => {
 		expect(available.map((t) => t.name)).toEqual(["Alertmanager", "Prometheus"]);
 	});
 
-	it("closes on backdrop interaction via onPointerDownOutside and onInteractOutside", () => {
-		const onOpenChange = vi.fn();
-
+	it("leaves outside dismissal to the dialog primitive (#776 review)", () => {
 		renderToStaticMarkup(
 			React.createElement(ConnectionFormDialog, {
 				open: true,
-				onOpenChange,
+				onOpenChange: vi.fn(),
 				mode: "create",
 			}),
 		);
 
-		expect(capturedContentProps.onPointerDownOutside).toBeDefined();
-		capturedContentProps.onPointerDownOutside?.({});
-		expect(onOpenChange).toHaveBeenCalledWith(false);
-
-		onOpenChange.mockClear();
-		expect(capturedContentProps.onInteractOutside).toBeDefined();
-		capturedContentProps.onInteractOutside?.({});
-		expect(onOpenChange).toHaveBeenCalledWith(false);
+		// A custom handler closed the form when the provider Select took focus;
+		// Radix's own backdrop dismissal is covered in e2e connection-dialog.spec.ts.
+		expect(capturedContentProps.onPointerDownOutside).toBeUndefined();
+		expect(capturedContentProps.onInteractOutside).toBeUndefined();
 	});
 });
