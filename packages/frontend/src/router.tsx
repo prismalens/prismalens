@@ -36,8 +36,10 @@ export const queryClient = new QueryClient({
 				return failureCount < 3;
 			},
 			retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 1000),
-			// Throw connection errors to the error boundary
-			throwOnError: (error) => error instanceof ConnectionError,
+			// A first load that cannot reach the server shows the error page; a
+			// loaded screen keeps what it has under the reconnect line (study-v3 §6).
+			throwOnError: (error, query) =>
+				error instanceof ConnectionError && query.state.data === undefined,
 		},
 	},
 });
