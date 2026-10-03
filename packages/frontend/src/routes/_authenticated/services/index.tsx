@@ -123,12 +123,16 @@ function ServicesPage() {
 		[navigate],
 	);
 	useEffect(() => {
+		const next = q.trim() || undefined;
+		// A no-op write lands 250 ms after mount and cancels a row click whose
+		// route is still loading (shell-pr2.feature, Back from a service).
+		if (next === searchParams.search) return;
 		const t = setTimeout(
-			() => updateSearch({ search: q.trim() || undefined, page: undefined }),
+			() => updateSearch({ search: next, page: undefined }),
 			250,
 		);
 		return () => clearTimeout(t);
-	}, [q, updateSearch]);
+	}, [q, searchParams.search, updateSearch]);
 
 	// Connections for VCS scanning, and the telemetry every run is told about
 	const { data: allConnections = [] } = useConnections();
