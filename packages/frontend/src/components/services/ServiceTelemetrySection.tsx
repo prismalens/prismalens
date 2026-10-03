@@ -19,6 +19,14 @@ function isOn(i: ServiceIntegrationWithStatus): boolean {
 	);
 }
 
+/** The override's config minus `enabled`; null when nothing else is kept. */
+export function withoutEnabled(
+	i: ServiceIntegrationWithStatus,
+): Record<string, unknown> | null {
+	const { enabled: _, ...rest } = i.serviceConfig ?? {};
+	return Object.keys(rest).length > 0 ? rest : null;
+}
+
 /**
  * Telemetry (study-v3 §7): the sources a run on this service may query. The
  * brief names each one that is on; turning one off holds it back for this
@@ -53,7 +61,9 @@ export function ServiceTelemetrySection({
 					config: { enabled: false },
 				});
 		} else if (i.overrideId) {
-			remove.mutate({ id: i.overrideId });
+			const rest = withoutEnabled(i);
+			if (rest) update.mutate({ id: i.overrideId, config: rest });
+			else remove.mutate({ id: i.overrideId });
 		}
 	};
 	return (

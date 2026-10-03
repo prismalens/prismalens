@@ -4,6 +4,7 @@
 import {
 	DEFAULT_TRIGGER_POLICY,
 	type TriggerPolicy,
+	TriggerPolicySchema,
 } from "@prismalens/contracts";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
@@ -52,9 +53,11 @@ export function ServiceInvestigationsSection({
 }) {
 	const update = useUpdateService();
 	const investigation = (metadata?.investigation ?? {}) as {
-		trigger?: TriggerPolicy;
+		trigger?: unknown;
 	};
-	const trigger = investigation.trigger ?? DEFAULT_TRIGGER_POLICY;
+	// Free-form metadata: an unknown value reads as the default, as the API does.
+	const parsed = TriggerPolicySchema.safeParse(investigation.trigger);
+	const trigger = parsed.success ? parsed.data : DEFAULT_TRIGGER_POLICY;
 	return (
 		<RecordSection id="investigations" title="Investigations">
 			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">

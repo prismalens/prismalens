@@ -128,11 +128,7 @@ export function TelemetrySettings() {
 	return (
 		<>
 			<SettingRow
-				label={
-					<label htmlFor="telemetry-enabled">
-						Share anonymous usage counts
-					</label>
-				}
+				label={<label htmlFor="telemetry-enabled">Share usage counts</label>}
 				description="Which features get used and whether runs finish, under a random install id. Never an alert, code, a prompt or a report."
 				testId="telemetry-row"
 			>

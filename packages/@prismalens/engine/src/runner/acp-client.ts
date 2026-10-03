@@ -308,9 +308,13 @@ export function offeredEffort(
 		if (option?.category !== "thought_level" || option.type !== "select")
 			continue;
 		const entries = Array.isArray(option.options) ? option.options : [];
-		const values = (entries as Array<Record<string, unknown>>).flatMap((o) =>
-			typeof o?.value === "string" ? [o.value] : [],
-		);
+		const values = (entries as Array<Record<string, unknown>>)
+			.flatMap((e) =>
+				Array.isArray(e?.options)
+					? (e.options as Array<Record<string, unknown>>)
+					: [e],
+			)
+			.flatMap((o) => (typeof o?.value === "string" ? [o.value] : []));
 		if (typeof option.id !== "string" || values.length === 0) continue;
 		return {
 			id: option.id,

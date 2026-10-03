@@ -59,7 +59,7 @@ export function IntegrationsTab() {
 
 	const [adding, setAdding] = useState(false);
 	const [editing, setEditing] = useState<Integration | null>(null);
-	const [connectFor, setConnectFor] = useState(false);
+	const [connectFor, setConnectFor] = useState<string | null>(null);
 	const [editConnection, setEditConnection] =
 		useState<ConnectionWithIntegration | null>(null);
 	const [removeIntegration, setRemoveIntegration] = useState<string | null>(
@@ -148,7 +148,7 @@ export function IntegrationsTab() {
 							<Button
 								variant="ghost"
 								size="sm"
-								onClick={() => setConnectFor(true)}
+								onClick={() => setConnectFor(integration.id)}
 							>
 								Connect an account
 							</Button>
@@ -247,9 +247,10 @@ export function IntegrationsTab() {
 				integration={editing}
 			/>
 			<ConnectionFormDialog
-				open={connectFor}
-				onOpenChange={setConnectFor}
+				open={!!connectFor}
+				onOpenChange={(open) => !open && setConnectFor(null)}
 				mode="create"
+				preselectedIntegrationId={connectFor ?? undefined}
 			/>
 			<ConnectionFormDialog
 				open={!!editConnection}

@@ -315,6 +315,24 @@ describe("offeredEffort (R4.2)", () => {
 		).toBeNull();
 		expect(offeredEffort(undefined)).toBeNull();
 	});
+
+	it("flattens grouped thought_level options", () => {
+		expect(
+			offeredEffort([
+				{
+					id: "effort",
+					type: "select",
+					category: "thought_level",
+					currentValue: "high",
+					options: [
+						{ group: "fast", name: "Fast", options: [{ value: "low" }] },
+						{ group: "deep", name: "Deep", options: [{ value: "high" }] },
+						{ value: "max" },
+					],
+				},
+			]),
+		).toEqual({ id: "effort", values: ["low", "high", "max"], default: "high" });
+	});
 });
 
 describe("selectedModel (#639)", () => {

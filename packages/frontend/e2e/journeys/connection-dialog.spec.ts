@@ -30,6 +30,8 @@ test.describe("Add connection dialog (walk f13, #776 review)", () => {
 				.click();
 			const dialog = page.getByRole("dialog", { name: "Add connection" });
 			await expect(dialog).toBeVisible({ timeout: 15_000 });
+			// The row's own integration comes preselected (#781 review).
+			await expect(dialog.getByRole("combobox")).toContainText("Dialog check");
 
 			await dialog.getByRole("combobox").click();
 			await page.getByRole("option", { name: /Alertmanager/ }).click();

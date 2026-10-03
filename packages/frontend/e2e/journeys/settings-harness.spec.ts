@@ -307,6 +307,90 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toHaveCount(0);
 	});
 
+	test("works from the keyboard: Enter clears a blocking model, picks a starred row, and toggles a star (#781 review)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: false,
+			harness: "codex",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason:
+				"Codex picks its own model. Clear vendor/stale in the picker above.",
+		});
+		const patches: Record<string, unknown>[] = [];
+		let current: Record<string, unknown> = {
+			harness: "codex",
+			models: { codex: "vendor/stale" },
+			// deepagents is not installed; its star must not be pickable.
+			favourites: [
+				{ harness: "deepagents", model: "vendor/ghost" },
+				{ harness: "opencode", model: "vendor/fixture-current" },
+			],
+		};
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			if (route.request().method() === "PATCH") {
+				const body = route.request().postDataJSON() as Record<string, unknown>;
+				patches.push(body);
+				current = { ...current, ...body };
+			}
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(current),
+			});
+		});
+		await page.goto("/settings?tab=harness");
+		await expect(
+			page.getByRole("heading", { name: "Agent", exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		const picker = page.getByTestId("agent-picker");
+		const list = page.getByTestId("agent-picker-list");
+
+		// The Clear row is the cursor's first stop.
+		await picker.click();
+		await expect(list.getByTestId("model-clear")).toBeVisible({
+			timeout: 15_000,
+		});
+		await page.keyboard.press("Enter");
+		await expect.poll(() => patches.length).toBe(1);
+		expect(patches[0]).toEqual({ harness: "codex", models: { codex: null } });
+		await expect(list).toHaveCount(0);
+
+		// Starred lists installed agents only, and Enter picks its row.
+		await picker.click();
+		await list.getByTestId("rail-starred").click();
+		await expect(list.getByTestId("model-option")).toHaveCount(1);
+		await expect(list.getByTestId("model-option")).toContainText(
+			"Fixture Current",
+		);
+		await list.getByTestId("picker-search").focus();
+		await page.keyboard.press("Enter");
+		await expect.poll(() => patches.length).toBe(2);
+		expect(patches[1]).toEqual({
+			harness: "opencode",
+			models: { opencode: "vendor/fixture-current" },
+		});
+		await expect(list).toHaveCount(0);
+
+		// A focused star toggles on Enter.
+		await picker.click();
+		await list.getByTestId("rail-opencode").click();
+		await list
+			.locator('[data-testid=model-option][data-model="Fixture Old"]')
+			.getByTestId("model-star")
+			.focus();
+		await page.keyboard.press("Enter");
+		await expect.poll(() => patches.length).toBe(3);
+		expect(patches[2]).toEqual({
+			favourites: [
+				{ harness: "deepagents", model: "vendor/ghost" },
+				{ harness: "opencode", model: "vendor/fixture-current" },
+				{ harness: "opencode", model: "vendor/fixture-old" },
+			],
+		});
+	});
+
 	test("shows the install hint for a harness that is not installed", async ({
 		page,
 	}) => {

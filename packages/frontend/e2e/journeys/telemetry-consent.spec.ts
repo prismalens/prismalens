@@ -120,7 +120,7 @@ test.describe("#602 — opt-in telemetry", () => {
 
 		await page.goto("/settings?tab=usage");
 		const checkbox = page.getByRole("switch", {
-			name: "Share anonymous usage counts",
+			name: "Share usage counts",
 		});
 		await expect(checkbox).toBeVisible({ timeout: 15_000 });
 		// The disclosure is folded under the switch (settings.feature); open it.

@@ -6,7 +6,7 @@ import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import {
 	codeWhere,
@@ -104,6 +104,13 @@ function ServicesPage() {
 	const currentPage = searchParams.page ?? 1;
 	const offset = (currentPage - 1) * PAGE_SIZE;
 	const [q, setQ] = useState(searchParams.search ?? "");
+	// The search this input last wrote; any other URL value came from a link or Back.
+	const wrote = useRef(searchParams.search);
+	useEffect(() => {
+		if (searchParams.search === wrote.current) return;
+		wrote.current = searchParams.search;
+		setQ(searchParams.search ?? "");
+	}, [searchParams.search]);
 
 	// Review queue state
 	const [vcsScannedRepos, setVcsScannedRepos] = useState<ReviewItem[]>([]);
@@ -127,10 +134,10 @@ function ServicesPage() {
 		// A no-op write lands 250 ms after mount and cancels a row click whose
 		// route is still loading (shell-pr2.feature, Back from a service).
 		if (next === searchParams.search) return;
-		const t = setTimeout(
-			() => updateSearch({ search: next, page: undefined }),
-			250,
-		);
+		const t = setTimeout(() => {
+			wrote.current = next;
+			updateSearch({ search: next, page: undefined });
+		}, 250);
 		return () => clearTimeout(t);
 	}, [q, searchParams.search, updateSearch]);
 

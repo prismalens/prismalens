@@ -100,13 +100,13 @@ When("I open Settings, Usage data", async ({ page }) => {
 });
 
 Then(
-	'above the fold I see one sentence naming the install id, one switch "Share anonymous usage counts", and a closed "What is sent" disclosure',
+	'above the fold I see one sentence naming the install id, one switch "Share usage counts", and a closed "What is sent" disclosure',
 	async ({ page }) => {
 		const height = page.viewportSize()?.height ?? 720;
 		const row = page.getByTestId("telemetry-row");
 		await expect(row).toContainText("install id");
 		const toggle = page.getByRole("switch", {
-			name: "Share anonymous usage counts",
+			name: "Share usage counts",
 		});
 		await expect(toggle).toHaveCount(1);
 		const disclosure = page.getByTestId("telemetry-disclosure");
@@ -140,11 +140,9 @@ Then(
 );
 
 When("I turn the switch on and reload", async ({ page }) => {
-	await page
-		.getByRole("switch", { name: "Share anonymous usage counts" })
-		.click();
+	await page.getByRole("switch", { name: "Share usage counts" }).click();
 	await expect(
-		page.getByRole("switch", { name: "Share anonymous usage counts" }),
+		page.getByRole("switch", { name: "Share usage counts" }),
 	).toHaveAttribute("aria-checked", "true");
 	await page.reload();
 });
@@ -153,7 +151,7 @@ Then(
 	'the switch is on and "Recently sent" lists the setup event',
 	async ({ page }) => {
 		await expect(
-			page.getByRole("switch", { name: "Share anonymous usage counts" }),
+			page.getByRole("switch", { name: "Share usage counts" }),
 		).toHaveAttribute("aria-checked", "true");
 		await expect(
 			page.getByTestId("telemetry-recent").getByTestId("telemetry-sent"),

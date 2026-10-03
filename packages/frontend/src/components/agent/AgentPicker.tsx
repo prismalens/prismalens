@@ -211,7 +211,7 @@ export function AgentModelPicker({
 			return favourites
 				.flatMap((f) => {
 					const h = byId.get(f.harness);
-					return h ? [entry(h, f.model, "Starred")] : [];
+					return h?.installed ? [entry(h, f.model, "Starred")] : [];
 				})
 				.filter(keep);
 		}
@@ -258,7 +258,11 @@ export function AgentModelPicker({
 
 	const defaultRow =
 		agent && modelState(agent) === "list" && shown !== "starred" && !q.trim();
-	const count = rows.length + (defaultRow ? 1 : 0);
+	// A model stored for an agent that cannot take one blocks its runs (#639).
+	const clearRow =
+		agent && modelState(agent) !== "list" && models[agent.id as HarnessId];
+	const lead = defaultRow || clearRow ? 1 : 0;
+	const count = rows.length + lead;
 	const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
 		if (e.key === "ArrowDown") {
 			e.preventDefault();
@@ -266,10 +270,12 @@ export function AgentModelPicker({
 		} else if (e.key === "ArrowUp") {
 			e.preventDefault();
 			setCursor((c) => Math.max(0, c - 1));
-		} else if (e.key === "Enter" && agent) {
+		} else if (e.key === "Enter") {
+			// Enter on a rail tile or button is that control's own click.
+			if ((e.target as HTMLElement).closest("button")) return;
 			e.preventDefault();
-			if (defaultRow && cursor === 0) return pick(agent, "");
-			const r = rows[cursor - (defaultRow ? 1 : 0)];
+			if (agent && lead && cursor === 0) return pick(agent, "");
+			const r = rows[cursor - lead];
 			if (r) pick(r.harness, r.model);
 		}
 	};
@@ -395,19 +401,16 @@ export function AgentModelPicker({
 									{agent.label} uses its own model.
 								</p>
 							)}
-							{agent &&
-								modelState(agent) !== "list" &&
-								models[agent.id as HarnessId] && (
-									// A model stored for an agent that cannot take one blocks its runs (#639).
-									<ModelRow
-										active={false}
-										chosen={false}
-										name={`Clear ${models[agent.id as HarnessId]}`}
-										sub={`${agent.label} picks its own model`}
-										onPick={() => pick(agent, "")}
-										testId="model-clear"
-									/>
-								)}
+							{agent && clearRow && (
+								<ModelRow
+									active={cursor === index++}
+									chosen={false}
+									name={`Clear ${models[agent.id as HarnessId]}`}
+									sub={`${agent.label} picks its own model`}
+									onPick={() => pick(agent, "")}
+									testId="model-clear"
+								/>
+							)}
 							{defaultRow && agent && (
 								<ModelRow
 									active={cursor === index++}
@@ -620,6 +623,12 @@ function ModelRow({
 					aria-label={starred ? `Unstar ${name}` : `Star ${name}`}
 					aria-pressed={starred}
 					onMouseDown={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						onStar();
+					}}
+					onKeyDown={(e) => {
+						if (e.key !== "Enter" && e.key !== " ") return;
 						e.preventDefault();
 						e.stopPropagation();
 						onStar();

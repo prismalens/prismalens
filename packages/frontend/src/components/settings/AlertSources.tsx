@@ -47,6 +47,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { formatClock, formatDate } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
+import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { PULL_TEMPLATES } from "./SettingsFrame";
 
 type Kind = "alertmanager" | "prometheus";
@@ -191,6 +192,7 @@ function SourceRow({
 	const { toast } = useToast();
 	const test = useTestConnection();
 	const remove = useDeleteConnection();
+	const [removing, setRemoving] = useState(false);
 	const pull = useMutation({
 		...orpc.alerts.pull.mutationOptions(),
 		onSuccess: (r) => {
@@ -262,12 +264,37 @@ function SourceRow({
 				<DropdownMenuContent align="end">
 					<DropdownMenuItem
 						className="text-danger"
-						onClick={() => remove.mutate({ id: connection.id })}
+						onClick={() => {
+							remove.reset();
+							setRemoving(true);
+						}}
 					>
 						Remove
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
+			<DeleteConnectionDialog
+				open={removing}
+				onOpenChange={setRemoving}
+				connectionId={connection.id}
+				error={remove.error}
+				onDelete={() =>
+					remove.mutate(
+						{ id: connection.id },
+						{
+							onSuccess: () => setRemoving(false),
+							onError: (e) =>
+								toast({
+									title: "Remove failed",
+									description: getErrorMessage(e),
+									variant: "destructive",
+								}),
+						},
+					)
+				}
+				onCancel={() => setRemoving(false)}
+				isDeleting={remove.isPending}
+			/>
 		</SettingRow>
 	);
 }
