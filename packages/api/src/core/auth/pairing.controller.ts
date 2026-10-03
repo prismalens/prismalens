@@ -23,6 +23,7 @@ import {
 } from "@prismalens/auth";
 import { pairingContract, webhooksContract } from "@prismalens/contracts";
 import type { Request } from "express";
+import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
@@ -95,6 +96,26 @@ export class PairingController {
 				},
 			),
 		};
+	}
+
+	@Implement(webhooksContract.lastDelivery)
+	webhookLastDelivery() {
+		return implement(webhooksContract.lastDelivery).handler(async () => {
+			const row = await this.prisma.setting.findUnique({
+				where: { key: WEBHOOK_LAST_DELIVERY_KEY },
+			});
+			if (!row) return null;
+			try {
+				const v = JSON.parse(row.value) as Record<string, unknown>;
+				return typeof v.at === "string" &&
+					typeof v.received === "number" &&
+					typeof v.accepted === "number"
+					? { at: v.at, received: v.received, accepted: v.accepted }
+					: null;
+			} catch {
+				return null;
+			}
+		});
 	}
 
 	@Implement(webhooksContract.token)
