@@ -3,6 +3,7 @@
 
 import { expect, type Page, type Route } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { trackRequests } from "./settled";
 
 /**
  * Doubles shared by the specs that drive the live investigation stream
@@ -251,6 +252,7 @@ export async function setTheme(
  * It is dev tooling, not the app under test.
  */
 export async function hideQueryDevtools(page: Page): Promise<void> {
+	trackRequests(page);
 	await page.addInitScript(() => {
 		const style = document.createElement("style");
 		style.textContent = ".tsqd-parent-container { display: none !important; }";

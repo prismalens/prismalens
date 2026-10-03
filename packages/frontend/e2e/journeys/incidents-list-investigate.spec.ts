@@ -98,12 +98,13 @@ async function createIncident(page: Page, title: string): Promise<string> {
 	return incident.id;
 }
 
-/** The band's primary action, and its tooltip trigger wrapper. */
-function bandInvestigate(page: Page) {
-	return page.getByTestId("band-investigate");
-}
-function bandInvestigateTrigger(page: Page) {
-	return page.getByTestId("band-investigate-trigger");
+/**
+ * The band's Investigate again, in its menu: the band's own action is the
+ * lifecycle's (R1a d7). The menu item carries the gate's reason as its title.
+ */
+async function bandInvestigate(page: Page) {
+	await page.getByTestId("band-more").click();
+	return page.getByTestId("band-menu-investigate");
 }
 
 test.describe("#520 part B — incident record investigate gate", () => {
@@ -118,13 +119,17 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			timeout: 15_000,
 		});
 
-		const investigateBtn = bandInvestigate(page);
+		const investigateBtn = await bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeDisabled();
+		await expect(investigateBtn).toHaveAttribute(
+			"title",
+			UNUSABLE_SELECTION_REASON,
+		);
+		await page.keyboard.press("Escape");
 
-		// Reason is visible on screen on hover / focus
-		const trigger = bandInvestigateTrigger(page);
-		await trigger.hover();
+		// The reason is on screen under the box on Overview.
+		await page.getByTestId("tab-overview").click();
 		await expect(
 			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -141,7 +146,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			timeout: 15_000,
 		});
 
-		const investigateBtn = bandInvestigate(page);
+		const investigateBtn = await bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeEnabled();
 	});
@@ -181,7 +186,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			timeout: 15_000,
 		});
 
-		const investigateBtn = bandInvestigate(page);
+		const investigateBtn = await bandInvestigate(page);
 		await expect(investigateBtn).toBeEnabled();
 		await investigateBtn.click();
 
@@ -215,10 +220,11 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
-		const defaultBtn = bandInvestigate(page);
-		await expect(defaultBtn).toBeVisible({ timeout: 15_000 });
-		const defaultTrigger = bandInvestigateTrigger(page);
-		await defaultTrigger.hover();
+		const defaultBtn = await bandInvestigate(page);
+		await expect(defaultBtn).toBeDisabled({ timeout: 15_000 });
+		await expect(defaultBtn).toHaveAttribute("title", UNUSABLE_SELECTION_REASON);
+		await page.keyboard.press("Escape");
+		await page.getByTestId("tab-overview").click();
 		await expect(
 			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -233,10 +239,11 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,
 		});
-		const darkBtn = bandInvestigate(page);
-		await expect(darkBtn).toBeVisible({ timeout: 15_000 });
-		const darkTrigger = bandInvestigateTrigger(page);
-		await darkTrigger.hover();
+		const darkBtn = await bandInvestigate(page);
+		await expect(darkBtn).toBeDisabled({ timeout: 15_000 });
+		await expect(darkBtn).toHaveAttribute("title", UNUSABLE_SELECTION_REASON);
+		await page.keyboard.press("Escape");
+		await page.getByTestId("tab-overview").click();
 		await expect(
 			page.getByText(UNUSABLE_SELECTION_REASON).first(),
 		).toBeVisible({ timeout: 15_000 });
@@ -274,7 +281,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		await page.goto(`/incidents/${errorId}/alerts`);
 		await expect(page.locator("html")).toHaveClass(/light/);
-		const errorBtn = bandInvestigate(page);
+		const errorBtn = await bandInvestigate(page);
 		await expect(errorBtn).toBeEnabled({ timeout: 15_000 });
 		await errorBtn.click();
 		await expect(

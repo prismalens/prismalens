@@ -23,8 +23,10 @@ import {
 	upgradeCommand,
 } from "@prismalens/config";
 import type { About } from "@prismalens/contracts";
-import { resolveServiceVersion } from "../../shared/utils/service-version.js";
-import { build } from "../telemetry/telemetry.service.js";
+import {
+	resolveServiceBuild,
+	resolveServiceVersion,
+} from "../../shared/utils/service-version.js";
 
 /** The newest `prismalens.db.bak-*`; the names sort by the time they were made. */
 export function latestBackup(workspaceDir: string): string | null {
@@ -41,6 +43,7 @@ export function latestBackup(workspaceDir: string): string | null {
 @Injectable()
 export class AboutService {
 	private readonly version = resolveServiceVersion();
+	private readonly build = resolveServiceBuild();
 	private refreshing: Promise<void> | null = null;
 
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
@@ -70,7 +73,7 @@ export class AboutService {
 		return {
 			version: this.version,
 			channel,
-			build: build(this.env),
+			build: this.build,
 			workspaceDir,
 			latestBackup: latestBackup(workspaceDir),
 			update: {

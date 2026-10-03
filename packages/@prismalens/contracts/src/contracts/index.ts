@@ -9,6 +9,14 @@ export { type InstanceInfo, instanceContract } from "./instance.js";
 export { integrationsContract, oauthContract } from "./integrations.js";
 export { investigationsContract } from "./investigations.js";
 export {
+	LIVE_TOPICS,
+	type LiveChange,
+	LiveChangeSchema,
+	type LiveTopic,
+	LiveTopicSchema,
+	liveContract,
+} from "./live.js";
+export {
 	type OperatorVia,
 	OperatorViaEnum,
 	operatorContract,
@@ -36,6 +44,7 @@ import { incidentsContract } from "./incidents.js";
 import { instanceContract } from "./instance.js";
 import { integrationsContract, oauthContract } from "./integrations.js";
 import { investigationsContract } from "./investigations.js";
+import { liveContract } from "./live.js";
 import { operatorContract } from "./operator.js";
 import { pairingContract } from "./pairing.js";
 import { recommendationsContract } from "./recommendations.js";
@@ -54,6 +63,7 @@ export const contract = {
 	alerts: alertsContract,
 	incidents: incidentsContract,
 	investigations: investigationsContract,
+	live: liveContract,
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
 	services: servicesContract,

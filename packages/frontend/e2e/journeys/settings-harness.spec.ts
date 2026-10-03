@@ -76,8 +76,7 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	defaultModel: null,
 	tested: { version: "1.18.30", date: "2026-09-20" },
 	modelVia: "config",
-	loginHint:
-		"Keyless default model; `opencode auth login` or a provider key in env for others",
+	loginHint: "`opencode auth login`, or a provider key in env",
 	models: OPENCODE_MODELS,
 };
 

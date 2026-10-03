@@ -40,3 +40,6 @@ export const WEBHOOK_RUNTIME_PATH_PREFIX = `/${API_GLOBAL_PREFIX}/webhooks/`;
 
 /** Runtime path of the Render webhook, i.e. what `request.path` reports. */
 export const RENDER_WEBHOOK_PATH = `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.render}`;
+
+/** The Setting row the webhook writes and Settings, Alert sources reads as "Last delivery". */
+export const WEBHOOK_LAST_DELIVERY_KEY = "WEBHOOK_LAST_DELIVERY";

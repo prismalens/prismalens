@@ -43,7 +43,7 @@ export function DetailsCard() {
 		? now === null
 			? null
 			: now - new Date(incident.triggeredAt).getTime()
-		: incident.timeToResolve;
+		: (incident.timeToClose ?? incident.timeToResolve);
 	const service = incident.service
 		? incident.service.displayName || incident.service.name
 		: null;
@@ -60,7 +60,12 @@ export function DetailsCard() {
 				</span>
 				<span>{assignee}</span>
 				<span className="tabular-nums">
-					{openNow ? "Open" : "Resolved in"} {formatDuration(duration)}
+					{openNow
+						? "Open"
+						: incident.status === "closed"
+							? "Resolved in"
+							: "Alerts cleared in"}{" "}
+					{formatDuration(duration)}
 				</span>
 				<span>Metrics not connected</span>
 				<Button
@@ -95,9 +100,16 @@ export function DetailsCard() {
 							</Detail>
 						)}
 						{incident.resolvedAt && (
-							<Detail label="Resolved">
+							<Detail label="Alerts cleared">
 								<span className="tabular-nums">
 									{formatDateTime(incident.resolvedAt)}
+								</span>
+							</Detail>
+						)}
+						{incident.closedAt && (
+							<Detail label="Resolved">
+								<span className="tabular-nums">
+									{formatDateTime(incident.closedAt)}
 								</span>
 							</Detail>
 						)}

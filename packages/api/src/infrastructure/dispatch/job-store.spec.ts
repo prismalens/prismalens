@@ -40,6 +40,9 @@ class FakeJobDelegate implements JobDelegate {
 	async create(args: unknown): Promise<{ id: string }> {
 		await Promise.resolve();
 		const data = (args as { data: Row }).data;
+		if (this.rows.some((r) => r.investigationId === data.investigationId)) {
+			throw new Error("Unique constraint failed on the fields: (`investigationId`)");
+		}
 		const id = `job-${++this.seq}`;
 		this.rows.push({
 			id,
@@ -156,6 +159,7 @@ describe("PrismaJobStore", () => {
 	describe("claim exclusivity", () => {
 		it("two CONCURRENT claimers never receive the same job", async () => {
 			for (let n = 1; n <= 6; n++) await store.enqueue(job(n));
+			delegate.missedUpdates = 0;
 
 			// Both claimers ask for every job at once, so their candidate reads overlap
 			// completely. Only the guard can keep them apart.
@@ -250,6 +254,40 @@ describe("PrismaJobStore", () => {
 
 			expect(await store.complete(id, "succeeded")).toBe(false);
 			expect(delegate.rows[0].status).toBe("pending");
+		});
+	});
+
+	describe("follow-up on a finished run", () => {
+		it.each(["succeeded", "failed", "cancelled"] as const)(
+			"re-arms the %s run's own job row instead of inserting a second one",
+			async (finished) => {
+				const id = await store.enqueue(job(1));
+				await store.claim("owner-a", 1, at(0));
+				await store.complete(id, finished, "boom");
+
+				const again = await store.enqueue(
+					job(1, { payload: JSON.stringify({ followUp: "why?" }) }),
+				);
+
+				expect(again).toBe(id);
+				expect(delegate.rows).toHaveLength(1);
+				expect(delegate.rows[0]).toMatchObject({
+					status: "pending",
+					attempts: 0,
+					claimedBy: null,
+					finishedAt: null,
+					lastError: null,
+					payload: JSON.stringify({ followUp: "why?" }),
+				});
+				expect(await store.claim("owner-b", 1, at(0))).toHaveLength(1);
+			},
+		);
+
+		it("still refuses a second job while the run's job is live", async () => {
+			await store.enqueue(job(1));
+
+			await expect(store.enqueue(job(1))).rejects.toThrow(/Unique constraint/);
+			expect(delegate.rows).toHaveLength(1);
 		});
 	});
 

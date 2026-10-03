@@ -85,7 +85,8 @@ jobs:
         id: zip
         run: |
           cd packages/desktop/release
-          dir=$(find . -mindepth 1 -maxdepth 1 -type d | head -1)
+          # electron-builder also leaves its .icon-ico / .icon-icns cache here (#745).
+          dir=$(find . -mindepth 1 -maxdepth 1 -type d ! -name '.*' | head -1)
           name="PrismaLens-${RUNNER_OS}-${RUNNER_ARCH}-unsigned.zip"
           if [ "$RUNNER_OS" = "Windows" ]; then
             7z a -tzip "$GITHUB_WORKSPACE/$name" "$dir" >/dev/null
@@ -93,6 +94,8 @@ jobs:
             # ditto keeps the .app bundle's symlinks and modes on macOS.
             if [ "$RUNNER_OS" = "macOS" ]; then ditto -c -k --keepParent "$dir" "$GITHUB_WORKSPACE/$name"; else zip -qry "$GITHUB_WORKSPACE/$name" "$dir"; fi
           fi
+          size=$(wc -c < "$GITHUB_WORKSPACE/$name")
+          if [ "$size" -lt 50000000 ]; then echo "::error::$name is $size bytes; $dir is not the app"; exit 1; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7

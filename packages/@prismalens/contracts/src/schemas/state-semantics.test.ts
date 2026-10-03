@@ -11,6 +11,7 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	isAlertFiring,
 	ALERT_ACTION_FROM,
 	ALERT_STATUS_PHASE,
 	canAlertAction,
@@ -19,6 +20,8 @@ import {
 	ENDED_INCIDENT_STATUSES,
 	incidentAttention,
 	INCIDENT_ACTION_FROM,
+	INCIDENT_ATTENTIONS,
+	isFlapReopen,
 	INCIDENT_STATUS_SET_FROM,
 	INCIDENT_STATUS_PHASE,
 	isIncidentOpen,
@@ -79,6 +82,14 @@ describe("state semantics", () => {
 		expect(isWorkflowTerminal("running")).toBe(false);
 	});
 
+	it("counts a correlated alert as firing until it resolves (walk f14)", () => {
+		expect(isAlertFiring("triggered")).toBe(true);
+		expect(isAlertFiring("acknowledged")).toBe(true);
+		expect(isAlertFiring("correlated")).toBe(true);
+		expect(isAlertFiring("resolved")).toBe(false);
+		expect(isAlertFiring("suppressed")).toBe(false);
+	});
+
 	it("keeps alerts open until they resolve or are suppressed", () => {
 		expect(OPEN_ALERT_STATUSES).toEqual(["triggered", "acknowledged", "correlated"]);
 	});
@@ -90,8 +101,11 @@ describe("state semantics", () => {
 		for (const statuses of Object.values(ALERT_ACTION_FROM)) {
 			for (const s of statuses) expect(AlertStatusSchema.options).toContain(s);
 		}
+		// One-step Resolve (R1a d2): from every open status and from Alerts cleared.
+		expect(canIncidentAction("close", "triggered")).toBe(true);
 		expect(canIncidentAction("close", "resolved")).toBe(true);
-		expect(canIncidentAction("close", "investigating")).toBe(false);
+		expect(canIncidentAction("close", "investigating")).toBe(true);
+		expect(canIncidentAction("close", "closed")).toBe(false);
 		expect(canIncidentAction("investigate", "monitoring")).toBe(true);
 		expect(canIncidentAction("investigate", "closed")).toBe(true);
 		expect(canIncidentAction("investigate", "resolved")).toBe(true);
@@ -109,14 +123,50 @@ describe("state semantics", () => {
 		expect(canSetIncidentStatus("monitoring", "investigating")).toBe(true);
 		expect(canSetIncidentStatus("identified", "identified")).toBe(true);
 		expect(canSetIncidentStatus("investigating", "triggered")).toBe(false);
-		expect(canSetIncidentStatus("triggered", "closed")).toBe(false);
-		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
+		expect(canSetIncidentStatus("triggered", "closed")).toBe(true);
 		expect(canSetIncidentStatus("resolved", "closed")).toBe(true);
 		expect(canSetIncidentStatus("resolved", "investigating")).toBe(true);
-		expect(canSetIncidentStatus("closed", "investigating")).toBe(false);
-		expect(canIncidentAction("reopen", "resolved")).toBe(true);
-		expect(canIncidentAction("reopen", "closed")).toBe(false);
+		// A closed incident reopens into investigating and nowhere else (walk u18).
+		expect(canSetIncidentStatus("closed", "investigating")).toBe(true);
+		expect(canSetIncidentStatus("closed", "triggered")).toBe(false);
+		expect(canSetIncidentStatus("closed", "identified")).toBe(false);
+		// Reopen undoes the operator's Resolve only; Alerts cleared has nothing to reopen.
+		expect(canIncidentAction("reopen", "resolved")).toBe(false);
+		expect(canIncidentAction("reopen", "closed")).toBe(true);
 		expect(canSetIncidentStatus("triggered", "bogus")).toBe(false);
+	});
+
+	it("reads a reopen by the operator as needing them until a run starts (R1a d4)", () => {
+		const at = "2026-10-02T17:00:00Z";
+		expect(
+			incidentAttention("investigating", "completed", {
+				reason: "operator",
+				at,
+				latestRunAt: "2026-10-02T16:00:00Z",
+			}),
+		).toBe("reopened");
+		expect(
+			incidentAttention("investigating", null, { reason: "operator", at }),
+		).toBe("reopened");
+		expect(
+			incidentAttention("investigating", "running", {
+				reason: "operator",
+				at,
+				latestRunAt: "2026-10-02T17:01:00Z",
+			}),
+		).toBeNull();
+		expect(
+			incidentAttention("triggered", null, { reason: "flap", at }),
+		).toBe("unacknowledged");
+		expect(isFlapReopen({ reason: "flap", at })).toBe(true);
+		expect(isFlapReopen({ reason: "operator", at })).toBe(false);
+		expect(isFlapReopen(null)).toBe(false);
+		expect(INCIDENT_ATTENTIONS).toEqual([
+			"unacknowledged",
+			"failed_run",
+			"reopened",
+			"awaiting_close",
+		]);
 	});
 
 	it("names why an incident wants a human: a failed run first while open, closing once resolved", () => {

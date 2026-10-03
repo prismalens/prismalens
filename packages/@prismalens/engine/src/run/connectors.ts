@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { TelemetryEndpoints } from "@prismalens/contracts/schemas";
+import type {
+	InvestigationContext,
+	TelemetryEndpoints,
+} from "@prismalens/contracts/schemas";
 
 export interface ResolvedConnector {
 	templateId: string;
@@ -51,4 +54,32 @@ export function telemetryEndpointsFrom(
 		...(promUrl ? { prometheusUrl: promUrl } : {}),
 		...(amUrl ? { alertmanagerUrl: amUrl } : {}),
 	};
+}
+
+/**
+ * Where a Read-only run may reach (r4 R4.1): the origin of every telemetry
+ * address in the brief. A URL written without a scheme is http, so it matches
+ * only an http origin (#778). An address that does not parse adds nothing.
+ */
+export function telemetryOrigins(
+	context: Pick<InvestigationContext, "telemetry" | "logs">,
+): string[] {
+	const t = context.telemetry;
+	const out = new Set<string>();
+	for (const raw of [
+		t?.prometheusUrl,
+		t?.alertmanagerUrl,
+		t?.apiUrl,
+		context.logs?.url,
+	]) {
+		if (!raw) continue;
+		try {
+			const url = new URL(raw);
+			if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+			out.add(url.origin);
+		} catch {
+			// not an address the brief can name
+		}
+	}
+	return [...out];
 }

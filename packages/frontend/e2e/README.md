@@ -16,6 +16,54 @@ The harness this measures against is the Playwright suite merged in
 four journey specs under `packages/frontend/e2e/journeys/`. **Playwright is the chosen tool; that
 question is closed.**
 
+## Writing a journey
+
+A journey is a Gherkin scenario in `e2e/features/*.feature`, with steps in `e2e/steps/*.ts`.
+`bddgen` (from [playwright-bdd](https://github.com/vitalets/playwright-bdd)) compiles each
+feature into a spec under `e2e/.features-gen/` (gitignored), and the `journeys` project runs
+those on the same stack, pairing and storage state as the `chromium` specs. Steps speak only in
+what a user sees and does; every precondition is made through the product (a webhook, a run, a
+click), never seeded or written to the database.
+
+```gherkin
+Feature: Live updates
+  Scenario: A new incident appears without a reload
+    Given the incidents board is open
+    When Alertmanager fires "BoardLiveArrival"
+    Then an incident for "BoardLiveArrival" appears within 5 seconds without a reload
+```
+
+```ts
+When("Alertmanager fires {string}", async ({ alertmanager, deliverWebhook, unique }, name: string) => {
+	alertmanager.fire({ labels: { alertname: unique(name), severity: "warning" } });
+	await deliverWebhook(); // the app's real /api/webhooks/prometheus, with the workspace's token
+});
+```
+
+Run it:
+
+```bash
+pnpm --filter @prismalens/frontend test:e2e --project=journeys  # runs bddgen first
+```
+
+**The fakes** (`scripts/fakes/`, shared with the API scenarios in `packages/api/test/scenarios/`):
+
+- `fake-alertmanager.mjs`: `startFakeAlertmanager()` serves `GET /api/v2/alerts` and
+  `/api/v2/status` from a list the test edits. `fire(alert)` lists it (fingerprinted the way
+  Alertmanager does), `clear(fingerprint)` drops it, `restart()` empties it and resets its uptime,
+  `post(webhookUrl, token)` sends one v4 group notification: listed alerts firing, cleared ones
+  resolved. Fixtures `alertmanager` and `deliverWebhook` wrap it.
+- `fake-acp-agent.mjs`: on PATH as `opencode` and `claude-agent-acp`, it replays a session from
+  `scripts/fakes/sessions/`: `success` (thinking, Markdown, a tool call opened empty and filled in
+  later the way Claude Code does, a permission request, a report), `refusal` (a write PrismaLens
+  refuses, then a report) and `failure` (the agent exits mid-turn). The default is `success`; put
+  `fake-session:<name>` in the alert's name or annotations to pick another for that run. A
+  follow-up reopens the same session.
+
+**Tags.** `@responsive` on a feature also runs it on the `Pixel 7` and `iPad (gen 7)` projects
+(Chromium at those sizes), nightly in `e2e-responsive.yml`. Tag a feature whose layout matters
+on a phone.
+
 ## Coverage matrix
 
 Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path not · ⬜ no coverage ·

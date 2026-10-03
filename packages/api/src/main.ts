@@ -150,6 +150,8 @@ async function bootstrap() {
 		httpsOptions,
 		bodyParser: false, // Required for oRPC to handle body parsing
 		bufferLogs: true,
+		// A browser holding an event stream open would otherwise keep close() waiting forever (walk f20).
+		forceCloseConnections: true,
 	});
 
 	// LoggerService is transient-scoped, so get() throws InvalidClassScopeException.

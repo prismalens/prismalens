@@ -84,6 +84,8 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		await page.goto(`/incidents/${INCIDENT_ID}/report`);
 		const report = page.getByTestId("report-route");
 		await expect(report).toBeVisible({ timeout: 15_000 });
+		// The placeholder shows until the run's events load; compare the report itself.
+		await expect(report.getByTestId("report-empty")).toHaveCount(0);
 		const before = await report.innerText();
 
 		await page.goto(`/incidents/${INCIDENT_ID}/conversation`);
@@ -137,6 +139,6 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 
 		await page.goto(`/incidents/${INCIDENT_ID}/report`);
 		await expect(report).toBeVisible({ timeout: 15_000 });
-		expect(await report.innerText()).toBe(before);
+		await expect.poll(() => report.innerText()).toBe(before);
 	});
 });

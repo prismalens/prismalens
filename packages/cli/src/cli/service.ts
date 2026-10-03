@@ -37,6 +37,7 @@ import {
 	steps,
 } from "./service-unit.js";
 import { healthUrl, waitForReady } from "./up-console.js";
+import { fetchInstance, type Outcome, readOutcome } from "./upgrade-trial.js";
 
 type Config = typeof import("@prismalens/config");
 
@@ -102,7 +103,49 @@ export function runAction(
 	return true;
 }
 
-function installerBinDir(config: Config): string | null {
+/**
+ * True when the service is down: failed, waiting to restart after a crash,
+ * or exited cleanly, which neither manager restarts (`Restart=on-failure`,
+ * `SuccessfulExit=false`). A service still starting passes (#776 review).
+ */
+export function serviceFailed(
+	kind: ReturnType<Config["serviceManagerKind"]> & string,
+	uid: number,
+	execImpl = exec,
+): boolean {
+	if (kind === "systemd") {
+		const out = execImpl([
+			"systemctl",
+			"--user",
+			"show",
+			"prismalens.service",
+			"-p",
+			"ActiveState",
+			"-p",
+			"SubState",
+		]);
+		if (!out.ok) return true;
+		const active = /^ActiveState=(.*)$/m.exec(out.out)?.[1];
+		const sub = /^SubState=(.*)$/m.exec(out.out)?.[1];
+		return (
+			active === "failed" || active === "inactive" || sub === "auto-restart"
+		);
+	}
+	if (kind === "launchd") {
+		const out = execImpl([
+			"launchctl",
+			"print",
+			`gui/${uid}/io.prismalens.server`,
+		]);
+		if (!out.ok) return true;
+		const exit = /last exit (?:status|code) = ([0-9]+)/.exec(out.out)?.[1];
+		if (exit === undefined) return false;
+		return exit !== "0" || /^\s*state = not running$/m.test(out.out);
+	}
+	return false;
+}
+
+export function installerBinDir(config: Config): string | null {
 	const receipt = safeRead(join(config.installerDataDir(), "receipt"));
 	return /^bin_dir=(.+)$/m.exec(receipt)?.[1] ?? null;
 }
@@ -154,6 +197,11 @@ const install = defineCommand({
 			description: "Port to listen on (default: the workspace's port)",
 		},
 		host: { type: "string", description: "Host to bind (default 127.0.0.1)" },
+		"tailscale-serve": {
+			type: "boolean",
+			description:
+				"Publish the service on your tailnet over HTTPS with `tailscale serve`, on every start",
+		},
 		workspace: {
 			type: "string",
 			description:
@@ -221,6 +269,7 @@ const install = defineCommand({
 			host,
 			path: servicePath(process.env.PATH ?? "", process.execPath),
 			env: process.env,
+			tailscaleServe: Boolean(args["tailscale-serve"]),
 		});
 		mkdirSync(dirname(unitPath), { recursive: true });
 		mkdirSync(dirname(plan.logPath), { recursive: true });
@@ -285,6 +334,17 @@ export function runningLine(
 	return `no: ${describeOutcome(identity, base).trim()}`;
 }
 
+/** The last `pl upgrade`'s outcome, for `pl service status` (#766). */
+export function upgradeLine(o: Outcome): string {
+	const when = o.at.slice(0, 16).replace("T", " ");
+	if (o.result === "committed") return `${o.from} → ${o.to} on ${when}`;
+	const what =
+		o.result === "rolled-back"
+			? `rolled back to ${o.from}`
+			: "database restored";
+	return `${o.from} → ${o.to} ${what} on ${when}: ${o.reason ?? "no reason recorded"}`;
+}
+
 const status = defineCommand({
 	meta: {
 		name: "status",
@@ -312,12 +372,18 @@ const status = defineCommand({
 			instanceId: safeInstanceId(config, service.workspace),
 		});
 		const healthy = identity.kind === "ok";
+		const info = healthy ? await fetchInstance(base) : null;
+		const outcome = readOutcome(service.workspace);
 		consola.log(
 			[
 				`Unit:      ${service.unitPath}`,
 				`Workspace: ${service.workspace}`,
 				`Port:      ${service.port}`,
 				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null)}`,
+				...(info && typeof info !== "string"
+					? [`Version:   ${info.version ?? "unknown"}`]
+					: []),
+				...(outcome ? [`Upgrade:   ${upgradeLine(outcome)}`] : []),
 				`Log:       ${join(service.workspace, "logs", "service.log")}`,
 			].join("\n"),
 		);

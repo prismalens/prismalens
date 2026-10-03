@@ -1,129 +1,233 @@
 /**
- * The centre of the alerts frame with nothing selected: land on the alert
- * that is firing first; with `?view=stats` (or an empty window) show the
- * numbers instead.
+ * The Alerts door. From 1280 the sidebar holds the list, so this page holds
+ * the numbers; narrower, the list is the page. Either way the header carries
+ * the window's controls, and opening an alert keeps them (study-v3 §8).
  */
 import {
 	ALERT_STATUS_LABEL,
 	AlertStatusSchema,
+	OPEN_ALERT_STATUSES,
 	SEVERITY_LABEL,
 	SeveritySchema,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { orderAlerts, useAlertWindow } from "@/components/alerts/AlertListPane";
-import { LiveSlot } from "@/components/shared/LiveSlot";
-import { StateChip } from "@/components/shared/StateChip";
-import { SPLIT_PANES, useMediaQuery } from "@/hooks/use-media-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
+import { AlertFilters } from "@/components/alerts/AlertFilters";
+import {
+	AlertListPane,
+	useAlertWindow,
+	usePullAlerts,
+} from "@/components/alerts/AlertListPane";
+import { GroupBySelect } from "@/components/shared/ServiceLanes";
+import { PageHeader } from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
-import { alertStatusTone, severityTone } from "@/lib/state-tone";
 
 export const Route = createFileRoute("/_authenticated/alerts/")({
-	component: AlertsOverview,
+	component: AlertsPage,
 });
 
-function AlertsOverview() {
+function AlertsPage() {
 	usePageTitle("Alerts");
-	const { search, listInput } = useAlertWindow();
+	const navigate = useNavigate();
+	const { search } = useAlertWindow();
+	const pull = usePullAlerts();
+	const { sidebarFolded } = useLayoutPrefs();
+	const listInSidebar = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
-		refetchInterval: 30_000,
+		refetchInterval: useLiveRefreshInterval(),
 	});
-	const { data: list, isLoading } = useQuery(
-		orpc.alerts.list.queryOptions({ input: listInput }),
+	const [filtersOpen, setFiltersOpen] = useState(
+		!!(search.status || search.severity),
 	);
-	const showStats = search.view === "stats";
-	// Below `lg` the list is the page, so there is nothing to land on.
-	const split = useMediaQuery(SPLIT_PANES);
-	const top =
-		split && !showStats && list ? orderAlerts(list.data)[0] : undefined;
-	if (top) {
-		return (
-			<Navigate
-				to="/alerts/$id"
-				params={{ id: top.id }}
-				search={{
-					tab: search.tab,
-					status: search.status,
-					severity: search.severity,
-				}}
-				replace
-			/>
-		);
-	}
-	if (!showStats && isLoading) return null;
-
-	const s = stats.data;
-	const slot = (label: string, value: string, note?: string) =>
-		stats.error
-			? ({
-					label,
-					state: "failed",
-					source: "alerts",
-					reason: stats.error.message,
-					onRetry: () => stats.refetch(),
-				} as const)
-			: !s
-				? ({ label, state: "fetching", source: "alerts" } as const)
-				: ({
-						label,
-						state: "live",
-						value,
-						note,
-						source: "alerts",
-						window: "all time",
-						updatedAt: new Date(stats.dataUpdatedAt),
-					} as const);
+	const setFilter = (patch: Partial<typeof search>) =>
+		navigate({
+			to: ".",
+			search: (prev) => ({ ...prev, ...patch }),
+			replace: true,
+		});
 
 	return (
-		<div className="h-full overflow-y-auto" data-testid="alerts-overview">
-			<div className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:px-6">
-				<div className="grid gap-2 sm:grid-cols-3">
-					<LiveSlot
-						{...slot(
-							"Firing",
-							String(s?.byStatus.triggered ?? 0),
-							s ? `of ${s.total}` : undefined,
+		<>
+			<PageHeader
+				title={
+					<>
+						Alerts
+						{stats.data && (
+							<span
+								className="ml-2 font-normal text-text-3 tabular-nums"
+								data-testid="alerts-total-count"
+							>
+								{stats.data.total}
+							</span>
 						)}
-						data-testid="alerts-stat-firing"
-					/>
-					<LiveSlot
-						{...slot("Acknowledged", String(s?.byStatus.acknowledged ?? 0))}
-					/>
-					<LiveSlot {...slot("Resolved", String(s?.byStatus.resolved ?? 0))} />
+					</>
+				}
+			>
+				<Tabs
+					value={search.tab ?? "all"}
+					onValueChange={(v) =>
+						setFilter({ tab: v === "unmapped" ? "unmapped" : undefined })
+					}
+				>
+					<TabsList className="h-8 border-b-0">
+						<TabsTrigger value="all" className="h-8">
+							All alerts
+						</TabsTrigger>
+						<TabsTrigger value="unmapped" className="h-8">
+							Unmapped
+						</TabsTrigger>
+					</TabsList>
+				</Tabs>
+				<div className="ml-auto flex items-center gap-1">
+					<GroupBySelect className="max-sm:hidden" />
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Filters"
+						aria-pressed={filtersOpen}
+						onClick={() => setFiltersOpen((v) => !v)}
+						data-testid="alert-list-filters-toggle"
+					>
+						<SlidersHorizontal />
+					</Button>
+					<Button
+						variant="secondary"
+						onClick={() => pull.mutate({})}
+						disabled={pull.isPending}
+						data-testid="alerts-pull"
+					>
+						Pull now
+					</Button>
 				</div>
-				{s && (
-					<div className="flex flex-wrap items-center gap-1.5 px-1">
-						<span className="mr-1 text-meta text-muted-foreground">
-							By severity
-						</span>
-						{SeveritySchema.options.map((sev) =>
-							s.bySeverity[sev] ? (
-								<StateChip key={sev} tone={severityTone(sev)}>
-									{SEVERITY_LABEL[sev]}{" "}
-									<span className="tabular-nums">{s.bySeverity[sev]}</span>
-								</StateChip>
-							) : null,
-						)}
-						<span className="ml-3 mr-1 text-meta text-muted-foreground">
-							By status
-						</span>
-						{AlertStatusSchema.options.map((st) =>
-							s.byStatus[st] ? (
-								<StateChip key={st} tone={alertStatusTone(st)}>
-									{ALERT_STATUS_LABEL[st]}{" "}
-									<span className="tabular-nums">{s.byStatus[st]}</span>
-								</StateChip>
-							) : null,
-						)}
-					</div>
-				)}
-				{!top && list && list.data.length === 0 && (
-					<p className="rounded-md border border-dashed p-4 text-record text-muted-foreground">
-						Nothing in this window. Alerts land here from the webhook, or pull
-						them from Alertmanager with the button in the pane.
+			</PageHeader>
+			{filtersOpen && (
+				<div className="px-4 pb-2 md:px-6" data-testid="alert-list-filters">
+					<AlertFilters
+						status={search.status ?? "all"}
+						severity={search.severity ?? "all"}
+						onStatusChange={(status) =>
+							setFilter({ status: status === "all" ? undefined : status })
+						}
+						onSeverityChange={(severity) =>
+							setFilter({ severity: severity === "all" ? undefined : severity })
+						}
+						onClear={() =>
+							setFilter({ status: undefined, severity: undefined })
+						}
+					/>
+				</div>
+			)}
+			{listInSidebar ? (
+				<AlertNumbers />
+			) : (
+				<AlertListPane selectedId={null} className="min-h-0 flex-1 pt-1" />
+			)}
+		</>
+	);
+}
+
+function AlertNumbers() {
+	const stats = useQuery({
+		...orpc.alerts.getStats.queryOptions({ input: {} }),
+		refetchInterval: useLiveRefreshInterval(),
+	});
+	const s = stats.data;
+	// A correlated alert is still firing; only its incident has it (study-v3 §4).
+	const firing = OPEN_ALERT_STATUSES.filter(
+		(st) => st !== "acknowledged",
+	).reduce((n, st) => n + (s?.byStatus[st] ?? 0), 0);
+	return (
+		<div
+			className="min-h-0 flex-1 overflow-y-auto"
+			data-testid="alerts-overview"
+		>
+			<div className="mx-auto w-full max-w-(--reading-w) px-6 pt-4 pb-12">
+				{s && s.total === 0 ? (
+					<p className="text-body text-text-2" data-testid="alerts-empty-state">
+						No alerts found. Sources are under Settings, Integrations.
 					</p>
+				) : (
+					<>
+						{stats.error ? (
+							<p className="text-body text-danger">
+								The numbers did not load: {stats.error.message}.{" "}
+								<button
+									type="button"
+									className="underline"
+									onClick={() => stats.refetch()}
+								>
+									Try again
+								</button>
+							</p>
+						) : (
+							s && (
+								<p
+									className="text-title font-normal text-text-2"
+									data-testid="alerts-stat-firing"
+								>
+									<span className="font-semibold text-text-1 tabular-nums">
+										{firing}
+									</span>{" "}
+									firing of <span className="tabular-nums">{s.total}</span>,{" "}
+									<span className="tabular-nums">
+										{s.byStatus.acknowledged ?? 0}
+									</span>{" "}
+									acknowledged,{" "}
+									<span className="tabular-nums">
+										{s.byStatus.resolved ?? 0}
+									</span>{" "}
+									cleared.
+								</p>
+							)
+						)}
+						{s && (
+							<dl className="mt-8 grid grid-cols-[8rem_1fr] gap-x-6 gap-y-2 text-body">
+								<dt className="text-text-3">By severity</dt>
+								<dd className="flex flex-wrap gap-x-4 gap-y-1">
+									{SeveritySchema.options.map((sev) =>
+										s.bySeverity[sev] ? (
+											<span
+												key={sev}
+												className="inline-flex items-center gap-1.5"
+											>
+												<span
+													aria-hidden
+													className="size-2 rounded-full"
+													style={{ background: `var(--sev-${sev})` }}
+												/>
+												{SEVERITY_LABEL[sev]}
+												<span className="text-text-3 tabular-nums">
+													{s.bySeverity[sev]}
+												</span>
+											</span>
+										) : null,
+									)}
+								</dd>
+								<dt className="text-text-3">By status</dt>
+								<dd className="flex flex-wrap gap-x-4 gap-y-1">
+									{AlertStatusSchema.options.map((st) =>
+										s.byStatus[st] ? (
+											<span key={st}>
+												{ALERT_STATUS_LABEL[st]}{" "}
+												<span className="text-text-3 tabular-nums">
+													{s.byStatus[st]}
+												</span>
+											</span>
+										) : null,
+									)}
+								</dd>
+							</dl>
+						)}
+					</>
 				)}
 			</div>
 		</div>

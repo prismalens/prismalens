@@ -314,6 +314,9 @@ describe("AlertsService (BDD)", () => {
 					status: IncidentStatus.triggered,
 					resolvedAt: null,
 					timeToResolve: null,
+					// R1a d4: the card's "Back again" reads these, not resolvedAt.
+					reopenReason: "flap",
+					reopenedAt: expect.any(Date),
 				}),
 			});
 			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({
@@ -382,6 +385,51 @@ describe("AlertsService (BDD)", () => {
 				}),
 			});
 			expect(result.id).toBe("alert-new-episode");
+		});
+
+		it("a refire on a closed incident is a new episode, even inside the flap window (walk f32)", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 1 * MINUTE),
+				incident: { status: IncidentStatus.closed },
+			} as Partial<ReturnType<typeof AlertFactory.create>>);
+			mockPrismaService.alert.create.mockResolvedValue(
+				AlertFactory.create({ id: "alert-new-episode" }),
+			);
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.update).not.toHaveBeenCalled();
+			expect(mockPrismaService.alert.create).toHaveBeenCalledTimes(1);
+			expect(result.id).toBe("alert-new-episode");
+		});
+
+		it("a still-correlated alert on a closed incident refires as a new episode too (walk f32)", async () => {
+			existing({
+				status: AlertStatus.correlated,
+				incident: { status: IncidentStatus.closed },
+			} as Partial<ReturnType<typeof AlertFactory.create>>);
+			mockPrismaService.alert.create.mockResolvedValue(
+				AlertFactory.create({ id: "alert-new-episode" }),
+			);
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.update).not.toHaveBeenCalled();
+			expect(result.id).toBe("alert-new-episode");
+		});
+
+		it("R1 holds on a resolved incident: a refire inside the window reopens (pinned)", async () => {
+			existing({
+				status: AlertStatus.resolved,
+				resolvedAt: new Date(NOW.getTime() - 1 * MINUTE),
+				incident: { status: IncidentStatus.resolved },
+			} as Partial<ReturnType<typeof AlertFactory.create>>);
+
+			const result = await service.create(refireDto);
+
+			expect(mockPrismaService.alert.create).not.toHaveBeenCalled();
+			expect(result.status).toBe(AlertStatus.triggered);
 		});
 
 		it("R2b: the window boundary is inclusive — exactly 15 min still reopens", async () => {
@@ -969,6 +1017,8 @@ describe("AlertsService (BDD)", () => {
 			const db = {
 				alert: {
 					findFirst: vi.fn(async () => alert),
+					findMany: vi.fn(async () => (alert.status === AlertStatus.resolved ? [] : [{ id: alert.id }])),
+					updateMany: vi.fn(),
 					update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
 						alert = AlertFactory.create({
 							...alert,
@@ -978,7 +1028,7 @@ describe("AlertsService (BDD)", () => {
 						return alert;
 					}),
 				},
-				alertSourceAlert: { upsert: vi.fn() },
+				alertSourceAlert: { upsert: vi.fn(), updateMany: vi.fn() },
 				incident: {
 					findUnique: vi.fn(async () => ({ ...incident })),
 					update: vi.fn(async ({ data }: { data: Record<string, unknown> }) =>
@@ -1023,7 +1073,10 @@ describe("AlertsService (BDD)", () => {
 			await incidents.resolve("inc-1");
 			expect(incident.status).toBe(IncidentStatus.resolved);
 			expect(incident.resolvedAt).toEqual(new Date("2026-09-27T09:09:21.000Z"));
-			expect(timeline.create).toHaveBeenCalledTimes(2);
+			const statusEntries = db.timelineEntry.create.mock.calls.filter(
+				([arg]: [{ data: { title: string } }]) => arg.data.title === "Status changed",
+			);
+			expect(statusEntries).toHaveLength(2);
 			vi.useRealTimers();
 		});
 	});

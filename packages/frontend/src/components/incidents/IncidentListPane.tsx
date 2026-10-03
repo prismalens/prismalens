@@ -9,37 +9,31 @@ import {
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import {
-	AlertTriangle,
-	Circle,
-	CircleCheck,
-	Plus,
-	Search,
-	SlidersHorizontal,
-} from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
+import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { attentionFor } from "@/lib/incident-attention";
 import {
 	headlineAddsInfo,
 	incidentHeadline,
+	orderNeedsYou,
 	rowGlyph,
 	runWord,
 } from "@/lib/incident-board";
 import {
 	incidentGroups,
-	NO_SERVICE_LANE,
 	otherServices,
 	SETTLED_LANE,
 } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
-import { CreateIncidentDialog } from "./CreateIncidentDialog";
 import { IncidentFilters } from "./IncidentFilters";
 
 export interface IncidentListPaneProps {
@@ -47,6 +41,8 @@ export interface IncidentListPaneProps {
 	className?: string;
 	/** j / k walk this list; off where another list owns the keys. */
 	keyboard?: boolean;
+	/** In the sidebar the rows alone; as the phone's page, the filters above them. */
+	variant?: "sidebar" | "page";
 }
 
 /** Builds the list query from the frame's search, the same window the stats use. */
@@ -91,7 +87,9 @@ export function IncidentListPane({
 	selectedId,
 	className,
 	keyboard = true,
+	variant = "page",
 }: IncidentListPaneProps) {
+	const sidebar = variant === "sidebar";
 	const navigate = useNavigate();
 	const now = useNow();
 	const { search, listInput } = useIncidentWindow();
@@ -109,16 +107,16 @@ export function IncidentListPane({
 	const [filtersOpen, setFiltersOpen] = useState(
 		!!(search.status || search.severity || search.priority),
 	);
-	const [createOpen, setCreateOpen] = useState(false);
-	const [createService, setCreateService] = useState<string | undefined>();
 	const [q, setQ] = useState("");
 
-	const { data, isLoading, error } = useQuery(
-		orpc.incidents.list.queryOptions({ input: listInput }),
-	);
-	const { data: stats } = useQuery(
-		orpc.incidents.getStats.queryOptions({ input: {} }),
-	);
+	const { data, isLoading, error } = useQuery({
+		...orpc.incidents.list.queryOptions({ input: listInput }),
+		refetchInterval: useLiveRefreshInterval(),
+	});
+	const { data: stats } = useQuery({
+		...orpc.incidents.getStats.queryOptions({ input: {} }),
+		refetchInterval: useLiveRefreshInterval(),
+	});
 	const nothingYet = stats?.total === 0;
 	const incidents = data?.data ?? [];
 
@@ -133,7 +131,9 @@ export function IncidentListPane({
 						(i.service?.name ?? "").toLowerCase().includes(needle),
 				)
 			: incidents;
-		const needsYou = visible.filter((i) => attentionFor(i) !== null);
+		const needsYou = orderNeedsYou(
+			visible.filter((i) => attentionFor(i) !== null),
+		);
 		const rest = visible.filter(
 			(i) => attentionFor(i) === null && i.status !== "closed",
 		);
@@ -204,9 +204,9 @@ export function IncidentListPane({
 				data-cursor={cursor === index ? "true" : undefined}
 				title={rowTitle(incident, now)}
 				className={cn(
-					"mx-1.5 flex items-center gap-2 rounded-md px-2 py-1 outline-none hover:bg-muted/60",
-					cursor === index && "bg-muted/60",
-					selected && "bg-muted hover:bg-muted",
+					"mx-2 flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+					cursor === index && "bg-surface-3",
+					selected && "bg-surface-3 text-text-1",
 				)}
 			>
 				<IncidentRowBody incident={incident} now={now} selected={selected} />
@@ -238,60 +238,46 @@ export function IncidentListPane({
 			<h2 id="incident-list-heading" className="sr-only">
 				Incidents
 			</h2>
-			<div className="flex items-center gap-1 px-2 pb-1">
-				<Button
-					variant="ghost"
-					size="sm"
-					className="h-7 flex-1 justify-start gap-2 px-2 font-normal"
-					onClick={() => setCreateOpen(true)}
-					data-testid="create-incident-button"
-				>
-					<Plus className="h-3.5 w-3.5" />
-					New incident
-				</Button>
-				<div className="flex items-center gap-0.5">
+			{!sidebar && (
+				<div className="flex items-center gap-1.5 px-4 pb-2">
+					<label className="raised flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control px-2.5">
+						<Search className="size-3.5 shrink-0 text-text-3" />
+						<input
+							value={q}
+							onChange={(e) => setQ(e.target.value)}
+							placeholder="Filter"
+							aria-label="Filter incidents"
+							className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
+							data-testid="incident-list-search"
+						/>
+					</label>
+					<select
+						value={windowValue}
+						onChange={(e) => setWindow(e.target.value)}
+						aria-label="Window"
+						className="raised h-8 rounded-control px-2 text-body text-text-2 outline-none"
+						data-testid="incident-list-window"
+					>
+						<option value="all">All time</option>
+						<option value="1d">24 hours</option>
+						<option value="7d">7 days</option>
+						<option value="30d">30 days</option>
+					</select>
 					<Button
 						variant="ghost"
-						size="sm"
-						className="h-7 w-7 p-0"
+						size="icon"
 						aria-label="Filters"
 						aria-pressed={filtersOpen}
 						onClick={() => setFiltersOpen((v) => !v)}
 						data-testid="incident-list-filters-toggle"
 					>
-						<SlidersHorizontal className="h-3.5 w-3.5" />
+						<SlidersHorizontal />
 					</Button>
 				</div>
-			</div>
+			)}
 
-			<div className="flex items-center gap-1 px-2 pb-2">
-				<label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border bg-background px-2">
-					<Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-					<input
-						value={q}
-						onChange={(e) => setQ(e.target.value)}
-						placeholder="Filter"
-						aria-label="Filter incidents"
-						className="h-6 min-w-0 flex-1 bg-transparent text-meta outline-none placeholder:text-muted-foreground"
-						data-testid="incident-list-search"
-					/>
-				</label>
-				<select
-					value={windowValue}
-					onChange={(e) => setWindow(e.target.value)}
-					aria-label="Window"
-					className="h-6 rounded border md:hidden bg-background px-1 text-meta text-muted-foreground outline-none"
-					data-testid="incident-list-window"
-				>
-					<option value="all">All time</option>
-					<option value="1d">24 hours</option>
-					<option value="7d">7 days</option>
-					<option value="30d">30 days</option>
-				</select>
-			</div>
-
-			{filtersOpen && (
-				<div className="border-b px-3 py-2" data-testid="incident-list-filters">
+			{!sidebar && filtersOpen && (
+				<div className="px-4 pb-2" data-testid="incident-list-filters">
 					<IncidentFilters
 						status={search.status ?? "all"}
 						severity={search.severity ?? "all"}
@@ -321,40 +307,32 @@ export function IncidentListPane({
 				data-testid="incident-list"
 			>
 				{isLoading && (
-					<div className="space-y-2 p-3">
+					<div className="space-y-3 px-4 py-2">
 						{[1, 2, 3, 4, 5].map((k) => (
-							<Skeleton key={k} className="h-12" />
+							<Skeleton key={k} className="h-3" />
 						))}
 					</div>
 				)}
 				{error && (
-					<p className="p-3 text-record text-run-failed">
+					<p className="px-4 py-2 text-body text-text-1">
 						The list did not load: {error.message}
 					</p>
 				)}
 				{!isLoading && !error && incidents.length === 0 && nothingYet && (
 					<p
-						className="p-3 text-record text-muted-foreground"
+						className="px-4 py-2 text-body text-text-2"
 						data-testid="incidents-none"
 					>
 						No incidents yet.
 					</p>
 				)}
 				{!isLoading && !error && incidents.length === 0 && !nothingYet && (
-					<div className="p-3" data-testid="incidents-empty-state">
-						<div className="rounded-md border border-dashed p-3 text-record text-muted-foreground">
-							Nothing in this window.
-							<Button
-								size="sm"
-								className="mt-2 w-full"
-								onClick={() => setCreateOpen(true)}
-								data-testid="incidents-empty-create"
-							>
-								<Plus className="mr-1 h-3.5 w-3.5" />
-								Create incident
-							</Button>
-						</div>
-					</div>
+					<p
+						className="px-4 py-2 text-body text-text-2"
+						data-testid="incidents-empty-state"
+					>
+						Nothing in this window.
+					</p>
 				)}
 				{(() => {
 					let index = 0;
@@ -364,59 +342,26 @@ export function IncidentListPane({
 							className="pb-2"
 							data-testid="sidebar-group"
 						>
-							<div className="group/header flex items-center pr-2">
+							<div className="px-2">
 								<LaneHeader
 									view="list"
 									id={group.id}
 									name={group.name}
 									count={group.items.length}
 									foldedByDefault={group.id === SETTLED_LANE}
-									className="min-w-0 flex-1 font-normal"
 								/>
-								{group.id !== NO_SERVICE_LANE && group.id !== SETTLED_LANE && (
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										className="opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100"
-										aria-label={`New incident in ${group.name}`}
-										onClick={() => {
-											setCreateService(group.id);
-											setCreateOpen(true);
-										}}
-										data-testid="sidebar-group-new"
-									>
-										<Plus />
-									</Button>
-								)}
 							</div>
 							{!isFolded(group.id) &&
 								group.items.map((incident) => row(incident, index++))}
 						</section>
 					));
 				})()}
-				{incidents.length > 0 && (
-					<p className="px-3 pb-3 text-meta text-muted-foreground">
-						{incidents.length} in window
-						{data?.pagination.hasMore ? " · more not shown" : ""}
+				{data?.pagination.hasMore && (
+					<p className="px-4 pb-3 text-meta text-text-3">
+						The 100 newest in this window
 					</p>
 				)}
 			</div>
-
-			<CreateIncidentDialog
-				open={createOpen}
-				onOpenChange={(next) => {
-					setCreateOpen(next);
-					if (!next) setCreateService(undefined);
-				}}
-				defaultServiceId={createService}
-				onCreated={(id) =>
-					navigate({
-						to: "/incidents/$id",
-						params: { id },
-						search: keep,
-					})
-				}
-			/>
 		</section>
 	);
 }
@@ -443,11 +388,9 @@ function rowTitle(incident: IncidentWithRelations, now: number | null) {
 		.join("\n");
 }
 
-const GLYPH_CLASS = "h-3.5 w-3.5 shrink-0";
-
 /**
- * One sidebar row (#743): a glyph for where the incident stands and the
- * title. The state, the age and the headline are in the row's hover title
+ * One sidebar row (#743): a bar for where the incident stands (study-v3 §2:
+ * live teal, attention red, open grey, ended none), the id and the title. The state, the age and the headline are in the row's hover title
  * and in hidden text for assistive tech.
  */
 function IncidentRowBody({
@@ -465,29 +408,21 @@ function IncidentRowBody({
 	const headline = incidentHeadline(incident);
 	return (
 		<>
-			{glyph === "live" ? (
-				<span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-					<span className="h-2 w-2 rounded-full bg-run-active motion-safe:animate-pulse" />
-				</span>
-			) : glyph === "attention" ? (
-				<AlertTriangle
-					className={cn(
-						GLYPH_CLASS,
-						why === "failed_run" ? "text-run-failed" : "text-sev-critical",
-					)}
-				/>
-			) : glyph === "open" ? (
-				<Circle className={cn(GLYPH_CLASS, "text-muted-foreground")} />
-			) : (
-				<CircleCheck className={cn(GLYPH_CLASS, "text-muted-foreground/60")} />
-			)}
 			<span
+				aria-hidden
+				data-glyph={glyph}
 				className={cn(
-					"min-w-0 truncate text-record",
-					glyph === "ended" && !selected && "text-muted-foreground",
+					"h-3 w-[3px] shrink-0 rounded-full",
+					glyph === "live" && "bg-live",
+					glyph === "attention" && "bg-danger",
+					glyph === "open" && "bg-text-3",
 				)}
-			>
-				{incident.title}
+			/>
+			<span className="min-w-0 truncate">
+				<Mono className="mr-1.5 text-text-3">INC-{incident.number}</Mono>
+				<span className={cn(glyph === "ended" && !selected && "text-text-3")}>
+					{incident.title}
+				</span>
 			</span>
 			<span className="sr-only">
 				{word && <span data-testid="incident-run-word">{word.text}</span>}

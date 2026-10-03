@@ -44,6 +44,14 @@ function refuseUnless(
 	});
 }
 
+/** What a resolved (stored `closed`) incident still takes on PATCH (R1a d3). */
+const EDITABLE_AFTER_RESOLVE: ReadonlySet<string> = new Set([
+	"actualCause",
+	"actualCauseCategory",
+	"title",
+	"severity",
+]);
+
 @Controller()
 export class IncidentsController {
 	constructor(
@@ -115,14 +123,32 @@ export class IncidentsController {
 			// PATCH /incidents/:id - Update an incident
 			update: implement(incidentsContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
-				if (updateData.status) {
+				const fields = Object.keys(updateData).filter(
+					(k) => updateData[k as keyof typeof updateData] !== undefined,
+				);
+				const guarded =
+					!!updateData.status ||
+					fields.some((f) => !EDITABLE_AFTER_RESOLVE.has(f));
+				if (guarded) {
 					const existing = await this.incidentsService.findById(id);
 					if (!existing) {
 						throw new ORPCError("NOT_FOUND", {
 							message: `Incident ${id} not found`,
 						});
 					}
-					if (!canSetIncidentStatus(existing.status, updateData.status)) {
+					// After Resolve only the record of it stays editable, plus Reopen (R1a d3).
+					const blocked = fields.filter(
+						(f) => !EDITABLE_AFTER_RESOLVE.has(f) && f !== "status",
+					);
+					if (existing.status === "closed" && blocked.length > 0) {
+						throw new ORPCError("CONFLICT", {
+							message: `A resolved incident takes only its cause, category, title and severity; got ${blocked.join(", ")}`,
+						});
+					}
+					if (
+						updateData.status &&
+						!canSetIncidentStatus(existing.status, updateData.status)
+					) {
 						throw new ORPCError("CONFLICT", {
 							message: `Cannot set an incident that is ${existing.status} to ${updateData.status}; allowed from ${INCIDENT_STATUS_SET_FROM[updateData.status].join(", ") || "nothing"}`,
 						});
@@ -287,6 +313,13 @@ export class IncidentsController {
 	private serializeIncident(incident: PrismaIncident): Incident {
 		return {
 			...incident,
+			reopenedAt: incident.reopenedAt?.toISOString() ?? null,
+			reopenReason:
+				(incident.reopenReason as Incident["reopenReason"] | null) ?? null,
+			closedAt: incident.closedAt?.toISOString() ?? null,
+			timeToClose: incident.timeToClose ?? null,
+			priorIncidentId: incident.priorIncidentId ?? null,
+
 			description: incident.description ?? null,
 			serviceId: incident.serviceId ?? null,
 			assignedToId: incident.assignedToId ?? null,
@@ -418,6 +451,7 @@ export class IncidentsController {
 				id: i.id,
 				status: i.status,
 				rootCause: i.rootCause ?? null,
+				rootCauseCategory: i.rootCauseCategory ?? null,
 				...(i.error !== undefined ? { error: i.error } : {}),
 				harness: i.harness ?? null,
 				model: i.model ?? null,
@@ -432,6 +466,19 @@ export class IncidentsController {
 						? i.completedAt.toISOString()
 						: (i.completedAt ?? null),
 			}));
+		}
+
+		if (incident.priorIncident !== undefined) {
+			serialized.priorIncident = incident.priorIncident;
+		}
+		if (incident.refiredAs !== undefined) {
+			serialized.refiredAs = incident.refiredAs
+				? {
+						id: incident.refiredAs.id,
+						number: incident.refiredAs.number,
+						createdAt: iso(incident.refiredAs.createdAt),
+					}
+				: null;
 		}
 
 		if (incident.services) {

@@ -3,6 +3,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { settled } from "./settled";
 
 /**
  * #521 — one readiness verdict for the investigation affordance.
@@ -132,8 +133,8 @@ async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
 }
 
 /**
- * The box's own Investigate button, docked under the incident's cards. It
- * shares its name with the band's button, so it is found by test id.
+ * The box's own Investigate button, docked under the incident's cards, found
+ * by test id.
  */
 function boxInvestigateButton(page: Page) {
 	return page.getByTestId("composer-investigate");
@@ -161,15 +162,13 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
 		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible();
 
-		// The band carries Investigate on a tab without the box: disabled, and
-		// hovering names the same reason.
+		// On a tab without the box, the band's menu carries Investigate again:
+		// disabled, titled with the same reason (R1a d7 keeps it off the band).
 		await page.getByTestId("tab-alerts").click();
-		const headerBtn = page.getByTestId("band-investigate");
+		await page.getByTestId("band-more").click();
+		const headerBtn = page.getByTestId("band-menu-investigate");
 		await expect(headerBtn).toBeDisabled();
-		await page.getByTestId("band-investigate-trigger").hover();
-		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(headerBtn).toHaveAttribute("title", PROTOCOL_MISMATCH_REASON);
 	});
 
 	test("a runnable selection enables both affordances", async ({ page }) => {
@@ -180,7 +179,8 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await page.goto(`/incidents/${id}`);
 		await expect(boxInvestigateButton(page)).toBeEnabled({ timeout: 15_000 });
 		await page.getByTestId("tab-alerts").click();
-		await expect(page.getByTestId("band-investigate")).toBeEnabled();
+		await page.getByTestId("band-more").click();
+		await expect(page.getByTestId("band-menu-investigate")).toBeEnabled();
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -214,12 +214,12 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
@@ -228,7 +228,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 		await expect(boxInvestigateButton(page)).toBeDisabled();
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
@@ -236,6 +236,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
-		await page.waitForLoadState("networkidle");
+		await settled(page);
 	});
 });

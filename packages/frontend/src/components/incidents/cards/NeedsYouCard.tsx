@@ -14,12 +14,16 @@ import { Card } from "./Card";
 const WHY: Record<IncidentAttention, string> = {
 	unacknowledged: "Nobody has taken this incident.",
 	failed_run: "The last investigation failed and nothing concluded.",
-	awaiting_close: "Resolved. Close it with the actual cause recorded.",
+	reopened:
+		"You reopened it. Its cause is not confirmed until a run or your Resolve.",
+	awaiting_close:
+		"Its alerts cleared. Resolve it, with the cause if you know it.",
 };
 
 const CARD_TONE = {
 	unacknowledged: "critical",
 	failed_run: "failed",
+	reopened: "critical",
 	awaiting_close: "done",
 } as const;
 
@@ -36,7 +40,7 @@ export function NeedsYouCard() {
 	const action =
 		why === "unacknowledged"
 			? { label: "Acknowledge", run: record.acknowledge }
-			: { label: "Close", run: record.openClose };
+			: { label: "Resolve", run: record.openClose };
 
 	return (
 		<Card

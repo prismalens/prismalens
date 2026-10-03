@@ -4,15 +4,15 @@
 import type { BoardColumn } from "./incident-board";
 
 /**
- * What dropping a board card on a column does (#743). Columns are derived
- * from state, so each drop maps to at most one action; every action also has
- * a button on the incident page.
+ * What dropping a board card on a column does (#743, R1a). Columns follow
+ * state, so each drop maps to at most one action; every action also has a
+ * control on the card or the incident page.
  */
 export type DropAction =
 	| { kind: "investigate" }
+	| { kind: "reopen-investigate" }
 	| { kind: "stop" }
 	| { kind: "resolve"; stopFirst: boolean }
-	| { kind: "reopen" }
 	| { kind: "none"; reason?: string };
 
 export interface DropInput {
@@ -20,9 +20,9 @@ export interface DropInput {
 	to: BoardColumn;
 	/** The incident's latest run is live. */
 	live: boolean;
-	/** The incident's status admits Resolve. */
+	/** The incident's status admits the operator's Resolve (stored `close`). */
 	canResolve: boolean;
-	/** The incident's status admits Reopen (resolved, not closed). */
+	/** The incident's status admits Reopen: it is Resolved (R1a d4). */
 	canReopen?: boolean;
 }
 
@@ -40,23 +40,19 @@ export function dropAction({
 			reason: "Needs you follows from the incident's state",
 		};
 	}
-	if (to === "working") return { kind: "investigate" };
+	if (to === "working") {
+		if (live) return { kind: "none", reason: "Its run is already working" };
+		// A Resolved incident goes back to work only by Reopen, asked first.
+		return canReopen ? { kind: "reopen-investigate" } : { kind: "investigate" };
+	}
 	if (to === "concluded") {
-		if (from === "working") return { kind: "stop" };
-		// Concluded is where an open incident with no live run sits, so a
-		// resolved one (in Needs you, awaiting close) lands there reopened.
-		if (canReopen) return { kind: "reopen" };
-		if (from === "resolved") {
-			return { kind: "none", reason: "A closed incident stays closed" };
-		}
+		if (from === "working" && live) return { kind: "stop" };
 		return {
 			kind: "none",
 			reason: "Concluded follows from a finished investigation",
 		};
 	}
 	// to === "resolved"
-	if (!canResolve) {
-		return { kind: "none", reason: "Already resolved" };
-	}
+	if (!canResolve) return { kind: "none", reason: "Already resolved" };
 	return { kind: "resolve", stopFirst: live };
 }

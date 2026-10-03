@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	ACCESS_SCOPE,
 	authenticateDevice,
+	authenticateDeviceToken,
 	buildPairingUrl,
 	createPairingLink,
 	DEVICE_SCOPES,
@@ -14,6 +15,7 @@ import {
 	PAIRING_LINK_TTL_MS,
 	PairingError,
 	type PairingStore,
+	prismaPairingStore,
 	redeemPairingLink,
 	STARTUP_LINK_LABEL,
 } from "./pairing.js";
@@ -31,6 +33,7 @@ interface StoredDevice {
 	id: string;
 	tokenHash: string;
 	name: string;
+	userAgent: string | null;
 	scopes: string[];
 	createdAt: Date;
 	lastSeenAt: Date | null;
@@ -90,6 +93,7 @@ function createInMemoryPairingStore() {
 				id: `device-${++deviceId}`,
 				tokenHash: input.tokenHash,
 				name: input.name,
+				userAgent: input.userAgent,
 				scopes: [...input.scopes],
 				createdAt: new Date(),
 				lastSeenAt: null,
@@ -100,6 +104,7 @@ function createInMemoryPairingStore() {
 				id: device.id,
 				name: device.name,
 				scopes: [...device.scopes],
+				userAgent: device.userAgent,
 				createdAt: device.createdAt,
 				lastSeenAt: device.lastSeenAt,
 				revokedAt: device.revokedAt,
@@ -112,6 +117,7 @@ function createInMemoryPairingStore() {
 						id: device.id,
 						name: device.name,
 						scopes: [...device.scopes],
+				userAgent: device.userAgent,
 						createdAt: device.createdAt,
 						lastSeenAt: device.lastSeenAt,
 						revokedAt: device.revokedAt,
@@ -133,10 +139,17 @@ function createInMemoryPairingStore() {
 					id: d.id,
 					name: d.name,
 					scopes: [...d.scopes],
+					userAgent: d.userAgent,
 					createdAt: d.createdAt,
 					lastSeenAt: d.lastSeenAt,
 					revokedAt: d.revokedAt,
 				}));
+		},
+		renameDevice: async (id: string, name: string) => {
+			const device = devices.get(id);
+			if (!device || device.revokedAt !== null) return null;
+			device.name = name;
+			return { ...device, scopes: [...device.scopes] };
 		},
 		revokeDevice: async (id: string, at: Date) => {
 			const device = devices.get(id);
@@ -146,6 +159,7 @@ function createInMemoryPairingStore() {
 				id: device.id,
 				name: device.name,
 				scopes: [...device.scopes],
+				userAgent: device.userAgent,
 				createdAt: device.createdAt,
 				lastSeenAt: device.lastSeenAt,
 				revokedAt: device.revokedAt,
@@ -267,7 +281,7 @@ describe("redeemPairingLink", () => {
 		});
 	});
 
-	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES; the name is label · client name, either alone, then Paired device", async () => {
+	it("success returns a device token distinct from the link token, device.scopes equal DEVICE_SCOPES; the name is the label, else the client's name, else Paired device", async () => {
 		const { store } = createInMemoryPairingStore();
 
 		// Both the operator's label and the name the device guesses
@@ -278,7 +292,7 @@ describe("redeemPairingLink", () => {
 		});
 		expect(redeemed1.token).not.toBe(link1.token);
 		expect(redeemed1.device.scopes).toEqual([...DEVICE_SCOPES]);
-		expect(redeemed1.device.name).toBe("Desk Mac · Linux machine");
+		expect(redeemed1.device.name).toBe("Desk Mac");
 
 		const labelOnly = await createPairingLink(store, { label: "Desk Mac" });
 		const redeemedLabelOnly = await redeemPairingLink(store, {
@@ -347,6 +361,48 @@ describe("redeemPairingLink", () => {
 	});
 });
 
+describe("renameDevice", () => {
+	it("renames a paired device and leaves a revoked one alone", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		const { device } = await redeemPairingLink(store, {
+			token: link.token,
+			name: "Pixel 9",
+			userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)",
+		});
+		expect(device.userAgent).toContain("Pixel 9");
+		expect((await store.renameDevice(device.id, "Sumit's phone"))?.name).toBe(
+			"Sumit's phone",
+		);
+		await store.revokeDevice(device.id, new Date());
+		expect(await store.renameDevice(device.id, "Gone")).toBeNull();
+	});
+
+	it("the Prisma store trims the name and refuses a blank one", async () => {
+		const row = {
+			id: "d1",
+			name: "Pixel 9",
+			scopes: "[]",
+			userAgent: null,
+			createdAt: new Date(),
+			lastSeenAt: null,
+			revokedAt: null,
+		};
+		const updateMany = vi.fn(async (args: { data: { name: string } }) => {
+			row.name = args.data.name;
+			return { count: 1 };
+		});
+		const store = prismaPairingStore({
+			deviceSession: { updateMany, findUnique: async () => row },
+		});
+		expect((await store.renameDevice("d1", "  Sumit's phone  "))?.name).toBe(
+			"Sumit's phone",
+		);
+		expect(await store.renameDevice("d1", "   ")).toBeNull();
+		expect(updateMany).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("authenticateDevice", () => {
 	it("the device token authenticates; a revoked device (revokedAt set) returns null; an unknown token returns null; empty string returns null", async () => {
 		const { store } = createInMemoryPairingStore();
@@ -370,6 +426,26 @@ describe("authenticateDevice", () => {
 		// A revoked device (revokedAt set) returns null
 		await store.revokeDevice(redeemed.device.id, new Date());
 		expect(await authenticateDevice(store, redeemed.token)).toBeNull();
+	});
+
+	it("authenticateDeviceToken returns reason revoked when device was revoked", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		const redeemed = await redeemPairingLink(store, {
+			token: link.token,
+			name: "Dev",
+		});
+
+		const active = await authenticateDeviceToken(store, redeemed.token);
+		expect(active.device).not.toBeNull();
+		expect(active.device?.id).toBe(redeemed.device.id);
+
+		await store.revokeDevice(redeemed.device.id, new Date());
+		const revoked = await authenticateDeviceToken(store, redeemed.token);
+		expect(revoked).toEqual({ device: null, reason: "revoked" });
+
+		const unknown = await authenticateDeviceToken(store, "unknown-token");
+		expect(unknown).toEqual({ device: null });
 	});
 
 	it("lastSeenAt is written on first use and NOT rewritten when the last touch is under a minute old (pass now)", async () => {

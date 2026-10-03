@@ -141,6 +141,11 @@ export const TERMINAL_WORKFLOW_STATUSES: readonly WorkflowStatus[] = keysWhere(
 	(p) => ENDED_PHASES.has(p),
 );
 
+/** An alert fires until it resolves or is suppressed; `correlated` still fires (walk f14). */
+export function isAlertFiring(status: string): status is AlertStatus {
+	return (OPEN_ALERT_STATUSES as readonly string[]).includes(status);
+}
+
 export function isIncidentOpen(status: string): status is IncidentStatus {
 	return (OPEN_INCIDENT_STATUSES as readonly string[]).includes(status);
 }
@@ -175,11 +180,35 @@ export const INCIDENT_ACTION_FROM: Record<
 	acknowledge: ["triggered"],
 	// A resolved incident can be investigated again; its status stays (#743).
 	investigate: keysWhere(INCIDENT_STATUS_PHASE, () => true),
+	// The source's own ending (alerts cleared); no operator button writes it.
 	resolve: OPEN_INCIDENT_STATUSES,
-	// A resolved incident can go back to work; closed stays final (#743).
-	reopen: ["resolved"],
-	close: ["resolved"],
+	// Only the operator's Resolve (stored `closed`) is undone by Reopen (R1a d4);
+	// on Alerts cleared there is nothing to reopen.
+	reopen: ["closed"],
+	// The operator's one step, shown as Resolve, from every open status and
+	// from Alerts cleared (R1a d2).
+	close: [...OPEN_INCIDENT_STATUSES, "resolved"],
 };
+
+/** The status each action writes; `investigate` leaves the status as it is. */
+export const INCIDENT_ACTION_WRITES: Partial<
+	Record<IncidentAction, IncidentStatus>
+> = {
+	acknowledge: "investigating",
+	resolve: "resolved",
+	reopen: "investigating",
+	close: "closed",
+};
+
+/**
+ * The band's lifecycle actions, in the order its primary is picked (R1a d7).
+ * `resolve` is the source's ending and has no button: its word is "Alerts cleared".
+ */
+export const BAND_ACTIONS: readonly IncidentAction[] = [
+	"acknowledge",
+	"close",
+	"reopen",
+];
 
 export function canIncidentAction(
 	action: IncidentAction,
@@ -193,14 +222,20 @@ export function canIncidentAction(
  * Resolving and closing keep their own routes (they stamp the times); this is
  * the rule for a status set on `PATCH /incidents/:id`, which the record uses
  * to acknowledge and to move between the working phases. Never backwards to
- * triggered, never out of closed.
+ * triggered; out of closed only into investigating (a reopen).
  */
 export const INCIDENT_STATUS_SET_FROM: Record<
 	IncidentStatus,
 	readonly IncidentStatus[]
 > = {
 	triggered: [],
-	investigating: ["triggered", "identified", "monitoring", "resolved"],
+	investigating: [
+		"triggered",
+		"identified",
+		"monitoring",
+		"resolved",
+		"closed",
+	],
 	identified: ["investigating", "monitoring"],
 	monitoring: ["investigating", "identified"],
 	resolved: INCIDENT_ACTION_FROM.resolve,
@@ -232,17 +267,32 @@ export function canAlertAction(action: AlertAction, status: string): boolean {
 export type IncidentAttention =
 	| "unacknowledged"
 	| "failed_run"
+	| "reopened"
 	| "awaiting_close";
 
+/** The order Needs you lists them in (study-v3 §3.1); Alerts cleared sits last, under "To wrap up". */
 export const INCIDENT_ATTENTIONS: readonly IncidentAttention[] = [
-	"failed_run",
 	"unacknowledged",
+	"failed_run",
+	"reopened",
 	"awaiting_close",
 ];
+
+/** Why an incident went back to work, and when (R1a d4); null on one never reopened. */
+export interface IncidentReopen {
+	reason?: string | null;
+	at?: string | Date | null;
+	/** When the incident's latest run started, if it has one. */
+	latestRunAt?: string | Date | null;
+}
+
+const time = (v: string | Date | null | undefined): number =>
+	v ? new Date(v).getTime() : Number.NaN;
 
 export function incidentAttention(
 	status: string,
 	latestRunStatus?: string | null,
+	reopen?: IncidentReopen | null,
 ): IncidentAttention | null {
 	if (status === "resolved") return "awaiting_close";
 	if (!isIncidentOpen(status)) return null;
@@ -250,7 +300,16 @@ export function incidentAttention(
 	if (latestRunStatus === "failed") return "failed_run";
 	if (INCIDENT_STATUS_PHASE[status as IncidentStatus] === "new")
 		return "unacknowledged";
+	if (reopen?.reason === "operator") {
+		const ranSince = time(reopen.latestRunAt) >= time(reopen.at);
+		if (!ranSince) return "reopened";
+	}
 	return null;
+}
+
+/** The source refired inside the flap window and put the incident back (R1a d2). */
+export function isFlapReopen(reopen?: IncidentReopen | null): boolean {
+	return reopen?.reason === "flap";
 }
 
 /**

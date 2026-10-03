@@ -166,6 +166,37 @@ describe("AcpAdapter.normalize", () => {
 		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
 	});
 
+	it("shows the command Claude Code sends after opening the call empty (walk f16)", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "toolu_1",
+			kind: "execute",
+			title: "Terminal",
+			rawInput: {},
+		});
+		adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "toolu_1",
+			status: "in_progress",
+			title: "`curl -s http://localhost:9090/api/v1/rules`",
+			rawInput: { command: "curl -s http://localhost:9090/api/v1/rules" },
+		});
+		const result = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "toolu_1",
+			status: "completed",
+		});
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: {
+				name: "`curl -s http://localhost:9090/api/v1/rules`",
+				source:
+					'`curl -s http://localhost:9090/api/v1/rules`({"command":"curl -s http://localhost:9090/api/v1/rules"})',
+			},
+		});
+	});
+
 	it("marks a failed tool_call_update ok=false with the error preview", () => {
 		const adapter = new AcpAdapter(ctx);
 		adapter.normalize({ ...lsToolCall, title: "kubectl get", kind: "execute" });
@@ -185,6 +216,29 @@ describe("AcpAdapter.normalize", () => {
 				error: "NotFound",
 				preview: "NotFound",
 			},
+		});
+		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
+	});
+
+	it("names the policy's reason on a refused call's tool_result (walk f23)", () => {
+		const adapter = new AcpAdapter({
+			...ctx,
+			refusals: new Map([["call_ze0og9u5", "shell command would mutate"]]),
+		});
+		adapter.normalize({ ...lsToolCall, title: "echo x > y", kind: "execute" });
+		const result = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "call_ze0og9u5",
+			status: "failed",
+			content: [
+				{ type: "content", content: { type: "text", text: "User refused permission to run tool" } },
+			],
+		});
+		const text =
+			"Refused by PrismaLens's read-only policy: shell command would mutate.";
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: { ok: false, error: text, preview: text },
 		});
 		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
 	});
