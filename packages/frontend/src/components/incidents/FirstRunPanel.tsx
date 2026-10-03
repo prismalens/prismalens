@@ -64,13 +64,13 @@ export function SetupLine() {
 		: !p.alertsIn
 			? [
 					"no alert source yet, so only incidents you create arrive.",
-					<Link key="s" to="/settings" search={{ tab: "connections" }}>
+					<Link key="s" to="/settings" search={{ tab: "sources" }}>
 						Add a source
 					</Link>,
 				]
 			: [
 					"no service names its code yet, so runs read nothing.",
-					<Link key="v" to="/services">
+					<Link key="v" to="/services" search={{ add: "1" }}>
 						Add a service
 					</Link>,
 				];
@@ -225,7 +225,7 @@ export function FirstRunPanel() {
 					testId="first-run-step-2"
 					action={
 						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "connections" }}>
+							<Link to="/settings" search={{ tab: "sources" }}>
 								Add a source
 							</Link>
 						</Button>
@@ -274,7 +274,9 @@ export function FirstRunPanel() {
 					testId="first-run-step-4"
 					action={
 						<Button asChild variant="secondary" size="sm">
-							<Link to="/services">Add a service</Link>
+							<Link to="/services" search={{ add: "1" }}>
+								Add a service
+							</Link>
 						</Button>
 					}
 				>

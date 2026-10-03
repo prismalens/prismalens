@@ -753,7 +753,6 @@ When("I add a service with a folder", async ({ page, unique }) => {
 		.getByTestId("setup-line")
 		.getByRole("link", { name: "Add a service" })
 		.click();
-	await page.getByRole("button", { name: "Add service", exact: true }).click();
 	const dialog = page.getByRole("dialog");
 	await dialog.locator("#name").fill(unique("pr2-folder-service"));
 	await dialog
