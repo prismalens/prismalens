@@ -21,6 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { rebuild } from "@electron/rebuild";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -63,9 +64,9 @@ execFileSync(
 rmSync(tmp, { recursive: true, force: true });
 
 // The backend runs under Electron's Node, whose ABI differs from the system
-// Node the tarball's better-sqlite3 was built for. Swap in the prebuilt
-// binary for Electron's ABI; no compiler is needed, which is what keeps this
-// runnable on a workstation and on a CI runner alike.
+// Node the tarball's better-sqlite3 was built for. @electron/rebuild fetches
+// the prebuilt for Electron's ABI, or compiles one when better-sqlite3 12.x
+// ships none (Electron 44+, #762).
 // A global install lays packages out under `lib/node_modules` on POSIX and
 // `node_modules` on Windows. electron-builder drops a top-level `node_modules`
 // from extraResources, so Windows moves to the POSIX layout the app reads.
@@ -77,17 +78,10 @@ const staged = join(out, "lib", "node_modules", "prismalens");
 const electronVersion = JSON.parse(
 	readFileSync(resolve(here, "../node_modules/electron/package.json"), "utf8"),
 ).version;
-execFileSync(
-	"node",
-	[
-		// The package's own entry, not `.bin/prebuild-install`: on Windows that is a
-		// shell shim node cannot run.
-		join(staged, "node_modules", "prebuild-install", "bin.js"),
-		"--runtime",
-		"electron",
-		"--target",
-		electronVersion,
-	],
-	{ cwd: join(staged, "node_modules", "better-sqlite3"), stdio: "inherit" },
-);
+await rebuild({
+	buildPath: staged,
+	electronVersion,
+	onlyModules: ["better-sqlite3"],
+	force: true,
+});
 console.log(`staged ${staged} for electron ${electronVersion}`);
