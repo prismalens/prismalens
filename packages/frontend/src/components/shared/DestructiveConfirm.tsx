@@ -69,9 +69,7 @@ export function DestructiveConfirm({
 				<AlertDialogHeader>
 					<AlertDialogTitle>{title}</AlertDialogTitle>
 					<AlertDialogDescription asChild>
-						<div className="space-y-2 text-sm text-muted-foreground">
-							{description}
-						</div>
+						<div className="space-y-2 text-body text-text-2">{description}</div>
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 
@@ -80,10 +78,7 @@ export function DestructiveConfirm({
 				{confirmWord && (
 					<div className="space-y-2">
 						<Label htmlFor={inputId}>
-							Type{" "}
-							<span className="font-mono font-semibold text-foreground">
-								{confirmWord}
-							</span>{" "}
+							Type <span className="font-mono text-text-1">{confirmWord}</span>{" "}
 							to confirm
 						</Label>
 						<Input
@@ -112,11 +107,11 @@ export function DestructiveConfirm({
 					</AlertDialogCancel>
 					<AlertDialogAction
 						onClick={onConfirm}
-						className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						className="bg-danger text-accent-fg hover:bg-danger/90"
 						disabled={!armed || isPending || isLoading}
 					>
 						{isPending && (
-							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+							<Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
 						)}
 						{confirmLabel}
 					</AlertDialogAction>
