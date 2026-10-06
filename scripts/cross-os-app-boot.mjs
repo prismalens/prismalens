@@ -256,6 +256,20 @@ mkdirSync(workspace, { recursive: true });
 const logPath = join(scratch, "up.log");
 const base = `http://127.0.0.1:${port}`;
 
+// Windows runners sometimes reuse a pooled socket the server closed (#742); one
+// retry gets a fresh connection. Never the one-use pairing redeem: the reset
+// POST may already have spent its token.
+const rawFetch = fetch;
+globalThis.fetch = async (url, init) => {
+	try {
+		return await rawFetch(url, init);
+	} catch (error) {
+		if (error?.cause?.code !== "ECONNRESET") throw error;
+		if (String(url).endsWith("/api/pairing/redeem")) throw error;
+		return rawFetch(url, init);
+	}
+};
+
 // Strip every inherited PRISMALENS_* key before setting our own. The workspace
 // dir is the ONLY thing that keeps this run away from a developer's real
 // ~/.prismalens database, so an inherited PRISMALENS_DB_URL or a stray
