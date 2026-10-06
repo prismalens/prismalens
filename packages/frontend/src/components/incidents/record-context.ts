@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { PermissionMode } from "@prismalens/config/harness";
 import type {
 	IncidentWithRelations,
 	TimelineEntryWithRelations,
@@ -27,7 +28,12 @@ export interface IncidentRecord {
 	canInvestigate: boolean;
 	/** Why no agent can run right now, when none can. */
 	investigateBlocked?: string;
-	investigate: (brief?: string) => void;
+	/** Starts a run; resolves once the API took it, rejects with its refusal. */
+	investigate: (start?: {
+		brief?: string;
+		access?: PermissionMode;
+		attachments?: string[];
+	}) => Promise<void>;
 	isInvestigating: boolean;
 	acknowledge: () => void;
 	resolve: () => void;

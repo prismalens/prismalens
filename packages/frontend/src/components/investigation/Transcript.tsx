@@ -1,121 +1,93 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ArrowDown, ChevronRight } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { RecordLink } from "@/components/incidents/RecordLayout";
-import { Mono } from "@/components/shared/Mono";
-import { type StateTone, StateWord } from "@/components/shared/StateWord";
-import { Button } from "@/components/ui/button";
-import { formatClock, formatElapsed } from "@/lib/format-time";
+import { FileText } from "lucide-react";
+import { useEffect, useRef } from "react";
 import {
-	OPERATOR_STATE_LABEL,
-	type OperatorState,
-	type TranscriptItem,
+	Conversation,
+	ConversationContent,
+	ConversationScrollButton,
+} from "@/components/ai/conversation";
+import {
+	Message,
+	MessageHeader,
+	MessageResponse,
+} from "@/components/ai/message";
+import { Tool, ToolCall, ToolContent, ToolHeader } from "@/components/ai/tool";
+import { RECORD_GRID, RecordLink } from "@/components/incidents/RecordLayout";
+import { formatClock, formatElapsed } from "@/lib/format-time";
+import type {
+	AttachmentView,
+	EventRow,
+	OperatorState,
+	TranscriptItem,
 } from "@/lib/investigation-events";
-import { INITIAL_TAIL_FOLLOW, nextTailFollow } from "@/lib/stream-autoscroll";
+import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
+import { commandText, shortPath } from "@/lib/report-view";
 import { cn } from "@/lib/utils";
-
-const OPERATOR_TONE: Record<OperatorState, StateTone> = {
-	queued: "stale",
-	sent_now: "active",
-	delivered: "active",
-	answered: "done",
-	not_delivered: "failed",
-};
 
 const ENTER =
 	"motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200";
 
-function prefersReducedMotion(): boolean {
-	return (
-		typeof window !== "undefined" &&
-		window.matchMedia("(prefers-reduced-motion: reduce)").matches
-	);
+/** The delivery word under "You" (decision 18): Enter waits for the agent's next pause. */
+function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
+	if (state === "not_delivered") return "Not delivered";
+	if (state === "queued") return "Waits for the next pause";
+	return mode === "now" ? "Sent now" : "Delivered at the next pause";
 }
 
 /**
- * The conversation as chat (#743 §3c): newest at the bottom, following the
- * tail until the reader scrolls up, then a `New messages` button to return.
+ * The conversation (#743, study-v3 §3.4) on AI Elements' Conversation,
+ * Message and Tool: newest at the bottom, following the tail until the reader
+ * scrolls up. The reading column and the facts rail sit inside the scroller,
+ * on the record's grid, so the box below lines up with the column.
  */
 export function Transcript({
 	items,
 	incidentId,
 	focus,
+	cwd,
+	agent,
+	rail,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
 	/** A tool call to open and scroll to, from a report's evidence link. */
 	focus?: string;
+	/** The run's workspace, shown as `repo/` (walk f16). */
+	cwd?: string | null;
+	agent: string;
+	rail?: React.ReactNode;
 }) {
-	const scrollRef = useRef<HTMLDivElement>(null);
-	// Sampled while the reader scrolls: at append time the growth itself reads as a scroll-up (#280).
-	const tailRef = useRef(INITIAL_TAIL_FOLLOW);
-	const [unseen, setUnseen] = useState(false);
-	const count = items.length;
-	const lastKey = items[items.length - 1]?.key;
-
-	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const onScroll = () => {
-			tailRef.current = nextTailFollow(tailRef.current, el);
-			if (tailRef.current.following) setUnseen(false);
-		};
-		el.addEventListener("scroll", onScroll, { passive: true });
-		return () => el.removeEventListener("scroll", onScroll);
-	}, []);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: follow on every append.
-	useLayoutEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		if (tailRef.current.following) el.scrollTop = el.scrollHeight;
-		else setUnseen(true);
-	}, [count, lastKey]);
-
-	const jump = () => {
-		const el = scrollRef.current;
-		if (!el) return;
-		tailRef.current = { lastTop: el.scrollHeight, following: true };
-		el.scrollTo({
-			top: el.scrollHeight,
-			behavior: prefersReducedMotion() ? "auto" : "smooth",
-		});
-		setUnseen(false);
-	};
-
 	return (
-		<div className="relative min-h-0 flex-1">
-			<div
-				ref={scrollRef}
-				className="h-full overflow-y-auto px-4 py-3"
-				data-testid="transcript"
-			>
-				<div className="mx-auto flex max-w-3xl flex-col gap-2.5">
-					{items.map((item) => (
-						<TranscriptRow
-							key={item.key}
-							item={item}
-							incidentId={incidentId}
-							focus={focus}
-						/>
-					))}
+		<Conversation className="h-full" data-testid="transcript-scroller">
+			<ConversationContent className="pt-6 pb-8">
+				<div className={RECORD_GRID}>
+					<div className="flex min-w-0 flex-col gap-4" data-testid="transcript">
+						{items.map((item) => (
+							<TranscriptRow
+								key={item.key}
+								item={item}
+								incidentId={incidentId}
+								focus={focus}
+								cwd={cwd}
+								agent={agent}
+							/>
+						))}
+					</div>
+					{rail && (
+						<aside
+							className="hidden xl:block"
+							aria-label="Facts"
+							data-testid="facts-rail"
+						>
+							<div className="sticky top-0">{rail}</div>
+						</aside>
+					)}
 				</div>
-			</div>
-			{unseen && (
-				<Button
-					size="xs"
-					variant="secondary"
-					onClick={jump}
-					className="absolute bottom-3 left-1/2 -translate-x-1/2 border shadow-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
-					data-testid="transcript-new-messages"
-				>
-					New messages
-					<ArrowDown />
-				</Button>
-			)}
-		</div>
+			</ConversationContent>
+			<ConversationScrollButton />
+		</Conversation>
 	);
 }
 
@@ -123,46 +95,43 @@ function TranscriptRow({
 	item,
 	incidentId,
 	focus,
+	cwd,
+	agent,
 }: {
 	item: TranscriptItem;
 	incidentId: string;
 	focus?: string;
+	cwd?: string | null;
+	agent: string;
 }) {
 	switch (item.kind) {
 		case "prose":
 			return (
-				<p
-					className={cn("whitespace-pre-wrap text-body", ENTER)}
-					data-testid="transcript-prose"
-				>
-					{item.text}
-				</p>
+				<Message from="agent" className={ENTER} data-testid="transcript-prose">
+					<MessageHeader who={agent} />
+					<MessageResponse>{item.text}</MessageResponse>
+				</Message>
 			);
 		case "line":
 			return (
 				<p
-					className={cn("text-meta text-text-2", ENTER)}
+					className={cn("text-meta text-text-3", ENTER)}
 					data-testid="transcript-line"
 				>
 					{item.text}
 				</p>
 			);
 		case "tools":
-			return <ToolGroup item={item} focus={focus} />;
+			return <ToolGroup item={item} focus={focus} cwd={cwd} />;
 		case "divider":
 			return (
-				<div
-					className="flex items-center gap-3 py-1 text-meta text-text-2"
-					data-testid="transcript-divider"
-				>
-					<span className="h-px flex-1 bg-hairline" />
-					<span>{item.text}</span>
-					<span className="h-px flex-1 bg-hairline" />
-				</div>
+				<p className="text-meta text-text-3" data-testid="transcript-divider">
+					{item.text}
+				</p>
 			);
 		case "thought":
 			return (
-				<p className="text-meta text-text-2" data-testid="transcript-thought">
+				<p className="text-meta text-text-3" data-testid="transcript-thought">
 					Thought for {formatElapsed(item.seconds)}
 				</p>
 			);
@@ -170,75 +139,78 @@ function TranscriptRow({
 			return (
 				<p
 					className={cn(
-						"flex items-center gap-1.5 text-meta tabular-nums transition-colors duration-300 motion-reduce:transition-none",
+						"flex items-center gap-2 text-meta tabular-nums",
 						item.stale ? "text-warn" : "text-text-2",
 					)}
 					data-testid="transcript-thinking"
 				>
 					<span
 						aria-hidden
-						className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse"
+						className={cn(
+							"h-3 w-[3px] rounded-full",
+							item.stale ? "bg-warn" : "bg-live",
+						)}
 					/>
-					Thinking {formatElapsed(item.seconds)}
+					Thinking, {formatElapsed(item.seconds)}
 				</p>
 			);
 		case "operator":
 			return (
-				<div
-					className={cn(
-						"rounded-r-md border-l-2 border-accent bg-accent/6 px-3 py-1.5",
-						ENTER,
-					)}
+				<Message
+					from="you"
+					className={ENTER}
 					data-testid="transcript-operator"
 					data-state={item.state}
 				>
-					<div className="flex items-center gap-2 text-meta text-text-2">
-						<span className="font-medium text-text-1">You</span>
-						<span className="tabular-nums">{formatClock(item.at)}</span>
-						<span className="ml-auto flex items-center gap-2">
-							{item.state === "queued" && <span>until the agent pauses</span>}
-							<StateWord
-								key={item.state}
-								tone={OPERATOR_TONE[item.state]}
-								pulse={item.state === "delivered" || item.state === "sent_now"}
-								className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
+					<MessageHeader
+						who="You"
+						at={formatClock(item.at)}
+						aside={
+							<span
+								className={cn(item.state === "not_delivered" && "text-danger")}
+								data-testid="transcript-delivery"
 							>
-								{OPERATOR_STATE_LABEL[item.state]}
-							</StateWord>
-						</span>
-					</div>
-					<p className="whitespace-pre-wrap text-body">{item.text}</p>
-				</div>
+								{deliveryWord(item.state, item.mode)}
+							</span>
+						}
+					/>
+					{item.text && (
+						<p className="text-body whitespace-pre-wrap [overflow-wrap:anywhere]">
+							{item.text}
+						</p>
+					)}
+					{item.attachments.length > 0 && (
+						<Attachments incidentId={incidentId} files={item.attachments} />
+					)}
+				</Message>
 			);
 		case "end":
 			return (
-				<div
-					className={cn("space-y-1 pt-1", ENTER)}
-					data-testid="transcript-end"
-				>
-					<p className="flex flex-wrap items-center gap-2 text-meta">
-						<StateWord tone={item.tone} className="whitespace-normal">
+				<div className={cn("space-y-1", ENTER)} data-testid="transcript-end">
+					<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-2">
+						<span
+							className={cn(
+								item.tone === "failed" && "text-danger",
+								"[overflow-wrap:anywhere]",
+							)}
+						>
 							{item.text}
-						</StateWord>
-						{item.detail && (
-							<span className="text-text-2 tabular-nums">{item.detail}</span>
-						)}
+							{item.detail ? ` ${item.detail}` : ""}.
+						</span>
 						{item.report && (
-							<RecordLink
-								className="text-meta"
-								incidentId={incidentId}
-								to="report"
-							>
+							<RecordLink incidentId={incidentId} to="report">
 								Read the report
 							</RecordLink>
 						)}
+						<RecordLink
+							incidentId={incidentId}
+							to="conversation"
+							search={{ ledger: "1" }}
+							testId="transcript-event-log"
+						>
+							Event log
+						</RecordLink>
 					</p>
-					{item.path && (
-						<p className="text-meta text-text-2">
-							The raw wire transcript is at <Mono>{item.path}</Mono> under the
-							workspace directory that pl up printed at start.
-						</p>
-					)}
 				</div>
 			);
 		case "empty":
@@ -253,15 +225,78 @@ function TranscriptRow({
 	}
 }
 
+/** Thumbnails for images, a file chip for text, each opening the stored file. */
+function Attachments({
+	incidentId,
+	files,
+}: {
+	incidentId: string;
+	files: AttachmentView[];
+}) {
+	return (
+		<div
+			className="mt-2 flex flex-wrap gap-2"
+			data-testid="transcript-attachments"
+		>
+			{files.map((f) => {
+				const href = `/api/incidents/${incidentId}/attachments/${f.id}`;
+				return f.mimeType.startsWith("image/") ? (
+					<a key={f.id} href={href} target="_blank" rel="noreferrer">
+						<img
+							src={href}
+							alt={f.name}
+							className="h-16 max-w-40 rounded-[var(--radius-control)] object-cover"
+						/>
+					</a>
+				) : (
+					<a
+						key={f.id}
+						href={href}
+						target="_blank"
+						rel="noreferrer"
+						className="inline-flex h-7 max-w-56 items-center gap-1.5 rounded-[var(--radius-control)] bg-surface-3 px-2 text-meta text-text-1 hover:bg-surface-4"
+					>
+						<FileText className="size-3.5 shrink-0 text-text-3" />
+						<span className="truncate">{f.name}</span>
+					</a>
+				);
+			})}
+		</div>
+	);
+}
+
+/** A call's row, its result row if one came, in the order the calls were made. */
+function callsOf(rows: EventRow[]) {
+	const results = new Map<string, EventRow>();
+	for (const r of rows)
+		if (r.callId && r.icon !== "tool") results.set(r.callId, r);
+	const out: { key: string; source: string; result?: EventRow }[] = [];
+	const seen = new Set<string>();
+	for (const r of rows) {
+		const id = r.callId ?? r.key;
+		if (seen.has(id)) continue;
+		seen.add(id);
+		const result = r.callId ? results.get(r.callId) : r;
+		out.push({ key: r.key, source: result?.message ?? r.message, result });
+	}
+	return out;
+}
+
+function headline(item: Extract<TranscriptItem, { kind: "tools" }>): string {
+	const s = item.summary.replace(/^./, (c) => c.toUpperCase());
+	return s || `Ran ${item.count} tool${item.count === 1 ? "" : "s"}`;
+}
+
 function ToolGroup({
 	item,
 	focus,
+	cwd,
 }: {
 	item: Extract<TranscriptItem, { kind: "tools" }>;
 	focus?: string;
+	cwd?: string | null;
 }) {
 	const cited = !!focus && item.callIds.includes(focus);
-	const [open, setOpen] = useState(cited);
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (cited) ref.current?.scrollIntoView({ block: "center" });
@@ -272,43 +307,40 @@ function ToolGroup({
 			data-testid="transcript-tools"
 			data-cited={cited ? "" : undefined}
 		>
-			<button
-				type="button"
-				aria-expanded={open}
-				onClick={() => setOpen((v) => !v)}
-				className="flex h-5 max-w-full items-center gap-1.5 truncate text-meta text-text-2 hover:text-text-1"
-			>
-				<ChevronRight className={cn("h-3 w-3 shrink-0", open && "rotate-90")} />
-				<span key={item.count} className="shrink-0 text-text-1/80">
-					Ran {item.count} tool{item.count === 1 ? "" : "s"}
-				</span>
-				{item.summary && <span className="truncate">{item.summary}</span>}
-				{item.failed > 0 && (
-					<span className="shrink-0 text-danger">{item.failed} failed</span>
-				)}
-			</button>
-			{open && (
-				<ul
-					className="mt-1 space-y-0.5 border-l pl-3"
-					data-testid="transcript-tool-rows"
-				>
-					{item.rows.map((row) => (
-						<li key={row.key} className="min-w-0 text-meta">
-							<span
-								className={cn(
-									"font-mono",
-									row.ok === false ? "text-danger" : "text-text-1",
-								)}
-							>
-								{row.message}
+			<Tool defaultOpen={cited}>
+				<ToolHeader
+					aside={
+						item.failed > 0 && (
+							<span className="shrink-0 text-danger">
+								{item.failed} not run
 							</span>
-							{row.detail && (
-								<span className="ml-2 truncate text-text-2">{row.detail}</span>
-							)}
-						</li>
-					))}
-				</ul>
-			)}
+						)
+					}
+				>
+					{headline(item)}
+				</ToolHeader>
+				<ToolContent data-testid="transcript-tool-rows">
+					{callsOf(item.rows).map(({ key, source, result }) => {
+						const reason =
+							result?.ok === false ? refusalReason(result.detail) : null;
+						return (
+							<ToolCall
+								key={key}
+								command={commandText(source, cwd)}
+								running={!result}
+								output={result?.detail && shortPath(result.detail, cwd)}
+								refused={
+									result?.ok === false
+										? reason
+											? refusalSentence(reason)
+											: `Failed: ${result.detail ?? "no output"}`
+										: undefined
+								}
+							/>
+						);
+					})}
+				</ToolContent>
+			</Tool>
 		</div>
 	);
 }

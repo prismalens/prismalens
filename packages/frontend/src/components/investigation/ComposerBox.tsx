@@ -1,75 +1,113 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ArrowUp } from "lucide-react";
+import type { PermissionMode } from "@prismalens/config/harness";
+import { ACCESS_LABEL } from "@prismalens/contracts";
+import { ArrowUp, FileText, Paperclip, X } from "lucide-react";
 import {
+	type ClipboardEvent,
+	type DragEvent,
 	type KeyboardEvent,
-	type ReactNode,
+	useEffect,
 	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
 import {
+	AccessMenu,
 	AgentModelChip,
 	AgentModelPicker,
+	EffortMenu,
 } from "@/components/agent/AgentPicker";
+import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
-import { type ComposerMode, composerKeyAction } from "@/lib/composer-keys";
+import { attachRefusal } from "@/lib/attachments";
+import {
+	type ComposerMode,
+	composerKeyAction,
+	talksToSession,
+} from "@/lib/composer-keys";
 import { cn } from "@/lib/utils";
+
+/** A file in the box, before and while it uploads. */
+interface Draft {
+	key: string;
+	file: File;
+	preview?: string;
+}
+
+export interface ComposerSend {
+	text: string;
+	files: File[];
+}
 
 export interface ComposerBoxProps {
 	mode: ComposerMode;
 	/** Brief and new-run modes: start a run with the text as its brief. */
-	onInvestigate: (brief: string) => void;
-	/** Live and resume modes: Enter queues for the agent's next pause, Ctrl+Enter sends now. */
-	onMessage?: (text: string, mode: "queue" | "now") => void;
+	onInvestigate: (
+		send: ComposerSend & { access: PermissionMode },
+	) => Promise<void> | void;
+	/** Talking modes: Enter queues for the agent's next pause, Send now interrupts. */
+	onMessage?: (
+		send: ComposerSend,
+		mode: "queue" | "now",
+	) => Promise<void> | void;
+	/** Live mode: end the run (R4.4); Esc in the box does the same. */
+	onStop?: () => void;
+	stopping?: boolean;
 	/** Who a message goes to, for the placeholder: `the main agent`, `branch b1`. */
 	target?: string;
-	/** The agent and model a live run is fixed on. */
+	/** The agent and model a run is fixed on. */
 	fixed?: { agent: string; model: string };
+	/** The access level the run was given; the brief modes choose one. */
+	runAccess?: PermissionMode;
+	/** The agent the text goes to, and whether its check recorded image support (R4.3). */
+	agent: { label: string; images: boolean | null };
 	/** Messages queued and not yet delivered. */
 	waiting?: number;
 	isPending?: boolean;
 	/** Why a run cannot start right now; the button is withheld with it. */
 	blockedReason?: string;
-	/** Resume mode: the commits the follow-up's code is pinned to, `api@1a2b3c4, worker@5d6e7f8`. */
-	pinned?: string;
-	/** One line above the box, e.g. why an ended run cannot be continued. */
+	/** One line above the field: what continuing does, or why nothing can be continued. */
 	note?: string | null;
 	/** The 409 path: the run ended before the message reached it. */
 	undeliverable?: string | null;
 	onSaveAsNote?: (text: string) => void;
-	/** The picker opens upward from a docked box. */
+	/** The menus open upward from a docked box. */
 	docked?: boolean;
 	className?: string;
 }
 
-function Kbd({ children }: { children: ReactNode }) {
-	return (
-		<kbd className="inline-flex h-4 items-center rounded border bg-surface-3 px-1 font-mono text-[10px] text-text-1">
-			{children}
-		</kbd>
-	);
-}
-
 const MAX_HEIGHT_PX = 160;
 
+const PLACEHOLDER: Record<ComposerMode, string> = {
+	brief: "Brief the agent (optional)",
+	live: "Message the agent",
+	continue: "Continue the investigation",
+	resume: "Ask a follow-up",
+	again: "Brief a new investigation",
+};
+
 /**
- * The box (#743 §4, §6): one multi-line field with its controls inside. Who
- * reads the text decides the mode: a brief goes to a new run's agent, so the
- * agent and model can be picked; a message goes to the live session, whose
- * agent is fixed; after the run ends the text briefs the next run.
+ * The box (study-v3 §3.4, R4.4): one field with its controls inside. A brief
+ * starts a run with the agent, model, effort and access chosen here; a
+ * message goes to the run's own session, Enter at its next pause and Send now
+ * at once; Stop and Esc end the run; after it ends the text continues a
+ * stopped run, follows up a finished one, or briefs a new one.
  */
 export function ComposerBox({
 	mode,
 	onInvestigate,
 	onMessage,
+	onStop,
+	stopping,
 	target = "the main agent",
 	fixed,
+	runAccess,
+	agent,
 	waiting = 0,
 	isPending,
 	blockedReason,
-	pinned,
 	note,
 	undeliverable,
 	onSaveAsNote,
@@ -77,11 +115,17 @@ export function ComposerBox({
 	className,
 }: ComposerBoxProps) {
 	const [text, setText] = useState("");
-	const [focused, setFocused] = useState(false);
+	const [drafts, setDrafts] = useState<Draft[]>([]);
+	const [refusal, setRefusal] = useState<string | null>(null);
+	const [sending, setSending] = useState(false);
+	const [access, setAccess] = useState<PermissionMode>("read-only");
 	const ref = useRef<HTMLTextAreaElement>(null);
-	// Both talk to the run's own session; the other modes brief a new one.
-	const talking = mode === "live" || mode === "resume";
+	const picker = useRef<HTMLInputElement>(null);
+	const talking = talksToSession(mode);
+	const live = mode === "live";
 	const blocked = !talking && !!blockedReason;
+	const hasText = !!text.trim();
+	const busy = sending || !!isPending;
 
 	// The field grows with wrapped text up to a cap, then scrolls inside.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure on every edit.
@@ -92,17 +136,60 @@ export function ComposerBox({
 		el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
 	}, [text]);
 
-	const submit = (send: "investigate" | "queue" | "now") => {
-		const value = text.trim();
-		if (send === "investigate") {
-			if (blocked || isPending) return;
-			onInvestigate(value);
-			setText("");
-			return;
+	useEffect(
+		() => () => {
+			for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
+		},
+		[drafts],
+	);
+
+	const add = (files: File[]) => {
+		let count = drafts.length;
+		const next: Draft[] = [];
+		let why: string | null = null;
+		for (const file of files) {
+			const no = attachRefusal(file, agent, count);
+			if (no) {
+				why = no;
+				continue;
+			}
+			count++;
+			next.push({
+				key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
+				file,
+				...(file.type.startsWith("image/")
+					? { preview: URL.createObjectURL(file) }
+					: {}),
+			});
 		}
-		if (!value || !onMessage) return;
-		onMessage(value, send);
+		setRefusal(why);
+		if (next.length) setDrafts((d) => [...d, ...next]);
+	};
+
+	const reset = () => {
 		setText("");
+		setDrafts([]);
+		setRefusal(null);
+	};
+
+	const submit = async (send: "investigate" | "queue" | "now") => {
+		const value = text.trim();
+		const files = drafts.map((d) => d.file);
+		if (busy) return;
+		if (send === "investigate") {
+			if (blocked) return;
+		} else if (!value || !onMessage) return;
+		setSending(true);
+		try {
+			if (send === "investigate")
+				await onInvestigate({ text: value, files, access });
+			else await onMessage?.({ text: value, files }, send);
+			reset();
+		} catch (e) {
+			setRefusal(e instanceof Error ? e.message : String(e));
+		} finally {
+			setSending(false);
+		}
 	};
 
 	const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -116,186 +203,263 @@ export function ComposerBox({
 				isComposing: e.nativeEvent.isComposing,
 			},
 			mode,
+			live && !stopping,
 		);
 		if (!action) return;
 		e.preventDefault();
-		submit(action);
+		// Esc is the box's: the record's own Esc (the chevron) never sees it.
+		e.stopPropagation();
+		if (action === "stop") onStop?.();
+		else if (action === "blur") ref.current?.blur();
+		else void submit(action);
 	};
 
-	const placeholder =
-		mode === "brief"
-			? "Add context for the agent (optional)"
-			: mode === "again"
-				? "Context for a new investigation (optional)"
-				: mode === "resume"
-					? "Ask a follow-up"
-					: `Message ${target}`;
+	const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+		const files = Array.from(e.clipboardData.files);
+		if (!files.length) return;
+		e.preventDefault();
+		add(files);
+	};
+	const onDrop = (e: DragEvent<HTMLDivElement>) => {
+		if (!e.dataTransfer.files.length) return;
+		e.preventDefault();
+		add(Array.from(e.dataTransfer.files));
+	};
+
+	const clipHint =
+		agent.images === true
+			? "Attach a screenshot or a log"
+			: agent.images === false
+				? `${agent.label} can't take images. Text files only.`
+				: "Images: not checked yet. Text files only.";
 
 	return (
-		<div
-			className={cn("space-y-1", className)}
-			data-testid="composer-box"
-			// The hint stays while focus moves to the box's own buttons, so the
-			// layout does not shift under a click on Investigate or Send.
-			onFocus={() => setFocused(true)}
-			onBlur={(e) => {
-				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-					setFocused(false);
-				}
-			}}
-		>
-			{note && (
-				<p className="px-2 text-meta text-text-2" data-testid="composer-note">
-					{note}
-				</p>
-			)}
+		<div className={cn("space-y-1.5", className)} data-testid="composer-box">
 			<div
-				className={cn(
-					"flex flex-col gap-1 rounded-md border bg-canvas p-1",
-					"focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/50",
-				)}
+				className="raised rounded-[var(--radius-surface)] px-3 pt-2.5 pb-2 transition-shadow duration-150 focus-within:shadow-[inset_0_0_0_1px_var(--hairline-strong)] motion-reduce:transition-none"
 				data-mode={mode}
+				onDragOver={(e) => e.preventDefault()}
+				onDrop={onDrop}
 			>
+				{note && (
+					<p
+						className="mb-1.5 text-meta text-text-3 [overflow-wrap:anywhere]"
+						data-testid="composer-note"
+					>
+						{note}
+					</p>
+				)}
+				{drafts.length > 0 && (
+					<ul
+						className="mb-2 flex flex-wrap gap-1.5"
+						data-testid="composer-files"
+					>
+						{drafts.map((d) => (
+							<li
+								key={d.key}
+								className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-control bg-surface-3 pr-1 pl-1 text-meta text-text-1"
+								data-testid="composer-file"
+							>
+								{d.preview ? (
+									<img
+										src={d.preview}
+										alt=""
+										className="size-6 rounded-[4px] object-cover"
+										data-testid="composer-thumb"
+									/>
+								) : (
+									<FileText className="ml-1 size-3.5 shrink-0 text-text-3" />
+								)}
+								<span className="truncate">{d.file.name}</span>
+								<button
+									type="button"
+									aria-label={`Remove ${d.file.name}`}
+									onClick={() => setDrafts((all) => all.filter((x) => x !== d))}
+									className="rounded-[4px] p-0.5 text-text-3 outline-none hover:bg-surface-4 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+								>
+									<X className="size-3" />
+								</button>
+							</li>
+						))}
+					</ul>
+				)}
 				<textarea
 					ref={ref}
 					rows={1}
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={onKeyDown}
-					placeholder={placeholder}
-					aria-label={
-						mode === "live"
+					onPaste={onPaste}
+					placeholder={
+						live && target !== "the main agent"
 							? `Message ${target}`
-							: mode === "resume"
-								? "Follow-up"
-								: "Brief"
+							: PLACEHOLDER[mode]
 					}
+					aria-label={PLACEHOLDER[mode]}
 					data-testid="composer-input"
-					className="min-h-7 w-full resize-none bg-transparent px-2 py-1 text-body outline-none placeholder:text-text-2"
+					className="block min-h-6 w-full resize-none bg-transparent text-body text-text-1 outline-none placeholder:text-text-3"
 				/>
-				<div className="flex min-w-0 items-center gap-1">
+				<div className="mt-2 flex min-w-0 items-center gap-1">
 					{talking ? (
-						fixed && <AgentModelChip agent={fixed.agent} model={fixed.model} />
+						fixed && (
+							<AgentModelChip
+								agent={fixed.agent}
+								model={fixed.model}
+								className="shrink"
+							/>
+						)
 					) : (
 						<AgentModelPicker
 							side={docked ? "top" : "bottom"}
 							className="shrink"
 						/>
 					)}
-					<span className="ml-auto flex shrink-0 items-center gap-2">
-						{mode === "live" && waiting > 0 && (
+					{talking ? (
+						<span
+							className="hidden h-7 shrink-0 items-center px-2 text-meta text-text-3 sm:inline-flex"
+							data-testid="access-chip"
+						>
+							{ACCESS_LABEL[runAccess ?? "read-only"]}
+						</span>
+					) : (
+						<>
+							<AccessMenu
+								value={access}
+								onChange={setAccess}
+								side={docked ? "top" : "bottom"}
+							/>
+							<span className="hidden sm:contents">
+								<EffortMenu side={docked ? "top" : "bottom"} />
+							</span>
+						</>
+					)}
+					<Hint label={clipHint} side="top">
+						<button
+							type="button"
+							aria-label="Attach a file"
+							onClick={() => picker.current?.click()}
+							className="inline-flex size-7 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+							data-testid="composer-attach"
+						>
+							<Paperclip className="size-3.5" />
+						</button>
+					</Hint>
+					<input
+						ref={picker}
+						type="file"
+						multiple
+						hidden
+						accept={
+							agent.images === true
+								? "image/png,image/jpeg,image/webp,image/gif,text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
+								: "text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
+						}
+						onChange={(e) => {
+							if (e.target.files) add(Array.from(e.target.files));
+							e.target.value = "";
+						}}
+						data-testid="composer-file-input"
+					/>
+					<span className="ml-auto flex shrink-0 items-center gap-1">
+						{live && waiting > 0 && (
 							<span
-								className="text-meta text-warn tabular-nums"
+								className="px-1 text-meta text-warn tabular-nums"
 								data-testid="composer-waiting"
 							>
 								{waiting} waiting
 							</span>
 						)}
-						{mode === "live" && (
-							<Button
-								size="xs"
-								variant="ghost"
-								title="Stops the agent's current step"
-								disabled={!text.trim()}
-								onClick={() => submit("now")}
-								data-testid="composer-send-now"
+						{live && hasText && (
+							<Hint
+								label="Ends the agent's current step"
+								keys={["Ctrl", "Enter"]}
+								side="top"
 							>
-								Send now
-							</Button>
+								<Button
+									size="xs"
+									variant="ghost"
+									className="text-text-2"
+									disabled={busy}
+									onClick={() => void submit("now")}
+									data-testid="composer-send-now"
+								>
+									Send now
+								</Button>
+							</Hint>
+						)}
+						{live && (
+							<Hint label="Stop the agent" keys={["Esc"]} side="top">
+								<Button
+									size="xs"
+									variant="ghost"
+									className="text-danger hover:text-danger"
+									disabled={stopping}
+									onClick={() => onStop?.()}
+									data-testid="composer-stop"
+								>
+									{stopping ? "Stopping" : "Stop"}
+								</Button>
+							</Hint>
 						)}
 						{talking ? (
-							<Button
-								size="icon-sm"
-								variant={text.trim() ? "default" : "secondary"}
-								aria-label="Send"
-								title={
-									mode === "resume"
-										? "Continue this investigation"
-										: "Queue for the agent's next pause"
+							<Hint
+								label={
+									live ? "Send, at the agent's next pause" : PLACEHOLDER[mode]
 								}
-								disabled={!text.trim()}
-								onClick={() => submit("queue")}
-								data-testid="composer-send"
+								keys={["Enter"]}
+								side="top"
 							>
-								<ArrowUp />
-							</Button>
+								<Button
+									size="icon-sm"
+									variant={hasText ? "default" : "secondary"}
+									className="rounded-full"
+									aria-label="Send"
+									disabled={!hasText || busy}
+									onClick={() => void submit("queue")}
+									data-testid="composer-send"
+								>
+									<ArrowUp />
+								</Button>
+							</Hint>
 						) : (
 							<Button
 								size="sm"
-								onClick={() => submit("investigate")}
-								disabled={blocked || isPending}
+								variant="secondary"
+								onClick={() => void submit("investigate")}
+								disabled={blocked || busy}
 								title={blocked ? blockedReason : undefined}
 								data-testid="composer-investigate"
 							>
-								{isPending
+								{busy
 									? "Starting"
 									: mode === "again"
 										? "Investigate again"
-										: "Investigate"}
+										: "Start investigation"}
 							</Button>
 						)}
 					</span>
 				</div>
 			</div>
-			{blocked ? (
-				<p className="px-2 text-meta text-text-2">{blockedReason}</p>
-			) : (
-				// Always laid out, shown on focus: a line that appeared under a
-				// click would move the button away from the pointer.
-				<div
+			{(blocked || refusal) && (
+				<p
 					className={cn(
-						"flex flex-wrap gap-x-4 gap-y-0.5 px-2 text-meta text-text-2",
-						!focused && "invisible",
+						"px-3 text-meta",
+						refusal ? "text-danger" : "text-text-2",
 					)}
-					aria-hidden={!focused}
-					data-testid="composer-hint"
+					data-testid={refusal ? "composer-refusal" : "composer-blocked"}
 				>
-					{mode === "live" ? (
-						<>
-							<span className="flex items-center gap-1">
-								<Kbd>Enter</Kbd> queue until the agent pauses
-							</span>
-							<span className="flex items-center gap-1">
-								<Kbd>Ctrl Enter</Kbd> send now, stops its current step
-							</span>
-						</>
-					) : mode === "resume" ? (
-						<>
-							<span className="flex items-center gap-1">
-								<Kbd>Enter</Kbd> continue the same conversation with the agent
-							</span>
-							<span className="flex items-center gap-1">
-								<Kbd>Shift Enter</Kbd> new line
-							</span>
-							{pinned && <span>The code stays at {pinned}.</span>}
-						</>
-					) : (
-						<>
-							<span className="flex items-center gap-1">
-								<Kbd>Enter</Kbd> start the investigation with this as the brief
-							</span>
-							<span className="flex items-center gap-1">
-								<Kbd>Shift Enter</Kbd> new line
-							</span>
-							{mode === "again" && !note && (
-								<span>
-									This investigation has ended and cannot be asked anything
-									more.
-								</span>
-							)}
-						</>
-					)}
-				</div>
+					{refusal ?? blockedReason}
+				</p>
 			)}
 			{undeliverable && (
 				<div
-					className="flex flex-wrap items-center gap-2 px-2 text-meta text-danger"
+					className="flex flex-wrap items-center gap-2 px-3 text-meta text-danger"
 					data-testid="composer-undeliverable"
 				>
 					The investigation ended before your message reached it.
 					{onSaveAsNote && (
 						<Button
-							variant="outline"
+							variant="ghost"
 							size="xs"
 							className="text-text-1"
 							onClick={() => onSaveAsNote(undeliverable)}

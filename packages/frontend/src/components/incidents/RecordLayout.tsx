@@ -14,7 +14,7 @@ export const RECORD_ROUTES = {
 export type RecordRoute = keyof typeof RECORD_ROUTES;
 
 /** The reading column and, from 1280, the facts rail beside it (study-v3 §3.3). */
-const GRID =
+export const RECORD_GRID =
 	"mx-auto grid w-full max-w-[calc(var(--reading-w)+3rem)] grid-cols-1 gap-x-12 px-4 sm:px-6 xl:max-w-[calc(var(--reading-w)+var(--facts-w)+6rem)] xl:grid-cols-[minmax(0,var(--reading-w))_var(--facts-w)] xl:justify-center";
 
 /**
@@ -35,7 +35,7 @@ export function RecordPage({
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="min-h-0 flex-1 overflow-y-auto" data-testid={testId}>
-				<div className={cn(GRID, "pt-6 pb-12")}>
+				<div className={cn(RECORD_GRID, "pt-6 pb-12")}>
 					<div className="min-w-0">{children}</div>
 					{rail && (
 						<aside
@@ -50,7 +50,7 @@ export function RecordPage({
 			</div>
 			{box && (
 				<div className="shrink-0 pt-1 pb-3">
-					<div className={GRID}>
+					<div className={RECORD_GRID}>
 						<div className="min-w-0">{box}</div>
 					</div>
 				</div>

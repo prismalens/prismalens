@@ -7,6 +7,9 @@
 
 @plugin "tailwindcss-animate";
 
+/* Streamdown renders the agent's prose; its own classes are compiled from here. */
+@source "../node_modules/streamdown/dist/*.js";
+
 /* The app toggles a `.dark` class on <html>; stock Tailwind `dark:` compiles to
    `@media (prefers-color-scheme: dark)` and would follow the OS instead (#423). */
 @custom-variant dark (&:where(.dark, .dark *));

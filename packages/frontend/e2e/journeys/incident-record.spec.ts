@@ -69,7 +69,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 
 		// The run strip speaks the run's words, not the incident's.
 		await expect(page.getByTestId("run-strip-state")).toHaveText("Done");
-		await expect(page.getByTestId("run-stop")).toHaveCount(0);
+		await expect(page.getByTestId("composer-stop")).toHaveCount(0);
 
 		// The sections, in the order an SRE asks; the facts in the rail.
 		const ids = [
@@ -118,11 +118,6 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("run-strip")).toBeVisible();
 		await expect(page.getByTestId("record-tabs")).toBeVisible();
 
-		// Esc goes back to the incident.
-		await page.locator("body").press("Escape");
-		await expect(page.getByTestId("incident-record")).toBeVisible();
-		await expect(page).not.toHaveURL(/\/report/);
-
 		// The conversation: prose, the tool call folded to one line, the end.
 		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
@@ -130,16 +125,16 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(transcript.getByTestId("transcript-prose")).toHaveText(
 			"Mapping the connection pool",
 		);
-		await expect(transcript.getByTestId("transcript-tools")).toContainText(
-			"Ran 1 tool",
-		);
-		await expect(transcript).toContainText("Finished: submitted");
+		await expect(transcript.getByTestId("transcript-tools")).toBeVisible();
 
-		// The Ledger view is the row-per-event panel, one row per event.
-		await page.getByTestId("conversation-view-ledger").click();
+		// The Event log is the row-per-event panel, reached from the rail.
+		await page
+			.getByTestId("facts-rail")
+			.getByRole("link", { name: "Event log" })
+			.click();
 		const panel = page.getByTestId("investigation-stream-panel");
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
-		await page.getByTestId("conversation-view-transcript").click();
+		await page.getByTestId("event-log-back").click();
 
 		await settled(page);
 
@@ -148,7 +143,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await settled(page);
 	});
 
-	test("the incident tabs: every tab in place, and Esc walks back to the board", async ({
+	test("the incident tabs: every tab in place, and Esc is the chevron", async ({
 		page,
 	}) => {
 		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
@@ -165,15 +160,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
 
-		// Esc is ignored while typing, and goes back once the field lets go.
+		// In the box Esc only lets go of it; once it has, Esc is the chevron.
 		await page.getByTestId("composer-input").focus();
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
-		await page.getByTestId("composer-input").blur();
-		await page.keyboard.press("Escape");
-		await expect(page.getByTestId("incident-record")).toBeVisible();
-
-		// From Overview, Esc and the back arrow both reach the board.
+		await expect(page.getByTestId("composer-input")).not.toBeFocused();
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("incident-board")).toBeVisible();
 		await page.goto(`/incidents/${INCIDENT_ID}`);
@@ -198,7 +189,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await setTheme(page, "light");
 		await expect(page.getByTestId("run-strip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Investigate",
+			"Start investigation",
 		);
 		await settled(page);
 	});
@@ -223,11 +214,13 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			"Failed: harness lost the tool socket",
 		);
-		await page.getByTestId("conversation-view-ledger").click();
+		await page.getByTestId("transcript-event-log").click();
 		await expect(page.getByTestId("investigation-failed-state")).toBeVisible();
 	});
 
-	test("a live run: Stop asks first, then reads Stopping", async ({ page }) => {
+	test("a live run: Stop in the box ends it at once, then reads Stopping", async ({
+		page,
+	}) => {
 		await installStreamDouble(page);
 		await serveAsRunning(page, INVESTIGATION_ID);
 		// The run heard the cancel: the API answers with the still-running row.
@@ -263,20 +256,12 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			"The report comes when the run finishes",
 		);
 
-		// Keep going closes the confirm and sends nothing.
-		await page.getByTestId("run-stop").click();
-		const confirm = page.getByTestId("run-stop-confirm");
-		await expect(confirm).toContainText("Stop this investigation?");
-		await confirm.getByRole("button", { name: "Keep going" }).click();
-		await expect(confirm).toHaveCount(0);
-		expect(cancelled).toBe(0);
-
-		await page.getByTestId("run-stop").click();
-		await page.getByTestId("run-stop-confirm-button").click();
+		// No confirm: a stop is the harness's own cancel (R4.4).
+		await page.getByTestId("composer-stop").click();
 		await expect.poll(() => cancelled).toBe(1);
 		await expect(state).toHaveText("Stopping");
-		await expect(page.getByTestId("run-stop")).toBeDisabled();
-		await expect(page.getByTestId("run-stop")).toHaveText("Stopping");
+		await expect(page.getByTestId("composer-stop")).toBeDisabled();
+		await expect(page.getByTestId("composer-stop")).toHaveText("Stopping");
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 
@@ -327,9 +312,6 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		const input = page.getByTestId("composer-input");
 		await expect(page.getByTestId("agent-chip")).toBeVisible();
 		await input.fill("Check the deploy at 13:58 first.");
-		await expect(page.getByTestId("composer-hint")).toContainText(
-			"queue until the agent pauses",
-		);
 		await input.press("Enter");
 		await expect.poll(() => sent.length).toBe(1);
 		expect(sent[0]).toMatchObject({

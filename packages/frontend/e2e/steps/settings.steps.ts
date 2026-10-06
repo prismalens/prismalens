@@ -585,9 +585,11 @@ Then(
 		const effort = picker(page).getByTestId("effort-chip");
 		await expect(effort).toContainText("medium");
 		await expect(effort).toContainText("Codex's default");
-		await expect(picker(page).getByTestId("model-pending")).toContainText(
-			"pending a check",
-		);
+		// The check read Codex's own model option, so its list replaces "pending a check".
+		await expect(
+			picker(page).locator('[data-testid=model-option][data-model="GPT-5.6"]'),
+		).toBeVisible();
+		await expect(picker(page).getByTestId("model-pending")).toHaveCount(0);
 	},
 );
 

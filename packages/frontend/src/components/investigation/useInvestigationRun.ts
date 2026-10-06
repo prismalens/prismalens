@@ -24,6 +24,7 @@ const eventsKey = (id: string) =>
 	orpc.investigations.getEvents.key({ input: { id } });
 
 import {
+	type AttachmentView,
 	latestAgentText,
 	type PendingMessage,
 	unmatchedPending,
@@ -68,13 +69,19 @@ export function followUpState(
 	investigation: {
 		status: string;
 		resumable?: boolean;
+		continuable?: boolean;
 		resumeBlockedReason?: string | null;
 	} | null,
-): { resumable: boolean; resumeBlockedReason: string | null } {
+): {
+	resumable: boolean;
+	continuable: boolean;
+	resumeBlockedReason: string | null;
+} {
 	if (!investigation || !isWorkflowTerminal(investigation.status))
-		return { resumable: false, resumeBlockedReason: null };
+		return { resumable: false, continuable: false, resumeBlockedReason: null };
 	return {
 		resumable: !!investigation.resumable,
+		continuable: !!investigation.continuable,
 		resumeBlockedReason: investigation.resumeBlockedReason ?? null,
 	};
 }
@@ -200,18 +207,32 @@ export function useInvestigationRun(investigationId: string | null) {
 		(
 			text: string,
 			mode: "queue" | "now",
-			opts?: { branchId?: string; onError?: (error: unknown) => void },
+			opts?: {
+				branchId?: string;
+				attachments?: AttachmentView[];
+				onError?: (error: unknown) => void;
+			},
 		) => {
+			const attachments = opts?.attachments ?? [];
 			const local: PendingMessage = {
 				id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 				text,
 				mode,
 				at: new Date().toISOString(),
+				attachments,
 			};
 			setUndeliverable(null);
 			setPending((p) => ({ runId: p.runId, items: [...p.items, local] }));
 			messageMutate(
-				{ id, text, mode, branchId: opts?.branchId },
+				{
+					id,
+					text,
+					mode,
+					branchId: opts?.branchId,
+					...(attachments.length
+						? { attachments: attachments.map((a) => a.id) }
+						: {}),
+				},
 				{
 					// A follow-up reopened the run: refetch so it reads live and the stream connects.
 					onSuccess: (result) => {

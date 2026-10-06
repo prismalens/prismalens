@@ -56,10 +56,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 });
 
 const box = (
-	<DockedComposer
-		className="bg-transparent px-0 pt-0 pb-0 sm:px-0"
-		width="max-w-none"
-	/>
+	<DockedComposer className="bg-transparent px-0 pt-0 pb-0 sm:px-0" />
 );
 
 function ReportRoute() {

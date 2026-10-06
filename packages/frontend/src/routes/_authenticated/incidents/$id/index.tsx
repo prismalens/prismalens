@@ -50,12 +50,7 @@ function IncidentOverview() {
 		<RecordPage
 			testId="incident-record"
 			rail={<FactsRail facts={rail} />}
-			box={
-				<DockedComposer
-					className="bg-transparent px-0 pt-0 pb-0 sm:px-0"
-					width="max-w-none"
-				/>
-			}
+			box={<DockedComposer className="bg-transparent px-0 pt-0 pb-0 sm:px-0" />}
 		>
 			<Summary />
 			<Cause />

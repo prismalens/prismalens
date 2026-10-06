@@ -52,6 +52,22 @@ describe("composerMode", () => {
 	});
 });
 
+describe("Esc and continue (R4.4)", () => {
+	it("stops a working agent, and lets go of the box otherwise", () => {
+		expect(composerKeyAction(key("Escape"), "live")).toBe("stop");
+		expect(composerKeyAction(key("Escape"), "live", false)).toBe("blur");
+		expect(composerKeyAction(key("Escape"), "brief")).toBe("blur");
+		expect(composerKeyAction(key("Escape"), "continue")).toBe("blur");
+	});
+
+	it("continues a stopped run that can be reopened, before a follow-up", () => {
+		expect(
+			composerMode({ live: false, continuable: true, resumable: true }),
+		).toBe("continue");
+		expect(composerKeyAction(key("Enter"), "continue")).toBe("queue");
+	});
+});
+
 describe("resume mode (#747)", () => {
 	it("sends on Enter and Ctrl+Enter like a live run", () => {
 		expect(composerKeyAction(key("Enter"), "resume")).toBe("queue");

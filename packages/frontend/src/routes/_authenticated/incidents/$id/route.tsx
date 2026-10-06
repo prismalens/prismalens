@@ -176,8 +176,18 @@ function IncidentLayout() {
 			canInvestigate:
 				canIncidentAction("investigate", incident.status) && !runLive,
 			investigateBlocked: agentReady ? undefined : blockedReason,
-			investigate: (brief?: string) =>
-				investigateMutation.mutate({ id, ...(brief ? { brief } : {}) }),
+			investigate: async (start = {}) => {
+				await investigateMutation.mutateAsync({
+					id,
+					...(start.brief ? { brief: start.brief } : {}),
+					...(start.access && start.access !== "read-only"
+						? { access: start.access }
+						: {}),
+					...(start.attachments?.length
+						? { attachments: start.attachments }
+						: {}),
+				});
+			},
 			isInvestigating: investigateMutation.isPending,
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
 			resolve: () => resolveMutation.mutate({ id }),
@@ -240,7 +250,7 @@ function IncidentLayout() {
 					incident={incident}
 					runLive={runLive}
 					onAcknowledge={record.acknowledge}
-					onInvestigate={() => record.investigate()}
+					onInvestigate={() => void record.investigate().catch(() => {})}
 					onClose={record.openClose}
 					onReopen={record.openReopen}
 					onEditCause={record.openEditCause}
