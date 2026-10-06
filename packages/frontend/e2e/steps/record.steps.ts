@@ -46,8 +46,10 @@ const inc = (page: Page): Made => {
 const PAIRED_STATE = () =>
 	join(process.env.PRISMALENS_E2E_WORKSPACE_DIR ?? "", "paired-state.json");
 
-/** The element's box, scrolled or not; fails when it is not laid out. */
+/** The element's box once it renders, scrolled or not; fails when it is not laid out. */
 async function box(l: Locator) {
+	// boundingBox() does not wait: a report still rendering read as "not laid out".
+	await expect(l).toBeVisible();
 	const b = await l.boundingBox();
 	if (!b) throw new Error("not laid out");
 	return b;

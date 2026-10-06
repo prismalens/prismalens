@@ -16,10 +16,12 @@ import { Given, Then, When } from "./fixtures";
 import {
 	detail,
 	ensureService,
+	firstPaint,
 	incidentByTitle,
 	LIVE,
 	type Made,
 	sidewaysOverflow,
+	visit,
 	waitFor,
 	waitForRun,
 } from "./product";
@@ -85,20 +87,6 @@ async function toolResults(page: Page): Promise<number> {
 	);
 	const { events } = (await res.json()) as { events: { kind: string }[] };
 	return events.filter((e) => e.kind === "tool_result").length;
-}
-
-/**
- * A cold page on the dev server fetches ~350 modules before the route renders:
- * about 2 s here, past 5 s on a loaded CI runner (#786), so first paint gets longer.
- */
-const FIRST_PAINT = { timeout: 15_000 };
-
-/** An incident's page, once its frame has painted. */
-async function visit(page: Page, path: string) {
-	await page.goto(path);
-	await expect(page.getByTestId("incident-record-frame")).toBeVisible(
-		FIRST_PAINT,
-	);
 }
 
 async function openConversation(page: Page) {
@@ -714,9 +702,7 @@ When("I pick an agent not yet checked", async ({ page, agents }) => {
 	agents.install(["gemini"], "attach");
 	await pick(page, "gemini");
 	await page.reload();
-	await expect(page.getByTestId("incident-record-frame")).toBeVisible(
-		FIRST_PAINT,
-	);
+	await firstPaint(page);
 	await expect(page.getByTestId("agent-picker")).toContainText("Gemini");
 });
 
@@ -802,10 +788,8 @@ Given(
 			hasTouch: true,
 		});
 		const phone = await ctx.newPage();
-		await phone.goto(`/incidents/${inc(page).id}/conversation`);
-		await expect(phone.getByTestId("conversation-route")).toBeVisible(
-			FIRST_PAINT,
-		);
+		await visit(phone, `/incidents/${inc(page).id}/conversation`);
+		await expect(phone.getByTestId("conversation-route")).toBeVisible();
 		w(page).phone = phone;
 	},
 );
