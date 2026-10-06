@@ -87,8 +87,22 @@ async function toolResults(page: Page): Promise<number> {
 	return events.filter((e) => e.kind === "tool_result").length;
 }
 
+/**
+ * A cold page on the dev server fetches ~350 modules before the route renders:
+ * about 2 s here, past 5 s on a loaded CI runner (#786), so first paint gets longer.
+ */
+const FIRST_PAINT = { timeout: 15_000 };
+
+/** An incident's page, once its frame has painted. */
+async function visit(page: Page, path: string) {
+	await page.goto(path);
+	await expect(page.getByTestId("incident-record-frame")).toBeVisible(
+		FIRST_PAINT,
+	);
+}
+
 async function openConversation(page: Page) {
-	await page.goto(`/incidents/${inc(page).id}/conversation`);
+	await visit(page, `/incidents/${inc(page).id}/conversation`);
 	await expect(page.getByTestId("conversation-route")).toBeVisible();
 }
 
@@ -139,7 +153,7 @@ When(
 	async ({ page, unique }, text: string, button: string) => {
 		const made = await incidentByTitle(page, unique("BandAction"));
 		w(page).inc = { ...made, labels: {} };
-		await page.goto(`/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}`);
 		// The script name rides in the brief so the run holds for the Then.
 		await box(page).fill(`${text} fake-session:live`);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(button);
@@ -570,7 +584,7 @@ Given(
 );
 
 When("a run starts", async ({ page }) => {
-	await page.goto(`/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}`);
 	await page.getByTestId("composer-investigate").click();
 	await waitForRun(
 		page,
@@ -585,9 +599,9 @@ Then(
 	async ({ page }, model: string) => {
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(run?.status).toBe("completed");
-		await page.goto(`/incidents/${inc(page).id}/report`);
+		await visit(page, `/incidents/${inc(page).id}/report`);
 		await expect(page.getByTestId("report-route")).toContainText(model);
-		await page.goto(`/incidents/${inc(page).id}/conversation?ledger=1`);
+		await visit(page, `/incidents/${inc(page).id}/conversation?ledger=1`);
 		const panel = page.getByTestId("investigation-stream-panel");
 		await expect(panel).toContainText(
 			`The agent took model ${model.toLowerCase()} before the first prompt`,
@@ -617,7 +631,7 @@ Given("the agent will not take the model", async ({ page }) => {
 Then(
 	"the run does not start and the box says which models it offered",
 	async ({ page }) => {
-		await page.goto(`/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("composer-note")).toHaveText(
 			"Codex would not switch to gpt-9; it offered gpt-5.6",
 		);
@@ -636,7 +650,7 @@ When(
 		await pick(page, "claude-code");
 		const made = await incidentByTitle(page, unique("BandAction"));
 		w(page).inc = { ...made, labels: {} };
-		await page.goto(`/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}`);
 		await box(page).fill("The panel at 14:02");
 		await pasteFile(page, PNG);
 	},
@@ -653,7 +667,7 @@ Then(
 			(r) => r.status !== "pending",
 			"the run with the screenshot",
 		);
-		await page.goto(`/incidents/${inc(page).id}/conversation`);
+		await visit(page, `/incidents/${inc(page).id}/conversation`);
 		const mine = page.getByTestId("transcript-operator").first();
 		await expect(mine).toContainText("The panel at 14:02");
 		await expect(
@@ -681,7 +695,7 @@ When(
 		expect(fresh.ok(), await fresh.text()).toBe(true);
 		const { id } = (await fresh.json()) as { id: string };
 		w(page).inc = { ...made, id, labels: {} };
-		await page.goto(`/incidents/${id}`);
+		await visit(page, `/incidents/${id}`);
 		await pasteFile(page, PNG);
 	},
 );
@@ -701,6 +715,9 @@ When("I pick an agent not yet checked", async ({ page, agents }) => {
 	agents.install(["gemini"], "attach");
 	await pick(page, "gemini");
 	await page.reload();
+	await expect(page.getByTestId("incident-record-frame")).toBeVisible(
+		FIRST_PAINT,
+	);
 	await expect(page.getByTestId("agent-picker")).toContainText("Gemini");
 });
 
@@ -748,14 +765,14 @@ Then(
 			(r) => r.status === "completed",
 			"the run with the log",
 		);
-		await page.goto(`/incidents/${inc(page).id}/conversation`);
+		await visit(page, `/incidents/${inc(page).id}/conversation`);
 		// The agent saw the file as fenced data in its prompt, by name.
 		await expect(
 			page
 				.getByTestId("transcript-prose")
 				.filter({ hasText: "Reading what you attached: app.log." }),
 		).toBeVisible();
-		await page.goto(`/incidents/${inc(page).id}/report`);
+		await visit(page, `/incidents/${inc(page).id}/report`);
 		await expect(page.getByTestId("report-route")).toContainText(
 			"attachment: app.log",
 		);
@@ -774,6 +791,11 @@ Given(
 			"BooklogrQueueLag",
 			"live",
 		);
+		// Working means a step is in: the agent has started, not just been spawned.
+		await waitFor(
+			async () => ((await toolResults(page)) >= 1 ? true : undefined),
+			"the run's first tool call",
+		);
 		await openConversation(page);
 		const ctx = await browser.newContext({
 			storageState: PAIRED_STATE(),
@@ -782,7 +804,9 @@ Given(
 		});
 		const phone = await ctx.newPage();
 		await phone.goto(`/incidents/${inc(page).id}/conversation`);
-		await expect(phone.getByTestId("conversation-route")).toBeVisible();
+		await expect(phone.getByTestId("conversation-route")).toBeVisible(
+			FIRST_PAINT,
+		);
 		w(page).phone = phone;
 	},
 );
