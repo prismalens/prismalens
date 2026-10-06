@@ -80,6 +80,10 @@ export interface ComposerBoxProps {
 
 const MAX_HEIGHT_PX = 160;
 
+const release = (drafts: Draft[]) => {
+	for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
+};
+
 const PLACEHOLDER: Record<ComposerMode, string> = {
 	brief: "Brief the agent (optional)",
 	live: "Message the agent",
@@ -137,12 +141,10 @@ export function ComposerBox({
 		el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
 	}, [text]);
 
-	useEffect(
-		() => () => {
-			for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
-		},
-		[drafts],
-	);
+	// A preview lives as long as its draft: revoked on remove, on send and on unmount.
+	const shown = useRef(drafts);
+	shown.current = drafts;
+	useEffect(() => () => release(shown.current), []);
 
 	const add = (files: File[]) => {
 		let count = drafts.length;
@@ -169,6 +171,7 @@ export function ComposerBox({
 
 	const reset = () => {
 		setText("");
+		release(drafts);
 		setDrafts([]);
 		setRefusal(null);
 	};
@@ -276,7 +279,10 @@ export function ComposerBox({
 								<button
 									type="button"
 									aria-label={`Remove ${d.file.name}`}
-									onClick={() => setDrafts((all) => all.filter((x) => x !== d))}
+									onClick={() => {
+										release([d]);
+										setDrafts((all) => all.filter((x) => x !== d));
+									}}
 									className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-4 hover:text-text-1"
 								>
 									<X className="size-3" />

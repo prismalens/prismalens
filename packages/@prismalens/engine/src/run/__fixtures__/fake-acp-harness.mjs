@@ -340,7 +340,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			sessionUpdate: "agent_message_chunk",
 			content: { type: "text", text: "REPLAYED" },
 		});
-		send({ jsonrpc: "2.0", id: msg.id, result: {} });
+		const options = configOptions();
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: options.length ? { configOptions: options } : {},
+		});
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
 		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.

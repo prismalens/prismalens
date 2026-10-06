@@ -118,16 +118,7 @@ export function DockedComposer({
 				}}
 				onMessage={async ({ text, files }, send) => {
 					const attachments = await upload(files);
-					run.sendMessage(text, send, {
-						branchId,
-						attachments,
-						onError: (error) =>
-							toast({
-								title: "Message not sent",
-								description: getErrorMessage(error),
-								variant: "destructive",
-							}),
-					});
+					await run.sendMessage(text, send, { branchId, attachments });
 				}}
 				undeliverable={run.undeliverable}
 				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}

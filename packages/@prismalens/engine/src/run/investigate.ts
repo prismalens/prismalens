@@ -447,13 +447,13 @@ export async function* runInvestigation(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
-		// A chosen model goes over the session's own option and must come back as asked
-		// (R4.2); an env-named one the harness already read itself (walk f18).
+		// A chosen model goes over the session's own option and must come back as asked,
+		// a reopened session included (R4.2); an env-named one the harness read itself (walk f18).
 		const chosenModel =
 			opts.model && modelVia === "acp" && opts.modelSource !== "env"
 				? opts.model
 				: null;
-		if (chosenModel && !opts.resume) {
+		if (chosenModel) {
 			const configId = session.modelOptionId;
 			const took = !configId
 				? null
