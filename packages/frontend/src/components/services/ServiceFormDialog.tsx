@@ -179,18 +179,18 @@ export function ServiceFormDialog({
 
 				<div className="space-y-4">
 					<div className="grid grid-cols-2 gap-3">
-						<Field label="Name" htmlFor="service-name">
+						<Field label="Name" htmlFor="name">
 							<Input
-								id="service-name"
+								id="name"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
 								placeholder="payments-api"
 								disabled={isEditing}
 							/>
 						</Field>
-						<Field label="Display name" htmlFor="service-display-name">
+						<Field label="Display name" htmlFor="displayName">
 							<Input
-								id="service-display-name"
+								id="displayName"
 								value={displayName}
 								onChange={(e) => setDisplayName(e.target.value)}
 								placeholder="Payments API"
@@ -200,11 +200,11 @@ export function ServiceFormDialog({
 
 					<Field
 						label="Code"
-						htmlFor="service-repository"
+						htmlFor="repository"
 						hint="A folder on this machine or a git URL; a run reads its last commit"
 					>
 						<Input
-							id="service-repository"
+							id="repository"
 							value={repository}
 							onChange={(e) => setRepository(e.target.value)}
 							placeholder="~/code/payments-api"
@@ -212,9 +212,9 @@ export function ServiceFormDialog({
 						/>
 					</Field>
 
-					<Field label="Description" htmlFor="service-description">
+					<Field label="Description" htmlFor="description">
 						<Textarea
-							id="service-description"
+							id="description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
 							placeholder="Takes card payments for checkout"
@@ -294,7 +294,7 @@ export function ServiceFormDialog({
 						{isPending && (
 							<Loader2 className="size-3.5 motion-safe:animate-spin" />
 						)}
-						{isEditing ? "Save" : "Add"}
+						{isEditing ? "Save" : "Create service"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
