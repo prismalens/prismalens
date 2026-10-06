@@ -147,6 +147,7 @@ function useFlip(deps: unknown) {
 function useArrivals(needs: IncidentWithRelations[]): Map<string, number> {
 	const seen = useRef<Set<string> | null>(null);
 	const [fresh, setFresh] = useState<Map<string, number>>(new Map());
+	const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 	useEffect(() => {
 		const ids = needs.map((i) => i.id);
 		if (seen.current === null) {
@@ -160,21 +161,29 @@ function useArrivals(needs: IncidentWithRelations[]): Map<string, number> {
 		setFresh((m) => {
 			const next = new Map(m);
 			arrived.forEach((id, i) => {
-				next.set(id, (m.size + i) * 300);
+				next.set(id, i * 300);
 			});
 			return next;
 		});
-		const t = setTimeout(
-			() =>
-				setFresh((m) => {
-					const next = new Map(m);
-					for (const id of arrived) next.delete(id);
-					return next;
-				}),
-			3_000 + (arrived.length - 1) * 300,
+		// Every refetch is a new `needs`; a batch's timer outlives it and ends only with the board.
+		timers.current.push(
+			setTimeout(
+				() =>
+					setFresh((m) => {
+						const next = new Map(m);
+						for (const id of arrived) next.delete(id);
+						return next;
+					}),
+				3_000 + (arrived.length - 1) * 300,
+			),
 		);
-		return () => clearTimeout(t);
 	}, [needs]);
+	useEffect(() => {
+		const pending = timers.current;
+		return () => {
+			for (const t of pending) clearTimeout(t);
+		};
+	}, []);
 	return fresh;
 }
 

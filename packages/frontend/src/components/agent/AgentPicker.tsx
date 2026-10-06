@@ -312,7 +312,9 @@ export function AgentModelPicker({
 		...harnesses.filter((h) => h.installed).map((h) => h.id),
 	];
 	const onRailKeys = (e: KeyboardEvent<HTMLDivElement>) => {
-		const at = tiles.indexOf(shown);
+		// The shown agent may be off the rail (stored, then uninstalled): Down takes the first, Up the last.
+		const found = tiles.indexOf(shown);
+		const at = found === -1 ? (e.key === "ArrowUp" ? 0 : -1) : found;
 		const go = (i: number) => {
 			e.preventDefault();
 			const next = tiles[(i + tiles.length) % tiles.length];

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { cn } from "@/lib/utils";
 
 /**
  * One form field in Resolve's language (look ruling §2, Dialog): the name in
  * 500, an optional quiet note beside it, the control under it, and one line
  * under that for a hint or the field's error. No asterisk, no "(optional)".
+ * A function child gets that line's id for the control's `aria-describedby`.
  */
 export function Field({
 	label,
@@ -26,21 +27,27 @@ export function Field({
 	/** Replaces the hint while the field is wrong. */
 	error?: string | false | null;
 	className?: string;
-	children: ReactNode;
+	children: ReactNode | ((describedBy: string | undefined) => ReactNode);
 }) {
+	const messageId = useId();
+	const describedBy = error || hint ? messageId : undefined;
 	return (
 		<div className={cn("min-w-0 space-y-1.5", className)}>
 			<label htmlFor={htmlFor} className="block truncate text-body">
 				<span className="font-medium">{label}</span>
 				{note && <span className="text-text-3"> {note}</span>}
 			</label>
-			{children}
+			{typeof children === "function" ? children(describedBy) : children}
 			{error ? (
-				<p role="alert" className="text-meta text-danger">
+				<p id={messageId} role="alert" className="text-meta text-danger">
 					{error}
 				</p>
 			) : (
-				hint && <p className="text-meta text-text-3">{hint}</p>
+				hint && (
+					<p id={messageId} className="text-meta text-text-3">
+						{hint}
+					</p>
+				)
 			)}
 		</div>
 	);

@@ -83,4 +83,25 @@ test.describe("#523 — the settings frame", () => {
 		await expect(page.getByTestId("service-page")).toBeVisible();
 		await expect(page.getByRole("tab")).toHaveCount(0);
 	});
+
+	test("a service that is gone says so; one that failed to load offers Retry", async ({
+		page,
+	}) => {
+		await page.goto("/services/00000000-0000-4000-8000-000000000000");
+		await expect(page.getByTestId("state-not-found")).toContainText(
+			"may have been deleted",
+			{ timeout: 15_000 },
+		);
+
+		await page.route(/\/api\/services\/[0-9a-f-]{36}$/, (route) =>
+			route.fulfill({ status: 500, body: "{}" }),
+		);
+		await page.goto("/services/00000000-0000-4000-8000-000000000001");
+		const problem = page.getByTestId("state-problem");
+		await expect(problem).toContainText("This service did not load.", {
+			timeout: 15_000,
+		});
+		await expect(problem.getByRole("button", { name: "Retry" })).toBeVisible();
+		await expect(page.getByTestId("state-not-found")).toHaveCount(0);
+	});
 });

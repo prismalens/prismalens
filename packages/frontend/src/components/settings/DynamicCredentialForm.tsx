@@ -84,52 +84,56 @@ export function DynamicCredentialForm({
 						hint={field.description}
 						error={shouldShowError ? error : undefined}
 					>
-						{field.type === "textarea" ? (
-							<>
-								<Textarea
+						{(describedBy) =>
+							field.type === "textarea" ? (
+								<>
+									<Textarea
+										id={id}
+										value={values[field.name] ?? ""}
+										onChange={(e) => handleChange(field.name, e.target.value)}
+										onBlur={() => handleBlur(field.name)}
+										placeholder={field.placeholder ?? field.example}
+										rows={4}
+										className="resize-none font-mono text-meta"
+										aria-invalid={shouldShowError ? true : undefined}
+										aria-describedby={describedBy}
+									/>
+									<label className="inline-flex cursor-pointer items-center gap-1.5 text-meta text-text-2 hover:text-text-1">
+										<Upload className="size-3.5" />
+										<span>Upload a file</span>
+										<input
+											type="file"
+											className="hidden"
+											accept=".pem,.key"
+											onChange={(e) => {
+												const file = e.target.files?.[0];
+												if (file) {
+													const reader = new FileReader();
+													reader.onload = () =>
+														handleChange(field.name, reader.result as string);
+													reader.readAsText(file);
+												}
+											}}
+										/>
+									</label>
+								</>
+							) : (
+								<Input
 									id={id}
+									type={
+										field.type === "password" || field.sensitive
+											? "password"
+											: "text"
+									}
 									value={values[field.name] ?? ""}
 									onChange={(e) => handleChange(field.name, e.target.value)}
 									onBlur={() => handleBlur(field.name)}
 									placeholder={field.placeholder ?? field.example}
-									rows={4}
-									className="resize-none font-mono text-meta"
 									aria-invalid={shouldShowError ? true : undefined}
+									aria-describedby={describedBy}
 								/>
-								<label className="inline-flex cursor-pointer items-center gap-1.5 text-meta text-text-2 hover:text-text-1">
-									<Upload className="size-3.5" />
-									<span>Upload a file</span>
-									<input
-										type="file"
-										className="hidden"
-										accept=".pem,.key"
-										onChange={(e) => {
-											const file = e.target.files?.[0];
-											if (file) {
-												const reader = new FileReader();
-												reader.onload = () =>
-													handleChange(field.name, reader.result as string);
-												reader.readAsText(file);
-											}
-										}}
-									/>
-								</label>
-							</>
-						) : (
-							<Input
-								id={id}
-								type={
-									field.type === "password" || field.sensitive
-										? "password"
-										: "text"
-								}
-								value={values[field.name] ?? ""}
-								onChange={(e) => handleChange(field.name, e.target.value)}
-								onBlur={() => handleBlur(field.name)}
-								placeholder={field.placeholder ?? field.example}
-								aria-invalid={shouldShowError ? true : undefined}
-							/>
-						)}
+							)
+						}
 					</Field>
 				);
 			})}

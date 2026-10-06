@@ -24,6 +24,21 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(page.getByTestId("add-integration")).toHaveText(
 			"Add an integration",
 		);
+		// Each field's control is described by its hint, then by its error.
+		await page.getByTestId("add-integration").click();
+		const dialog = page.getByTestId("integration-form-dialog");
+		await dialog.getByTestId("template-github-app").click();
+		const appId = dialog.locator("#cred-appId");
+		await expect(appId).toHaveAccessibleDescription(
+			"Your GitHub App's ID (found in the App settings page)",
+		);
+		const label = dialog.locator("#integration-label");
+		await label.fill("");
+		await dialog.getByRole("button", { name: "Save" }).click();
+		await expect(label).toHaveAccessibleDescription("Give it a label.");
+		await expect(appId).toHaveAccessibleDescription("App ID is required");
+		await page.keyboard.press("Escape");
+		await expect(dialog).toHaveCount(0);
 		await page.getByTestId("settings-nav-sources").click();
 		await expect(
 			page.getByRole("heading", { name: "Webhook", level: 3 }),

@@ -287,13 +287,16 @@ export function IntegrationFormDialog({
 							htmlFor="integration-label"
 							error={showErrors && !label.trim() && "Give it a label."}
 						>
-							<Input
-								id="integration-label"
-								value={label}
-								onChange={(e) => setLabel(e.target.value)}
-								placeholder="Production GitHub"
-								aria-invalid={showErrors && !label.trim() ? true : undefined}
-							/>
+							{(describedBy) => (
+								<Input
+									id="integration-label"
+									aria-describedby={describedBy}
+									value={label}
+									onChange={(e) => setLabel(e.target.value)}
+									placeholder="Production GitHub"
+									aria-invalid={showErrors && !label.trim() ? true : undefined}
+								/>
+							)}
 						</Field>
 
 						{selectedTemplate.integrationCredentialFields &&
@@ -333,16 +336,19 @@ export function IntegrationFormDialog({
 										"The client ID is needed."
 									}
 								>
-									<Input
-										id="oauth-client-id"
-										value={oauthClientId}
-										onChange={(e) => setOauthClientId(e.target.value)}
-										aria-invalid={
-											mode === "create" && showErrors && !oauthClientId
-												? true
-												: undefined
-										}
-									/>
+									{(describedBy) => (
+										<Input
+											id="oauth-client-id"
+											aria-describedby={describedBy}
+											value={oauthClientId}
+											onChange={(e) => setOauthClientId(e.target.value)}
+											aria-invalid={
+												mode === "create" && showErrors && !oauthClientId
+													? true
+													: undefined
+											}
+										/>
+									)}
 								</Field>
 								<Field
 									label="Client secret"
@@ -355,17 +361,20 @@ export function IntegrationFormDialog({
 										"The client secret is needed."
 									}
 								>
-									<Input
-										id="oauth-client-secret"
-										type="password"
-										value={oauthClientSecret}
-										onChange={(e) => setOauthClientSecret(e.target.value)}
-										aria-invalid={
-											mode === "create" && showErrors && !oauthClientSecret
-												? true
-												: undefined
-										}
-									/>
+									{(describedBy) => (
+										<Input
+											id="oauth-client-secret"
+											aria-describedby={describedBy}
+											type="password"
+											value={oauthClientSecret}
+											onChange={(e) => setOauthClientSecret(e.target.value)}
+											aria-invalid={
+												mode === "create" && showErrors && !oauthClientSecret
+													? true
+													: undefined
+											}
+										/>
+									)}
 								</Field>
 							</>
 						)}

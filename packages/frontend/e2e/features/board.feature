@@ -36,6 +36,7 @@ Feature: Board
   Scenario: A new alert's card appears without a reload
     When an Alertmanager delivery for a new alert arrives
     Then within 2 seconds the card is on the board and the sidebar's Incidents count went up by one
+    And the card is marked new, and a second arrival a second later starts its own glow at once and leaves the first one's to end
 
   Scenario: A stale run looks different from a live one
     Given the run has sent nothing for 5 minutes

@@ -715,6 +715,30 @@ Then(
 		);
 		await page.keyboard.press("ArrowRight");
 		await expect(picker(page).getByTestId("picker-search")).toBeFocused();
+
+		// A stored agent that is off PATH holds the tab stop; Up from it reaches the last tile.
+		const { harnesses } = (await (
+			await page.request.get("/api/settings/harnesses")
+		).json()) as { harnesses: { id: string; installed: boolean }[] };
+		const off = harnesses.find((h) => !h.installed);
+		if (!off) return;
+		const stored = await page.request.patch("/api/settings/harness", {
+			data: { harness: off.id },
+		});
+		expect(stored.ok()).toBe(true);
+		try {
+			await page.keyboard.press("Escape");
+			await openPicker(page);
+			await picker(page).getByTestId(`rail-${off.id}`).focus();
+			await page.keyboard.press("ArrowUp");
+			await expect(
+				picker(page).locator("[role=tab]:not([data-off])").last(),
+			).toBeFocused();
+		} finally {
+			await page.request.patch("/api/settings/harness", {
+				data: { harness: "auto" },
+			});
+		}
 	},
 );
 

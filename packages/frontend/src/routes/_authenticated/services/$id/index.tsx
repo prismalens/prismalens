@@ -22,7 +22,7 @@ import {
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { RecordSection } from "@/components/shared/RecordSection";
-import { NotFound } from "@/components/shared/State";
+import { NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { backTarget, useBack } from "@/hooks/use-back";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -62,6 +62,7 @@ function ServicePage() {
 		data: service,
 		isLoading,
 		error,
+		refetch,
 	} = useQuery(orpc.services.get.queryOptions({ input: { id } }));
 	const { data: topology } = useQuery({
 		...orpc.services.getTopology.queryOptions({ input: { id } }),
@@ -99,16 +100,27 @@ function ServicePage() {
 
 	if (isLoading) return <ServiceDetailSkeleton />;
 	if (error || !service) {
+		const toList = (
+			<Button variant="text" size="sm" onClick={back}>
+				Back to the services
+			</Button>
+		);
+		// Only a 404 means gone; anything else failed while the service may still be there.
+		const gone = !error || (error as { status?: number }).status === 404;
 		return (
 			<div className="p-6">
-				<NotFound
-					text="This service did not load. It may have been deleted."
-					back={
-						<Button variant="text" size="sm" onClick={back}>
-							Back to the services
-						</Button>
-					}
-				/>
+				{gone ? (
+					<NotFound
+						text="This service is not here. It may have been deleted."
+						back={toList}
+					/>
+				) : (
+					<Problem
+						text="This service did not load."
+						onRetry={() => void refetch()}
+						back={toList}
+					/>
+				)}
 			</div>
 		);
 	}

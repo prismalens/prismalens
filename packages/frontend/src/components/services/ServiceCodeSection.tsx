@@ -71,6 +71,7 @@ export function ServiceCodeSection({
 							<Button
 								variant="danger"
 								size="sm"
+								disabled={unlink.isPending}
 								onClick={() =>
 									unlink.mutate({ id: r.id, serviceId: service.id })
 								}

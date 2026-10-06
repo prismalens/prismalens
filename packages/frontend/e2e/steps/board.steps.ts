@@ -406,6 +406,27 @@ Then(
 	},
 );
 
+Then(
+	"the card is marked new, and a second arrival a second later starts its own glow at once and leaves the first one's to end",
+	async ({ page, alertmanager, deliverWebhook, unique }) => {
+		const first = cardOf(page, inc(page).title);
+		await expect(first).toHaveAttribute("data-new", "");
+		await page.waitForTimeout(1_000);
+		const title = unique("BoardSecondArrival");
+		const listed = alertmanager.fire({
+			labels: { alertname: title, severity: "critical", service: QUIET.name },
+		});
+		await deliverWebhook([listed.fingerprint]);
+		const second = cardOf(page, title);
+		await expect(second).toHaveAttribute("data-new", "", { timeout: 3_000 });
+		// A later batch is not queued behind marks still showing (ruling §3.2: 300 ms within a batch).
+		// Inline: reduced motion (this suite's default) resets the computed delay.
+		await expect(second).toHaveAttribute("style", /animation-delay: 0ms/);
+		// The second arrival's refetch must not cancel the first card's 3 s mark.
+		await expect(first).not.toHaveAttribute("data-new", "", { timeout: 4_000 });
+	},
+);
+
 Given("the run has sent nothing for 5 minutes", async ({ page }) => {
 	const run = await waitForRun(
 		page,

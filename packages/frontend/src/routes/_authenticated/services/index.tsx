@@ -96,6 +96,8 @@ function ServicesPage() {
 	const navigate = useNavigate({ from: "/services/" });
 	const [arrivedToAdd] = useState(searchParams.add === "1");
 	const [showAddDialog, setShowAddDialog] = useState(arrivedToAdd);
+	const [addOpened, setAddOpened] = useState(arrivedToAdd);
+	if (showAddDialog && !addOpened) setAddOpened(true);
 	useEffect(() => {
 		if (searchParams.add === "1") {
 			setShowAddDialog(true);
@@ -209,10 +211,13 @@ function ServicesPage() {
 	const services = response?.data ?? [];
 	const total = response?.total ?? 0;
 	// From the door at ≥ 1024 the first service opens; the list stays one Back away (L32).
-	// A visit that came to add stays put: `add` is stripped on mount, so check arrival.
+	// A visit that came to add, or opened Add, stays put: the first service can land while the dialog links it.
 	const openFirst = useFirstOpen(
 		"/services",
-		!searchParams.team && !searchParams.search && !arrivedToAdd,
+		!searchParams.team &&
+			!searchParams.search &&
+			currentPage === 1 &&
+			!addOpened,
 	);
 	const firstId = services[0]?.id;
 	useEffect(() => {
