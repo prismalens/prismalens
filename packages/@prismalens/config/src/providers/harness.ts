@@ -138,7 +138,7 @@ export interface HarnessDescriptor {
 
 /**
  * The agent an OpenCode run uses. The overlay writes every key of its permission object, "*" first,
- * so a user key appends after ours and never reorders them; subagents stay off (Step 0, #PR).
+ * so a user key appends after ours and never reorders them; subagents stay off (Step 0, #791).
  */
 const OPENCODE_AGENT_PERMISSION = {
 	"*": "deny",
@@ -179,7 +179,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "opencode",
 		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
 		// The user's global opencode config stays visible on purpose (ADR 0003 §2): their model and providers apply.
-		// OPENCODE_CONFIG_DIR loads after it, so PrismaLens's permissions still win; the repo's own config stays off. #PR
+		// OPENCODE_CONFIG_DIR loads after it, so PrismaLens's permissions still win; the repo's own config stays off. #791
 		acpEnv: ({ configDir }) => ({
 			OPENCODE_CONFIG_DIR: configDir,
 			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
