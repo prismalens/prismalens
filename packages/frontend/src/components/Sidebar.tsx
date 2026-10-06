@@ -9,13 +9,7 @@
  * sections with Back above them. Hidden on pairing, where nothing leads away.
  */
 import { useQuery } from "@tanstack/react-query";
-import {
-	Link,
-	useLocation,
-	useMatch,
-	useNavigate,
-	useSearch,
-} from "@tanstack/react-router";
+import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
 	Bell,
 	Boxes,
@@ -24,7 +18,7 @@ import {
 	Plus,
 	SlidersHorizontal,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
@@ -129,12 +123,7 @@ function Shell({ pathname }: { pathname: string }) {
 					<MainBar pathname={pathname} doors={doors} signedIn={signedIn} />
 				)}
 			</aside>
-			<PhoneStrip
-				pathname={pathname}
-				doors={doors}
-				settings={settings}
-				onBack={back}
-			/>
+			<PhoneStrip pathname={pathname} doors={doors} />
 		</>
 	);
 }
@@ -437,26 +426,12 @@ function useEscape(handler: () => void, enabled: boolean) {
 	}, [handler, enabled]);
 }
 
-/** The phone's doors: a strip across the top with a 10-px label under each, and New. */
-function PhoneStrip({
-	pathname,
-	doors,
-	settings,
-	onBack,
-}: {
-	pathname: string;
-	doors: Door[];
-	settings: boolean;
-	onBack: () => void;
-}) {
+/**
+ * The phone's doors: a strip across the top with a 10-px label under each, and
+ * New. It stays on Settings; its Settings door returns a section to the list.
+ */
+function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 	const newIncident = useNewIncident();
-	const navigate = useNavigate();
-	const { tab } = useSearch({ strict: false }) as { tab?: string };
-	// Inside a section, Back returns to the section list first.
-	const settingsBack = useCallback(() => {
-		if (tab) navigate({ to: "/settings" });
-		else onBack();
-	}, [tab, navigate, onBack]);
 	return (
 		<div
 			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-4 md:hidden"
@@ -469,39 +444,27 @@ function PhoneStrip({
 			>
 				<PrismaLensMark className="size-[22px]" />
 			</Link>
-			{settings ? (
-				<Button
-					variant="text"
-					size="icon"
-					onClick={settingsBack}
-					aria-label="Back"
-					data-testid="strip-back"
-				>
-					<ChevronLeft className="size-4" />
-				</Button>
-			) : (
-				<nav className="flex items-center" aria-label="Areas">
-					{doors.map((door) => {
-						const on = isOn(pathname, door.to);
-						return (
-							<Link
-								key={door.to}
-								to={door.to}
-								aria-current={on ? "page" : undefined}
-								data-testid={`strip-${door.label.toLowerCase()}`}
-								className={cn(
-									"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 transition-colors duration-(--dur-instant)",
-									on &&
-										"font-medium text-text-1 after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent",
-								)}
-							>
-								{door.icon}
-								<span>{door.label}</span>
-							</Link>
-						);
-					})}
-				</nav>
-			)}
+			<nav className="flex items-center" aria-label="Areas">
+				{doors.map((door) => {
+					const on = isOn(pathname, door.to);
+					return (
+						<Link
+							key={door.to}
+							to={door.to}
+							aria-current={on ? "page" : undefined}
+							data-testid={`strip-${door.label.toLowerCase()}`}
+							className={cn(
+								"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 transition-colors duration-(--dur-instant)",
+								on &&
+									"font-medium text-text-1 after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent",
+							)}
+						>
+							{door.icon}
+							<span>{door.label}</span>
+						</Link>
+					);
+				})}
+			</nav>
 			<Button
 				size="icon"
 				className="ml-1 size-8"
