@@ -5,7 +5,17 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useHeightLock } from "@/hooks/use-height-lock";
 import { cn } from "@/lib/utils";
+
+/** Three fixed widths (look ruling §2); a dialog never resizes to its content's width. */
+export const DIALOG_WIDTH = {
+	sm: "w-[min(400px,calc(100%-2rem))]",
+	md: "w-[min(480px,calc(100%-2rem))]",
+	lg: "w-[min(640px,calc(100%-2rem))]",
+} as const;
+export const DIALOG_PANEL =
+	"floating fixed top-[50%] left-[50%] z-50 grid max-h-[80dvh] translate-x-[-50%] translate-y-[-50%] content-start gap-4 overflow-y-auto rounded-dialog p-5 outline-none";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -21,10 +31,8 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<DialogPrimitive.Overlay
 		ref={ref}
-		className={cn(
-			"fixed inset-0 z-50 bg-black/50 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-			className,
-		)}
+		data-float="scrim"
+		className={cn("fixed inset-0 z-50 bg-scrim", className)}
 		{...props}
 	/>
 ));
@@ -32,26 +40,29 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
 	React.ElementRef<typeof DialogPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-	<DialogPortal>
-		<DialogOverlay />
-		<DialogPrimitive.Content
-			ref={ref}
-			className={cn(
-				"floating fixed left-[50%] top-[50%] z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[440px] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-dialog p-5 duration-150 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 ",
-				className,
-			)}
-			{...props}
-		>
-			{children}
-			<DialogPrimitive.Close className="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none">
-				<X className="h-4 w-4" />
-				<span className="sr-only">Close</span>
-			</DialogPrimitive.Close>
-		</DialogPrimitive.Content>
-	</DialogPortal>
-));
+	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+		size?: keyof typeof DIALOG_WIDTH;
+	}
+>(({ className, children, size = "md", ...props }, ref) => {
+	const lockRef = useHeightLock(ref);
+	return (
+		<DialogPortal>
+			<DialogOverlay />
+			<DialogPrimitive.Content
+				ref={lockRef}
+				data-float="dialog"
+				className={cn(DIALOG_PANEL, DIALOG_WIDTH[size], className)}
+				{...props}
+			>
+				{children}
+				<DialogPrimitive.Close className="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 disabled:pointer-events-none">
+					<X className="size-4" />
+					<span className="sr-only">Close</span>
+				</DialogPrimitive.Close>
+			</DialogPrimitive.Content>
+		</DialogPortal>
+	);
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

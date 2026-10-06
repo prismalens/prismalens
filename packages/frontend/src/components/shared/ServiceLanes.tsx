@@ -2,6 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { ChevronRight } from "lucide-react";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { type GroupView, useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { cn } from "@/lib/utils";
 
@@ -9,21 +16,24 @@ import { cn } from "@/lib/utils";
 export function GroupBySelect({ className }: { className?: string }) {
 	const { alertsGroupBy, setAlertsGroupBy } = useLayoutPrefs();
 	return (
-		<select
+		<Select
 			value={alertsGroupBy}
-			onChange={(e) =>
-				setAlertsGroupBy(e.target.value === "service" ? "service" : "none")
+			onValueChange={(v) =>
+				setAlertsGroupBy(v === "service" ? "service" : "none")
 			}
-			aria-label="Group by"
-			className={cn(
-				"h-6 rounded-control bg-surface-2 px-1.5 text-meta text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
-				className,
-			)}
-			data-testid="group-by-alerts"
 		>
-			<option value="none">No grouping</option>
-			<option value="service">By service</option>
-		</select>
+			<SelectTrigger
+				aria-label="Group by"
+				className={className}
+				data-testid="group-by-alerts"
+			>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent align="end">
+				<SelectItem value="none">No grouping</SelectItem>
+				<SelectItem value="service">By service</SelectItem>
+			</SelectContent>
+		</Select>
 	);
 }
 
@@ -52,7 +62,7 @@ export function LaneHeader({
 			aria-expanded={!isFolded}
 			onClick={() => toggleLane(view, id)}
 			className={cn(
-				"group/lane flex w-full items-center gap-1 rounded-control px-2.5 pt-3.5 pb-1 text-left text-meta text-text-3 outline-none hover:text-text-2 focus-visible:ring-2 focus-visible:ring-accent",
+				"group/lane flex w-full items-center gap-1 rounded-control px-2.5 pt-3.5 pb-1 text-left text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-2",
 				className,
 			)}
 			data-testid="service-lane"

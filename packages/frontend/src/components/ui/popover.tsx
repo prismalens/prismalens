@@ -21,8 +21,9 @@ const PopoverContent = React.forwardRef<
 			ref={ref}
 			align={align}
 			sideOffset={sideOffset}
+			data-float="pop"
 			className={cn(
-				"floating z-50 w-72 rounded-surface p-3 text-text-1 outline-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+				"floating z-50 w-72 rounded-pool p-3 text-text-1 outline-none",
 				className,
 			)}
 			{...props}

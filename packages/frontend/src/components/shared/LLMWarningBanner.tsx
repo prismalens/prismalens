@@ -4,8 +4,6 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Settings } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -31,23 +29,26 @@ export function LLMWarningBanner({
 	const message = [context, remedy].filter(Boolean).join(" ");
 
 	return (
-		<Alert
-			variant="default"
-			className={cn("border-warn/40 bg-warn/12", className)}
+		<div
+			role="status"
+			className={cn(
+				"flex flex-wrap items-center gap-2.5 rounded-pool bg-surface-1 px-3.5 py-2.5 text-body",
+				className,
+			)}
 		>
-			<AlertTriangle className="h-4 w-4 text-warn" />
-			<AlertTitle className="text-warn">Investigations unavailable</AlertTitle>
-			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-				<span className="text-warn" data-testid="llm-warning-reason">
-					{message}
-				</span>
-				<Button variant="outline" size="sm" asChild className="w-fit">
-					<Link to="/settings" search={{ tab: "harness" }}>
-						<Settings className="h-4 w-4 mr-2" />
-						Configure agent
-					</Link>
-				</Button>
-			</AlertDescription>
-		</Alert>
+			<span aria-hidden className="h-3 w-[3px] shrink-0 rounded-full bg-warn" />
+			<span className="font-medium text-warn">Investigations unavailable</span>
+			<span
+				className="min-w-0 flex-1 text-text-2"
+				data-testid="llm-warning-reason"
+			>
+				{message}
+			</span>
+			<Button variant="secondary" size="sm" asChild>
+				<Link to="/settings" search={{ tab: "harness" }}>
+					Configure agent
+				</Link>
+			</Button>
+		</div>
 	);
 }

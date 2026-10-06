@@ -74,7 +74,7 @@ function Calendar({
 					defaultClassNames.dropdowns,
 				),
 				dropdown_root: cn(
-					"has-focus:border-accent border-hairline-strong shadow-xs has-focus:ring-accent/50 has-focus:ring-[3px] relative rounded-md border",
+					"relative rounded-control bg-surface-3",
 					defaultClassNames.dropdown_root,
 				),
 				dropdown: cn(
@@ -88,7 +88,7 @@ function Calendar({
 						: "[&>svg]:text-text-2 flex h-8 items-center gap-1 rounded-md pl-2 pr-1 text-sm [&>svg]:size-3.5",
 					defaultClassNames.caption_label,
 				),
-				month_grid: cn("w-full border-collapse", defaultClassNames.month_grid),
+				month_grid: cn("w-full", defaultClassNames.month_grid),
 				weekdays: cn("flex", defaultClassNames.weekdays),
 				weekday: cn(
 					"text-text-2 flex-1 select-none rounded-md text-[0.8rem] font-normal",
@@ -202,7 +202,7 @@ function CalendarDayButton({
 			data-range-end={modifiers.range_end}
 			data-range-middle={modifiers.range_middle}
 			className={cn(
-				"data-[selected-single=true]:bg-accent data-[selected-single=true]:text-accent-fg data-[range-middle=true]:bg-surface-3 data-[range-middle=true]:text-text-1 data-[range-start=true]:bg-accent data-[range-start=true]:text-accent-fg data-[range-end=true]:bg-accent data-[range-end=true]:text-accent-fg group-data-[focused=true]/day:border-accent group-data-[focused=true]/day:ring-accent/50 flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none data-[range-end=true]:rounded-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] [&>span]:text-xs [&>span]:opacity-70",
+				"data-[selected-single=true]:bg-accent data-[selected-single=true]:text-accent-fg data-[range-middle=true]:bg-surface-3 data-[range-middle=true]:text-text-1 data-[range-start=true]:bg-accent data-[range-start=true]:text-accent-fg data-[range-end=true]:bg-accent data-[range-end=true]:text-accent-fg group-data-[focused=true]/day:outline-2 group-data-[focused=true]/day:outline-accent flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none data-[range-end=true]:rounded-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 [&>span]:text-xs [&>span]:opacity-70",
 				defaultClassNames.day,
 				className,
 			)}

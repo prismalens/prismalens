@@ -3,6 +3,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Row } from "./Row";
 
 export interface SettingRowProps {
 	label: ReactNode;
@@ -17,9 +18,8 @@ export interface SettingRowProps {
 }
 
 /**
- * One setting: label and meaning on the left, the control on the right, a
- * hairline between rows; on a phone the control drops under the label.
- * Groups of these replace card stacks.
+ * One setting: a Row whose meta says what it does or what it is set to, the
+ * control on the right; on a phone the control drops under the label.
  */
 export function SettingRow({
 	label,
@@ -30,28 +30,15 @@ export function SettingRow({
 	testId,
 }: SettingRowProps) {
 	return (
-		<div
-			className={cn(
-				"border-t border-hairline py-2.5 first:border-t-0",
-				className,
-			)}
-			data-testid={testId}
-		>
-			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-				<div className="min-w-0 flex-1">
-					<div className="text-body text-text-1">{label}</div>
-					{description && (
-						<div className="mt-0.5 text-meta text-text-3">{description}</div>
-					)}
-				</div>
-				{children && (
-					<div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
-						{children}
-					</div>
-				)}
-			</div>
-			{below && <div className="mt-2">{below}</div>}
-		</div>
+		<Row
+			label={label}
+			meta={description}
+			trailing={children}
+			below={below}
+			stackOnPhone
+			className={className}
+			testId={testId}
+		/>
 	);
 }
 
