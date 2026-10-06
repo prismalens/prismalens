@@ -94,6 +94,7 @@ function run() {
 	let script = loadSession(defaultName);
 	let scriptName = defaultName;
 	let turns = 0;
+	let loaded = false;
 	let sessionId = "";
 	let nextId = 1000;
 	/** @type {Map<number, (result: { outcome?: { outcome?: string, optionId?: string } }) => void>} */
@@ -115,7 +116,16 @@ function run() {
 	const sleep = (/** @type {number} */ ms) =>
 		new Promise((r) => setTimeout(r, ms));
 	const fill = (/** @type {string} */ text, /** @type {string} */ prompt) =>
-		text.replaceAll("{{cwd}}", cwd).replaceAll("{{prompt}}", prompt);
+		text
+			.replaceAll("{{cwd}}", cwd)
+			.replaceAll("{{prompt}}", prompt)
+			.replaceAll(
+				"{{attached}}",
+				Array.from(
+					prompt.matchAll(/A file the operator attached: ([^\s]+)\./g),
+					(m) => m[1],
+				).join(", ") || "nothing",
+			);
 	const text = (/** @type {string} */ t) => ({ type: "text", text: t });
 
 	/** @param {Record<string, unknown>} params */
@@ -197,9 +207,16 @@ function run() {
 	 * Claude Code's shape: the call opens as "Terminal" with empty input, and the
 	 * command arrives in a progress update before the permission request.
 	 * @param {string} sessionId
-	 * @param {import("./fake-acp-agent.d.mts").ToolStep} t
+	 * @param {import("./fake-acp-agent.d.mts").ToolStep} step
 	 */
-	async function tool(sessionId, t) {
+	async function tool(sessionId, step) {
+		// `{{cwd}}` in a call is the run's own copy, as a harness would print it.
+		const t = JSON.parse(
+			JSON.stringify(step).replaceAll(
+				"{{cwd}}",
+				JSON.stringify(cwd).slice(1, -1),
+			),
+		);
 		const kind = t.kind ?? "execute";
 		notify(sessionId, {
 			sessionUpdate: "tool_call",
@@ -261,10 +278,17 @@ function run() {
 	async function turn(sessionId, prompt) {
 		turns += 1;
 		const scripted = script.turns ?? [];
-		const steps =
-			turns <= scripted.length
+		// The host's "your report did not validate" retry gets the script's own answer.
+		const retry =
+			prompt.startsWith("Your final message did not") && script.retry;
+		// `steer` answers a message to the run still in this process; `followUp` one after session/load.
+		const steps = retry
+			? script.retry
+			: turns <= scripted.length
 				? scripted[turns - 1]
-				: (script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
+				: !loaded && script.steer
+					? script.steer
+					: (script.followUp ?? [{ say: "Heard: {{prompt}}" }]);
 		const forced = await play(sessionId, steps, prompt);
 		return { stopReason: forced ?? "end_turn" };
 	}
@@ -289,7 +313,10 @@ function run() {
 				return reply({
 					protocolVersion: 1,
 					agentInfo: script.agent ?? { name: "fake-acp-agent", version: "0" },
-					agentCapabilities: { loadSession: script.loadSession !== false },
+					agentCapabilities: {
+						loadSession: script.loadSession !== false,
+						promptCapabilities: { image: script.images === true },
+					},
 					authMethods: [],
 				});
 			case "session/new":
@@ -300,6 +327,22 @@ function run() {
 						? { configOptions: script.configOptions }
 						: {}),
 				});
+			case "session/set_config_option": {
+				// Takes a value its option lists, unless the script refuses switches.
+				const { configId, value } = msg.params ?? {};
+				for (const option of script.configOptions ?? []) {
+					const values = (option.options ?? []).flatMap((o) =>
+						o.options ? o.options : [o],
+					);
+					if (
+						option.id === configId &&
+						!script.refuseConfig &&
+						values.some((o) => o.value === value)
+					)
+						option.currentValue = value;
+				}
+				return reply({ configOptions: script.configOptions ?? [] });
+			}
 			case "session/load": {
 				sessionId = String(msg.params?.sessionId ?? "");
 				const pickedFile = join(PICKED_DIR, sessionId);
@@ -312,13 +355,19 @@ function run() {
 				}
 				// A reopened session is past its scripted turns: every prompt is a follow-up.
 				turns = (script.turns ?? []).length;
+				loaded = true;
 				await play(sessionId, script.load ?? [], "");
 				return reply({});
 			}
 			case "session/prompt": {
-				const prompt = (msg.params?.prompt ?? [])
-					.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
-					.join("");
+				const blocks = msg.params?.prompt ?? [];
+				const images = blocks.filter(
+					(/** @type {{ type?: string }} */ b) => b.type === "image",
+				).length;
+				const prompt =
+					blocks
+						.map((/** @type {{ text?: string }} */ b) => b.text ?? "")
+						.join("") + (images ? `\n[${images} image(s) attached]` : "");
 				if (turns === 0) {
 					const picked = prompt.match(/fake-session:([a-z0-9-]+)/)?.[1];
 					if (picked && picked !== scriptName) {

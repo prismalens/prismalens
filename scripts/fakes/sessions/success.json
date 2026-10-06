@@ -1,16 +1,23 @@
 {
-	"agent": { "name": "claude-agent-acp", "version": "0.85.1-fake" },
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
 	"turns": [
 		[
 			{
 				"think": "The alert names the API's latency. Start with recent changes."
 			},
-			{ "say": "Looking at **recent commits** first.\n\n" },
+			{
+				"say": "Looking at **recent commits** first.\n\n"
+			},
 			{
 				"tool": {
 					"id": "toolu_01",
 					"title": "`git log --oneline -5`",
-					"rawInput": { "command": "git log --oneline -5" },
+					"rawInput": {
+						"command": "git log --oneline -5"
+					},
 					"output": "d37d888 Schema cleanup: drop unused books title index\n1a2b3c4 Bump flask"
 				}
 			},
@@ -38,7 +45,10 @@
 						}
 					],
 					"ruledOut": [],
-					"coverage": { "queried": ["git log"], "notQueried": ["prometheus"] },
+					"coverage": {
+						"queried": ["git log"],
+						"notQueried": ["prometheus"]
+					},
 					"nextSteps": [
 						{
 							"title": "Restore the index",
@@ -54,5 +64,6 @@
 		{
 			"say": "On your question (*{{prompt}}*): the index drop is still the only change in the window."
 		}
-	]
+	],
+	"images": true
 }

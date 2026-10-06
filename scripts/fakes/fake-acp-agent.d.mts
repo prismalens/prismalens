@@ -33,6 +33,14 @@ export interface FakeSession {
 	turns?: Step[][];
 	followUp?: Step[];
 	load?: Step[];
+	/** Answers a message to the run still in this process; `followUp` answers one after session/load. */
+	steer?: Step[];
+	/** Answers the host's report retry ("Your final message did not …"). */
+	retry?: Step[];
+	/** Advertised as `promptCapabilities.image` at initialize. */
+	images?: boolean;
+	/** `session/set_config_option` keeps the old value. */
+	refuseConfig?: boolean;
 }
 
 export const SESSIONS_DIR: string;
