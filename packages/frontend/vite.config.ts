@@ -6,6 +6,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+import { devPair } from "./dev-pair.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
@@ -28,6 +29,8 @@ function resolveDevPort(): number {
 	return port;
 }
 
+const API_ORIGIN = `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}`;
+
 export default defineConfig({
 	// e2e runs one Vite per worker, each with its own cache (playwright.config.ts).
 	cacheDir: process.env.PRISMALENS_VITE_CACHE_DIR,
@@ -47,6 +50,7 @@ export default defineConfig({
 		},
 	},
 	plugins: [
+		devPair({ apiOrigin: API_ORIGIN }),
 		// Enables Vite to resolve imports using path aliases
 		tsConfigPaths(),
 		// SPA mode is what makes `pl up` possible (issue #237). Without it

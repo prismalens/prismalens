@@ -110,6 +110,8 @@ import {
 } from "./wsl.js";
 
 const READY_TIMEOUT_MS = 60_000;
+/** `pnpm dev:desktop`: window on the running Vite dev server instead of a packed backend. */
+const DEV_URL = process.env.PRISMALENS_DESKTOP_DEV_URL;
 const POLL_MS = 15_000;
 
 let child: ChildProcess | null = null;
@@ -191,6 +193,10 @@ function protocol(): "http" | "https" {
 }
 
 async function boot(): Promise<void> {
+	if (DEV_URL) {
+		owned = false;
+		return connectTo(DEV_URL);
+	}
 	wsl = readWslSettings();
 	inWsl = wslActive(process.platform, wsl);
 	if (inWsl) return bootWsl();
@@ -360,7 +366,11 @@ function startService(unitPath: string): void {
 }
 
 async function connect(target: Target): Promise<void> {
-	baseUrl = backendUrl(target);
+	return connectTo(backendUrl(target));
+}
+
+async function connectTo(url: string): Promise<void> {
+	baseUrl = url;
 	const healthy = await Promise.race([
 		waitForHealth(baseUrl, READY_TIMEOUT_MS),
 		owned ? exited.then(() => null) : new Promise<never>(() => {}),
@@ -418,14 +428,27 @@ async function pairWindow(dir: string): Promise<void> {
 		pairOperator: () =>
 			inWsl
 				? runWsl(wslPairOperator(wsl.distro))
-				: runForStdout(
-						pairOperatorSpawn({
-							execPath: process.execPath,
-							backendMain: backendMainPath,
-							workspaceDir: dir,
+				: DEV_URL
+					? runForStdout({
+							command: "pnpm",
+							args: [
+								"--silent",
+								"--filter",
+								"prismalens",
+								"dev",
+								"pair",
+								"--operator",
+							],
 							env: process.env,
-						}),
-					),
+						})
+					: runForStdout(
+							pairOperatorSpawn({
+								execPath: process.execPath,
+								backendMain: backendMainPath,
+								workspaceDir: dir,
+								env: process.env,
+							}),
+						),
 	});
 	if (deviceToken !== stored?.value) {
 		await jar.set({
@@ -483,13 +506,17 @@ async function showStop(input: {
 			else openWindow();
 			return;
 		}
-		const target: Target = {
-			protocol: protocol(),
-			host: "127.0.0.1",
-			port: ensureInstanceFile(workspaceDir()).port,
-		};
-		await spawnOwned(target);
-		await connect(target);
+		if (DEV_URL) {
+			await connectTo(DEV_URL);
+		} else {
+			const target: Target = {
+				protocol: protocol(),
+				host: "127.0.0.1",
+				port: ensureInstanceFile(workspaceDir()).port,
+			};
+			await spawnOwned(target);
+			await connect(target);
+		}
 		if (!booted) {
 			afterBoot();
 			return;
@@ -829,6 +856,7 @@ async function checkForUpdatesNow(): Promise<void> {
 
 /** Daily: a notification once per new version, and a tray item to download it. */
 function startUpdateChecks(): void {
+	if (DEV_URL) return;
 	const current = backendVersion(backendMainPath);
 	if (!current || !updateCheckEnabled(process.env)) return;
 	const check = async () => {
