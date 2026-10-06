@@ -3,7 +3,7 @@
 # tooltips, no native <select>, no deleted tokens. Args: files (default: all of src).
 # Not yet part of `lint`; the last look PR wires it in.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 if [ $# -gt 0 ]; then files=$(printf '%s\n' "$@"); else files=$(git ls-files 'src/*.tsx' 'src/*.css'); fi
 fail=0
 gate() { if [ -n "$1" ]; then printf '%s\n%s\n\n' "$2" "$1"; fail=1; fi; }

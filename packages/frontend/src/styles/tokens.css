@@ -99,7 +99,7 @@
 	--track: var(--surface-4);
 	--well-in-pool: var(--surface-3);
 	--hairline: oklch(1 0 0 / 0.07);
-	--shadow-raised: none;
+	--shadow-raised: 0 0 #0000; /* not `none`: it sits in shadow lists (motion.css [data-new]) */
 	--shadow-float:
 		0 12px 32px oklch(0 0 0 / 0.55), 0 2px 6px oklch(0 0 0 / 0.35);
 	--scrim: oklch(0 0 0 / 0.55);
