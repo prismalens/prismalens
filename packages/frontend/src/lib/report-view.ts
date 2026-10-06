@@ -206,3 +206,16 @@ export function fixBrief({ incident, report, steps, cwd }: FixBriefInput) {
 	}
 	return `${lines.join("\n")}\n`;
 }
+
+/** Items in the report's next-step order; a title the report does not list goes last. */
+export function inReportOrder<T extends { title: string }>(
+	items: readonly T[],
+	nextSteps: readonly { title: string }[],
+): T[] {
+	const order = nextSteps.map((s) => s.title);
+	const rank = (t: string) => {
+		const i = order.indexOf(t);
+		return i < 0 ? Number.POSITIVE_INFINITY : i;
+	};
+	return [...items].sort((a, b) => rank(a.title) - rank(b.title));
+}

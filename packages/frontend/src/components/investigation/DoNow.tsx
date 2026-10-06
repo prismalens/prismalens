@@ -14,6 +14,7 @@ import { recommendationKeys } from "@/lib/api/hooks/use-recommendations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { inReportOrder } from "@/lib/report-view";
 import { cn } from "@/lib/utils";
 
 export type DoNowStep =
@@ -46,10 +47,10 @@ export function useDoNow({
 	const { data: recs = [] } = useQuery(
 		orpc.recommendations.list.queryOptions({ input: { incidentId } }),
 	);
-	const order = (investigation.report?.nextSteps ?? []).map((s) => s.title);
-	const mine = recs
-		.filter((r) => r.investigationId === investigation.id)
-		.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));
+	const mine = inReportOrder(
+		recs.filter((r) => r.investigationId === investigation.id),
+		investigation.report?.nextSteps ?? [],
+	);
 	const steps: DoNowStep[] = mine.map((r) => ({
 		kind: "check",
 		key: r.id,

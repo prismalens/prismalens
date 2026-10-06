@@ -15,6 +15,7 @@ import {
 	gapsOf,
 	groundedIn,
 	harnessWords,
+	inReportOrder,
 	nowLine,
 	shortPath,
 	workDone,
@@ -163,5 +164,22 @@ describe("report facts", () => {
 		expect(text).toContain("- no timeout (For, seen; repo/api/p.py:48)");
 		expect(text).toContain("1. Confirm the error rate falls: under 1% for 10 minutes");
 		expect(text).not.toContain("Roll back");
+	});
+});
+
+describe("inReportOrder", () => {
+	const steps = [{ title: "Roll back" }, { title: "Page the owner" }];
+
+	it("follows the report's order and puts an unlisted title last", () => {
+		const recs = [
+			{ title: "Unlisted" },
+			{ title: "Page the owner" },
+			{ title: "Roll back" },
+		];
+		expect(inReportOrder(recs, steps).map((r) => r.title)).toEqual([
+			"Roll back",
+			"Page the owner",
+			"Unlisted",
+		]);
 	});
 });
