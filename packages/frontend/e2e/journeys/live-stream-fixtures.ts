@@ -54,6 +54,15 @@ function isDisposedResponse(error: unknown): boolean {
 	return error instanceof Error && /disposed/i.test(error.message);
 }
 
+/** The longest `Retry-After-<throttler>` the API sent, in ms (at least 1s). */
+function retryAfterMs(headers: Record<string, string>): number {
+	const seconds = Object.entries(headers)
+		.filter(([name]) => name.startsWith("retry-after"))
+		.map(([, value]) => Number(value))
+		.filter((n) => n > 0);
+	return Math.max(1, ...seconds) * 1000;
+}
+
 /** Fetch the real response and hand it to `rewrite` for `route.fulfill()`. */
 async function rewriteJsonResponse(
 	page: Page,
@@ -61,7 +70,19 @@ async function rewriteJsonResponse(
 	rewrite: (body: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<void> {
 	try {
-		const response = await route.fetch();
+		let response = await route.fetch();
+		// The API throttles per client and the app never retries a 429 (router.tsx);
+		// a burst of this spec's own reloads is not what it tests, so wait it out.
+		for (let i = 0; response.status() === 429 && i < 3; i++) {
+			await page.waitForTimeout(retryAfterMs(response.headers()));
+			response = await route.fetch();
+		}
+		// Any other error rewritten into a 200 is a run with no id, which the page
+		// keys every panel by; pass errors through as the API sent them.
+		if (!response.ok()) {
+			await route.fulfill({ response });
+			return;
+		}
 		const body = (await response.json()) as Record<string, unknown>;
 		await route.fulfill({
 			status: 200,

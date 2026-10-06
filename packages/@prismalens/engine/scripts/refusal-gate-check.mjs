@@ -54,9 +54,9 @@ const FORK_CONTEXT =
  * @param {(name: string, detail?: string) => void} args.ok
  * @param {(name: string, detail: string) => void} args.bad
  * @param {string} args.incidentTitle Title for the throwaway probe incident.
- * @param {() => void} [args.sample] Called before each log read. The cross-OS
- *   caller drains a sampled buffer here; the packed caller has a file on disk and
- *   passes nothing.
+ * @param {() => void | Promise<void>} [args.sample] Awaited before each log
+ *   read. The cross-OS caller snapshots the process tree here; the packed caller
+ *   has a file on disk and passes nothing.
  * @returns {Promise<{ partBLogOffset: number }>} Byte offset for Part B to read
  *   the log from, so Part B's diagnostics cannot match Part A's output.
  */
@@ -71,7 +71,7 @@ export async function assertRefusalGate({
 	incidentTitle,
 	sample = () => {},
 }) {
-	sample();
+	await sample();
 	if (!cookie) {
 		bad("refusal", "no session — cannot trigger an investigation");
 		return { partBLogOffset: 0 };
@@ -143,7 +143,7 @@ export async function assertRefusalGate({
 		// clean-machine precondition failure, or an unexpected response shape,
 		// nothing was refused, so a forked child there is not this regression.
 		await sleep(2000);
-		sample();
+		await sample();
 		if (FORK_CONTEXT.test(readLog())) {
 			bad(
 				"refusal fork gate",

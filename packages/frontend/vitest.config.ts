@@ -7,6 +7,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	plugins: [tsConfigPaths()],
 	test: {
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "e2e/*.test.ts"],
 	},
 });

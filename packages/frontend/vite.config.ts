@@ -29,6 +29,8 @@ function resolveDevPort(): number {
 }
 
 export default defineConfig({
+	// e2e runs one Vite per worker, each with its own cache (playwright.config.ts).
+	cacheDir: process.env.PRISMALENS_VITE_CACHE_DIR,
 	server: {
 		port: resolveDevPort(),
 		proxy: {

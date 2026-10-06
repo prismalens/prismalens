@@ -3,39 +3,55 @@
 
 /**
  * Pairs the suite's browser the way the host's own browser pairs: an
- * operator link from `pl pair --operator` on the workspace the servers run
- * on, opened on the /pair page, which redeems it with no click. The cookie it leaves is the
- * storage state every journey starts from.
+ * operator link from `pl pair --operator` on the workspace a stack runs on,
+ * opened on the /pair page, which redeems it with no click. The cookie it
+ * leaves is the storage state every journey on that stack starts from. One
+ * pairing per stack, since each worker has its own (playwright.config.ts).
  */
 
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test as setup } from "@playwright/test";
+import type { Stack } from "./stacks";
 
-setup("pair this browser as the host", async ({ page }) => {
-	const workspaceDir = process.env.PRISMALENS_E2E_WORKSPACE_DIR;
-	if (!workspaceDir) throw new Error("PRISMALENS_E2E_WORKSPACE_DIR is unset");
+const stacks = JSON.parse(process.env.PRISMALENS_E2E_STACKS ?? "[]") as Stack[];
 
-	const out = execFileSync(
-		"pnpm",
-		[
-			"--silent",
-			"--filter",
-			"prismalens",
-			"dev",
-			"pair",
-			"--operator",
-			"--workspace",
-			workspaceDir,
-		],
-		{ encoding: "utf8", shell: process.platform === "win32" },
+for (const stack of stacks) {
+	setup(
+		`pair this browser as the host of stack ${stack.index}`,
+		async ({ browser }) => {
+			setup.setTimeout(120_000);
+			const context = await browser.newContext({ baseURL: stack.frontendURL });
+			const page = await context.newPage();
+
+			// A cold Vite optimises dependencies on the first page load and may reload
+			// it; that reload must not land on /pair, which drops the one-time token.
+			await page.goto("/");
+			await page.waitForLoadState("networkidle");
+
+			const out = execFileSync(
+				"pnpm",
+				[
+					"--silent",
+					"--filter",
+					"prismalens",
+					"dev",
+					"pair",
+					"--operator",
+					"--workspace",
+					stack.workspaceDir,
+				],
+				{ encoding: "utf8", shell: process.platform === "win32" },
+			);
+			const token = out.match(/\/pair#([^\s#]+)/)?.[1];
+			expect(token, `no pairing link in:\n${out}`).toBeTruthy();
+
+			await page.goto(`/pair#${token}`);
+			await page.waitForURL(/\/incidents/);
+			await context.storageState({
+				path: join(stack.workspaceDir, "paired-state.json"),
+			});
+			await context.close();
+		},
 	);
-	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
-	expect(token, `no pairing link in:\n${out}`).toBeTruthy();
-
-	await page.goto(`/pair#${token}`);
-	await page.waitForURL(/\/incidents/);
-	await page
-		.context()
-		.storageState({ path: join(workspaceDir, "paired-state.json") });
-});
+}
