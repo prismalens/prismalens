@@ -438,7 +438,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			/^Agent and model for the next run: OpenCode, /,
 		);
 		await expect(page.getByTestId("harness-run-row")).toContainText(
-			"The same control sits in the box on an incident.",
+			"The same control sits in the box on an incident",
 		);
 		await expect(page.getByTestId("harness-pinned-notice")).toHaveCount(0);
 	});

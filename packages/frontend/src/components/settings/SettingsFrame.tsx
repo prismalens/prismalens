@@ -149,7 +149,7 @@ export function SettingsFrame({
 				)}
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-2 pb-12 md:px-6">
+				<div className="w-full max-w-[calc(var(--reading-w)+3rem)] px-4 pt-2 pb-12 md:px-6">
 					{(intro || actions) && (
 						<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
 							{intro && (

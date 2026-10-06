@@ -215,7 +215,7 @@ function ConfigureFrame({
 	children: ReactNode;
 }) {
 	return (
-		<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-4 pb-12 md:px-6">
+		<div className="w-full max-w-[calc(var(--reading-w)+3rem)] px-4 pt-4 pb-12 md:px-6">
 			<Button variant="text" size="sm" className="-ml-2" onClick={onBack}>
 				<ArrowLeft />
 				Settings

@@ -88,11 +88,12 @@ export function HarnessSettings() {
 	return (
 		<div data-testid="harness-settings">
 			{isError && (
-				<Problem
-					className="mb-4"
-					text="PrismaLens could not read the agent status on this machine."
-					onRetry={() => refetch()}
-				/>
+				<div className="mb-4" data-testid="harness-status-error">
+					<Problem
+						text="PrismaLens could not read the agent status on this machine."
+						onRetry={() => refetch()}
+					/>
+				</div>
 			)}
 			{selection?.pinned && selection.pinnedBy === "env" && (
 				<p
@@ -208,10 +209,10 @@ export function HarnessSettings() {
 											{probe.detail}
 										</StateWord>
 									) : harness.installed ? (
-										<>
+										<span className="[&_code]:bg-transparent [&_code]:p-0">
 											{capabilities(harness)}{" "}
 											<InlineCode text={harness.loginHint} />
-										</>
+										</span>
 									) : (
 										<Mono>{harness.install}</Mono>
 									)
