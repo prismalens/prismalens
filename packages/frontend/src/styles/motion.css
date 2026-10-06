@@ -1,0 +1,232 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion and the reconnect pause must beat every component's own animation */
+/*
+ * Motion, look ruling rev 2 §3. Motion points: one transient animation per
+ * screen, live things breathe on one clock, everything else is 80–220 ms.
+ * Never moves: the sidebar, lane headings, the band, the rail, text being read.
+ */
+
+:root {
+	--dur-instant: 80ms; /* colour on hover, press */
+	--dur-fast: 150ms; /* tooltip, tab underline, lift, toggle thumb */
+	--dur-base: 220ms; /* popover, dialog, segmented thumb, toast */
+	--dur-slow: 400ms; /* FLIP across lanes, glow settle */
+	--dur-arrive: 1200ms; /* a new card's glow */
+	--dur-breathe: 2400ms; /* a live bar's cycle */
+	--ease-out: cubic-bezier(0.2, 0, 0, 1);
+	--ease-in: cubic-bezier(0.4, 0, 1, 1);
+	--ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+	/* The shared clock; the shell sets it once (useBreathePhase). */
+	--breathe-phase: 0ms;
+}
+
+@keyframes pl-breathe {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.55;
+	}
+}
+@keyframes pl-glow-breathe {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
+}
+@keyframes pl-arrive {
+	0% {
+		opacity: 0;
+		transform: translateY(-6px);
+		box-shadow: 0 0 0 0 oklch(from var(--accent) l c h / 0);
+	}
+	25% {
+		opacity: 1;
+		transform: none;
+		box-shadow: 0 0 32px -4px oklch(from var(--accent) l c h / 0.55);
+	}
+	100% {
+		box-shadow: 0 0 0 0 oklch(from var(--accent) l c h / 0);
+	}
+}
+@keyframes pl-tip-in {
+	from {
+		opacity: 0;
+		transform: translateY(var(--pop-dy, 2px));
+	}
+}
+@keyframes pl-tip-out {
+	to {
+		opacity: 0;
+	}
+}
+@keyframes pl-pop-in {
+	from {
+		opacity: 0;
+		scale: 0.98;
+		transform: translateY(var(--pop-dy, 4px));
+	}
+}
+@keyframes pl-pop-out {
+	to {
+		opacity: 0;
+		scale: 0.98;
+	}
+}
+@keyframes pl-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes pl-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+@keyframes pl-toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+@keyframes pl-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* A live thing breathes: opacity only, on the shared phase. */
+.breathe {
+	animation: pl-breathe var(--dur-breathe) var(--ease-standard) infinite;
+	animation-delay: var(--breathe-phase);
+}
+[data-pulse] {
+	animation: pl-breathe var(--dur-breathe) var(--ease-standard) infinite;
+	animation-delay: var(--breathe-phase);
+}
+
+/* A live card's glow: a static shadow on ::after whose opacity loops, so the
+   compositor does the work and nothing repaints per frame. */
+.live-glow {
+	position: relative;
+}
+.live-glow::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	pointer-events: none;
+	box-shadow: 0 0 24px -6px oklch(from var(--live) l c h / 0.45);
+	animation: pl-glow-breathe var(--dur-breathe) var(--ease-standard) infinite;
+	animation-delay: var(--breathe-phase);
+}
+
+/* A new arrival: settles once; the caller removes data-new after 3 s. */
+[data-new] {
+	animation: pl-arrive var(--dur-arrive) var(--ease-out) both;
+}
+
+/* Floating surfaces name their kind; the enter and exit live here. */
+[data-float][data-side="top"] {
+	--pop-dy: 4px;
+}
+[data-float][data-side="bottom"] {
+	--pop-dy: -4px;
+}
+[data-float][data-side="left"],
+[data-float][data-side="right"] {
+	--pop-dy: 0px;
+}
+[data-float="tip"]:not([data-state="closed"]) {
+	--pop-dy: 2px;
+	animation: pl-tip-in var(--dur-fast) var(--ease-out) both;
+}
+[data-float="tip"][data-side="bottom"] {
+	--pop-dy: -2px;
+}
+[data-float="tip"][data-state="closed"] {
+	animation: pl-tip-out 100ms var(--ease-in) both;
+}
+[data-float="pop"] {
+	transform-origin: var(--radix-popper-transform-origin);
+}
+[data-float="pop"][data-state="open"] {
+	animation: pl-pop-in var(--dur-base) var(--ease-out) both;
+}
+[data-float="dialog"][data-state="open"] {
+	animation: pl-pop-in var(--dur-base) var(--ease-out) both;
+	--pop-dy: 0px;
+}
+[data-float="pop"][data-state="closed"],
+[data-float="dialog"][data-state="closed"] {
+	animation: pl-pop-out 150ms var(--ease-in) both;
+}
+[data-float="scrim"][data-state="open"] {
+	animation: pl-fade-in var(--dur-base) var(--ease-out) both;
+}
+[data-float="scrim"][data-state="closed"] {
+	animation: pl-fade-out 150ms var(--ease-in) both;
+}
+[data-float="toast"][data-state="open"] {
+	animation: pl-toast-in var(--dur-base) var(--ease-out) both;
+}
+[data-float="toast"][data-state="closed"] {
+	animation: pl-fade-out 150ms var(--ease-in) both;
+}
+
+/* Loading: a shimmer across the skeleton. */
+.shimmer {
+	background: linear-gradient(
+		90deg,
+		var(--surface-2) 0%,
+		var(--surface-3) 50%,
+		var(--surface-2) 100%
+	);
+	background-size: 200% 100%;
+	animation: pl-shimmer 1600ms linear infinite;
+}
+
+/* Reconnecting: every loop holds still while the amber line shows. */
+:root[data-reconnecting] *,
+:root[data-reconnecting] *::after {
+	animation-play-state: paused !important;
+}
+
+/* Reduced motion: everything settles at once, except the five floating
+   surfaces, which keep a 150 ms fade; breathing stops; arrival is a bar. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+	[data-pulse],
+	.breathe,
+	.live-glow::after {
+		animation: none !important;
+	}
+	[data-float]:not([data-state="closed"]) {
+		animation: pl-fade-in 150ms var(--ease-out) both !important;
+	}
+	[data-float][data-state="closed"] {
+		animation: pl-fade-out 150ms var(--ease-in) both !important;
+	}
+	[data-new] {
+		animation: none !important;
+		box-shadow:
+			var(--shadow-raised),
+			inset 3px 0 0 0 var(--accent);
+	}
+	.shimmer {
+		animation: none !important;
+		background: var(--surface-2);
+	}
+}

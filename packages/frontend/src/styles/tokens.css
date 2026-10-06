@@ -1,40 +1,46 @@
 /*
- * PrismaLens design tokens (study-v3 §2, the v2 §2.4 block). Dark-first.
+ * PrismaLens design tokens, look ruling rev 2 §1. Dark-first.
  * Light = :root, dark = .dark (the app toggles the class, #423).
  *
- * Surfaces are a four-step ladder, lighter as they rise; hairlines separate
- * and never enclose. One accent with four jobs; every other colour is a state.
+ * Tone separates: a region sits one step above the ground it rests on.
+ * Colour means: five hues, each split into a text token and, where a fill
+ * exists, a solid token. No border is structure; a hairline only divides rows.
  */
 
 :root {
-	/* Native controls (a <select>'s menu) follow the app's theme, not the OS (#743). */
+	/* Native controls follow the app's theme, not the OS (#743). */
 	color-scheme: light;
 
-	--canvas: oklch(0.985 0 0);
-	--surface-1: oklch(0.965 0.002 285);
+	/* The light ladder is monotonic: s3 and s4 sit below white. */
+	--canvas: oklch(0.975 0.002 285);
+	--surface-1: oklch(0.95 0.003 285);
 	--surface-2: oklch(1 0 0);
-	--surface-3: oklch(0.94 0.003 285);
-	--surface-4: oklch(0.9 0.004 285);
-	--hairline: oklch(0 0 0 / 0.08);
-	--hairline-strong: oklch(0 0 0 / 0.14);
-	--shadow-float: 0 12px 32px oklch(0 0 0 / 0.14);
-	/* Light only: a raised surface on a near-white canvas needs an edge. */
-	--raised-edge: var(--hairline);
+	--surface-3: oklch(0.92 0.004 285);
+	--surface-4: oklch(0.86 0.005 285);
+	--track: oklch(0.8 0.006 285);
+	--well-in-pool: var(--surface-2);
+	--hairline: oklch(0 0 0 / 0.07);
+	--shadow-raised: 0 1px 2px oklch(0 0 0 / 0.07), 0 2px 6px oklch(0 0 0 / 0.04);
+	--shadow-float:
+		0 12px 32px oklch(0 0 0 / 0.14), 0 2px 6px oklch(0 0 0 / 0.08);
+	--scrim: oklch(0 0 0 / 0.35);
 
 	--text-1: oklch(0.18 0.004 285);
 	--text-2: oklch(0.45 0.01 285);
-	--text-3: oklch(0.58 0.012 285);
+	--text-3: oklch(0.52 0.012 285);
 
-	--accent: oklch(0.55 0.2 277);
+	--accent: oklch(0.5 0.2 277);
+	--accent-solid: oklch(0.52 0.2 277);
 	--accent-fg: oklch(0.985 0 0);
-	--live: oklch(0.55 0.11 195);
-	--ok: oklch(0.58 0.14 160);
-	--warn: oklch(0.68 0.15 75);
-	--danger: oklch(0.58 0.22 27);
+	--danger: oklch(0.54 0.22 27);
+	--danger-solid: oklch(0.52 0.22 27);
+	--live: oklch(0.5 0.11 195);
+	--ok: oklch(0.5 0.14 160);
+	--warn: oklch(0.53 0.15 75);
 	--sev-critical: var(--danger);
-	--sev-high: oklch(0.65 0.17 50);
+	--sev-high: oklch(0.54 0.17 50);
 	--sev-medium: var(--warn);
-	--sev-low: oklch(0.55 0.13 250);
+	--sev-low: oklch(0.5 0.13 250);
 	--sev-info: var(--text-3);
 
 	--sidebar-w: 240px;
@@ -84,25 +90,40 @@
 .dark {
 	color-scheme: dark;
 
-	--canvas: oklch(0.135 0.004 285);
-	--surface-1: oklch(0.16 0.004 285);
-	--surface-2: oklch(0.19 0.005 285);
-	--surface-3: oklch(0.23 0.006 285);
-	--surface-4: oklch(0.27 0.006 285);
-	--hairline: oklch(1 0 0 / 0.08);
-	--hairline-strong: oklch(1 0 0 / 0.14);
-	--shadow-float: 0 12px 32px oklch(0 0 0 / 0.45);
-	--raised-edge: transparent;
+	/* Five steps 0.05 L apart (ruling §7: 0.06 is the fallback if they crush). */
+	--canvas: oklch(0.15 0.004 285);
+	--surface-1: oklch(0.2 0.004 285);
+	--surface-2: oklch(0.245 0.005 285);
+	--surface-3: oklch(0.3 0.006 285);
+	--surface-4: oklch(0.36 0.006 285);
+	--track: var(--surface-4);
+	--well-in-pool: var(--surface-3);
+	--hairline: oklch(1 0 0 / 0.07);
+	--shadow-raised: none;
+	--shadow-float:
+		0 12px 32px oklch(0 0 0 / 0.55), 0 2px 6px oklch(0 0 0 / 0.35);
+	--scrim: oklch(0 0 0 / 0.55);
 
 	--text-1: oklch(0.95 0.003 285);
 	--text-2: oklch(0.74 0.01 285);
-	--text-3: oklch(0.56 0.012 285);
+	--text-3: oklch(0.64 0.012 285);
 
-	--accent: oklch(0.66 0.17 277);
+	--accent: oklch(0.72 0.15 277);
+	--accent-solid: oklch(0.54 0.17 277);
+	--danger: oklch(0.7 0.19 25);
+	--danger-solid: oklch(0.55 0.19 25);
 	--live: oklch(0.78 0.12 195);
 	--ok: oklch(0.76 0.14 160);
 	--warn: oklch(0.8 0.14 80);
-	--danger: oklch(0.7 0.19 25);
 	--sev-high: oklch(0.75 0.16 50);
 	--sev-low: oklch(0.72 0.12 250);
+}
+
+/* One focus mark for every control; layered so a component's own ring, until
+   its PR removes it, still wins (ruling §1.4). */
+@layer base {
+	:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
 }
