@@ -4,18 +4,11 @@
 import type { TopologyEdge } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Segmented } from "@/components/shared/Segmented";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
 	Select,
 	SelectContent,

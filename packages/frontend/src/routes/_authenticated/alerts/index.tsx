@@ -179,7 +179,7 @@ function AlertNumbers() {
 			data-testid="alerts-overview"
 		>
 			<div className="mx-auto w-full max-w-(--reading-w) px-6 pt-4 pb-12">
-				{stats.error ? (
+				{stats.error && !s ? (
 					<Problem
 						text="The numbers did not load."
 						onRetry={() => void stats.refetch()}

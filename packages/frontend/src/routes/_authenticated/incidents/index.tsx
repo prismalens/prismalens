@@ -193,9 +193,10 @@ function IncidentsLanding() {
 				) : (
 					<div className="flex flex-col px-4 pt-1 pb-6 md:min-h-0 md:flex-1 md:px-6 md:pb-4">
 						<SetupLine />
+						{/* A failed refetch keeps the last board; offline is ReconnectLine's (ruling §2). */}
 						{isLoading ? (
 							<Loading rows={6} />
-						) : listError ? (
+						) : listError && !list ? (
 							<Problem
 								text="The board did not load."
 								onRetry={() => void refetch()}

@@ -246,14 +246,14 @@ export function AlertListPane({
 				data-testid="alert-list"
 			>
 				{isLoading && <Loading className="px-4" />}
-				{error && (
+				{error && !data && (
 					<Problem
 						className="px-4"
 						text="The alert list did not load."
 						onRetry={() => void refetch()}
 					/>
 				)}
-				{!isLoading && !error && rows.length === 0 && (
+				{!isLoading && !(error && !data) && rows.length === 0 && (
 					<Empty
 						className="px-4"
 						text="No alerts found."

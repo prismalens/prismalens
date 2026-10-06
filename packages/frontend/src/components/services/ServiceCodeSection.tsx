@@ -2,18 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
-import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useAddRepositorySource, useUnlinkRepository } from "@/lib/api/hooks";
 
