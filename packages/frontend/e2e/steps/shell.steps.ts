@@ -534,6 +534,13 @@ Then(
 		await list.getByTestId("settings-section-devices").click();
 		await expect(page).toHaveURL(/tab=devices/);
 		await expect(page.getByTestId("devices-list")).toBeVisible();
+		await page
+			.getByTestId("settings-frame")
+			.getByTestId("settings-back")
+			.click();
+		await expect(page.getByTestId("settings-section-list")).toBeVisible();
+		await list.getByTestId("settings-section-devices").click();
+		await expect(page.getByTestId("devices-list")).toBeVisible();
 		await page.getByTestId("topbar").getByTestId("strip-settings").click();
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
 	},

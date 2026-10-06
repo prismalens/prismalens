@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import {
 	agentModelLabel,
@@ -11,6 +12,7 @@ import { useAbout } from "@/components/settings/AboutSettings";
 import { useDevices } from "@/components/settings/DevicesTab";
 import { useTelemetrySettings } from "@/components/settings/TelemetrySettings";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useConnections, useIntegrations } from "@/lib/api/hooks";
@@ -121,7 +123,8 @@ export const PULL_TEMPLATES: ReadonlySet<string> = new Set([
 /**
  * The content of a Settings section, or of Services, which keeps this frame
  * while it waits for its own page. The header reads "Settings  Agent"; Back
- * lives once, at the top of the section list (look ruling §2).
+ * lives at the top of the section list, and on the phone, where the list is a
+ * page of its own, at the head of each section (L65 ruling).
  */
 export function SettingsFrame({
 	section,
@@ -137,6 +140,7 @@ export function SettingsFrame({
 	children: ReactNode;
 }) {
 	const services = section === "services";
+	const phone = useMediaQuery(PHONE);
 	usePageTitle(services ? title : `${title}, Settings`);
 	return (
 		<div
@@ -146,6 +150,15 @@ export function SettingsFrame({
 			<PageHeader title={services ? "Services" : "Settings"}>
 				{!services && (
 					<h2 className="text-body font-normal text-text-3">{title}</h2>
+				)}
+				{!services && phone && (
+					<Link
+						to="/settings"
+						className="-order-1 flex h-8 items-center rounded-control pr-1 text-body font-medium text-text-1"
+						data-testid="settings-back"
+					>
+						Back
+					</Link>
 				)}
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
