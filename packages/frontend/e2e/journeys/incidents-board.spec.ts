@@ -156,6 +156,10 @@ test.describe("#743 — the incidents board", () => {
 	test("the sidebar groups incidents by service, folds a group for good, and creates nothing", async ({
 		page,
 	}) => {
+		// Order-dependent otherwise: no seeded incident carries zero services, so
+		// "No service" only appeared because an earlier test in the file happened
+		// to leave one behind. Create our own so this test holds alone too.
+		await createIncident(page, `Board no-service ${Date.now()}`);
 		await page.goto("/incidents");
 		const sidebar = page.getByTestId("incident-list-pane");
 		const groups = sidebar.getByTestId("sidebar-group");
