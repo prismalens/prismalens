@@ -13,7 +13,7 @@ export const sqliteConfigSchema = z.object({
 		.enum(["true", "false"])
 		.transform((val) => val === "true")
 		.prefault("false")
-		.describe("Open SQLite database connection in readonly mode"),
+		.describe("Unsupported since the libsql driver: true refuses to start"),
 	PRISMALENS_DB_SQLITE_FILE_MUST_EXIST: z
 		.enum(["true", "false"])
 		.transform((val) => val === "true")

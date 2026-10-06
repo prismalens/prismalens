@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { ensureAppDataDir, getConfig } from "@prismalens/config";
 import { PrismaClient } from "./prisma/generated/client.js";
-import { libsqlFileUrl } from "./src/libsql-url.js";
+import { libsqlConfig } from "./src/libsql-config.js";
 
 const config = getConfig();
 
@@ -20,10 +20,12 @@ if (config.PRISMALENS_DB_SQLITE_FILE_MUST_EXIST && !existsSync(dbPath)) {
 
 // libsql ships prebuilt per-platform packages and runs no install script, so
 // `npm i -g` works where scripts are off by default (npm 12, issue n1).
-const adapter = new PrismaLibSql({
-	url: libsqlFileUrl(dbPath),
-	timeout: config.PRISMALENS_DB_SQLITE_TIMEOUT,
-});
+const adapter = new PrismaLibSql(
+	libsqlConfig(dbPath, {
+		readonly: config.PRISMALENS_DB_SQLITE_READONLY,
+		timeout: config.PRISMALENS_DB_SQLITE_TIMEOUT,
+	}),
+);
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
