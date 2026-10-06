@@ -16,8 +16,11 @@ import {
 } from "@/components/services/service-detail.utils";
 import { PULL_TEMPLATES } from "@/components/settings/SettingsFrame";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
+import { Empty, Loading } from "@/components/shared/State";
+import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +30,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
 	useBatchCreateRepositories,
@@ -39,6 +43,7 @@ import {
 	useServiceTeams,
 } from "@/lib/api/hooks";
 import { client, orpc } from "@/lib/api/orpc-client";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
@@ -202,6 +207,21 @@ function ServicesPage() {
 
 	const services = response?.data ?? [];
 	const total = response?.total ?? 0;
+	// From the door at ≥ 1024 the first service opens; the list stays one Back away (L32).
+	const openFirst = useFirstOpen(
+		"/services",
+		!searchParams.team && !searchParams.search && !searchParams.add,
+	);
+	const firstId = services[0]?.id;
+	useEffect(() => {
+		if (!openFirst || !firstId) return;
+		markFirstOpened("/services");
+		void navigate({
+			to: "/services/$id",
+			params: { id: firstId },
+			replace: true,
+		});
+	}, [openFirst, firstId, navigate]);
 	const totalPages = Math.ceil(total / PAGE_SIZE);
 
 	const linkRepository = useLinkRepository();
@@ -435,29 +455,49 @@ function ServicesPage() {
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				<div className="px-4 pt-3 pb-12 md:px-6">
-					<div className="mb-2 flex min-h-6 items-center justify-between gap-3">
-						<h2 className="text-heading" data-testid="services-count">
-							{isLoading
-								? "Services"
-								: `${total} service${total === 1 ? "" : "s"}`}
-						</h2>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => setShowAddDialog(true)}
-							data-testid="add-service"
-						>
-							Add a service
-						</Button>
-					</div>
-					{!isLoading && services.length === 0 && (
-						<p className="text-body text-text-2" data-testid="services-empty">
-							{searchParams.search || teamFilter !== "all"
-								? "No service matches."
-								: "No services yet. A service names the code a run reads and the telemetry it may query."}
-						</p>
+					{isLoading ? (
+						<Loading />
+					) : services.length === 0 ? (
+						searchParams.search || teamFilter !== "all" ? (
+							<Empty text="No service matches." testId="services-empty" />
+						) : (
+							<Empty
+								text="No services yet. A service names the code a run reads and the telemetry it may query."
+								testId="services-empty"
+								action={
+									<Button
+										variant="text"
+										size="sm"
+										onClick={() => setShowAddDialog(true)}
+										data-testid="add-service"
+									>
+										Add a service
+									</Button>
+								}
+							/>
+						)
+					) : (
+						<div className="mb-2 flex min-h-7 items-center justify-between gap-3">
+							<h2 className="text-heading" data-testid="services-count">
+								{`${total} service${total === 1 ? "" : "s"}`}
+							</h2>
+							<Button
+								variant="text"
+								size="sm"
+								onClick={() => setShowAddDialog(true)}
+								data-testid="add-service"
+							>
+								Add a service
+							</Button>
+						</div>
 					)}
-					<ul data-testid="services-list">
+					<ul
+						className={cn(
+							"divide-y divide-hairline",
+							services.length > 0 && "pool px-2 py-1",
+						)}
+						data-testid="services-list"
+					>
 						{services.map((s) => (
 							<ServiceRow
 								key={s.id}
@@ -471,7 +511,7 @@ function ServicesPage() {
 					{totalPages > 1 && (
 						<div className="mt-3 flex items-center gap-3 text-meta text-text-3">
 							<Button
-								variant="ghost"
+								variant="text"
 								size="sm"
 								disabled={currentPage <= 1}
 								onClick={() => updateSearch({ page: currentPage - 1 })}
@@ -482,7 +522,7 @@ function ServicesPage() {
 								Page {currentPage} of {totalPages}
 							</span>
 							<Button
-								variant="ghost"
+								variant="text"
 								size="sm"
 								disabled={currentPage >= totalPages}
 								onClick={() => updateSearch({ page: currentPage + 1 })}
@@ -501,7 +541,7 @@ function ServicesPage() {
 							actions={
 								vcsConnections.length > 0 && (
 									<Button
-										variant="ghost"
+										variant="text"
 										size="sm"
 										onClick={handleFetchVcs}
 										disabled={isFetchingVcs}
@@ -519,13 +559,13 @@ function ServicesPage() {
 									None waiting.
 								</p>
 							) : (
-								<ul>
+								<ul className="pool divide-y divide-hairline px-3.5 py-1">
 									{reviewItems.map((item) => {
 										const selected = selectedServiceForRepo[item.key] ?? "";
 										return (
 											<li
 												key={item.key}
-												className="flex flex-col gap-2 border-t border-hairline py-2.5 first:border-t-0 sm:flex-row sm:items-center"
+												className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
 											>
 												<div className="min-w-0 flex-1">
 													<Mono className="block truncate text-text-1">
@@ -539,7 +579,7 @@ function ServicesPage() {
 												</div>
 												<div className="flex flex-wrap items-center gap-2">
 													<Button
-														variant="ghost"
+														variant="secondary"
 														size="sm"
 														onClick={() => handleImportAsService(item)}
 													>
@@ -637,14 +677,11 @@ function ServiceRow({
 		return n ? [n] : [];
 	});
 	return (
-		<li
-			className="border-t border-hairline first:border-t-0"
-			data-testid="service-row"
-		>
+		<li data-testid="service-row">
 			<Link
 				to="/services/$id"
 				params={{ id: service.id }}
-				className="-mx-2 flex items-start gap-3 rounded-control px-2 py-2.5 outline-none hover:bg-surface-1 focus-visible:ring-2 focus-visible:ring-accent"
+				className="group/row my-px flex items-start gap-3 rounded-control px-1.5 py-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
 				data-testid="service-row-link"
 			>
 				<div className="min-w-0 flex-1">
@@ -658,20 +695,30 @@ function ServiceRow({
 						<span className="text-meta text-text-2" data-testid="service-kind">
 							{kindWord(service.type)}
 						</span>
-						<span
-							className="text-meta text-text-3"
-							title={tierMeaning(service.tier)}
-						>
-							{tierWord(service.tier)}
-						</span>
+						<Hint label={tierMeaning(service.tier)}>
+							<span className="text-meta text-text-3 group-hover/row:text-text-2">
+								{tierWord(service.tier)}
+							</span>
+						</Hint>
 						{service.team && (
-							<span className="text-meta text-text-3">{service.team}</span>
+							<span className="text-meta text-text-3 group-hover/row:text-text-2">
+								{service.team}
+							</span>
 						)}
 					</p>
 					<p
 						className="mt-0.5 text-meta text-text-2"
 						data-testid="service-line"
 					>
+						{!code && telemetry.length === 0 && (
+							<StateWord
+								tone="warn"
+								className="mr-1.5"
+								data-testid="service-not-set-up"
+							>
+								Not set up
+							</StateWord>
+						)}
 						{code ? (
 							<Mono className="break-all" data-testid="service-code">
 								{code}
@@ -690,7 +737,7 @@ function ServiceRow({
 					</p>
 				</div>
 				<span
-					className="shrink-0 pt-0.5 text-meta text-text-3 tabular-nums"
+					className="shrink-0 pt-0.5 text-meta text-text-3 tabular-nums group-hover/row:text-text-2"
 					data-testid="service-open"
 				>
 					{open ? `${open} open` : "none open"}

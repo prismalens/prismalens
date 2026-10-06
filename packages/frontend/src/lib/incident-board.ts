@@ -104,13 +104,13 @@ export interface RunWord {
 	elapsed: number;
 	/** Minutes since the last event, once past STALE_AFTER_S; null while it talks. */
 	quietFor: number | null;
-	/** `Working 14m, quiet for 5`: the whole line in the warning colour when quiet. */
+	/** `Working 14m, quiet for 5 min`: the whole line in the warning colour when quiet. */
 	text: string;
 }
 
 /**
  * The live run's line on a card (study-v3 §3.1, §4): the step and its ticking
- * elapsed time; once the run goes quiet, "Working 14m, quiet for 5".
+ * elapsed time; once the run goes quiet, "Working 14m, quiet for 5 min".
  */
 export function runWord(
 	incident: IncidentWithRelations,
@@ -137,7 +137,7 @@ export function runWord(
 		quietFor,
 		text:
 			quietFor !== null
-				? `${word} ${minutes}m, quiet for ${quietFor}`
+				? `${word} ${minutes}m, quiet for ${quietFor} min`
 				: `${step} ${clockElapsed(elapsed)}`,
 	};
 }

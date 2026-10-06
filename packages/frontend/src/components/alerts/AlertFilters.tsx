@@ -48,12 +48,12 @@ export function AlertFilters({
 	const hasFilters = status !== "all" || severity !== "all";
 
 	return (
-		<div className="flex items-center gap-4">
+		<div className="flex flex-wrap items-center gap-2">
 			<Select
 				value={status}
 				onValueChange={(v) => onStatusChange(v as AlertStatus | "all")}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="min-w-36">
 					<SelectValue placeholder="Filter by status" />
 				</SelectTrigger>
 				<SelectContent>
@@ -69,7 +69,7 @@ export function AlertFilters({
 				value={severity}
 				onValueChange={(v) => onSeverityChange(v as Severity | "all")}
 			>
-				<SelectTrigger className="w-[180px]">
+				<SelectTrigger className="min-w-36">
 					<SelectValue placeholder="Filter by severity" />
 				</SelectTrigger>
 				<SelectContent>
@@ -82,8 +82,8 @@ export function AlertFilters({
 			</Select>
 
 			{hasFilters && (
-				<Button variant="ghost" size="sm" onClick={onClear}>
-					<X className="h-4 w-4 mr-1" />
+				<Button variant="text" size="sm" onClick={onClear}>
+					<X />
 					Clear filters
 				</Button>
 			)}

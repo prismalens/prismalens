@@ -432,7 +432,9 @@ Then(
 		const quiet = Math.floor(
 			(now - Date.parse(run?.lastEventAt ?? "")) / 60_000,
 		);
-		await expect(step).toHaveText(`Working ${minutes}m, quiet for ${quiet}`);
+		await expect(step).toHaveText(
+			`Working ${minutes}m, quiet for ${quiet} min`,
+		);
 		expect(quiet).toBe(5);
 		const color = await step.evaluate((el) => getComputedStyle(el).color);
 		const warn = await page.evaluate(() => {
@@ -897,7 +899,8 @@ When(
 	"I pick 24 hours on the board and switch to Analytics",
 	async ({ page }) => {
 		await page.goto("/incidents");
-		await page.getByTestId("board-window").selectOption("1d");
+		await page.getByTestId("board-window").click();
+		await page.getByRole("option", { name: "24 hours" }).click();
 		await page.getByTestId("incidents-view-analytics").click();
 		await expect(page.getByTestId("analytics-answer")).toBeVisible();
 	},
@@ -907,7 +910,7 @@ Then(
 	"the window reads {string} and a bar per day covers {int} days",
 	async ({ page }, label: string, days: number) => {
 		const window = page.getByTestId("board-window");
-		await expect(window.locator("option:checked")).toHaveText(label);
+		await expect(window).toHaveText(label);
 		await expect(
 			page.getByTestId("analytics-days").locator("span"),
 		).toHaveCount(days);
@@ -946,11 +949,12 @@ Then(
 			.getByTestId("analytics-numbers")
 			.locator("> div")
 			.all()) {
+			// A tile is a tone (look ruling §1.1), never an edge or a shadow.
 			const style = await tile.evaluate((el) => {
 				const s = getComputedStyle(el);
-				return [s.borderTopWidth, s.backgroundColor, s.boxShadow];
+				return [s.borderTopWidth, s.boxShadow];
 			});
-			expect(style).toEqual(["0px", "rgba(0, 0, 0, 0)", "none"]);
+			expect(style).toEqual(["0px", "none"]);
 		}
 		await expect(page.getByTestId("analytics")).not.toContainText(
 			/updated \d+s ago/,
@@ -983,7 +987,7 @@ Then(
 	async ({ page }) => {
 		await analyticsFor(page);
 		const answer = page.getByTestId("analytics-lead");
-		await expect(answer).toContainText("7 still open");
+		await expect(answer).toContainText("7 of them still open");
 		const link = answer.getByTestId("analytics-need-you");
 		await expect(link).toHaveText("3 need you now");
 		await link.click();
@@ -1054,7 +1058,7 @@ Then(
 	'the numbers include median time to acknowledge, and "agent\'s cause matched yours" sits below them captioned as a five-bucket match on incidents where I recorded a category',
 	async ({ page }) => {
 		await expect(page.getByTestId("tile-ack")).toContainText(
-			"Median time to acknowledge",
+			"Median to acknowledge",
 		);
 		const match = page.getByTestId("analytics-match");
 		await expect(match).toContainText("Agent's cause matched yours");

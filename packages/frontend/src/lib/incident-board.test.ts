@@ -290,7 +290,7 @@ describe("runWord (study-v3 §3.1)", () => {
 		).toBeNull();
 	});
 
-	it("reads Working 14m, quiet for 5 once the run goes quiet", () => {
+	it("reads Working 14m, quiet for 5 min once the run goes quiet", () => {
 		const later = Date.parse("2026-09-30T14:14:30Z");
 		const word = runWord(
 			incident("investigating", {
@@ -300,7 +300,7 @@ describe("runWord (study-v3 §3.1)", () => {
 			}),
 			later,
 		);
-		expect(word?.text).toBe("Working 14m, quiet for 5");
+		expect(word?.text).toBe("Working 14m, quiet for 5 min");
 		expect(word?.quietFor).toBe(5);
 	});
 

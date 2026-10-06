@@ -77,10 +77,8 @@ test.describe("#523 — the settings frame", () => {
 			"aria-current",
 			"page",
 		);
-		await expect(page.getByTestId("services-page")).toBeVisible();
-
-		// A service is one page, with no tabs (services.feature).
-		await page.getByTestId("service-row-link").first().click();
+		// From the door at this width the first service opens (look ruling L32);
+		// a service is one page, with no tabs (services.feature).
 		await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);
 		await expect(page.getByTestId("service-page")).toBeVisible();
 		await expect(page.getByRole("tab")).toHaveCount(0);

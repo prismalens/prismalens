@@ -39,7 +39,7 @@ Feature: Board
 
   Scenario: A stale run looks different from a live one
     Given the run has sent nothing for 5 minutes
-    Then the card's step line reads "Working 14m, quiet for 5" in the warning colour
+    Then the card's step line reads "Working 14m, quiet for 5 min" in the warning colour
 
   Scenario: Widths
     Given the viewport is 1024 px wide

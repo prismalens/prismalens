@@ -78,7 +78,7 @@ export function ServiceInvestigationsSection({
 					}
 				>
 					<SelectTrigger
-						className="sm:w-48"
+						className="self-start sm:self-auto"
 						aria-label="Which alerts start a run"
 					>
 						<SelectValue />

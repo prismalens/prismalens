@@ -31,6 +31,7 @@ import {
 	useState,
 } from "react";
 import { Mono } from "@/components/shared/Mono";
+import { WrapText } from "@/components/shared/WrapText";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -41,7 +42,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useInvestigationReadiness } from "@/lib/api/hooks";
@@ -130,13 +131,51 @@ function useFlip(deps: unknown) {
 			el.style.transition = "none";
 			el.style.transform = `translate(${dx}px, ${dy}px)`;
 			requestAnimationFrame(() => {
-				el.style.transition = `transform ${Math.abs(dx) > 1 ? 300 : 150}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+				el.style.transition = `transform var(${Math.abs(dx) > 1 ? "--dur-slow" : "--dur-fast"}) var(--ease-standard)`;
 				el.style.transform = "";
 			});
 		}
 		rects.current = next;
 	}, [deps]);
 	return container;
+}
+
+/**
+ * Cards that entered Needs you since the board first loaded (look ruling
+ * §3.2): `data-new` for 3 s in every mode, a second arrival 300 ms behind.
+ */
+function useArrivals(needs: IncidentWithRelations[]): Map<string, number> {
+	const seen = useRef<Set<string> | null>(null);
+	const [fresh, setFresh] = useState<Map<string, number>>(new Map());
+	useEffect(() => {
+		const ids = needs.map((i) => i.id);
+		if (seen.current === null) {
+			seen.current = new Set(ids);
+			return;
+		}
+		const known = seen.current;
+		const arrived = ids.filter((id) => !known.has(id));
+		for (const id of ids) known.add(id);
+		if (arrived.length === 0) return;
+		setFresh((m) => {
+			const next = new Map(m);
+			arrived.forEach((id, i) => {
+				next.set(id, (m.size + i) * 300);
+			});
+			return next;
+		});
+		const t = setTimeout(
+			() =>
+				setFresh((m) => {
+					const next = new Map(m);
+					for (const id of arrived) next.delete(id);
+					return next;
+				}),
+			3_000 + (arrived.length - 1) * 300,
+		);
+		return () => clearTimeout(t);
+	}, [needs]);
+	return fresh;
 }
 
 function prefersReducedMotion(): boolean {
@@ -188,7 +227,7 @@ function useClock(): { now: number | null; offline: number | null } {
  * same predicates as the sidebar. Needs you is ordered and ends in a quiet
  * "To wrap up"; a Triggered card carries Acknowledge. A card dropped on a
  * column does that column's one action; a run starts at once, with no form.
- * Below `lg` the columns stack with their headings.
+ * Below `xl` the lanes sit two by two; below `md` they stack with their headings.
  */
 export function IncidentBoard({
 	incidents,
@@ -327,9 +366,11 @@ export function IncidentBoard({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [flipRef]);
 
+	const arrivals = useArrivals(columns.needs_you);
 	const card = (incident: IncidentWithRelations, column: BoardColumn) => (
 		<DraggableCard
 			key={incident.id}
+			arriving={column === "needs_you" ? arrivals.get(incident.id) : undefined}
 			incident={incident}
 			column={column}
 			now={now}
@@ -341,7 +382,11 @@ export function IncidentBoard({
 	);
 	const needs = columns.needs_you.filter((i) => !isWrapUp(i));
 	const wrapUp = columns.needs_you.filter(isWrapUp);
-	const liveMark = columns.working.length > 0;
+	// Any live run lights Working's head, one sitting in Needs you included (ruling m15).
+	const liveMark = incidents.some((i) => {
+		const run = latestRun(i);
+		return !!run && isWorkflowLive(run.status);
+	});
 
 	return (
 		<DndContext
@@ -355,7 +400,7 @@ export function IncidentBoard({
 		>
 			<div
 				ref={flipRef}
-				className="grid grid-cols-1 gap-x-4 gap-y-6 md:grid-cols-2 lg:grid-cols-4"
+				className="grid grid-cols-1 gap-3 md:min-h-0 md:flex-1 md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
 				data-testid="incident-board"
 			>
 				{BOARD_COLUMNS.map((column) => (
@@ -377,11 +422,11 @@ export function IncidentBoard({
 							<>
 								{needs.map((i) => card(i, column.id))}
 								{wrapUp.length > 0 && (
-									<li className="mt-3" data-testid="board-wrap-up">
-										<p className="mb-2 flex h-6 items-center text-meta text-text-3">
+									<li className="mt-2" data-testid="board-wrap-up">
+										<p className="flex h-7 items-center px-1.5 text-meta text-text-3">
 											To wrap up
 										</p>
-										<ul className="flex flex-col gap-2.5">
+										<ul className="flex flex-col gap-2">
 											{wrapUp.map((i) => card(i, column.id))}
 										</ul>
 									</li>
@@ -467,7 +512,7 @@ export function IncidentBoard({
 					<AlertDialogFooter>
 						<AlertDialogCancel>Keep going</AlertDialogCancel>
 						<AlertDialogAction
-							className="bg-danger text-accent-fg hover:bg-danger/90"
+							className={buttonVariants({ variant: "danger-fill" })}
 							onClick={() => {
 								if (!prompt) return;
 								const { incident } = prompt;
@@ -485,7 +530,18 @@ export function IncidentBoard({
 	);
 }
 
-/** A column: its heading in the foreground, a quiet tint where a drop does something. */
+const EMPTY: Record<BoardColumn, string> = {
+	needs_you: "Nothing needs you.",
+	working: "No run is working.",
+	concluded: "Nothing concluded in this window.",
+	resolved: "Nothing resolved in this window.",
+};
+
+/**
+ * A lane (look ruling §2): one step above the canvas, the board's full
+ * height, its heading still while its cards scroll; a quiet tint where a
+ * drop does something.
+ */
 function DropColumn({
 	column,
 	count,
@@ -509,12 +565,12 @@ function DropColumn({
 	return (
 		<section
 			aria-labelledby={`board-${column.id}`}
-			className="min-w-0"
+			className="pool flex min-w-0 flex-col p-2 md:min-h-0"
 			data-testid={`board-column-${column.id}`}
 		>
 			<h2
 				id={`board-${column.id}`}
-				className="mb-2 flex h-6 items-center gap-2 font-medium text-text-1"
+				className="flex h-7 shrink-0 items-center gap-2 px-1.5 pb-1 font-medium text-text-1"
 				data-testid="board-column-heading"
 			>
 				{mark && (
@@ -522,8 +578,9 @@ function DropColumn({
 						aria-hidden
 						className={cn(
 							"h-3 w-[3px] shrink-0 rounded-full",
-							mark === "live" ? "bg-live" : "bg-text-3",
+							mark === "live" ? "breathe bg-live" : "bg-text-3",
 						)}
+						data-testid="lane-live-bar"
 					/>
 				)}
 				{column.label}
@@ -535,14 +592,22 @@ function DropColumn({
 				data-column={column.id}
 				data-drop={action ? (valid ? "valid" : "refused") : undefined}
 				className={cn(
-					"flex min-h-16 flex-col gap-2.5 rounded-surface transition-colors duration-150 motion-reduce:transition-none",
+					"-m-1 flex min-h-16 flex-col gap-2 rounded-surface p-1 transition-colors duration-(--dur-fast) md:min-h-0 md:flex-1 md:overflow-y-auto",
 					valid && "bg-accent/5",
 					valid && isOver && "bg-accent/10",
 					refused && "opacity-50",
 				)}
 			>
 				{refused && isOver && action.kind === "none" && action.reason && (
-					<li className="px-1 text-meta text-text-3">{action.reason}</li>
+					<li className="px-1.5 text-meta text-text-3">{action.reason}</li>
+				)}
+				{count === 0 && !(refused && isOver) && (
+					<li
+						className="px-1.5 pt-1 pb-2 text-meta text-text-3"
+						data-testid="board-lane-empty"
+					>
+						{EMPTY[column.id]}
+					</li>
 				)}
 				{children}
 			</ul>
@@ -551,6 +616,7 @@ function DropColumn({
 }
 
 function DraggableCard({
+	arriving,
 	incident,
 	column,
 	now,
@@ -559,6 +625,8 @@ function DraggableCard({
 	busy,
 	onAcknowledge,
 }: {
+	/** Set while the card is a new arrival: its delay behind earlier ones, ms. */
+	arriving?: number;
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
@@ -582,6 +650,7 @@ function DraggableCard({
 			{...listeners}
 		>
 			<CardBody
+				arriving={arriving}
 				incident={incident}
 				column={column}
 				now={now}
@@ -592,13 +661,13 @@ function DraggableCard({
 						to="/incidents/$id"
 						params={{ id: incident.id }}
 						search={search}
-						className="outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:ring-2 focus-visible:after:ring-accent"
+						className="outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:outline-2 focus-visible:after:outline-accent"
 						onClickCapture={(e) => {
 							if (Date.now() - lastDragEnd < 300) e.preventDefault();
 						}}
 						data-testid="board-card-link"
 					>
-						{incident.title}
+						<WrapText text={incident.title} />
 					</Link>
 				}
 				onAcknowledge={onAcknowledge}
@@ -613,6 +682,7 @@ function DraggableCard({
  * while Triggered. Severity is the dot alone, never a word.
  */
 function CardBody({
+	arriving,
 	incident,
 	column,
 	now,
@@ -622,6 +692,7 @@ function CardBody({
 	onAcknowledge,
 	overlay = false,
 }: {
+	arriving?: number;
 	incident: IncidentWithRelations;
 	column: BoardColumn;
 	now: number | null;
@@ -643,9 +714,18 @@ function CardBody({
 		incident.services?.[0]?.name;
 	const wrapUp = isWrapUp(incident);
 	const quiet = live?.quietFor !== null && live?.quietFor !== undefined;
+	const breathing = !!live && !quiet && offline === null && !overlay;
 	return (
 		<article
-			className="relative min-w-0 rounded-surface bg-surface-2 px-3.5 py-3 shadow-[inset_0_0_0_1px_var(--raised-edge)] transition-colors duration-150 hover:bg-surface-3 motion-reduce:transition-none"
+			className={cn(
+				"raised relative min-w-0 rounded-surface px-3 py-2.5 transition-[background-color,translate,scale] duration-(--dur-fast) ease-(--ease-out) hover:-translate-y-px hover:bg-surface-3 active:scale-[0.99]",
+				breathing && "live-glow",
+			)}
+			style={
+				arriving !== undefined ? { animationDelay: `${arriving}ms` } : undefined
+			}
+			data-new={arriving !== undefined ? "" : undefined}
+			data-live={breathing ? "" : undefined}
 			data-testid={overlay ? "board-card-overlay" : "board-card"}
 			data-column={column}
 			data-number={incident.number}
@@ -667,20 +747,21 @@ function CardBody({
 			</div>
 			<div
 				className={cn(
-					"mt-1 [overflow-wrap:anywhere]",
+					"mt-0.5 line-clamp-2 [overflow-wrap:anywhere]",
 					wrapUp ? "text-text-2" : "font-medium text-text-1",
 				)}
 				data-testid="card-title"
 			>
-				{link ?? incident.title}
+				{link ?? <WrapText text={incident.title} />}
 			</div>
-			{service && (
-				<div className="text-meta text-text-2" data-testid="card-service">
-					{service}
-				</div>
-			)}
+			<div
+				className="mt-0.5 truncate text-meta text-text-3"
+				data-testid="card-service"
+			>
+				{service ?? "No service"}
+			</div>
 			{(word || live) && (
-				<div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-meta text-text-3">
+				<div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-meta text-text-2">
 					{word && (
 						<span
 							className={cn(
@@ -708,8 +789,9 @@ function CardBody({
 										? "bg-text-3"
 										: quiet
 											? "bg-warn"
-											: "bg-live",
+											: "breathe bg-live",
 								)}
+								data-testid="card-live-bar"
 							/>
 							{offline !== null ? (
 								<span className="min-w-0 truncate">
@@ -756,7 +838,7 @@ function CardBody({
 				</>
 			)}
 			{incident.status === "triggered" && onAcknowledge && !busy && (
-				<div className="relative z-10 mt-2">
+				<div className="relative z-10 mt-2 w-fit">
 					<Button
 						variant="secondary"
 						size="sm"
