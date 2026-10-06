@@ -225,7 +225,9 @@ export default defineConfig({
 				{
 					// Note: Firefox and WebKit projects are a deliberate follow-up for broader browser coverage.
 					name: "chromium",
-					testIgnore: [/pl-up\//, /\.features-gen\//],
+					// vitest's own e2e/*.test.ts (stacks.test.ts): Playwright's default
+					// testMatch picks up *.test.ts too, so it must be told to skip them.
+					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
