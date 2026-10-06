@@ -506,13 +506,17 @@ async function showStop(input: {
 			else openWindow();
 			return;
 		}
-		const target: Target = {
-			protocol: protocol(),
-			host: "127.0.0.1",
-			port: ensureInstanceFile(workspaceDir()).port,
-		};
-		await spawnOwned(target);
-		await connect(target);
+		if (DEV_URL) {
+			await connectTo(DEV_URL);
+		} else {
+			const target: Target = {
+				protocol: protocol(),
+				host: "127.0.0.1",
+				port: ensureInstanceFile(workspaceDir()).port,
+			};
+			await spawnOwned(target);
+			await connect(target);
+		}
 		if (!booted) {
 			afterBoot();
 			return;

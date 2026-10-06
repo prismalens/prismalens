@@ -7,7 +7,7 @@
 	"main": "dist/main.js",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
-		"dev": "concurrently -k -n tsc,electron -c blue,green \"tsc -p tsconfig.json --watch --preserveWatchOutput\" \"PRISMALENS_DESKTOP_DEV_URL=${PRISMALENS_DESKTOP_DEV_URL:-http://localhost:3000} electronmon .\"",
+		"dev": "concurrently -k -n tsc,electron -c blue,green \"tsc -p tsconfig.json --watch --preserveWatchOutput\" \"PRISMALENS_DESKTOP_DEV_URL=${PRISMALENS_DESKTOP_DEV_URL:-http://localhost:${PRISMALENS_FRONTEND_PORT:-3000}} electronmon .\"",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"start": "electron .",
