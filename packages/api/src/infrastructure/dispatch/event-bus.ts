@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { JobAttachment } from "@prismalens/contracts";
+
 /**
  * EventBus — the dispatch-layer fan-out seam that replaced Redis pub/sub.
  *
@@ -69,6 +71,8 @@ export function runMessageTopic(investigationId: string): string {
 export interface RunMessageRequest {
 	text: string;
 	mode: "queue" | "now";
+	/** Files that go with it, as the job reads them (R4.3). */
+	attachments?: JobAttachment[];
 	reply(state: "queued" | "sent" | null): void;
 }
 

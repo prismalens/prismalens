@@ -101,6 +101,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.timelineEntry;
 	}
 
+	get attachment() {
+		return db.attachment;
+	}
+
 	get serviceDependency() {
 		return db.serviceDependency;
 	}

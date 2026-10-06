@@ -219,6 +219,7 @@ model Incident {
   alerts         Alert[]
   investigations Investigation[]
   timeline       TimelineEntry[]
+  attachments    Attachment[]
 
   @@index([status])
   @@index([severity])
@@ -227,6 +228,24 @@ model Incident {
   @@index([triggeredAt])
   @@index([priorIncidentId])
   @@map("incidents")
+}
+
+/// A file the operator attached for the agent (R4.3). The bytes live under
+/// <workspace>/attachments/<id>, outside every run's snapshot.
+model Attachment {
+  id              String   @id @default(uuid())
+  incidentId      String
+  investigationId String? // the run whose message carried it, once one did
+  name            String
+  mimeType        String
+  size            Int
+  sha256          String
+  createdAt       DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@map("attachments")
 }
 
 // =============================================================================

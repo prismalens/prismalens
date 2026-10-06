@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable } from "@nestjs/common";
+import { removeAllAttachmentFiles } from "../../modules/investigations/attachments.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 /** Raised inside the reset transaction, so a run that starts mid-reset still stops it. */
@@ -115,10 +116,12 @@ export class SettingsService {
 			await tx.recommendation.deleteMany({});
 			await tx.investigation.deleteMany({});
 			await tx.timelineEntry.deleteMany({});
+			await tx.attachment.deleteMany({});
 			await tx.incident.deleteMany({});
 			await tx.alert.deleteMany({});
 			await tx.event.deleteMany({});
 		});
+		removeAllAttachmentFiles();
 
 		return { success: true, message: "All data has been reset" };
 	}
@@ -137,6 +140,7 @@ export class SettingsService {
 			await tx.investigation.deleteMany({});
 			await tx.timelineEntry.deleteMany({});
 			await tx.changeEvent.deleteMany({});
+			await tx.attachment.deleteMany({});
 			// Incident/Alert (after investigations, timelines)
 			await tx.incident.deleteMany({});
 			await tx.alert.deleteMany({});
@@ -156,6 +160,7 @@ export class SettingsService {
 			await tx.verification.deleteMany({});
 			await tx.user.deleteMany({});
 		});
+		removeAllAttachmentFiles();
 
 		return { success: true, message: "Factory reset complete" };
 	}

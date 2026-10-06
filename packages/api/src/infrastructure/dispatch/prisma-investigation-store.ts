@@ -49,8 +49,9 @@ export interface PrismaInvestigationStoreParams {
 	/**
 	 * A follow-up (#747): the row only goes live, the timeline says resumed with
 	 * this note, and nothing is written at the end; the job puts the row back.
+	 * `continuing` (R4.4): the end is written as a run's would be.
 	 */
-	resume?: { note: string };
+	resume?: { note: string; continuing?: boolean };
 }
 
 export function createPrismaInvestigationStore(
@@ -161,7 +162,7 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume) return;
+			if (resume && !resume.continuing) return;
 			await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,
@@ -196,7 +197,7 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume) return;
+			if (resume && !resume.continuing) return;
 			await ports.updateStatus(investigationId, {
 				status: "failed",
 				error,

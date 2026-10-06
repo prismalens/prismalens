@@ -146,7 +146,8 @@ async function runJobInternal(
 			}
 		}
 
-		const { selection, model, modelSource } = await ports.resolveHarness();
+		const { selection, model, modelSource, effort } =
+			await ports.resolveHarness();
 		if (!selection.runnable) throw new Error(selection.reason);
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
@@ -211,6 +212,9 @@ async function runJobInternal(
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(effort ? { effort } : {}),
+				...(data.access ? { access: data.access } : {}),
+				...(data.attachments?.length ? { attachments: data.attachments } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
 				env: getHarnessProviderKeys(selection.harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -312,7 +316,9 @@ function keepSession(
  * A message on a finished run: the same harness session loaded again in the
  * first run's workspace, rebuilt at the same path and commits (#747). Chat
  * only: the report, the incident and deliveries never change, and the row's
- * status, completedAt and error are put back when it ends.
+ * status, completedAt and error are put back when it ends. A `continue` on a
+ * stopped run is the run again (R4.4): it ends completed with a report,
+ * cancelled, or failed, and is put back only if the agent never ran.
  */
 async function runFollowUp(
 	rawPayload: InvestigationJobData,
@@ -321,8 +327,10 @@ async function runFollowUp(
 ): Promise<InvestigationResult> {
 	const data = InvestigationJobDataSchema.parse(rawPayload);
 	const resume = data.resume as NonNullable<InvestigationJobData["resume"]>;
+	const continuing = resume.kind === "continue";
 	const id = data.investigationId;
 	const runDir = runDirFor(id);
+	// A continued run that reached its agent owns its own end state.
 	let restored = false;
 	const restore = async (): Promise<void> => {
 		if (restored) return;
@@ -384,8 +392,9 @@ async function runFollowUp(
 			investigationId: id,
 			incidentId: data.incidentId,
 			runId: id,
-			resume: { note: workspace.note },
+			resume: { note: workspace.note, continuing },
 		});
+		if (continuing) restored = true;
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -394,6 +403,7 @@ async function runFollowUp(
 				cwd: workspace.cwd,
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
+				...(data.access ? { access: data.access } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -411,6 +421,12 @@ async function runFollowUp(
 					text: resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
+					...(continuing
+						? { kind: "continue" as const, sawEvidence: !!resume.sawEvidence }
+						: {}),
+					...(resume.attachments?.length
+						? { attachments: resume.attachments }
+						: {}),
 				},
 				seqStart,
 			},
@@ -423,8 +439,12 @@ async function runFollowUp(
 		);
 		await restore();
 		await io.streamDone();
-		if (outcome.failureKind === "cancelled") return cancelledResult(data);
+		if (outcome.failureKind === "cancelled") {
+			if (continuing) await persistCancelled(data, ports);
+			return cancelledResult(data);
+		}
 		if (outcome.error) return failureResult(data, outcome.error);
+		if (outcome.report) return successResult(data, outcome.report);
 		return {
 			success: true,
 			investigationId: id,

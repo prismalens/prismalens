@@ -21,6 +21,7 @@ describe("InvestigationsController.postToGitHub (#606)", () => {
 			{} as unknown as DispatchService,
 			telemetryStub(),
 			mockGitHubComment as unknown as GitHubCommentService,
+			{} as never,
 		);
 
 		const procs = controller.investigations() as unknown as Record<

@@ -68,6 +68,7 @@ function exportHandler(investigation: unknown) {
 		{} as DispatchService,
 		telemetry,
 		{ post: vi.fn() } as unknown as any,
+		{} as never,
 	);
 	const procs = controller.investigations() as unknown as Record<
 		string,

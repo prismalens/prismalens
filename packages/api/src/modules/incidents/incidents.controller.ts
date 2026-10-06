@@ -4,6 +4,8 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
+	ACCESS_LABEL,
+	accessAllowed,
 	canIncidentAction,
 	canSetIncidentStatus,
 	INCIDENT_ACTION_FROM,
@@ -25,7 +27,9 @@ import type {
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { TimelineService } from "../timeline/timeline.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService } from "./incidents.service.js";
 
@@ -60,6 +64,8 @@ export class IncidentsController {
 		private readonly dispatchService: DispatchService,
 		private readonly integrationsService: IntegrationsService,
 		private readonly harnessService: HarnessService,
+		private readonly attachments: AttachmentsService,
+		private readonly timeline: TimelineService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -177,6 +183,17 @@ export class IncidentsController {
 					}
 
 					refuseUnless("investigate", incident.status);
+					const access = input.access ?? "read-only";
+					if (
+						!accessAllowed(access, false) &&
+						!(await this.harnessService.getSettings()).allowWriteLevels
+					)
+						throw new ORPCError("CONFLICT", {
+							message: `${ACCESS_LABEL[access]} is off. Turn on "Allow write levels" in Settings, Agent.`,
+						});
+					const attachments = input.attachments?.length
+						? await this.attachments.forJob(input.id, input.attachments)
+						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
 					const selection = await this.harnessService.resolveSelection();
@@ -238,7 +255,17 @@ export class IncidentsController {
 								)
 							: undefined,
 						...(input.brief ? { brief: input.brief } : {}),
+						...(access !== "read-only" ? { access } : {}),
+						...(attachments.length ? { attachments } : {}),
 					});
+					if (access !== "read-only")
+						await this.timeline.create({
+							incidentId: input.id,
+							type: "investigation_started",
+							title: `Started at ${ACCESS_LABEL[access]}`,
+							source: "user",
+							metadata: { investigationId: investigation.id, access },
+						});
 
 					return {
 						incidentId: input.id,
@@ -247,6 +274,16 @@ export class IncidentsController {
 						queued: jobId !== null,
 					};
 				},
+			),
+
+			// POST /incidents/:id/attachments - A file for the agent (R4.3)
+			uploadAttachment: implement(incidentsContract.uploadAttachment).handler(
+				({ input }) => this.attachments.upload(input.id, input.file),
+			),
+
+			// GET /incidents/:id/attachments/:attachmentId
+			attachment: implement(incidentsContract.attachment).handler(({ input }) =>
+				this.attachments.read(input.id, input.attachmentId),
 			),
 
 			// POST /incidents/:id/resolve - Resolve an incident
