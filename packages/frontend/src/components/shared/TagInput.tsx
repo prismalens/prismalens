@@ -5,8 +5,6 @@
 
 import { X } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export interface TagInputProps {
@@ -17,10 +15,11 @@ export interface TagInputProps {
 	disabled?: boolean;
 }
 
+/** Tags on one line that scrolls sideways, so adding one never changes the form's height. */
 export function TagInput({
 	tags,
 	onChange,
-	placeholder = "Add tag...",
+	placeholder = "Enter after each",
 	className,
 	disabled = false,
 }: TagInputProps) {
@@ -48,33 +47,36 @@ export function TagInput({
 	return (
 		<div
 			className={cn(
-				"flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px] focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2",
-				disabled && "opacity-50 cursor-not-allowed",
+				"flex h-8 min-w-0 items-center gap-1 overflow-x-auto rounded-control bg-surface-2 px-1.5 md:h-7 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-accent [[data-pool]_&]:bg-well-in-pool [[role=dialog]_&]:bg-surface-3",
+				disabled && "cursor-not-allowed opacity-50",
 				className,
 			)}
 		>
 			{tags.map((tag) => (
-				<Badge key={tag} variant="secondary" className="gap-1">
+				<span
+					key={tag}
+					className="inline-flex h-5 shrink-0 items-center gap-0.5 rounded-[4px] bg-surface-4 pr-0.5 pl-1.5 text-meta text-text-1"
+				>
 					{tag}
 					{!disabled && (
 						<button
 							type="button"
 							onClick={() => removeTag(tag)}
-							className="hover:bg-text-2/20 rounded-full p-0.5"
+							aria-label={`Remove ${tag}`}
+							className="inline-flex size-4 items-center justify-center rounded-[3px] text-text-2 hover:text-text-1"
 						>
-							<X className="h-3 w-3" />
-							<span className="sr-only">Remove {tag}</span>
+							<X className="size-3" />
 						</button>
 					)}
-				</Badge>
+				</span>
 			))}
-			<Input
+			<input
 				value={inputValue}
 				onChange={(e) => setInputValue(e.target.value)}
 				onKeyDown={handleKeyDown}
 				placeholder={tags.length === 0 ? placeholder : ""}
 				disabled={disabled}
-				className="flex-1 min-w-[100px] border-0 p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+				className="h-full min-w-16 flex-1 bg-transparent px-1 text-[16px] text-text-1 outline-none placeholder:text-text-3 md:text-body"
 			/>
 		</div>
 	);

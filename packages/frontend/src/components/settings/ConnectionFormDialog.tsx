@@ -11,7 +11,6 @@ import type {
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,7 +21,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -42,6 +40,7 @@ import {
 } from "@/lib/api/hooks";
 import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
+import { Field } from "./Field";
 import { getTemplateIcon } from "./integration-utils";
 
 /** Prefix to distinguish new-template selections from existing integration IDs */
@@ -320,43 +319,50 @@ export function ConnectionFormDialog({
 			? createConnection.isPending || createIntegration.isPending
 			: updateConnection.isPending;
 
+	const blankKeeps =
+		mode === "edit" ? "blank keeps the saved value" : undefined;
+	const oauth = selectedTemplate?.connectionCreationMode === "oauth_redirect";
+
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>
 						{mode === "create" ? "Add connection" : "Edit connection"}
 					</DialogTitle>
 					<DialogDescription>
 						{mode === "create"
-							? "Connect an account to an existing integration"
-							: selectedTemplate?.connectionCreationMode === "oauth_redirect"
-								? "Re-authorize your OAuth connection"
-								: "Update connection credentials"}
+							? "An account an integration reaches through."
+							: oauth
+								? "Sign in again with the provider."
+								: "New credentials replace the saved ones."}
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4 py-4">
+				<div className="space-y-4">
 					{mode === "create" && (
-						<div className="space-y-2">
-							<Label htmlFor="integrationSelect">Provider / Integration</Label>
+						<Field
+							label="Integration"
+							htmlFor="integrationSelect"
+							error={showErrors && !selectedValue && "Choose an integration."}
+						>
 							<Select
 								value={selectedValue ?? ""}
 								onValueChange={handleSelectionChange}
 							>
-								<SelectTrigger id="integrationSelect">
-									<SelectValue placeholder="Select a provider or integration" />
+								<SelectTrigger id="integrationSelect" className="w-full">
+									<SelectValue placeholder="Choose one" />
 								</SelectTrigger>
 								<SelectContent>
 									{integrations && integrations.length > 0 && (
 										<SelectGroup>
-											<SelectLabel>Existing integrations</SelectLabel>
+											<SelectLabel>Yours</SelectLabel>
 											{integrations.map((integration: Integration) => (
 												<SelectItem key={integration.id} value={integration.id}>
-													<div className="flex items-center gap-2">
+													<span className="flex items-center gap-2">
 														{getTemplateIcon(integration.templateId)}
 														<span>{integration.label}</span>
-													</div>
+													</span>
 												</SelectItem>
 											))}
 										</SelectGroup>
@@ -364,23 +370,17 @@ export function ConnectionFormDialog({
 
 									{availableTemplates.length > 0 && (
 										<SelectGroup>
-											<SelectLabel>Add new integration</SelectLabel>
+											<SelectLabel>Add a new one</SelectLabel>
 											{availableTemplates.map(
 												(template: AuthTemplateResponse) => (
 													<SelectItem
 														key={template.id}
 														value={`${NEW_TEMPLATE_PREFIX}${template.id}`}
 													>
-														<div className="flex items-center gap-2">
+														<span className="flex items-center gap-2">
 															{getTemplateIcon(template.id)}
 															<span>{template.name}</span>
-															<Badge
-																variant="outline"
-																className="text-[10px] ml-1"
-															>
-																{template.authModeLabel}
-															</Badge>
-														</div>
+														</span>
 													</SelectItem>
 												),
 											)}
@@ -388,32 +388,22 @@ export function ConnectionFormDialog({
 									)}
 								</SelectContent>
 							</Select>
-							{showErrors && !selectedValue && (
-								<p className="text-body text-danger">
-									Please select a provider or integration
-								</p>
-							)}
-						</div>
+						</Field>
 					)}
 
 					{selectedTemplate && (
 						<>
 							{mode === "create" && (
-								<div className="space-y-2">
-									<Label htmlFor="connectionLabel">Connection label</Label>
+								<Field label="Label" note="optional" htmlFor="connectionLabel">
 									<Input
 										id="connectionLabel"
 										value={connectionLabel}
 										onChange={(e) => setConnectionLabel(e.target.value)}
-										placeholder="e.g., Personal Account (optional)"
+										placeholder="Personal account"
 									/>
-									<p className="text-xs text-text-2">
-										A friendly name to distinguish this connection
-									</p>
-								</div>
+								</Field>
 							)}
 
-							{/* Connection fields */}
 							{selectedTemplate.connectionFields &&
 								selectedTemplate.connectionFields.length > 0 && (
 									<DynamicCredentialForm
@@ -424,47 +414,35 @@ export function ConnectionFormDialog({
 									/>
 								)}
 
-							{/* Connection credential fields (for non-OAuth) */}
-							{selectedTemplate.connectionCreationMode !== "oauth_redirect" &&
+							{!oauth &&
 								selectedTemplate.connectionCredentialFields &&
 								selectedTemplate.connectionCredentialFields.length > 0 && (
-									<>
-										{mode === "edit" && (
-											<div className="space-y-1">
-												<Label className="text-body text-text-2">
-													Leave fields blank to keep existing values
-												</Label>
-											</div>
-										)}
-										<DynamicCredentialForm
-											fields={selectedTemplate.connectionCredentialFields}
-											values={credentialValues}
-											onChange={setCredentialValues}
-											showErrors={showErrors}
-										/>
-									</>
+									<DynamicCredentialForm
+										fields={selectedTemplate.connectionCredentialFields}
+										values={credentialValues}
+										onChange={setCredentialValues}
+										showErrors={showErrors}
+										note={blankKeeps}
+									/>
 								)}
 						</>
 					)}
+					<MutationError error={error} />
 				</div>
 
-				<MutationError error={error} />
-
 				<DialogFooter>
-					<Button variant="outline" onClick={() => handleOpenChange(false)}>
+					<Button variant="text" onClick={() => handleOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button onClick={handleSave} disabled={isSaving}>
+					<Button variant="primary" onClick={handleSave} disabled={isSaving}>
 						{isSaving && (
-							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+							<Loader2 className="size-3.5 motion-safe:animate-spin" />
 						)}
-						{mode === "edit" &&
-						selectedTemplate?.connectionCreationMode === "oauth_redirect"
-							? "Re-authorize"
-							: mode === "create" &&
-									selectedTemplate?.connectionCreationMode === "oauth_redirect"
-								? "Connect with OAuth"
-								: "Save"}
+						{oauth
+							? mode === "edit"
+								? "Sign in again"
+								: "Continue with the provider"
+							: "Save"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

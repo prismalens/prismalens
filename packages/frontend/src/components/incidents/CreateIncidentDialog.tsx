@@ -14,6 +14,7 @@ import {
 } from "@prismalens/contracts";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Field } from "@/components/settings/Field";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -24,7 +25,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -57,7 +57,7 @@ const DEFAULT_PRIORITY: Priority = "p3";
 /**
  * Author an incident by hand.
  *
- * This is the entry point for C10 — demonstrating the product on an install
+ * This is the entry point for C10, demonstrating the product on an install
  * that has no alert source wired yet. It calls the same `incidents.create`
  * procedure the correlation engine calls, so a hand-authored incident is an
  * ordinary incident: it can be acknowledged, investigated, and resolved.
@@ -103,7 +103,7 @@ export function CreateIncidentDialog({
 
 		const trimmedTitle = title.trim();
 		if (!trimmedTitle) {
-			setError("Title is required");
+			setError("An incident needs a title.");
 			return;
 		}
 
@@ -121,137 +121,129 @@ export function CreateIncidentDialog({
 			onCreated?.(incident.id);
 		} catch (err) {
 			setError(
-				err instanceof Error ? err.message : "Failed to create the incident",
+				err instanceof Error ? err.message : "The incident was not created.",
 			);
 		}
 	};
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent
-				className="sm:max-w-[480px]"
-				data-testid="create-incident-dialog"
-			>
-				<form onSubmit={handleSubmit}>
+			<DialogContent data-testid="create-incident-dialog">
+				<form onSubmit={handleSubmit} className="grid gap-4">
 					<DialogHeader>
-						<DialogTitle>Create incident</DialogTitle>
+						<DialogTitle>New incident</DialogTitle>
 						<DialogDescription>
-							Author an incident by hand — useful for trying an investigation
-							before any alert source is wired up.
+							By hand, to try a run before an alert source is wired up.
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="grid gap-4 py-4">
-						<div className="grid gap-2">
-							<Label htmlFor="incident-title">Title *</Label>
-							<Input
-								id="incident-title"
-								data-testid="create-incident-title"
-								placeholder="e.g., Checkout latency spike after 14:00 UTC"
-								value={title}
-								onChange={(e) => setTitle(e.target.value)}
-								disabled={isPending}
-								required
-							/>
-						</div>
+					<Field label="Title" htmlFor="incident-title">
+						<Input
+							id="incident-title"
+							data-testid="create-incident-title"
+							placeholder="Checkout latency spike after 14:00 UTC"
+							value={title}
+							onChange={(e) => setTitle(e.target.value)}
+							disabled={isPending}
+							required
+						/>
+					</Field>
 
-						<div className="grid gap-2">
-							<Label htmlFor="incident-description">
-								Description (optional)
-							</Label>
-							<Textarea
-								id="incident-description"
-								data-testid="create-incident-description"
-								placeholder="What is happening, and what makes you think so?"
-								value={description}
-								onChange={(e) => setDescription(e.target.value)}
-								disabled={isPending}
-								rows={3}
-							/>
-						</div>
+					<Field
+						label="Description"
+						note="optional"
+						htmlFor="incident-description"
+					>
+						<Textarea
+							id="incident-description"
+							data-testid="create-incident-description"
+							placeholder="What is happening, and what makes you think so?"
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							disabled={isPending}
+							rows={3}
+							className="resize-none"
+						/>
+					</Field>
 
-						<div className="grid grid-cols-2 gap-4">
-							<div className="grid gap-2">
-								<Label htmlFor="incident-severity">Severity</Label>
-								<Select
-									value={severity}
-									onValueChange={(v) => setSeverity(v as Severity)}
-									disabled={isPending}
-								>
-									<SelectTrigger id="incident-severity">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{SEVERITIES.map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div className="grid gap-2">
-								<Label htmlFor="incident-priority">Priority</Label>
-								<Select
-									value={priority}
-									onValueChange={(v) => setPriority(v as Priority)}
-									disabled={isPending}
-								>
-									<SelectTrigger id="incident-priority">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{PRIORITIES.map((opt) => (
-											<SelectItem key={opt.value} value={opt.value}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-						</div>
-
-						<div className="grid gap-2">
-							<Label htmlFor="incident-service">Service (optional)</Label>
+					<div className="grid grid-cols-2 gap-3">
+						<Field label="Severity" htmlFor="incident-severity">
 							<Select
-								value={serviceId}
-								onValueChange={setServiceId}
+								value={severity}
+								onValueChange={(v) => setSeverity(v as Severity)}
 								disabled={isPending}
 							>
-								<SelectTrigger id="incident-service">
+								<SelectTrigger id="incident-severity" className="w-full">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value={NO_SERVICE}>No service</SelectItem>
-									{services.map((service) => (
-										<SelectItem key={service.id} value={service.id}>
-											{service.displayName || service.name}
+									{SEVERITIES.map((opt) => (
+										<SelectItem key={opt.value} value={opt.value}>
+											{opt.label}
 										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
-							<p className="text-xs text-text-2">
-								An investigation reads the code at the service's local checkout.
-								Without a service it runs unmapped.
-							</p>
-						</div>
-
-						{error && (
-							<p
-								className="text-sm text-danger"
-								data-testid="create-incident-error"
-								role="alert"
+						</Field>
+						<Field label="Priority" htmlFor="incident-priority">
+							<Select
+								value={priority}
+								onValueChange={(v) => setPriority(v as Priority)}
+								disabled={isPending}
 							>
-								{error}
-							</p>
-						)}
+								<SelectTrigger id="incident-priority" className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{PRIORITIES.map((opt) => (
+										<SelectItem key={opt.value} value={opt.value}>
+											{opt.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
 					</div>
 
-					<DialogFooter>
+					<Field
+						label="Service"
+						htmlFor="incident-service"
+						hint="A run reads the service's code; without one it runs unmapped"
+					>
+						<Select
+							value={serviceId}
+							onValueChange={setServiceId}
+							disabled={isPending}
+						>
+							<SelectTrigger id="incident-service" className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={NO_SERVICE}>No service</SelectItem>
+								{services.map((service) => (
+									<SelectItem key={service.id} value={service.id}>
+										{service.displayName || service.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</Field>
+
+					<DialogFooter className="items-center">
+						<div className="mr-auto min-h-5 min-w-0 flex-1">
+							{error && (
+								<p
+									className="text-meta text-danger"
+									data-testid="create-incident-error"
+									role="alert"
+								>
+									{error}
+								</p>
+							)}
+						</div>
 						<Button
 							type="button"
-							variant="outline"
+							variant="text"
 							onClick={() => onOpenChange(false)}
 							disabled={isPending}
 						>
@@ -259,17 +251,14 @@ export function CreateIncidentDialog({
 						</Button>
 						<Button
 							type="submit"
+							variant="primary"
 							data-testid="create-incident-submit"
 							disabled={!title.trim() || isPending}
 						>
-							{isPending ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
-									Creating...
-								</>
-							) : (
-								"Create incident"
+							{isPending && (
+								<Loader2 className="size-3.5 motion-safe:animate-spin" />
 							)}
+							Create
 						</Button>
 					</DialogFooter>
 				</form>
