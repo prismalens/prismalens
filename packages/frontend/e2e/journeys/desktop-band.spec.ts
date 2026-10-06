@@ -43,7 +43,8 @@ for (const width of [375, 1024, 1440]) {
 			expect(await control.evaluate(region)).toBe("no-drag");
 			const c = await control.boundingBox();
 			// Nothing sits under the window controls on the band's first row.
-			if (c && c.y < 40) expect(c.x + c.width).toBeLessThanOrEqual(width - CONTROLS_W);
+			if (c && c.y < 40)
+				expect(c.x + c.width).toBeLessThanOrEqual(width - CONTROLS_W);
 			// And what is painted there is the control itself, not the strip over it.
 			if (c) {
 				const hit = await page.evaluate(

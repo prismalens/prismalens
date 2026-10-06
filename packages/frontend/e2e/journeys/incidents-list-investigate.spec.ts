@@ -130,9 +130,9 @@ test.describe("#520 part B — incident record investigate gate", () => {
 
 		// The reason is on screen under the box on Overview.
 		await page.getByTestId("tab-overview").click();
-		await expect(
-			page.getByText(UNUSABLE_SELECTION_REASON).first(),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
+			{ timeout: 15_000 },
+		);
 	});
 
 	test("band investigate is enabled when a harness or provider is usable", async ({
@@ -222,12 +222,15 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		const defaultBtn = await bandInvestigate(page);
 		await expect(defaultBtn).toBeDisabled({ timeout: 15_000 });
-		await expect(defaultBtn).toHaveAttribute("title", UNUSABLE_SELECTION_REASON);
+		await expect(defaultBtn).toHaveAttribute(
+			"title",
+			UNUSABLE_SELECTION_REASON,
+		);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("tab-overview").click();
-		await expect(
-			page.getByText(UNUSABLE_SELECTION_REASON).first(),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
+			{ timeout: 15_000 },
+		);
 
 		// 2. Dark: disabled button with reason tooltip in dark theme
 		await page.emulateMedia({ colorScheme: "dark" });
@@ -244,9 +247,9 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(darkBtn).toHaveAttribute("title", UNUSABLE_SELECTION_REASON);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("tab-overview").click();
-		await expect(
-			page.getByText(UNUSABLE_SELECTION_REASON).first(),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
+			{ timeout: 15_000 },
+		);
 
 		// 3. Error state: server refusal toast
 		const refusalReason =

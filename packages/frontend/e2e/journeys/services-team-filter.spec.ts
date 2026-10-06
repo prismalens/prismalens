@@ -30,7 +30,8 @@ async function serveCatalog(
 	await page.route("**/api/services?*", async (route) => {
 		const team = new URL(route.request().url()).searchParams.get("team");
 		requestedTeams.push(team);
-		const names = team === null ? Object.values(byTeam).flat() : (byTeam[team] ?? []);
+		const names =
+			team === null ? Object.values(byTeam).flat() : (byTeam[team] ?? []);
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",

@@ -12,9 +12,9 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(
-			page.getByTestId("settings-nav-integrations"),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("settings-nav-integrations")).toBeVisible({
+			timeout: 15_000,
+		});
 
 		// Integrations holds git hosts and delivery; the webhook moved to Alert sources.
 		await page.getByTestId("settings-nav-integrations").click();

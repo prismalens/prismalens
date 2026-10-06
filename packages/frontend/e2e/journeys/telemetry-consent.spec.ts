@@ -57,9 +57,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		// page and onto the sidebar); the full disclosure lives in Settings,
 		// asserted below.
 		await expect(consent).toContainText("Share usage counts");
-		await expect(consent).toContainText(
-			"Never an alert, a repo or a report",
-		);
+		await expect(consent).toContainText("Never an alert, a repo or a report");
 
 		await consent.getByRole("button", { name: "Share", exact: true }).click();
 
@@ -92,7 +90,11 @@ test.describe("#602 — opt-in telemetry", () => {
 			forcedOff: false,
 		});
 		await page.goto("/incidents");
-		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
@@ -103,7 +105,11 @@ test.describe("#602 — opt-in telemetry", () => {
 			forcedOff: true,
 		});
 		await page.reload();
-		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("telemetry-consent")).toHaveCount(0);
@@ -129,9 +135,7 @@ test.describe("#602 — opt-in telemetry", () => {
 		// id is stable and pseudonymous, the basis, the retention, the withdrawal.
 		// Exact, because "what is sent" also appears inside the "Never sent"
 		// paragraph and a substring match would resolve to both.
-		await expect(
-			page.getByText("What is sent", { exact: true }),
-		).toBeVisible();
+		await expect(page.getByText("What is sent", { exact: true })).toBeVisible();
 		await expect(
 			page.getByText("The install id, and your consent", { exact: true }),
 		).toBeVisible();

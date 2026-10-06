@@ -39,7 +39,9 @@ test.describe("#523 — the alerts frame", () => {
 
 	test("stats view shows the numbers as one line", async ({ page }) => {
 		await page.goto("/alerts?view=stats");
-		await expect(page.getByTestId("alerts-frame")).toBeVisible({ timeout: 20_000 });
+		await expect(page.getByTestId("alerts-frame")).toBeVisible({
+			timeout: 20_000,
+		});
 
 		const overview = page.getByTestId("alerts-overview");
 		await expect(overview).toBeVisible({ timeout: 20_000 });
@@ -62,7 +64,9 @@ test.describe("#523 — the alerts frame", () => {
 		const detail = page.getByTestId("alert-detail");
 		await expect(detail).toBeVisible({ timeout: 15_000 });
 
-		await expect(detail.getByTestId("alert-open-incident")).toHaveText("Open INC-1");
+		await expect(detail.getByTestId("alert-open-incident")).toHaveText(
+			"Open INC-1",
+		);
 		await expect(page.getByTestId("alert-acknowledge")).toHaveCount(0);
 		await detail.getByTestId("alert-more").click();
 		await expect(page.getByTestId("alert-resolve")).toBeVisible();
@@ -88,7 +92,9 @@ test.describe("#523 — the alerts frame", () => {
 		});
 
 		await page.goto("/alerts?view=stats");
-		await expect(page.getByTestId("alerts-empty-state")).toBeVisible({ timeout: 20_000 });
+		await expect(page.getByTestId("alerts-empty-state")).toBeVisible({
+			timeout: 20_000,
+		});
 		await expect(page.getByText("No alerts found")).toBeVisible();
 
 		await page.unroute("**/api/alerts*");

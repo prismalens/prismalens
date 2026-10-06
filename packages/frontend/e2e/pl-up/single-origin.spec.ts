@@ -29,7 +29,9 @@ const PAIRED_STATE = join(prefix, "paired-state.json");
  */
 function startupLink(): string {
 	const out = readFileSync(join(prefix, "pl-up.out"), "utf8");
-	const link = stripVTControlCharacters(out).match(/Open: (\S+\/pair#\S+)/)?.[1];
+	const link = stripVTControlCharacters(out).match(
+		/Open: (\S+\/pair#\S+)/,
+	)?.[1];
 	if (!link) throw new Error(`no startup link in pl up's output:\n${out}`);
 	const url = new URL(link);
 	return `${url.pathname}${url.hash}`;
@@ -70,7 +72,9 @@ test("a startup link works once: a second browser opening it cannot pair", async
 	const context = await browser.newContext();
 	const page = await context.newPage();
 	await page.goto(startupLink());
-	await expect(page.getByText("Could not pair")).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByText("Could not pair")).toBeVisible({
+		timeout: 30_000,
+	});
 	expect((await page.request.get("/api/incidents")).status()).toBe(401);
 	await context.close();
 });
@@ -95,7 +99,9 @@ test("a second device pairs, cannot manage pairing, and is refused once revoked"
 	// Non-escalation (ADR 0004 §8): a paired device can neither mint nor revoke.
 	const mint = await phonePage.request.post("/api/pairing/links", { data: {} });
 	expect(mint.status()).toBe(403);
-	expect((await phonePage.request.get("/api/pairing/devices")).status()).toBe(403);
+	expect((await phonePage.request.get("/api/pairing/devices")).status()).toBe(
+		403,
+	);
 
 	const host = await browser.newContext({ storageState: PAIRED_STATE });
 	const list = await host.request.get("/api/pairing/devices");
@@ -118,57 +124,59 @@ test("a second device pairs, cannot manage pairing, and is refused once revoked"
 test.describe("paired", () => {
 	test.use({ storageState: PAIRED_STATE });
 
-test("read journey: a deep client route is served by the SPA fallback, and its data comes from the same origin", async ({
-	page,
-}) => {
-	// A deep link the API has no controller for. It must return the SPA shell —
-	// this is the assertion that a wrong `exclude` list or a missing index.html
-	// breaks, and it cannot be made against the dev stack at all.
-	const deep = await page.request.get("/incidents");
-	expect(deep.status()).toBe(200);
-	expect(deep.headers()["content-type"]).toContain("text/html");
+	test("read journey: a deep client route is served by the SPA fallback, and its data comes from the same origin", async ({
+		page,
+	}) => {
+		// A deep link the API has no controller for. It must return the SPA shell —
+		// this is the assertion that a wrong `exclude` list or a missing index.html
+		// breaks, and it cannot be made against the dev stack at all.
+		const deep = await page.request.get("/incidents");
+		expect(deep.status()).toBe(200);
+		expect(deep.headers()["content-type"]).toContain("text/html");
 
-	// The API's own 404 must NOT be swallowed by that fallback.
-	const missing = await page.request.get("/api/nonexistent");
-	expect(missing.status()).toBe(404);
-	expect(missing.headers()["content-type"]).toContain("application/json");
+		// The API's own 404 must NOT be swallowed by that fallback.
+		const missing = await page.request.get("/api/nonexistent");
+		expect(missing.status()).toBe(404);
+		expect(missing.headers()["content-type"]).toContain("application/json");
 
-	// And the client router takes over from that shell: a deep link to a guarded
-	// route resolves its guard in the browser, which it can only do after the
-	// SPA bundle loaded and reached the API on this same origin.
-	await page.goto("/incidents");
-	await page.waitForURL(/\/incidents/, { timeout: 30_000 });
-	await expect(page.locator("body")).not.toBeEmpty();
-});
-
-test("theme survives a reload with no server function behind it", async ({ page }) => {
-	// The FOUC job used to belong to `getThemeServerFn`. There is no TanStack
-	// Start server in the artifact, so the inline pre-paint script owns it now.
-	await page.goto("/");
-	await page.evaluate(() => {
-		document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
+		// And the client router takes over from that shell: a deep link to a guarded
+		// route resolves its guard in the browser, which it can only do after the
+		// SPA bundle loaded and reached the API on this same origin.
+		await page.goto("/incidents");
+		await page.waitForURL(/\/incidents/, { timeout: 30_000 });
+		await expect(page.locator("body")).not.toBeEmpty();
 	});
-	await page.reload();
-	await expect(page.locator("html")).toHaveClass(/light/);
-	// And it is stamped BEFORE React runs: no dark class at any point after load.
-	await expect(page.locator("html")).not.toHaveClass(/dark/);
 
-	await page.evaluate(() => {
-		document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
+	test("theme survives a reload with no server function behind it", async ({
+		page,
+	}) => {
+		// The FOUC job used to belong to `getThemeServerFn`. There is no TanStack
+		// Start server in the artifact, so the inline pre-paint script owns it now.
+		await page.goto("/");
+		await page.evaluate(() => {
+			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
+		});
+		await page.reload();
+		await expect(page.locator("html")).toHaveClass(/light/);
+		// And it is stamped BEFORE React runs: no dark class at any point after load.
+		await expect(page.locator("html")).not.toHaveClass(/dark/);
+
+		await page.evaluate(() => {
+			document.cookie = "prismalens-theme=dark; path=/; max-age=31536000";
+		});
+		await page.reload();
+		await expect(page.locator("html")).toHaveClass(/dark/);
 	});
-	await page.reload();
-	await expect(page.locator("html")).toHaveClass(/dark/);
-});
 
-test("error state: a route the API answers with a 404 does not become the SPA shell", async ({
-	page,
-}) => {
-	// The empty/error surface of the artifact: an unknown CLIENT route renders the
-	// app's own not-found component, while an unknown API route stays JSON.
-	await page.goto("/this-route-does-not-exist");
-	await expect(page.locator("body")).not.toBeEmpty();
+	test("error state: a route the API answers with a 404 does not become the SPA shell", async ({
+		page,
+	}) => {
+		// The empty/error surface of the artifact: an unknown CLIENT route renders the
+		// app's own not-found component, while an unknown API route stays JSON.
+		await page.goto("/this-route-does-not-exist");
+		await expect(page.locator("body")).not.toBeEmpty();
 
-	const api = await page.request.get("/api/also-not-a-route");
-	expect(api.status()).toBe(404);
-});
+		const api = await page.request.get("/api/also-not-a-route");
+		expect(api.status()).toBe(404);
+	});
 });
