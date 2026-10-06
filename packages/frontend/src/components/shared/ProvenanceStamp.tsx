@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
 
 export interface ProvenanceStampProps {
@@ -39,9 +40,11 @@ export function ProvenanceStamp({
 			)}
 		>
 			<span>captured</span>
-			<time dateTime={iso} title={iso}>
-				{Number.isNaN(date.getTime()) ? String(capturedAt) : hhmmZ(date)}
-			</time>
+			<Hint label={iso}>
+				<time dateTime={iso}>
+					{Number.isNaN(date.getTime()) ? String(capturedAt) : hhmmZ(date)}
+				</time>
+			</Hint>
 			{source && <span>{source}</span>}
 			{via && <span>{via}</span>}
 		</span>

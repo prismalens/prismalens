@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The look ruling's static gates (rev 2 §6): no border as structure, no DOM title
 # tooltips, no native <select>, no deleted tokens. Args: files (default: all of src).
-# Not yet part of `lint`; the last look PR wires it in.
+# `lint` and the root `format-and-lint` run it.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 if [ $# -gt 0 ]; then files=$(printf '%s\n' "$@"); else files=$(git ls-files 'src/*.tsx' 'src/*.css'); fi

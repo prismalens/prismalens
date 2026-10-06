@@ -87,7 +87,7 @@ export function RecommendationsList({
 					const isActionable = rec.actionable && isPending;
 
 					return (
-						<Card key={rec.id} className={isPending ? "border-accent/50" : ""}>
+						<Card key={rec.id} className={isPending ? "bg-surface-3" : ""}>
 							<CardHeader className="pb-2">
 								<div className="flex items-start justify-between gap-4">
 									<div className="space-y-1">

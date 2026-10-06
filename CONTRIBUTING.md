@@ -49,7 +49,7 @@ pnpm build        # turbo run build
 pnpm typecheck    # turbo run typecheck
 pnpm test         # turbo run test
 pnpm --filter @prismalens/frontend test:e2e  # Playwright e2e suite: one isolated, seeded stack per worker on ports 3000/3001, 3002/3003, ...
-pnpm format-and-lint        # biome check . (lint + format)
+pnpm format-and-lint        # biome check . (lint + format), then the frontend's look gates (lint:look)
 pnpm format-and-lint:fix    # biome check . --write
 ```
 
@@ -302,6 +302,8 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
 ## Code style
 
 - Formatting and linting are handled by **Biome** — run `pnpm format-and-lint`.
+  It also runs `packages/frontend/scripts/lint-look.sh`: no border as structure,
+  no DOM `title` tooltip (use `Hint`), no native `<select>`, no deleted look tokens.
 - **Never convert tabs to spaces or vice-versa.** Preserve the existing
   indentation of each file exactly.
 - Small, cohesive files; explicit error handling at boundaries; no stray
