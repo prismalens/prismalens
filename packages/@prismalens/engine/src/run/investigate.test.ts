@@ -365,6 +365,36 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.at(-1)?.kind).toBe("report");
 	});
 
+	it("a reopened session switches to the run's chosen model before the operator's words reach it (R4.2)", async () => {
+		const { events, runDir } = await collect("continue", {
+			model: "asked/model",
+			modelSource: "operator",
+			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1", FAKE_MODELS: "served/model,asked/model", FAKE_SERVED_MODEL: "served/model" },
+			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [], kind: "continue", sawEvidence: true },
+		});
+		expect(events.find((e) => e.kind === "session_config")).toMatchObject({ option: "model", value: "asked/model", accepted: true });
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ model: "asked/model", servedModel: "asked/model" });
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire.indexOf("session/set_config_option")).toBeLessThan(wire.indexOf("session/prompt"));
+	});
+
+	it("refuses to continue on a reopened session that reports no model option, before any prompt (R4.2)", async () => {
+		const { events, runDir } = await collect("continue", {
+			model: "asked/model",
+			modelSource: "operator",
+			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [], kind: "continue", sawEvidence: true },
+		});
+		expect(events.at(-1)).toMatchObject({
+			kind: "error",
+			message: "OpenCode offers no model option, so it cannot take asked/model",
+		});
+		expect(events.some((e) => e.kind === "operator_message")).toBe(false);
+		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
+	});
+
 	it("conductRun finishes the store for a continued run's report (R4.4)", async () => {
 		let finished = 0;
 		const outcome = await conductRun(

@@ -14,6 +14,8 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	type ModelSource,
+	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
@@ -388,13 +390,21 @@ async function runFollowUp(
 		if (multi) context.workspace = multi;
 
 		mkdirSync(runDir, { recursive: true });
-		const store = createPrismaInvestigationStore(ports, {
+		const base = createPrismaInvestigationStore(ports, {
 			investigationId: id,
 			incidentId: data.incidentId,
 			runId: id,
 			resume: { note: workspace.note, continuing },
 		});
-		if (continuing) restored = true;
+		// The row is the continued run's once it went live; a failure before that puts it back.
+		const store = {
+			...base,
+			create: async () => {
+				await base.create();
+				if (continuing) restored = true;
+			},
+		};
+		const modelSource = followUpModelSource(harness, inv.model);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -403,6 +413,7 @@ async function runFollowUp(
 				cwd: workspace.cwd,
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
+				...(modelSource ? { modelSource } : {}),
 				...(data.access ? { access: data.access } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -468,6 +479,19 @@ async function runFollowUp(
 		await restore();
 		clearRunWorkspace(runDir);
 	}
+}
+
+/**
+ * The row keeps the model, not where it came from: the env or the product default
+ * when they still name it, else the operator's pick, which the agent must take (R4.2).
+ */
+export function followUpModelSource(
+	harness: HarnessId,
+	model: string | null,
+): ModelSource | undefined {
+	if (!model) return undefined;
+	const now = resolveHarnessModel(harness, undefined, process.env);
+	return now.model === model ? now.source : "operator";
 }
 
 /** The follow-up's message, not delivered, and why: what the conversation shows when it never ran. */
