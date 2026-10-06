@@ -12,7 +12,7 @@
 		"postinstall": "pnpm rebuild better-sqlite3",
 		"prepare": "node scripts/install-hooks.mjs",
 		"build": "turbo run build",
-		"dev": "turbo run dev",
+		"dev": "turbo run dev --filter=!prismalens",
 		"dev:api": "turbo run dev --filter=@prismalens/api",
 		"dev:frontend": "turbo run dev --filter=@prismalens/frontend",
 		"test": "turbo run test",
