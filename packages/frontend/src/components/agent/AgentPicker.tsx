@@ -387,6 +387,7 @@ export function AgentModelPicker({
 				sideOffset={8}
 				className="grid h-[360px] w-[440px] max-w-[calc(100vw-2rem)] grid-cols-[44px_minmax(0,1fr)] overflow-hidden p-0"
 				data-testid="agent-picker-list"
+				aria-label="Agent and model"
 				onOpenAutoFocus={(e) => {
 					e.preventDefault();
 					// A phone's keyboard would cover the list it is meant to filter.
