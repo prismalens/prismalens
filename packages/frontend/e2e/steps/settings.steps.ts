@@ -175,7 +175,9 @@ When("I open each Settings section in turn", async () => {
 
 Then(
 	"a visual snapshot of each matches its approved render at 1440 and 390",
-	async ({ page, $testInfo }) => {
+	async ({ page, $test, $testInfo }) => {
+		// Fourteen loads and snapshots; on a CI runner that sits at the default 30 s.
+		$test.slow();
 		for (const width of [1440, 390]) {
 			await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
 			for (const tab of SECTIONS) {

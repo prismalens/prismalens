@@ -408,7 +408,9 @@ Then(
 
 Then(
 	"the card is marked new, and a second arrival a second later starts its own glow at once and leaves the first one's to end",
-	async ({ page, alertmanager, deliverWebhook, unique }) => {
+	async ({ page, alertmanager, deliverWebhook, unique, $test }) => {
+		// After the arrival step's wait for the live stream this runs ~24 s locally.
+		$test.slow();
 		const first = cardOf(page, inc(page).title);
 		await expect(first).toHaveAttribute("data-new", "");
 		await page.waitForTimeout(1_000);
@@ -1138,7 +1140,9 @@ Given(
 
 const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
 
-When("I open INC-1 and each of its tabs in turn", async () => {
+When("I open INC-1 and each of its tabs in turn", async ({ $test }) => {
+	// The Thens load the record ten times; on a CI runner that sits at the default 30 s.
+	$test.slow();
 	// The Then walks the tabs; each one is read where it is shown.
 });
 
