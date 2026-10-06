@@ -60,7 +60,9 @@ pnpm db:init      # initialise the local SQLite database
 pnpm dev          # turbo run dev (or dev:api / dev:frontend)
 ```
 
-There is no login. The dev API logs `Open this machine's session: <link>` when it starts; open it once and the browser holds a device cookie from then on. `pnpm db:init` on an empty database seeds demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
+There is no login, and in dev no pairing step either. The first page request from a browser with no device session makes `vite dev` mint an operator link, redeem it through the real API and set the device cookie, so `localhost:3000` opens straight into the app. Set `PRISMALENS_DEV_PAIR=off` to pair by hand instead (the dev API still logs `Open this machine's session: <link>`). `pnpm db:init` on an empty database seeds demo data (~60 alerts, incidents, investigations) when `NODE_ENV=development` or `PRISMALENS_SEED_DEMO=1` — the same gate e2e tests and CI use to force it outside development. `pnpm --filter @prismalens/database db:seed` reruns the seed directly.
+
+To work on the Electron app, run `pnpm dev:desktop`. It starts the API, the frontend and the desktop together, and the window loads the Vite dev server (`PRISMALENS_DESKTOP_DEV_URL`, default `http://localhost:3000`) and pairs itself, with hot reload for the renderer and a restart of Electron on every compiled change to `packages/desktop`. The packed-backend path (`pnpm --filter @prismalens/desktop stage:backend`, then `start`) is for checking the shipped artifact, not for day-to-day work.
 
 ### Browser e2e tier
 
