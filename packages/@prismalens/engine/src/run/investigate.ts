@@ -495,6 +495,8 @@ export async function* runInvestigation(
 		const turn = async function* (
 			parts: PromptPart[],
 		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
+			if (opts.signal?.aborted) return { stop: "cancelled" };
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
 			return yield* consume(session.prompt(parts));

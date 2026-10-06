@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Controller, Logger } from "@nestjs/common";
+import { ModuleRef } from "@nestjs/core";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { integrationsContract } from "@prismalens/contracts";
 import type {
@@ -17,6 +18,7 @@ import type {
 	ServiceIntegration,
 } from "@prismalens/database";
 import { type AuthTemplate, getTemplate } from "@prismalens/integrations";
+import { AlertPullService } from "../alerts/alert-pull.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 
@@ -24,7 +26,10 @@ import { IntegrationsService } from "./integrations.service.js";
 export class IntegrationsController {
 	private readonly logger = new Logger(IntegrationsController.name);
 
-	constructor(private readonly integrationsService: IntegrationsService) {}
+	constructor(
+		private readonly integrationsService: IntegrationsService,
+		private readonly moduleRef: ModuleRef,
+	) {}
 
 	@Implement(integrationsContract)
 	integrations() {
@@ -130,6 +135,11 @@ export class IntegrationsController {
 				const connection =
 					await this.integrationsService.createConnection(input);
 				this.logger.log(`Created connection: ${connection.id}`);
+				// An alert that fired by webhook before this connection existed is
+				// listed now, so it can later resolve by absence (walk f17).
+				void this.moduleRef
+					.get(AlertPullService, { strict: false })
+					.onWebhook();
 				return this.serializeConnection(connection);
 			}),
 

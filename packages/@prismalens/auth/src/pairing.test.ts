@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { hostname } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import {
 	ACCESS_SCOPE,
@@ -331,6 +332,8 @@ describe("redeemPairingLink", () => {
 		});
 		expect(host.device.scopes).toEqual([...OPERATOR_SCOPES]);
 		expect(host.device.name).toBe(STARTUP_LINK_LABEL);
+		// Named after the machine, the way Tailscale names a device (walk u2).
+		expect(host.device.name).toBe(hostname() || "This machine");
 
 		const plain = await createPairingLink(store);
 		const other = await redeemPairingLink(store, {

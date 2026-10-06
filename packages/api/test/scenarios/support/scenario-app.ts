@@ -104,6 +104,18 @@ export class ScenarioApp {
 		await this.app.get(AlertPullService).onWebhook();
 	}
 
+	/** When a connected Alertmanager last listed this fingerprint; null if never. */
+	async lastListedAt(fingerprint: string): Promise<Date | null> {
+		if (!this.app) throw new Error("PrismaLens is not running");
+		const { PrismaService } = await import(
+			"../../../src/core/prisma/prisma.service.js"
+		);
+		const member = await this.app
+			.get(PrismaService)
+			.alertSourceAlert.findFirst({ where: { sourceAlertId: fingerprint } });
+		return member?.lastPulledAt ?? null;
+	}
+
 	get webhookUrl(): string {
 		return `${this.url}/api/webhooks/prometheus`;
 	}

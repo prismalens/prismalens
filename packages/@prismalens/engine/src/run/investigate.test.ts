@@ -317,6 +317,25 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(channel.send("too late", "now")).toBeNull();
 	});
 
+	it("a stop that lands while the harness is still starting never sends the prompt (#743)", async () => {
+		const stop = new AbortController();
+		const channel = createSteerChannel();
+		const started = Date.now();
+		setTimeout(() => {
+			channel.send("Also check the TTL revert.", "queue");
+			stop.abort();
+		}, 50);
+		const { events, runDir } = await collect("silent", {
+			env: { ...process.env, FAKE_ACP_MODE: "silent", FAKE_INIT_DELAY_MS: "400" },
+			signal: stop.signal,
+			steer: channel.port,
+		});
+		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });
+		expect(events.find((e) => e.kind === "operator_message")).toMatchObject({ delivered: false });
+		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
+		expect(Date.now() - started).toBeLessThan(3_000);
+	});
+
 	it("cancels a silent harness as soon as the operator stops the run (#743)", async () => {
 		const stop = new AbortController();
 		const started = Date.now();
