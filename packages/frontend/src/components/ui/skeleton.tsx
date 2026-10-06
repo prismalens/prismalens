@@ -8,7 +8,7 @@ function Skeleton({
 	...props
 }: React.HTMLAttributes<HTMLDivElement>) {
 	return (
-		<div className={cn("rounded-[6px] bg-surface-3", className)} {...props} />
+		<div className={cn("shimmer rounded-control", className)} {...props} />
 	);
 }
 

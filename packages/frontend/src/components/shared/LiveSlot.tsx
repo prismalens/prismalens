@@ -86,7 +86,7 @@ export function LiveSlot(props: LiveSlotProps) {
 					<StateWord tone="neutral">fetching</StateWord>
 				)}
 				{props.state === "failed" && (
-					<StateWord tone="stale">fetch failed</StateWord>
+					<StateWord tone="warn">fetch failed</StateWord>
 				)}
 				{props.state === "not-configured" && (
 					<StateWord tone="neutral" quiet>
@@ -141,7 +141,7 @@ export function LiveSlot(props: LiveSlotProps) {
 						{props.onRetry && (
 							<Button
 								type="button"
-								variant="outline"
+								variant="secondary"
 								size="sm"
 								className="h-6 px-2 font-sans text-meta"
 								onClick={props.onRetry}
@@ -154,7 +154,7 @@ export function LiveSlot(props: LiveSlotProps) {
 				{props.state === "not-configured" && (
 					<Button
 						asChild
-						variant="link"
+						variant="text"
 						size="sm"
 						className="h-6 px-0 font-sans text-meta"
 					>

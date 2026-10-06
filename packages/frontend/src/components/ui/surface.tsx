@@ -5,7 +5,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/** A raised surface: board cards, the box, popovers and dialogs only (study-v2 §2.5). */
+/** A raised surface: one step up, a shadow in the light theme, never an edge (look ruling §1.1). */
 
 const Surface = React.forwardRef<
 	HTMLDivElement,

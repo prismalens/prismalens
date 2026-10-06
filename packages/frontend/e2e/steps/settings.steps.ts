@@ -690,7 +690,10 @@ Then(
 			["deepagents", "deepagents"],
 		] as const) {
 			const tile = picker(page).getByTestId(`rail-${id}`);
-			const mark = tile.locator("svg").first();
+			// A vendor mark, or a two-letter tile where none reads at 20 px.
+			const mark = tile
+				.locator('svg, [data-testid="agent-lettermark"]')
+				.first();
 			const label = tile.locator("span").last();
 			await expect(mark).toBeVisible();
 			await expect(label).toHaveText(name);

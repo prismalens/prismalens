@@ -10,6 +10,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
+import { Row } from "./Row";
 
 const ROWS: { keys: string[]; label: string }[] = [
 	{ keys: [NEW_INCIDENT_KEY.toUpperCase()], label: "New incident" },
@@ -39,33 +40,30 @@ export function ShortcutSheet({
 }) {
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-sm" data-testid="shortcut-sheet">
+			<DialogContent size="sm" data-testid="shortcut-sheet">
 				<DialogHeader>
 					<DialogTitle>Keyboard</DialogTitle>
 					<DialogDescription>
 						Keys work anywhere you are not typing.
 					</DialogDescription>
 				</DialogHeader>
-				<dl>
+				<div>
 					{ROWS.map((row) => (
-						<div
+						<Row
 							key={row.label}
-							className="flex items-center justify-between gap-4 border-t border-hairline py-2 first:border-t-0"
-						>
-							<dt className="text-body">{row.label}</dt>
-							<dd className="flex items-center gap-1.5">
-								{row.keys.map((k) => (
-									<kbd
-										key={k}
-										className="inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-surface-3 px-1 font-mono text-meta text-text-2"
-									>
-										{k}
-									</kbd>
-								))}
-							</dd>
-						</div>
+							label={row.label}
+							className="py-1"
+							trailing={row.keys.map((k) => (
+								<kbd
+									key={k}
+									className="inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-surface-3 px-1 font-mono text-meta text-text-2"
+								>
+									{k}
+								</kbd>
+							))}
+						/>
 					))}
-				</dl>
+				</div>
 			</DialogContent>
 		</Dialog>
 	);

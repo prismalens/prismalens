@@ -17,7 +17,7 @@ const ToastViewport = React.forwardRef<
 	<ToastPrimitives.Viewport
 		ref={ref}
 		className={cn(
-			"fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+			"fixed right-0 bottom-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 outline-none md:max-w-[420px]",
 			className,
 		)}
 		{...props}
@@ -25,14 +25,18 @@ const ToastViewport = React.forwardRef<
 ));
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
+/**
+ * Floating, bottom-right: a state bar and one line (look ruling §2). The bar
+ * says how it went; the words never turn red.
+ */
 const toastVariants = cva(
-	"group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-surface p-3 pr-8 transition-all motion-reduce:transition-none data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out motion-safe:data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+	"group pointer-events-auto relative ml-auto flex min-h-9 w-fit max-w-full items-center gap-2.5 rounded-surface py-2 pr-8 pl-3 floating text-text-1 data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-(--radix-toast-swipe-end-x) data-[swipe=move]:translate-x-(--radix-toast-swipe-move-x) before:h-3 before:w-[3px] before:shrink-0 before:rounded-full",
 	{
 		variants: {
 			variant: {
-				default: "floating text-text-1",
-				destructive:
-					"destructive group floating text-text-1 [&>div>div:first-child]:text-danger",
+				default: "before:bg-ok",
+				neutral: "before:bg-text-3",
+				destructive: "destructive before:bg-danger",
 			},
 		},
 		defaultVariants: {
@@ -49,6 +53,7 @@ const Toast = React.forwardRef<
 	return (
 		<ToastPrimitives.Root
 			ref={ref}
+			data-float="toast"
 			className={cn(toastVariants({ variant }), className)}
 			{...props}
 		/>
@@ -63,7 +68,7 @@ const ToastAction = React.forwardRef<
 	<ToastPrimitives.Action
 		ref={ref}
 		className={cn(
-			"inline-flex h-6 shrink-0 items-center justify-center rounded-control bg-surface-3 px-2 text-meta font-medium hover:bg-surface-4 outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50",
+			"inline-flex h-6 shrink-0 items-center justify-center rounded-control bg-surface-3 px-2 text-meta font-medium transition-colors duration-(--dur-instant) hover:bg-surface-4 disabled:pointer-events-none disabled:opacity-50",
 			className,
 		)}
 		{...props}
@@ -78,13 +83,13 @@ const ToastClose = React.forwardRef<
 	<ToastPrimitives.Close
 		ref={ref}
 		className={cn(
-			"absolute right-1 top-1 rounded-control p-1 text-text-3 opacity-0 transition-opacity hover:text-text-1 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100",
+			"absolute top-1/2 right-1.5 -translate-y-1/2 rounded-control p-1 text-text-3 opacity-0 transition-opacity duration-(--dur-fast) hover:text-text-1 focus:opacity-100 group-hover:opacity-100",
 			className,
 		)}
 		toast-close=""
 		{...props}
 	>
-		<X className="h-4 w-4" />
+		<X className="size-3.5" />
 	</ToastPrimitives.Close>
 ));
 ToastClose.displayName = ToastPrimitives.Close.displayName;
@@ -95,7 +100,7 @@ const ToastTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<ToastPrimitives.Title
 		ref={ref}
-		className={cn("text-body font-medium [&+div]:text-meta", className)}
+		className={cn("text-body font-medium", className)}
 		{...props}
 	/>
 ));
@@ -107,7 +112,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<ToastPrimitives.Description
 		ref={ref}
-		className={cn("text-meta text-text-2", className)}
+		className={cn("text-body text-text-2", className)}
 		{...props}
 	/>
 ));

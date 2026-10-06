@@ -143,7 +143,11 @@ test.describe("#523 S2/final — the incidents queue", () => {
 		await expect(failedRow.getByTestId("incident-attention")).toHaveText(
 			"Run failed",
 		);
-		await expect(triggeredRow).toHaveAttribute("title", /INC-\d+/);
+		// The state and age ride in the row's hint, never a DOM title.
+		await expect(triggeredRow).not.toHaveAttribute("title");
+		await triggeredRow.hover();
+		await expect(page.getByTestId("hint")).toContainText(/INC-\d+/);
+		await page.mouse.move(0, 0);
 
 		const closedY = (await closedRow.boundingBox())?.y ?? 0;
 		for (const r of [triggeredRow, failedRow, resolvedRow]) {

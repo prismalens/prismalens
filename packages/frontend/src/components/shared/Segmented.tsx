@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Button } from "@/components/ui/button";
+import { useSlidingMark } from "@/hooks/use-sliding-mark";
 import { cn } from "@/lib/utils";
 
-/** A small set of views, one pressed: the incidents overview's Window | Analytics shape. */
+/**
+ * A view switch over the same data: a track one step above its ground and a
+ * thumb two steps up that slides to the pressed option. No edge.
+ */
 export function Segmented<T extends string>({
 	value,
 	options,
@@ -20,32 +23,44 @@ export function Segmented<T extends string>({
 	className?: string;
 	testId?: string;
 }) {
+	const { ref, box } = useSlidingMark<HTMLFieldSetElement>(
+		'[aria-pressed="true"]',
+	);
 	return (
 		<fieldset
+			ref={ref}
 			aria-label={label}
 			className={cn(
-				"flex items-center rounded-control bg-surface-2 p-0.5 shadow-[inset_0_0_0_1px_var(--raised-edge)]",
+				"relative flex w-fit items-center rounded-control bg-surface-2 p-0.5 [[data-pool]_&]:bg-well-in-pool [[role=dialog]_&]:bg-surface-3",
 				className,
 			)}
 			data-testid={testId}
 		>
-			{options.map((o) => (
-				<Button
-					key={o.value}
-					variant="ghost"
-					size="xs"
-					aria-pressed={o.value === value}
-					className={cn(
-						"h-6 rounded-[4px] px-2.5 text-body",
-						o.value === value &&
-							"bg-surface-4 font-medium text-text-1 hover:bg-surface-4",
-					)}
-					onClick={() => onChange(o.value)}
-					data-testid={testId ? `${testId}-${o.value}` : undefined}
-				>
-					{o.label}
-				</Button>
-			))}
+			{box && (
+				<span
+					aria-hidden
+					className="absolute top-0.5 bottom-0.5 left-0 rounded-[4px] bg-surface-4 transition-[translate,width] duration-(--dur-base) ease-(--ease-out)"
+					style={{ translate: `${box.x}px 0`, width: box.w }}
+				/>
+			)}
+			{options.map((o) => {
+				const on = o.value === value;
+				return (
+					<button
+						key={o.value}
+						type="button"
+						aria-pressed={on}
+						className={cn(
+							"relative z-10 inline-flex h-6 items-center rounded-[4px] px-2.5 text-body text-text-2 transition-colors duration-(--dur-fast) hover:text-text-1",
+							on && "font-medium text-text-1",
+						)}
+						onClick={() => onChange(o.value)}
+						data-testid={testId ? `${testId}-${o.value}` : undefined}
+					>
+						{o.label}
+					</button>
+				);
+			})}
 		</fieldset>
 	);
 }

@@ -11,10 +11,18 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
 import { ago, useNow } from "@/hooks/use-now";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
@@ -192,25 +200,31 @@ export function IncidentListPane({
 	);
 	const row = (incident: IncidentWithRelations, index: number) => {
 		const selected = incident.id === selectedId;
+		const [label, ...meta] = rowTitle(incident, now);
 		return (
-			<Link
+			<Hint
 				key={incident.id}
-				to="/incidents/$id"
-				params={{ id: incident.id }}
-				search={keep}
-				onMouseEnter={() => pointAt(index)}
-				aria-current={selected ? "page" : undefined}
-				data-testid="incident-row"
-				data-cursor={cursor === index ? "true" : undefined}
-				title={rowTitle(incident, now)}
-				className={cn(
-					"mx-2 flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
-					cursor === index && "bg-surface-3",
-					selected && "bg-surface-3 text-text-1",
-				)}
+				label={label ?? ""}
+				meta={meta.join(". ") || undefined}
+				side="right"
 			>
-				<IncidentRowBody incident={incident} now={now} selected={selected} />
-			</Link>
+				<Link
+					to="/incidents/$id"
+					params={{ id: incident.id }}
+					search={keep}
+					onMouseEnter={() => pointAt(index)}
+					aria-current={selected ? "page" : undefined}
+					data-testid="incident-row"
+					data-cursor={cursor === index ? "true" : undefined}
+					className={cn(
+						"group/row flex h-7 min-w-0 items-center gap-2.5 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
+						cursor === index && "bg-surface-3 text-text-1",
+						selected && "bg-surface-4 text-text-1 hover:bg-surface-4",
+					)}
+				>
+					<IncidentRowBody incident={incident} now={now} selected={selected} />
+				</Link>
+			</Hint>
 		);
 	};
 
@@ -240,7 +254,7 @@ export function IncidentListPane({
 			</h2>
 			{!sidebar && (
 				<div className="flex items-center gap-1.5 px-4 pb-2">
-					<label className="raised flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control px-2.5">
+					<label className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control bg-surface-2 px-2.5 shadow-raised">
 						<Search className="size-3.5 shrink-0 text-text-3" />
 						<input
 							value={q}
@@ -251,20 +265,23 @@ export function IncidentListPane({
 							data-testid="incident-list-search"
 						/>
 					</label>
-					<select
-						value={windowValue}
-						onChange={(e) => setWindow(e.target.value)}
-						aria-label="Window"
-						className="raised h-8 rounded-control px-2 text-body text-text-2 outline-none"
-						data-testid="incident-list-window"
-					>
-						<option value="all">All time</option>
-						<option value="1d">24 hours</option>
-						<option value="7d">7 days</option>
-						<option value="30d">30 days</option>
-					</select>
+					<Select value={windowValue} onValueChange={setWindow}>
+						<SelectTrigger
+							aria-label="Window"
+							className="h-8"
+							data-testid="incident-list-window"
+						>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent align="end">
+							<SelectItem value="all">All time</SelectItem>
+							<SelectItem value="1d">24 hours</SelectItem>
+							<SelectItem value="7d">7 days</SelectItem>
+							<SelectItem value="30d">30 days</SelectItem>
+						</SelectContent>
+					</Select>
 					<Button
-						variant="ghost"
+						variant="text"
 						size="icon"
 						aria-label="Filters"
 						aria-pressed={filtersOpen}
@@ -306,51 +323,41 @@ export function IncidentListPane({
 				className="min-h-0 flex-1 overflow-y-auto"
 				data-testid="incident-list"
 			>
-				{isLoading && (
-					<div className="space-y-3 px-4 py-2">
-						{[1, 2, 3, 4, 5].map((k) => (
-							<Skeleton key={k} className="h-3" />
-						))}
-					</div>
-				)}
+				{isLoading && <Loading rows={5} className="px-4" />}
 				{error && (
-					<p className="px-4 py-2 text-body text-text-1">
-						The list did not load: {error.message}
-					</p>
+					<Problem className="px-4" text="The incident list did not load." />
 				)}
 				{!isLoading && !error && incidents.length === 0 && nothingYet && (
-					<p
-						className="px-4 py-2 text-body text-text-2"
-						data-testid="incidents-none"
-					>
-						No incidents yet.
-					</p>
+					<Empty
+						className="px-4"
+						text="No incidents yet."
+						testId="incidents-none"
+					/>
 				)}
 				{!isLoading && !error && incidents.length === 0 && !nothingYet && (
-					<p
-						className="px-4 py-2 text-body text-text-2"
-						data-testid="incidents-empty-state"
-					>
-						Nothing in this window.
-					</p>
+					<Empty
+						className="px-4"
+						text="Nothing in this window."
+						testId="incidents-empty-state"
+					/>
 				)}
 				{(() => {
 					let index = 0;
+					// A group is one step above the sidebar: s2, radius 8, padding 4.
 					return groups.map((group) => (
 						<section
 							key={group.id}
-							className="pb-2"
+							className="mx-2 mt-2 rounded-surface bg-surface-2 p-1 shadow-raised"
 							data-testid="sidebar-group"
 						>
-							<div className="px-2">
-								<LaneHeader
-									view="list"
-									id={group.id}
-									name={group.name}
-									count={group.items.length}
-									foldedByDefault={group.id === SETTLED_LANE}
-								/>
-							</div>
+							<LaneHeader
+								view="list"
+								id={group.id}
+								name={group.name}
+								count={group.items.length}
+								foldedByDefault={group.id === SETTLED_LANE}
+								className="h-6 px-2 pt-0 pb-0"
+							/>
 							{!isFolded(group.id) &&
 								group.items.map((incident) => row(incident, index++))}
 						</section>
@@ -366,6 +373,7 @@ export function IncidentListPane({
 	);
 }
 
+/** The row's hint: the state and age, then what the title leaves out. */
 function rowTitle(incident: IncidentWithRelations, now: number | null) {
 	const word = runWord(incident, now);
 	const why = attentionFor(incident);
@@ -378,20 +386,19 @@ function rowTitle(incident: IncidentWithRelations, now: number | null) {
 	const headline = incidentHeadline(incident);
 	const others = otherServices(incident);
 	return [
-		`INC-${incident.number}  ${state}  ${ago(incident.triggeredAt, now)}`,
+		`INC-${incident.number} ${state}, ${ago(incident.triggeredAt, now)}`,
 		headlineAddsInfo(headline)
 			? `${headline.lead ? `${headline.lead} ` : ""}${headline.text}`
 			: null,
 		others.length > 0 ? `Also touches ${others.join(", ")}` : null,
-	]
-		.filter(Boolean)
-		.join("\n");
+	].filter((line): line is string => Boolean(line));
 }
 
 /**
  * One sidebar row (#743): a bar for where the incident stands (study-v3 §2:
- * live teal, attention red, open grey, ended none), the id and the title. The state, the age and the headline are in the row's hover title
- * and in hidden text for assistive tech.
+ * live teal, attention red, open grey, ended none), the id and the title.
+ * The state, the age and the headline are in the row's hint and in hidden
+ * text for assistive tech.
  */
 function IncidentRowBody({
 	incident,
@@ -419,8 +426,22 @@ function IncidentRowBody({
 				)}
 			/>
 			<span className="min-w-0 truncate">
-				<Mono className="mr-1.5 text-text-3">INC-{incident.number}</Mono>
-				<span className={cn(glyph === "ended" && !selected && "text-text-3")}>
+				{/* text-3 never sits on a hover or selected step: the id lifts to text-2. */}
+				<Mono
+					className={cn(
+						"mr-1.5 text-text-3 group-hover/row:text-text-2",
+						selected && "text-text-2",
+					)}
+				>
+					INC-{incident.number}
+				</Mono>
+				<span
+					className={cn(
+						glyph === "ended" &&
+							!selected &&
+							"text-text-3 group-hover/row:text-text-2",
+					)}
+				>
 					{incident.title}
 				</span>
 			</span>

@@ -8,7 +8,8 @@ import { formatClock } from "@/lib/format-time";
 
 /**
  * One line at the top of the main area while the change stream is down
- * (study-v2 §6): amber, static, gone on reconnect.
+ * (study-v2 §6): amber, static, gone on reconnect. While it shows, every
+ * breathing loop holds still (motion.css, `data-reconnecting`).
  */
 export function ReconnectLine() {
 	const status = useStreamStatus();
@@ -18,7 +19,11 @@ export function ReconnectLine() {
 	useEffect(() => {
 		const root = document.documentElement;
 		root.style.setProperty("--reconnect-h", shown ? "28px" : "0px");
-		return () => root.style.setProperty("--reconnect-h", "0px");
+		root.toggleAttribute("data-reconnecting", shown);
+		return () => {
+			root.style.setProperty("--reconnect-h", "0px");
+			root.removeAttribute("data-reconnecting");
+		};
 	}, [shown]);
 	if (asOf === null) return null;
 	return (

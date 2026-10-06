@@ -8,21 +8,37 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Primary is the one accent fill on a screen; secondary is the hover surface
- * with no border; ghost is text; destructive fills red only inside its confirm.
+ * Five roles (look ruling §2): primary is the one accent fill on a screen;
+ * secondary is a step up, no edge; text is quiet; danger is a red word;
+ * danger-fill exists only inside a destructive confirm.
  */
+const PRIMARY =
+	"bg-accent-solid text-accent-fg hover:bg-[oklch(from_var(--accent-solid)_calc(l_+_0.05)_c_h)]";
+const SECONDARY = "bg-surface-3 text-text-1 hover:bg-surface-4";
+const TEXT = "text-text-2 hover:bg-surface-3 hover:text-text-1";
+const DANGER = "text-danger hover:bg-surface-3";
+
 const buttonVariants = cva(
-	"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-body font-medium whitespace-nowrap transition-colors motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+	"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-body font-medium whitespace-nowrap transition-[background-color,color,transform] duration-(--dur-instant) ease-(--ease-standard) active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
 	{
 		variants: {
 			variant: {
-				default: "bg-accent text-accent-fg hover:bg-accent/90",
-				destructive: "bg-danger text-accent-fg hover:bg-danger/90",
-				danger: "text-danger hover:bg-surface-3",
-				outline: "bg-surface-3 text-text-1 hover:bg-surface-4",
-				secondary: "bg-surface-3 text-text-1 hover:bg-surface-4",
-				ghost: "text-text-2 hover:bg-surface-3 hover:text-text-1",
-				link: "text-accent underline-offset-4 hover:underline",
+				primary: PRIMARY,
+				secondary: SECONDARY,
+				text: TEXT,
+				danger: DANGER,
+				"danger-fill":
+					"bg-danger-solid text-accent-fg hover:bg-[oklch(from_var(--danger-solid)_calc(l_+_0.05)_c_h)]",
+				/** @deprecated primary; the last look PR removes it. */
+				default: PRIMARY,
+				/** @deprecated secondary; the last look PR removes it. */
+				outline: SECONDARY,
+				/** @deprecated text; the last look PR removes it. */
+				ghost: TEXT,
+				/** @deprecated text; the last look PR removes it. */
+				link: TEXT,
+				/** @deprecated danger; the last look PR removes it. */
+				destructive: DANGER,
 			},
 			size: {
 				default: "h-7 px-2.5",

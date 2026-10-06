@@ -207,7 +207,8 @@ test.describe("#743 — the incidents board", () => {
 
 		// Alerts group by their own service.
 		await page.goto("/alerts");
-		await page.getByTestId("group-by-alerts").selectOption("service");
+		await page.getByTestId("group-by-alerts").click();
+		await page.getByRole("option", { name: "By service" }).click();
 		await expect(
 			page.getByTestId("alert-list-pane").getByTestId("service-lane").first(),
 		).toBeVisible({ timeout: 15_000 });
