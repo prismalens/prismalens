@@ -55,14 +55,14 @@ health() {
 }
 
 # Runs SQL against the workspace database with the installed runtime's own
-# node and better-sqlite3: `sql <version> <workspace> <statement>` prints one value.
+# node and its built-in node:sqlite: `sql <version> <workspace> <statement>` prints one value.
 sql() {
 	c_rt="$work/home/.local/share/prismalens/runtime/$1"
-	"$c_rt/node/bin/node" -e "
-		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/lib/node_modules/prismalens'] }));
-		const db = new Database(process.argv[1]);
+	"$c_rt/node/bin/node" --no-warnings -e "
+		const { DatabaseSync } = require('node:sqlite');
+		const db = new DatabaseSync(process.argv[1]);
 		const stmt = db.prepare(process.argv[2]);
-		console.log(stmt.reader ? Object.values(stmt.get() ?? { v: '' })[0] : stmt.run().changes);
+		console.log(stmt.columns().length > 0 ? Object.values(stmt.get() ?? { v: '' })[0] : stmt.run().changes);
 	" "$2/prismalens.db" "$3"
 }
 
