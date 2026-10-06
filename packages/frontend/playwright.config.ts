@@ -107,6 +107,8 @@ function stackEnv(stack: Stack): Record<string, string> {
 		// Both servers read these: the API binds PRISMALENS_PORT, and Vite both
 		// binds PRISMALENS_FRONTEND_PORT and proxies /api to PRISMALENS_PORT.
 		PRISMALENS_PORT: stack.apiPort,
+		// The suite pairs itself (e2e/pair.setup.ts); the dev auto-pair would double it.
+		PRISMALENS_DEV_PAIR: "off",
 		PRISMALENS_FRONTEND_PORT: stack.frontendPort,
 		// Better Auth rejects a sign-in from an origin it does not trust, and the
 		// browser's origin here is Vite's. Moving the port without this yields
