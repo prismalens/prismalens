@@ -27,9 +27,13 @@ async function dragTo(page: Page, card: Locator, target: Locator) {
 	if (!from || !to) throw new Error("card or column has no box");
 	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
 	await page.mouse.down();
-	await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2, {
-		steps: 4,
-	});
+	await page.mouse.move(
+		from.x + from.width / 2 + 10,
+		from.y + from.height / 2,
+		{
+			steps: 4,
+		},
+	);
 	await page.mouse.move(to.x + to.width / 2, to.y + 40, { steps: 12 });
 	return async () => {
 		await page.mouse.up();
@@ -69,7 +73,10 @@ test.describe("#743 — the incidents board", () => {
 						code: "PRECONDITION_FAILED",
 						status: 412,
 						message: "No coding agent on this machine.",
-						data: { failure: "no-harness", reason: "No coding agent on this machine." },
+						data: {
+							failure: "no-harness",
+							reason: "No coding agent on this machine.",
+						},
 					}),
 				});
 			},
@@ -88,10 +95,9 @@ test.describe("#743 — the incidents board", () => {
 			card,
 			page.getByTestId("board-column-working"),
 		);
-		await expect(page.getByTestId("board-column-working").locator("[data-drop]")).toHaveAttribute(
-			"data-drop",
-			"valid",
-		);
+		await expect(
+			page.getByTestId("board-column-working").locator("[data-drop]"),
+		).toHaveAttribute("data-drop", "valid");
 		await release();
 
 		// No form and no brief: the run is asked for at once (study-v3 §3.1).
@@ -139,10 +145,9 @@ test.describe("#743 — the incidents board", () => {
 			concluded,
 			page.getByTestId("board-column-needs_you"),
 		);
-		await expect(page.getByTestId("board-column-needs_you").locator("[data-drop]")).toHaveAttribute(
-			"data-drop",
-			"refused",
-		);
+		await expect(
+			page.getByTestId("board-column-needs_you").locator("[data-drop]"),
+		).toHaveAttribute("data-drop", "refused");
 		await refused();
 		await expect(dialog).toHaveCount(0);
 		await expect(page.getByTestId("reopen-dialog")).toHaveCount(0);
@@ -151,6 +156,10 @@ test.describe("#743 — the incidents board", () => {
 	test("the sidebar groups incidents by service, folds a group for good, and creates nothing", async ({
 		page,
 	}) => {
+		// Order-dependent otherwise: no seeded incident carries zero services, so
+		// "No service" only appeared because an earlier test in the file happened
+		// to leave one behind. Create our own so this test holds alone too.
+		await createIncident(page, `Board no-service ${Date.now()}`);
 		await page.goto("/incidents");
 		const sidebar = page.getByTestId("incident-list-pane");
 		const groups = sidebar.getByTestId("sidebar-group");
@@ -218,7 +227,9 @@ test.describe("#743 — the incidents board", () => {
 		});
 		const resolveByApi = async (id: string) =>
 			expect(
-				(await page.request.post(`/api/incidents/${id}/close`, { data: {} })).ok(),
+				(
+					await page.request.post(`/api/incidents/${id}/close`, { data: {} })
+				).ok(),
 			).toBeTruthy();
 
 		// Reopen is the band's one action on a Resolved incident, behind a confirm.
@@ -259,10 +270,9 @@ test.describe("#743 — the incidents board", () => {
 			card,
 			page.getByTestId("board-column-working"),
 		);
-		await expect(page.getByTestId("board-column-working").locator("[data-drop]")).toHaveAttribute(
-			"data-drop",
-			"valid",
-		);
+		await expect(
+			page.getByTestId("board-column-working").locator("[data-drop]"),
+		).toHaveAttribute("data-drop", "valid");
 		await release();
 		const ask = page.getByTestId("reopen-dialog");
 		await expect(ask).toContainText(/Reopen INC-\d+ and investigate\?/);

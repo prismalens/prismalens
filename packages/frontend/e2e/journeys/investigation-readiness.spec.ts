@@ -23,7 +23,6 @@ import { settled } from "./settled";
  * Command Center screen was deleted), so this file no longer opens it.
  */
 
-
 /**
  * A real gate message: anthropic is active with a model and a key, but the
  * harness is pinned to deepagents, which speaks only the OpenAI protocol. The
@@ -117,7 +116,9 @@ async function failHarnesses(page: Page): Promise<void> {
 }
 
 async function createIncident(page: Page, title: string): Promise<string> {
-	const created = await page.request.post("/api/incidents", { data: { title } });
+	const created = await page.request.post("/api/incidents", {
+		data: { title },
+	});
 	expect(created.ok()).toBeTruthy();
 	const incident: { id: string } = await created.json();
 	return incident.id;
@@ -160,7 +161,9 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 
 		// The box on Overview: disabled, with the reason rendered under it.
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await expect(page.getByText(PROTOCOL_MISMATCH_REASON).first()).toBeVisible();
+		await expect(
+			page.getByText(PROTOCOL_MISMATCH_REASON).first(),
+		).toBeVisible();
 
 		// On a tab without the box, the band's menu carries Investigate again:
 		// disabled, titled with the same reason (R1a d7 keeps it off the band).
@@ -199,7 +202,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 	});
 
 	test("design evidence: default, dark, empty, and error", async ({ page }) => {
-
 		// Default (light) — the incident-detail header, provider selected, gate
 		// refusing. The dashboard panel this used to photograph is gone (the
 		// Command Center screen was deleted); the header carries the same verdict.
@@ -224,9 +226,12 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		// Empty — the incident has no run, so the Run card says so and the
 		// blocked box is the only way to start one.
 		await setTheme(page, "light");
-		await expect(page.getByTestId("overview-report")).toContainText("No investigation yet", {
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("overview-report")).toContainText(
+			"No investigation yet",
+			{
+				timeout: 15_000,
+			},
+		);
 		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await settled(page);
 

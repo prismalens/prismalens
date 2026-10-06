@@ -46,6 +46,14 @@ Run it:
 pnpm --filter @prismalens/frontend test:e2e --project=journeys  # runs bddgen first
 ```
 
+On a Linux box where Chromium will not start for missing system libraries and you have no root
+for `playwright install-deps`, fetch them into `e2e/.libs/` (gitignored) and load them from there:
+
+```bash
+pnpm e2e:libs   # apt-get download + dpkg -x of what `playwright install-deps --dry-run` lists
+export LD_LIBRARY_PATH=...   # the line it prints; it exits 1 if ldd still finds a library missing
+```
+
 **The fakes** (`scripts/fakes/`, shared with the API scenarios in `packages/api/test/scenarios/`):
 
 - `fake-alertmanager.mjs`: `startFakeAlertmanager()` serves `GET /api/v2/alerts` and

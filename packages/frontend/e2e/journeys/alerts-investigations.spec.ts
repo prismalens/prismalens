@@ -9,9 +9,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	}) => {
 		// 1. Navigate to /alerts and assert total alerts count is 60 (#309 pagination assertion)
 		await page.goto("/alerts");
-		await expect(
-			page.getByRole("heading", { name: "Alerts" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(page.getByTestId("alerts-total-count")).toHaveText("60", {
 			timeout: 15_000,
 		});
@@ -53,9 +53,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 					"Upstream payment provider experiencing elevated processing latencies.",
 				),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(
-			page.getByText("Culprit", { exact: true }),
-		).not.toBeVisible();
+		await expect(page.getByText("Culprit", { exact: true })).not.toBeVisible();
 	});
 
 	/**
@@ -71,9 +69,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		// 1. Direct link (as the dashboard sends it): the Unmapped tab is
 		//    pre-selected and the table only shows alerts with no incident.
 		await page.goto("/alerts?tab=unmapped");
-		await expect(
-			page.getByRole("heading", { name: "Alerts" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+			timeout: 15_000,
+		});
 		await expect(
 			page.getByRole("tab", { name: "Unmapped", selected: true }),
 		).toBeVisible({ timeout: 15_000 });
@@ -333,9 +331,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		);
 
 		await page.goto("/alerts");
-		await expect(
-			page.getByRole("heading", { name: "Alerts" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+			timeout: 15_000,
+		});
 
 		await page.getByTestId("alerts-pull").click();
 
@@ -371,9 +369,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		);
 
 		await page.goto("/alerts");
-		await expect(
-			page.getByRole("heading", { name: "Alerts" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+			timeout: 15_000,
+		});
 
 		await page.getByTestId("alerts-pull").click();
 
@@ -424,9 +422,9 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 		);
 
 		await page.goto("/alerts");
-		await expect(
-			page.getByRole("heading", { name: "Alerts" }),
-		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible({
+			timeout: 15_000,
+		});
 
 		await setTheme("light");
 		await page.getByTestId("alerts-pull").click();

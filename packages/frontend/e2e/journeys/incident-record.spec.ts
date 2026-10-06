@@ -29,7 +29,6 @@ import { settled } from "./settled";
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
 
-
 async function createIncident(page: Page, title: string): Promise<string> {
 	const created = await page.request.post("/api/incidents", {
 		data: { title },

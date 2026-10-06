@@ -141,9 +141,9 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(page.getByRole("dialog")).toBeVisible();
 
 		// (b) 412-shaped oRPC error → not-configured line visible
-		await page.getByTestId("post-report-github-url").fill(
-			"https://github.com/prismalens/prismalens/issues/123",
-		);
+		await page
+			.getByTestId("post-report-github-url")
+			.fill("https://github.com/prismalens/prismalens/issues/123");
 		await page.getByTestId("post-report-github-submit").click();
 
 		await expect(
@@ -178,15 +178,17 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 
 		await page.getByTestId("post-report-github").click();
 		await expect(page.getByRole("dialog")).toBeVisible();
-		await page.getByTestId("post-report-github-url").fill(
-			"https://github.com/prismalens/prismalens/issues/123",
-		);
+		await page
+			.getByTestId("post-report-github-url")
+			.fill("https://github.com/prismalens/prismalens/issues/123");
 		await page.getByTestId("post-report-github-submit").click();
 
 		// The toast title and its screen-reader announcement both carry the text.
-		await expect(page.getByText("Posted", { exact: true }).first()).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(page.getByText("Posted", { exact: true }).first()).toBeVisible(
+			{
+				timeout: 15_000,
+			},
+		);
 		await expect(page.getByRole("link", { name: commentUrl })).toBeVisible();
 		await expect(page.getByRole("dialog")).toHaveCount(0);
 
