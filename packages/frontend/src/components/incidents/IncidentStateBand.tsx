@@ -120,6 +120,7 @@ export function IncidentStateBand({
 			data-testid="incident-state-band"
 		>
 			<div
+				data-testid="band-strip"
 				// On desktop the band is the window's title strip (#752): it drags the window,
 				// its controls opt out, and it clears the window controls and a folded sidebar's head.
 				className="flex h-11 items-center gap-2.5 pr-3 pl-2 sm:h-10 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"

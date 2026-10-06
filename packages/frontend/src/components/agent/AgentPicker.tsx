@@ -73,39 +73,13 @@ export function useAgentChoice() {
 	};
 }
 
-/**
- * A model id an agent's list does not name yet, in words: the provider prefix
- * dropped, version digits joined (`anthropic/claude-sonnet-5-5` reads
- * "Claude Sonnet 5.5"). Anything not shaped like a slug stays as it is.
- */
-export function readableModelId(id: string): string {
-	const m = /^(?:[a-z0-9-]+\/)?([a-z][a-z0-9]*(?:-[a-z0-9.]+)+)$/.exec(id);
-	if (!m?.[1]) return id;
-	const out: string[] = [];
-	for (const t of m[1].split("-")) {
-		const prev = out.at(-1);
-		if (/^\d{1,2}$/.test(t) && prev && /^\d+(\.\d+)*$/.test(prev))
-			out[out.length - 1] = `${prev}.${t}`;
-		else
-			out.push(
-				/^(gpt|glm|gpt\d.*)$/.test(t)
-					? t.toUpperCase()
-					: t.charAt(0).toUpperCase() + t.slice(1),
-			);
-	}
-	return out.join(" ");
-}
-
-/** A model id by the name the agent's own list gives it, else readable from the id. */
+/** A model id by the name the agent's own list gives it, else the id as is. */
 export function modelName(
 	harness: HarnessStatus | undefined,
 	id: string | null | undefined,
 ): string | null {
 	if (!id) return null;
-	return (
-		harness?.models.entries.find((m) => m.id === id)?.name ??
-		readableModelId(id)
-	);
+	return harness?.models.entries.find((m) => m.id === id)?.name ?? id;
 }
 
 /** The agent and model the next run starts with, each named once. */
@@ -238,7 +212,7 @@ export function AgentModelPicker({
 				key: `${group}:${h.id}:${id}`,
 				harness: h,
 				model: id,
-				name: m?.name ?? readableModelId(id),
+				name: m?.name ?? id,
 				training: m?.status === "training",
 				sub:
 					m?.status === "legacy"

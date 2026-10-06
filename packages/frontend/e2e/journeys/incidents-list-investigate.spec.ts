@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 /**
  * #520 part B — Incidents list investigate button gating & refusal handling.
@@ -99,12 +99,17 @@ async function createIncident(page: Page, title: string): Promise<string> {
 }
 
 /**
- * The band's Investigate again, in its menu: the band's own action is the
- * lifecycle's (R1a d7). The menu item carries the gate's reason as its title.
+ * The band's Investigate again: a text button beside the lifecycle action
+ * (look ruling L56), the gate's reason in its hint.
  */
 async function bandInvestigate(page: Page) {
-	await page.getByTestId("band-more").click();
 	return page.getByTestId("band-menu-investigate");
+}
+
+async function expectReason(page: Page, button: Locator, reason: string) {
+	await button.locator("..").hover();
+	await expect(page.getByTestId("hint").last()).toHaveText(reason);
+	await page.mouse.move(0, 0);
 }
 
 test.describe("#520 part B — incident record investigate gate", () => {
@@ -122,11 +127,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		const investigateBtn = await bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeDisabled();
-		await expect(investigateBtn).toHaveAttribute(
-			"title",
-			UNUSABLE_SELECTION_REASON,
-		);
-		await page.keyboard.press("Escape");
+		await expectReason(page, investigateBtn, UNUSABLE_SELECTION_REASON);
 
 		// The reason is on screen under the box on Overview.
 		await page.getByTestId("tab-overview").click();
@@ -222,11 +223,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		const defaultBtn = await bandInvestigate(page);
 		await expect(defaultBtn).toBeDisabled({ timeout: 15_000 });
-		await expect(defaultBtn).toHaveAttribute(
-			"title",
-			UNUSABLE_SELECTION_REASON,
-		);
-		await page.keyboard.press("Escape");
+		await expectReason(page, defaultBtn, UNUSABLE_SELECTION_REASON);
 		await page.getByTestId("tab-overview").click();
 		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
 			{ timeout: 15_000 },
@@ -244,8 +241,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		const darkBtn = await bandInvestigate(page);
 		await expect(darkBtn).toBeDisabled({ timeout: 15_000 });
-		await expect(darkBtn).toHaveAttribute("title", UNUSABLE_SELECTION_REASON);
-		await page.keyboard.press("Escape");
+		await expectReason(page, darkBtn, UNUSABLE_SELECTION_REASON);
 		await page.getByTestId("tab-overview").click();
 		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
 			{ timeout: 15_000 },

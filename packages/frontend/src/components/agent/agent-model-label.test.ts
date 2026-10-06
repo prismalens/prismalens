@@ -3,7 +3,7 @@
 
 import type { HarnessStatus } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { agentModelLabel, readableModelId } from "./AgentPicker";
+import { agentModelLabel } from "./AgentPicker";
 
 const claudeCode: HarnessStatus = {
 	id: "claude-code",
@@ -30,19 +30,5 @@ describe("agentModelLabel", () => {
 
 	it("falls back to the agent default when nothing names a model", () => {
 		expect(agentModelLabel(claudeCode, "").model).toBe("agent default");
-	});
-});
-
-describe("readableModelId", () => {
-	it("reads a provider slug as words, versions joined (L40)", () => {
-		expect(readableModelId("anthropic/claude-sonnet-5-5")).toBe(
-			"Claude Sonnet 5.5",
-		);
-		expect(readableModelId("gpt-6")).toBe("GPT 6");
-	});
-
-	it("leaves what is not a slug as it is", () => {
-		expect(readableModelId("gemma4:31b-cloud")).toBe("gemma4:31b-cloud");
-		expect(readableModelId("sonnet")).toBe("sonnet");
 	});
 });

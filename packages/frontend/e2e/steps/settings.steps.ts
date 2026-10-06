@@ -680,7 +680,9 @@ Then(
 
 Then(
 	"every rail tile is a tab showing the agent's mark and no label, and the list opens with the agent's name",
-	async ({ page }) => {
+	async ({ page, agents }) => {
+		// A tile opens only for an installed agent.
+		await pickerScene(page, agents);
 		await openPicker(page);
 		const rail = picker(page).getByRole("tablist", { name: "Agents" });
 		await expect(rail).toHaveAttribute("aria-orientation", "vertical");
