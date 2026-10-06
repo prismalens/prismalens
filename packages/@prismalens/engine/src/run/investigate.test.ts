@@ -96,6 +96,19 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
 	});
 
+	it("refuses to run when the harness rejects the model option outright, before any prompt (R4.2)", async () => {
+		const { events, runDir } = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODELS: "served/model,asked/model", FAKE_REJECT_SET: "1" },
+		});
+		expect(events.at(-1)).toMatchObject({
+			kind: "error",
+			message: "rejected: model=asked/model",
+		});
+		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
+	});
+
 	it("refuses a chosen model on a harness that offers no model option (R4.2)", async () => {
 		const { events } = await collect("ok", { model: "asked/model", modelSource: "operator" });
 		expect(events.at(-1)).toMatchObject({

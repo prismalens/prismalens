@@ -886,6 +886,26 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "completed" });
 	});
 
+	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "deepagents",
+				model: "deepagents/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+			})),
+		});
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(ports.snapshot).not.toHaveBeenCalled();
+	});
+
 	it("a commit the source lost fails with git's own text, and no clone is left", async () => {
 		const ports = followUpPorts({
 			snapshot: vi.fn(async (_src: unknown, dest: string) => {

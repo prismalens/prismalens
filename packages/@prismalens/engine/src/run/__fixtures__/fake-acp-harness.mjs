@@ -16,7 +16,8 @@
 // "continue" (like "resume", but every turn also writes a valid report: a stopped run taken on, R4.4),
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000).
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
-// switches (FAKE_REFUSE_SET keeps the old value); FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
+// switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
+// FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
@@ -342,6 +343,15 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		send({ jsonrpc: "2.0", id: msg.id, result: {} });
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};
+		// FAKE_REJECT_SET: the agent answers with an RPC error instead of a silent non-switch.
+		if (process.env.FAKE_REJECT_SET) {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: { code: -32602, message: `rejected: ${configId}=${value}` },
+			});
+			return;
+		}
 		if (!process.env.FAKE_REFUSE_SET && offered[configId]?.includes(value))
 			current[configId] = value;
 		send({

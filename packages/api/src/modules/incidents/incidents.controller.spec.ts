@@ -357,6 +357,14 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			message: 'Edit the copy is off. Turn on "Allow write levels" in Settings, Agent.',
 		});
 		expect(off.dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		// At or below the ceiling still passes with the setting off (#335-walk 2c).
+		// read-only is below the write-level ceiling, so it is the default and
+		// carries no "access" key on the job payload (see the controller above).
+		const belowCeiling = make(false);
+		await belowCeiling.investigate({ input: { id: mockIncident.id, access: "read-only" } });
+		expect(belowCeiling.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+			expect.not.objectContaining({ access: expect.anything() }),
+		);
 		const on = make(true);
 		await on.investigate({ input: { id: mockIncident.id, access: "full-access" } });
 		expect(on.dispatchService.addInvestigationJob).toHaveBeenCalledWith(expect.objectContaining({ access: "full-access" }));
