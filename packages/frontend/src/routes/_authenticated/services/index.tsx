@@ -94,7 +94,8 @@ function ServicesPage() {
 	usePageTitle("Services");
 	const searchParams = Route.useSearch();
 	const navigate = useNavigate({ from: "/services/" });
-	const [showAddDialog, setShowAddDialog] = useState(searchParams.add === "1");
+	const [arrivedToAdd] = useState(searchParams.add === "1");
+	const [showAddDialog, setShowAddDialog] = useState(arrivedToAdd);
 	useEffect(() => {
 		if (searchParams.add === "1") {
 			setShowAddDialog(true);
@@ -208,9 +209,10 @@ function ServicesPage() {
 	const services = response?.data ?? [];
 	const total = response?.total ?? 0;
 	// From the door at ≥ 1024 the first service opens; the list stays one Back away (L32).
+	// A visit that came to add stays put: `add` is stripped on mount, so check arrival.
 	const openFirst = useFirstOpen(
 		"/services",
-		!searchParams.team && !searchParams.search && !searchParams.add,
+		!searchParams.team && !searchParams.search && !arrivedToAdd,
 	);
 	const firstId = services[0]?.id;
 	useEffect(() => {
