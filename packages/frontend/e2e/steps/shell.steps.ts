@@ -177,8 +177,9 @@ When(
 		await page.goto("/incidents");
 		await expect(page.getByTestId("page-header")).toBeVisible();
 		const counts: NonNullable<World["newCounts"]> = [];
+		// Cold loads: from the sidebar door a wide list opens its first record (L32).
 		for (const door of ["incidents", "alerts", "services", "settings"]) {
-			await page.getByTestId("sidebar").getByTestId(`nav-${door}`).click();
+			await page.goto(`/${door}`);
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
@@ -209,7 +210,7 @@ Then(
 When(
 	"I press {string} from Services and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
-		if (!pathOf(page).startsWith("/services")) {
+		if (pathOf(page) !== "/services") {
 			await page.goto("/services");
 		}
 		await page
