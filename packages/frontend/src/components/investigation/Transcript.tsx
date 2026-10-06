@@ -107,9 +107,11 @@ function TranscriptRow({
 	switch (item.kind) {
 		case "prose":
 			return (
-				<Message from="agent" className={ENTER} data-testid="transcript-prose">
+				<Message from="agent" className={ENTER} data-testid="transcript-agent">
 					<MessageHeader who={agent} />
-					<MessageResponse>{item.text}</MessageResponse>
+					<div data-testid="transcript-prose">
+						<MessageResponse>{item.text}</MessageResponse>
+					</div>
 				</Message>
 			);
 		case "line":
