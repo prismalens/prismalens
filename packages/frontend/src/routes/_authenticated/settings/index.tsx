@@ -71,7 +71,7 @@ function SettingsPage() {
 		queryClient.invalidateQueries({ queryKey: orpc.settings.key() });
 	}, [queryClient]);
 
-	// On the phone Settings lands on its sections; one opens, Back returns here.
+	// On the phone Settings lands on its sections; one opens, the Settings door returns here.
 	if (phone && !picked) return <SectionList />;
 
 	const section = SECTIONS[tab];
@@ -89,8 +89,8 @@ function SettingsPage() {
 }
 
 /**
- * The phone's landing: each section with its line, in one pool. Back is the
- * strip's (Sidebar.tsx), which inside a section returns here first.
+ * The phone's landing: each section with its line, in one pool. The strip's
+ * Settings door (Sidebar.tsx) returns a section here.
  */
 function SectionList() {
 	const sections = useSettingsSections();

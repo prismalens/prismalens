@@ -534,7 +534,7 @@ Then(
 		await list.getByTestId("settings-section-devices").click();
 		await expect(page).toHaveURL(/tab=devices/);
 		await expect(page.getByTestId("devices-list")).toBeVisible();
-		await page.getByTestId("topbar").getByTestId("strip-back").click();
+		await page.getByTestId("topbar").getByTestId("strip-settings").click();
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
 	},
 );
