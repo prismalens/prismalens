@@ -14,6 +14,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { expect, test } from "@playwright/test";
@@ -72,7 +73,9 @@ test("a startup link works once: a second browser opening it cannot pair", async
 	const context = await browser.newContext();
 	const page = await context.newPage();
 	await page.goto(startupLink());
-	await expect(page.getByText("Could not pair")).toBeVisible({
+	await expect(
+		page.getByRole("heading", { name: "This link has been used." }),
+	).toBeVisible({
 		timeout: 30_000,
 	});
 	expect((await page.request.get("/api/incidents")).status()).toBe(401);
@@ -109,8 +112,10 @@ test("a second device pairs, cannot manage pairing, and is refused once revoked"
 	const { devices } = (await list.json()) as {
 		devices: { id: string; name: string }[];
 	};
-	expect(devices.map((d) => d.name)).toContain("This machine");
-	const other = devices.find((d) => d.name !== "This machine");
+	// The host's own device is named after the machine, as Tailscale names it (walk u2).
+	const machine = hostname() || "This machine";
+	expect(devices.map((d) => d.name)).toContain(machine);
+	const other = devices.find((d) => d.name !== machine);
 	expect(other, JSON.stringify(devices)).toBeTruthy();
 
 	const revoke = await host.request.delete(`/api/pairing/devices/${other?.id}`);
