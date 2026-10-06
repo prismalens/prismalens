@@ -77,6 +77,11 @@ Feature: The incident record and its report
       Given the report's first step is "Map Booklogr API to its repository"
       Then that step is a link to the service page, not a checkbox
 
+    Scenario: A stopped run
+      Given the run was stopped
+      When I open the Report tab
+      Then I read "No report" and when it was stopped, with "Conversation" and "Event log", and the box offers to continue where the agent can reopen its session
+
     Scenario: Ticking a step is shared
       When I tick the first "Do now" step
       Then the heading reads "1 of 3 done" and "Done by you at <time>"

@@ -600,6 +600,61 @@ Then('the box offers "Investigate again"', async ({ page }) => {
 });
 
 Given(
+	"the run was stopped",
+	async ({ page, alertmanager, deliverWebhook, unique }) => {
+		const made = await fireIncident(page, alertmanager, deliverWebhook, {
+			name: unique("StoppedRun"),
+			service: LIVE,
+			session: "live",
+		});
+		w(page).inc = made;
+		const running = await waitForRun(
+			page,
+			made.id,
+			(r) => r.status === "running",
+			"the live run",
+		);
+		// claude-agent-acp resumes (@prismalens/config harness.ts), so cancelling
+		// a real run here, rather than mocking the status, exercises the same
+		// resumable computation a reopened session relies on (#747).
+		const res = await page.request.post(
+			`/api/investigations/${running.id}/cancel`,
+		);
+		expect(res.ok(), await res.text()).toBe(true);
+		await waitForRun(
+			page,
+			made.id,
+			(r) => r.status === "cancelled",
+			"the stopped run",
+		);
+	},
+);
+
+Then(
+	'I read "No report" and when it was stopped, with "Conversation" and "Event log", and the box offers to continue where the agent can reopen its session',
+	async ({ page }) => {
+		const empty = page.getByTestId("report-empty");
+		await expect(empty.getByRole("heading")).toHaveText(
+			/^No report\. You stopped the run at \d\d:\d\d after .+\.$/,
+		);
+		await expect(
+			empty.getByRole("link", { name: "Conversation" }),
+		).toBeVisible();
+		await expect(empty.getByRole("link", { name: "Event log" })).toBeVisible();
+		// Resumable: the box drops the brief button for a message box in "resume"
+		// mode (composer-keys.ts), whose send control titles the reopen (#747).
+		await expect(
+			page.getByTestId("composer-box").locator("[data-mode]"),
+		).toHaveAttribute("data-mode", "resume");
+		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		await expect(shown(page.getByTestId("composer-send"))).toHaveAttribute(
+			"title",
+			"Continue this investigation",
+		);
+	},
+);
+
+Given(
 	"the run failed after 9 minutes with findings in the conversation",
 	async ({ page, alertmanager, deliverWebhook, unique }) => {
 		await reportFrom(
