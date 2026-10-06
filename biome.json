@@ -11,6 +11,8 @@
 			"**",
 			"!**/*.test.ts",
 			"!**/*.spec.ts",
+			"packages/frontend/e2e/**/*.spec.ts",
+			"packages/frontend/e2e/**/*.test.ts",
 			"!**/routeTree.gen.ts",
 			"!**/project.inlang",
 			"!packages/api/openapi.json",
@@ -60,6 +62,16 @@
 		}
 	},
 	"overrides": [
+		{
+			"includes": ["packages/frontend/e2e/**"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noDocumentCookie": "off"
+					}
+				}
+			}
+		},
 		{
 			"includes": [
 				"**/*.controller.ts",

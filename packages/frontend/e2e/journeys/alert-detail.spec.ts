@@ -70,7 +70,9 @@ test.describe("#523 S3 — the alert record", () => {
 
 		const identity = page.locator("#identity");
 		await expect(identity).toBeVisible();
-		const dedupKey = identity.locator(".font-mono", { hasText: "demo-storm-alert-0" });
+		const dedupKey = identity.locator(".font-mono", {
+			hasText: "demo-storm-alert-0",
+		});
 		await expect(dedupKey).toBeVisible();
 
 		await page.getByTestId("alert-payload-toggle").click();

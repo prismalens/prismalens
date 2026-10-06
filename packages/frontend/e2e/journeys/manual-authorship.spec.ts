@@ -62,7 +62,11 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// 1. The incidents page offers the authorship affordance.
 		await page.goto("/incidents");
-		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();
@@ -299,7 +303,11 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 	test("cannot submit an incident with no title", async ({ page }) => {
 		await page.goto("/incidents");
-		await expect(page.getByTestId("incident-list-pane").getByRole("heading", { name: "Incidents", exact: true })).toBeVisible({
+		await expect(
+			page
+				.getByTestId("incident-list-pane")
+				.getByRole("heading", { name: "Incidents", exact: true }),
+		).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.getByTestId("create-incident-button").click();

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
 import { expect, type Page, test } from "@playwright/test";
+import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	deliver,
 	eventFactory,
@@ -94,9 +94,11 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		await input.fill("Why did the pool saturate at 14:02?");
 		await input.press("Enter");
 
-		await expect.poll(() => sent).toMatchObject({
-			text: "Why did the pool saturate at 14:02?",
-		});
+		await expect
+			.poll(() => sent)
+			.toMatchObject({
+				text: "Why did the pool saturate at 14:02?",
+			});
 		// The refetch reads `running`, so the stream double opens.
 		await expect
 			.poll(() => page.evaluate(() => window.__liveStream.sources.length))

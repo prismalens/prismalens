@@ -48,12 +48,12 @@ const CLAUDE_INSTALLED: HarnessFixture = {
 	label: "Claude Code",
 	binary: "claude-agent-acp",
 	installed: true,
-	install: "npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
+	install:
+		"npm i -g @agentclientprotocol/claude-agent-acp  (set ANTHROPIC_API_KEY)",
 	defaultModel: null,
 	tested: null,
 	modelVia: "env",
-	loginHint:
-		"`claude /login`, or `ANTHROPIC_API_KEY` in env",
+	loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 	models: NO_MODELS,
 };
 
@@ -62,7 +62,11 @@ const OPENCODE_MODELS: HarnessFixture["models"] = {
 	source: "catalogue",
 	asOf: "2026-09-23T00:00:00Z",
 	entries: [
-		{ id: "vendor/fixture-current", name: "Fixture Current", status: "current" },
+		{
+			id: "vendor/fixture-current",
+			name: "Fixture Current",
+			status: "current",
+		},
 		{ id: "vendor/fixture-old", name: "Fixture Old", status: "legacy" },
 	],
 };
@@ -72,7 +76,8 @@ const OPENCODE_INSTALLED: HarnessFixture = {
 	label: "OpenCode",
 	binary: "opencode",
 	installed: true,
-	install: "curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
+	install:
+		"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
 	defaultModel: null,
 	tested: { version: "1.18.30", date: "2026-09-20" },
 	modelVia: "config",
@@ -161,7 +166,8 @@ async function failHarnesses(page: Page): Promise<void> {
 	});
 }
 
-const isHarnessSettingsUrl = (url: URL) => url.pathname === "/api/settings/harness";
+const isHarnessSettingsUrl = (url: URL) =>
+	url.pathname === "/api/settings/harness";
 
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
@@ -171,7 +177,10 @@ async function serveHarnessSettings(
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
 		if (route.request().method() === "PATCH") {
-			const body = (route.request().postDataJSON() || {}) as Record<string, unknown>;
+			const body = (route.request().postDataJSON() || {}) as Record<
+				string,
+				unknown
+			>;
 			current = { ...current, ...body } as typeof current;
 			await route.fulfill({
 				status: 200,
@@ -259,7 +268,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				exact: false,
 			}),
 		).toBeVisible();
-		await expect(registry.locator("code", { hasText: "opencode auth login" })).toBeVisible();
+		await expect(
+			registry.locator("code", { hasText: "opencode auth login" }),
+		).toBeVisible();
 
 		// OpenCode takes a model: the picker lists Agent default and its models.
 		await expect(page.getByTestId("model-pill")).toHaveText("Agent default");
@@ -404,7 +415,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		await expect(
-			page.getByTestId("harness-registry").getByText("pip install deepagents-acp"),
+			page
+				.getByTestId("harness-registry")
+				.getByText("pip install deepagents-acp"),
 		).toBeVisible();
 	});
 
@@ -667,9 +680,11 @@ test.describe("Design evidence (#501/#609)", () => {
 		await serveHarnessSettings(page, { harness: "auto" });
 
 		const themeOnly = async (theme: "light" | "dark") => {
-			await page.context().addCookies([
-				{ name: "prismalens-theme", value: theme, url: baseURL as string },
-			]);
+			await page
+				.context()
+				.addCookies([
+					{ name: "prismalens-theme", value: theme, url: baseURL as string },
+				]);
 		};
 
 		const renderCard = async (

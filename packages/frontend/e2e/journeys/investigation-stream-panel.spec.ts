@@ -6,8 +6,8 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
 	deliver,
 	eventFactory,
-	installStreamDouble,
 	INVESTIGATION_ID,
+	installStreamDouble,
 	SECOND_INVESTIGATION_ID,
 	serveAsRunning,
 	setTheme,
@@ -285,7 +285,6 @@ test.describe("#280 — the investigation stream panel", () => {
 	}) => {
 		test.setTimeout(120_000);
 
-
 		const panel = await openConnectedPanel(page);
 
 		// Empty: connected, nothing received yet.
@@ -393,7 +392,9 @@ test.describe("#280 — the investigation stream panel", () => {
 		);
 
 		await expect(panel).toBeVisible();
-		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(0);
+		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(
+			0,
+		);
 		await expect(
 			panel.getByText("Error: harness lost the tool socket"),
 		).toBeVisible();
@@ -412,7 +413,9 @@ test.describe("#280 — the investigation stream panel", () => {
 
 		// The stream panel stays visible and renders the error event row
 		await expect(panel).toBeVisible();
-		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(0);
+		await expect(page.getByTestId("investigation-fallback-panel")).toHaveCount(
+			0,
+		);
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(2);
 		await expect(
 			panel.getByText("Error: harness lost the tool socket"),
@@ -421,9 +424,9 @@ test.describe("#280 — the investigation stream panel", () => {
 		// Subsequent events on the same stream continue rendering in the panel
 		await deliver(page, root.agentStep("scout", "Retrying with fallback tool"));
 		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
-		await expect(
-			panel.getByTestId("stream-event-row").last(),
-		).toContainText("Retrying with fallback tool");
+		await expect(panel.getByTestId("stream-event-row").last()).toContainText(
+			"Retrying with fallback tool",
+		);
 	});
 
 	test("swaps to the polling fallback card with explicit affordance when SSE transport fails (#462)", async ({
@@ -491,7 +494,10 @@ test.describe("#659 — the report JSON never reaches the panel", () => {
 		await deliver(page, main.agentStep("root", 'Checked {"retries":3} first.'));
 		await deliver(
 			page,
-			main.agentStep("root", `The pool ran dry.\n\`\`\`json\n${REPORT}\n\`\`\``),
+			main.agentStep(
+				"root",
+				`The pool ran dry.\n\`\`\`json\n${REPORT}\n\`\`\``,
+			),
 		);
 
 		const rows = panel.getByTestId("stream-event-row");
