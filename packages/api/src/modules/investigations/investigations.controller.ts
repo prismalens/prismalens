@@ -3,7 +3,6 @@
 
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
-import { ThrottlerGuard } from "@nestjs/throttler";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import type {
 	InvestigationReport,
@@ -19,6 +18,7 @@ import {
 import type { Investigation, Recommendation } from "@prismalens/database";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -48,8 +48,9 @@ const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
  */
 const CANCEL_PUBLISH_RETRY_MS = 250;
 
+// Reads pass: a record view reads its run three ways, and a 429 left it "did not load".
 @Controller()
-@UseGuards(ThrottlerGuard)
+@UseGuards(MutationThrottleGuard)
 export class InvestigationsController {
 	constructor(
 		private readonly investigationsService: InvestigationsService,

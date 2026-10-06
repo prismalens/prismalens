@@ -105,15 +105,15 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			await route.fallback();
 		});
 
-		// The report is its own route under the incident (#743); the section
-		// is `#report`, headed "Report", and carries the root cause text.
+		// The report is its own route under the incident (#743); its answer
+		// carries the root cause text (study-v3 §3.2).
 		await page.goto(
 			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
 		);
-		await expect(page.locator("#report")).toBeVisible({
+		await expect(page.getByTestId("report-answer")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.locator("#report")).toContainText(
+		await expect(page.getByTestId("report-answer")).toContainText(
 			"Connection pool size in auth-service was misconfigured",
 		);
 
@@ -150,7 +150,7 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			page.getByText("No GitHub connection is configured"),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(
-			page.getByRole("link", { name: /Settings → Integrations/ }),
+			page.getByRole("link", { name: "Settings, Integrations" }),
 		).toBeVisible();
 
 		// Unroute 412, close dialog

@@ -16,9 +16,10 @@ import {
 import { settled } from "./settled";
 
 /**
- * #743 — the incident: a band and a run strip that never scroll, a page of
- * bounded cards with the box docked under them, and the routes one level
- * down (conversation, report, alerts, timeline).
+ * #743 — the incident: a band and a run strip that never scroll, a reading
+ * column with the facts rail beside it (study-v3 §3.3) and the box docked
+ * under it, and the routes one level down (conversation, report, alerts,
+ * timeline).
  *
  * The demo seed's incident #1 (`INCIDENT_ID`) already carries a completed
  * investigation with a full report; the happy path reuses it. The seed writes
@@ -70,13 +71,12 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("run-strip-state")).toHaveText("Done");
 		await expect(page.getByTestId("run-stop")).toHaveCount(0);
 
-		// The cards, in the order an SRE asks.
+		// The sections, in the order an SRE asks; the facts in the rail.
 		const ids = [
-			"run-card",
-			"conclusion-card",
-			"alerts-card",
-			"timeline-card",
-			"details-card",
+			"incident-summary",
+			"overview-report",
+			"overview-alerts",
+			"overview-timeline",
 		];
 		const ys: number[] = [];
 		for (const id of ids) {
@@ -90,18 +90,17 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			);
 		}
 
-		// The Details card opens in place, with the metrics row the old
-		// telemetry surface held.
-		await page.getByTestId("details-toggle").click();
-		await expect(page.getByTestId("details-open")).toContainText(
-			"Connect in Settings",
+		// The rail reads the service's telemetry, never a fixed line (walk f15).
+		await expect(page.getByTestId("facts-rail")).toBeVisible();
+		await expect(page.getByTestId("fact-telemetry")).not.toContainText(
+			"Metrics not connected",
 		);
 
-		// A note goes to the timeline from the Timeline card's own field.
+		// A note goes to the timeline from the Timeline section's own field.
 		const note = `Design evidence note ${Date.now()}`;
 		await page.getByTestId("note-input").fill(note);
 		await page.getByTestId("note-input").press("Enter");
-		await expect(page.getByTestId("timeline-card")).toContainText(note);
+		await expect(page.getByTestId("overview-timeline")).toContainText(note);
 
 		// The box docked at the bottom briefs the next run once this one ended.
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
@@ -110,12 +109,12 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 
 		await settled(page);
 
-		// Read the report: the document on its own route, band and strip still pinned.
-		await page.getByTestId("conclusion-read-report").click();
+		// The Report heading opens the report, band and strip still pinned.
+		await page.getByTestId("overview-report-heading").click();
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/report/);
 		await expect(page.getByTestId("report-route")).toBeVisible();
-		await expect(page.locator("#report")).toBeVisible();
-		await expect(page.locator("#evidence")).toBeVisible();
+		await expect(page.getByTestId("report-answer")).toBeVisible();
+		await expect(page.getByTestId("do-now")).toBeVisible();
 		await expect(page.getByTestId("run-strip")).toBeVisible();
 		await expect(page.getByTestId("record-tabs")).toBeVisible();
 
@@ -125,7 +124,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page).not.toHaveURL(/\/report/);
 
 		// The conversation: prose, the tool call folded to one line, the end.
-		await page.getByTestId("run-card-open-conversation").click();
+		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
 		const transcript = page.getByTestId("transcript");
 		await expect(transcript.getByTestId("transcript-prose")).toHaveText(
@@ -192,11 +191,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(page.getByTestId("run-card")).toContainText("No investigation yet", {
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("overview-report")).toContainText(
+			"No investigation yet",
+			{ timeout: 15_000 },
+		);
 		await setTheme(page, "light");
-		await expect(page.getByTestId("conclusion-card")).toHaveCount(0);
 		await expect(page.getByTestId("run-strip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
 			"Investigate",
@@ -214,14 +213,13 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("run-strip-state")).toHaveText("Failed", {
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("run-card")).toContainText(
+		await expect(page.getByTestId("overview-report")).toContainText(
 			"harness lost the tool socket",
 		);
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-card")).toBeVisible();
 		await settled(page);
 
-		await page.getByTestId("run-card-open-conversation").click();
+		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			"Failed: harness lost the tool socket",
 		);
@@ -258,11 +256,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		const events = eventFactory("run");
 		await deliver(page, events.agentStep("", "Reading the gateway logs"));
 		await expect(state).toHaveText("Working");
-		await expect(page.getByTestId("run-card-latest")).toHaveText(
-			"Reading the gateway logs",
+		await expect(page.getByTestId("incident-summary")).toContainText(
+			"An investigation is working now",
 		);
-		await expect(page.getByTestId("conclusion-card")).toContainText(
-			"Nothing yet",
+		await expect(page.getByTestId("overview-report")).toContainText(
+			"The report comes when the run finishes",
 		);
 
 		// Keep going closes the confirm and sends nothing.

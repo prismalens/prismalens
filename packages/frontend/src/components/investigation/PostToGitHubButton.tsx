@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-"use client";
-
 import { GITHUB_ISSUE_OR_PR_URL } from "@prismalens/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Share2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,9 +20,11 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { cn } from "@/lib/utils";
 
 interface PostToGitHubButtonProps {
 	investigationId: string;
+	className?: string;
 }
 
 /**
@@ -33,6 +32,7 @@ interface PostToGitHubButtonProps {
  */
 export function PostToGitHubButton({
 	investigationId,
+	className,
 }: PostToGitHubButtonProps) {
 	const [open, setOpen] = useState(false);
 	const [url, setUrl] = useState("");
@@ -111,10 +111,9 @@ export function PostToGitHubButton({
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-7 px-2 text-meta"
+					className={cn("h-7 px-2 text-body text-text-2", className)}
 					data-testid="post-report-github"
 				>
-					<Share2 className="mr-1.5 h-3.5 w-3.5" />
 					Post to GitHub
 				</Button>
 			</DialogTrigger>
@@ -131,18 +130,18 @@ export function PostToGitHubButton({
 					<div className="space-y-4 py-4">
 						{notConfigured && (
 							<div
-								className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+								className="rounded-md bg-danger/10 p-3 text-sm text-danger"
 								data-testid="post-report-github-not-configured"
 							>
-								No GitHub connection is configured (
+								No GitHub connection is configured. Add one under{" "}
 								<Link
 									to="/settings"
 									search={{ tab: "integrations" }}
-									className="underline font-medium hover:text-destructive/80"
+									className="font-medium underline hover:text-danger/80"
 								>
-									Settings → Integrations
+									Settings, Integrations
 								</Link>
-								)
+								.
 							</div>
 						)}
 
@@ -161,7 +160,7 @@ export function PostToGitHubButton({
 								disabled={postMutation.isPending}
 							/>
 							{validationError && (
-								<p className="text-xs text-destructive">{validationError}</p>
+								<p className="text-xs text-danger">{validationError}</p>
 							)}
 						</div>
 					</div>

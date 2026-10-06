@@ -16,7 +16,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
-import { StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -86,7 +86,7 @@ export function IncidentStateBand({
 			data-testid="incident-state-band"
 			// On desktop the band is the window's title strip (#752): it drags the window,
 			// its controls opt out, and it clears the window controls and a folded sidebar's head.
-			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"
+			className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-canvas px-3 py-1.5 [view-transition-name:band] sm:h-10 sm:flex-nowrap sm:overflow-hidden sm:py-0 desktop:app-drag desktop:pr-36 desktop:sm:h-(--titlebar-h) desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[[data-sidebar-folded]_&]:pl-48 mac:pr-3 mac:[[data-sidebar-folded]_&]:pl-64"
 		>
 			<Button variant="ghost" size="icon" className="shrink-0" asChild>
 				<a
@@ -102,7 +102,7 @@ export function IncidentStateBand({
 					<ChevronLeft className="size-4" />
 				</a>
 			</Button>
-			<Mono className="shrink-0 text-meta text-muted-foreground">
+			<Mono className="shrink-0 text-meta text-text-2">
 				INC-{incident.number}
 			</Mono>
 			<span
@@ -113,7 +113,7 @@ export function IncidentStateBand({
 				style={{ background: `var(--sev-${incident.severity})` }}
 			/>
 			<h1
-				className="order-last line-clamp-2 min-w-0 basis-full text-record font-semibold tracking-tight sm:order-none sm:line-clamp-none sm:flex-1 sm:basis-auto sm:truncate"
+				className="order-last line-clamp-2 min-w-0 basis-full text-body font-semibold tracking-tight sm:order-none sm:line-clamp-none sm:flex-1 sm:basis-auto sm:truncate"
 				title={incident.title}
 			>
 				{incident.title}
@@ -127,7 +127,7 @@ export function IncidentStateBand({
 				{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
 					incident.status}
 			</StateWord>
-			<span className="hidden shrink-0 text-meta text-muted-foreground tabular-nums sm:inline">
+			<span className="hidden shrink-0 text-meta text-text-2 tabular-nums sm:inline">
 				{ago(incident.triggeredAt, now)}
 			</span>
 

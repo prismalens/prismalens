@@ -52,7 +52,7 @@ export function TelemetryConsent({
 	if (variant === "strip") {
 		return (
 			<div
-				className="space-y-1.5 border-t px-3 py-2 text-meta text-muted-foreground"
+				className="space-y-1.5 border-t px-3 py-2 text-meta text-text-2"
 				data-testid="telemetry-consent"
 			>
 				<p>Share usage counts? Never an alert, a repo or a report.</p>
@@ -77,7 +77,7 @@ export function TelemetryConsent({
 					</Button>
 				</div>
 				{update.isError && (
-					<p className="text-destructive">Could not save — try again.</p>
+					<p className="text-danger">Could not save — try again.</p>
 				)}
 			</div>
 		);
@@ -85,16 +85,16 @@ export function TelemetryConsent({
 
 	return (
 		<div
-			className="flex flex-col gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-record sm:flex-row sm:items-center sm:justify-between"
+			className="flex flex-col gap-3 rounded-md border border-hairline bg-surface-3/40 px-4 py-3 text-body sm:flex-row sm:items-center sm:justify-between"
 			data-testid="telemetry-consent"
 		>
-			<p className="text-muted-foreground">
+			<p className="text-text-2">
 				Help improve PrismaLens? {TELEMETRY_SUMMARY} Nothing is sent unless you
 				say yes, and Settings → Usage data changes the answer at any time.
 			</p>
 			<div className="flex shrink-0 items-center gap-2">
 				{update.isError && (
-					<span className="text-destructive">Could not save — try again.</span>
+					<span className="text-danger">Could not save — try again.</span>
 				)}
 				<Button
 					variant="outline"

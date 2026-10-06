@@ -4,9 +4,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { CARD_ROUTES, type CardRoute } from "./cards/Card";
+import { RECORD_ROUTES, type RecordRoute } from "./RecordLayout";
 
-const NAMES: Record<CardRoute, string> = {
+const NAMES: Record<RecordRoute, string> = {
 	conversation: "Conversation",
 	report: "Report",
 	alerts: "Alerts",
@@ -38,10 +38,10 @@ export function RecordTabs({
 	status,
 }: {
 	incidentId: string;
-	here: CardRoute | null;
-	counts: Partial<Record<CardRoute, number>>;
+	here: RecordRoute | null;
+	counts: Partial<Record<RecordRoute, number>>;
 	/** Tabs with nothing in them yet: still reachable, drawn quieter. */
-	dimmed?: CardRoute[];
+	dimmed?: RecordRoute[];
 	status: ReactNode;
 }) {
 	const navigate = useNavigate();
@@ -71,10 +71,10 @@ export function RecordTabs({
 
 	const tab = (active: boolean) =>
 		cn(
-			"inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-record outline-none focus-visible:ring-2 focus-visible:ring-primary",
+			"inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-accent",
 			active
-				? "border-primary font-medium text-foreground"
-				: "border-transparent text-muted-foreground hover:text-foreground",
+				? "border-accent font-medium text-text-1"
+				: "border-transparent text-text-2 hover:text-text-1",
 		);
 
 	return (
@@ -97,23 +97,23 @@ export function RecordTabs({
 				>
 					Overview
 				</Link>
-				{(Object.keys(NAMES) as CardRoute[]).map((r) => (
+				{(Object.keys(NAMES) as RecordRoute[]).map((r) => (
 					<Link
 						key={r}
-						to={CARD_ROUTES[r]}
+						to={RECORD_ROUTES[r]}
 						params={{ id: incidentId }}
 						search={true}
 						viewTransition
 						aria-current={here === r ? "page" : undefined}
 						className={cn(
 							tab(here === r),
-							here !== r && dimmed.includes(r) && "text-muted-foreground/50",
+							here !== r && dimmed.includes(r) && "text-text-2/50",
 						)}
 						data-testid={`tab-${r}`}
 					>
 						{NAMES[r]}
 						{counts[r] !== undefined && (
-							<span className="text-meta tabular-nums text-muted-foreground">
+							<span className="text-meta tabular-nums text-text-2">
 								{counts[r]}
 							</span>
 						)}

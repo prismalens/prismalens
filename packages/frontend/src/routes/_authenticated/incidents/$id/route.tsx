@@ -12,8 +12,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { CardRoute } from "@/components/incidents/cards/Card";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
+import type { RecordRoute } from "@/components/incidents/RecordLayout";
 import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
@@ -47,7 +47,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	component: IncidentLayout,
 });
 
-const SUB_ROUTES: CardRoute[] = [
+const SUB_ROUTES: RecordRoute[] = [
 	"conversation",
 	"report",
 	"alerts",
@@ -220,10 +220,10 @@ function IncidentLayout() {
 	if (error || !incident || !record) {
 		return (
 			<div className="flex h-full flex-col items-center justify-center p-8">
-				<p className="text-lg font-medium text-run-failed">
+				<p className="text-lg font-medium text-danger">
 					Failed to load incident
 				</p>
-				<p className="text-sm text-muted-foreground">
+				<p className="text-sm text-text-2">
 					{error?.message || "Incident not found"}
 				</p>
 			</div>

@@ -163,7 +163,7 @@ export function GitRepoSelector({
 					{isLoadingOrgs ? (
 						<Skeleton className="h-10 w-full" />
 					) : organizations.length === 0 ? (
-						<p className="text-record text-muted-foreground">
+						<p className="text-body text-text-2">
 							No organizations found. You may need to grant organization access
 							in {providerDisplayName}.
 						</p>
@@ -174,7 +174,7 @@ export function GitRepoSelector({
 							</SelectTrigger>
 							<SelectContent>
 								<SelectItem value="">
-									<span className="text-muted-foreground">
+									<span className="text-text-2">
 										All accessible repositories
 									</span>
 								</SelectItem>
@@ -190,7 +190,7 @@ export function GitRepoSelector({
 											)}
 											<span>{org.displayName}</span>
 											{org.repoCount !== undefined && (
-												<span className="text-xs text-muted-foreground">
+												<span className="text-xs text-text-2">
 													({org.repoCount} repos)
 												</span>
 											)}
@@ -221,7 +221,7 @@ export function GitRepoSelector({
 							<Label htmlFor="all" className="flex items-center gap-2">
 								All repositories
 								{!isLoadingRepos && (
-									<span className="text-xs text-muted-foreground">
+									<span className="text-xs text-text-2">
 										({repositories.length} available)
 									</span>
 								)}
@@ -238,7 +238,7 @@ export function GitRepoSelector({
 						<CollapsibleContent className="space-y-3">
 							{/* Search */}
 							<div className="relative">
-								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-2" />
 								<Input
 									placeholder="Search repositories..."
 									value={repoSearch}
@@ -249,7 +249,7 @@ export function GitRepoSelector({
 
 							{/* Select all button */}
 							<div className="flex items-center justify-between">
-								<span className="text-record text-muted-foreground">
+								<span className="text-body text-text-2">
 									{selectedRepos.size} selected
 								</span>
 								<Button
@@ -272,7 +272,7 @@ export function GitRepoSelector({
 									))}
 								</div>
 							) : filteredRepos.length === 0 ? (
-								<p className="text-record text-muted-foreground text-center py-4">
+								<p className="text-body text-text-2 text-center py-4">
 									{repoSearch
 										? "No repositories match your search"
 										: "No repositories found"}
@@ -283,8 +283,8 @@ export function GitRepoSelector({
 										<div
 											key={repo.id}
 											className={cn(
-												"flex items-center gap-3 p-2 rounded hover:bg-muted/50 cursor-pointer",
-												selectedRepos.has(repo.fullName) && "bg-muted",
+												"flex items-center gap-3 p-2 rounded hover:bg-surface-3/50 cursor-pointer",
+												selectedRepos.has(repo.fullName) && "bg-surface-3",
 											)}
 											onClick={() => toggleRepo(repo.fullName)}
 										>
@@ -298,18 +298,18 @@ export function GitRepoSelector({
 														{repo.name}
 													</span>
 													{repo.isPrivate ? (
-														<Lock className="h-3 w-3 text-muted-foreground" />
+														<Lock className="h-3 w-3 text-text-2" />
 													) : (
-														<Globe className="h-3 w-3 text-muted-foreground" />
+														<Globe className="h-3 w-3 text-text-2" />
 													)}
 												</div>
 												{repo.description && (
-													<p className="text-xs text-muted-foreground truncate">
+													<p className="text-xs text-text-2 truncate">
 														{repo.description}
 													</p>
 												)}
 											</div>
-											<div className="flex items-center gap-3 text-xs text-muted-foreground">
+											<div className="flex items-center gap-3 text-xs text-text-2">
 												{repo.language && (
 													<Badge variant="outline" className="text-xs">
 														{repo.language}
@@ -350,7 +350,7 @@ export function GitRepoSelector({
 							<SelectItem value="develop">develop</SelectItem>
 						</SelectContent>
 					</Select>
-					<p className="text-xs text-muted-foreground mt-2">
+					<p className="text-xs text-text-2 mt-2">
 						Branch used for code analysis when no specific branch is specified.
 					</p>
 				</CardContent>

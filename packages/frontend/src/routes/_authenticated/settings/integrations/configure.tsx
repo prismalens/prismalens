@@ -139,11 +139,11 @@ function GitHubAppInstallationWizard({
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<CheckCircle className="h-8 w-8 text-run-done mb-4" />
+							<CheckCircle className="h-8 w-8 text-ok mb-4" />
 							<h2 className="text-lg font-semibold mb-2">
 								GitHub App Connected
 							</h2>
-							<p className="text-muted-foreground mb-6">
+							<p className="text-text-2 mb-6">
 								Installation token generated. The token will auto-refresh every
 								hour.
 							</p>
@@ -168,7 +168,7 @@ function GitHubAppInstallationWizard({
 						</div>
 						<div>
 							<h1 className="text-xl font-semibold">Select installation</h1>
-							<p className="text-sm text-muted-foreground">
+							<p className="text-sm text-text-2">
 								Choose which organization or account to connect
 							</p>
 						</div>
@@ -182,14 +182,14 @@ function GitHubAppInstallationWizard({
 					<CardContent>
 						{isLoading && (
 							<div className="flex items-center justify-center py-8">
-								<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
+								<Loader2 className="h-6 w-6 motion-safe:animate-spin text-text-2" />
 							</div>
 						)}
 
 						{error && (
 							<div className="flex flex-col items-center text-center py-8">
-								<AlertCircle className="h-5 w-5 text-destructive mb-3" />
-								<p className="text-sm text-destructive mb-4">
+								<AlertCircle className="h-5 w-5 text-danger mb-3" />
+								<p className="text-sm text-danger mb-4">
 									{error instanceof Error
 										? error.message
 										: "Failed to load installations"}
@@ -202,11 +202,9 @@ function GitHubAppInstallationWizard({
 
 						{installations && installations.length === 0 && (
 							<div className="flex flex-col items-center text-center py-8">
-								<Building2 className="h-5 w-5 text-muted-foreground mb-3" />
-								<p className="text-muted-foreground mb-2">
-									No installations found
-								</p>
-								<p className="text-sm text-muted-foreground mb-4">
+								<Building2 className="h-5 w-5 text-text-2 mb-3" />
+								<p className="text-text-2 mb-2">No installations found</p>
+								<p className="text-sm text-text-2 mb-4">
 									Install the GitHub App on an organization or account first.
 								</p>
 								<Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -216,7 +214,7 @@ function GitHubAppInstallationWizard({
 						)}
 
 						{connectError && (
-							<div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-md mb-3">
+							<div className="flex items-center gap-2 p-3 text-sm text-danger bg-danger/10 rounded-md mb-3">
 								<AlertCircle className="h-4 w-4 flex-shrink-0" />
 								{connectError}
 							</div>
@@ -230,7 +228,7 @@ function GitHubAppInstallationWizard({
 										className="flex items-center justify-between p-4 border rounded-lg"
 									>
 										<div className="flex items-center gap-3">
-											<Building2 className="h-5 w-5 text-muted-foreground" />
+											<Building2 className="h-5 w-5 text-text-2" />
 											<div>
 												<p className="font-medium">{inst.account.login}</p>
 												<div className="flex items-center gap-2 mt-1">
@@ -354,11 +352,11 @@ function StandardConfigurePage({
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-5 w-5 text-destructive mb-3" />
+							<AlertCircle className="h-5 w-5 text-danger mb-3" />
 							<h2 className="text-lg font-semibold mb-2">
 								Missing Connection ID
 							</h2>
-							<p className="text-muted-foreground mb-4">
+							<p className="text-text-2 mb-4">
 								No connection ID was provided. Please return to settings and try
 								again.
 							</p>
@@ -378,7 +376,7 @@ function StandardConfigurePage({
 			<div className="px-4 py-6 sm:px-0">
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="flex items-center justify-center py-12">
-						<Loader2 className="h-8 w-8 motion-safe:animate-spin text-muted-foreground" />
+						<Loader2 className="h-8 w-8 motion-safe:animate-spin text-text-2" />
 					</CardContent>
 				</Card>
 			</div>
@@ -391,11 +389,11 @@ function StandardConfigurePage({
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12">
 						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-5 w-5 text-destructive mb-3" />
+							<AlertCircle className="h-5 w-5 text-danger mb-3" />
 							<h2 className="text-lg font-semibold mb-2">
 								Connection Not Found
 							</h2>
-							<p className="text-muted-foreground mb-4">
+							<p className="text-text-2 mb-4">
 								{connectionError?.message ||
 									"The connection could not be found. It may have been deleted."}
 							</p>
@@ -423,7 +421,7 @@ function StandardConfigurePage({
 							<h1 className="text-xl font-semibold">
 								Configure {getProviderDisplayName()}
 							</h1>
-							<p className="text-sm text-muted-foreground">
+							<p className="text-sm text-text-2">
 								{connection.integration?.label ??
 									connection.templateName ??
 									"Connection"}

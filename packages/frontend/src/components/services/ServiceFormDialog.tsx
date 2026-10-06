@@ -188,7 +188,7 @@ export function ServiceFormDialog({
 					{/* Name - required */}
 					<div className="space-y-2">
 						<Label htmlFor="name">
-							Name <span className="text-destructive">*</span>
+							Name <span className="text-danger">*</span>
 						</Label>
 						<Input
 							id="name"
@@ -197,7 +197,7 @@ export function ServiceFormDialog({
 							placeholder="payment-service"
 							disabled={isEditing} // Name should not change after creation
 						/>
-						<p className="text-xs text-muted-foreground">
+						<p className="text-xs text-text-2">
 							Unique identifier, typically kebab-case
 						</p>
 					</div>
@@ -222,7 +222,7 @@ export function ServiceFormDialog({
 							placeholder="~/code/payment-service or git@github.com:acme/payments.git"
 							data-testid="service-repository-input"
 						/>
-						<p className="text-xs text-muted-foreground">
+						<p className="text-xs text-text-2">
 							A folder on this machine or a git URL. Each investigation reads a
 							fresh copy of its last commit; uncommitted changes are not
 							included.
@@ -303,9 +303,7 @@ export function ServiceFormDialog({
 					</div>
 
 					{/* Error message */}
-					{error && (
-						<p className="text-sm text-destructive text-center">{error}</p>
-					)}
+					{error && <p className="text-sm text-danger text-center">{error}</p>}
 				</div>
 
 				<DialogFooter>

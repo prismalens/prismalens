@@ -3,7 +3,7 @@
  * the note field pinned at the top.
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { NoteField } from "@/components/incidents/cards/NoteField";
+import { NoteField } from "@/components/incidents/NoteField";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { TimelineTab } from "@/components/incidents/TimelineTab";
 

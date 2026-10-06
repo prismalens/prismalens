@@ -17,7 +17,7 @@ function AlertsRoute() {
 			<div className="mx-auto max-w-[52rem] space-y-3 px-4 py-4 sm:px-6">
 				<h2 className="flex items-baseline gap-2 text-sm font-medium">
 					Alerts
-					<span className="text-meta font-normal text-muted-foreground tabular-nums">
+					<span className="text-meta font-normal text-text-2 tabular-nums">
 						{incident.alertCount}
 					</span>
 				</h2>

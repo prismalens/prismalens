@@ -62,7 +62,12 @@ export function reconnectAsOf(s: StreamStatus, now: number): number | null {
 
 // An alert or incident moves the board's setup line and Alert sources' last delivery.
 const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
-	incidents: () => [orpc.incidents.key(), orpc.setup.key()],
+	// A Do now tick is written under the incident's topic (live-changes.ts).
+	incidents: () => [
+		orpc.incidents.key(),
+		orpc.setup.key(),
+		orpc.recommendations.key(),
+	],
 	alerts: () => [
 		orpc.alerts.key(),
 		orpc.incidents.key(),

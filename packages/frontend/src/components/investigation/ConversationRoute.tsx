@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { Mono } from "@/components/shared/Mono";
 import { Segmented } from "@/components/shared/Segmented";
-import { StateChip, StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Progress } from "@/components/ui/progress";
 import { useNow } from "@/hooks/use-now";
 import { deriveTranscript } from "@/lib/investigation-events";
@@ -109,7 +109,7 @@ export function ConversationRoute() {
 		>
 			<section className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<div className="flex h-10 shrink-0 items-center gap-2 px-3">
-					<h2 className="text-record font-medium">Conversation</h2>
+					<h2 className="text-body font-medium">Conversation</h2>
 					<StateWord
 						tone={live ? "active" : "neutral"}
 						data-testid="conversation-addressee"
@@ -145,8 +145,8 @@ export function ConversationRoute() {
 								className={cn(
 									"-mb-px border-b-2 py-1.5 text-meta",
 									b === openBranch
-										? "border-primary text-foreground"
-										: "border-transparent text-muted-foreground hover:text-foreground",
+										? "border-accent text-text-1"
+										: "border-transparent text-text-2 hover:text-text-1",
 								)}
 							>
 								{b === MAIN_BRANCH ? "Main" : b}
@@ -155,7 +155,7 @@ export function ConversationRoute() {
 					</div>
 				)}
 				{!investigationId ? (
-					<p className="flex-1 p-6 text-center text-record text-muted-foreground">
+					<p className="flex-1 p-6 text-center text-body text-text-2">
 						No investigation yet. Start one below.
 					</p>
 				) : run.isLoading ? (
@@ -164,16 +164,20 @@ export function ConversationRoute() {
 					</div>
 				) : run.error || !investigation ? (
 					<div className="flex flex-1 flex-col items-center justify-center py-8">
-						<AlertCircle className="mb-3 h-8 w-8 text-run-failed" />
-						<p className="text-record font-medium text-run-failed">
+						<AlertCircle className="mb-3 h-8 w-8 text-danger" />
+						<p className="text-body font-medium text-danger">
 							Failed to load the run
 						</p>
-						<p className="text-meta text-muted-foreground">
+						<p className="text-meta text-text-2">
 							{run.error?.message || "Investigation not found"}
 						</p>
 					</div>
 				) : view === "transcript" ? (
-					<Transcript items={items} incidentId={incident.id} />
+					<Transcript
+						items={items}
+						incidentId={incident.id}
+						focus={search.call}
+					/>
 				) : (
 					<LedgerView events={events} />
 				)}
@@ -199,19 +203,17 @@ function LedgerView({
 		>
 			{run.failed && (
 				<div
-					className="rounded-md border border-run-failed/40 bg-run-failed/8 p-3"
+					className="rounded-md border border-danger/40 bg-danger/8 p-3"
 					data-testid="investigation-failed-state"
 				>
 					<div className="flex items-center gap-2">
-						<StateChip tone="failed">failed</StateChip>
-						<span className="text-record font-medium">
-							Investigation failed
-						</span>
+						<StateWord tone="failed">failed</StateWord>
+						<span className="text-body font-medium">Investigation failed</span>
 					</div>
 					<p className="mt-2 whitespace-pre-wrap font-mono text-meta">
 						{investigation.error ?? "No error was recorded."}
 					</p>
-					<p className="mt-2 text-meta text-muted-foreground">
+					<p className="mt-2 text-meta text-text-2">
 						The last events the harness sent are in the ledger below. The raw
 						wire transcript is at{" "}
 						<Mono>runs/{investigation.id}/transcript.jsonl</Mono> under the
@@ -225,18 +227,16 @@ function LedgerView({
 					data-testid="investigation-fallback-panel"
 				>
 					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 text-record font-medium">
+						<div className="flex items-center gap-2 text-body font-medium">
 							Investigation progress
-							<StateChip tone="stale" data-testid="stream-fallback-badge">
+							<StateWord tone="stale" data-testid="stream-fallback-badge">
 								polling
-							</StateChip>
+							</StateWord>
 						</div>
-						<Mono className="text-meta text-muted-foreground">
-							{run.jobProgress}%
-						</Mono>
+						<Mono className="text-meta text-text-2">{run.jobProgress}%</Mono>
 					</div>
 					<Progress value={run.jobProgress} className="mt-2 h-1.5" />
-					<div className="mt-2 flex items-center justify-between text-meta text-muted-foreground">
+					<div className="mt-2 flex items-center justify-between text-meta text-text-2">
 						<p data-testid="stream-fallback-message">
 							Live stream unavailable, polling for progress
 						</p>

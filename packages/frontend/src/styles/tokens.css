@@ -47,33 +47,6 @@
 	/* Set by the reconnect line while it shows; every frame starts below it. */
 	--reconnect-h: 0px;
 	--frame-top: calc(var(--titlebar-h) + var(--reconnect-h));
-
-	/*
-	 * Retiring (study-v3 §8): the shadcn names, mapped onto the ladder so the
-	 * screens PR 2 and PR 3 restyle keep rendering in this system until then.
-	 */
-	--background: var(--canvas);
-	--foreground: var(--text-1);
-	--card: var(--surface-2);
-	--card-foreground: var(--text-1);
-	--popover: var(--surface-2);
-	--popover-foreground: var(--text-1);
-	--primary: var(--accent);
-	--primary-foreground: var(--accent-fg);
-	--secondary: var(--surface-3);
-	--secondary-foreground: var(--text-1);
-	--muted: var(--surface-3);
-	--muted-foreground: var(--text-2);
-	--destructive: var(--danger);
-	--destructive-foreground: var(--accent-fg);
-	--border: var(--hairline);
-	--input: var(--hairline-strong);
-	--ring: var(--accent);
-	--stale: var(--warn);
-	--run-active: var(--live);
-	--run-done: var(--ok);
-	--run-failed: var(--danger);
-	--radius: 6px;
 }
 
 /* Inside the Electron window the band or header is the title strip (#752). */

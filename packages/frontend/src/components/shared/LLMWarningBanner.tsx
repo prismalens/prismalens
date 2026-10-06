@@ -33,12 +33,12 @@ export function LLMWarningBanner({
 	return (
 		<Alert
 			variant="default"
-			className={cn("border-stale/40 bg-stale/12", className)}
+			className={cn("border-warn/40 bg-warn/12", className)}
 		>
-			<AlertTriangle className="h-4 w-4 text-stale" />
-			<AlertTitle className="text-stale">Investigations unavailable</AlertTitle>
+			<AlertTriangle className="h-4 w-4 text-warn" />
+			<AlertTitle className="text-warn">Investigations unavailable</AlertTitle>
 			<AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-				<span className="text-stale" data-testid="llm-warning-reason">
+				<span className="text-warn" data-testid="llm-warning-reason">
 					{message}
 				</span>
 				<Button variant="outline" size="sm" asChild className="w-fit">

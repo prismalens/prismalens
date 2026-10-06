@@ -199,6 +199,28 @@ describe("RecommendationsService (BDD)", () => {
 	});
 
 	describe("update", () => {
+		it("stamps implementedAt on a tick and clears it on an untick, writing only real columns", async () => {
+			mockPrismaService.recommendation.update.mockResolvedValue(
+				RecommendationFactory.create({ id: "rec-1" }),
+			);
+			await service.update("rec-1", {
+				status: RecommendationStatus.completed,
+				notes: "ignored",
+			});
+			const ticked = mockPrismaService.recommendation.update.mock.calls[0]?.[0];
+			expect(ticked.data).toEqual({
+				status: RecommendationStatus.completed,
+				implementedAt: expect.any(Date),
+			});
+			await service.update("rec-1", { status: RecommendationStatus.pending });
+			const unticked =
+				mockPrismaService.recommendation.update.mock.calls[1]?.[0];
+			expect(unticked.data).toEqual({
+				status: RecommendationStatus.pending,
+				implementedAt: null,
+			});
+		});
+
 		it("should update and return recommendation", async () => {
 			const recId = "rec-123";
 			const updateDto: UpdateRecommendationDto = {

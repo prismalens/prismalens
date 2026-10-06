@@ -4,7 +4,7 @@
 import { ArrowUp } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useIncidentRecord } from "../record-context";
+import { useIncidentRecord } from "./record-context";
 
 /**
  * The note field (#743 §6): text for humans on the Timeline. It never reaches
@@ -22,7 +22,7 @@ export function NoteField() {
 	return (
 		<form
 			onSubmit={submit}
-			className="flex items-center gap-1 rounded-md border bg-background py-0.5 pr-0.5 pl-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+			className="raised mt-2 flex items-center gap-1 rounded-control py-0.5 pr-0.5 pl-2.5 focus-within:ring-2 focus-within:ring-accent/40"
 			data-testid="note-field"
 		>
 			<input
@@ -31,13 +31,13 @@ export function NoteField() {
 				disabled={isSavingNote}
 				placeholder="Add a note"
 				aria-label="Add a note to the timeline"
-				className="h-7 min-w-0 flex-1 bg-transparent text-record outline-none placeholder:text-muted-foreground disabled:opacity-60"
+				className="h-7 min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-text-3 disabled:opacity-60"
 				data-testid="note-input"
 			/>
 			<Button
 				type="submit"
 				size="icon-xs"
-				variant={text.trim() ? "default" : "ghost"}
+				variant="ghost"
 				disabled={!text.trim() || isSavingNote}
 				aria-label="Save note"
 			>

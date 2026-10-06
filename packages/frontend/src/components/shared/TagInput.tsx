@@ -48,7 +48,7 @@ export function TagInput({
 	return (
 		<div
 			className={cn(
-				"flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px] focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+				"flex flex-wrap gap-2 p-2 border rounded-md min-h-[42px] focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2",
 				disabled && "opacity-50 cursor-not-allowed",
 				className,
 			)}
@@ -60,7 +60,7 @@ export function TagInput({
 						<button
 							type="button"
 							onClick={() => removeTag(tag)}
-							className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+							className="hover:bg-text-2/20 rounded-full p-0.5"
 						>
 							<X className="h-3 w-3" />
 							<span className="sr-only">Remove {tag}</span>

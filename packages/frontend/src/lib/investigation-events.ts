@@ -321,6 +321,8 @@ export type TranscriptItem =
 			failed: number;
 			running: number;
 			rows: EventRow[];
+			/** The tool calls in the group, so a report's evidence link can open it. */
+			callIds: string[];
 	  }
 	| { kind: "thought"; key: string; seconds: number }
 	| { kind: "divider"; key: string; text: string }
@@ -442,6 +444,7 @@ export function deriveTranscript(
 			failed: 0,
 			running: 0,
 			rows: [],
+			callIds: [],
 		};
 		items.push(item);
 		group = { item, calls: new Map() };
@@ -450,6 +453,7 @@ export function deriveTranscript(
 	const refresh = (g: OpenGroup) => {
 		const results = Array.from(g.calls.values());
 		g.item.count = g.calls.size;
+		g.item.callIds = Array.from(g.calls.keys());
 		g.item.failed = results.filter((r) => r && !r.ok).length;
 		g.item.running = results.filter((r) => !r).length;
 		g.item.summary = summarizeTools(results);
@@ -552,6 +556,8 @@ export function deriveTranscript(
 				break;
 			case "error":
 				closeGroup();
+				// A stop ends the run with an error event; it reads once, as the stop (walk f26).
+				if (run?.status === "cancelled") break;
 				sawError = true;
 				items.push({
 					kind: "end",

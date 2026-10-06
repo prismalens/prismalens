@@ -3,8 +3,12 @@
 
 /** POST /investigations/:id/messages (#743). Mocked service + dispatch. */
 
+import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
+import type { ExecutionContext } from "@nestjs/common";
+import { GUARDS_METADATA } from "@nestjs/common/constants.js";
+import { Reflector } from "@nestjs/core";
 import { Test, type TestingModule } from "@nestjs/testing";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { ThrottlerException, ThrottlerStorageService } from "@nestjs/throttler";
 import { ORPCError } from "@orpc/nest";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
@@ -58,7 +62,7 @@ describe("InvestigationsController.message (#743)", () => {
 				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 			],
 		})
-			.overrideGuard(ThrottlerGuard)
+			.overrideGuard(MutationThrottleGuard)
 			.useValue({ canActivate: () => true })
 			.compile();
 		controller = module.get(InvestigationsController);
@@ -162,5 +166,49 @@ describe("InvestigationsController.message (#743)", () => {
 				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
 			).rejects.toMatchObject({ code: "CONFLICT", message: "A follow-up is already running." });
 		});
+	});
+});
+
+describe("InvestigationsController rate limit", () => {
+	function contextFor(method: string, path: string): ExecutionContext {
+		return {
+			switchToHttp: () => ({
+				getRequest: () => ({ method, path, ip: "127.0.0.1", headers: {} }),
+				getResponse: () => ({ header: () => undefined }),
+			}),
+			getClass: () => InvestigationsController,
+			getHandler: () => InvestigationsController.prototype.investigations,
+		} as unknown as ExecutionContext;
+	}
+
+	async function guardAllowingOne(): Promise<MutationThrottleGuard> {
+		const guard = new MutationThrottleGuard(
+			{ throttlers: [{ name: "default", ttl: 60_000, limit: 1 }] },
+			new ThrottlerStorageService(),
+			new Reflector(),
+		);
+		await guard.onModuleInit();
+		return guard;
+	}
+
+	it("is guarded by the mutation throttle", () => {
+		expect(Reflect.getMetadata(GUARDS_METADATA, InvestigationsController)).toEqual([MutationThrottleGuard]);
+	});
+
+	it("never throttles reading a run", async () => {
+		const guard = await guardAllowingOne();
+		for (const path of ["/api/investigations/inv-1", "/api/investigations/inv-1/status", "/api/investigations/inv-1/events"]) {
+			for (let i = 0; i < 5; i++) {
+				await expect(guard.canActivate(contextFor("GET", path))).resolves.toBe(true);
+			}
+		}
+	});
+
+	it("throttles starting and steering a run", async () => {
+		const guard = await guardAllowingOne();
+		for (const path of ["/api/investigations", "/api/investigations/inv-1/messages"]) {
+			await expect(guard.canActivate(contextFor("POST", path))).resolves.toBe(true);
+			await expect(guard.canActivate(contextFor("POST", path))).rejects.toBeInstanceOf(ThrottlerException);
+		}
 	});
 });

@@ -6,8 +6,8 @@ import { cn } from "./utils";
 
 describe("cn", () => {
 	it("keeps a custom size beside a colour", () => {
-		expect(cn("text-record text-muted-foreground")).toBe(
-			"text-record text-muted-foreground",
+		expect(cn("text-body text-text-2")).toBe(
+			"text-body text-text-2",
 		);
 		expect(cn("text-meta", "text-sev-critical")).toBe(
 			"text-meta text-sev-critical",
@@ -15,7 +15,10 @@ describe("cn", () => {
 	});
 
 	it("lets a later size replace an earlier one", () => {
-		expect(cn("text-sm", "text-record")).toBe("text-record");
-		expect(cn("text-record", "text-meta")).toBe("text-meta");
+		expect(cn("text-sm", "text-body")).toBe("text-body");
+		expect(cn("text-body", "text-meta")).toBe("text-meta");
+		expect(cn("text-title text-text-1", "text-heading")).toBe(
+			"text-text-1 text-heading",
+		);
 	});
 });

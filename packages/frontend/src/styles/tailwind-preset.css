@@ -64,32 +64,6 @@
   --duration-default: 200ms;
   --ease-ui: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Retiring (study-v3 §8): legacy names for the screens PR 2 and PR 3 restyle. */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent-foreground: var(--accent-fg);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-stale: var(--stale);
-  --color-run-active: var(--run-active);
-  --color-run-done: var(--run-done);
-  --color-run-failed: var(--run-failed);
+  /* The bare `rounded`, for the shadcn primitives PR 1 kept. */
   --radius: 6px;
-  --text-record: 13px;
-  --text-record--line-height: 20px;
-  --text-slot: 20px;
-  --text-slot--line-height: 24px;
 }

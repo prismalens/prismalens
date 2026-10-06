@@ -389,7 +389,7 @@ export function ConnectionFormDialog({
 								</SelectContent>
 							</Select>
 							{showErrors && !selectedValue && (
-								<p className="text-record text-destructive">
+								<p className="text-body text-danger">
 									Please select a provider or integration
 								</p>
 							)}
@@ -407,7 +407,7 @@ export function ConnectionFormDialog({
 										onChange={(e) => setConnectionLabel(e.target.value)}
 										placeholder="e.g., Personal Account (optional)"
 									/>
-									<p className="text-xs text-muted-foreground">
+									<p className="text-xs text-text-2">
 										A friendly name to distinguish this connection
 									</p>
 								</div>
@@ -431,7 +431,7 @@ export function ConnectionFormDialog({
 									<>
 										{mode === "edit" && (
 											<div className="space-y-1">
-												<Label className="text-record text-muted-foreground">
+												<Label className="text-body text-text-2">
 													Leave fields blank to keep existing values
 												</Label>
 											</div>

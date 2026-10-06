@@ -33,13 +33,16 @@ export function DockedComposer({
 	const { toast } = useToast();
 	const who = useRunAgentModel(run.investigation);
 	const live = !!run.state && isRunStateLive(run.state);
+	// A failed run offers a new investigation first (R4.4, the failed report).
 	const mode = composerMode(
-		investigationId ? { live, resumable: run.resumable } : null,
+		investigationId
+			? { live, resumable: run.resumable && run.state !== "failed" }
+			: null,
 	);
 
 	return (
 		<div
-			className={cn("shrink-0 bg-background px-4 pt-1 pb-3 sm:px-6", className)}
+			className={cn("shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6", className)}
 			data-testid="docked-composer"
 		>
 			<div className={cn("mx-auto", width)}>

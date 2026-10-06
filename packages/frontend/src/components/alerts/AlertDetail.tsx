@@ -15,7 +15,7 @@ import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
-import { StateWord } from "@/components/shared/StateChip";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,

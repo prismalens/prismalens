@@ -17,6 +17,8 @@ export interface SummaryInput {
 	/** The latest investigation ran with no repository. */
 	noRepo: boolean;
 	attention: IncidentAttention | null;
+	/** What a live run is doing right now, for the summary's run sentence. */
+	step?: string | null;
 }
 
 export type NextStep = {
@@ -63,7 +65,11 @@ export function incidentSummary(i: SummaryInput): {
 	let failedWords: ReturnType<typeof failureWords> | null = null;
 	if (!latest) lines.push("No investigation yet.");
 	else if (state === "starting" || state === "working" || state === "stopping")
-		lines.push("An investigation is working now.");
+		lines.push(
+			i.step
+				? `An investigation is working now: ${i.step}.`
+				: "An investigation is working now.",
+		);
 	else if (state === "done")
 		lines.push(
 			latest.rootCause
@@ -106,7 +112,7 @@ export function incidentSummary(i: SummaryInput): {
 								text: "Its alerts cleared. Resolve it, with the cause if you know it.",
 							}
 						: state === "done"
-							? { kind: "resolve", text: "Check the conclusion, then resolve." }
+							? { kind: "resolve", text: "Read the report, then resolve." }
 							: !latest
 								? { kind: "investigate", text: "Start an investigation." }
 								: null;
