@@ -6,19 +6,28 @@
  * `<workspace>/attachments/<id>`, outside every run's snapshot, so the gate's
  * path rule never admits them; a run reads only what its prompt carried.
  */
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	ATTACHMENT_IMAGE_MAX_BYTES,
+	ATTACHMENT_IMAGE_TYPES,
 	ATTACHMENT_TEXT_MAX_BYTES,
 	type Attachment,
 	attachmentKind,
 	type JobAttachment,
 } from "@prismalens/contracts";
+import { fileTypeFromBuffer } from "file-type";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineService } from "../timeline/timeline.service.js";
 
@@ -29,6 +38,29 @@ export function attachmentsDir(): string {
 /** Every stored file goes with a Danger zone reset. */
 export function removeAllAttachmentFiles(): void {
 	rmSync(attachmentsDir(), { recursive: true, force: true });
+}
+
+/**
+ * The type the bytes are, never the type the client sent: an image must carry a
+ * supported image's magic bytes and text must decode as UTF-8 (R4.3).
+ */
+async function sniffedType(
+	kind: "image" | "text",
+	bytes: Buffer,
+): Promise<string | null> {
+	if (kind === "text") return isUtf8(bytes) ? "text/plain" : null;
+	const found = await fileTypeFromBuffer(bytes);
+	return found &&
+		(ATTACHMENT_IMAGE_TYPES as readonly string[]).includes(found.mime)
+		? found.mime
+		: null;
+}
+
+function writeAttachment(id: string, bytes: Buffer): void {
+	const path = join(attachmentsDir(), id);
+	if (existsSync(path)) return;
+	mkdirSync(attachmentsDir(), { recursive: true });
+	writeFileSync(path, bytes);
 }
 
 type Row = {
@@ -81,22 +113,38 @@ export class AttachmentsService {
 					kind === "image" ? "Images up to 4 MB" : "Text files up to 256 KB",
 			});
 		const bytes = Buffer.from(await file.arrayBuffer());
+		const mimeType = await sniffedType(kind, bytes);
+		if (!mimeType)
+			throw new ORPCError("UNSUPPORTED_MEDIA_TYPE", {
+				message:
+					kind === "image"
+						? "That file is not a PNG, JPEG, WebP or GIF image."
+						: "That file is not UTF-8 text.",
+			});
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		const same = await this.prisma.attachment.findFirst({
 			where: { incidentId, sha256 },
 		});
-		if (same) return toAttachment(same);
+		if (same) {
+			// A row whose file went missing takes the bytes again rather than answering ENOENT forever.
+			writeAttachment(same.id, bytes);
+			return toAttachment(same);
+		}
 		const row = await this.prisma.attachment.create({
 			data: {
 				incidentId,
 				name: file.name.slice(0, 200) || "attachment",
-				mimeType: kind === "text" ? "text/plain" : file.type,
+				mimeType,
 				size: bytes.length,
 				sha256,
 			},
 		});
-		mkdirSync(attachmentsDir(), { recursive: true });
-		writeFileSync(join(attachmentsDir(), row.id), bytes);
+		try {
+			writeAttachment(row.id, bytes);
+		} catch (e) {
+			await this.prisma.attachment.delete({ where: { id: row.id } });
+			throw e;
+		}
 		await this.timeline.create({
 			incidentId,
 			type: "custom",

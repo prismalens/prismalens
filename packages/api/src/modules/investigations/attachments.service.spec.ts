@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,9 @@ describe("AttachmentsService (R4.3)", () => {
 				const row = { id: `a000000${rows.length}-0000-4000-8000-000000000000`, createdAt: new Date(), ...data };
 				rows.push(row);
 				return row;
+			}),
+			delete: vi.fn(async ({ where }: { where: { id: string } }) => {
+				rows = rows.filter((r) => r.id !== where.id);
 			}),
 		},
 	};
@@ -69,6 +72,38 @@ describe("AttachmentsService (R4.3)", () => {
 			service().upload(INCIDENT, new File(["%PDF"], "report.pdf", { type: "application/pdf" })),
 		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE" });
 		expect(rows).toHaveLength(0);
+	});
+
+	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
+
+	it("types an image by its bytes, and refuses bytes that are not the image or text they claim (R4.3)", async () => {
+		const shot = await service().upload(INCIDENT, new File([PNG], "panel.jpg", { type: "image/jpeg" }));
+		expect(shot.mimeType).toBe("image/png");
+		await expect(
+			service().upload(INCIDENT, new File(["<script>x</script>"], "panel.png", { type: "image/png" })),
+		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "That file is not a PNG, JPEG, WebP or GIF image." });
+		await expect(
+			service().upload(INCIDENT, new File([new Uint8Array([0xff, 0xfe, 0x00, 0xc3])], "page.html", { type: "text/html" })),
+		).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "That file is not UTF-8 text." });
+		expect(rows).toHaveLength(1);
+	});
+
+	it("keeps no row when the file cannot be written, and the same bytes upload once the disk is back", async () => {
+		writeFileSync(join(dir, "attachments"), "not a directory");
+		await expect(service().upload(INCIDENT, new File(["x"], "a.txt", { type: "text/plain" }))).rejects.toThrow();
+		expect(rows).toHaveLength(0);
+		rmSync(join(dir, "attachments"));
+		const made = await service().upload(INCIDENT, new File(["x"], "a.txt", { type: "text/plain" }));
+		const [job] = await service().forJob(INCIDENT, [made.id]);
+		expect(readFileSync(job?.path ?? "", "utf8")).toBe("x");
+	});
+
+	it("writes the bytes again when the same upload finds its row without a file", async () => {
+		const made = await service().upload(INCIDENT, new File(["x"], "a.txt", { type: "text/plain" }));
+		rmSync(join(dir, "attachments", made.id));
+		const again = await service().upload(INCIDENT, new File(["x"], "a.txt", { type: "text/plain" }));
+		expect(again.id).toBe(made.id);
+		expect(readFileSync(join(dir, "attachments", made.id), "utf8")).toBe("x");
 	});
 
 	it("refuses an id that is not on the incident", async () => {
