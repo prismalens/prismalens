@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { useAgentChoice } from "@/components/agent/AgentPicker";
+import {
+	agentModelLabel,
+	useAgentChoice,
+} from "@/components/agent/AgentPicker";
 import { useAbout } from "@/components/settings/AboutSettings";
 import { useDevices } from "@/components/settings/DevicesTab";
 import { useTelemetrySettings } from "@/components/settings/TelemetrySettings";
@@ -11,6 +15,7 @@ import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useConnections, useIntegrations } from "@/lib/api/hooks";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
+import { orpc } from "@/lib/api/orpc-client";
 
 export type SettingsTab =
 	| "harness"
@@ -32,13 +37,15 @@ export interface SettingsSectionItem {
 
 /**
  * The settings sections with one line of state each: the sidebar's list once
- * Settings swaps it in, and the phone's landing page (study-v3 §2).
+ * Settings swaps it in, and the phone's landing page. Every row has its line
+ * (look ruling §2); an empty one waits only while its query loads.
  */
 export function useSettingsSections(): SettingsSectionItem[] {
-	const { effective } = useAgentChoice();
+	const { effective, model } = useAgentChoice();
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
 	const { data: delivery } = useLastDelivery();
+	const { data: reports } = useQuery(orpc.settings.delivery.get.queryOptions());
 	const { managesPairing } = useOperator();
 	const { data: devices } = useDevices(managesPairing);
 	const { data: about } = useAbout();
@@ -46,31 +53,49 @@ export function useSettingsSections(): SettingsSectionItem[] {
 	const pulled = (connections ?? []).filter((c) =>
 		PULL_TEMPLATES.has(c.templateId ?? ""),
 	).length;
-	const named = (integrations ?? [])
-		.filter((i) => !PULL_TEMPLATES.has(i.templateId))
-		.map((i) => i.label);
+	const named = [
+		...(reports?.slackConfigured ? ["Slack"] : []),
+		...(integrations ?? [])
+			.filter((i) => !PULL_TEMPLATES.has(i.templateId))
+			.map((i) => i.label),
+	];
+	const agent = agentModelLabel(effective, model);
+	const sources = [delivery ? "Webhook" : "", pulled ? `${pulled} pulled` : ""]
+		.filter(Boolean)
+		.join(", ");
 	return [
-		{ tab: "harness", label: "Agent", line: effective?.label ?? "None found" },
+		{
+			tab: "harness",
+			label: "Agent",
+			line: effective
+				? [agent.agent, agent.model]
+						.filter((w) => w && w !== "agent default")
+						.join(", ")
+				: "None found",
+		},
 		{
 			tab: "sources",
 			label: "Alert sources",
-			line: [
-				delivery ? "webhook" : "",
-				pulled ? `${pulled} source${pulled === 1 ? "" : "s"}` : "",
-			]
-				.filter(Boolean)
-				.join(", "),
+			line: connections ? sources || "None yet" : "",
 		},
-		{ tab: "integrations", label: "Integrations", line: named.join(", ") },
+		{
+			tab: "integrations",
+			label: "Integrations",
+			line: integrations ? named.join(", ") || "None connected" : "",
+		},
 		{
 			tab: "devices",
 			label: "Devices",
-			line: devices ? `${devices.devices.length} paired` : "",
+			line: !managesPairing
+				? "Managed on the host"
+				: devices
+					? `${devices.devices.length} paired`
+					: "",
 		},
 		{
 			tab: "usage",
 			label: "Usage data",
-			line: telemetry.data ? (telemetry.data.enabled ? "on" : "off") : "",
+			line: telemetry.data ? (telemetry.data.enabled ? "On" : "Off") : "",
 		},
 		{
 			tab: "about",
@@ -79,7 +104,11 @@ export function useSettingsSections(): SettingsSectionItem[] {
 				? `${about.update.latest} available`
 				: (about?.version ?? ""),
 		},
-		{ tab: "danger", label: "Danger zone", line: "" },
+		{
+			tab: "danger",
+			label: "Danger zone",
+			line: "Reset or delete this install",
+		},
 	];
 }
 
@@ -91,8 +120,8 @@ export const PULL_TEMPLATES: ReadonlySet<string> = new Set([
 
 /**
  * The content of a Settings section, or of Services, which keeps this frame
- * while it waits for its own page (PR 2). The section list lives in the
- * sidebar; this is the header and a centred reading column.
+ * while it waits for its own page. The header reads "Settings  Agent"; Back
+ * lives once, at the top of the section list (look ruling §2).
  */
 export function SettingsFrame({
 	section,
@@ -116,21 +145,22 @@ export function SettingsFrame({
 		>
 			<PageHeader title={services ? "Services" : "Settings"}>
 				{!services && (
-					<span className="max-md:hidden text-text-3">{title}</span>
+					<h2 className="text-body font-normal text-text-3">{title}</h2>
 				)}
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-4 pb-12 md:px-6">
-					<div className="flex flex-wrap items-start justify-between gap-3">
-						<div className="min-w-0">
-							<h2 className="text-title">{title}</h2>
-							{intro && <p className="mt-1 text-body text-text-2">{intro}</p>}
+				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-2 pb-12 md:px-6">
+					{(intro || actions) && (
+						<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+							{intro && (
+								<p className="min-w-0 text-body text-text-2">{intro}</p>
+							)}
+							{actions && (
+								<div className="flex items-center gap-2">{actions}</div>
+							)}
 						</div>
-						{actions && (
-							<div className="flex items-center gap-2">{actions}</div>
-						)}
-					</div>
-					<div className="mt-6">{children}</div>
+					)}
+					{children}
 				</div>
 			</div>
 		</div>

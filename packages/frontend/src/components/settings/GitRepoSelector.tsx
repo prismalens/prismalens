@@ -9,25 +9,15 @@
  */
 
 import type { GitOrganization, GitRepository } from "@prismalens/contracts";
-import {
-	Building2,
-	Check,
-	GitBranch,
-	Globe,
-	Loader2,
-	Lock,
-	Search,
-	Star,
-} from "lucide-react";
+import { Globe, Loader2, Lock, Search, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Pool, Row } from "@/components/shared/Row";
+import { Segmented } from "@/components/shared/Segmented";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
+import { Empty, Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
 	Select,
 	SelectContent,
@@ -35,8 +25,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+
+/** Radix reserves the empty value for "nothing chosen"; every org needs its own. */
+const ALL_ORGS = "__all";
 
 export interface GitRepoSelectorProps {
 	connectionId: string;
@@ -150,229 +141,183 @@ export function GitRepoSelector({
 		repoMode === "all" || (repoMode === "specific" && selectedRepos.size > 0);
 
 	return (
-		<div className="space-y-6">
-			{/* Organization selector */}
-			<Card>
-				<CardHeader className="pb-3">
-					<CardTitle className="text-base flex items-center gap-2">
-						<Building2 className="h-4 w-4" />
-						Organization
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{isLoadingOrgs ? (
-						<Skeleton className="h-10 w-full" />
-					) : organizations.length === 0 ? (
-						<p className="text-body text-text-2">
-							No organizations found. You may need to grant organization access
-							in {providerDisplayName}.
-						</p>
-					) : (
-						<Select value={selectedOrg ?? ""} onValueChange={onOrgChange}>
-							<SelectTrigger>
-								<SelectValue placeholder="Select an organization" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="">
-									<span className="text-text-2">
-										All accessible repositories
-									</span>
-								</SelectItem>
-								{organizations.map((org) => (
-									<SelectItem key={org.id} value={org.name}>
-										<div className="flex items-center gap-2">
-											{org.avatarUrl && (
-												<img
-													src={org.avatarUrl}
-													alt={org.displayName}
-													className="h-4 w-4 rounded"
-												/>
-											)}
-											<span>{org.displayName}</span>
-											{org.repoCount !== undefined && (
-												<span className="text-xs text-text-2">
-													({org.repoCount} repos)
-												</span>
-											)}
-										</div>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					)}
-				</CardContent>
-			</Card>
+		<div>
+			<SettingGroup title="Organization">
+				{isLoadingOrgs ? (
+					<Loading rows={1} />
+				) : organizations.length === 0 ? (
+					<Empty
+						text={`No organizations found. Grant organization access in ${providerDisplayName}.`}
+					/>
+				) : (
+					<Pool>
+						<SettingRow
+							label="Read repositories from"
+							description="All the repositories this connection can reach, or one organization's"
+						>
+							<Select
+								value={selectedOrg ?? ALL_ORGS}
+								onValueChange={(v) =>
+									onOrgChange(v === ALL_ORGS ? undefined : v)
+								}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="All accessible" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={ALL_ORGS}>All accessible</SelectItem>
+									{organizations.map((org) => (
+										<SelectItem key={org.id} value={org.name}>
+											<span className="flex items-center gap-2">
+												{org.avatarUrl && (
+													<img
+														src={org.avatarUrl}
+														alt=""
+														className="size-4 rounded-[3px]"
+													/>
+												)}
+												<span>{org.displayName}</span>
+												{org.repoCount !== undefined && (
+													<span className="text-text-3">{org.repoCount}</span>
+												)}
+											</span>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</SettingRow>
+					</Pool>
+				)}
+			</SettingGroup>
 
-			{/* Repository access mode */}
-			<Card>
-				<CardHeader className="pb-3">
-					<CardTitle className="text-base flex items-center gap-2">
-						<GitBranch className="h-4 w-4" />
-						Repository Access
-					</CardTitle>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<RadioGroup
-						value={repoMode}
-						onValueChange={(v: string) => setRepoMode(v as "all" | "specific")}
-					>
-						<div className="flex items-center space-x-2">
-							<RadioGroupItem value="all" id="all" />
-							<Label htmlFor="all" className="flex items-center gap-2">
-								All repositories
-								{!isLoadingRepos && (
-									<span className="text-xs text-text-2">
-										({repositories.length} available)
-									</span>
-								)}
-							</Label>
-						</div>
-						<div className="flex items-center space-x-2">
-							<RadioGroupItem value="specific" id="specific" />
-							<Label htmlFor="specific">Select specific repositories</Label>
-						</div>
-					</RadioGroup>
-
-					{/* Repository list (for specific mode) */}
-					<Collapsible open={repoMode === "specific"}>
-						<CollapsibleContent className="space-y-3">
-							{/* Search */}
-							<div className="relative">
-								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-2" />
+			<SettingGroup
+				title="Repositories"
+				count={isLoadingRepos ? undefined : repositories.length}
+				className="mt-8"
+			>
+				<Segmented
+					label="Which repositories"
+					value={repoMode}
+					onChange={setRepoMode}
+					options={[
+						{ value: "all", label: "All" },
+						{ value: "specific", label: "Chosen ones" },
+					]}
+					className="mb-3"
+				/>
+				{repoMode === "specific" && (
+					<>
+						<div className="mb-2 flex items-center gap-2">
+							<div className="relative min-w-0 flex-1">
+								<Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-3" />
 								<Input
-									placeholder="Search repositories..."
+									aria-label="Search repositories"
+									placeholder="Search"
 									value={repoSearch}
 									onChange={(e) => setRepoSearch(e.target.value)}
-									className="pl-9"
+									className="pl-8"
 								/>
 							</div>
-
-							{/* Select all button */}
-							<div className="flex items-center justify-between">
-								<span className="text-body text-text-2">
-									{selectedRepos.size} selected
-								</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={toggleAllVisible}
-									disabled={filteredRepos.length === 0}
-								>
-									{filteredRepos.every((r) => selectedRepos.has(r.fullName))
-										? "Deselect all"
-										: "Select all"}
-								</Button>
-							</div>
-
-							{/* Repository list */}
-							{isLoadingRepos ? (
-								<div className="space-y-2">
-									{[...Array(5)].map((_, i) => (
-										<Skeleton key={i} className="h-12 w-full" />
-									))}
-								</div>
-							) : filteredRepos.length === 0 ? (
-								<p className="text-body text-text-2 text-center py-4">
-									{repoSearch
-										? "No repositories match your search"
-										: "No repositories found"}
-								</p>
-							) : (
-								<div className="max-h-64 overflow-y-auto space-y-1 border rounded-md p-2">
-									{filteredRepos.map((repo) => (
-										<div
-											key={repo.id}
-											className={cn(
-												"flex items-center gap-3 p-2 rounded hover:bg-surface-3/50 cursor-pointer",
-												selectedRepos.has(repo.fullName) && "bg-surface-3",
-											)}
-											onClick={() => toggleRepo(repo.fullName)}
-										>
+							<span className="text-meta text-text-3 tabular-nums">
+								{selectedRepos.size} chosen
+							</span>
+							<Button
+								variant="text"
+								size="sm"
+								onClick={toggleAllVisible}
+								disabled={filteredRepos.length === 0}
+							>
+								{filteredRepos.every((r) => selectedRepos.has(r.fullName))
+									? "Clear these"
+									: "Choose these"}
+							</Button>
+						</div>
+						{isLoadingRepos ? (
+							<Loading rows={5} />
+						) : filteredRepos.length === 0 ? (
+							<Empty
+								text={
+									repoSearch
+										? "No repository matches."
+										: "No repositories found."
+								}
+							/>
+						) : (
+							<Pool className="max-h-80 overflow-y-auto">
+								{filteredRepos.map((repo) => (
+									<Row
+										key={repo.id}
+										className="relative"
+										lead={
 											<Checkbox
 												checked={selectedRepos.has(repo.fullName)}
 												onCheckedChange={() => toggleRepo(repo.fullName)}
+												aria-label={repo.name}
 											/>
-											<div className="flex-1 min-w-0">
-												<div className="flex items-center gap-2">
-													<span className="font-medium truncate">
-														{repo.name}
-													</span>
-													{repo.isPrivate ? (
-														<Lock className="h-3 w-3 text-text-2" />
-													) : (
-														<Globe className="h-3 w-3 text-text-2" />
-													)}
-												</div>
-												{repo.description && (
-													<p className="text-xs text-text-2 truncate">
-														{repo.description}
-													</p>
+										}
+										label={
+											<span className="flex min-w-0 items-center gap-2">
+												<span className="truncate">{repo.name}</span>
+												{repo.isPrivate ? (
+													<Lock className="size-3 shrink-0 text-text-3" />
+												) : (
+													<Globe className="size-3 shrink-0 text-text-3" />
 												)}
-											</div>
-											<div className="flex items-center gap-3 text-xs text-text-2">
-												{repo.language && (
-													<Badge variant="outline" className="text-xs">
-														{repo.language}
-													</Badge>
-												)}
+											</span>
+										}
+										meta={repo.description || "\u00a0"}
+										trailing={
+											<span className="flex items-center gap-3 text-meta text-text-3">
+												{repo.language}
 												{repo.stars !== undefined && (
-													<span className="flex items-center gap-1">
-														<Star className="h-3 w-3" />
+													<span className="flex items-center gap-1 tabular-nums">
+														<Star className="size-3" />
 														{repo.stars}
 													</span>
 												)}
-											</div>
-										</div>
-									))}
-								</div>
-							)}
-						</CollapsibleContent>
-					</Collapsible>
-				</CardContent>
-			</Card>
+											</span>
+										}
+									/>
+								))}
+							</Pool>
+						)}
+					</>
+				)}
+			</SettingGroup>
 
-			{/* Default branch */}
-			<Card>
-				<CardHeader className="pb-3">
-					<CardTitle className="text-base flex items-center gap-2">
-						<GitBranch className="h-4 w-4" />
-						Default Branch
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<Select value={defaultBranch} onValueChange={setDefaultBranch}>
-						<SelectTrigger className="w-48">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="main">main</SelectItem>
-							<SelectItem value="master">master</SelectItem>
-							<SelectItem value="develop">develop</SelectItem>
-						</SelectContent>
-					</Select>
-					<p className="text-xs text-text-2 mt-2">
-						Branch used for code analysis when no specific branch is specified.
-					</p>
-				</CardContent>
-			</Card>
+			<SettingGroup title="Default branch" className="mt-8">
+				<Pool>
+					<SettingRow
+						label="Branch"
+						description="Read when an alert does not name one"
+					>
+						<Select value={defaultBranch} onValueChange={setDefaultBranch}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="main">main</SelectItem>
+								<SelectItem value="master">master</SelectItem>
+								<SelectItem value="develop">develop</SelectItem>
+							</SelectContent>
+						</Select>
+					</SettingRow>
+				</Pool>
+			</SettingGroup>
 
-			{/* Actions */}
-			<div className="flex justify-end gap-3">
-				<Button variant="outline" onClick={onCancel} disabled={isSaving}>
+			<div className="mt-6 flex justify-end gap-2">
+				<Button variant="text" onClick={onCancel} disabled={isSaving}>
 					Cancel
 				</Button>
-				<Button onClick={handleSave} disabled={!canSave || isSaving}>
-					{isSaving ? (
-						<>
-							<Loader2 className="h-4 w-4 mr-2 motion-safe:animate-spin" />
-							Saving...
-						</>
-					) : (
-						<>
-							<Check className="h-4 w-4 mr-2" />
-							Save Configuration
-						</>
+				<Button
+					variant="primary"
+					onClick={handleSave}
+					disabled={!canSave || isSaving}
+				>
+					{isSaving && (
+						<Loader2 className="size-3.5 motion-safe:animate-spin" />
 					)}
+					Save
 				</Button>
 			</div>
 		</div>

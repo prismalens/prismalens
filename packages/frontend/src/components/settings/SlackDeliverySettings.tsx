@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
+import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,53 +31,57 @@ export function SlackDeliverySettings() {
 
 	return (
 		<SettingGroup title="Reports" testId="slack-delivery">
-			<SettingRow
-				label="Post reports to Slack"
-				description={
-					<>
-						Each finished or failed run posts its summary and cause through an{" "}
-						<a
-							className="text-accent hover:underline"
-							href="https://api.slack.com/messaging/webhooks"
-							target="_blank"
-							rel="noreferrer"
-						>
-							incoming webhook
-						</a>
-						. {configured ? "A webhook is set." : "No webhook set."}
-					</>
-				}
-				below={
-					<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-						<Input
-							aria-label={configured ? "Replace webhook URL" : "Webhook URL"}
-							type="password"
-							autoComplete="off"
-							placeholder="https://hooks.slack.com/services/"
-							value={url}
-							onChange={(e) => setUrl(e.target.value)}
-							className="flex-1"
-						/>
-						<Button
-							variant="secondary"
-							disabled={!url.trim() || update.isPending}
-							onClick={() => update.mutate({ slackWebhookUrl: url.trim() })}
-						>
-							Save
-						</Button>
-						{configured && (
-							<Button
-								variant="ghost"
-								disabled={update.isPending}
-								onClick={() => update.mutate({ slackWebhookUrl: null })}
-							>
-								Remove
-							</Button>
-						)}
-					</div>
-				}
-			/>
-			<MutationError error={update.error} />
+			<Pool>
+				<SettingRow
+					label="Post reports to Slack"
+					description={
+						configured
+							? "A webhook is set; each finished or failed run posts its summary"
+							: "No webhook set"
+					}
+					below={
+						<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+							<Input
+								aria-label={configured ? "Replace webhook URL" : "Webhook URL"}
+								type="password"
+								autoComplete="off"
+								placeholder="https://hooks.slack.com/services/"
+								value={url}
+								onChange={(e) => setUrl(e.target.value)}
+								className="flex-1"
+							/>
+							<div className="flex items-center gap-2">
+								<Button
+									variant="secondary"
+									disabled={!url.trim() || update.isPending}
+									onClick={() => update.mutate({ slackWebhookUrl: url.trim() })}
+								>
+									Save
+								</Button>
+								{configured && (
+									<Button
+										variant="danger"
+										disabled={update.isPending}
+										onClick={() => update.mutate({ slackWebhookUrl: null })}
+									>
+										Remove
+									</Button>
+								)}
+							</div>
+						</div>
+					}
+				>
+					<a
+						className="text-meta text-accent hover:underline"
+						href="https://api.slack.com/messaging/webhooks"
+						target="_blank"
+						rel="noreferrer"
+					>
+						Incoming webhooks
+					</a>
+				</SettingRow>
+			</Pool>
+			<MutationError error={update.error} className="mt-2" />
 		</SettingGroup>
 	);
 }

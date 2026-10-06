@@ -19,7 +19,7 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		// Integrations holds git hosts and delivery; the webhook moved to Alert sources.
 		await page.getByTestId("settings-nav-integrations").click();
 		await expect(
-			page.getByRole("heading", { name: "Integrations", level: 3 }),
+			page.getByRole("heading", { name: "Git hosts", level: 3 }),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("add-integration")).toHaveText(
 			"Add an integration",

@@ -10,14 +10,17 @@
 
 import type { PairedDevice } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
+import { Pool } from "@/components/shared/Row";
+import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
+import { Empty, Loading, Problem } from "@/components/shared/State";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
 import { guessDeviceName } from "@/lib/device-name";
@@ -66,30 +69,29 @@ export function DevicesTab() {
 
 	if (!managesPairing) {
 		return (
-			<p className="text-body text-text-2">
-				Devices are managed from the machine running PrismaLens, not from a
-				paired device.
-			</p>
+			<Empty text="Devices are managed from the machine running PrismaLens, not from a paired device." />
 		);
 	}
 
 	return (
 		<>
-			<section data-testid="devices-list">
-				{devices.isPending && (
-					<div className="space-y-3 py-2">
-						<Skeleton className="h-3 w-1/3" />
-						<Skeleton className="h-3 w-1/2" />
-					</div>
+			<SettingGroup
+				title="Paired"
+				count={devices.data?.devices.length || undefined}
+				testId="devices-list"
+			>
+				{devices.isPending && <Loading rows={2} />}
+				{devices.isError && (
+					<Problem
+						text="The paired devices did not load."
+						onRetry={() => devices.refetch()}
+					/>
 				)}
-				{devices.isError && <MutationError error={devices.error} />}
 				{devices.data?.devices.length === 0 && (
-					<p className="text-body text-text-2">
-						No device is paired. Only this machine can reach the instance.
-					</p>
+					<Empty text="No device is paired. Only this machine can reach the instance." />
 				)}
 				{!!devices.data?.devices.length && (
-					<ul>
+					<Pool>
 						{devices.data.devices.map((d) => (
 							<DeviceRow
 								key={d.id}
@@ -98,9 +100,9 @@ export function DevicesTab() {
 								onRenamed={refresh}
 							/>
 						))}
-					</ul>
+					</Pool>
 				)}
-			</section>
+			</SettingGroup>
 
 			<PairAnother />
 
@@ -159,69 +161,73 @@ function DeviceRow({
 		},
 	});
 	return (
-		<li
-			className="flex flex-col gap-2 border-t border-hairline py-2.5 first:border-t-0 sm:flex-row sm:items-start sm:gap-3"
-			data-testid="device-row"
-			data-current={device.current ? "" : undefined}
-		>
-			{editing ? (
-				<form
-					className="flex min-w-0 flex-1 items-center gap-2"
-					onSubmit={(e) => {
-						e.preventDefault();
-						if (name.trim())
-							rename.mutate({ id: device.id, name: name.trim() });
-					}}
-				>
-					<Input
-						aria-label="Device name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						maxLength={80}
-						autoFocus
-						onKeyDown={(e) => {
-							if (e.key === "Escape") {
-								e.preventDefault();
-								setName(device.name);
-								setEditing(false);
-							}
-						}}
-						data-testid="device-name-input"
-					/>
-					<Button type="submit" size="sm" disabled={rename.isPending}>
-						Save
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={() => {
-							setName(device.name);
-							setEditing(false);
+		<SettingRow
+			testId="device-row"
+			label={
+				editing ? (
+					<form
+						className="flex min-w-0 items-center gap-2"
+						onSubmit={(e) => {
+							e.preventDefault();
+							if (name.trim())
+								rename.mutate({ id: device.id, name: name.trim() });
 						}}
 					>
-						Cancel
-					</Button>
-				</form>
-			) : (
-				<div className="min-w-0 flex-1">
-					<p className="truncate text-body">
-						<span className="font-medium" data-testid="device-name">
+						<Input
+							aria-label="Device name"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							maxLength={80}
+							autoFocus
+							onKeyDown={(e) => {
+								if (e.key === "Escape") {
+									e.preventDefault();
+									setName(device.name);
+									setEditing(false);
+								}
+							}}
+							data-testid="device-name-input"
+						/>
+						<Button
+							type="submit"
+							variant="secondary"
+							disabled={rename.isPending}
+						>
+							Save
+						</Button>
+						<Button
+							type="button"
+							variant="text"
+							onClick={() => {
+								setName(device.name);
+								setEditing(false);
+							}}
+						>
+							Cancel
+						</Button>
+					</form>
+				) : (
+					<span className="flex min-w-0 items-baseline gap-2">
+						<span className="truncate" data-testid="device-name">
 							{device.name}
 						</span>
 						{device.current && (
-							<span className="ml-1.5 text-meta text-text-3">this device</span>
+							<StateWord tone="quiet" data-testid="device-current">
+								this device
+							</StateWord>
 						)}
-					</p>
-					<p className="mt-0.5 text-meta text-text-3" data-testid="device-line">
-						{deviceLine(device)}
-					</p>
-				</div>
-			)}
+					</span>
+				)
+			}
+			description={<span data-testid="device-line">{deviceLine(device)}</span>}
+			below={
+				rename.isError ? <MutationError error={rename.error} /> : undefined
+			}
+		>
 			{!editing && (
-				<div className="flex shrink-0 items-center gap-1">
+				<>
 					<Button
-						variant="ghost"
+						variant="text"
 						size="sm"
 						onClick={() => setEditing(true)}
 						data-testid="device-rename"
@@ -229,17 +235,16 @@ function DeviceRow({
 						Rename
 					</Button>
 					<Button
-						variant="ghost"
+						variant="danger"
 						size="sm"
 						onClick={onRevoke}
 						data-testid="device-revoke"
 					>
 						Revoke
 					</Button>
-				</div>
+				</>
 			)}
-			{rename.isError && <MutationError error={rename.error} />}
-		</li>
+		</SettingRow>
 	);
 }
 
@@ -248,85 +253,80 @@ const LOOPBACK = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i;
 function PairAnother() {
 	const here = typeof window === "undefined" ? "" : window.location.origin;
 	const [origin, setOrigin] = useState(here);
-	const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
 	const create = useMutation({
 		...orpc.pairing.manage.createLink.mutationOptions(),
 	});
 	const loopback = LOOPBACK.test(here);
 
 	return (
-		<section className="mt-8">
-			<h3 className="mb-2 text-heading">Pair another device</h3>
-			<p className="text-body text-text-2">
-				Run <code>pl pair --tailscale</code> on the machine running PrismaLens,
-				or create a link here. It works once, for 15 minutes.
-			</p>
-			<form
-				className="mt-3 flex flex-wrap items-end gap-2"
-				onSubmit={(e) => {
-					e.preventDefault();
-					setCopied("idle");
-					create.mutate({ origin: origin.trim() || undefined });
-				}}
-			>
-				{loopback && (
-					<div className="min-w-0 flex-1 basis-64">
-						<Label htmlFor="pair-origin" className="text-meta text-text-3">
-							Address the other device can reach
-						</Label>
-						<Input
-							id="pair-origin"
-							className="mt-1"
-							value={origin}
-							onChange={(e) => setOrigin(e.target.value)}
-							placeholder="https://box.tail1234.ts.net"
-						/>
-					</div>
-				)}
-				<Button
-					type="submit"
-					variant="secondary"
-					disabled={create.isPending}
-					data-testid="device-create-link"
+		<SettingGroup
+			title="Pair another device"
+			description={
+				<>
+					Or run <code>pl pair --tailscale</code> on the machine running
+					PrismaLens.
+				</>
+			}
+		>
+			<Pool>
+				<form
+					onSubmit={(e) => {
+						e.preventDefault();
+						create.mutate({ origin: origin.trim() || undefined });
+					}}
 				>
-					Create a link
-				</Button>
-			</form>
-			{loopback && LOOPBACK.test(origin) && (
-				<p className="mt-2 text-meta text-text-3">
-					This address reaches only this machine. For another device, use the
-					tailnet address from <code>pl up --tailscale-serve</code>.
-				</p>
-			)}
+					<SettingRow
+						label="A pairing link"
+						description="Works once, for 15 minutes"
+						below={
+							loopback ? (
+								<div className="space-y-1.5">
+									<label
+										htmlFor="pair-origin"
+										className="block text-meta text-text-3"
+									>
+										Address the other device can reach
+									</label>
+									<Input
+										id="pair-origin"
+										value={origin}
+										onChange={(e) => setOrigin(e.target.value)}
+										placeholder="https://box.tail1234.ts.net"
+									/>
+									<p className="min-h-4 text-meta text-text-3">
+										{LOOPBACK.test(origin) &&
+											"This address reaches only this machine. Use the tailnet address from pl up --tailscale-serve."}
+									</p>
+								</div>
+							) : undefined
+						}
+					>
+						<Button
+							type="submit"
+							variant="secondary"
+							disabled={create.isPending}
+							data-testid="device-create-link"
+						>
+							Create a link
+						</Button>
+					</SettingRow>
+				</form>
+				{create.data && (
+					<SettingRow
+						label="Open this on the other device"
+						description={
+							<Mono className="select-all" data-testid="device-link">
+								{create.data.url}
+							</Mono>
+						}
+					>
+						<CopyButton value={create.data.url} />
+					</SettingRow>
+				)}
+			</Pool>
 			{create.isError && (
 				<MutationError error={create.error} className="mt-2" />
 			)}
-			{create.data && (
-				<div className="mt-3 flex items-center gap-2">
-					<code className="min-w-0 flex-1 truncate select-all">
-						{create.data.url}
-					</code>
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label="Copy link"
-						onClick={() => {
-							// Clipboard access needs a secure context; the link stays on screen otherwise.
-							navigator.clipboard
-								.writeText(create.data.url)
-								.then(() => setCopied("copied"))
-								.catch(() => setCopied("failed"));
-						}}
-					>
-						{copied === "copied" ? <Check /> : <Copy />}
-					</Button>
-				</div>
-			)}
-			{copied === "failed" && (
-				<p className="mt-1 text-meta text-text-3">
-					Copying was blocked. Select the link and copy it by hand.
-				</p>
-			)}
-		</section>
+		</SettingGroup>
 	);
 }

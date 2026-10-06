@@ -314,8 +314,9 @@ Then(
 			"http://127.0.0.1:9093",
 		);
 		const state = await row.getByTestId("source-state").innerText();
-		if (state === "unreachable") await expect(row).toContainText("Last error");
-		else expect(state).toBe("reachable");
+		if (state === "Unreachable")
+			await expect(row).toContainText("pulls skip it until Test reaches it");
+		else expect(state).toBe("Reachable");
 	},
 );
 

@@ -714,7 +714,8 @@ When(
 	"I press Revoke on the row marked {string}",
 	async ({ page }, _label: string) => {
 		await page
-			.locator("[data-testid=device-row][data-current]")
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") })
 			.getByTestId("device-revoke")
 			.click();
 	},
@@ -743,6 +744,8 @@ Then("the row is still paired", async ({ page }) => {
 	await expect(page.getByRole("alertdialog")).toBeHidden();
 	await page.reload();
 	await expect(
-		page.locator("[data-testid=device-row][data-current]"),
+		page
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") }),
 	).toBeVisible();
 });
