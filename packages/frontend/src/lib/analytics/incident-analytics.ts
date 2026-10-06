@@ -196,7 +196,7 @@ export function answerLine(
 	if (kind === "active")
 		return {
 			kind,
-			lead: `${now.count >= 5 || now.open >= 3 ? "Busy" : "This"} ${word}: ${plural(now.count, "incident")}, ${now.open} still open.`,
+			lead: `${now.count >= 5 || now.open >= 3 ? "Busy" : "This"} ${word}: ${plural(now.count, "incident")} in the last ${days} days, ${now.open} of them still open.`,
 			needYou,
 			sub,
 		};
@@ -210,7 +210,9 @@ export function answerLine(
 
 export interface Tile {
 	key: "incidents" | "ack" | "resolve" | "investigated" | "open";
-	value: string;
+	/** Null when the window holds nothing to measure. */
+	value: string | null;
+	/** At most 22 characters, so it holds one line in a tile. */
 	label: string;
 	/** One line of comparison or meaning. */
 	line: string;
@@ -231,7 +233,11 @@ function compareTime(
 	return `${now > before ? "up" : "down"} from ${shortDuration(before)}`;
 }
 
-/** The numbers under the answer, each with one line (study-v3 §3.6). */
+/**
+ * Four numbers under the answer, each with one line (study-v3 §3.6, look
+ * ruling L22); a worse month trades Open now for the time
+ * to acknowledge, since what changed is the question it asks.
+ */
 export function tiles(
 	now: WindowFigures,
 	before: WindowFigures,
@@ -241,7 +247,7 @@ export function tiles(
 	kind: MonthKind,
 ): Tile[] {
 	const worse = kind === "worse";
-	return [
+	const all: Tile[] = [
 		{
 			key: "incidents",
 			value: String(now.count),
@@ -253,14 +259,14 @@ export function tiles(
 		},
 		{
 			key: "ack",
-			value: shortDuration(now.ack),
-			label: "Median time to acknowledge",
+			value: now.ack === null ? null : shortDuration(now.ack),
+			label: "Median to acknowledge",
 			line: compareTime(now.ack, before.ack, "paging to first human"),
 		},
 		{
 			key: "resolve",
-			value: shortDuration(now.resolve),
-			label: "Median time to resolve",
+			value: now.resolve === null ? null : shortDuration(now.resolve),
+			label: "Median to resolve",
 			line: compareTime(
 				now.resolve,
 				before.resolve,
@@ -270,7 +276,7 @@ export function tiles(
 		{
 			key: "investigated",
 			value: String(now.investigated),
-			label: "Investigated by the agent",
+			label: "Investigated by agent",
 			line:
 				before.count > 0
 					? `${before.investigated} of ${before.count} the ${days} days before`
@@ -279,13 +285,14 @@ export function tiles(
 		{
 			key: "open",
 			value: String(openNow),
-			label: "Open now",
+			label: "Open now, all time",
 			line:
 				needYou > 0
 					? `${needYou} need${needYou === 1 ? "s" : ""} you`
 					: "nothing needs you",
 		},
 	];
+	return all.filter((t) => (worse ? t.key !== "open" : t.key !== "ack"));
 }
 
 export interface DayBar {

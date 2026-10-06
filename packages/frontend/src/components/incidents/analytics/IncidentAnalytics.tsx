@@ -9,6 +9,9 @@ import {
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { Hint } from "@/components/shared/Hint";
+import { Loading } from "@/components/shared/State";
+import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import {
 	answerLine,
@@ -83,7 +86,8 @@ export function IncidentAnalytics({
 		refetchInterval: useLiveRefreshInterval(),
 	});
 
-	if (current.isLoading || previous.isLoading || !stats) return null;
+	if (current.isLoading || previous.isLoading || !stats)
+		return <Loading rows={5} className="max-w-[56rem] px-4 pt-6 md:px-6" />;
 
 	const fig = windowFigures(current.rows);
 	const prev = windowFigures(previous.rows);
@@ -102,14 +106,15 @@ export function IncidentAnalytics({
 					{answer.lead}
 				</h2>
 				{days < 90 && (
-					<button
-						type="button"
+					<Button
+						variant="text"
+						size="sm"
 						onClick={onWiden}
-						className="mt-2 text-body text-accent hover:underline"
+						className="mt-2 -ml-2"
 						data-testid="analytics-widen"
 					>
 						Show the last 90 days
-					</button>
+					</Button>
 				)}
 			</div>
 		);
@@ -147,16 +152,29 @@ export function IncidentAnalytics({
 			</div>
 
 			<dl
-				className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 lg:grid-cols-5"
+				className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4"
 				data-testid="analytics-numbers"
 			>
 				{tiles(fig, prev, days, openNow, needYou, answer.kind).map((t) => (
-					<div key={t.key} className="min-w-0" data-testid={`tile-${t.key}`}>
-						<dd className="text-[28px] leading-8 font-semibold tracking-tight tabular-nums">
-							{t.value}
+					<div
+						key={t.key}
+						className="pool flex min-w-0 flex-col px-3.5 py-3"
+						data-testid={`tile-${t.key}`}
+					>
+						<dd
+							className={
+								t.value === null
+									? "flex h-8 items-end pb-0.5 text-title font-normal text-text-3"
+									: "text-[28px] leading-8 font-semibold tracking-tight tabular-nums"
+							}
+						>
+							{t.value ?? "no data"}
 						</dd>
-						<dt className="mt-1 text-meta text-text-3">{t.label}</dt>
-						<dd className="text-meta text-text-2" data-testid="tile-line">
+						<dt className="mt-0.5 truncate text-meta text-text-3">{t.label}</dt>
+						<dd
+							className="mt-0.5 text-meta text-text-2"
+							data-testid="tile-line"
+						>
 							{t.line}
 						</dd>
 					</div>
@@ -190,17 +208,21 @@ export function IncidentAnalytics({
 					data-testid="analytics-days"
 				>
 					{bars.map((b) => (
-						<span
+						<Hint
 							key={b.day}
-							title={`${formatDate(b.day)}: ${b.count}`}
-							className="min-w-0 flex-1 rounded-t-[2px]"
-							style={{
-								height: b.count ? `${(b.count / peak) * 100}%` : "2px",
-								background: b.severity
-									? `var(--sev-${b.severity})`
-									: "var(--hairline-strong)",
-							}}
-						/>
+							label={`${formatDate(b.day)}: ${b.count}`}
+							side="top"
+						>
+							<span
+								className="min-w-0 flex-1 rounded-t-[2px]"
+								style={{
+									height: b.count ? `${(b.count / peak) * 100}%` : "2px",
+									background: b.severity
+										? `var(--sev-${b.severity})`
+										: "var(--surface-3)",
+								}}
+							/>
+						</Hint>
 					))}
 				</div>
 				<div className="mt-1 flex justify-between text-meta text-text-3">
@@ -266,9 +288,9 @@ function Breakdown({
 							className="grid grid-cols-[minmax(0,8rem)_1fr_2rem] items-center gap-3 text-meta"
 						>
 							<span className="truncate text-text-2">{r.label}</span>
-							<span className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+							<span className="h-1.5 overflow-hidden rounded-full bg-surface-1">
 								<span
-									className="block h-full rounded-full bg-accent"
+									className="block h-full rounded-full bg-surface-4"
 									style={{ width: `${(r.count / top) * 100}%` }}
 								/>
 							</span>

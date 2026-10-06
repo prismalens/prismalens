@@ -4,7 +4,7 @@
 import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { ServiceCodeSection } from "@/components/services/ServiceCodeSection";
@@ -20,14 +20,10 @@ import {
 	tierWord,
 } from "@/components/services/service-detail.utils";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Hint } from "@/components/shared/Hint";
 import { RecordSection } from "@/components/shared/RecordSection";
+import { NotFound } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { backTarget, useBack } from "@/hooks/use-back";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
@@ -105,9 +101,14 @@ function ServicePage() {
 	if (error || !service) {
 		return (
 			<div className="p-6">
-				<p className="text-body text-danger">
-					This service did not load: {error?.message ?? "not found"}
-				</p>
+				<NotFound
+					text="This service did not load. It may have been deleted."
+					back={
+						<Button variant="text" size="sm" onClick={back}>
+							Back to the services
+						</Button>
+					}
+				/>
 			</div>
 		);
 	}
@@ -128,7 +129,7 @@ function ServicePage() {
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 px-3 md:px-4 desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
 				data-testid="service-band"
 			>
-				<Button variant="ghost" size="icon" className="shrink-0" asChild>
+				<Button variant="text" size="icon" className="shrink-0" asChild>
 					<a
 						href={backHref}
 						onClick={(e) => {
@@ -149,9 +150,9 @@ function ServicePage() {
 					data-testid="service-meta"
 				>
 					<span className="text-text-2">{kindWord(service.type)}</span>
-					<span className="text-text-3" title={tierMeaning(service.tier)}>
-						{tierWord(service.tier)}
-					</span>
+					<Hint label={tierMeaning(service.tier)}>
+						<span className="text-text-3">{tierWord(service.tier)}</span>
+					</Hint>
 					{service.team && (
 						<span className="truncate text-text-3 max-sm:hidden">
 							{service.team}
@@ -160,33 +161,31 @@ function ServicePage() {
 				</span>
 				<span className="flex-1" />
 				<Button
-					variant="secondary"
+					variant="text"
 					size="sm"
 					onClick={() => setEditing(true)}
 					data-testid="service-edit"
 				>
 					Edit
 				</Button>
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button variant="ghost" size="icon-sm" aria-label="More">
-							<MoreHorizontal />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						<DropdownMenuItem
-							className="text-danger"
-							onClick={() => setDeleting(true)}
-						>
-							Delete service
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
+				<Button
+					variant="danger"
+					size="sm"
+					onClick={() => setDeleting(true)}
+					data-testid="service-delete"
+				>
+					Delete
+				</Button>
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-3 pb-12 md:px-6">
-					<p className="text-body text-text-1" data-testid="service-summary">
-						{service.description ? `${service.description} ` : ""}
+					{service.description && (
+						<p className="text-body text-text-1">{service.description}</p>
+					)}
+					<p
+						className="mt-1 text-meta text-text-2 tabular-nums"
+						data-testid="service-summary"
+					>
 						{open === 1 ? "1 incident open" : `${open} incidents open`},{" "}
 						{recent} in 30 days.
 					</p>

@@ -25,12 +25,9 @@ export function ServiceIncidentsSection({
 			{incidents.length === 0 ? (
 				<p className="text-body text-text-2">None yet.</p>
 			) : (
-				<ul>
+				<ul className="divide-y divide-hairline">
 					{incidents.slice(0, 10).map((i) => (
-						<li
-							key={i.id}
-							className="flex items-start gap-2.5 border-t border-hairline py-2.5 first:border-t-0"
-						>
+						<li key={i.id} className="flex items-start gap-2.5 py-2.5">
 							<span
 								aria-hidden
 								className="mt-1.5 size-2 shrink-0 rounded-full"

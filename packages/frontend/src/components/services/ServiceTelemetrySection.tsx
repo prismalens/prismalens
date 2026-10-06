@@ -74,13 +74,13 @@ export function ServiceTelemetrySection({
 					the brief tells the agent to query it.
 				</p>
 			) : (
-				<ul>
+				<ul className="divide-y divide-hairline">
 					{observability.map((i) => {
 						const on = isOn(i);
 						return (
 							<li
 								key={i.connectionId}
-								className="flex items-start gap-3 border-t border-hairline py-2.5 first:border-t-0"
+								className="flex items-start gap-3 py-2.5"
 								data-testid="service-telemetry-row"
 							>
 								<div className="min-w-0 flex-1">
@@ -89,15 +89,21 @@ export function ServiceTelemetrySection({
 									</p>
 									<p className="text-meta text-text-3">
 										{i.templateName},{" "}
-										{on
-											? i.status === "ACTIVE"
-												? "reachable. The brief tells the agent to query it."
-												: "unreachable at the last check."
-											: "held back from runs on this service."}
+										{on ? (
+											i.status === "ACTIVE" ? (
+												"reachable. The brief tells the agent to query it."
+											) : (
+												<span className="text-warn">
+													unreachable at the last check.
+												</span>
+											)
+										) : (
+											"held back from runs on this service."
+										)}
 									</p>
 								</div>
 								<Button
-									variant="ghost"
+									variant="text"
 									size="sm"
 									disabled={pending}
 									onClick={() => toggle(i)}

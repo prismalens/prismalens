@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ALERT_STATUS_LABEL,
 	ALERT_STATUS_PHASE,
 	type AlertStatus,
 	type AlertWithRelations,
@@ -10,17 +11,19 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Empty, Loading, Problem } from "@/components/shared/State";
+import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { useListKeyboard } from "@/hooks/use-list-keyboard";
-import { ago, useNow } from "@/hooks/use-now";
+
 import { useToast } from "@/hooks/use-toast";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
+import { formatClock, formatDate } from "@/lib/format-time";
 import { alertLanes } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
 import type { AlertsSearch } from "@/routes/_authenticated/alerts/route";
@@ -84,7 +87,7 @@ export function usePullAlerts() {
 			if (result.sources === 0) {
 				toast({
 					title: "No Alertmanager or Prometheus connection is configured",
-					description: "Add a connection under Settings → Integrations.",
+					description: "Add one under Settings, Alert sources.",
 				});
 				return;
 			}
@@ -133,7 +136,6 @@ export function AlertListPane({
 	variant = "page",
 }: AlertListPaneProps) {
 	const navigate = useNavigate();
-	const now = useNow();
 	const sidebar = variant === "sidebar";
 	const { search, listInput } = useAlertWindow();
 	const keep = {
@@ -142,7 +144,7 @@ export function AlertListPane({
 		severity: search.severity,
 	};
 	const interval = useLiveRefreshInterval();
-	const { data, isLoading, error } = useQuery({
+	const { data, isLoading, error, refetch } = useQuery({
 		...orpc.alerts.list.queryOptions({ input: listInput }),
 		refetchInterval: interval,
 	});
@@ -179,7 +181,11 @@ export function AlertListPane({
 		const selected = alert.id === selectedId;
 		const service = alert.service
 			? alert.service.displayName || alert.service.name
-			: null;
+			: "No service";
+		const ended = alert.status === "resolved" && alert.resolvedAt;
+		const when = ended
+			? `cleared ${dayOrClock(alert.resolvedAt ?? alert.triggeredAt)}`
+			: dayOrClock(alert.triggeredAt);
 		return (
 			<Link
 				key={alert.id}
@@ -190,12 +196,11 @@ export function AlertListPane({
 				aria-current={selected ? "page" : undefined}
 				data-testid="alert-row-link"
 				data-cursor={cursor === index ? "true" : undefined}
-				title={alert.title}
+				ref={selected ? scrollIntoView : undefined}
 				className={cn(
-					"flex min-w-0 items-start gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
-					sidebar ? "mx-2 py-1.5" : "mx-2 py-2",
-					cursor === index && "bg-surface-3",
-					selected && "bg-surface-3 text-text-1",
+					"group/row flex min-w-0 items-start gap-2.5 rounded-control px-2 py-1.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
+					cursor === index && "bg-surface-3 text-text-1",
+					selected && "bg-surface-4 text-text-1 hover:bg-surface-4",
 				)}
 			>
 				<span
@@ -205,29 +210,22 @@ export function AlertListPane({
 					style={{ background: `var(--sev-${alert.severity})` }}
 				/>
 				<span className="min-w-0 flex-1">
-					<span className="flex min-w-0 items-baseline gap-1.5">
-						<span className="min-w-0 truncate">{alert.title}</span>
-						{sidebar && service && (
-							<span className="min-w-8 shrink-[3] truncate text-meta text-text-3">
-								{service}
-							</span>
-						)}
+					<span className="block truncate" data-testid="alert-row-title">
+						{alert.title}
 					</span>
-					{!sidebar && (
-						<span className="mt-0.5 flex min-w-0 items-center gap-2.5 text-meta">
-							{alert.incident && (
-								<Mono className="shrink-0 text-text-3">
-									INC-{alert.incident.number}
-								</Mono>
-							)}
-							{service && (
-								<span className="truncate text-text-2">{service}</span>
-							)}
-							<span className="ml-auto shrink-0 text-text-3 tabular-nums">
-								{ago(alert.triggeredAt, now)}
-							</span>
+					<span
+						className={cn(
+							"flex min-w-0 items-center gap-2 text-meta text-text-3 group-hover/row:text-text-2",
+							(selected || cursor === index) && "text-text-2",
+						)}
+					>
+						{!sidebar && alert.incident && (
+							<Mono className="shrink-0">INC-{alert.incident.number}</Mono>
+						)}
+						<span className="min-w-0 truncate" data-testid="alert-row-meta">
+							{service}, {when}
 						</span>
-					)}
+					</span>
 				</span>
 			</Link>
 		);
@@ -241,42 +239,55 @@ export function AlertListPane({
 			aria-label="Alerts"
 		>
 			<div
-				className={cn("min-h-0 flex-1", !sidebar && "overflow-y-auto pb-6")}
+				className={cn(
+					"min-h-0 flex-1",
+					!sidebar && "overflow-y-auto px-2 pb-6 md:px-4",
+				)}
 				data-testid="alert-list"
 			>
-				{isLoading && (
-					<div className="space-y-3 px-4 py-2">
-						{[1, 2, 3, 4].map((k) => (
-							<Skeleton key={k} className="h-3" />
-						))}
-					</div>
+				{isLoading && <Loading className="px-4" />}
+				{error && !data && (
+					<Problem
+						className="px-4"
+						text="The alert list did not load."
+						onRetry={() => void refetch()}
+					/>
 				)}
-				{error && (
-					<p className="px-4 py-2 text-body text-text-1">
-						The list did not load: {error.message}
-					</p>
-				)}
-				{!isLoading && !error && rows.length === 0 && (
-					<p
-						className="px-4 py-2 text-body text-text-2"
-						data-testid="alerts-empty-state"
-					>
-						No alerts found. Sources are under Settings, Integrations.
-					</p>
+				{!isLoading && !(error && !data) && rows.length === 0 && (
+					<Empty
+						className="px-4"
+						text="No alerts found."
+						testId="alerts-empty-state"
+						action={
+							sidebar ? undefined : (
+								<Button variant="text" size="sm" asChild>
+									<Link to="/settings" search={{ tab: "sources" }}>
+										Add an alert source
+									</Link>
+								</Button>
+							)
+						}
+					/>
 				)}
 				{lanes.map((lane) => (
-					<Fragment key={lane.id}>
-						<div className="px-2" data-testid={lane.testId}>
-							<LaneHeader
-								view="alerts"
-								id={lane.id}
-								name={lane.name}
-								count={lane.items.length}
-							/>
-						</div>
+					<section
+						key={lane.id}
+						className={cn(
+							"mt-2 rounded-surface p-1",
+							sidebar ? "mx-2 bg-surface-2 shadow-raised" : "pool",
+						)}
+						data-testid={lane.testId}
+					>
+						<LaneHeader
+							view="alerts"
+							id={lane.id}
+							name={lane.name}
+							count={lane.items.length}
+							className="h-6 px-2 pt-0 pb-0"
+						/>
 						{!laneFolded(lane.id) &&
 							lane.items.map((alert) => alertRow(alert, index++))}
-					</Fragment>
+					</section>
 				))}
 				{data?.pagination.hasMore && (
 					<p className="px-4 py-2 text-meta text-text-3">
@@ -286,4 +297,22 @@ export function AlertListPane({
 			</div>
 		</section>
 	);
+}
+
+/** Today an alert reads its clock time; older, its date. */
+function dayOrClock(at: string): string {
+	const d = new Date(at);
+	return d.toDateString() === new Date().toDateString()
+		? formatClock(d)
+		: formatDate(d);
+}
+
+/** The open row stays in view when the record changes under it (L31). */
+function scrollIntoView(el: HTMLElement | null) {
+	el?.scrollIntoView({ block: "nearest" });
+}
+
+/** The word an alert's state reads (look ruling §1.3): Triggered is Firing. */
+export function alertWord(status: AlertStatus): string {
+	return status === "triggered" ? "Firing" : ALERT_STATUS_LABEL[status];
 }

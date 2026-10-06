@@ -70,7 +70,7 @@ export function IncidentFilters({
 		<div className="flex flex-wrap items-center gap-3">
 			{/* Status Filter */}
 			<Select value={status} onValueChange={onStatusChange}>
-				<SelectTrigger className="w-[160px]">
+				<SelectTrigger className="min-w-36">
 					<SelectValue placeholder="Filter by status" />
 				</SelectTrigger>
 				<SelectContent>
@@ -84,7 +84,7 @@ export function IncidentFilters({
 
 			{/* Severity Filter */}
 			<Select value={severity} onValueChange={onSeverityChange}>
-				<SelectTrigger className="w-[160px]">
+				<SelectTrigger className="min-w-36">
 					<SelectValue placeholder="Filter by severity" />
 				</SelectTrigger>
 				<SelectContent>
@@ -98,7 +98,7 @@ export function IncidentFilters({
 
 			{/* Priority Filter */}
 			<Select value={priority} onValueChange={onPriorityChange}>
-				<SelectTrigger className="w-[160px]">
+				<SelectTrigger className="min-w-36">
 					<SelectValue placeholder="Filter by priority" />
 				</SelectTrigger>
 				<SelectContent>
@@ -112,8 +112,8 @@ export function IncidentFilters({
 
 			{/* Clear Button */}
 			{hasFilters && (
-				<Button variant="ghost" size="sm" onClick={onClear}>
-					<X className="h-4 w-4 mr-1" />
+				<Button variant="text" size="sm" onClick={onClear}>
+					<X />
 					Clear
 				</Button>
 			)}

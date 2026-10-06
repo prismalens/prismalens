@@ -3,9 +3,9 @@
 
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 import { useConnections, useHarnesses, useSetupStatus } from "@/lib/api/hooks";
 import {
 	maskToken,
@@ -107,7 +107,7 @@ function Step({
 }) {
 	return (
 		<li
-			className="flex items-start gap-3 border-t border-hairline py-3 first:border-t-0"
+			className="flex items-start gap-3 py-3"
 			data-testid={testId}
 			data-done={done ? "" : undefined}
 		>
@@ -136,41 +136,6 @@ function Step({
 	);
 }
 
-function CopyButton({
-	value,
-	label,
-	testId,
-}: {
-	value: string;
-	label: string;
-	testId: string;
-}) {
-	const { toast } = useToast();
-	return (
-		<Button
-			variant="secondary"
-			size="sm"
-			onClick={async () => {
-				// No clipboard over plain HTTP on another device; say so, never "Copied".
-				try {
-					if (!navigator.clipboard) throw new Error("no clipboard");
-					await navigator.clipboard.writeText(value);
-					toast({ title: label.replace("Copy", "Copied") });
-				} catch {
-					toast({
-						title: "Not copied",
-						description: "This browser blocked the clipboard.",
-						variant: "destructive",
-					});
-				}
-			}}
-			data-testid={testId}
-		>
-			{label}
-		</Button>
-	);
-}
-
 /**
  * The first run (study-v3 §3.1): no columns, filters or counts, only the four
  * numbered steps with the system marking each Done, and New in the header as
@@ -191,7 +156,7 @@ export function FirstRunPanel() {
 				PrismaLens hands each alert to your coding agent and keeps the run, the
 				evidence and the cause on the incident.
 			</p>
-			<ol className="mt-6">
+			<ol className="pool mt-6 divide-y divide-hairline px-3.5 py-1">
 				<Step
 					n={1}
 					done={p.steps.webhook}
@@ -204,12 +169,14 @@ export function FirstRunPanel() {
 								value={url}
 								label="Copy URL"
 								testId="first-run-copy-url"
+								className="w-full"
 							/>
 							{token && (
 								<CopyButton
 									value={token.token}
 									label="Copy token"
 									testId="first-run-copy-token"
+									className="w-full"
 								/>
 							)}
 						</>

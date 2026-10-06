@@ -4,18 +4,11 @@
 import type { TopologyEdge } from "@prismalens/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Segmented } from "@/components/shared/Segmented";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
 	Select,
 	SelectContent,
@@ -87,7 +80,7 @@ export function ServiceDependenciesSection({
 			actions={
 				!adding && (
 					<Button
-						variant="ghost"
+						variant="text"
 						size="sm"
 						onClick={() => setAdding(true)}
 						data-testid="add-dependency"
@@ -100,11 +93,11 @@ export function ServiceDependenciesSection({
 			{rows.length === 0 && !adding && (
 				<p className="text-body text-text-2">None recorded.</p>
 			)}
-			<ul>
+			<ul className="divide-y divide-hairline">
 				{rows.map(({ edge, direction: d }) => (
 					<li
 						key={`${d}-${edge.service.id}`}
-						className="flex items-center gap-3 border-t border-hairline py-2.5 first:border-t-0"
+						className="flex items-center gap-3 py-2.5"
 						data-testid="service-dependency-row"
 					>
 						<p className="min-w-0 flex-1 text-body">
@@ -122,27 +115,19 @@ export function ServiceDependenciesSection({
 								{kindWord(edge.service.type)}, {d}
 							</span>
 						</p>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="ghost" size="icon-sm" aria-label="More">
-									<MoreHorizontal />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuItem
-									className="text-danger"
-									onClick={() =>
-										onRemove(
-											d === "upstream"
-												? { from: serviceId, to: edge.service.id }
-												: { from: edge.service.id, to: serviceId },
-										)
-									}
-								>
-									Remove
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<Button
+							variant="danger"
+							size="sm"
+							onClick={() =>
+								onRemove(
+									d === "upstream"
+										? { from: serviceId, to: edge.service.id }
+										: { from: edge.service.id, to: serviceId },
+								)
+							}
+						>
+							Remove
+						</Button>
 					</li>
 				))}
 			</ul>
@@ -150,7 +135,6 @@ export function ServiceDependenciesSection({
 				<div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
 					<Select value={other} onValueChange={setOther}>
 						<SelectTrigger
-							className="sm:w-56"
 							aria-label="Service"
 							data-testid="dependency-service"
 						>
@@ -182,7 +166,7 @@ export function ServiceDependenciesSection({
 					>
 						Add
 					</Button>
-					<Button variant="ghost" onClick={() => setAdding(false)}>
+					<Button variant="text" onClick={() => setAdding(false)}>
 						Cancel
 					</Button>
 				</div>
