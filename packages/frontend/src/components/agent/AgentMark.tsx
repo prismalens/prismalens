@@ -2,24 +2,23 @@
 // Copyright 2026 Sumit Patel
 
 import { SquareTerminal, Star } from "lucide-react";
-import {
-	siClaudecode,
-	siGooglegemini,
-	siLangchain,
-	siOpencode,
-} from "simple-icons";
+import { siClaudecode, siGooglegemini } from "simple-icons";
 import { cn } from "@/lib/utils";
 
 /**
  * Each agent's own mark (decision 20), from simple-icons (CC0 paths; the marks
- * stay their owners' trademarks, shown only to name the agent). OpenAI asked
- * simple-icons to drop its mark, so Codex shows a terminal glyph instead.
+ * stay their owners' trademarks, shown only to name the agent). Agents with no
+ * mark that reads at 20 px get a two-letter tile until one is sourced.
  */
-const MARKS: Record<string, { path: string; color: string | null }> = {
-	opencode: { path: siOpencode.path, color: null },
+const MARKS: Record<string, { path: string; color: string }> = {
 	"claude-code": { path: siClaudecode.path, color: `#${siClaudecode.hex}` },
 	gemini: { path: siGooglegemini.path, color: `#${siGooglegemini.hex}` },
-	deepagents: { path: siLangchain.path, color: `#${siLangchain.hex}` },
+};
+
+const LETTERS: Record<string, string> = {
+	opencode: "OC",
+	codex: "CX",
+	deepagents: "DA",
 };
 
 export function AgentMark({
@@ -30,6 +29,20 @@ export function AgentMark({
 	className?: string;
 }) {
 	const mark = MARKS[id];
+	const letters = LETTERS[id];
+	if (letters)
+		return (
+			<span
+				aria-hidden
+				data-testid="agent-lettermark"
+				className={cn(
+					"inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface-4 text-[9px] leading-none font-semibold text-text-1 [&.size-5]:rounded-[5px] [&.size-5]:text-[10px]",
+					className,
+				)}
+			>
+				{letters}
+			</span>
+		);
 	if (!mark)
 		return (
 			<SquareTerminal
@@ -42,8 +55,8 @@ export function AgentMark({
 		<svg
 			aria-hidden
 			viewBox="0 0 24 24"
-			className={cn("size-4 shrink-0", !mark.color && "text-text-1", className)}
-			fill={mark.color ?? "currentColor"}
+			className={cn("size-4 shrink-0", className)}
+			fill={mark.color}
 		>
 			<path d={mark.path} />
 		</svg>

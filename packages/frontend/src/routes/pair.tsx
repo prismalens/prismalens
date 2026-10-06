@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { MutationError } from "@/components/shared/MutationError";
+import { Row } from "@/components/shared/Row";
 import { operatorQueryOptions, useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { orpc } from "@/lib/api/orpc-client";
@@ -163,16 +164,17 @@ function GetANewOne() {
 	return (
 		<section className="mt-8" data-testid="pair-get-new">
 			<h2 className="mb-2 text-heading">Get a new one</h2>
-			<ul>
-				<li className="border-t border-hairline py-2.5 text-body first:border-t-0">
-					On the machine running PrismaLens, open Settings, Devices, and press
-					Create a link.
-				</li>
-				<li className="border-t border-hairline py-2.5 text-body">
-					Or run <code>pl pair --tailscale</code> there and open the link it
-					prints on this device.
-				</li>
-			</ul>
+			<div>
+				<Row label="On the machine running PrismaLens, open Settings, Devices, and press Create a link." />
+				<Row
+					label={
+						<>
+							Or run <code>pl pair --tailscale</code> there and open the link it
+							prints on this device.
+						</>
+					}
+				/>
+			</div>
 		</section>
 	);
 }

@@ -39,6 +39,7 @@ import { useNewIncident } from "@/components/shell/NewIncident";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { inSettings, useBack } from "@/hooks/use-back";
+import { useBreathePhase } from "@/hooks/use-breathe-phase";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
@@ -112,6 +113,7 @@ function Shell({ pathname }: { pathname: string }) {
 	const doors = useDoors(signedIn);
 	const settings = inSettings(pathname);
 	const back = useBack(inSettings, "/incidents");
+	useBreathePhase();
 	useEffect(() => {
 		document.documentElement.toggleAttribute("data-settings", settings);
 	}, [settings]);
@@ -160,7 +162,7 @@ function MainBar({
 			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0 desktop:app-drag">
 				<Link
 					to="/incidents"
-					className="flex items-center gap-2.5 rounded-control text-body font-semibold outline-none focus-visible:ring-2 focus-visible:ring-accent desktop:app-no-drag"
+					className="flex items-center gap-2.5 rounded-control text-body font-semibold desktop:app-no-drag"
 					aria-label="PrismaLens"
 				>
 					<PrismaLensMark className="size-[18px] shrink-0" />
@@ -169,10 +171,16 @@ function MainBar({
 			</div>
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
 				{doors.map((door) => (
-					<DoorLink key={door.to} door={door} on={isOn(pathname, door.to)} />
+					<DoorLink
+						key={door.to}
+						door={door}
+						on={isOn(pathname, door.to)}
+						labelled={full}
+					/>
 				))}
 			</nav>
-			<div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+			{/* The list scrolls under a 28 px fade; the theme toggle is a fixed foot. */}
+			<div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pb-2 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>
 			{full && <TelemetryConsent variant="strip" />}
@@ -203,13 +211,22 @@ function useFoldKey(toggle: () => void) {
 	}, [toggle]);
 }
 
-function DoorLink({ door, on }: { door: Door; on: boolean }) {
+function DoorLink({
+	door,
+	on,
+	labelled,
+}: {
+	door: Door;
+	on: boolean;
+	labelled: boolean;
+}) {
 	const key = goKey(door.label);
 	return (
 		<Hint
 			label={door.label}
 			keys={key ? ["G", key.toUpperCase()] : undefined}
 			side="right"
+			when={!labelled}
 		>
 			<Link
 				to={door.to}
@@ -217,9 +234,9 @@ function DoorLink({ door, on }: { door: Door; on: boolean }) {
 				aria-label={door.label}
 				data-testid={`nav-${door.label.toLowerCase()}`}
 				className={cn(
-					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
+					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
 					on &&
-						"font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+						"bg-surface-2 font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
 				)}
 			>
 				<span className="relative">
@@ -287,26 +304,37 @@ function ServiceList() {
 	});
 	if (services.length === 0) return null;
 	return (
-		<div className="px-2" data-testid="sidebar-services">
+		<div
+			className="mx-2 mt-2 rounded-surface bg-surface-2 p-1 shadow-raised"
+			data-testid="sidebar-services"
+		>
 			<SideLane label="Services" count={services.length} />
-			{services.map((s) => (
-				<Link
-					key={s.id}
-					to="/services/$id"
-					params={{ id: s.id }}
-					className={cn(
-						"flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
-						service?.params.id === s.id && "bg-surface-3 text-text-1",
-					)}
-				>
-					<span className="min-w-0 truncate">
-						{s.name}
-						<span className="ml-1.5 text-meta text-text-3">
-							{kindWord(s.type)}
+			{services.map((s) => {
+				const on = service?.params.id === s.id;
+				return (
+					<Link
+						key={s.id}
+						to="/services/$id"
+						params={{ id: s.id }}
+						className={cn(
+							"group/row flex h-7 min-w-0 items-center gap-2.5 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
+							on && "bg-surface-4 text-text-1 hover:bg-surface-4",
+						)}
+					>
+						<span className="min-w-0 truncate">
+							{s.name}
+							<span
+								className={cn(
+									"ml-1.5 text-meta text-text-3 group-hover/row:text-text-2",
+									on && "text-text-2",
+								)}
+							>
+								{kindWord(s.type)}
+							</span>
 						</span>
-					</span>
-				</Link>
-			))}
+					</Link>
+				);
+			})}
 		</div>
 	);
 }
@@ -322,7 +350,7 @@ export function SideLane({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-1.5 px-2.5 pt-3.5 pb-1 text-meta text-text-3">
+		<div className="flex h-6 items-center gap-1.5 px-2 text-meta text-text-3">
 			<span className="truncate">{label}</span>
 			{children}
 			{count !== undefined && (
@@ -345,7 +373,7 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 			<button
 				type="button"
 				onClick={onBack}
-				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1 outline-none focus-visible:ring-2 focus-visible:ring-accent desktop:app-no-drag"
+				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1 desktop:app-no-drag"
 				data-testid="settings-back"
 			>
 				<ChevronLeft className="size-4 text-text-2" />
@@ -365,16 +393,15 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 							search={{ tab: s.tab }}
 							aria-current={on ? "page" : undefined}
 							data-testid={`settings-nav-${s.tab}`}
-							title={s.label}
 							className={cn(
-								"relative flex flex-col rounded-control px-2.5 py-1.5 text-body text-text-2 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+								"relative flex min-h-11 min-w-0 flex-col justify-center rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
 								on &&
-									"font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+									"bg-surface-2 font-medium text-text-1 before:absolute before:top-3 before:bottom-3 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
 							)}
 						>
-							<span>{s.label}</span>
+							<span className="truncate">{s.label}</span>
 							{s.line && (
-								<small className="text-meta font-normal text-text-3">
+								<small className="truncate text-meta font-normal text-text-3">
 									{s.line}
 								</small>
 							)}
@@ -382,6 +409,9 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 					);
 				})}
 			</nav>
+			<div className="mt-auto flex shrink-0 items-center px-2 py-2">
+				<ThemeToggle />
+			</div>
 		</>
 	);
 }
@@ -435,13 +465,13 @@ function PhoneStrip({
 			<Link
 				to="/incidents"
 				aria-label="PrismaLens"
-				className="mr-auto flex items-center rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent"
+				className="mr-auto flex items-center rounded-control"
 			>
 				<PrismaLensMark className="size-[22px]" />
 			</Link>
 			{settings ? (
 				<Button
-					variant="ghost"
+					variant="text"
 					size="icon"
 					onClick={settingsBack}
 					aria-label="Back"
@@ -460,7 +490,7 @@ function PhoneStrip({
 								aria-current={on ? "page" : undefined}
 								data-testid={`strip-${door.label.toLowerCase()}`}
 								className={cn(
-									"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 outline-none focus-visible:ring-2 focus-visible:ring-accent",
+									"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 transition-colors duration-(--dur-instant)",
 									on &&
 										"font-medium text-text-1 after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent",
 								)}

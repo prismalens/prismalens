@@ -195,23 +195,22 @@ When(
 );
 
 Then(
-	"each screen's header shows one {string} button and nothing else creates an incident",
+	"each list screen's header shows one {string} button, Settings shows none, and nothing else creates an incident",
 	async ({ page }, _label: string) => {
 		expect(world(page).newCounts).toEqual(
-			["incidents", "alerts", "services", "settings"].map((screen) => ({
-				screen,
-				header: 1,
-				creators: 1,
-			})),
+			["incidents", "alerts", "services", "settings"].map((screen) => {
+				const n = screen === "settings" ? 0 : 1;
+				return { screen, header: n, creators: n };
+			}),
 		);
 	},
 );
 
 When(
-	"I press {string} from Settings and create {string} on {string}",
+	"I press {string} from Services and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
-		if (!pathOf(page).startsWith("/settings")) {
-			await page.getByTestId("sidebar").getByTestId("nav-settings").click();
+		if (!pathOf(page).startsWith("/services")) {
+			await page.goto("/services");
 		}
 		await page
 			.getByTestId("page-header")

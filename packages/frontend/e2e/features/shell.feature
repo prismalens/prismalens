@@ -15,10 +15,10 @@ Feature: Shell and Back
     When I open Alerts
     Then Alerts is current and the sidebar lists the alert, with no incident rows anywhere on the screen
 
-  Scenario: One New button, everywhere
+  Scenario: One New button on every list screen, none in Settings
     When I open the board, then Alerts, then Services, then Settings
-    Then each screen's header shows one "New" button and nothing else creates an incident
-    When I press "New" from Settings and create "Checkout slow" on "Booklogr API"
+    Then each list screen's header shows one "New" button, Settings shows none, and nothing else creates an incident
+    When I press "New" from Services and create "Checkout slow" on "Booklogr API"
     Then I am on the new incident's Overview
 
   Scenario: Back from an alert goes to where I came from
