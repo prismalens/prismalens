@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { existsSync } from "node:fs";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { ensureAppDataDir, getConfig } from "@prismalens/config";
 import { PrismaClient } from "./prisma/generated/client.js";
+import { libsqlFileUrl } from "./src/libsql-url.js";
 
 const config = getConfig();
 
@@ -11,10 +13,15 @@ const config = getConfig();
 // This stores the SQLite database file and other application data
 ensureAppDataDir();
 
-const adapter = new PrismaBetterSqlite3({
-	url: config.PRISMALENS_DB_URL,
-	readonly: config.PRISMALENS_DB_SQLITE_READONLY,
-	fileMustExist: config.PRISMALENS_DB_SQLITE_FILE_MUST_EXIST,
+const dbPath = config.PRISMALENS_DB_URL.replace(/^file:/, "");
+if (config.PRISMALENS_DB_SQLITE_FILE_MUST_EXIST && !existsSync(dbPath)) {
+	throw new Error(`SQLite database file does not exist: ${dbPath}`);
+}
+
+// libsql ships prebuilt per-platform packages and runs no install script, so
+// `npm i -g` works where scripts are off by default (npm 12, issue n1).
+const adapter = new PrismaLibSql({
+	url: libsqlFileUrl(dbPath),
 	timeout: config.PRISMALENS_DB_SQLITE_TIMEOUT,
 });
 

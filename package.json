@@ -9,7 +9,6 @@
 		"url": "https://github.com/prismalens/prismalens.git"
 	},
 	"scripts": {
-		"postinstall": "pnpm rebuild better-sqlite3",
 		"prepare": "node scripts/install-hooks.mjs",
 		"build": "turbo run build",
 		"dev": "turbo run dev --filter=!prismalens --filter=!@prismalens/desktop",

@@ -255,7 +255,7 @@ jobs:
   # here", and conflating them would hide which of the two a red cell means.
   # It is also the only job in the repo that installs the artifact the way a
   # user does — `npm i -g` — and the only cross-platform coverage of
-  # better-sqlite3's native binding and Nest's single-origin SPA serving.
+  # libsql's native binding and Nest's single-origin SPA serving.
   app-boot:
     name: App boot (${{ matrix.os }})
     needs: [mode, pack]
@@ -314,7 +314,7 @@ jobs:
         # `-g` is the point of this job, not an implementation detail: it is the
         # command README tells a stranger to run, and it is the layout
         # (<prefix>/lib/node_modules on POSIX, <prefix>\node_modules on Windows)
-        # that better-sqlite3's binding and the bin shims have to resolve from.
+        # that libsql's binding and the bin shims have to resolve from.
         #
         # Relative forward-slash paths only — an absolute path minted by
         # pwd/mktemp under Windows git-bash is an MSYS path that native npm.exe

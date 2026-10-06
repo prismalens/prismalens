@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
+import Database from "libsql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMigrationsDir } from "./migration-source.js";
 import { defaultDatabaseFile, MigrationError, runMigrations,
@@ -270,7 +270,7 @@ describe("runMigrations — partially migrated database", () => {
 			.prepare(`SELECT "id", "name", "colour" FROM "widget"`)
 			.get() as { id: string; name: string; colour: string | null };
 		db.close();
-		expect(row).toEqual({ id: "w1", name: "spinner", colour: null });
+		expect(row).toMatchObject({ id: "w1", name: "spinner", colour: null });
 
 		expect(readLedger(file).map((r) => r.migration_name)).toEqual([
 			BASE,

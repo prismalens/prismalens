@@ -6,7 +6,7 @@ import { defineConfig } from "tsup";
 /**
  * The CLI is the ONLY published package (issue #193). The first-party
  * `@prismalens/*` closure is no longer INLINED into this bundle (issue #237):
- * `pl up` also ships the NestJS API and a native `better-sqlite3` binding,
+ * `pl up` also ships the NestJS API and a native `libsql` binding,
  * and esbuild cannot inline a `.node` addon at all.
  * So `scripts/pack-cli.mjs` COPIES each built first-party package into the
  * published tarball's own `node_modules/@prismalens/<name>` and Node resolves

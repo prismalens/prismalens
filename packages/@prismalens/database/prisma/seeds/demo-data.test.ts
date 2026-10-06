@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { resetConfig } from "@prismalens/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "../../prisma/generated/client.js";
@@ -42,7 +42,7 @@ describe("seedDemoData", () => {
 			stdio: "pipe",
 		});
 
-		const adapter = new PrismaBetterSqlite3({ url: dbUrl });
+		const adapter = new PrismaLibSql({ url: dbUrl });
 		prisma = new PrismaClient({ adapter });
 	});
 

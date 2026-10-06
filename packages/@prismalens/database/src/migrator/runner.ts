@@ -40,7 +40,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
-import Database from "better-sqlite3";
+import Database from "libsql";
 import {
 	readShippedMigrations,
 	resolveMigrationsDir,
@@ -278,20 +278,21 @@ function assertHistoryIsCompatible(
 }
 
 /**
- * Copy the database with SQLite's online-backup API. A plain file copy is not
- * safe here: any `-wal` content would be left behind.
+ * Copy the database with `VACUUM INTO`, which writes a consistent snapshot. A
+ * plain file copy is not safe here: any `-wal` content would be left behind.
+ * (libsql has no online-backup API; `VACUUM INTO` is SQLite >= 3.27.)
  *
- * Reads through a SEPARATE read-only connection, because the caller takes the
- * backup while the migration connection already holds the write lock — that
- * ordering is what makes the backup match the state the migration will run
- * against. Readers are still admitted under a RESERVED lock, and no DDL has run
- * yet, so what this copies is the last committed state.
+ * Reads through a SEPARATE connection, because the caller takes the backup
+ * while the migration connection already holds the write lock — that ordering
+ * is what makes the backup match the state the migration will run against.
+ * Readers are still admitted under a RESERVED lock, and no DDL has run yet, so
+ * what this copies is the last committed state.
  */
 async function backupDatabase(databaseFile: string): Promise<string> {
 	const backupFile = `${databaseFile}.bak-${Date.now()}`;
-	const source = new Database(databaseFile, { readonly: true });
+	const source = new Database(databaseFile);
 	try {
-		await source.backup(backupFile);
+		source.prepare("VACUUM INTO ?").run(backupFile);
 	} finally {
 		source.close();
 	}
