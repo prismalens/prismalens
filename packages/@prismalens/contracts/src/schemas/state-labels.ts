@@ -218,6 +218,20 @@ export const ACCESS_LINE: Record<PermissionMode, string> = {
 		"Lets the agent do anything on this machine. PrismaLens allows every request and logs it.",
 };
 
+/** Offered only once "Allow write levels" is on in Settings, Agent (r4 R4.1). */
+export const WRITE_ACCESS_LEVELS: ReadonlySet<PermissionMode> = new Set([
+	"workspace-write",
+	"full-access",
+]);
+
+/** Whether a run may start at `level` under the operator's ceiling; the API refuses the rest. */
+export function accessAllowed(
+	level: PermissionMode,
+	allowWriteLevels: boolean | undefined,
+): boolean {
+	return !WRITE_ACCESS_LEVELS.has(level) || allowWriteLevels === true;
+}
+
 /** The tooltip's and Settings → Agent's second sentence under an access line. */
 export const ACCESS_BOUNDARY_NOTE =
 	"An operating-system boundary needs Codex's sandbox (Settings, Agent) or a container.";

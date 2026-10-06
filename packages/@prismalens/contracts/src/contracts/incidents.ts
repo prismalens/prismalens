@@ -5,9 +5,12 @@
  * Incident route contracts
  */
 import { oc } from "@orpc/contract";
+import { z } from "zod";
 import {
+	AttachmentSchema,
 	CloseIncidentSchema,
 	CreateIncidentSchema,
+	GetAttachmentSchema,
 	IdParamSchema,
 	IncidentQuerySchema,
 	IncidentSchema,
@@ -19,6 +22,7 @@ import {
 	InvestigationRefusalSchema,
 	paginatedResponseSchema,
 	UpdateIncidentSchema,
+	UploadAttachmentSchema,
 } from "../schemas/index.js";
 
 export const incidentsContract = {
@@ -108,6 +112,34 @@ export const incidentsContract = {
 				message: "Investigation cannot be started",
 			},
 		}),
+
+	/**
+	 * Attach a file for the agent, before the message or brief that carries it (R4.3)
+	 * POST /incidents/:id/attachments
+	 */
+	uploadAttachment: oc
+		.route({
+			method: "POST",
+			path: "/incidents/{id}/attachments",
+			summary: "Attach an image or a text file for the agent",
+			tags: ["incidents"],
+		})
+		.input(UploadAttachmentSchema)
+		.output(AttachmentSchema),
+
+	/**
+	 * The attached file's bytes
+	 * GET /incidents/:id/attachments/:attachmentId
+	 */
+	attachment: oc
+		.route({
+			method: "GET",
+			path: "/incidents/{id}/attachments/{attachmentId}",
+			summary: "Download an attached file",
+			tags: ["incidents"],
+		})
+		.input(GetAttachmentSchema)
+		.output(z.file()),
 
 	/**
 	 * Resolve an incident

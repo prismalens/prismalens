@@ -80,6 +80,8 @@ export interface RunPorts {
 		selection: HarnessSelection;
 		model?: string;
 		modelSource?: ModelSource;
+		/** The operator's effort for this harness (R4.2); absent means its own default. */
+		effort?: string;
 	}>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**

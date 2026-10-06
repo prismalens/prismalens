@@ -1,0 +1,232 @@
+{
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"images": true,
+	"turns": [
+		[
+			{
+				"say": "**Alert:** `test block` fired on the books list.\n\n### Findings\n\nStarting with the deploy.\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_t1",
+					"title": "`git show e87ad72 --stat`",
+					"rawInput": {
+						"command": "git show e87ad72 --stat"
+					},
+					"output": "api/routes/books.py | 12 ++++++------"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_t2",
+					"title": "read {{cwd}}/api/routes/books.py",
+					"kind": "read",
+					"rawInput": {
+						"path": "{{cwd}}/api/routes/books.py"
+					},
+					"output": "{{cwd}}/api/routes/books.py:41: books = sorted(Book.query.all(), key=_rank)"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_t3",
+					"title": "`curl -s https://status.booklogr.example/api`",
+					"rawInput": {
+						"command": "curl -s https://status.booklogr.example/api"
+					},
+					"output": "{}"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_t4",
+					"title": "`grep -rn order_by {{cwd}}/api`",
+					"rawInput": {
+						"command": "grep -rn order_by {{cwd}}/api"
+					},
+					"output": "{{cwd}}/api/models.py:9: order_by=Book.title"
+				}
+			},
+			{
+				"waitForRelease": true
+			},
+			{
+				"say": "Commit `e87ad72` sorts the whole library in Python on every request.\n"
+			},
+			{
+				"report": {
+					"summary": "Checkout's provider call has no timeout since 7f3c2a1, so the provider's 503s hold every worker.",
+					"rootCause": "Checkout calls the payment provider with no `timeout`, so its 503s hold every worker.",
+					"rootCauseCategory": "code",
+					"culprit": {
+						"service": "payments-api",
+						"changeRef": "7f3c2a1",
+						"mechanism": null
+					},
+					"hypotheses": [
+						{
+							"statement": "The provider call in 7f3c2a1 has no timeout",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "`requests.post(provider_url, json=body)` has no `timeout`; the default is none.",
+									"source": "api/payments/provider.py:48",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_read"
+								},
+								{
+									"observation": "7f3c2a1 'Call the provider with the shared session' is the newest commit.",
+									"source": "git log --oneline -3",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_log"
+								},
+								{
+									"observation": "A pool held by slow calls fits p99 climbing to the request timeout.",
+									"source": "the two observations above",
+									"direction": "supports",
+									"status": "inferred"
+								}
+							]
+						}
+					],
+					"ruledOut": [
+						{
+							"statement": "The database",
+							"why": "pool and query latency were flat through the window",
+							"evidence": [
+								{
+									"observation": "no change in the window",
+									"source": "git log --oneline -3",
+									"direction": "contradicts",
+									"status": "verified",
+									"toolCallId": "call_log"
+								}
+							]
+						}
+					],
+					"coverage": {
+						"queried": ["git log --oneline -3", "api/payments/provider.py"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Roll back 7f3c2a1 or set a 5 s timeout on the provider call",
+							"detail": "The call is at api/payments/provider.py:48.",
+							"priority": "critical"
+						},
+						{
+							"title": "Confirm the error rate falls after the rollback",
+							"detail": "`rate(http_errors{path=\"/checkout\"}[5m])` back under 1% for 10 minutes.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "On your question (*{{prompt}}*): the sort moved into Python in e87ad72."
+		}
+	],
+	"steer": [
+		{
+			"say": "On your question (*{{prompt}}*): looking at that next.\n"
+		},
+		{
+			"tool": {
+				"id": "toolu_steer",
+				"title": "`git log -1 --stat`",
+				"rawInput": {
+					"command": "git log -1 --stat"
+				},
+				"ask": false,
+				"output": "e87ad72 Order library list by shelf position"
+			}
+		},
+		{
+			"waitForRelease": true
+		}
+	],
+	"retry": [
+		{
+			"say": "Here is the report again.\n"
+		},
+		{
+			"report": {
+				"summary": "Checkout's provider call has no timeout since 7f3c2a1, so the provider's 503s hold every worker.",
+				"rootCause": "Checkout calls the payment provider with no `timeout`, so its 503s hold every worker.",
+				"rootCauseCategory": "code",
+				"culprit": {
+					"service": "payments-api",
+					"changeRef": "7f3c2a1",
+					"mechanism": null
+				},
+				"hypotheses": [
+					{
+						"statement": "The provider call in 7f3c2a1 has no timeout",
+						"status": "supported",
+						"evidence": [
+							{
+								"observation": "`requests.post(provider_url, json=body)` has no `timeout`; the default is none.",
+								"source": "api/payments/provider.py:48",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "call_read"
+							},
+							{
+								"observation": "7f3c2a1 'Call the provider with the shared session' is the newest commit.",
+								"source": "git log --oneline -3",
+								"direction": "supports",
+								"status": "verified",
+								"toolCallId": "call_log"
+							},
+							{
+								"observation": "A pool held by slow calls fits p99 climbing to the request timeout.",
+								"source": "the two observations above",
+								"direction": "supports",
+								"status": "inferred"
+							}
+						]
+					}
+				],
+				"ruledOut": [
+					{
+						"statement": "The database",
+						"why": "pool and query latency were flat through the window",
+						"evidence": [
+							{
+								"observation": "no change in the window",
+								"source": "git log --oneline -3",
+								"direction": "contradicts",
+								"status": "verified",
+								"toolCallId": "call_log"
+							}
+						]
+					}
+				],
+				"coverage": {
+					"queried": ["git log --oneline -3", "api/payments/provider.py"],
+					"notQueried": ["prometheus"]
+				},
+				"nextSteps": [
+					{
+						"title": "Roll back 7f3c2a1 or set a 5 s timeout on the provider call",
+						"detail": "The call is at api/payments/provider.py:48.",
+						"priority": "critical"
+					},
+					{
+						"title": "Confirm the error rate falls after the rollback",
+						"detail": "`rate(http_errors{path=\"/checkout\"}[5m])` back under 1% for 10 minutes.",
+						"priority": "high"
+					}
+				]
+			}
+		}
+	]
+}

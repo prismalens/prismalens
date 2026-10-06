@@ -860,6 +860,51 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
 	});
 
+	it("puts a continued run back when it fails before the row went live (R4.4)", async () => {
+		const ports = followUpPorts();
+		mocks.conductRun.mockRejectedValue(new Error("db down"));
+
+		const result = await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, kind: "continue" } },
+			io(),
+			ports,
+		);
+
+		expect(result.success).toBe(false);
+		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{ status: "completed", completedAt: new Date(restore.completedAt), error: null },
+		]);
+	});
+
+	it("leaves a continued run that went live to own its end state (R4.4)", async () => {
+		const ports = followUpPorts();
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: "agent died", failureKind: "error" };
+		});
+
+		await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, kind: "continue" } },
+			io(),
+			ports,
+		);
+
+		expect(vi.mocked(ports.followUpStatus).mock.calls.map(([, dto]) => dto.status)).toEqual(["running"]);
+	});
+
+	it("tells the engine the reopened run's model was the operator's, so the agent must take it (R4.2)", async () => {
+		const ports = followUpPorts();
+		mocks.conductRun.mockResolvedValue({ runId: "inv-1", report: null, error: null, failureKind: "none" });
+
+		await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ model: string; modelSource: string }];
+		expect(opts).toMatchObject({ model: "opencode/some-model", modelSource: "operator" });
+	});
+
 	it("refuses a run whose agent kept no session, says so in the conversation, and puts the row back", async () => {
 		const ports = followUpPorts({
 			findInvestigation: vi.fn(async () => ({
@@ -884,6 +929,26 @@ describe("follow-up on a finished run (#747)", () => {
 		]);
 		expect(ports.updateStatus).not.toHaveBeenCalled();
 		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "completed" });
+	});
+
+	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "deepagents",
+				model: "deepagents/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+			})),
+		});
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(ports.snapshot).not.toHaveBeenCalled();
 	});
 
 	it("a commit the source lost fails with git's own text, and no clone is left", async () => {

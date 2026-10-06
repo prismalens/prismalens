@@ -20,10 +20,13 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
+	type PermissionMode,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type {
+	FollowUpKind,
 	InvestigationJobData,
+	JobAttachment,
 	OperatorMessageMode,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -70,6 +73,18 @@ import {
 import type { RunPorts } from "./run-ports.js";
 
 export type { InvestigationJobData };
+
+/** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
+export class FollowUpRefused extends Error {}
+
+/** The access level a stored job payload names; undefined when it names none or does not parse. */
+function jobAccess(payload: string): InvestigationJobData["access"] {
+	try {
+		return InvestigationJobDataSchema.parse(JSON.parse(payload)).access;
+	} catch {
+		return undefined;
+	}
+}
 
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
@@ -203,7 +218,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					selection.harness,
 					settings.models?.[selection.harness],
 				);
-				return { selection, ...modelResult };
+				const effort = settings.efforts?.[selection.harness];
+				return { selection, ...modelResult, ...(effort ? { effort } : {}) };
 			},
 			incidentRepos: async (incidentId) => {
 				const service = {
@@ -416,6 +432,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		id: string,
 		text: string,
 		mode: OperatorMessageMode,
+		kind: FollowUpKind = "chat",
+		attachments: JobAttachment[] = [],
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -427,6 +445,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
+		if (kind === "continue" && row.status !== "cancelled")
+			throw new FollowUpRefused("Only a stopped run can be continued.");
+		// The run keeps the access it was started with; its first job recorded it.
+		const first = await this.prisma.job.findUnique({
+			where: { investigationId: id },
+			select: { payload: true },
+		});
+		const access = first ? jobAccess(first.payload) : undefined;
+		const sawEvidence =
+			kind === "continue" &&
+			(await this.prisma.investigationEvent.count({
+				where: {
+					investigationId: id,
+					event: { contains: '"kind":"tool_result"' },
+				},
+			})) > 0;
 		const { count } = await this.prisma.investigation.updateMany({
 			where: { id, status: row.status },
 			data: {
@@ -445,7 +479,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const jobId = await this.addInvestigationJob({
 			incidentId: row.incidentId,
 			investigationId: id,
-			resume: { text, mode, restore },
+			...(access ? { access } : {}),
+			resume: {
+				text,
+				mode,
+				restore,
+				...(kind === "continue" ? { kind, sawEvidence } : {}),
+				...(attachments.length ? { attachments } : {}),
+			},
 		});
 		if (jobId === null) {
 			await this.prisma.investigation.update({
@@ -461,6 +502,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return true;
 	}
 
+	/** The access level a run was started with (r4 R4.1): its job's, else Read-only. */
+	async runAccess(investigationId: string): Promise<PermissionMode> {
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId },
+			select: { payload: true },
+		});
+		return (job && jobAccess(job.payload)) || "read-only";
+	}
+
 	/**
 	 * Ask a running investigation to stop.
 	 *
@@ -473,11 +523,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		investigationId: string,
 		text: string,
 		mode: "queue" | "now",
+		attachments: JobAttachment[] = [],
 	): "queued" | "sent" | null {
 		let state: "queued" | "sent" | null = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
 			text,
 			mode,
+			attachments,
 			reply: (s) => {
 				state = s;
 			},

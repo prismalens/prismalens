@@ -32,6 +32,7 @@
  * stream (the UI's idempotent-upsert key is `(branchId, seq)`).
  */
 import type {
+	AttachmentRef,
 	CanonicalEvent,
 	InvestigationReport,
 	OperatorMessageMode,
@@ -148,6 +149,7 @@ export class AcpAdapter {
 		mode: OperatorMessageMode,
 		delivered: boolean,
 		resumed?: { name: string; head: string }[],
+		attachments?: AttachmentRef[],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -156,7 +158,17 @@ export class AcpAdapter {
 			mode,
 			delivered,
 			...(resumed ? { resumed } : {}),
+			...(attachments?.length ? { attachments } : {}),
 		};
+	}
+
+	/** The harness's answer to `session/set_config_option` before the first prompt (R4.2). */
+	sessionConfig(
+		option: "model" | "effort",
+		value: string,
+		accepted: boolean,
+	): CanonicalEvent {
+		return { kind: "session_config", ...this.base(), option, value, accepted };
 	}
 
 	/** Terminal: a branch failed. */

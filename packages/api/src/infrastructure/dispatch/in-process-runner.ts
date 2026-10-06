@@ -82,7 +82,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			done,
 			cancel: () => controller.abort(),
 			kill: () => controller.abort(),
-			message: (text, mode) => steer.send(text, mode),
+			message: (text, mode, attachments) => steer.send(text, mode, attachments),
 		};
 	};
 }

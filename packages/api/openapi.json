@@ -5844,6 +5844,23 @@
                   "brief": {
                     "type": "string",
                     "maxLength": 4000
+                  },
+                  "access": {
+                    "enum": [
+                      "read-only",
+                      "read-only-tools",
+                      "workspace-write",
+                      "full-access"
+                    ],
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 }
               }
@@ -5977,6 +5994,150 @@
                       ]
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/attachments": {
+      "post": {
+        "operationId": "incidents.uploadAttachment",
+        "summary": "Attach an image or a text file for the agent",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "contentMediaType": "*/*"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "incidentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "mimeType",
+                    "size",
+                    "incidentId",
+                    "sha256",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/attachments/{attachmentId}": {
+      "get": {
+        "operationId": "incidents.attachment",
+        "summary": "Download an attached file",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "*/*"
                 }
               }
             }
@@ -7117,6 +7278,9 @@
                                     },
                                     "servedModel": {
                                       "type": "string"
+                                    },
+                                    "effort": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -7511,6 +7675,25 @@
                     "resumeBlockedReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "continuable": {
+                      "type": "boolean"
+                    },
+                    "access": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "read-only",
+                            "read-only-tools",
+                            "workspace-write",
+                            "full-access"
+                          ],
                           "type": "string"
                         },
                         {
@@ -8040,6 +8223,9 @@
                                           },
                                           "servedModel": {
                                             "type": "string"
+                                          },
+                                          "effort": {
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -8434,6 +8620,25 @@
                           "resumeBlockedReason": {
                             "anyOf": [
                               {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "continuable": {
+                            "type": "boolean"
+                          },
+                          "access": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "read-only",
+                                  "read-only-tools",
+                                  "workspace-write",
+                                  "full-access"
+                                ],
                                 "type": "string"
                               },
                               {
@@ -8982,6 +9187,9 @@
                                     },
                                     "servedModel": {
                                       "type": "string"
+                                    },
+                                    "effort": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -9376,6 +9584,25 @@
                     "resumeBlockedReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "continuable": {
+                      "type": "boolean"
+                    },
+                    "access": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "read-only",
+                            "read-only-tools",
+                            "workspace-write",
+                            "full-access"
+                          ],
                           "type": "string"
                         },
                         {
@@ -9891,6 +10118,9 @@
                                         },
                                         "servedModel": {
                                           "type": "string"
+                                        },
+                                        "effort": {
+                                          "type": "string"
                                         }
                                       },
                                       "required": [
@@ -10285,6 +10515,25 @@
                         "resumeBlockedReason": {
                           "anyOf": [
                             {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "continuable": {
+                          "type": "boolean"
+                        },
+                        "access": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "read-only",
+                                "read-only-tools",
+                                "workspace-write",
+                                "full-access"
+                              ],
                               "type": "string"
                             },
                             {
@@ -10866,6 +11115,9 @@
                                     },
                                     "servedModel": {
                                       "type": "string"
+                                    },
+                                    "effort": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -11260,6 +11512,25 @@
                     "resumeBlockedReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "continuable": {
+                      "type": "boolean"
+                    },
+                    "access": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "read-only",
+                            "read-only-tools",
+                            "workspace-write",
+                            "full-access"
+                          ],
                           "type": "string"
                         },
                         {
@@ -11776,6 +12047,35 @@
                                     "head"
                                   ]
                                 }
+                              },
+                              "attachments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "mimeType": {
+                                      "type": "string"
+                                    },
+                                    "size": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name",
+                                    "mimeType",
+                                    "size"
+                                  ]
+                                }
                               }
                             },
                             "required": [
@@ -11788,6 +12088,71 @@
                               "text",
                               "mode",
                               "delivered"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "session_config"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "option": {
+                                "enum": [
+                                  "model",
+                                  "effort"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              },
+                              "accepted": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "option",
+                              "value",
+                              "accepted"
                             ]
                           },
                           {
@@ -12142,6 +12507,9 @@
                                             "type": "string"
                                           },
                                           "servedModel": {
+                                            "type": "string"
+                                          },
+                                          "effort": {
                                             "type": "string"
                                           }
                                         },
@@ -12672,6 +13040,9 @@
                                     },
                                     "servedModel": {
                                       "type": "string"
+                                    },
+                                    "effort": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -13073,6 +13444,25 @@
                         }
                       ]
                     },
+                    "continuable": {
+                      "type": "boolean"
+                    },
+                    "access": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "read-only",
+                            "read-only-tools",
+                            "workspace-write",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -13153,6 +13543,21 @@
                     ],
                     "type": "string",
                     "default": "queue"
+                  },
+                  "kind": {
+                    "enum": [
+                      "chat",
+                      "continue"
+                    ],
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 },
                 "required": [
@@ -13626,6 +14031,9 @@
                                 "type": "string"
                               },
                               "servedModel": {
+                                "type": "string"
+                              },
+                              "effort": {
                                 "type": "string"
                               }
                             },
@@ -14153,6 +14561,9 @@
                                     },
                                     "servedModel": {
                                       "type": "string"
+                                    },
+                                    "effort": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -14547,6 +14958,25 @@
                     "resumeBlockedReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "continuable": {
+                      "type": "boolean"
+                    },
+                    "access": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "read-only",
+                            "read-only-tools",
+                            "workspace-write",
+                            "full-access"
+                          ],
                           "type": "string"
                         },
                         {
@@ -25356,8 +25786,7 @@
                           },
                           "modelVia": {
                             "enum": [
-                              "config",
-                              "env",
+                              "acp",
                               "unsupported"
                             ],
                             "type": "string"
@@ -25657,6 +26086,27 @@
                           "model"
                         ]
                       }
+                    },
+                    "efforts": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "allowWriteLevels": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -25744,6 +26194,34 @@
                         "model"
                       ]
                     }
+                  },
+                  "efforts": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "allowWriteLevels": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -25814,6 +26292,27 @@
                           "model"
                         ]
                       }
+                    },
+                    "efforts": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "allowWriteLevels": {
+                      "type": "boolean"
                     }
                   },
                   "required": [

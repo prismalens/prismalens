@@ -175,25 +175,25 @@ describe("HarnessService", () => {
 
 	describe("a model stored for a harness that cannot take one (#639 rec 4)", () => {
 		it("makes the selection not runnable, with the reason", async () => {
-			process.env.PATH = pathWith("codex-acp");
+			process.env.PATH = pathWith("gemini");
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "codex", models: { codex: "synthetic/model-a" } }),
+				settingRow({ harness: "gemini", models: { gemini: "synthetic/model-a" } }),
 			);
 			await expect(service().resolveSelection()).resolves.toMatchObject({
 				runnable: false,
 				failure: "model-unsupported",
-				harness: "codex",
+				harness: "gemini",
 				pinnedBy: "settings",
 				reason: expect.stringMatching(/picks its own model/),
 			});
 		});
 
 		it("never lets another harness's model block the run", async () => {
-			process.env.PATH = pathWith("codex-acp");
+			process.env.PATH = pathWith("gemini");
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "codex", models: { opencode: "synthetic/model-a" } }),
+				settingRow({ harness: "gemini", models: { opencode: "synthetic/model-a" } }),
 			);
-			await expect(service().resolveSelection()).resolves.toMatchObject({ runnable: true, harness: "codex" });
+			await expect(service().resolveSelection()).resolves.toMatchObject({ runnable: true, harness: "gemini" });
 		});
 
 		it("runs a harness that takes a model with one set", async () => {

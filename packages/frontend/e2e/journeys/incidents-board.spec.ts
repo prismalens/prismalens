@@ -251,7 +251,7 @@ test.describe("#743 — the incidents board", () => {
 			"No investigation yet",
 		);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Investigate",
+			"Start investigation",
 		);
 
 		// On the board a Resolved card sits in Resolved; dropped on Working it

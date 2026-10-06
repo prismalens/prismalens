@@ -641,15 +641,14 @@ Then(
 			empty.getByRole("link", { name: "Conversation" }),
 		).toBeVisible();
 		await expect(empty.getByRole("link", { name: "Event log" })).toBeVisible();
-		// Resumable: the box drops the brief button for a message box in "resume"
-		// mode (composer-keys.ts), whose send control titles the reopen (#747).
+		// A stopped run that can reopen its session continues to a report (R4.4).
 		await expect(
 			page.getByTestId("composer-box").locator("[data-mode]"),
-		).toHaveAttribute("data-mode", "resume");
+		).toHaveAttribute("data-mode", "continue");
 		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
-		await expect(shown(page.getByTestId("composer-send"))).toHaveAttribute(
-			"title",
-			"Continue this investigation",
+		await expect(page.getByTestId("composer-input")).toHaveAttribute(
+			"placeholder",
+			"Continue the investigation",
 		);
 	},
 );

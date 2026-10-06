@@ -19,10 +19,14 @@ import type { Investigation, Recommendation } from "@prismalens/database";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
-import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import {
+	DispatchService,
+	FollowUpRefused,
+} from "../../infrastructure/dispatch/dispatch.service.js";
 import type { RootCauseCategory as DtoRootCauseCategory } from "../../shared/enums/index.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { GitHubCommentService } from "../delivery/github-comment.service.js";
+import { AttachmentsService } from "./attachments.service.js";
 import type {
 	InternalInvestigationResultDto,
 	RecommendationDto,
@@ -57,6 +61,7 @@ export class InvestigationsController {
 		private readonly dispatchService: DispatchService,
 		private readonly telemetry: TelemetryService,
 		private readonly githubComment: GitHubCommentService,
+		private readonly attachments: AttachmentsService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -116,7 +121,13 @@ export class InvestigationsController {
 				if (investigation.report) {
 					await this.telemetry.captureReportViewed(investigation.id);
 				}
-				return this.serializeInvestigationWithRelations(investigation);
+				const base = this.serializeInvestigationWithRelations(investigation);
+				return {
+					...base,
+					access:
+						base.report?.fidelity?.mode ??
+						(await this.dispatchService.runAccess(investigation.id)),
+				};
 			}),
 
 			// GET /investigations/:id/status - Get investigation status with job info
@@ -273,14 +284,31 @@ export class InvestigationsController {
 						new ORPCError("CONFLICT", {
 							message: "The run ended before your message reached it.",
 						});
+					const attachments = input.attachments?.length
+						? await this.attachments.forJob(
+								investigation.incidentId,
+								input.attachments,
+							)
+						: [];
 					if (TERMINAL_STATUSES.has(investigation.status)) {
 						const reason = followUpBlockedReason(investigation);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
-						const resumed = await this.dispatchService.resumeInvestigation(
-							input.id,
-							input.text,
-							input.mode,
-						);
+						const kind =
+							input.kind ??
+							(investigation.status === "cancelled" ? "continue" : "chat");
+						const resumed = await this.dispatchService
+							.resumeInvestigation(
+								input.id,
+								input.text,
+								input.mode,
+								kind,
+								attachments,
+							)
+							.catch((e: unknown) => {
+								if (e instanceof FollowUpRefused)
+									throw new ORPCError("CONFLICT", { message: e.message });
+								throw e;
+							});
 						if (!resumed)
 							throw new ORPCError("CONFLICT", {
 								message: "A follow-up is already running.",
@@ -291,6 +319,7 @@ export class InvestigationsController {
 						input.id,
 						input.text,
 						input.mode,
+						attachments,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -298,6 +327,7 @@ export class InvestigationsController {
 							input.id,
 							input.text,
 							input.mode,
+							attachments,
 						);
 					}
 					if (state === null) {
@@ -453,9 +483,17 @@ export class InvestigationsController {
 	/** Only a finished run can take a follow-up; a live one takes messages (#747). */
 	private resumeState(investigation: Investigation) {
 		if (!TERMINAL_STATUSES.has(investigation.status))
-			return { resumable: false, resumeBlockedReason: null };
+			return {
+				resumable: false,
+				resumeBlockedReason: null,
+				continuable: false,
+			};
 		const reason = followUpBlockedReason(investigation);
-		return { resumable: reason === null, resumeBlockedReason: reason };
+		return {
+			resumable: reason === null,
+			resumeBlockedReason: reason,
+			continuable: reason === null && investigation.status === "cancelled",
+		};
 	}
 
 	private serializeInvestigation(investigation: Investigation) {

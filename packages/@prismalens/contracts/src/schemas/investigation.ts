@@ -111,6 +111,8 @@ export const RunFidelitySchema = z.object({
 	harnessVersion: z.string().optional(),
 	/** The model `session/new` reported as selected; absent when the harness reported none (#639). */
 	servedModel: z.string().optional(),
+	/** The effort the harness accepted over `session/set_config_option` (R4.2); absent when none was set. */
+	effort: z.string().optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
 
@@ -240,6 +242,10 @@ export const InvestigationSchema = z.object({
 	resumable: z.boolean().optional(),
 	/** Why a finished run cannot be continued; null when it can. */
 	resumeBlockedReason: z.string().nullable().optional(),
+	/** A stopped run whose session can be reopened and taken on to a report (R4.4). */
+	continuable: z.boolean().optional(),
+	/** The access level the run was given (r4 R4.1); absent on runs from before it was recorded. */
+	access: z.enum(PERMISSION_MODES).nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -434,12 +440,35 @@ const StreamBaseShape = {
 export const OperatorMessageModeSchema = z.enum(["queue", "now"]);
 export type OperatorMessageMode = z.infer<typeof OperatorMessageModeSchema>;
 
+/** At most this many files ride on one message (R4.3). */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+export const AttachmentIdsSchema = z
+	.array(z.string().uuid())
+	.max(MAX_ATTACHMENTS_PER_MESSAGE);
+
+/** A file the operator attached, as the conversation shows it under its message. */
+export const AttachmentRefSchema = z.object({
+	id: z.string().uuid(),
+	name: z.string(),
+	mimeType: z.string(),
+	size: z.number().int().min(0),
+});
+export type AttachmentRef = z.infer<typeof AttachmentRefSchema>;
+
+/** `chat` asks a follow-up; `continue` takes a stopped run on to its report (R4.4). */
+export const FollowUpKindSchema = z.enum(["chat", "continue"]);
+export type FollowUpKind = z.infer<typeof FollowUpKindSchema>;
+
 /** Body of `POST /investigations/{id}/messages`. */
 export const SendInvestigationMessageSchema = z.object({
 	text: z.string().trim().min(1).max(4000),
 	/** Only the constant `run` branch exists until fan-out lands (#280). */
 	branchId: z.string().min(1).optional(),
 	mode: OperatorMessageModeSchema.default("queue"),
+	/** On an ended run; absent means `continue` for a stopped run and `chat` otherwise. */
+	kind: FollowUpKindSchema.optional(),
+	/** Uploaded with `POST /incidents/{id}/attachments` first. */
+	attachments: AttachmentIdsSchema.optional(),
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
@@ -513,6 +542,16 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		resumed: z
 			.array(z.object({ name: z.string(), head: z.string() }))
 			.optional(),
+		/** Files that went with the message (R4.3). */
+		attachments: z.array(AttachmentRefSchema).optional(),
+	}),
+	z.object({
+		/** The harness answered `session/set_config_option` before the first prompt (R4.2). */
+		kind: z.literal("session_config"),
+		...StreamBaseShape,
+		option: z.enum(["model", "effort"]),
+		value: z.string(),
+		accepted: z.boolean(),
 	}),
 	z.object({
 		kind: z.literal("report"),
@@ -774,6 +813,12 @@ export function singleAlertContext(
 // INVESTIGATION QUEUE JOB DATA SCHEMAS
 // =============================================================================
 
+/** An attachment as a job carries it: a path the run reads, never the bytes (R4.3). */
+export const JobAttachmentSchema = AttachmentRefSchema.extend({
+	path: z.string(),
+});
+export type JobAttachment = z.infer<typeof JobAttachmentSchema>;
+
 export const InvestigationJobDataSchema = z.object({
 	incidentId: z.string(),
 	investigationId: z.string(),
@@ -783,11 +828,20 @@ export const InvestigationJobDataSchema = z.object({
 	alerts: z.array(FiringAlertSchema).optional(),
 	/** The operator's brief for the agent (#743). */
 	brief: z.string().max(4000).optional(),
+	/** What the agent may touch (r4 R4.1); Read-only when absent. */
+	access: z.enum(PERMISSION_MODES).optional(),
+	/** Files that go with the brief, as the host stored them (R4.3). */
+	attachments: z.array(JobAttachmentSchema).optional(),
 	/** A follow-up on a finished run: reopen its session and send this (#747). */
 	resume: z
 		.object({
 			text: z.string().min(1).max(4000),
 			mode: OperatorMessageModeSchema,
+			/** `continue` takes a stopped run on to its report (R4.4); `chat` when absent. */
+			kind: FollowUpKindSchema.optional(),
+			attachments: z.array(JobAttachmentSchema).optional(),
+			/** A continued run already ran a tool before it was stopped. */
+			sawEvidence: z.boolean().optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */
 			restore: z.object({
 				status: WorkflowStatusSchema,

@@ -24,6 +24,7 @@ const eventsKey = (id: string) =>
 	orpc.investigations.getEvents.key({ input: { id } });
 
 import {
+	type AttachmentView,
 	latestAgentText,
 	type PendingMessage,
 	unmatchedPending,
@@ -68,13 +69,19 @@ export function followUpState(
 	investigation: {
 		status: string;
 		resumable?: boolean;
+		continuable?: boolean;
 		resumeBlockedReason?: string | null;
 	} | null,
-): { resumable: boolean; resumeBlockedReason: string | null } {
+): {
+	resumable: boolean;
+	continuable: boolean;
+	resumeBlockedReason: string | null;
+} {
 	if (!investigation || !isWorkflowTerminal(investigation.status))
-		return { resumable: false, resumeBlockedReason: null };
+		return { resumable: false, continuable: false, resumeBlockedReason: null };
 	return {
 		resumable: !!investigation.resumable,
+		continuable: !!investigation.continuable,
 		resumeBlockedReason: investigation.resumeBlockedReason ?? null,
 	};
 }
@@ -195,57 +202,65 @@ export function useInvestigationRun(investigationId: string | null) {
 		[cancelMutate, id],
 	);
 
-	const { mutate: messageMutate } = message;
+	const { mutateAsync: messageSend } = message;
+	/**
+	 * Settles once the API answered: a 409 resolves (the text waits as undeliverable),
+	 * any other failure rejects so the box keeps what was typed.
+	 */
 	const sendMessage = useCallback(
-		(
+		async (
 			text: string,
 			mode: "queue" | "now",
-			opts?: { branchId?: string; onError?: (error: unknown) => void },
-		) => {
+			opts?: { branchId?: string; attachments?: AttachmentView[] },
+		): Promise<void> => {
+			const attachments = opts?.attachments ?? [];
 			const local: PendingMessage = {
 				id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 				text,
 				mode,
 				at: new Date().toISOString(),
+				attachments,
 			};
 			setUndeliverable(null);
 			setPending((p) => ({ runId: p.runId, items: [...p.items, local] }));
-			messageMutate(
-				{ id, text, mode, branchId: opts?.branchId },
-				{
-					// A follow-up reopened the run: refetch so it reads live and the stream connects.
-					onSuccess: (result) => {
-						if (result.state !== "resumed") return;
-						// A stop on the finished run must not read as a stop on its follow-up.
-						setStopRequestedFor(null);
-						setFollowUpFrom({ runId: id, seq: lastSeq });
-						queryClient.invalidateQueries({
-							queryKey: investigationKeys.detail(id),
-						});
-						queryClient.invalidateQueries({ queryKey: eventsKey(id) });
-						queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-					},
-					onError: (error) => {
-						if (isConflict(error)) {
-							setPending((p) => ({
-								runId: p.runId,
-								items: p.items.map((m) =>
-									m.id === local.id ? { ...m, undelivered: true } : m,
-								),
-							}));
-							setUndeliverable(text);
-							return;
-						}
-						setPending((p) => ({
-							runId: p.runId,
-							items: p.items.filter((m) => m.id !== local.id),
-						}));
-						opts?.onError?.(error);
-					},
-				},
-			);
+			let result: Awaited<ReturnType<typeof messageSend>>;
+			try {
+				result = await messageSend({
+					id,
+					text,
+					mode,
+					branchId: opts?.branchId,
+					...(attachments.length
+						? { attachments: attachments.map((a) => a.id) }
+						: {}),
+				});
+			} catch (error) {
+				if (isConflict(error)) {
+					setPending((p) => ({
+						runId: p.runId,
+						items: p.items.map((m) =>
+							m.id === local.id ? { ...m, undelivered: true } : m,
+						),
+					}));
+					setUndeliverable(text);
+					return;
+				}
+				setPending((p) => ({
+					runId: p.runId,
+					items: p.items.filter((m) => m.id !== local.id),
+				}));
+				throw error;
+			}
+			// A follow-up reopened the run: refetch so it reads live and the stream connects.
+			if (result.state !== "resumed") return;
+			// A stop on the finished run must not read as a stop on its follow-up.
+			setStopRequestedFor(null);
+			setFollowUpFrom({ runId: id, seq: lastSeq });
+			queryClient.invalidateQueries({ queryKey: investigationKeys.detail(id) });
+			queryClient.invalidateQueries({ queryKey: eventsKey(id) });
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		},
-		[messageMutate, id, queryClient, lastSeq],
+		[messageSend, id, queryClient, lastSeq],
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];

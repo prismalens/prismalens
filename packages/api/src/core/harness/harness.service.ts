@@ -33,6 +33,10 @@ export interface HarnessSettings {
 	models?: Partial<Record<HarnessId, string>>;
 	/** Starred models across agents (R4.2), shown first in the picker. */
 	favourites?: FavouriteModel[];
+	/** Effort per harness, a value of its `thought_level` option (R4.2). */
+	efforts?: Partial<Record<HarnessId, string>>;
+	/** The access ceiling: the write levels are offered only when on (r4 R4.1). */
+	allowWriteLevels?: boolean;
 }
 
 export interface HarnessSettingsPatch {
@@ -41,9 +45,12 @@ export interface HarnessSettingsPatch {
 	models?: Partial<Record<HarnessId, string | null>>;
 	/** Replaces the whole list. */
 	favourites?: FavouriteModel[];
+	/** Merged per harness; `null` goes back to the harness's own default. */
+	efforts?: Partial<Record<HarnessId, string | null>>;
+	allowWriteLevels?: boolean;
 }
 
-/** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped. */
+/** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models and efforts alike). */
 function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 	const out: Partial<Record<HarnessId, string>> = {};
 	if (!raw || typeof raw !== "object") return out;
@@ -94,11 +101,14 @@ export class HarnessService {
 					? (parsed.harness as HarnessSettings["harness"])
 					: "auto";
 			const models = cleanModels(parsed.models);
+			const efforts = cleanModels(parsed.efforts);
 			const favourites = cleanFavourites(parsed.favourites);
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
+				...(Object.keys(efforts).length ? { efforts } : {}),
+				...(parsed.allowWriteLevels === true ? { allowWriteLevels: true } : {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -109,10 +119,14 @@ export class HarnessService {
 		const current = await this.getSettings();
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
+		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
+		const allowWriteLevels = patch.allowWriteLevels ?? current.allowWriteLevels;
 		const next: HarnessSettings = {
 			harness: patch.harness ?? current.harness,
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
+			...(Object.keys(efforts).length ? { efforts } : {}),
+			...(allowWriteLevels ? { allowWriteLevels: true } : {}),
 		};
 		await this.prisma.setting.upsert({
 			where: { key: SETTING_KEY },
