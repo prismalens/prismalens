@@ -48,7 +48,7 @@ pnpm install
 pnpm build        # turbo run build
 pnpm typecheck    # turbo run typecheck
 pnpm test         # turbo run test
-pnpm --filter @prismalens/frontend test:e2e  # Playwright e2e smoke suite (boots isolated workspace via PRISMALENS_WORKSPACE_DIR + seeded demo data; requires ports 3000 and 3001 free)
+pnpm --filter @prismalens/frontend test:e2e  # Playwright e2e suite: one isolated, seeded stack per worker on ports 3000/3001, 3002/3003, ...
 pnpm format-and-lint        # biome check . (lint + format)
 pnpm format-and-lint:fix    # biome check . --write
 ```
@@ -73,8 +73,12 @@ journey-by-journey coverage matrix live in
 
 Two things to know before running it locally:
 
-- The harness binds ports **3000 and 3001** with `reuseExistingServer: false`, so **stop `pnpm dev`
-  first** — it will not share a running dev stack.
+- Each Playwright worker gets its own API, Vite, workspace and database; worker *n* binds
+  ports 3000+2n and 3001+2n (4 workers locally, one per CPU in CI). Stop `pnpm dev` first, or move
+  the base ports with `PRISMALENS_FRONTEND_PORT`/`PRISMALENS_PORT`. `--workers=1` runs one stack.
+- The servers get a PATH holding only node, pnpm, git and the fake agents, so a real `claude` or
+  `opencode` on your machine never answers. See
+  [Agents on PATH](packages/frontend/e2e/README.md#agents-on-path).
 - On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
   re-running blind.
 

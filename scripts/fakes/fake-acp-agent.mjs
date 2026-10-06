@@ -22,7 +22,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const SESSIONS_DIR = join(HERE, "sessions");
 export const FAKE_AGENT_PATH = fileURLToPath(import.meta.url);
 
-const PICKED_DIR = join(tmpdir(), "prismalens-fake-acp-agent");
+// Per install, so concurrent e2e stacks never see each other's releases (--state-dir).
+const DEFAULT_STATE_DIR = join(tmpdir(), "prismalens-fake-acp-agent");
+const stateArg = process.argv.indexOf("--state-dir");
+const PICKED_DIR =
+	stateArg > -1 ? process.argv[stateArg + 1] : DEFAULT_STATE_DIR;
 
 /**
  * @param {string} nameOrPath
@@ -39,10 +43,15 @@ export function loadSession(nameOrPath) {
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
 
+/** The release directory of the fakes installed with `stateDir`. */
+export function releaseDir(stateDir = DEFAULT_STATE_DIR) {
+	return join(stateDir, "release");
+}
+
 /** Lets a run held by `waitForRelease` go on: any prompt containing `key` continues. */
-export function releaseRun(key) {
-	mkdirSync(RELEASE_DIR, { recursive: true });
-	writeFileSync(join(RELEASE_DIR, encodeURIComponent(key)), "");
+export function releaseRun(key, stateDir = DEFAULT_STATE_DIR) {
+	mkdirSync(releaseDir(stateDir), { recursive: true });
+	writeFileSync(join(releaseDir(stateDir), encodeURIComponent(key)), "");
 }
 
 /** @param {string} prompt */
@@ -56,21 +65,22 @@ function releasedFor(prompt) {
 /**
  * Puts the fake on PATH under the harness binaries the registry looks for.
  * @param {string} binDir
- * @param {{ session?: string, binaries?: string[] }} [opts]
+ * @param {{ session?: string, binaries?: string[], stateDir?: string }} [opts]
  */
 export function installFakeAgent(binDir, opts = {}) {
 	const session = opts.session ?? "success";
 	const binaries = opts.binaries ?? ["opencode", "claude-agent-acp"];
+	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
 		writeFileSync(
 			target,
-			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" --session "${session}" "$@"\n`,
+			`#!/bin/sh\nexec "${process.execPath}" "${FAKE_AGENT_PATH}" ${args} "$@"\n`,
 		);
 		chmodSync(target, 0o755);
 		writeFileSync(
 			`${target}.cmd`,
-			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" --session "${session}" %*\r\n`,
+			`@echo off\r\n"${process.execPath}" "${FAKE_AGENT_PATH}" ${args} %*\r\n`,
 		);
 	}
 	return binaries.map((b) => join(binDir, b));
