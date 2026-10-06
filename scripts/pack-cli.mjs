@@ -53,7 +53,7 @@
  *   |                                 computed third-party union (literal
  *   |                                 semver, no `catalog:` / `workspace:`),
  *   |                                 bundleDependencies = every @prismalens/*
- *   |                                 below, engines.node = ">=24".
+ *   |                                 below, engines.node = ">=24.15.0".
  *   +-- dist/
  *   |   +-- bin/prismalens.js ....... the `pl` / `prismalens` bin (tsup)
  *   |   +-- src/cli/up.js ........... `pl up` — boots the API in-process
@@ -118,8 +118,11 @@ const STAGING = join(CLI_DIR, ".pack-staging");
 
 const NOTICES = "THIRD_PARTY_NOTICES.txt";
 
-/** The node floor of the published package. See ENGINES below. */
-const ENGINES_NODE = ">=24";
+/**
+ * The node floor of the published package. See ENGINES below. 24.15.0 is the
+ * first 24.x whose built-in node:sqlite loads without an ExperimentalWarning (n1).
+ */
+const ENGINES_NODE = ">=24.15.0";
 
 const PINNED = {
 	// Better Auth 1.7.3 dropped the required issuer column our schema requires (#580).
@@ -790,10 +793,9 @@ export function packCli() {
 		bundleDependencies: [...copied].sort(),
 		files: ["dist", "NOTICE", NOTICES, "node_modules/@prismalens"],
 		engines: {
-			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
-			// `@prismalens/database` both declare >=24 and are now IN this tarball.
-			// One published package gets one floor, and a package that installs on
-			// Node 22 then crashes on `pl up` is worse than a higher floor.
+			// One published package gets one floor: the copied closure (`api`,
+			// `database`) needs node:sqlite, and a package that installs on an
+			// older Node then crashes on `pl up` is worse than a higher floor.
 			...cliPkg.manifest.engines,
 			node: ENGINES_NODE,
 		},

@@ -25,7 +25,7 @@ run it on your machine, read
 
 ### npm
 
-Needs Node.js 24+.
+Needs Node.js 24.15 or newer.
 
 ```bash
 npm install -g prismalens

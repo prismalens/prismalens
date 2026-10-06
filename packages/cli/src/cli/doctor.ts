@@ -44,9 +44,10 @@ import consola from "consola";
 import { cliVersion } from "../version.js";
 import { assertKnownFlags } from "./flags.js";
 
-// The packed tarball declares engines.node >=24 (scripts/pack-cli.mjs).
+// Matches engines.node in scripts/pack-cli.mjs: the first 24.x whose built-in
+// node:sqlite (the database driver) runs without an ExperimentalWarning (n1).
 const MIN_NODE_MAJOR = 24;
-const MIN_NODE_MINOR = 0;
+const MIN_NODE_MINOR = 15;
 
 interface Check {
 	name: string;
@@ -65,7 +66,7 @@ function checkNodeVersion(): Check {
 		pass,
 		detail: pass
 			? `${process.versions.node} (>= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} required)`
-			: `${process.versions.node} — prismalens requires Node >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}`,
+			: `${process.versions.node} — prismalens requires Node >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}, whose built-in node:sqlite is its database driver. Upgrade Node (https://nodejs.org) and reinstall.`,
 		hard: true,
 	};
 }
