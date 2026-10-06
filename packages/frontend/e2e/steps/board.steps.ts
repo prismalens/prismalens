@@ -23,6 +23,7 @@ import {
 	QUIET,
 	resolveIncident,
 	sidewaysOverflow,
+	visit,
 	waitFor,
 	waitForRun,
 } from "./product";
@@ -264,7 +265,7 @@ Then(
 		const glyph = (title: string) =>
 			row(title).locator("[data-glyph]").getAttribute("data-glyph");
 		for (const where of ["board", "record"]) {
-			if (where === "record") await page.goto(`/incidents/${needs.id}`);
+			if (where === "record") await visit(page, `/incidents/${needs.id}`);
 			await expect(row(needs.title)).toBeVisible();
 			expect(await glyph(needs.title)).toBe("attention");
 			expect(await glyph(inc(page).title)).toBe("live");
@@ -330,7 +331,7 @@ Then(
 
 When("I resolve INC-1 with a cause", async ({ page }) => {
 	await openBoard(page);
-	await page.goto(`/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}`);
 	await page.getByTestId("band-resolve").click();
 	const dialog = page.getByTestId("resolve-dialog");
 	await dialog.getByTestId("resolve-cause").fill("the index d37d888 dropped");
@@ -611,7 +612,7 @@ Given(
 		await tab.setViewportSize(
 			page.viewportSize() ?? { width: 390, height: 844 },
 		);
-		await tab.goto(`/incidents/${made.id}`);
+		await visit(tab, `/incidents/${made.id}`);
 		w(page).page = tab;
 	},
 );
@@ -632,7 +633,7 @@ Then(
 );
 
 When("I open Incidents, Analytics", async ({ page }) => {
-	await page.goto("/incidents?view=analytics");
+	await visit(page, "/incidents?view=analytics");
 	await expect(page.getByTestId("analytics")).toBeVisible();
 });
 
@@ -734,7 +735,7 @@ When(
 				configurable: true,
 			});
 		});
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		await expect(page.getByTestId("first-run")).toBeVisible();
 	},
 );
@@ -852,7 +853,7 @@ Given("no coding agent is on PATH", async ({ page, agents, $test }) => {
 Then(
 	"step 3 reads which agents PrismaLens looks for and how to install one",
 	async ({ page }) => {
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		const step = page.getByTestId("first-run-step-3");
 		await expect(step).toContainText("PrismaLens looks for OpenCode");
 		await expect(step.getByTestId("first-run-install").first()).toBeVisible();
@@ -867,7 +868,7 @@ When(
 			service: QUIET,
 			quiet: true,
 		});
-		await page.goto(`/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}`);
 	},
 );
 
@@ -884,7 +885,7 @@ Then(
 // --- Analytics -------------------------------------------------------------------
 
 async function analyticsFor(page: Page) {
-	await page.goto("/incidents?view=analytics");
+	await visit(page, "/incidents?view=analytics");
 	await page.getByTestId("board-search").fill(w(page).prefix ?? "");
 	await expect(page.getByTestId("analytics-answer")).toBeVisible();
 }
@@ -921,7 +922,7 @@ Then(
 When(
 	"I pick 24 hours on the board and switch to Analytics",
 	async ({ page }) => {
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		await page.getByTestId("board-window").click();
 		await page.getByRole("option", { name: "24 hours" }).click();
 		await page.getByTestId("incidents-view-analytics").click();
@@ -1115,7 +1116,7 @@ Given("no incidents in the window", async ({ page }) => {
 Then(
 	'the page reads "No incidents in the last 30 days" and offers a wider window',
 	async ({ page }) => {
-		await page.goto("/incidents?view=analytics");
+		await visit(page, "/incidents?view=analytics");
 		await expect(page.getByTestId("analytics-answer")).toHaveText(
 			"No incidents in the last 30 days",
 		);
@@ -1148,7 +1149,7 @@ When("I open INC-1 and each of its tabs in turn", async ({ $test }) => {
 
 Then("the band reads {string} on each", async ({ page }, action: string) => {
 	for (const t of TABS) {
-		await page.goto(`/incidents/${inc(page).id}${t}`);
+		await visit(page, `/incidents/${inc(page).id}${t}`);
 		await expect(page.getByTestId("incident-state-band")).toBeVisible();
 		await expect(
 			page.getByTestId("incident-state-band").locator("[data-action]"),
@@ -1157,7 +1158,7 @@ Then("the band reads {string} on each", async ({ page }, action: string) => {
 });
 
 When("I acknowledge", async ({ page }) => {
-	await page.goto(`/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}`);
 	await page.getByTestId("band-acknowledge").click();
 	await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
 });
@@ -1166,7 +1167,7 @@ Then(
 	"the band reads {string} on every tab and never {string}",
 	async ({ page }, action: string, never: string) => {
 		for (const t of TABS) {
-			await page.goto(`/incidents/${inc(page).id}${t}`);
+			await visit(page, `/incidents/${inc(page).id}${t}`);
 			const band = page.getByTestId("incident-state-band");
 			await expect(band.locator("[data-action]")).toHaveText(action);
 			await expect(
@@ -1194,7 +1195,7 @@ Given(
 		);
 		await acknowledge(page, made.id);
 		w(page).inc = made;
-		await page.goto(`/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}`);
 	},
 );
 
@@ -1248,7 +1249,7 @@ Then(
 Then(
 	'the Overview shows "Cause" with the text and an "Edit" control',
 	async ({ page }) => {
-		await page.goto(`/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}`);
 		const cause = page.getByTestId("actual-cause");
 		await expect(cause).toContainText("Cause");
 		await expect(cause.getByTestId("cause-text")).toContainText("d37d888");
@@ -1259,7 +1260,7 @@ Then(
 Then("the alert reads resolved with the incident", async ({ page }) => {
 	const alert = (await detail(page, inc(page).id)).alerts?.[0];
 	expect(alert?.status).toBe("resolved");
-	await page.goto(`/alerts/${alert?.id}`);
+	await visit(page, `/alerts/${alert?.id}`);
 	await expect(page.getByTestId("alert-state")).toHaveText("Cleared");
 });
 
@@ -1297,7 +1298,7 @@ When(
 Then(
 	'the band reads "Alerts cleared" with "Resolve" as its action and the card sits in "Needs you"',
 	async ({ page }) => {
-		await page.goto(`/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("band-status")).toHaveText("Alerts cleared");
 		await expect(page.getByTestId("band-resolve")).toHaveText("Resolve");
 		await openBoard(page);
@@ -1369,7 +1370,7 @@ Then(
 			`^Fired again as INC-${refire?.number}, \\d\\d:\\d\\d$`,
 		);
 		await expect(old.getByTestId("card-lineage")).toHaveText(line);
-		await page.goto(`/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}`);
 		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 		await expect(page.getByTestId("incident-lineage")).toHaveText(line);
 	},
@@ -1411,13 +1412,13 @@ Then(
 		await expect(
 			cardOf(column(page, col), inc(page).title).getByTestId("card-word"),
 		).toHaveText(word);
-		await page.goto(`/incidents/${inc(page).id}`);
+		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("band-status")).toHaveText(band);
 	},
 );
 
 When('I press "Reopen" and confirm', async ({ page }) => {
-	await page.goto(`/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}`);
 	await page.getByTestId("band-reopen").click();
 	await page.getByTestId("confirm-reopen-incident").click();
 });
@@ -1439,7 +1440,7 @@ Then(
 );
 
 When("I start a run from the box", async ({ page }) => {
-	await page.goto(`/incidents/${inc(page).id}`);
+	await visit(page, `/incidents/${inc(page).id}`);
 	await page
 		.getByTestId("composer-input")
 		.fill("fake-session:live check the pool");

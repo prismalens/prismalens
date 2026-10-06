@@ -209,7 +209,8 @@ export function HarnessSettings() {
 											{probe.detail}
 										</StateWord>
 									) : harness.installed ? (
-										<span className="[&_code]:bg-transparent [&_code]:p-0">
+										// app.css's `code` chip is unlayered, so it outranks a plain utility.
+										<span className="[&_code]:bg-transparent! [&_code]:p-0!">
 											{capabilities(harness)}{" "}
 											<InlineCode text={harness.loginHint} />
 										</span>

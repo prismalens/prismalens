@@ -24,7 +24,7 @@
 		"db:generate": "turbo run db:generate --filter=@prismalens/database",
 		"db:studio": "turbo run db:studio --filter=@prismalens/database",
 		"db:reset": "turbo run db:reset --filter=@prismalens/database",
-		"format-and-lint": "biome check .",
+		"format-and-lint": "biome check . && pnpm --filter @prismalens/frontend lint:look",
 		"format-and-lint:fix": "biome check . --write",
 		"e2e:libs": "node scripts/e2e-libs.mjs",
 		"publint": "pnpm --filter prismalens exec publint --strict",

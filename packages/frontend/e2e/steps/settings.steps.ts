@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { Given, Then, When } from "./fixtures";
-import { ensureService, fireIncident, QUIET } from "./product";
+import { ensureService, fireIncident, QUIET, visit } from "./product";
 
 interface World {
 	source?: string;
@@ -181,7 +181,7 @@ Then(
 		for (const width of [1440, 390]) {
 			await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
 			for (const tab of SECTIONS) {
-				await page.goto(`/settings?tab=${tab}`);
+				await visit(page, `/settings?tab=${tab}`);
 				const frame = page.getByTestId("settings-frame");
 				await expect(frame.locator("h2").first()).toBeVisible();
 				await page.waitForTimeout(400);

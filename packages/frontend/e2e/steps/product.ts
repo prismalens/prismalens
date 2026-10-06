@@ -218,8 +218,38 @@ export const cardOf = (scope: Page | Locator, title: string) => {
 	});
 };
 
+/**
+ * A cold page on the dev server fetches ~350 modules before the route renders:
+ * about 2 s here, past 5 s on a loaded CI runner (#786), so first paint gets longer.
+ */
+export const FIRST_PAINT = { timeout: 15_000 };
+
+/** The frame each route paints first; the first match wins. */
+const FRAMES: [RegExp, string][] = [
+	[/^\/incidents\/[^/?]+/, "incident-record-frame"],
+	[/^\/(incidents)?(\?|$)/, "incidents-frame"],
+	[/^\/alerts/, "alerts-frame"],
+	[/^\/settings(\?|$)/, "settings-frame"],
+	[/^\/services\/[^/?]+/, "service-page"],
+	[/^\/services/, "services-page"],
+];
+
+/** Waits out a cold page's first paint: the route's frame, or `frame` for a page FRAMES lacks. */
+export async function firstPaint(target: Page, frame?: string) {
+	const path = new URL(target.url()).pathname + new URL(target.url()).search;
+	const testId = frame ?? FRAMES.find(([re]) => re.test(path))?.[1];
+	if (!testId) throw new Error(`no first-paint frame for ${path}`);
+	await expect(target.getByTestId(testId)).toBeVisible(FIRST_PAINT);
+}
+
+/** Opens `path` and waits for its first paint. */
+export async function visit(target: Page, path: string, frame?: string) {
+	await target.goto(path);
+	await firstPaint(target, frame);
+}
+
 export async function openBoard(page: Page) {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	await expect(page.getByTestId("incident-board")).toBeVisible();
 }
 

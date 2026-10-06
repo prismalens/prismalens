@@ -12,6 +12,7 @@ import { hostname } from "node:os";
 import { type Browser, devices, expect, type Page } from "@playwright/test";
 import { guessDeviceName } from "../../src/lib/device-name";
 import { Given, Then, When } from "./fixtures";
+import { FIRST_PAINT, visit } from "./product";
 
 interface World {
 	/** The page the scenario is on, when a step opened a fresh tab. */
@@ -115,7 +116,7 @@ async function incidentOf(
 // --- Shell and Back --------------------------------------------------------
 
 When("I open the board", async ({ page }) => {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	await expect(page.getByTestId("page-header")).toBeVisible();
 });
 
@@ -174,12 +175,12 @@ Then(
 When(
 	"I open the board, then Alerts, then Services, then Settings",
 	async ({ page }) => {
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		await expect(page.getByTestId("page-header")).toBeVisible();
 		const counts: NonNullable<World["newCounts"]> = [];
 		// Cold loads: from the sidebar door a wide list opens its first record (L32).
 		for (const door of ["incidents", "alerts", "services", "settings"]) {
-			await page.goto(`/${door}`);
+			await visit(page, `/${door}`);
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
@@ -211,7 +212,7 @@ When(
 	"I press {string} from Services and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
 		if (pathOf(page) !== "/services") {
-			await page.goto("/services");
+			await visit(page, "/services");
 		}
 		await page
 			.getByTestId("page-header")
@@ -245,7 +246,7 @@ Then("I am on the new incident's Overview", async ({ page }) => {
  */
 async function amOn(page: Page, path: string, ready: () => Promise<void>) {
 	if (page.url() === "about:blank") {
-		await page.goto(path);
+		await visit(page, path);
 		await ready();
 		return;
 	}
@@ -279,6 +280,8 @@ When(
 
 Given("I open the same alert from the Alerts door", async ({ page }) => {
 	await page.getByTestId("sidebar").getByTestId("nav-alerts").click();
+	// Back's trail records resolved pages; a row clicked while /alerts still loads skips it.
+	await expect(page.getByTestId("alerts-frame")).toBeVisible();
 	await page
 		.getByTestId("sidebar")
 		.getByTestId("alert-row-link")
@@ -336,7 +339,7 @@ When("I press {string}", async ({ page }, key: string) => {
 		return;
 	}
 	// A scenario that opens on a press starts where that button lives.
-	if (p.url() === "about:blank" && OPENS_ON[key]) await p.goto(OPENS_ON[key]);
+	if (p.url() === "about:blank" && OPENS_ON[key]) await visit(p, OPENS_ON[key]);
 	const dialog = p.getByRole("dialog");
 	const scope = (await dialog.count()) > 0 ? dialog : p;
 	await scope.getByRole("button", { name: key, exact: true }).first().click();
@@ -349,7 +352,7 @@ When("I open Settings and press Escape", async ({ page }) => {
 });
 
 When("I hover {string} in the header", async ({ page }, _label: string) => {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	await expect(page.getByTestId("page-header")).toBeVisible();
 	await page
 		.getByTestId("page-header")
@@ -374,7 +377,7 @@ Then("a sheet lists the shortcuts", async ({ page }) => {
 
 Then("no screen shows a line of key names", async ({ page }) => {
 	for (const path of ["/incidents", "/alerts", "/services", "/settings"]) {
-		await page.goto(path);
+		await visit(page, path);
 		await expect(page.getByTestId("page-header")).toBeVisible();
 		const text = await page.locator("body").innerText();
 		expect(text, path).not.toMatch(
@@ -388,7 +391,7 @@ Given("a fresh tab opens Settings, Devices", async ({ page }) => {
 	await tab.setViewportSize(
 		page.viewportSize() ?? { width: 1440, height: 900 },
 	);
-	await tab.goto("/settings?tab=devices");
+	await visit(tab, "/settings?tab=devices");
 	// The section renders client-side only, so the bar's Back is live by then.
 	await expect(tab.getByTestId("devices-list")).toBeVisible();
 	world(page).page = tab;
@@ -399,7 +402,7 @@ Then("I am on the board", async ({ page }) => {
 });
 
 When("I open an alert that opened INC-1", async ({ page }) => {
-	await page.goto(`/alerts/${world(page).incident?.alertId}`);
+	await visit(page, `/alerts/${world(page).incident?.alertId}`);
 	await expect(page.getByTestId("alert-detail")).toBeVisible();
 });
 
@@ -418,7 +421,7 @@ Then(
 // --- Phone -------------------------------------------------------------------
 
 When("I open the app", async ({ page }) => {
-	await page.goto("/");
+	await visit(page, "/");
 	await expect(page).toHaveURL(/\/incidents/);
 });
 
@@ -475,7 +478,7 @@ Given(
 		await tab.setViewportSize(
 			page.viewportSize() ?? { width: 390, height: 844 },
 		);
-		await tab.goto(`/incidents/${incident.id}/report`);
+		await visit(tab, `/incidents/${incident.id}/report`);
 		world(page).page = tab;
 	},
 );
@@ -498,7 +501,7 @@ Then("I am on the incident list", async ({ page }) => {
 });
 
 When("I press {string} in the strip", async ({ page }, _label: string) => {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	await expect(page.getByTestId("incident-board")).toBeVisible();
 	await page.getByTestId("topbar").getByTestId("strip-new").click();
 });
@@ -522,7 +525,7 @@ Then(
 );
 
 When("I press Settings in the strip", async ({ page }) => {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	await expect(page.getByTestId("incident-board")).toBeVisible();
 	await page.getByTestId("topbar").getByTestId("strip-settings").click();
 });
@@ -580,7 +583,7 @@ async function openOnDevice(
 Given(
 	"a pairing link that was already redeemed",
 	async ({ page, playwright, baseURL }) => {
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		const link = await createLink(page);
 		const other = await playwright.request.newContext({ baseURL });
 		const used = await other.post("/api/pairing/redeem", {
@@ -593,7 +596,7 @@ Given(
 );
 
 Given("a fresh pairing link", async ({ page }) => {
-	await page.goto("/incidents");
+	await visit(page, "/incidents");
 	world(page).link = await createLink(page);
 });
 
@@ -611,7 +614,7 @@ Then(
 		const phone = here(page);
 		await expect(
 			phone.getByRole("heading", { name: "This link has been used." }),
-		).toBeVisible();
+		).toBeVisible(FIRST_PAINT);
 		await expect(phone.getByTestId("pair-problem")).toHaveText(
 			"A pairing link works once, for 15 minutes.",
 		);
@@ -631,9 +634,10 @@ Then(
 	"I am on the incident list and Settings, Devices lists the phone by its model name",
 	async ({ page }) => {
 		const phone = here(page);
-		await expect(phone).toHaveURL(/\/incidents$/);
+		// A fresh context cold-loads /pair, redeems the link, then opens the board.
+		await expect(phone).toHaveURL(/\/incidents$/, FIRST_PAINT);
 		await expect(phone.getByTestId("incident-board")).toBeVisible();
-		await page.goto("/settings?tab=devices");
+		await visit(page, "/settings?tab=devices");
 		await expect(
 			page
 				.getByTestId("device-name")
@@ -647,25 +651,26 @@ Given(
 	"the host browser is paired and a phone {string} is paired",
 	async ({ page, browser, baseURL }, model: string) => {
 		expect(model).toBe("Pixel 9");
-		await page.goto("/incidents");
+		await visit(page, "/incidents");
 		const phone = await openOnDevice(
 			browser,
 			baseURL,
 			await createLink(page),
 			PIXEL_9_UA,
 		);
-		await expect(phone).toHaveURL(/\/incidents$/);
+		// A fresh context cold-loads /pair, redeems the link, then opens the board.
+		await expect(phone).toHaveURL(/\/incidents$/, FIRST_PAINT);
 		await phone.context().close();
 	},
 );
 
 When("I open Settings, Devices", async ({ page }) => {
-	await page.goto("/settings?tab=devices");
+	await visit(page, "/settings?tab=devices");
 	await expect(page.getByTestId("devices-list")).toBeVisible();
 });
 
 Given("I am on Settings, Devices", async ({ page }) => {
-	await page.goto("/settings?tab=devices");
+	await visit(page, "/settings?tab=devices");
 	await expect(page.getByTestId("device-row").first()).toBeVisible();
 });
 

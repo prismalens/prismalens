@@ -7,6 +7,7 @@ import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 import { devPair } from "./dev-pair.ts";
+import { apiProxy } from "./dev-proxy.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
@@ -37,16 +38,10 @@ export default defineConfig({
 	server: {
 		port: resolveDevPort(),
 		proxy: {
-			// Proxy API calls to backend in development
-			"/api": {
-				target: `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}`,
-				changeOrigin: true,
-			},
+			// Proxy API calls to backend in development (and `vite preview`, which inherits this)
+			"/api": apiProxy(API_ORIGIN),
 			// Proxy health endpoint (excluded from /api prefix in backend)
-			"/health": {
-				target: `${process.env.PRISMALENS_PROTOCOL || "http"}://${process.env.PRISMALENS_HOST || "localhost"}:${process.env.PRISMALENS_PORT || "3001"}`,
-				changeOrigin: true,
-			},
+			"/health": apiProxy(API_ORIGIN),
 		},
 	},
 	plugins: [
