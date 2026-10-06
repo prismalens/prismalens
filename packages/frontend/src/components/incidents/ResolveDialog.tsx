@@ -28,6 +28,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
 
 const CATEGORIES = enumOptions(
 	RootCauseCategorySchema,
@@ -44,7 +45,8 @@ export function reportAnswer(incident: IncidentWithRelations): {
 } {
 	const done = incident.investigations?.find((r) => r.status === "completed");
 	return {
-		cause: done?.rootCause ?? "",
+		// The agent writes inline Markdown; a field a person edits reads plain (L80).
+		cause: stripInlineMarkdown(done?.rootCause ?? ""),
 		category: (done?.rootCauseCategory as RootCauseCategory | null) ?? "",
 	};
 }
@@ -176,10 +178,11 @@ export function ResolveDialog({
 					</div>
 				</div>
 				<DialogFooter>
-					<Button variant="ghost" onClick={() => onOpenChange(false)}>
+					<Button variant="text" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
 					<Button
+						variant="primary"
 						disabled={isPending}
 						onClick={() =>
 							onConfirm(

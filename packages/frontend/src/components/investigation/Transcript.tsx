@@ -15,6 +15,8 @@ import {
 } from "@/components/ai/message";
 import { Tool, ToolCall, ToolContent, ToolHeader } from "@/components/ai/tool";
 import { RECORD_GRID, RecordLink } from "@/components/incidents/RecordLayout";
+import { StateWord } from "@/components/shared/StateWord";
+import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import type {
 	AttachmentView,
@@ -108,7 +110,10 @@ function TranscriptRow({
 		case "prose":
 			return (
 				<Message from="agent" className={ENTER} data-testid="transcript-agent">
-					<MessageHeader who={agent} />
+					<MessageHeader
+						who={agent}
+						at={item.at ? formatClock(item.at) : undefined}
+					/>
 					<div data-testid="transcript-prose">
 						<MessageResponse>{item.text}</MessageResponse>
 					</div>
@@ -150,10 +155,13 @@ function TranscriptRow({
 						aria-hidden
 						className={cn(
 							"h-3 w-[3px] rounded-full",
-							item.stale ? "bg-warn" : "bg-live",
+							item.stale ? "bg-warn" : "breathe bg-live",
 						)}
+						data-testid="transcript-thinking-bar"
 					/>
-					Thinking, {formatElapsed(item.seconds)}
+					{item.stale
+						? `Quiet for ${formatElapsed(item.seconds)}`
+						: `Thinking, ${formatElapsed(item.seconds)}`}
 				</p>
 			);
 		case "operator":
@@ -190,15 +198,20 @@ function TranscriptRow({
 			return (
 				<div className={cn("space-y-1", ENTER)} data-testid="transcript-end">
 					<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-2">
-						<span
-							className={cn(
-								item.tone === "failed" && "text-danger",
-								"[overflow-wrap:anywhere]",
-							)}
-						>
-							{item.text}
-							{item.detail ? ` ${item.detail}` : ""}.
-						</span>
+						{item.tone === "failed" ? (
+							<span className="[overflow-wrap:anywhere]">
+								<StateWord tone="danger" className="text-body">
+									Run failed
+								</StateWord>
+								{item.at ? ` at ${formatClock(item.at)}` : ""}:{" "}
+								{failureSentence(agent, item.error).said}
+							</span>
+						) : (
+							<span className="[overflow-wrap:anywhere]">
+								{item.text}
+								{item.detail ? ` ${item.detail}` : ""}.
+							</span>
+						)}
 						{item.report && (
 							<RecordLink incidentId={incidentId} to="report">
 								Read the report

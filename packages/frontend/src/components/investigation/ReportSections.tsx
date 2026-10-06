@@ -8,7 +8,7 @@ import type {
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RecordLink, TabSection } from "@/components/incidents/RecordLayout";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { StateWord } from "@/components/shared/StateWord";
@@ -26,6 +26,9 @@ import {
 } from "@/lib/report-view";
 import { cn } from "@/lib/utils";
 
+/** A list's rows, a hairline between them and nothing around them. */
+const DIVIDED = "divide-y divide-hairline";
+
 /**
  * The report's sections (study-v3 §3.2): structured fields laid out, with an
  * inline-only formatter for code spans; never the agent's Markdown.
@@ -42,7 +45,7 @@ function EvidenceRow({
 	investigationId,
 }: {
 	label: string;
-	tone: "done" | "failed" | "neutral";
+	tone: "ok" | "danger" | "neutral";
 	text: string;
 	source: string | null;
 	call?: string | null;
@@ -51,7 +54,7 @@ function EvidenceRow({
 }) {
 	return (
 		<li
-			className="grid grid-cols-1 gap-0.5 border-t border-hairline py-2.5 first:border-t-0 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-3"
+			className="grid grid-cols-1 gap-0.5 py-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-3"
 			data-testid="evidence-row"
 		>
 			<StateWord tone={tone} className="sm:pt-0.5" data-testid="evidence-label">
@@ -178,7 +181,7 @@ export function Why({
 		<EvidenceRow
 			key={`${i}-${e.observation}`}
 			label={label}
-			tone={e.direction === "supports" ? "done" : "failed"}
+			tone={e.direction === "supports" ? "ok" : "danger"}
 			text={e.observation}
 			source={shortPath(e.source, cwd)}
 			call={e.toolCallId}
@@ -201,7 +204,7 @@ export function Why({
 						Nothing it found is supported.
 					</p>
 				) : (
-					<ul>
+					<ul className={DIVIDED}>
 						{found.map((h, i) => {
 							const first = h.evidence[0];
 							return (
@@ -212,7 +215,7 @@ export function Why({
 											? "Seen"
 											: "Inferred"
 									}
-									tone="done"
+									tone="ok"
 									text={h.statement}
 									source={first ? shortPath(first.source, cwd) : null}
 									call={first?.toolCallId}
@@ -237,7 +240,7 @@ export function Why({
 			{evidence.length === 0 ? (
 				<p className="text-body text-text-2">The run recorded no evidence.</p>
 			) : (
-				<ul>{evidence.map((e, i) => row(e, i))}</ul>
+				<ul className={DIVIDED}>{evidence.map((e, i) => row(e, i))}</ul>
 			)}
 		</TabSection>
 	);
@@ -254,7 +257,7 @@ function GapRow({
 }) {
 	return (
 		<li
-			className="flex items-start gap-2.5 border-t border-hairline py-2 first:border-t-0 text-body"
+			className="flex items-start gap-2.5 py-2 text-body"
 			data-testid="report-gap"
 		>
 			<span
@@ -304,7 +307,7 @@ export function Gaps({
 					The run named nothing it could not check.
 				</p>
 			) : (
-				<ul>
+				<ul className={DIVIDED}>
 					{gaps.map((g) => (
 						<GapRow
 							key={g.kind === "refused" ? g.toolCallId : g.source}
@@ -334,14 +337,14 @@ export function RuledOut({
 			className={className}
 			testId="report-ruled-out"
 		>
-			<ul>
+			<ul className={DIVIDED}>
 				{report.ruledOut.map((r, i) => {
 					const first = r.evidence[0];
 					return (
 						<EvidenceRow
 							key={`${i}-${r.statement}`}
 							label="Against"
-							tone="failed"
+							tone="danger"
 							text={`${r.statement}: ${r.why}`}
 							source={
 								first
@@ -424,12 +427,12 @@ export function Integrity({
 			<p className="mb-1 text-body text-text-2">
 				The agent ignored these lines; weigh the evidence they sit next to.
 			</p>
-			<ul>
+			<ul className={DIVIDED}>
 				{flagged.map((f, i) => (
 					<li
 						// biome-ignore lint/suspicious/noArrayIndexKey: quotes can repeat
 						key={i}
-						className="border-t border-hairline py-2 text-body first:border-t-0"
+						className="py-2 text-body"
 					>
 						<span className="text-danger">“{f.quote}”</span>
 						<span className="block text-meta text-text-3">
@@ -459,12 +462,9 @@ export function Similar({
 			count={similar.length}
 			className={className}
 		>
-			<ul>
+			<ul className={DIVIDED}>
 				{similar.map((s) => (
-					<li
-						key={s.incidentId}
-						className="border-t border-hairline py-2 first:border-t-0"
-					>
+					<li key={s.incidentId} className="py-2">
 						<Link
 							to="/incidents/$id"
 							params={{ id: s.incidentId }}
@@ -487,14 +487,15 @@ export function Similar({
 	);
 }
 
-/** The run in one line, for screens without the rail. */
+/**
+ * Below 1280, where the rail is not: the way to the run itself. Its agent,
+ * model and time are on the strip above (look ruling L45).
+ */
 export function RunLine({
-	parts,
 	incidentId,
 	investigationId,
 	className,
 }: {
-	parts: ReactNode[];
 	incidentId: string;
 	investigationId: string;
 	className?: string;
@@ -502,15 +503,11 @@ export function RunLine({
 	return (
 		<p
 			className={cn(
-				"mt-8 flex flex-wrap gap-x-3.5 gap-y-1 border-t border-hairline pt-3 text-meta text-text-3",
+				"mt-8 flex flex-wrap gap-x-3.5 gap-y-1 text-meta",
 				className,
 			)}
 			data-testid="report-run-line"
 		>
-			{parts.map((p, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list of facts
-				<span key={i}>{p}</span>
-			))}
 			<RecordLink
 				incidentId={incidentId}
 				to="conversation"
@@ -538,7 +535,7 @@ export function CopyFixBrief({
 }: {
 	text: string;
 	label?: string;
-	variant?: "secondary" | "ghost";
+	variant?: "secondary" | "text";
 	className?: string;
 }) {
 	const { toast } = useToast();
@@ -548,11 +545,7 @@ export function CopyFixBrief({
 	return (
 		<Button
 			variant={variant}
-			size="sm"
-			className={cn(
-				variant === "ghost" && "h-7 px-2 text-body text-text-2",
-				className,
-			)}
+			className={className}
 			onClick={() =>
 				navigator.clipboard.writeText(text).then(
 					() => {

@@ -211,7 +211,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 
 		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("transcript-end")).toContainText(
-			"Failed: harness lost the tool socket",
+			'Run failed: OpenCode answered "harness lost the tool socket".',
 		);
 		await page.getByTestId("transcript-event-log").click();
 		await expect(page.getByTestId("investigation-failed-state")).toBeVisible();

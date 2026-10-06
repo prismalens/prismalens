@@ -77,7 +77,7 @@ const components: Components = {
 		<strong className="font-semibold text-text-1">{children}</strong>
 	),
 	blockquote: ({ children }) => (
-		<blockquote className="my-1.5 border-l-2 border-hairline-strong pl-3 text-text-2">
+		<blockquote className="my-1.5 rounded-control bg-surface-1 px-3 py-1.5 text-text-2">
 			{children}
 		</blockquote>
 	),
@@ -88,17 +88,17 @@ const components: Components = {
 	),
 	table: ({ children }) => (
 		<div className="my-2 overflow-x-auto">
-			<table className="w-full text-meta">{children}</table>
+			<table className="w-full text-meta [&_tbody]:divide-y [&_tbody]:divide-hairline">
+				{children}
+			</table>
 		</div>
 	),
 	th: ({ children }) => (
-		<th className="border-b border-hairline px-2 py-1 text-left font-medium text-text-2">
+		<th className="bg-surface-1 px-2 py-1 text-left font-medium text-text-2">
 			{children}
 		</th>
 	),
-	td: ({ children }) => (
-		<td className="border-b border-hairline px-2 py-1">{children}</td>
-	),
+	td: ({ children }) => <td className="px-2 py-1">{children}</td>,
 };
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;

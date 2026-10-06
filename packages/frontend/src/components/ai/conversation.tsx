@@ -60,7 +60,7 @@ export const ConversationScrollButton = ({
 			type="button"
 			onClick={() => scrollToBottom()}
 			className={cn(
-				"floating absolute bottom-3 left-1/2 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full px-3 text-meta text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200",
+				"floating absolute bottom-3 left-1/2 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full px-3 text-meta text-text-1 hover:bg-surface-3 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200",
 				className,
 			)}
 			data-testid="transcript-new-messages"

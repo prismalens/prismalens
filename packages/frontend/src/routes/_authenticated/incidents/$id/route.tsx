@@ -4,13 +4,14 @@
  * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
  * started, else the newest.
  */
-import {
-	canIncidentAction,
-	isWorkflowLive,
-	runState,
-} from "@prismalens/contracts";
+import { canIncidentAction, isWorkflowLive } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, useLocation } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	Outlet,
+	useLocation,
+} from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
 import type { RecordRoute } from "@/components/incidents/RecordLayout";
@@ -23,7 +24,9 @@ import {
 	IncidentRecordContext,
 } from "@/components/incidents/record-context";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Loading, NotFound, Problem } from "@/components/shared/State";
+import { Button } from "@/components/ui/button";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useCreateTimelineEntry,
@@ -67,7 +70,9 @@ function IncidentLayout() {
 		data: incident,
 		isLoading,
 		error,
+		refetch,
 	} = useQuery(orpc.incidents.get.queryOptions({ input: { id } }));
+	const phone = useMediaQuery(PHONE);
 	const { data: timeline = [], isLoading: timelineLoading } = useTimeline(id);
 	const createNote = useCreateTimelineEntry();
 
@@ -228,14 +233,22 @@ function IncidentLayout() {
 
 	if (isLoading) return <IncidentSkeleton />;
 	if (error || !incident || !record) {
+		const back = (
+			<Button variant="text" size="sm" asChild>
+				<Link to="/incidents">Back to the board</Link>
+			</Button>
+		);
 		return (
-			<div className="flex h-full flex-col items-center justify-center p-8">
-				<p className="text-lg font-medium text-danger">
-					Failed to load incident
-				</p>
-				<p className="text-sm text-text-2">
-					{error?.message || "Incident not found"}
-				</p>
+			<div className="px-4 pt-6 sm:px-6">
+				{error && !isNotFound(error) ? (
+					<Problem
+						text="This incident did not load."
+						onRetry={() => void refetch()}
+						back={back}
+					/>
+				) : (
+					<NotFound back={back} />
+				)}
 			</div>
 		);
 	}
@@ -262,13 +275,9 @@ function IncidentLayout() {
 					incidentId={id}
 					here={here}
 					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
-					dimmed={
-						runs.some((r) => runState(r.status, { hasEvents: true }) === "done")
-							? []
-							: ["report"]
-					}
-					status={<RunStrip />}
+					status={phone ? undefined : <RunStrip />}
 				/>
+				{phone && <RunStrip phone />}
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
@@ -309,17 +318,21 @@ function IncidentLayout() {
 
 function IncidentSkeleton() {
 	return (
-		<div className="space-y-4 p-4">
-			<div className="flex items-center gap-3">
-				<Skeleton className="h-6 w-16" />
-				<Skeleton className="h-5 w-14" />
-				<Skeleton className="h-6 w-96" />
-			</div>
-			<div className="mx-auto max-w-[46rem] space-y-3">
-				<Skeleton className="h-24" />
-				<Skeleton className="h-16" />
-				<Skeleton className="h-20" />
+		<div className="flex h-full flex-col">
+			<div className="h-[76px] shrink-0 bg-surface-1" />
+			<div className="mx-auto w-full max-w-[46rem] px-4 pt-6 sm:px-6">
+				<Loading rows={5} />
 			</div>
 		</div>
+	);
+}
+
+/** A 404 from the API: the record is gone, not broken. */
+function isNotFound(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"status" in error &&
+		(error as { status?: number }).status === 404
 	);
 }

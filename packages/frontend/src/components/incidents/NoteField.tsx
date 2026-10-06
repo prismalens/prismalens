@@ -4,13 +4,14 @@
 import { ArrowUp } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useIncidentRecord } from "./record-context";
 
 /**
  * The note field (#743 §6): text for humans on the Timeline. It never reaches
  * an agent, so it has no picker and one send. Enter saves.
  */
-export function NoteField() {
+export function NoteField({ className }: { className?: string }) {
 	const { addNote, isSavingNote } = useIncidentRecord();
 	const [text, setText] = useState("");
 	const submit = (e: FormEvent) => {
@@ -22,7 +23,10 @@ export function NoteField() {
 	return (
 		<form
 			onSubmit={submit}
-			className="raised mt-2 flex items-center gap-1 rounded-control py-0.5 pr-0.5 pl-2.5 focus-within:ring-2 focus-within:ring-accent/40"
+			className={cn(
+				"raised mt-3 flex h-8 items-center gap-1 rounded-control pr-1 pl-3",
+				className,
+			)}
 			data-testid="note-field"
 		>
 			<input
@@ -36,8 +40,8 @@ export function NoteField() {
 			/>
 			<Button
 				type="submit"
-				size="icon-xs"
-				variant="ghost"
+				size="icon-sm"
+				variant="text"
 				disabled={!text.trim() || isSavingNote}
 				aria-label="Save note"
 			>

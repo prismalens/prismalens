@@ -6,28 +6,15 @@ import {
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
 	isAlertFiring,
-	isIncidentOpen,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
 import { useNow } from "@/hooks/use-now";
 import { useServiceIntegrations } from "@/lib/api/hooks";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { type Fact, RecordLink } from "./RecordLayout";
-import { runElapsed, useRunAgentModel } from "./RunStrip";
+import { runElapsed, runTimed, useRunAgentModel } from "./RunStrip";
 import { useIncidentRecord } from "./record-context";
-
-function plural(n: number, one: string) {
-	return `${n} ${one}${n === 1 ? "" : "s"}`;
-}
-
-function openFor(ms: number): string {
-	const m = Math.max(0, Math.floor(ms / 60_000));
-	if (m < 60) return `${m}m`;
-	const h = Math.floor(m / 60);
-	return h < 48 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d`;
-}
 
 /** The telemetry a run on this incident's service may query: names of the sources that are on. */
 export function useTelemetryNames(serviceId: string | null | undefined) {
@@ -70,7 +57,9 @@ export function useRunFact(): string {
 		case "stopping":
 			return `${who.agent}, working ${took}`;
 		case "done":
-			return `${who.agent}, done in ${took}`;
+			return runTimed(inv)
+				? `${who.agent}, done in ${took}`
+				: `${who.agent}, done`;
 		case "failed":
 			return `${who.agent}, failed after ${took}`;
 		case "stopped":
@@ -86,12 +75,12 @@ export function useAccessFact(): string {
 
 /**
  * The incident's facts (study-v3 §3.3): Status, Severity, Service, Alerts,
- * Run, Access, Telemetry, Links in the rail; the same, shorter, as the
- * details line below 1280.
+ * Run, Access, Telemetry, Links in the rail pool from 1280. Below it the band
+ * carries status and age, and on a phone its own line (look ruling L45).
+ * Status reads neutral here: the band already says it in colour (rev 2 m4).
  */
-export function useIncidentFacts(): { rail: Fact[]; line: ReactNode[] } {
+export function useIncidentFacts(): { rail: Fact[] } {
 	const { incident, investigationId } = useIncidentRecord();
-	const now = useNow();
 	const runFact = useRunFact();
 	const access = useAccessFact();
 	const telemetry = useTelemetryNames(incident.service?.id);
@@ -109,11 +98,6 @@ export function useIncidentFacts(): { rail: Fact[]; line: ReactNode[] } {
 			: since !== null
 				? `${firing.length} firing since ${formatClock(since)}`
 				: `${alerts.length}, none firing`;
-	const open = isIncidentOpen(incident.status);
-	const age =
-		open && now !== null
-			? `open ${openFor(now - Date.parse(incident.triggeredAt))}`
-			: null;
 
 	const rail: Fact[] = [
 		{
@@ -122,14 +106,26 @@ export function useIncidentFacts(): { rail: Fact[]; line: ReactNode[] } {
 				INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
 				incident.status,
 		},
-		{ label: "Severity", value: SEVERITY_LABEL[incident.severity] },
+		{
+			label: "Severity",
+			value: (
+				<span className="inline-flex items-center gap-1.5">
+					<span
+						aria-hidden
+						className="size-2 shrink-0 rounded-full"
+						style={{ background: `var(--sev-${incident.severity})` }}
+					/>
+					{SEVERITY_LABEL[incident.severity]}
+				</span>
+			),
+		},
 		{
 			label: "Service",
 			value: incident.service ? (
 				<Link
 					to="/services/$id"
 					params={{ id: incident.service.id }}
-					className="hover:text-accent"
+					className="hover:text-text-1"
 				>
 					{service}
 				</Link>
@@ -165,12 +161,5 @@ export function useIncidentFacts(): { rail: Fact[]; line: ReactNode[] } {
 				</>
 			),
 		});
-
-	const line: ReactNode[] = [
-		service ?? "No service",
-		plural(alerts.length, "alert"),
-		...(age ? [age] : []),
-		...(telemetry?.length ? [telemetry.join(", ")] : []),
-	];
-	return { rail, line };
+	return { rail };
 }

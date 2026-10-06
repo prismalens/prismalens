@@ -26,13 +26,15 @@ for (const width of [375, 1024, 1440]) {
 
 		const band = page.getByTestId("incident-state-band");
 		await expect(band).toBeVisible({ timeout: 15_000 });
-		const box = await band.boundingBox();
+		// The band's first row is the strip; a phone adds a facts line under it.
+		const strip = band.getByTestId("band-strip");
+		const box = await strip.boundingBox();
 		expect(box?.y).toBe(0);
 		if (width >= 640) expect(box?.height).toBe(40);
 
 		const region = (el: Element) =>
 			getComputedStyle(el).getPropertyValue("-webkit-app-region");
-		expect(await band.evaluate(region)).toBe("drag");
+		expect(await strip.evaluate(region)).toBe("drag");
 
 		const controls = band.locator("a, button");
 		const n = await controls.count();

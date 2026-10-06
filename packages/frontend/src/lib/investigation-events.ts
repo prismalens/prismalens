@@ -341,7 +341,7 @@ export interface TranscriptRun {
 }
 
 export type TranscriptItem =
-	| { kind: "prose"; key: string; text: string }
+	| { kind: "prose"; key: string; text: string; at?: string }
 	| { kind: "line"; key: string; text: string }
 	| {
 			kind: "tools";
@@ -371,6 +371,9 @@ export type TranscriptItem =
 			key: string;
 			tone: "done" | "failed" | "stale";
 			text: string;
+			/** A failed run's raw error, for the one failure sentence (failure-sentence.ts). */
+			error?: string | null;
+			at?: string | null;
 			detail?: string;
 			report?: boolean;
 			path?: string;
@@ -529,7 +532,7 @@ export function deriveTranscript(
 					items.push({ kind: "line", key, text: REPORT_DRAFTED });
 				} else if (text) {
 					closeGroup();
-					items.push({ kind: "prose", key, text });
+					items.push({ kind: "prose", key, text, at: event.ts });
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
@@ -606,6 +609,8 @@ export function deriveTranscript(
 					key,
 					tone: "failed",
 					text: `Failed: ${event.message}`,
+					error: event.message,
+					at: event.ts,
 					path: transcriptPath(run?.id),
 				});
 				break;
@@ -676,6 +681,8 @@ export function deriveTranscript(
 			key: "failed",
 			tone: "failed",
 			text: `Failed: ${run.error ?? "no error was recorded"}`,
+			error: run.error,
+			at: run.completedAt ?? lastTs,
 			path: transcriptPath(run.id),
 		});
 	}

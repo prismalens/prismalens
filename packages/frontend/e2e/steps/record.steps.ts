@@ -324,10 +324,14 @@ Then(
 		await expect(
 			page.getByTestId("overview-timeline").getByTestId("note-field"),
 		).toBeVisible();
-		// Facts once (study-v3 §3.3): the rail from 1280, the details line below it.
-		const rail = await page.getByTestId("facts-rail").isVisible();
-		const line = await page.getByTestId("details-line").isVisible();
-		expect([rail, line].filter(Boolean)).toHaveLength(1);
+		// Facts once (look ruling L45): the rail pool from 1280, the band's own line on a phone.
+		const width = page.viewportSize()?.width ?? 1280;
+		await expect(page.getByTestId("facts-rail")).toBeVisible({
+			visible: width >= 1280,
+		});
+		await expect(page.getByTestId("band-facts")).toBeVisible({
+			visible: width < 768,
+		});
 	},
 );
 

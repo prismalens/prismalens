@@ -17,7 +17,7 @@ Feature: Agent and model picker
     Then an effort control appears reading Codex's default, and the model list Codex offers ("pending a check" until the admission probe has run)
     When I pick Claude Code
     Then the model list appears and no effort control
-    And every agent shows "Read-only" with a tooltip saying what the agent may read
+    And every agent shows "Read-only" with a hint saying what the agent may read
 
   Scenario: One model has one name, and a training tier says so
     Given OpenCode offers "Claude Sonnet 5.5" and "Muse Spark 1.3 (free)"
@@ -25,7 +25,8 @@ Feature: Agent and model picker
     Then the picker's chip, the Settings row and the box on an incident all read "Claude Sonnet 5.5"
     And "Muse Spark 1.3 (free)" carries the line "trains on your prompts" and "Agent default" shows what OpenCode reports, not a PrismaLens choice
 
-  Scenario: Agents are shown by mark and name, favourites across agents
-    Then every rail tile shows the agent's mark with its name under it
+  Scenario: Agents are shown by mark, the panel names them, favourites across agents
+    Then every rail tile is a tab showing the agent's mark and no label, and the list opens with the agent's name
+    And the panel measures 440 by 360 px on every agent
     When I open the "Starred" tile
     Then my starred models from every agent are listed, each with its agent
