@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { existsSync } from "node:fs";
 import { ensureAppDataDir, getConfig } from "@prismalens/config";
 import { PrismaClient } from "./prisma/generated/client.js";
+import { PrismaNodeSqlite } from "./src/adapter-node-sqlite/index.js";
 
 const config = getConfig();
 
@@ -11,10 +12,16 @@ const config = getConfig();
 // This stores the SQLite database file and other application data
 ensureAppDataDir();
 
-const adapter = new PrismaBetterSqlite3({
-	url: config.PRISMALENS_DB_URL,
-	readonly: config.PRISMALENS_DB_SQLITE_READONLY,
-	fileMustExist: config.PRISMALENS_DB_SQLITE_FILE_MUST_EXIST,
+const dbPath = config.PRISMALENS_DB_URL.replace(/^file:/, "");
+if (config.PRISMALENS_DB_SQLITE_FILE_MUST_EXIST && !existsSync(dbPath)) {
+	throw new Error(`SQLite database file does not exist: ${dbPath}`);
+}
+
+// Node's built-in SQLite: no native addon, so `npm i -g` needs no install
+// script (npm 12 skips them by default, issue n1).
+const adapter = new PrismaNodeSqlite({
+	url: dbPath,
+	readOnly: config.PRISMALENS_DB_SQLITE_READONLY,
 	timeout: config.PRISMALENS_DB_SQLITE_TIMEOUT,
 });
 

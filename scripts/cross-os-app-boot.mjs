@@ -20,9 +20,9 @@
  * The two things most likely to break first on an unfamiliar platform are
  * exactly the two it cannot speak to:
  *
- *   1. `better-sqlite3` is a native addon. Whether its prebuilt binding
- *      resolves from a GLOBAL install on macOS-arm64 and windows-x64 is a
- *      per-platform question that a Linux container cannot answer.
+ *   1. The database is Node's built-in `node:sqlite`. Whether this OS's Node
+ *      ships it with the APIs the adapter uses is a per-platform question a
+ *      Linux container cannot answer.
  *   2. Nest's static SPA fallback (`ServeStaticModule` + the `exclude` list in
  *      `packages/api/src/app.module.ts`) is single-origin serving with no
  *      proxy. If that path-exclusion contract regresses, either the page 404s
@@ -35,9 +35,8 @@
  * Every check below is written so that a plausible regression turns it red.
  * An assertion that cannot fail is worse than no assertion.
  *
- *   native binding   `better-sqlite3` is required and opened from the INSTALLED
- *                    package's own resolution root, before boot, so a missing
- *                    or ABI-mismatched `.node` reports itself instead of
+ *   node:sqlite      opened and queried with the APIs the adapter uses, before
+ *                    boot, so a Node without them reports itself instead of
  *                    surfacing as an unexplained boot failure 90s later.
  *   /health          200. Fails if the process never listens.
  *   route table      one route per major module answers its guard (401) rather than
@@ -197,42 +196,41 @@ if (shimVersion !== version) {
 ok("global `pl` shim", `${shim} -> ${shimVersion}`);
 
 // ---------------------------------------------------------------------------
-// Native binding — asserted explicitly, before boot
+// node:sqlite — asserted explicitly, before boot
 // ---------------------------------------------------------------------------
-// This is the whole reason the app-boot job runs on three OSes. Doing it as its
-// own step means a platform without a usable prebuild says so in one line,
-// rather than as a migration failure buried in a boot log.
+// The database is Node's built-in SQLite. Doing this as its own step means a
+// Node without the APIs the adapter uses says so in one line, rather than as a
+// migration failure buried in a boot log.
 
-console.log(
-	"==> better-sqlite3's native binding loads from the global install",
-);
+console.log("==> node:sqlite works in this Node");
 try {
 	const probe = execFileSync(
 		process.execPath,
 		[
 			"-e",
 			[
-				"const { createRequire } = require('node:module');",
-				"const r = createRequire(process.argv[1]);",
-				"const Database = r('better-sqlite3');",
-				"const db = new Database(':memory:');",
+				"const { DatabaseSync, backup } = require('node:sqlite');",
+				"const db = new DatabaseSync(':memory:', { timeout: 1000 });",
 				"db.exec('create table t (a integer)');",
 				"db.prepare('insert into t values (?)').run(1);",
-				"const n = db.prepare('select count(*) as n from t').get().n;",
+				"const s = db.prepare('select count(*) as n, sqlite_version() as v from t');",
+				"s.setReadBigInts(true);",
+				"if (s.columns().length !== 2 || typeof backup !== 'function') throw new Error('node:sqlite lacks columns() or backup()');",
+				"s.setReturnArrays(true);",
+				"const [n, v] = s.get();",
 				"db.close();",
-				"if (n !== 1) throw new Error('sqlite returned ' + n);",
-				"console.log(r('better-sqlite3/package.json').version);",
+				"if (n !== 1n) throw new Error('sqlite returned ' + n);",
+				"console.log(v);",
 			].join(""),
-			pkgManifest,
 		],
 		{ encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
 	).trim();
-	ok("better-sqlite3 opens an in-memory database", `v${probe}`);
+	ok("node:sqlite opens an in-memory database", `SQLite ${probe}`);
 } catch (error) {
 	const detail = `${error.stderr ?? ""}${error.message ?? ""}`.trim();
 	die(
-		"better-sqlite3's native binding does not load from the global install " +
-			`on ${process.platform}-${process.arch}. Every assertion below would ` +
+		`node:sqlite does not work in Node ${process.version} on ` +
+			`${process.platform}-${process.arch}. Every assertion below would ` +
 			`fail for this one reason.\n${detail}`,
 	);
 }

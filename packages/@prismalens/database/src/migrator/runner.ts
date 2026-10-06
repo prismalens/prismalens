@@ -39,8 +39,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { backup, DatabaseSync } from "node:sqlite";
 import { getAppDataDir } from "@prismalens/config";
-import Database from "better-sqlite3";
+import { isBusyError } from "../adapter-node-sqlite/errors.js";
 import {
 	readShippedMigrations,
 	resolveMigrationsDir,
@@ -138,7 +139,7 @@ interface AppliedMigrationRow {
 	rolled_back_at: number | null;
 }
 
-type SqliteDatabase = Database.Database;
+type SqliteDatabase = DatabaseSync;
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,7 +162,7 @@ function readLedger(db: SqliteDatabase): AppliedMigrationRow[] {
 		.prepare(
 			`SELECT migration_name, checksum, finished_at, rolled_back_at FROM "${MIGRATIONS_TABLE}"`,
 		)
-		.all() as AppliedMigrationRow[];
+		.all() as unknown as AppliedMigrationRow[];
 }
 
 /**
@@ -289,9 +290,9 @@ function assertHistoryIsCompatible(
  */
 async function backupDatabase(databaseFile: string): Promise<string> {
 	const backupFile = `${databaseFile}.bak-${Date.now()}`;
-	const source = new Database(databaseFile, { readonly: true });
+	const source = new DatabaseSync(databaseFile, { readOnly: true });
 	try {
-		await source.backup(backupFile);
+		await backup(source, backupFile);
 	} finally {
 		source.close();
 	}
@@ -310,8 +311,7 @@ async function beginImmediate(
 			return;
 		} catch (error) {
 			lastError = error;
-			const code = (error as { code?: string }).code ?? "";
-			if (!code.startsWith("SQLITE_BUSY")) throw error;
+			if (!isBusyError(error)) throw error;
 			if (attempt < LOCK_ATTEMPTS) await sleep(LOCK_RETRY_DELAY_MS * attempt);
 		}
 	}
@@ -371,16 +371,16 @@ export async function runMigrations(
 	}
 
 	mkdirSync(dirname(databaseFile), { recursive: true });
-	const db = new Database(databaseFile);
+	const db = new DatabaseSync(databaseFile);
 
 	try {
-		db.pragma(
-			`busy_timeout = ${options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS}`,
+		db.exec(
+			`PRAGMA busy_timeout = ${options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS}`,
 		);
 		// Prisma's SQLite migrations assume foreign keys are not enforced while a
 		// table is being redefined. This is a dedicated connection, closed below,
 		// so the app's own connection is unaffected.
-		db.pragma("foreign_keys = OFF");
+		db.exec("PRAGMA foreign_keys = OFF");
 
 		// --- read-only reconnaissance: no writes before the backup decision ---
 		const ledger = readLedger(db);
@@ -464,7 +464,7 @@ export async function runMigrations(
 
 			db.exec("COMMIT");
 		} catch (error) {
-			if (db.inTransaction) db.exec("ROLLBACK");
+			if (db.isTransaction) db.exec("ROLLBACK");
 			throw error;
 		}
 

@@ -71,7 +71,7 @@
  *       |   |   +-- dist/prisma/sqlite/schema/ migration SQL, applied at boot
  *       |   +-- engine|config|contracts|auth|logger|integrations|design-tokens
  *       |
- *       +-- ai/ zod/ pino/ @nestjs/* @prisma/* better-sqlite3/ ...
+ *       +-- ai/ zod/ pino/ @nestjs/* @prisma/* ...
  *                                       ^
  *                                       | INSTALLED BY npm from the generated
  *                                       | union. This is where every copied
@@ -121,14 +121,7 @@ const NOTICES = "THIRD_PARTY_NOTICES.txt";
 /** The node floor of the published package. See ENGINES below. */
 const ENGINES_NODE = ">=24";
 
-/**
- * `better-sqlite3` is a native addon: a caret range that floats onto a version
- * whose prebuilds lag the Node 24 ABI turns `npm i -g prismalens` into a
- * compile-from-source (and a failure on any machine without a toolchain).
- * Pinned exactly, bumped deliberately, verified by the packed smoke.
- */
 const PINNED = {
-	"better-sqlite3": "12.11.1",
 	// Better Auth 1.7.3 dropped the required issuer column our schema requires (#580).
 	"better-auth": "1.7.2",
 };
@@ -691,8 +684,8 @@ export function packCli() {
 		);
 
 		if (name === "@prismalens/database") {
-			// Migration SQL + schema, applied at first boot through the
-			// better-sqlite3 adapter. The `prisma` CLI is NOT in the published
+			// Migration SQL + schema, applied at first boot through Node's
+			// built-in node:sqlite. The `prisma` CLI is NOT in the published
 			// closure and must never be invoked at user runtime. Restaged here
 			// (not trusted from the dist copy) because tsc emits only JS: a build
 			// that skipped copy-migrations would pack a tarball with no SQL in it.

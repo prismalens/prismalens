@@ -37,6 +37,7 @@ export default defineConfig({
 				// perFile so one well-covered module cannot mask a thin one.
 				perFile: true,
 				"src/migrator/**/*.ts": NEW_CODE_THRESHOLD,
+				"src/adapter-node-sqlite/**/*.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

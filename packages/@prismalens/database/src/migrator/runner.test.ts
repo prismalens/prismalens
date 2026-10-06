@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
+import { DatabaseSync as Database } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMigrationsDir } from "./migration-source.js";
 import { defaultDatabaseFile, MigrationError, runMigrations,
@@ -99,27 +99,27 @@ interface LedgerRow {
 }
 
 function readLedger(file: string): LedgerRow[] {
-	const db = new Database(file, { readonly: true });
+	const db = new Database(file, { readOnly: true });
 	try {
 		return db
 			.prepare(
 				`SELECT * FROM "_prisma_migrations" ORDER BY "migration_name"`,
 			)
-			.all() as LedgerRow[];
+			.all() as unknown as LedgerRow[];
 	} finally {
 		db.close();
 	}
 }
 
 function tableNames(file: string): string[] {
-	const db = new Database(file, { readonly: true });
+	const db = new Database(file, { readOnly: true });
 	try {
 		return (
 			db
 				.prepare(
 					`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
 				)
-				.all() as { name: string }[]
+				.all() as unknown as { name: string }[]
 		).map((r) => r.name);
 	} finally {
 		db.close();
@@ -157,9 +157,9 @@ describe("runMigrations — fresh database", () => {
 		expect(result.backupFile).toBeNull();
 
 		expect(tableNames(file)).toContain("widget");
-		const columns = new Database(file, { readonly: true });
+		const columns = new Database(file, { readOnly: true });
 		const cols = (
-			columns.prepare(`PRAGMA table_info("widget")`).all() as { name: string }[]
+			columns.prepare(`PRAGMA table_info("widget")`).all() as unknown as { name: string }[]
 		).map((c) => c.name);
 		columns.close();
 		expect(cols).toEqual(["id", "name", "colour"]);
@@ -186,12 +186,12 @@ describe("runMigrations — fresh database", () => {
 
 		// Byte-identical to the table `prisma migrate deploy` creates, so a
 		// database this runner bootstrapped stays legible to the Prisma CLI.
-		const db = new Database(file, { readonly: true });
+		const db = new Database(file, { readOnly: true });
 		const ddl = db
 			.prepare(
 				`SELECT sql FROM sqlite_master WHERE name = '_prisma_migrations'`,
 			)
-			.get() as { sql: string };
+			.get() as unknown as { sql: string };
 		db.close();
 		expect(ddl.sql).toBe(PRISMA_LEDGER_DDL);
 	});
@@ -265,10 +265,10 @@ describe("runMigrations — partially migrated database", () => {
 		expect(result.applied).toEqual([ADD_COLOUR]);
 		expect(result.alreadyApplied).toEqual([BASE]);
 
-		const db = new Database(file, { readonly: true });
+		const db = new Database(file, { readOnly: true });
 		const row = db
 			.prepare(`SELECT "id", "name", "colour" FROM "widget"`)
-			.get() as { id: string; name: string; colour: string | null };
+			.get() as unknown as { id: string; name: string; colour: string | null };
 		db.close();
 		expect(row).toEqual({ id: "w1", name: "spinner", colour: null });
 
@@ -295,13 +295,13 @@ describe("runMigrations — partially migrated database", () => {
 		expect(result.backupFile).not.toBeNull();
 		expect(existsSync(result.backupFile as string)).toBe(true);
 		// The backup is the PRE-migration state: it has no `colour` column.
-		const backup = new Database(result.backupFile as string, { readonly: true });
+		const backup = new Database(result.backupFile as string, { readOnly: true });
 		const cols = (
-			backup.prepare(`PRAGMA table_info("widget")`).all() as { name: string }[]
+			backup.prepare(`PRAGMA table_info("widget")`).all() as unknown as { name: string }[]
 		).map((c) => c.name);
 		const preserved = backup
 			.prepare(`SELECT "name" FROM "widget"`)
-			.get() as { name: string };
+			.get() as unknown as { name: string };
 		backup.close();
 		expect(cols).toEqual(["id", "name"]);
 		expect(preserved.name).toBe("spinner");
@@ -442,9 +442,9 @@ describe("runMigrations — refuses incompatible histories", () => {
 		// migration's first (valid) statement, survives.
 		expect(readLedger(file)).toEqual(before);
 		expect(tableNames(file)).not.toContain("gadget");
-		const db = new Database(file, { readonly: true });
+		const db = new Database(file, { readOnly: true });
 		const cols = (
-			db.prepare(`PRAGMA table_info("widget")`).all() as { name: string }[]
+			db.prepare(`PRAGMA table_info("widget")`).all() as unknown as { name: string }[]
 		).map((c) => c.name);
 		db.close();
 		expect(cols).toEqual(["id", "name"]);

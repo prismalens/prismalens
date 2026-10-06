@@ -6,7 +6,7 @@ import { z } from "zod";
 /**
  * SQLite database configuration.
  * Database file path is hardcoded to .prismalens/prismalens.db
- * Configuration focuses on better-sqlite3 library options.
+ * Configuration focuses on node:sqlite connection options.
  */
 export const sqliteConfigSchema = z.object({
 	PRISMALENS_DB_SQLITE_READONLY: z
