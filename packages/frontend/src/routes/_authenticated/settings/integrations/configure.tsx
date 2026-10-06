@@ -16,18 +16,14 @@ import {
 	useNavigate,
 	useSearch,
 } from "@tanstack/react-router";
-import {
-	AlertCircle,
-	ArrowLeft,
-	Building2,
-	CheckCircle,
-	Loader2,
-} from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Building2, Loader2 } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { GitRepoSelector } from "@/components/settings/GitRepoSelector";
-import { Badge } from "@/components/ui/badge";
+import { MutationError } from "@/components/shared/MutationError";
+import { Pool, Row } from "@/components/shared/Row";
+import { SettingGroup } from "@/components/shared/SettingRow";
+import { Empty, Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	useConnectGitHubInstallation,
 	useConnection,
@@ -127,139 +123,111 @@ function GitHubAppInstallationWizard({
 			setConnected(true);
 		} catch (err) {
 			setConnectError(
-				err instanceof Error ? err.message : "Failed to connect installation",
+				err instanceof Error
+					? err.message
+					: "The installation did not connect.",
 			);
 			setConnectingId(null);
 		}
 	};
 
-	if (connected) {
-		return (
-			<div className="px-4 py-6 sm:px-0">
-				<Card className="max-w-2xl mx-auto">
-					<CardContent className="py-12">
-						<div className="flex flex-col items-center text-center">
-							<CheckCircle className="h-8 w-8 text-ok mb-4" />
-							<h2 className="text-lg font-semibold mb-2">
-								GitHub App Connected
-							</h2>
-							<p className="text-text-2 mb-6">
-								Installation token generated. The token will auto-refresh every
-								hour.
-							</p>
-							<Button onClick={onDone}>Done</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
-
 	return (
-		<div className="px-4 py-6 sm:px-0">
-			<div className="max-w-2xl mx-auto space-y-6">
-				<div className="flex items-center gap-4">
-					<Button variant="ghost" size="icon" onClick={onCancel}>
-						<ArrowLeft className="h-5 w-5" />
-					</Button>
-					<div className="flex items-center gap-3">
-						<div className="flex-shrink-0">
-							{getIntegrationIcon("github", "h-6 w-6")}
-						</div>
-						<div>
-							<h1 className="text-xl font-semibold">Select installation</h1>
-							<p className="text-sm text-text-2">
-								Choose which organization or account to connect
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Available installations</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{isLoading && (
-							<div className="flex items-center justify-center py-8">
-								<Loader2 className="h-6 w-6 motion-safe:animate-spin text-text-2" />
-							</div>
-						)}
-
-						{error && (
-							<div className="flex flex-col items-center text-center py-8">
-								<AlertCircle className="h-5 w-5 text-danger mb-3" />
-								<p className="text-sm text-danger mb-4">
-									{error instanceof Error
-										? error.message
-										: "Failed to load installations"}
-								</p>
-								<Button variant="outline" size="sm" onClick={() => refetch()}>
-									Retry
+		<ConfigureFrame
+			title="Choose an installation"
+			meta="The organization or account the GitHub App reads"
+			icon={getIntegrationIcon("github", "size-5")}
+			onBack={onCancel}
+		>
+			{connected ? (
+				<Empty
+					text="Connected. Its token refreshes on its own every hour."
+					action={
+						<Button variant="primary" size="sm" onClick={onDone}>
+							Done
+						</Button>
+					}
+				/>
+			) : (
+				<SettingGroup title="Installations" count={installations?.length}>
+					{isLoading && <Loading rows={3} />}
+					{error && (
+						<Problem
+							text="The installations did not load."
+							onRetry={() => refetch()}
+						/>
+					)}
+					{installations && installations.length === 0 && (
+						<Empty
+							text="None yet. Install the GitHub App on an organization or account first."
+							action={
+								<Button variant="text" size="sm" onClick={() => refetch()}>
+									Look again
 								</Button>
-							</div>
-						)}
-
-						{installations && installations.length === 0 && (
-							<div className="flex flex-col items-center text-center py-8">
-								<Building2 className="h-5 w-5 text-text-2 mb-3" />
-								<p className="text-text-2 mb-2">No installations found</p>
-								<p className="text-sm text-text-2 mb-4">
-									Install the GitHub App on an organization or account first.
-								</p>
-								<Button variant="outline" size="sm" onClick={() => refetch()}>
-									Refresh
-								</Button>
-							</div>
-						)}
-
-						{connectError && (
-							<div className="flex items-center gap-2 p-3 text-sm text-danger bg-danger/10 rounded-md mb-3">
-								<AlertCircle className="h-4 w-4 flex-shrink-0" />
-								{connectError}
-							</div>
-						)}
-
-						{installations && installations.length > 0 && (
-							<div className="space-y-3">
-								{installations.map((inst) => (
-									<div
-										key={inst.id}
-										className="flex items-center justify-between p-4 border rounded-lg"
-									>
-										<div className="flex items-center gap-3">
-											<Building2 className="h-5 w-5 text-text-2" />
-											<div>
-												<p className="font-medium">{inst.account.login}</p>
-												<div className="flex items-center gap-2 mt-1">
-													<Badge variant="outline" className="text-xs">
-														{inst.account.type}
-													</Badge>
-													<Badge variant="secondary" className="text-xs">
-														{inst.repositorySelection === "all"
-															? "All repos"
-															: "Selected repos"}
-													</Badge>
-												</div>
-											</div>
-										</div>
+							}
+						/>
+					)}
+					{connectError && (
+						<MutationError error={new Error(connectError)} className="mb-2" />
+					)}
+					{installations && installations.length > 0 && (
+						<Pool>
+							{installations.map((inst) => (
+								<Row
+									key={inst.id}
+									lead={<Building2 className="size-4 text-text-3" />}
+									label={inst.account.login}
+									meta={`${inst.account.type}, ${inst.repositorySelection === "all" ? "all repositories" : "chosen repositories"}`}
+									trailing={
 										<Button
+											variant="secondary"
 											size="sm"
 											onClick={() => handleConnect(inst.id, inst.account.login)}
 											disabled={connectingId !== null}
 										>
-											{connectingId === inst.id ? (
-												<Loader2 className="h-4 w-4 motion-safe:animate-spin mr-2" />
-											) : null}
+											{connectingId === inst.id && (
+												<Loader2 className="size-3.5 motion-safe:animate-spin" />
+											)}
 											Connect
 										</Button>
-									</div>
-								))}
-							</div>
-						)}
-					</CardContent>
-				</Card>
+									}
+								/>
+							))}
+						</Pool>
+					)}
+				</SettingGroup>
+			)}
+		</ConfigureFrame>
+	);
+}
+
+/** The configure page's column: Back, the provider and title, then the content. */
+function ConfigureFrame({
+	title,
+	meta,
+	icon,
+	onBack,
+	children,
+}: {
+	title: string;
+	meta?: string;
+	icon?: ReactNode;
+	onBack: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<div className="w-full max-w-[calc(var(--reading-w)+3rem)] px-4 pt-4 pb-12 md:px-6">
+			<Button variant="text" size="sm" className="-ml-2" onClick={onBack}>
+				<ArrowLeft />
+				Settings
+			</Button>
+			<div className="mt-3 mb-6 flex items-center gap-3">
+				{icon && <span className="text-text-2">{icon}</span>}
+				<div className="min-w-0">
+					<h1 className="text-title">{title}</h1>
+					{meta && <p className="truncate text-meta text-text-3">{meta}</p>}
+				</div>
 			</div>
+			{children}
 		</div>
 	);
 }
@@ -343,108 +311,60 @@ function StandardConfigurePage({
 	};
 
 	const getProviderIcon = () => {
-		return getIntegrationIcon(providerName ?? "", "h-6 w-6");
+		return getIntegrationIcon(providerName ?? "", "size-5");
 	};
 
-	if (!connectionId) {
-		return (
-			<div className="px-4 py-6 sm:px-0">
-				<Card className="max-w-2xl mx-auto">
-					<CardContent className="py-12">
-						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-5 w-5 text-danger mb-3" />
-							<h2 className="text-lg font-semibold mb-2">
-								Missing Connection ID
-							</h2>
-							<p className="text-text-2 mb-4">
-								No connection ID was provided. Please return to settings and try
-								again.
-							</p>
-							<Button onClick={handleCancel}>
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Settings
-							</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
+	const frame = (children: ReactNode, meta?: string) => (
+		<ConfigureFrame
+			title={`Configure ${getProviderDisplayName()}`}
+			meta={meta}
+			icon={getProviderIcon()}
+			onBack={handleCancel}
+		>
+			{children}
+		</ConfigureFrame>
+	);
 
-	if (isLoadingConnection) {
-		return (
-			<div className="px-4 py-6 sm:px-0">
-				<Card className="max-w-2xl mx-auto">
-					<CardContent className="flex items-center justify-center py-12">
-						<Loader2 className="h-8 w-8 motion-safe:animate-spin text-text-2" />
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
-
-	if (connectionError || !connection) {
-		return (
-			<div className="px-4 py-6 sm:px-0">
-				<Card className="max-w-2xl mx-auto">
-					<CardContent className="py-12">
-						<div className="flex flex-col items-center text-center">
-							<AlertCircle className="h-5 w-5 text-danger mb-3" />
-							<h2 className="text-lg font-semibold mb-2">
-								Connection Not Found
-							</h2>
-							<p className="text-text-2 mb-4">
-								{connectionError?.message ||
-									"The connection could not be found. It may have been deleted."}
-							</p>
-							<Button onClick={handleCancel}>
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Settings
-							</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-		);
-	}
-
-	return (
-		<div className="px-4 py-6 sm:px-0">
-			<div className="max-w-2xl mx-auto space-y-6">
-				<div className="flex items-center gap-4">
-					<Button variant="ghost" size="icon" onClick={handleCancel}>
-						<ArrowLeft className="h-5 w-5" />
+	if (!connectionId)
+		return frame(
+			<NotFound
+				text="No connection was named. Start again from Settings, Integrations."
+				back={
+					<Button variant="secondary" size="sm" onClick={handleCancel}>
+						Back to Settings
 					</Button>
-					<div className="flex items-center gap-3">
-						<div className="flex-shrink-0">{getProviderIcon()}</div>
-						<div>
-							<h1 className="text-xl font-semibold">
-								Configure {getProviderDisplayName()}
-							</h1>
-							<p className="text-sm text-text-2">
-								{connection.integration?.label ??
-									connection.templateName ??
-									"Connection"}
-							</p>
-						</div>
-					</div>
-				</div>
+				}
+			/>,
+		);
 
-				<GitRepoSelector
-					connectionId={connectionId}
-					providerName={providerName}
-					providerDisplayName={getProviderDisplayName()}
-					organizations={organizations}
-					repositories={repositories}
-					isLoadingOrgs={isLoadingOrgs}
-					isLoadingRepos={isLoadingRepos}
-					selectedOrg={selectedOrg}
-					onOrgChange={setSelectedOrg}
-					onSave={handleSave}
-					onCancel={handleCancel}
-					isSaving={updateConfig.isPending}
-				/>
-			</div>
-		</div>
+	if (isLoadingConnection) return frame(<Loading rows={4} />);
+
+	if (connectionError || !connection)
+		return frame(
+			<NotFound
+				back={
+					<Button variant="secondary" size="sm" onClick={handleCancel}>
+						Back to Settings
+					</Button>
+				}
+			/>,
+		);
+
+	return frame(
+		<GitRepoSelector
+			connectionId={connectionId}
+			providerName={providerName}
+			providerDisplayName={getProviderDisplayName()}
+			organizations={organizations}
+			repositories={repositories}
+			isLoadingOrgs={isLoadingOrgs}
+			isLoadingRepos={isLoadingRepos}
+			selectedOrg={selectedOrg}
+			onOrgChange={setSelectedOrg}
+			onSave={handleSave}
+			onCancel={handleCancel}
+			isSaving={updateConfig.isPending}
+		/>,
+		connection.integration?.label ?? connection.templateName ?? "Connection",
 	);
 }

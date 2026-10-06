@@ -165,13 +165,15 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			page.getByText(PROTOCOL_MISMATCH_REASON).first(),
 		).toBeVisible();
 
-		// On a tab without the box, the band's menu carries Investigate again:
-		// disabled, titled with the same reason (R1a d7 keeps it off the band).
+		// On a tab without the box, the band's Investigate again is disabled,
+		// its hint the same reason.
 		await page.getByTestId("tab-alerts").click();
-		await page.getByTestId("band-more").click();
 		const headerBtn = page.getByTestId("band-menu-investigate");
 		await expect(headerBtn).toBeDisabled();
-		await expect(headerBtn).toHaveAttribute("title", PROTOCOL_MISMATCH_REASON);
+		await headerBtn.locator("..").hover();
+		await expect(page.getByTestId("hint").last()).toHaveText(
+			PROTOCOL_MISMATCH_REASON,
+		);
 	});
 
 	test("a runnable selection enables both affordances", async ({ page }) => {
@@ -182,7 +184,6 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await page.goto(`/incidents/${id}`);
 		await expect(boxInvestigateButton(page)).toBeEnabled({ timeout: 15_000 });
 		await page.getByTestId("tab-alerts").click();
-		await page.getByTestId("band-more").click();
 		await expect(page.getByTestId("band-menu-investigate")).toBeEnabled();
 	});
 

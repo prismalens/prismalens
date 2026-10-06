@@ -13,10 +13,20 @@ import { FirstRunPanel, SetupLine } from "@/components/incidents/FirstRunPanel";
 import { IncidentBoard } from "@/components/incidents/IncidentBoard";
 import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
 import { Segmented } from "@/components/shared/Segmented";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
+import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "./route";
 
 export const Route = createFileRoute("/_authenticated/incidents/")({
@@ -62,6 +72,7 @@ function IncidentsLanding() {
 		data: list,
 		isLoading,
 		error: listError,
+		refetch,
 	} = useQuery({
 		...orpc.incidents.list.queryOptions({ input: listInput }),
 		refetchInterval: useLiveRefreshInterval(),
@@ -131,8 +142,8 @@ function IncidentsLanding() {
 							]}
 							testId="incidents-view"
 						/>
-						<div className="flex basis-full items-center gap-2 md:ml-auto md:basis-auto">
-							<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
+						<div className="flex basis-full items-center gap-2 md:grow-[999] md:basis-auto md:justify-end">
+							<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-40 md:flex-none">
 								<Search className="size-3.5 shrink-0 text-text-3" />
 								<input
 									value={q}
@@ -143,25 +154,34 @@ function IncidentsLanding() {
 									data-testid="board-search"
 								/>
 							</label>
-							<select
+							<Select
 								value={viewKey}
-								onChange={(e) => setWindow(e.target.value as WindowKey)}
-								aria-label="Window"
-								className="raised h-7 rounded-control px-2 text-body text-text-2 outline-none"
-								data-testid="board-window"
+								onValueChange={(v) => setWindow(v as WindowKey)}
 							>
-								{windows.map((w) => (
-									<option key={w} value={w}>
-										{analytics ? `Last ${WINDOWS[w].label}` : WINDOWS[w].label}
-									</option>
-								))}
-							</select>
+								<SelectTrigger aria-label="Window" data-testid="board-window">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent align="end">
+									{windows.map((w) => (
+										<SelectItem key={w} value={w}>
+											{analytics
+												? `Last ${WINDOWS[w].label}`
+												: WINDOWS[w].label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
 					</>
 				)}
 			</PageHeader>
 
-			<div className="min-h-0 flex-1 overflow-y-auto">
+			<div
+				className={cn(
+					"min-h-0 flex-1 overflow-y-auto",
+					!firstRun && !analytics && "md:flex md:flex-col md:overflow-hidden",
+				)}
+			>
 				{firstRun ? (
 					<FirstRunPanel />
 				) : analytics ? (
@@ -171,35 +191,40 @@ function IncidentsLanding() {
 						onWiden={() => setWindow("90d")}
 					/>
 				) : (
-					<div className="px-4 pt-2 pb-12 md:px-6">
+					<div className="flex flex-col px-4 pt-1 pb-6 md:min-h-0 md:flex-1 md:px-6 md:pb-4">
 						<SetupLine />
-						{isLoading ? null : listError ? (
-							<p className="text-body text-danger">
-								The board did not load: {listError.message}
-							</p>
+						{/* A failed refetch keeps the last board; offline is ReconnectLine's (ruling §2). */}
+						{isLoading ? (
+							<Loading rows={6} />
+						) : listError && !list ? (
+							<Problem
+								text="The board did not load."
+								onRetry={() => void refetch()}
+							/>
 						) : (
 							<>
-								<IncidentBoard incidents={incidents} search={keep} />
 								{incidents.length === 0 && (
-									<p
-										className="mt-2 text-body text-text-2"
-										data-testid="incidents-window-empty"
-									>
-										Nothing in this window.{" "}
-										<button
-											type="button"
-											className="text-accent hover:underline"
-											onClick={() => {
-												setQ("");
-												setWindow("all");
-											}}
-										>
-											Show all time
-										</button>
-									</p>
+									<Empty
+										className="shrink-0 pt-0"
+										text="Nothing in this window."
+										testId="incidents-window-empty"
+										action={
+											<Button
+												variant="text"
+												size="sm"
+												onClick={() => {
+													setQ("");
+													setWindow("all");
+												}}
+											>
+												Show all time
+											</Button>
+										}
+									/>
 								)}
+								<IncidentBoard incidents={incidents} search={keep} />
 								{list?.pagination.hasMore && (
-									<p className="mt-4 text-meta text-text-3">
+									<p className="mt-3 shrink-0 text-meta text-text-3">
 										The 100 newest in this window
 									</p>
 								)}

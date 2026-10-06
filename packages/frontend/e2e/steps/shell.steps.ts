@@ -177,8 +177,9 @@ When(
 		await page.goto("/incidents");
 		await expect(page.getByTestId("page-header")).toBeVisible();
 		const counts: NonNullable<World["newCounts"]> = [];
+		// Cold loads: from the sidebar door a wide list opens its first record (L32).
 		for (const door of ["incidents", "alerts", "services", "settings"]) {
-			await page.getByTestId("sidebar").getByTestId(`nav-${door}`).click();
+			await page.goto(`/${door}`);
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
@@ -209,7 +210,7 @@ Then(
 When(
 	"I press {string} from Services and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
-		if (!pathOf(page).startsWith("/services")) {
+		if (pathOf(page) !== "/services") {
 			await page.goto("/services");
 		}
 		await page
@@ -534,6 +535,13 @@ Then(
 		await list.getByTestId("settings-section-devices").click();
 		await expect(page).toHaveURL(/tab=devices/);
 		await expect(page.getByTestId("devices-list")).toBeVisible();
+		await page
+			.getByTestId("settings-frame")
+			.getByTestId("settings-back")
+			.click();
+		await expect(page.getByTestId("settings-section-list")).toBeVisible();
+		await list.getByTestId("settings-section-devices").click();
+		await expect(page.getByTestId("devices-list")).toBeVisible();
 		await page.getByTestId("topbar").getByTestId("strip-settings").click();
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
 	},
@@ -714,7 +722,8 @@ When(
 	"I press Revoke on the row marked {string}",
 	async ({ page }, _label: string) => {
 		await page
-			.locator("[data-testid=device-row][data-current]")
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") })
 			.getByTestId("device-revoke")
 			.click();
 	},
@@ -743,6 +752,8 @@ Then("the row is still paired", async ({ page }) => {
 	await expect(page.getByRole("alertdialog")).toBeHidden();
 	await page.reload();
 	await expect(
-		page.locator("[data-testid=device-row][data-current]"),
+		page
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") }),
 	).toBeVisible();
 });

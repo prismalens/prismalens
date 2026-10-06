@@ -14,9 +14,8 @@ import {
 	TimelineSourceSchema,
 } from "@prismalens/contracts";
 import { format, isToday, isYesterday } from "date-fns";
-import { ClipboardList } from "lucide-react";
 import { useState } from "react";
-
+import { Empty, Loading } from "@/components/shared/State";
 import {
 	Select,
 	SelectContent,
@@ -24,7 +23,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { groupTimeline, type InvestigationRef } from "@/lib/timeline-groups";
 import { cn } from "@/lib/utils";
 import { TimelineList } from "./TimelineList";
@@ -99,40 +97,17 @@ export function TimelineTab({
 	// Group by date
 	const groupedEntries = groupEntriesByDate(sortedEntries);
 
-	if (isLoading) {
-		return (
-			<div className={cn("space-y-4", className)}>
-				<div className="flex items-center gap-2">
-					<Skeleton className="h-9 w-32" />
-					<Skeleton className="h-9 w-32" />
-				</div>
-				<div className="space-y-4">
-					{[1, 2, 3, 4].map((i) => (
-						<div key={i} className="flex gap-4 motion-safe:animate-pulse">
-							<div className="flex flex-col items-center">
-								<Skeleton className="w-12 h-4" />
-								<Skeleton className="w-8 h-8 rounded-full mt-2" />
-							</div>
-							<div className="flex-1 space-y-2">
-								<Skeleton className="h-5 w-3/4" />
-								<Skeleton className="h-4 w-1/2" />
-							</div>
-						</div>
-					))}
-				</div>
-			</div>
-		);
-	}
+	if (isLoading) return <Loading rows={6} className={className} />;
 
 	return (
 		<div className={cn("space-y-4", className)}>
 			<div className="flex flex-wrap items-center gap-2">
-				<div className="flex items-center gap-2 [&_button]:h-7 [&_button]:text-meta">
+				<div className="flex items-center gap-2">
 					<Select
 						value={typeFilter}
 						onValueChange={(v) => setTypeFilter(v as TypeFilter)}
 					>
-						<SelectTrigger className="w-[160px]">
+						<SelectTrigger aria-label="Type">
 							<SelectValue placeholder="Filter by type" />
 						</SelectTrigger>
 						<SelectContent>
@@ -148,7 +123,7 @@ export function TimelineTab({
 						value={sourceFilter}
 						onValueChange={(v) => setSourceFilter(v as SourceFilter)}
 					>
-						<SelectTrigger className="w-[140px]">
+						<SelectTrigger aria-label="Source">
 							<SelectValue placeholder="Filter by source" />
 						</SelectTrigger>
 						<SelectContent>
@@ -164,16 +139,18 @@ export function TimelineTab({
 
 			{/* Timeline Entries */}
 			{sortedEntries.length === 0 ? (
-				<p className="flex items-center gap-2 rounded-md border border-dashed p-3 text-body text-text-2">
-					<ClipboardList className="h-4 w-4 shrink-0" />
-					Nothing recorded yet. Status changes, runs and alerts land here on
-					their own, and so do your notes.
-				</p>
+				<Empty
+					text={
+						entries.length === 0
+							? "Nothing recorded yet. Status changes, runs, alerts and your notes land here."
+							: "Nothing matches these filters."
+					}
+				/>
 			) : (
 				<div className="space-y-4">
 					{Array.from(groupedEntries.entries()).map(([dateKey, dayEntries]) => (
 						<section key={dateKey}>
-							<h3 className="sticky top-0 bg-canvas py-1 text-meta font-medium text-text-2">
+							<h3 className="sticky top-0 z-[1] bg-canvas py-1 text-meta font-medium text-text-3">
 								{formatDateHeader(dayEntries[0].occurredAt)}
 							</h3>
 							<TimelineList items={groupTimeline(dayEntries, runs)} full />

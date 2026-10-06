@@ -10,13 +10,13 @@
  * /settings/harnesses` (ADR 0003 §9) is the only source of truth for what is
  * detected on this machine and the gate's own selection verdict, rendered
  * verbatim rather than re-derived here. The picker itself reads and writes
- * `GET`/`PATCH /settings/harness` — the persisted choice and model. That
+ * `GET`/`PATCH /settings/harness`: the persisted choice and model. That
  * persisted choice loses to `PRISMALENS_HARNESS` when the env var is set
- * (`selection.pinned`), so the picker stays editable but the card says so.
+ * (`selection.pinned`), so the picker stays editable but the page says so.
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import type { HarnessStatus } from "@prismalens/contracts";
+import type { HarnessProbeResult, HarnessStatus } from "@prismalens/contracts";
 import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
@@ -24,9 +24,13 @@ import {
 	BOUNDARY_NOTE,
 	READ_ONLY_LINE,
 } from "@/components/agent/AgentPicker";
+import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
+import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
+import { Loading, Problem } from "@/components/shared/State";
+import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -35,14 +39,12 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
-import { cn } from "@/lib/utils";
 
-/** One harness's last on-demand ACP handshake verdict, kept only in memory — it goes stale the moment the harness's login state changes. */
+/** One harness's last on-demand ACP handshake verdict, kept only in memory; it goes stale the moment the harness's login state changes. */
 interface ProbeState {
 	/** Only "answers ACP" is a pass; it still does not mean signed in. */
-	answers: boolean;
+	outcome: HarnessProbeResult["outcome"];
 	detail: string;
-	timestamp: Date;
 }
 
 export function HarnessSettings() {
@@ -59,20 +61,14 @@ export function HarnessSettings() {
 			const result = await checkHarness.mutateAsync({ id });
 			setProbes((prev) => ({
 				...prev,
-				[id]: {
-					answers: result.outcome === "answers-acp",
-					detail: result.detail,
-					timestamp: new Date(),
-				},
+				[id]: { outcome: result.outcome, detail: result.detail },
 			}));
 		} catch (err) {
 			setProbes((prev) => ({
 				...prev,
 				[id]: {
-					answers: false,
-					detail:
-						err instanceof Error ? err.message : "Could not run the check",
-					timestamp: new Date(),
+					outcome: "failed-to-start",
+					detail: "The check did not run. Try it again.",
 				},
 			}));
 		}
@@ -82,21 +78,22 @@ export function HarnessSettings() {
 	const selection = data?.selection;
 
 	if (isLoading || settingsLoading) {
-		return <div data-testid="harness-settings" />;
+		return (
+			<div data-testid="harness-settings">
+				<Loading rows={5} />
+			</div>
+		);
 	}
 
 	return (
 		<div data-testid="harness-settings">
 			{isError && (
-				<p
-					className="mb-4 text-body text-danger"
-					data-testid="harness-status-error"
-				>
-					PrismaLens could not read the agent status on this machine.{" "}
-					<button type="button" className="underline" onClick={() => refetch()}>
-						Try again
-					</button>
-				</p>
+				<div className="mb-4" data-testid="harness-status-error">
+					<Problem
+						text="PrismaLens could not read the agent status on this machine."
+						onRetry={() => refetch()}
+					/>
+				</div>
 			)}
 			{selection?.pinned && selection.pinnedBy === "env" && (
 				<p
@@ -109,127 +106,146 @@ export function HarnessSettings() {
 			)}
 
 			<SettingGroup title="Next run">
-				<SettingRow
-					label="Agent and model"
-					description={
-						selection?.runnable === false
-							? (selection.blockedReason ?? "Would not start right now.")
-							: "The same control sits in the box on an incident."
-					}
-					testId="harness-run-row"
-				>
-					<AgentModelPicker />
-				</SettingRow>
-				<SettingRow
-					label="Access level"
-					description={`${READ_ONLY_LINE} ${BOUNDARY_NOTE}`}
-					testId="harness-access"
-				>
-					<span className="text-body text-text-2">
-						Read-only, chosen per run in the box
-					</span>
-				</SettingRow>
-				<SettingRow
-					label="Allow write levels"
-					description="Edit the copy writes inside the run's throwaway clone. Full access lets the agent do anything on this machine."
-					testId="harness-allow-write"
-				>
-					<Switch
-						checked={settings?.allowWriteLevels === true}
-						onCheckedChange={(on) =>
-							updateSettings.mutate({ allowWriteLevels: on })
+				<Pool>
+					<SettingRow
+						label="Agent and model"
+						description={
+							selection?.runnable === false
+								? (selection.blockedReason ?? "Would not start right now.")
+								: "The same control sits in the box on an incident"
 						}
-						aria-label="Allow write levels"
-						data-testid="harness-allow-write-switch"
-					/>
-				</SettingRow>
+						testId="harness-run-row"
+					>
+						<AgentModelPicker />
+					</SettingRow>
+					<SettingRow
+						label="Access level"
+						description={
+							<Hint label={READ_ONLY_LINE} meta={BOUNDARY_NOTE} side="top">
+								<span>
+									Every run starts read-only; the box raises it for one run
+								</span>
+							</Hint>
+						}
+						testId="harness-access"
+					>
+						<span className="text-body font-medium text-text-1">Read-only</span>
+					</SettingRow>
+					<SettingRow
+						label={
+							<label htmlFor="harness-allow-write">Allow write levels</label>
+						}
+						description="Edit the copy and Full access appear in the box once this is on"
+						testId="harness-allow-write"
+					>
+						<Switch
+							id="harness-allow-write"
+							checked={settings?.allowWriteLevels === true}
+							onCheckedChange={(on) =>
+								updateSettings.mutate({ allowWriteLevels: on })
+							}
+							aria-label="Allow write levels"
+							data-testid="harness-allow-write-switch"
+						/>
+					</SettingRow>
+				</Pool>
 			</SettingGroup>
 
-			<SettingGroup title="Agents on this machine" testId="harness-registry">
-				{harnesses.length > 0 && harnesses.every((h) => !h.installed) && (
-					<p
-						className="pb-2 text-body text-text-2"
-						data-testid="harness-none-available"
-					>
-						None found on PATH. Runs start once one of these is installed.
-					</p>
-				)}
-				{harnesses.map((harness) => {
-					const harnessId = harness.id as HarnessId;
-					const probe = probes[harnessId];
-					const checking =
-						checkHarness.isPending && checkHarness.variables?.id === harnessId;
-					const inUse = selection?.harness === harness.id;
-					return (
-						<SettingRow
-							key={harness.id}
-							testId={`harness-row-${harness.id}`}
-							label={
-								<span className="flex flex-wrap items-baseline gap-x-2">
-									<AgentMark id={harness.id} className="relative top-0.5" />
-									{harness.label}
-									{harness.installed ? (
-										harness.tested && (
-											<span
-												className="text-meta text-text-3"
-												title={harness.tested.date}
-												data-testid={`harness-tested-${harness.id}`}
-											>
-												{harness.tested.version}
-											</span>
-										)
-									) : (
-										<span className="text-text-3">not installed</span>
-									)}
-									{inUse && (
-										<span className="text-meta font-medium text-ok">
-											in use
-										</span>
-									)}
-								</span>
-							}
-							description={
-								harness.installed ? (
-									<>
-										{capabilities(harness)}{" "}
-										<InlineCode text={harness.loginHint} />
-									</>
-								) : (
-									<Mono className="break-all">{harness.install}</Mono>
-								)
-							}
-							below={
-								probe && !checking ? (
-									<p
-										className={cn(
-											"text-meta",
-											probe.answers ? "text-text-3" : "text-danger",
+			<SettingGroup
+				title="Agents on this machine"
+				count={harnesses.length || undefined}
+				testId="harness-registry"
+				description={
+					harnesses.length > 0 && harnesses.every((h) => !h.installed) ? (
+						<span data-testid="harness-none-available">
+							None found on PATH. Runs start once one of these is installed.
+						</span>
+					) : undefined
+				}
+			>
+				<Pool>
+					{harnesses.map((harness) => {
+						const harnessId = harness.id as HarnessId;
+						const probe = probes[harnessId];
+						const checking =
+							checkHarness.isPending &&
+							checkHarness.variables?.id === harnessId;
+						const inUse = selection?.harness === harness.id;
+						return (
+							<Row
+								key={harness.id}
+								testId={`harness-row-${harness.id}`}
+								lead={<AgentMark id={harness.id} />}
+								label={
+									<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+										{harness.label}
+										{harness.installed ? (
+											harness.tested && (
+												<Hint
+													label={`Tested with ${harness.tested.version}`}
+													meta={harness.tested.date}
+												>
+													<span
+														className="font-mono text-meta text-text-3"
+														data-testid={`harness-tested-${harness.id}`}
+													>
+														{harness.tested.version}
+													</span>
+												</Hint>
+											)
+										) : (
+											<StateWord tone="quiet">not installed</StateWord>
 										)}
-										data-testid={`harness-check-result-${harness.id}`}
-									>
-										{probe.detail}
-									</p>
-								) : undefined
-							}
-						>
-							{harness.installed && (
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() => handleCheck(harnessId)}
-									disabled={checking}
-									data-testid={`harness-check-${harness.id}`}
-								>
-									{checking ? "Checking" : "Check"}
-								</Button>
-							)}
-						</SettingRow>
-					);
-				})}
+										{inUse && <StateWord tone="ok">in use</StateWord>}
+									</span>
+								}
+								meta={
+									probe && !checking ? (
+										<StateWord
+											tone={PROBE_TONE[probe.outcome]}
+											className="whitespace-normal"
+											data-testid={`harness-check-result-${harness.id}`}
+										>
+											{probe.detail}
+										</StateWord>
+									) : harness.installed ? (
+										<span className="[&_code]:bg-transparent [&_code]:p-0">
+											{capabilities(harness)}{" "}
+											<InlineCode text={harness.loginHint} />
+										</span>
+									) : (
+										<Mono>{harness.install}</Mono>
+									)
+								}
+								trailing={
+									harness.installed && (
+										<Button
+											variant="text"
+											size="sm"
+											onClick={() => handleCheck(harnessId)}
+											disabled={checking}
+											data-testid={`harness-check-${harness.id}`}
+										>
+											{checking ? "Checking" : "Check"}
+										</Button>
+									)
+								}
+							/>
+						);
+					})}
+				</Pool>
 			</SettingGroup>
 		</div>
 	);
 }
+
+/** A check's verdict as a word (look ruling §1.3, agent row). */
+const PROBE_TONE: Record<HarnessProbeResult["outcome"], StateTone> = {
+	"answers-acp": "ok",
+	"sign-in-needed": "warn",
+	"no-answer": "danger",
+	"failed-to-start": "danger",
+};
 
 /** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
 function capabilities(h: HarnessStatus): string {

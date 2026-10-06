@@ -381,7 +381,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			}),
 		).toBeVisible({ timeout: 15_000 });
 		await expect(
-			page.getByText("Add a connection under Settings → Integrations.", {
+			page.getByText("Add one under Settings, Alert sources.", {
 				exact: true,
 			}),
 		).toBeVisible({ timeout: 15_000 });

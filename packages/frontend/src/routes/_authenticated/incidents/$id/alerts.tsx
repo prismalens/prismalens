@@ -1,9 +1,12 @@
 /**
  * The Alerts route (#743 §3c, layer 2): every correlated alert, storms
- * included. The card on the incident page shows the first two.
+ * included, on the same column and rail as every tab. The Overview shows
+ * the first three.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { CorrelatedAlerts } from "@/components/incidents/CorrelatedAlerts";
+import { useIncidentFacts } from "@/components/incidents/IncidentFacts";
+import { FactsRail, RecordPage } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/alerts")({
@@ -12,17 +15,16 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/alerts")({
 
 function AlertsRoute() {
 	const { incident } = useIncidentRecord();
+	const { rail } = useIncidentFacts();
 	return (
-		<div className="h-full overflow-y-auto" data-testid="alerts-route">
-			<div className="mx-auto max-w-[52rem] space-y-3 px-4 py-4 sm:px-6">
-				<h2 className="flex items-baseline gap-2 text-sm font-medium">
-					Alerts
-					<span className="text-meta font-normal text-text-2 tabular-nums">
-						{incident.alertCount}
-					</span>
-				</h2>
-				<CorrelatedAlerts alerts={incident.alerts ?? []} />
-			</div>
-		</div>
+		<RecordPage testId="alerts-route" rail={<FactsRail facts={rail} />}>
+			<h2 className="mb-2 flex items-baseline gap-2 text-heading">
+				Alerts
+				<span className="font-normal text-text-3 tabular-nums">
+					{incident.alertCount}
+				</span>
+			</h2>
+			<CorrelatedAlerts alerts={incident.alerts ?? []} />
+		</RecordPage>
 	);
 }

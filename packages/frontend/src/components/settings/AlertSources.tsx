@@ -3,12 +3,14 @@
 
 import type { ConnectionWithIntegration } from "@prismalens/contracts/schemas";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal } from "lucide-react";
 import { useId, useState } from "react";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
+import { Pool } from "@/components/shared/Row";
 import { Segmented } from "@/components/shared/Segmented";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
+import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -18,14 +20,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { ago, useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useConnections,
@@ -45,9 +40,8 @@ import {
 } from "@/lib/api/hooks/use-webhooks-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatClock, formatDate } from "@/lib/format-time";
-import { getErrorMessage } from "@/lib/get-error-message";
-import { cn } from "@/lib/utils";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
+import { Field } from "./Field";
 import { PULL_TEMPLATES } from "./SettingsFrame";
 
 type Kind = "alertmanager" | "prometheus";
@@ -56,30 +50,12 @@ const KIND_LABEL: Record<Kind, string> = {
 	prometheus: "Prometheus",
 };
 
-function Copy({ value, testId }: { value: string; testId: string }) {
-	const { toast } = useToast();
-	return (
-		<Button
-			variant="secondary"
-			size="sm"
-			onClick={() => {
-				void navigator.clipboard?.writeText(value);
-				toast({ title: "Copied" });
-			}}
-			data-testid={testId}
-		>
-			Copy
-		</Button>
-	);
-}
-
 /**
  * Settings, Alert sources (study-v3 §7): where alerts come from. The webhook
  * Alertmanager pushes to, with its token and the last delivery; then the
  * sources PrismaLens pulls from by URL. One section, no Connections tab.
  */
 export function AlertSources() {
-	const now = useNow();
 	const { data: token, isError: tokenHidden } = useWebhookToken();
 	const { data: delivery } = useLastDelivery();
 	const [shown, setShown] = useState(false);
@@ -90,66 +66,90 @@ export function AlertSources() {
 	);
 	return (
 		<>
-			<SettingGroup title="Webhook" testId="sources-webhook">
-				<SettingRow
-					label="Alertmanager receiver URL"
-					description={
-						<Mono className="break-all">{webhookUrl("prometheus")}</Mono>
-					}
-					testId="webhook-url"
-				>
-					<Copy value={webhookUrl("prometheus")} testId="copy-webhook-url" />
-				</SettingRow>
-				<SettingRow
-					label="Generic webhook URL"
-					description={
-						<Mono className="break-all">{webhookUrl("generic")}</Mono>
-					}
-				>
-					<Copy value={webhookUrl("generic")} testId="copy-generic-url" />
-				</SettingRow>
-				<SettingRow
-					label="Token"
-					testId="webhook-token"
-					description={
-						token ? (
-							<>
-								Send it as <Mono>Authorization: Bearer</Mono>, as the basic-auth
-								password, or as the HMAC key.{" "}
-								<Mono className="break-all" data-testid="webhook-token-value">
+			<SettingGroup
+				title="Webhook"
+				testId="sources-webhook"
+				description="Alertmanager pushes here. Send the token as the bearer token, the basic-auth password or the HMAC key."
+			>
+				<Pool>
+					<SettingRow
+						label="Alertmanager receiver URL"
+						description={<Mono>{webhookUrl("prometheus")}</Mono>}
+						testId="webhook-url"
+					>
+						<CopyButton
+							value={webhookUrl("prometheus")}
+							testId="copy-webhook-url"
+						/>
+					</SettingRow>
+					<SettingRow
+						label="Generic webhook URL"
+						description={<Mono>{webhookUrl("generic")}</Mono>}
+					>
+						<CopyButton
+							value={webhookUrl("generic")}
+							testId="copy-generic-url"
+						/>
+					</SettingRow>
+					<SettingRow
+						label="Token"
+						testId="webhook-token"
+						description={
+							token ? (
+								<Mono data-testid="webhook-token-value">
 									{shown ? token.token : maskToken(token.token)}
 								</Mono>
+							) : tokenHidden ? (
+								"Shown only in a browser on the machine PrismaLens runs on"
+							) : (
+								"\u00a0"
+							)
+						}
+					>
+						{token && (
+							<>
+								<Button
+									variant="text"
+									size="sm"
+									onClick={() => setShown((v) => !v)}
+									data-testid="webhook-token-show"
+								>
+									{shown ? "Hide" : "Show"}
+								</Button>
+								<CopyButton value={token.token} testId="copy-webhook-token" />
 							</>
-						) : tokenHidden ? (
-							"Shown only in a browser on the machine PrismaLens runs on."
-						) : (
-							"Loading"
-						)
-					}
-				>
-					{token && (
-						<>
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={() => setShown((v) => !v)}
-								data-testid="webhook-token-show"
-							>
-								{shown ? "Hide" : "Show"}
-							</Button>
-							<Copy value={token.token} testId="copy-webhook-token" />
-						</>
-					)}
-				</SettingRow>
-				<SettingRow
-					label="Last delivery"
-					testId="webhook-last-delivery"
-					description={
-						delivery
-							? `${formatClock(delivery.at)} ${new Date(delivery.at).toDateString() === new Date().toDateString() ? "today" : formatDate(delivery.at)}. ${delivery.received} alert${delivery.received === 1 ? "" : "s"}, ${delivery.accepted === delivery.received ? "accepted" : `${delivery.accepted} accepted`}.`
-							: "Nothing has arrived yet."
-					}
-				/>
+						)}
+					</SettingRow>
+					<SettingRow
+						label="Last delivery"
+						testId="webhook-last-delivery"
+						description={
+							delivery ? (
+								<>
+									{formatClock(delivery.at)}{" "}
+									{new Date(delivery.at).toDateString() ===
+									new Date().toDateString()
+										? "today"
+										: formatDate(delivery.at)}
+									.{" "}
+									<StateWord
+										tone={
+											delivery.accepted === delivery.received ? "ok" : "warn"
+										}
+									>
+										{delivery.received} alert
+										{delivery.received === 1 ? "" : "s"},{" "}
+										{delivery.accepted === delivery.received
+											? "accepted"
+											: `${delivery.accepted} accepted`}
+									</StateWord>
+								</>
+							) : (
+								"Nothing has arrived yet"
+							)
+						}
+					/>
+				</Pool>
 			</SettingGroup>
 
 			<SettingGroup
@@ -158,7 +158,7 @@ export function AlertSources() {
 				testId="sources-pulled"
 				actions={
 					<Button
-						variant="ghost"
+						variant="text"
 						size="sm"
 						onClick={() => setAdding(true)}
 						data-testid="add-source"
@@ -172,22 +172,29 @@ export function AlertSources() {
 						: undefined
 				}
 			>
-				{sources.map((c) => (
-					<SourceRow key={c.id} connection={c} now={now} />
-				))}
+				{sources.length > 0 && (
+					<Pool>
+						{sources.map((c) => (
+							<SourceRow key={c.id} connection={c} />
+						))}
+					</Pool>
+				)}
 			</SettingGroup>
 			<AddSourceDialog open={adding} onOpenChange={setAdding} />
 		</>
 	);
 }
 
-function SourceRow({
-	connection,
-	now,
-}: {
-	connection: ConnectionWithIntegration;
-	now: number | null;
-}) {
+/** A network failure in words; an answer the source gave stays as the API words it. */
+function failureSentence(message: string): string {
+	return /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|socket|network/i.test(
+		message,
+	)
+		? "Nothing answered at that address"
+		: message.replace(/\.$/, "");
+}
+
+function SourceRow({ connection }: { connection: ConnectionWithIntegration }) {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
 	const test = useTestConnection();
@@ -202,45 +209,44 @@ function SourceRow({
 			queryClient.invalidateQueries({ queryKey: alertKeys.all() });
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		},
-		onError: (e) =>
+		onError: () =>
 			toast({
 				title: "Pull failed",
-				description: getErrorMessage(e),
+				description: `${connection.label} did not answer. The row says why.`,
 				variant: "destructive",
 			}),
 	});
 	const reachable = connection.status === "ACTIVE";
 	const error = test.data?.error ?? connection.lastErrorMessage;
+	const tried = connection.lastErrorAt ?? connection.updatedAt;
 	return (
 		<SettingRow
 			testId="source-row"
 			label={
-				<span className="flex flex-wrap items-baseline gap-x-2">
+				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
 					<span data-testid="source-name">{connection.label}</span>
-					<span
-						className={cn(
-							"text-meta font-medium",
-							reachable ? "text-ok" : "text-danger",
-						)}
+					{/* Pulls read ACTIVE sources only, so an unreachable one waits for Test. */}
+					<StateWord
+						tone={reachable ? "neutral" : "danger"}
 						data-testid="source-state"
 					>
-						{reachable ? "reachable" : "unreachable"}
-					</span>
+						{reachable ? "Reachable" : "Unreachable"}
+					</StateWord>
 				</span>
 			}
 			description={
 				<>
-					<Mono className="break-all" data-testid="source-url">
+					<Mono data-testid="source-url">
 						{connection.baseUrl ?? connection.templateName}
 					</Mono>
-					{!reachable && error
-						? `. Last error ${connection.lastErrorAt ? ago(connection.lastErrorAt, now) : ""}: ${error}`
-						: "."}
+					{!reachable &&
+						error &&
+						`. ${failureSentence(error)} at ${formatClock(tried)}; pulls skip it until Test reaches it.`}
 				</>
 			}
 		>
 			<Button
-				variant="ghost"
+				variant="text"
 				size="sm"
 				disabled={test.isPending}
 				onClick={() => test.mutate({ id: connection.id })}
@@ -248,31 +254,24 @@ function SourceRow({
 				Test
 			</Button>
 			<Button
-				variant="ghost"
+				variant="text"
 				size="sm"
 				disabled={pull.isPending}
 				onClick={() => pull.mutate({})}
 			>
 				Pull now
 			</Button>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button variant="ghost" size="icon-sm" aria-label="More">
-						<MoreHorizontal />
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end">
-					<DropdownMenuItem
-						className="text-danger"
-						onClick={() => {
-							remove.reset();
-							setRemoving(true);
-						}}
-					>
-						Remove
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			<Button
+				variant="danger"
+				size="sm"
+				onClick={() => {
+					remove.reset();
+					setRemoving(true);
+				}}
+				data-testid="source-remove"
+			>
+				Remove
+			</Button>
 			<DeleteConnectionDialog
 				open={removing}
 				onOpenChange={setRemoving}
@@ -342,7 +341,7 @@ function AddSourceDialog({
 					<DialogTitle>Add a source</DialogTitle>
 					<DialogDescription>
 						PrismaLens pulls what is firing from it, on start and after each
-						delivery. Reachable from this machine without credentials.
+						delivery. It must answer from this machine without credentials.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
@@ -356,10 +355,7 @@ function AddSourceDialog({
 						]}
 						testId="source-kind"
 					/>
-					<div className="space-y-1.5">
-						<label htmlFor={urlId} className="block text-body font-medium">
-							URL
-						</label>
+					<Field label="URL" htmlFor={urlId}>
 						<Input
 							id={urlId}
 							value={url}
@@ -371,11 +367,8 @@ function AddSourceDialog({
 							}
 							data-testid="source-url-input"
 						/>
-					</div>
-					<div className="space-y-1.5">
-						<label htmlFor={nameId} className="block text-body font-medium">
-							Name
-						</label>
+					</Field>
+					<Field label="Name" note="optional" htmlFor={nameId}>
 						<Input
 							id={nameId}
 							value={name}
@@ -383,14 +376,17 @@ function AddSourceDialog({
 							placeholder={`Lab ${KIND_LABEL[kind]}`}
 							data-testid="source-name-input"
 						/>
+					</Field>
+					<div className="min-h-5">
+						<MutationError error={error as Error | null} />
 					</div>
-					<MutationError error={error as Error | null} />
 				</div>
 				<DialogFooter>
-					<Button variant="ghost" onClick={() => onOpenChange(false)}>
+					<Button variant="text" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
 					<Button
+						variant="primary"
 						disabled={!url.trim() || pending}
 						onClick={add}
 						data-testid="add-source-submit"

@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ALERT_STATUS_LABEL,
 	canAlertAction,
 	httpUrlOrNull,
 	INCIDENT_STATUS_LABEL,
@@ -13,8 +12,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { alertWord } from "@/components/alerts/AlertListPane";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
+import { Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +24,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
+
 import {
 	alertBackLabel,
 	backTarget,
@@ -75,11 +76,15 @@ function Section({
 	);
 }
 
+/** Key and value rows with a hairline between them, nothing else. */
 function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
 	return (
-		<dl className="grid grid-cols-[minmax(6rem,11rem)_minmax(0,1fr)] gap-x-6 gap-y-1.5">
+		<dl className="divide-y divide-hairline">
 			{rows.map(([k, v]) => (
-				<div key={k} className="contents">
+				<div
+					key={k}
+					className="grid min-h-9 grid-cols-[minmax(6rem,11rem)_minmax(0,1fr)] items-baseline gap-x-6 py-2"
+				>
 					<dt className="truncate font-mono text-mono leading-5 text-text-3">
 						{k}
 					</dt>
@@ -88,6 +93,12 @@ function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
 			))}
 		</dl>
 	);
+}
+
+/** "prometheus" reads "Prometheus": a source is a name, not a link (L30). */
+function sourceName(source: string | null | undefined): string {
+	if (!source) return "Unknown source";
+	return source.charAt(0).toUpperCase() + source.slice(1);
 }
 
 /**
@@ -145,7 +156,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 			data-testid="alert-band"
 		>
 			<Hint label={backLabel} keys={["Esc"]}>
-				<Button variant="ghost" size="icon" asChild>
+				<Button variant="text" size="icon" asChild>
 					<a
 						href={target}
 						onClick={(e) => {
@@ -167,16 +178,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 						className="size-2 shrink-0 rounded-full"
 						style={{ background: `var(--sev-${alert.severity})` }}
 					/>
-					<h1 className="min-w-0 truncate text-title" title={alert.title}>
-						{alert.title}
-					</h1>
+					<h1 className="min-w-0 truncate text-title">{alert.title}</h1>
 					<span className="flex-1" />
 					<StateWord
 						tone={alertStatusTone(alert.status)}
 						className="max-sm:hidden"
 						data-testid="alert-state"
 					>
-						{ALERT_STATUS_LABEL[alert.status]}
+						{alertWord(alert.status)}
 					</StateWord>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums max-sm:hidden">
 						since {formatClock(alert.triggeredAt)}
@@ -195,7 +204,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 					<DropdownMenu modal={false}>
 						<DropdownMenuTrigger asChild>
 							<Button
-								variant="ghost"
+								variant="text"
 								size="icon"
 								aria-label="More actions"
 								data-testid="alert-more"
@@ -234,11 +243,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 		return (
 			<div className="flex h-full flex-col" data-testid="alert-detail-loading">
 				{band}
-				<div className="mx-auto w-full max-w-(--reading-w) space-y-3 px-6 pt-4">
-					<Skeleton className="h-3 w-1/3" />
-					<Skeleton className="h-3 w-2/3" />
-					<Skeleton className="h-3 w-1/2" />
-				</div>
+				<Loading className="mx-auto w-full max-w-(--reading-w) px-6 pt-4" />
 			</div>
 		);
 	}
@@ -247,10 +252,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 			<div className="flex h-full flex-col" data-testid="alert-detail">
 				{band}
 				<div className="mx-auto w-full max-w-(--reading-w) px-6 pt-4">
-					<p className="text-body text-text-1">Failed to load alert</p>
-					<p className="text-meta text-text-3">
-						{error?.message || "Alert not found"}
-					</p>
+					<Problem
+						text="Failed to load alert. It may have been deleted."
+						back={
+							<Button variant="text" size="sm" onClick={back}>
+								{backLabel}
+							</Button>
+						}
+					/>
 				</div>
 			</div>
 		);
@@ -272,7 +281,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-4 pb-12 md:px-6">
 					<div className="mb-6 flex items-center gap-2.5 text-meta sm:hidden">
 						<StateWord tone={alertStatusTone(alert.status)}>
-							{ALERT_STATUS_LABEL[alert.status]}
+							{alertWord(alert.status)}
 						</StateWord>
 						<span className="text-text-3">
 							since {formatClock(alert.triggeredAt)}
@@ -284,29 +293,43 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 
 					<Section title="Where it landed">
 						{alert.incident ? (
-							<div className="py-1" data-testid="alert-incident">
-								<Link
-									to="/incidents/$id"
-									params={{ id: alert.incident.id }}
-									className="text-body text-text-1 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
-								>
-									<Mono className="mr-1.5 text-text-3">
-										INC-{alert.incident.number}
-									</Mono>
-									{alert.incident.title}
-								</Link>
-								<div className="mt-0.5 flex gap-2.5 text-meta">
-									{service && <span className="text-text-2">{service}</span>}
-									<span className="text-text-3">
+							<div
+								className="pool flex min-w-0 items-center gap-3 px-3.5 py-3"
+								data-testid="alert-incident"
+							>
+								<div className="min-w-0 flex-1">
+									<Link
+										to="/incidents/$id"
+										params={{ id: alert.incident.id }}
+										className="block truncate text-body text-text-1 hover:underline"
+									>
+										<Mono className="mr-1.5 text-text-3">
+											INC-{alert.incident.number}
+										</Mono>
+										{alert.incident.title}
+									</Link>
+									<div className="mt-0.5 truncate text-meta text-text-3">
+										{service ?? "No service"}.{" "}
 										{INCIDENT_STATUS_LABEL[
 											alert.incident.status as IncidentStatus
 										] ?? alert.incident.status}
-									</span>
+										.
+									</div>
 								</div>
+								<Button variant="text" size="sm" asChild>
+									<Link
+										to="/incidents/$id"
+										params={{ id: alert.incident.id }}
+										tabIndex={-1}
+										aria-hidden
+									>
+										Open
+									</Link>
+								</Button>
 							</div>
 						) : (
 							<div
-								className="flex flex-wrap items-start justify-between gap-3 py-1"
+								className="pool flex flex-wrap items-center justify-between gap-3 px-3.5 py-3"
 								data-testid={
 									alert.suppressedBy ? "alert-suppressed" : "alert-uncorrelated"
 								}
@@ -339,20 +362,21 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 
 					<Section id="identity" title="Source">
 						<div className="py-1">
-							{sourceHref ? (
-								<a
-									href={sourceHref}
-									target="_blank"
-									rel="noreferrer"
-									className="text-body text-accent hover:underline"
-								>
-									{alert.source ?? sourceHref}
-								</a>
-							) : (
-								<span className="text-body">
-									{alert.source ?? "Unknown source"}
+							<div className="flex items-baseline gap-3">
+								<span className="text-body text-text-1">
+									{sourceName(alert.source)}
 								</span>
-							)}
+								{sourceHref && (
+									<a
+										href={sourceHref}
+										target="_blank"
+										rel="noreferrer"
+										className="text-meta text-text-3 hover:text-text-1"
+									>
+										Open in the source
+									</a>
+								)}
+							</div>
 							<div className="mt-0.5 text-meta text-text-3 tabular-nums">
 								{alert.occurrenceCount === 1
 									? `Fired once at ${formatDateTime(alert.triggeredAt)}`
@@ -388,7 +412,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 														to="/services/$id"
 														params={{ id: alert.service.id }}
 														search={{ tab: "overview" }}
-														className="text-accent hover:underline"
+														className="text-text-1 hover:underline"
 													>
 														{service}
 													</Link>,
@@ -420,14 +444,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 						title="Raw payload"
 						action={
 							payload ? (
-								<button
-									type="button"
-									className="text-meta text-text-3 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+								<Button
+									variant="text"
+									size="sm"
 									onClick={() => setPayloadOpen((v) => !v)}
 									data-testid="alert-payload-toggle"
 								>
 									{payloadOpen ? "Hide" : "Show"}
-								</button>
+								</Button>
 							) : undefined
 						}
 					>

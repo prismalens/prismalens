@@ -406,6 +406,29 @@ Then(
 	},
 );
 
+Then(
+	"the card is marked new, and a second arrival a second later starts its own glow at once and leaves the first one's to end",
+	async ({ page, alertmanager, deliverWebhook, unique, $test }) => {
+		// After the arrival step's wait for the live stream this runs ~24 s locally.
+		$test.slow();
+		const first = cardOf(page, inc(page).title);
+		await expect(first).toHaveAttribute("data-new", "");
+		await page.waitForTimeout(1_000);
+		const title = unique("BoardSecondArrival");
+		const listed = alertmanager.fire({
+			labels: { alertname: title, severity: "critical", service: QUIET.name },
+		});
+		await deliverWebhook([listed.fingerprint]);
+		const second = cardOf(page, title);
+		await expect(second).toHaveAttribute("data-new", "", { timeout: 3_000 });
+		// A later batch is not queued behind marks still showing (ruling §3.2: 300 ms within a batch).
+		// Inline: reduced motion (this suite's default) resets the computed delay.
+		await expect(second).toHaveAttribute("style", /animation-delay: 0ms/);
+		// The second arrival's refetch must not cancel the first card's 3 s mark.
+		await expect(first).not.toHaveAttribute("data-new", "", { timeout: 4_000 });
+	},
+);
+
 Given("the run has sent nothing for 5 minutes", async ({ page }) => {
 	const run = await waitForRun(
 		page,
@@ -432,7 +455,9 @@ Then(
 		const quiet = Math.floor(
 			(now - Date.parse(run?.lastEventAt ?? "")) / 60_000,
 		);
-		await expect(step).toHaveText(`Working ${minutes}m, quiet for ${quiet}`);
+		await expect(step).toHaveText(
+			`Working ${minutes}m, quiet for ${quiet} min`,
+		);
 		expect(quiet).toBe(5);
 		const color = await step.evaluate((el) => getComputedStyle(el).color);
 		const warn = await page.evaluate(() => {
@@ -897,7 +922,8 @@ When(
 	"I pick 24 hours on the board and switch to Analytics",
 	async ({ page }) => {
 		await page.goto("/incidents");
-		await page.getByTestId("board-window").selectOption("1d");
+		await page.getByTestId("board-window").click();
+		await page.getByRole("option", { name: "24 hours" }).click();
 		await page.getByTestId("incidents-view-analytics").click();
 		await expect(page.getByTestId("analytics-answer")).toBeVisible();
 	},
@@ -907,7 +933,7 @@ Then(
 	"the window reads {string} and a bar per day covers {int} days",
 	async ({ page }, label: string, days: number) => {
 		const window = page.getByTestId("board-window");
-		await expect(window.locator("option:checked")).toHaveText(label);
+		await expect(window).toHaveText(label);
 		await expect(
 			page.getByTestId("analytics-days").locator("span"),
 		).toHaveCount(days);
@@ -946,11 +972,12 @@ Then(
 			.getByTestId("analytics-numbers")
 			.locator("> div")
 			.all()) {
+			// A tile is a tone (look ruling §1.1), never an edge or a shadow.
 			const style = await tile.evaluate((el) => {
 				const s = getComputedStyle(el);
-				return [s.borderTopWidth, s.backgroundColor, s.boxShadow];
+				return [s.borderTopWidth, s.boxShadow];
 			});
-			expect(style).toEqual(["0px", "rgba(0, 0, 0, 0)", "none"]);
+			expect(style).toEqual(["0px", "none"]);
 		}
 		await expect(page.getByTestId("analytics")).not.toContainText(
 			/updated \d+s ago/,
@@ -983,7 +1010,7 @@ Then(
 	async ({ page }) => {
 		await analyticsFor(page);
 		const answer = page.getByTestId("analytics-lead");
-		await expect(answer).toContainText("7 still open");
+		await expect(answer).toContainText("7 of them still open");
 		const link = answer.getByTestId("analytics-need-you");
 		await expect(link).toHaveText("3 need you now");
 		await link.click();
@@ -1054,7 +1081,7 @@ Then(
 	'the numbers include median time to acknowledge, and "agent\'s cause matched yours" sits below them captioned as a five-bucket match on incidents where I recorded a category',
 	async ({ page }) => {
 		await expect(page.getByTestId("tile-ack")).toContainText(
-			"Median time to acknowledge",
+			"Median to acknowledge",
 		);
 		const match = page.getByTestId("analytics-match");
 		await expect(match).toContainText("Agent's cause matched yours");
@@ -1113,7 +1140,9 @@ Given(
 
 const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
 
-When("I open INC-1 and each of its tabs in turn", async () => {
+When("I open INC-1 and each of its tabs in turn", async ({ $test }) => {
+	// The Thens load the record ten times; on a CI runner that sits at the default 30 s.
+	$test.slow();
 	// The Then walks the tabs; each one is read where it is shown.
 });
 

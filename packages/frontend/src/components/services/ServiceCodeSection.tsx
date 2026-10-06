@@ -2,18 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
-import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useAddRepositorySource, useUnlinkRepository } from "@/lib/api/hooks";
 
@@ -37,7 +30,7 @@ export function ServiceCodeSection({
 			title="Code the run reads"
 			actions={
 				!adding && (
-					<Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
+					<Button variant="text" size="sm" onClick={() => setAdding(true)}>
 						Add
 					</Button>
 				)
@@ -48,7 +41,7 @@ export function ServiceCodeSection({
 					None, so a run on this service reads no code.
 				</p>
 			)}
-			<ul>
+			<ul className="divide-y divide-hairline">
 				{repos.map((sr) => {
 					const r = sr.repository;
 					const where =
@@ -65,7 +58,7 @@ export function ServiceCodeSection({
 					return (
 						<li
 							key={sr.id}
-							className="flex items-start gap-3 border-t border-hairline py-2.5 first:border-t-0"
+							className="flex items-start gap-3 py-2.5"
 							data-testid="service-code-row"
 						>
 							<div className="min-w-0 flex-1">
@@ -75,23 +68,16 @@ export function ServiceCodeSection({
 									<p className="text-meta text-danger">{r.syncError}</p>
 								)}
 							</div>
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant="ghost" size="icon-sm" aria-label="More">
-										<MoreHorizontal />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end">
-									<DropdownMenuItem
-										className="text-danger"
-										onClick={() =>
-											unlink.mutate({ id: r.id, serviceId: service.id })
-										}
-									>
-										Stop reading it
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
+							<Button
+								variant="danger"
+								size="sm"
+								disabled={unlink.isPending}
+								onClick={() =>
+									unlink.mutate({ id: r.id, serviceId: service.id })
+								}
+							>
+								Stop reading it
+							</Button>
 						</li>
 					);
 				})}
@@ -128,11 +114,7 @@ export function ServiceCodeSection({
 					>
 						Add
 					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						onClick={() => setAdding(false)}
-					>
+					<Button type="button" variant="text" onClick={() => setAdding(false)}>
 						Cancel
 					</Button>
 				</form>

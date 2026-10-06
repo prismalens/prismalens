@@ -20,7 +20,6 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { cn } from "@/lib/utils";
 
 interface PostToGitHubButtonProps {
 	investigationId: string;
@@ -109,9 +108,8 @@ export function PostToGitHubButton({
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
 				<Button
-					variant="ghost"
-					size="sm"
-					className={cn("h-7 px-2 text-body text-text-2", className)}
+					variant="text"
+					className={className}
 					data-testid="post-report-github"
 				>
 					Post to GitHub

@@ -7,7 +7,7 @@ import { IntegrationsTab } from "./IntegrationsTab";
 import { SlackDeliverySettings } from "./SlackDeliverySettings";
 
 /**
- * IntegrationsSettings — admin-level integration management.
+ * Settings, Integrations: where reports go (Slack) and the git hosts.
  * Renders the IntegrationsTab for registering/deleting provider instances.
  */
 export function IntegrationsSettings() {

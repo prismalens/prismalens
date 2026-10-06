@@ -73,7 +73,7 @@ describe("Analytics, three kinds of month (study-v3 §3.6)", () => {
 		const now = windowFigures([...open, resolved(42), resolved(42), resolved(42)]);
 		const a = answerLine(now, windowFigures(open.slice(0, 6)), 30, 3);
 		expect(a.kind).toBe("active");
-		expect(a.lead).toBe("Busy month: 10 incidents, 7 still open.");
+		expect(a.lead).toBe("Busy month: 10 incidents in the last 30 days, 7 of them still open.");
 		expect(a.needYou).toBe(3);
 	});
 
@@ -91,9 +91,9 @@ describe("Analytics, three kinds of month (study-v3 §3.6)", () => {
 			"paging to first human",
 			"up from 42m",
 			"4 of 4 the 30 days before",
-			"3 need you",
 		]);
-		expect(t.map((x) => x.label)).toContain("Median time to acknowledge");
+		expect(t.map((x) => x.label)).toContain("Median to acknowledge");
+		for (const x of t) expect(x.label.length).toBeLessThanOrEqual(22);
 	});
 
 	it("an empty window says so", () => {

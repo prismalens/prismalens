@@ -8,6 +8,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { InlineCode } from "@/components/shared/InlineCode";
+import { StateWord } from "@/components/shared/StateWord";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { recommendationKeys } from "@/lib/api/hooks/use-recommendations-orpc";
@@ -15,6 +16,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { formatClock } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { inReportOrder } from "@/lib/report-view";
+import { recommendationPriorityTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
 
 export type DoNowStep =
@@ -107,19 +109,21 @@ export function DoNow({
 				PrismaLens did not run these. Tick what you did; the next person sees
 				it.
 			</p>
-			<ul>
-				{steps.map((s, i) => (
+			<ul className="divide-y divide-hairline">
+				{steps.map((s) => (
 					<li
 						key={s.key}
-						className="flex items-start gap-2.5 border-t border-hairline py-2 first:border-t-0"
+						className="flex items-start gap-2.5 py-2"
 						data-testid="do-now-step"
 						data-kind={s.kind}
 					>
 						{s.kind === "link" ? (
 							<>
-								<span className="mt-px w-4 shrink-0 text-center text-meta text-text-3 tabular-nums">
-									{i + 1}
-								</span>
+								{/* Done on its own once the service has a repository; nothing to tick. */}
+								<span
+									aria-hidden
+									className="mt-0.5 size-4 shrink-0 rounded-[4px] bg-track"
+								/>
 								<div className="min-w-0 flex-1 text-body">
 									<p>{s.title}</p>
 									<Link
@@ -144,7 +148,7 @@ export function DoNow({
 											status: v === true ? "completed" : "pending",
 										})
 									}
-									className="mt-0.5 data-[state=checked]:border-ok data-[state=checked]:bg-ok data-[state=checked]:text-canvas"
+									className="mt-0.5"
 									data-testid="do-now-check"
 								/>
 								<label
@@ -158,9 +162,12 @@ export function DoNow({
 										<InlineCode text={s.title} />
 									</span>
 									{s.priority && !s.done && (
-										<span className="ml-1.5 text-meta text-text-3">
+										<StateWord
+											tone={recommendationPriorityTone(s.priority)}
+											className="ml-1.5"
+										>
 											{s.priority}
-										</span>
+										</StateWord>
 									)}
 									{s.done && s.doneAt ? (
 										<span className="block text-meta text-text-3">

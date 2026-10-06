@@ -65,7 +65,7 @@ Feature: The conversation and the box
 
     Scenario: Continue a stopped run to a report
       Given INC-1's run was stopped and OpenCode can reopen it
-      Then the box reads "Continue the investigation" with a note naming the code it saw
+      Then the box reads "Continue the investigation" and no note explains it
       When I type "Only look at the 14:02 deploy" and press Enter
       Then the strip reads "Working" and the agent's next message answers with what it had already found
       When the run finishes

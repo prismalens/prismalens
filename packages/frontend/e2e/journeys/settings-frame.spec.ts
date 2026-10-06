@@ -77,12 +77,31 @@ test.describe("#523 — the settings frame", () => {
 			"aria-current",
 			"page",
 		);
-		await expect(page.getByTestId("services-page")).toBeVisible();
-
-		// A service is one page, with no tabs (services.feature).
-		await page.getByTestId("service-row-link").first().click();
+		// From the door at this width the first service opens (look ruling L32);
+		// a service is one page, with no tabs (services.feature).
 		await expect(page).toHaveURL(/\/services\/[0-9a-f-]{36}/);
 		await expect(page.getByTestId("service-page")).toBeVisible();
 		await expect(page.getByRole("tab")).toHaveCount(0);
+	});
+
+	test("a service that is gone says so; one that failed to load offers Retry", async ({
+		page,
+	}) => {
+		await page.goto("/services/00000000-0000-4000-8000-000000000000");
+		await expect(page.getByTestId("state-not-found")).toContainText(
+			"may have been deleted",
+			{ timeout: 15_000 },
+		);
+
+		await page.route(/\/api\/services\/[0-9a-f-]{36}$/, (route) =>
+			route.fulfill({ status: 500, body: "{}" }),
+		);
+		await page.goto("/services/00000000-0000-4000-8000-000000000001");
+		const problem = page.getByTestId("state-problem");
+		await expect(problem).toContainText("This service did not load.", {
+			timeout: 15_000,
+		});
+		await expect(problem.getByRole("button", { name: "Retry" })).toBeVisible();
+		await expect(page.getByTestId("state-not-found")).toHaveCount(0);
 	});
 });

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-"use client";
-
 /**
  * "Here is what is still missing" — the on-ramp that turns a dead-end empty
  * screen into a next action (#332).
@@ -53,7 +51,7 @@ export function SetupNextStepHint({
 		hint = {
 			message: "No coding agent is on PATH, so investigations cannot run yet.",
 			actions: (
-				<Button size="sm" asChild>
+				<Button variant="secondary" size="sm" asChild>
 					<Link to="/settings" search={{ tab: "harness" }}>
 						Investigation agent settings
 					</Link>
@@ -65,7 +63,7 @@ export function SetupNextStepHint({
 			message:
 				"No service names its code yet. Edit a service and set Repository to a folder or git URL, or investigations run unmapped.",
 			actions: (
-				<Button size="sm" asChild>
+				<Button variant="secondary" size="sm" asChild>
 					<Link to="/services">Services</Link>
 				</Button>
 			),
@@ -76,10 +74,10 @@ export function SetupNextStepHint({
 				"No incidents yet. Author one by hand, or connect a monitoring tool and let alerts correlate.",
 			actions: (
 				<>
-					<Button size="sm" asChild>
+					<Button variant="secondary" size="sm" asChild>
 						<Link to="/incidents">Go to incidents</Link>
 					</Button>
-					<Button variant="outline" size="sm" asChild>
+					<Button variant="text" size="sm" asChild>
 						<Link to="/settings" search={{ tab: "integrations" }}>
 							Connect a tool
 						</Link>
@@ -93,7 +91,7 @@ export function SetupNextStepHint({
 
 	return (
 		<div className={className}>
-			<p className="text-sm text-text-2">{hint.message}</p>
+			<p className="text-body text-text-2">{hint.message}</p>
 			<div className="mt-3 flex flex-wrap justify-center gap-2">
 				{hint.actions}
 			</div>

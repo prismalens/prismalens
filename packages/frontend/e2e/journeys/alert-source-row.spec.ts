@@ -50,15 +50,14 @@ test.describe("Alert sources, a pulled-from row (#781 review)", () => {
 			const row = page
 				.getByTestId("source-row")
 				.filter({ has: page.getByText(name, { exact: true }) });
-			await expect(row.getByTestId("source-state")).toHaveText("reachable");
+			await expect(row.getByTestId("source-state")).toHaveText("Reachable");
 
 			am.setStatus(503);
 			await row.getByRole("button", { name: "Test" }).click();
-			await expect(row.getByTestId("source-state")).toHaveText("unreachable");
+			await expect(row.getByTestId("source-state")).toHaveText("Unreachable");
 			await expect(row).toContainText("Alertmanager answered 503");
 
-			await row.getByRole("button", { name: "More" }).click();
-			await page.getByRole("menuitem", { name: "Remove" }).click();
+			await row.getByRole("button", { name: "Remove" }).click();
 			const confirm = page.getByRole("alertdialog");
 			await expect(confirm).toContainText("Delete connection?");
 			await confirm.getByRole("button", { name: "Cancel" }).click();
@@ -81,8 +80,7 @@ test.describe("Alert sources, a pulled-from row (#781 review)", () => {
 						})
 					: route.fallback(),
 			);
-			await row.getByRole("button", { name: "More" }).click();
-			await page.getByRole("menuitem", { name: "Remove" }).click();
+			await row.getByRole("button", { name: "Remove" }).click();
 			await confirm.getByRole("button", { name: "Delete" }).click();
 			await expect(confirm).toBeVisible();
 			await expect(confirm.getByRole("alert")).toContainText(

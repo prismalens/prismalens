@@ -5,11 +5,11 @@ import { isRunStateLive } from "@prismalens/contracts";
 import { useAgentChoice } from "@/components/agent/AgentPicker";
 import { useRunAgentModel } from "@/components/incidents/RunStrip";
 import { useIncidentRecord } from "@/components/incidents/record-context";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { uploadAttachment } from "@/lib/attachments";
 import { type ComposerMode, composerMode } from "@/lib/composer-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { pinnedTo } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
 import { ComposerBox } from "./ComposerBox";
 
@@ -71,7 +71,7 @@ export function DockedComposer({
 				agent={agent}
 				waiting={run.waiting}
 				isPending={record.isInvestigating}
-				note={noteFor(mode, run, who.agent)}
+				note={noteFor(mode, run)}
 				stopping={run.stopRequested}
 				blockedReason={
 					!record.canInvestigate && !live
@@ -80,6 +80,26 @@ export function DockedComposer({
 				}
 				onStop={() =>
 					run.stop({
+						// One click stops; the toast says so and offers the way back (look ruling L46).
+						onSuccess: () =>
+							toast({
+								title: `Stopped INC-${incident.number}'s run`,
+								variant: "neutral",
+								action: (
+									<ToastAction
+										altText="Continue the investigation in the box"
+										onClick={() =>
+											document
+												.querySelector<HTMLTextAreaElement>(
+													"[data-testid=composer-input]",
+												)
+												?.focus()
+										}
+									>
+										Continue
+									</ToastAction>
+								),
+							}),
 						onError: (error) =>
 							toast({
 								title: "Stop did not reach the agent",
@@ -107,18 +127,14 @@ export function DockedComposer({
 	);
 }
 
-/** The one line above the field (R4.4): what continuing does, or why it cannot. */
+/**
+ * The one line above the field, only when the run cannot be followed up and
+ * why (R4.4); the placeholder names what the box does (look ruling L43).
+ */
 function noteFor(
 	mode: ComposerMode,
 	run: ReturnType<typeof useIncidentRecord>["run"],
-	agent: string,
 ): string | null {
-	const pinned = pinnedTo(run.investigation?.workspace);
-	const code = pinned ? `the code it saw (${pinned})` : "the workspace it had";
-	if (mode === "continue")
-		return `Picks up the stopped run on ${code}. ${agent} reopens its own session.`;
-	if (mode === "resume")
-		return `Follows up in the same session on ${code}. The report stays as it is.`;
 	if (mode !== "again") return null;
 	const error = run.investigation?.error ?? "";
 	if (run.state === "failed" && CONFIG_REFUSED.test(error)) return error;

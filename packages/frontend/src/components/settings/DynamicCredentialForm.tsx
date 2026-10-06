@@ -5,17 +5,17 @@
  * Template-field-driven credential form.
  *
  * Renders form fields from TemplateField[] (from @prismalens/integrations templates).
- * Uses shadcn/ui components consistent with the rest of the frontend.
+ * Each field is a Field, in the same language as Resolve.
  */
 
 import type { TemplateField } from "@prismalens/contracts/schemas";
-import { Copy, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/shared/CopyButton";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { validateFieldValues } from "@/lib/credential-schema";
+import { Field } from "./Field";
 
 interface Props {
 	fields: TemplateField[];
@@ -23,6 +23,8 @@ interface Props {
 	onChange: (values: Record<string, string>) => void;
 	/** Show validation errors (call after attempted submit) */
 	showErrors?: boolean;
+	/** A quiet note beside every label, as "blank keeps the saved value" on edit. */
+	note?: string;
 }
 
 export function DynamicCredentialForm({
@@ -30,6 +32,7 @@ export function DynamicCredentialForm({
 	values,
 	onChange,
 	showErrors = false,
+	note,
 }: Props) {
 	const [touched, setTouched] = useState<Set<string>>(new Set());
 	const errors = validateFieldValues(fields, values);
@@ -51,114 +54,87 @@ export function DynamicCredentialForm({
 				const error = errors[field.name];
 				const shouldShowError =
 					error && (showErrors || touched.has(field.name));
-				const isRequired = field.required === true;
 				const isReadonly = field.readonly === true;
+				const id = `cred-${field.name}`;
 
-				const ariaDescribedBy =
-					[
-						shouldShowError ? `cred-${field.name}-error` : "",
-						field.description ? `cred-${field.name}-desc` : "",
-					]
-						.filter(Boolean)
-						.join(" ") || undefined;
-
-				// Readonly fields: show as code block with copy button
 				if (isReadonly) {
 					const displayValue = values[field.name] ?? field.default ?? "";
 					return (
-						<div key={field.name} className="space-y-2">
-							<Label>{field.label}</Label>
-							<div className="flex items-center gap-2">
-								<code className="flex-1 text-xs bg-surface-3 p-2 rounded break-all">
+						<Field
+							key={field.name}
+							label={field.label}
+							hint={field.description}
+						>
+							<div className="flex min-w-0 items-center gap-2">
+								<code className="min-w-0 flex-1 truncate rounded-control bg-surface-3 px-2.5 py-1 font-mono text-meta text-text-1">
 									{displayValue}
 								</code>
-								{displayValue && (
-									<Button
-										variant="ghost"
-										size="sm"
-										type="button"
-										onClick={() => navigator.clipboard.writeText(displayValue)}
-									>
-										<Copy className="h-4 w-4" />
-									</Button>
-								)}
+								{displayValue && <CopyButton value={displayValue} />}
 							</div>
-							{field.description && (
-								<p className="text-xs text-text-2">{field.description}</p>
-							)}
-						</div>
+						</Field>
 					);
 				}
 
 				return (
-					<div key={field.name} className="space-y-2">
-						<Label htmlFor={`cred-${field.name}`}>
-							{field.label}
-							{isRequired && <span className="text-danger ml-1">*</span>}
-						</Label>
-						{field.type === "textarea" ? (
-							<>
-								<Textarea
-									id={`cred-${field.name}`}
+					<Field
+						key={field.name}
+						label={field.label}
+						note={note}
+						htmlFor={id}
+						hint={field.description}
+						error={shouldShowError ? error : undefined}
+					>
+						{(describedBy) =>
+							field.type === "textarea" ? (
+								<>
+									<Textarea
+										id={id}
+										value={values[field.name] ?? ""}
+										onChange={(e) => handleChange(field.name, e.target.value)}
+										onBlur={() => handleBlur(field.name)}
+										placeholder={field.placeholder ?? field.example}
+										rows={4}
+										className="resize-none font-mono text-meta"
+										aria-invalid={shouldShowError ? true : undefined}
+										aria-describedby={describedBy}
+									/>
+									<label className="inline-flex cursor-pointer items-center gap-1.5 text-meta text-text-2 hover:text-text-1">
+										<Upload className="size-3.5" />
+										<span>Upload a file</span>
+										<input
+											type="file"
+											className="hidden"
+											accept=".pem,.key"
+											onChange={(e) => {
+												const file = e.target.files?.[0];
+												if (file) {
+													const reader = new FileReader();
+													reader.onload = () =>
+														handleChange(field.name, reader.result as string);
+													reader.readAsText(file);
+												}
+											}}
+										/>
+									</label>
+								</>
+							) : (
+								<Input
+									id={id}
+									type={
+										field.type === "password" || field.sensitive
+											? "password"
+											: "text"
+									}
 									value={values[field.name] ?? ""}
 									onChange={(e) => handleChange(field.name, e.target.value)}
 									onBlur={() => handleBlur(field.name)}
 									placeholder={field.placeholder ?? field.example}
-									rows={6}
-									className="font-mono text-xs"
-									aria-describedby={ariaDescribedBy}
 									aria-invalid={shouldShowError ? true : undefined}
+									aria-describedby={describedBy}
 								/>
-								<label className="inline-flex items-center gap-1.5 text-xs text-text-2 hover:text-text-1 cursor-pointer">
-									<Upload className="h-3.5 w-3.5" />
-									<span>Upload file</span>
-									<input
-										type="file"
-										className="hidden"
-										accept=".pem,.key"
-										onChange={(e) => {
-											const file = e.target.files?.[0];
-											if (file) {
-												const reader = new FileReader();
-												reader.onload = () =>
-													handleChange(field.name, reader.result as string);
-												reader.readAsText(file);
-											}
-										}}
-									/>
-								</label>
-							</>
-						) : (
-							<Input
-								id={`cred-${field.name}`}
-								type={
-									field.type === "password" || field.sensitive
-										? "password"
-										: "text"
-								}
-								value={values[field.name] ?? ""}
-								onChange={(e) => handleChange(field.name, e.target.value)}
-								onBlur={() => handleBlur(field.name)}
-								placeholder={field.placeholder ?? field.example}
-								aria-describedby={ariaDescribedBy}
-								aria-invalid={shouldShowError ? true : undefined}
-							/>
-						)}
-						{shouldShowError && (
-							<p
-								id={`cred-${field.name}-error`}
-								role="alert"
-								className="text-body text-danger"
-							>
-								{error}
-							</p>
-						)}
-						{field.description && (
-							<p id={`cred-${field.name}-desc`} className="text-xs text-text-2">
-								{field.description}
-							</p>
-						)}
-					</div>
+							)
+						}
+					</Field>
 				);
 			})}
 		</div>

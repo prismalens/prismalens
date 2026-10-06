@@ -16,11 +16,18 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
+/** A group of calls on its own s1 tile, one step off the canvas (look ruling §2). */
 export const Tool = ({
 	className,
 	...props
 }: ComponentProps<typeof Collapsible>) => (
-	<Collapsible className={cn("group/tool min-w-0", className)} {...props} />
+	<Collapsible
+		className={cn(
+			"group/tool min-w-0 rounded-surface bg-surface-1 px-3 py-1.5",
+			className,
+		)}
+		{...props}
+	/>
 );
 
 export const ToolHeader = ({
@@ -30,7 +37,7 @@ export const ToolHeader = ({
 	children: ReactNode;
 	aside?: ReactNode;
 }) => (
-	<CollapsibleTrigger className="flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-control)] text-meta text-text-3 outline-none hover:text-text-2 focus-visible:ring-2 focus-visible:ring-accent">
+	<CollapsibleTrigger className="flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-control text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-2">
 		<ChevronRight className="size-3 shrink-0 transition-transform duration-150 group-data-[state=open]/tool:rotate-90 motion-reduce:transition-none" />
 		<span className="truncate">{children}</span>
 		{aside}
@@ -43,7 +50,7 @@ export const ToolContent = ({
 }: ComponentProps<typeof CollapsibleContent>) => (
 	<CollapsibleContent
 		className={cn(
-			"mt-1 ml-1.5 border-l border-hairline pl-3.5 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0",
+			"mt-0.5 pl-[18px] motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0",
 			className,
 		)}
 		{...props}

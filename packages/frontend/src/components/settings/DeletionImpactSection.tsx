@@ -4,9 +4,8 @@
 "use client";
 
 import type { DeletionImpact } from "@prismalens/contracts";
-import { AlertTriangle, ChevronRight, FolderGit2, Server } from "lucide-react";
+import { ChevronRight, FolderGit2, Server } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const INLINE_THRESHOLD = 3;
@@ -36,15 +35,11 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 					{items.map((item) => (
 						<div
 							key={item.id}
-							className="flex items-center gap-2 text-xs text-text-2"
+							className="flex items-center gap-2 text-meta text-text-1"
 						>
-							<span className="flex-shrink-0 text-text-1">{icon}</span>
+							<span className="shrink-0 text-text-3">{icon}</span>
 							<span>{item.label}</span>
-							{item.badge && (
-								<Badge variant="outline" className="text-xs px-1 py-0">
-									{item.badge}
-								</Badge>
-							)}
+							{item.badge && <span className="text-text-3">{item.badge}</span>}
 						</div>
 					))}
 				</div>
@@ -54,7 +49,7 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 						type="button"
 						aria-expanded={expanded}
 						onClick={() => setExpanded((v) => !v)}
-						className="flex items-center gap-1.5 font-medium text-body hover:text-text-1/80 transition-colors w-full text-left"
+						className="flex w-full items-center gap-1.5 text-left text-body text-text-1"
 					>
 						<span className="flex-shrink-0">{icon}</span>
 						<span>
@@ -62,26 +57,24 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 						</span>
 						<ChevronRight
 							className={cn(
-								"h-3 w-3 ml-auto transition-transform",
+								"ml-auto size-3 text-text-3 transition-transform duration-(--dur-fast)",
 								expanded && "rotate-90",
 							)}
 						/>
 					</button>
 					{expanded && (
-						<div className="ml-5 text-text-2 text-xs space-y-0.5">
+						<div className="ml-5 space-y-0.5 text-meta text-text-2">
 							{items.slice(0, EXPANDED_LIMIT).map((item) => (
 								<div key={item.id} className="flex items-center gap-2">
 									<span>{item.label}</span>
 									{item.badge && (
-										<Badge variant="outline" className="text-xs px-1 py-0">
-											{item.badge}
-										</Badge>
+										<span className="text-text-3">{item.badge}</span>
 									)}
 								</div>
 							))}
 							{count > EXPANDED_LIMIT && (
-								<div className="text-text-2/70">
-									and {count - EXPANDED_LIMIT} more...
+								<div className="text-text-3">
+									and {count - EXPANDED_LIMIT} more
 								</div>
 							)}
 						</div>
@@ -141,10 +134,7 @@ export function DeletionImpactSection({
 			)}
 
 			{hasResources && (
-				<div className="flex items-center gap-2 text-danger text-xs pt-1">
-					<AlertTriangle className="h-3 w-3 flex-shrink-0" />
-					This action cannot be undone.
-				</div>
+				<p className="pt-1 text-meta text-danger">This cannot be undone.</p>
 			)}
 		</div>
 	);

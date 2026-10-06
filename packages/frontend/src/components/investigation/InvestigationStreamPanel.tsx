@@ -113,22 +113,20 @@ export function InvestigationStreamPanel({
 		<div
 			data-testid="investigation-stream-panel"
 			data-folded={folded ? "true" : undefined}
-			className="rounded-md border"
+			className="pool"
 		>
-			<div className="flex min-h-9 items-center justify-between gap-3 border-b px-3 py-1.5">
+			<div className="flex min-h-9 items-center justify-between gap-3 px-3 py-1.5">
 				<div className="flex min-w-0 items-center gap-2">
 					{status === "streaming" && (
-						<StateWord tone="active" pulse>
+						<StateWord tone="live" pulse>
 							streaming
 						</StateWord>
 					)}
 					{status === "connecting" && (
 						<StateWord tone="neutral">connecting</StateWord>
 					)}
-					{status === "completed" && (
-						<StateWord tone="done">completed</StateWord>
-					)}
-					{status === "failed" && <StateWord tone="failed">failed</StateWord>}
+					{status === "completed" && <StateWord tone="ok">completed</StateWord>}
+					{status === "failed" && <StateWord tone="danger">failed</StateWord>}
 					{isMultiBranch && (
 						<StateWord tone="neutral" mono data-testid="stream-branch-badge">
 							<GitBranch className="h-3 w-3" />
@@ -147,9 +145,9 @@ export function InvestigationStreamPanel({
 				</div>
 				{collapsible && (
 					<Button
-						variant="ghost"
+						variant="text"
 						size="sm"
-						className="h-6 shrink-0 px-2 text-meta"
+						className="shrink-0"
 						onClick={() => setExpanded((v) => !v)}
 						data-testid="ledger-toggle"
 					>

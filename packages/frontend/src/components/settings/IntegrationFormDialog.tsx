@@ -11,7 +11,6 @@ import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,7 +21,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	useCreateIntegration,
 	useTemplates,
@@ -30,6 +28,7 @@ import {
 } from "@/lib/api/hooks";
 import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
+import { Field } from "./Field";
 import { getTemplateIcon } from "./integration-utils";
 
 export interface IntegrationFormDialogProps {
@@ -181,7 +180,7 @@ export function IntegrationFormDialog({
 				setError(
 					err instanceof Error
 						? err
-						: new Error("Failed to create integration"),
+						: new Error("The integration was not created."),
 				);
 			}
 		} else if (mode === "edit" && integration) {
@@ -224,34 +223,35 @@ export function IntegrationFormDialog({
 				setError(
 					err instanceof Error
 						? err
-						: new Error("Failed to update integration"),
+						: new Error("The integration was not saved."),
 				);
 			}
 		}
 	};
 
+	const blankKeeps =
+		mode === "edit" ? "blank keeps the saved value" : undefined;
+
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+			<DialogContent data-testid="integration-form-dialog">
 				<DialogHeader>
 					<DialogTitle>
 						{mode === "create"
 							? step === "pick-template"
-								? "Add integration"
-								: `Add ${selectedTemplate?.name ?? "integration"}`
-							: "Edit integration"}
+								? "Add an integration"
+								: `Add ${templateWord(selectedTemplate)}`
+							: `Edit ${integration?.label ?? "integration"}`}
 					</DialogTitle>
-					<DialogDescription>
-						{mode === "create"
-							? step === "pick-template"
-								? "Choose a provider to connect to PrismaLens"
-								: "Configure integration credentials"
-							: "Update integration label and credentials"}
-					</DialogDescription>
+					{mode === "create" && step === "pick-template" && (
+						<DialogDescription>
+							A git host lets a service name its code by URL.
+						</DialogDescription>
+					)}
 				</DialogHeader>
 
 				{mode === "create" && step === "pick-template" && (
-					<div className="space-y-2 py-2">
+					<div className="-mx-2">
 						{templates
 							?.filter(
 								(t) => t.authMode !== "api_key" && t.authMode !== "basic",
@@ -261,199 +261,148 @@ export function IntegrationFormDialog({
 									key={template.id}
 									type="button"
 									onClick={() => handlePickTemplate(template)}
-									className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-surface-3/50 transition-colors text-left"
+									className="flex min-h-11 w-full items-center gap-3 rounded-control px-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
+									data-testid={`template-${template.id}`}
 								>
-									<div className="flex items-center gap-3">
-										<div className="text-text-2">
-											{getTemplateIcon(template.id)}
-										</div>
-										<div>
-											<p className="font-medium text-body">{template.name}</p>
-											<p className="text-xs text-text-2">{template.category}</p>
-										</div>
-									</div>
-									<Badge variant="outline" className="text-xs shrink-0">
-										{template.authModeLabel}
-									</Badge>
+									<span className="text-text-2">
+										{getTemplateIcon(template.id)}
+									</span>
+									<span className="min-w-0 flex-1">
+										<span className="block text-body text-text-1">
+											{templateWord(template)}
+										</span>
+										<span className="block truncate text-meta text-text-3">
+											{CATEGORY_WORD[template.category] ?? template.category}
+										</span>
+									</span>
 								</button>
 							))}
 					</div>
 				)}
 
 				{step === "configure" && selectedTemplate && (
-					<div className="space-y-4 py-2">
-						{mode === "create" && (
-							<Button
-								variant="ghost"
-								size="sm"
-								className="gap-1 text-xs -ml-2 text-text-2"
-								onClick={() => setStep("pick-template")}
-							>
-								<ArrowLeft className="h-3.5 w-3.5" />
-								Choose another provider
-							</Button>
-						)}
-
-						<div className="space-y-2">
-							<Label
-								htmlFor={
-									mode === "edit" ? "editIntegrationLabel" : "integrationLabel"
-								}
-							>
-								Label <span className="text-danger">*</span>
-							</Label>
-							<Input
-								id={
-									mode === "edit" ? "editIntegrationLabel" : "integrationLabel"
-								}
-								value={label}
-								onChange={(e) => setLabel(e.target.value)}
-								placeholder="e.g., Production GitHub"
-								aria-invalid={showErrors && !label.trim() ? true : undefined}
-							/>
-							{showErrors && !label.trim() && (
-								<p className="text-body text-danger">Label is required</p>
+					<div className="space-y-4">
+						<Field
+							label="Label"
+							htmlFor="integration-label"
+							error={showErrors && !label.trim() && "Give it a label."}
+						>
+							{(describedBy) => (
+								<Input
+									id="integration-label"
+									aria-describedby={describedBy}
+									value={label}
+									onChange={(e) => setLabel(e.target.value)}
+									placeholder="Production GitHub"
+									aria-invalid={showErrors && !label.trim() ? true : undefined}
+								/>
 							)}
-						</div>
+						</Field>
 
-						{/* Integration-level credentials */}
 						{selectedTemplate.integrationCredentialFields &&
 							selectedTemplate.integrationCredentialFields.length > 0 && (
-								<>
-									{mode === "edit" && (
-										<div className="space-y-1">
-											<Label className="text-body text-text-2">
-												Leave fields blank to keep existing values
-											</Label>
-										</div>
-									)}
-									<DynamicCredentialForm
-										fields={selectedTemplate.integrationCredentialFields}
-										values={credentialValues}
-										onChange={setCredentialValues}
-										showErrors={showErrors}
-									/>
-								</>
+								<DynamicCredentialForm
+									fields={selectedTemplate.integrationCredentialFields}
+									values={credentialValues}
+									onChange={setCredentialValues}
+									showErrors={showErrors}
+									note={blankKeeps}
+								/>
 							)}
 
-						{/* OAuth App credentials */}
 						{selectedTemplate.connectionCreationMode === "oauth_redirect" && (
-							<div className="space-y-3">
-								<div className="space-y-1">
-									<p className="text-xs text-text-2">
-										Enter the OAuth App credentials from {selectedTemplate.name}
-										.
-									</p>
-									{mode === "edit" && (
-										<Label className="text-body text-text-2">
-											Leave fields blank to keep existing values
-										</Label>
+							<>
+								<p className="text-body text-text-2">
+									The OAuth app's credentials from {selectedTemplate.name}.{" "}
+									{selectedTemplate.docsUrl && (
+										<a
+											href={selectedTemplate.docsUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="inline-flex items-center gap-1 text-accent hover:underline"
+										>
+											How to make one <ExternalLink className="size-3" />
+										</a>
 									)}
-								</div>
-
-								{selectedTemplate.docsUrl && (
-									<a
-										href={selectedTemplate.docsUrl}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-									>
-										<span>View setup documentation</span>
-										<ExternalLink className="h-3 w-3" />
-									</a>
-								)}
-
-								<div className="space-y-2">
-									<Label
-										htmlFor={
-											mode === "edit" ? "editOAuthClientId" : "oauthClientId"
-										}
-									>
-										Client ID
-										{mode === "create" && (
-											<span className="text-danger ml-1">*</span>
-										)}
-									</Label>
-									<Input
-										id={mode === "edit" ? "editOAuthClientId" : "oauthClientId"}
-										value={oauthClientId}
-										onChange={(e) => setOauthClientId(e.target.value)}
-										placeholder={
-											mode === "edit" ? "unchanged" : "OAuth Client ID"
-										}
-										aria-invalid={
-											mode === "create" && showErrors && !oauthClientId
-												? true
-												: undefined
-										}
-									/>
-									{mode === "create" && showErrors && !oauthClientId && (
-										<p className="text-body text-danger">
-											Client ID is required
-										</p>
+								</p>
+								<Field
+									label="Client ID"
+									note={blankKeeps}
+									htmlFor="oauth-client-id"
+									error={
+										mode === "create" &&
+										showErrors &&
+										!oauthClientId &&
+										"The client ID is needed."
+									}
+								>
+									{(describedBy) => (
+										<Input
+											id="oauth-client-id"
+											aria-describedby={describedBy}
+											value={oauthClientId}
+											onChange={(e) => setOauthClientId(e.target.value)}
+											aria-invalid={
+												mode === "create" && showErrors && !oauthClientId
+													? true
+													: undefined
+											}
+										/>
 									)}
-								</div>
-
-								<div className="space-y-2">
-									<Label
-										htmlFor={
-											mode === "edit"
-												? "editOAuthClientSecret"
-												: "oauthClientSecret"
-										}
-									>
-										Client Secret
-										{mode === "create" && (
-											<span className="text-danger ml-1">*</span>
-										)}
-									</Label>
-									<Input
-										id={
-											mode === "edit"
-												? "editOAuthClientSecret"
-												: "oauthClientSecret"
-										}
-										type="password"
-										value={oauthClientSecret}
-										onChange={(e) => setOauthClientSecret(e.target.value)}
-										placeholder={
-											mode === "edit" ? "unchanged" : "OAuth Client Secret"
-										}
-										aria-invalid={
-											mode === "create" && showErrors && !oauthClientSecret
-												? true
-												: undefined
-										}
-									/>
-									{mode === "create" && showErrors && !oauthClientSecret && (
-										<p className="text-body text-danger">
-											Client Secret is required
-										</p>
+								</Field>
+								<Field
+									label="Client secret"
+									note={blankKeeps}
+									htmlFor="oauth-client-secret"
+									error={
+										mode === "create" &&
+										showErrors &&
+										!oauthClientSecret &&
+										"The client secret is needed."
+									}
+								>
+									{(describedBy) => (
+										<Input
+											id="oauth-client-secret"
+											aria-describedby={describedBy}
+											type="password"
+											value={oauthClientSecret}
+											onChange={(e) => setOauthClientSecret(e.target.value)}
+											aria-invalid={
+												mode === "create" && showErrors && !oauthClientSecret
+													? true
+													: undefined
+											}
+										/>
 									)}
-								</div>
-							</div>
+								</Field>
+							</>
 						)}
 
 						<MutationError error={error} />
 					</div>
 				)}
 
-				<DialogFooter>
-					{step === "configure" ? (
-						<>
-							<Button variant="outline" onClick={() => handleOpenChange(false)}>
-								Cancel
-							</Button>
-							<Button onClick={handleSave} disabled={isSaving}>
-								{isSaving && (
-									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
-								)}
-								Save
-							</Button>
-						</>
-					) : (
-						<Button variant="outline" onClick={() => handleOpenChange(false)}>
-							Cancel
+				<DialogFooter className="items-center">
+					{mode === "create" && step === "configure" && (
+						<Button
+							variant="text"
+							className="mr-auto"
+							onClick={() => setStep("pick-template")}
+						>
+							<ArrowLeft />
+							Another provider
+						</Button>
+					)}
+					<Button variant="text" onClick={() => handleOpenChange(false)}>
+						Cancel
+					</Button>
+					{step === "configure" && (
+						<Button variant="primary" onClick={handleSave} disabled={isSaving}>
+							{isSaving && (
+								<Loader2 className="size-3.5 motion-safe:animate-spin" />
+							)}
+							Save
 						</Button>
 					)}
 				</DialogFooter>
@@ -461,3 +410,15 @@ export function IntegrationFormDialog({
 		</Dialog>
 	);
 }
+
+/** A provider by one name: "GitHub (App)" reads "GitHub App". */
+function templateWord(t: AuthTemplateResponse | null): string {
+	return t?.name.replace(/ \((\w+)\)$/, " $1") ?? "integration";
+}
+
+const CATEGORY_WORD: Record<string, string> = {
+	vcs: "Git host",
+	notification: "Notifications",
+	monitoring: "Monitoring",
+	observability: "Monitoring",
+};

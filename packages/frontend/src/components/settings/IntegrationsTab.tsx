@@ -10,7 +10,8 @@ import type {
 } from "@prismalens/contracts/schemas";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,22 +28,38 @@ import {
 	useTemplates,
 	useTestConnection,
 } from "@/lib/api/hooks";
-import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format-time";
 import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
 import { IntegrationFormDialog } from "./IntegrationFormDialog";
+import { ConnectionStatusBadge } from "./integration-utils";
 import { PULL_TEMPLATES } from "./SettingsFrame";
 
-const STATUS_WORD: Record<string, string> = {
-	ACTIVE: "connected",
-	TOKEN_EXPIRED: "token expired",
-	REFRESH_FAILED: "refresh failed",
-	CREDENTIALS_INVALID: "credentials invalid",
-	REVOKED: "revoked",
-	ERROR: "error",
-	PENDING: "pending",
-};
+/** Edit and Remove for a row: two items, so a menu (a one-item menu is a button). */
+function RowMenu({
+	onEdit,
+	onRemove,
+}: {
+	onEdit: () => void;
+	onRemove: () => void;
+}) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button variant="text" size="icon-sm" aria-label="More">
+					<MoreHorizontal />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
+				<DropdownMenuItem className="text-danger" onClick={onRemove}>
+					Remove
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
 
 /**
  * The integrations that are not alert sources (GitHub and the like), each
@@ -111,12 +128,12 @@ export function IntegrationsTab() {
 
 	return (
 		<SettingGroup
-			title="Integrations"
+			title="Git hosts"
 			count={shown.length || undefined}
 			testId="integrations-list"
 			actions={
 				<Button
-					variant="ghost"
+					variant="text"
 					size="sm"
 					onClick={() => setAdding(true)}
 					data-testid="add-integration"
@@ -130,102 +147,73 @@ export function IntegrationsTab() {
 					: undefined
 			}
 		>
-			{shown.map((integration) => {
-				const template = templates?.find(
-					(t) => t.id === integration.templateId,
-				);
-				const rows = accounts(integration.id);
-				return (
-					<div key={integration.id} data-testid="integration-row">
-						<SettingRow
-							label={integration.label}
-							description={`${template?.name ?? integration.templateId}, ${template?.authModeLabel ?? ""}`.replace(
-								/, $/,
-								"",
-							)}
-						>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => setConnectFor(integration.id)}
-							>
-								Connect an account
-							</Button>
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant="ghost" size="icon-sm" aria-label="More">
-										<MoreHorizontal />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end">
-									<DropdownMenuItem onClick={() => setEditing(integration)}>
-										Edit
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										className="text-danger"
-										onClick={() => setRemoveIntegration(integration.id)}
-									>
-										Remove
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</SettingRow>
-						{rows.map((c) => (
-							<SettingRow
-								key={c.id}
-								className="pl-4"
-								label={
-									<span className="flex flex-wrap items-baseline gap-x-2">
-										{c.label}
-										<span
-											className={cn(
-												"text-meta font-medium",
-												c.status === "ACTIVE" ? "text-ok" : "text-danger",
-											)}
-										>
-											{STATUS_WORD[c.status] ?? c.status.toLowerCase()}
-										</span>
-									</span>
-								}
-								description={
-									test.variables?.id === c.id && test.data
-										? test.data.success
-											? "Answered just now."
-											: test.data.error
-										: undefined
-								}
-							>
-								<Button
-									variant="ghost"
-									size="sm"
-									disabled={test.isPending}
-									onClick={() => test.mutate({ id: c.id })}
+			{shown.length > 0 && (
+				<Pool>
+					{shown.map((integration) => {
+						const template = templates?.find(
+							(t) => t.id === integration.templateId,
+						);
+						const rows = accounts(integration.id);
+						return (
+							<Fragment key={integration.id}>
+								<SettingRow
+									testId="integration-row"
+									label={integration.label}
+									description={
+										template?.authModeLabel ??
+										template?.name ??
+										integration.templateId
+									}
 								>
-									Test
-								</Button>
-								<DropdownMenu>
-									<DropdownMenuTrigger asChild>
-										<Button variant="ghost" size="icon-sm" aria-label="More">
-											<MoreHorizontal />
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="end">
-										<DropdownMenuItem onClick={() => setEditConnection(c)}>
-											Edit
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											className="text-danger"
-											onClick={() => setRemoveConnection(c.id)}
+									<Button
+										variant="text"
+										size="sm"
+										onClick={() => setConnectFor(integration.id)}
+									>
+										Connect an account
+									</Button>
+									<RowMenu
+										onEdit={() => setEditing(integration)}
+										onRemove={() => setRemoveIntegration(integration.id)}
+									/>
+								</SettingRow>
+								{rows.map((c) => (
+									<SettingRow
+										key={c.id}
+										className="pl-4"
+										label={
+											<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+												{c.label}
+												<ConnectionStatusBadge status={c.status} />
+											</span>
+										}
+										description={
+											test.variables?.id === c.id && test.data
+												? test.data.success
+													? "Answered just now"
+													: test.data.error
+												: `Connected ${formatDate(c.createdAt)}`
+										}
+									>
+										<Button
+											variant="text"
+											size="sm"
+											disabled={test.isPending}
+											onClick={() => test.mutate({ id: c.id })}
 										>
-											Remove
-										</DropdownMenuItem>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							</SettingRow>
-						))}
-					</div>
-				);
-			})}
+											Test
+										</Button>
+										<RowMenu
+											onEdit={() => setEditConnection(c)}
+											onRemove={() => setRemoveConnection(c.id)}
+										/>
+									</SettingRow>
+								))}
+							</Fragment>
+						);
+					})}
+				</Pool>
+			)}
 
 			<IntegrationFormDialog
 				open={adding}

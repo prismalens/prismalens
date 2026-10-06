@@ -14,18 +14,17 @@ import {
 } from "@prismalens/contracts";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Field } from "@/components/settings/Field";
 import { TagInput } from "@/components/shared/TagInput";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
-	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -39,6 +38,7 @@ import {
 	useCreateService,
 	useUpdateService,
 } from "@/lib/api/hooks";
+import { tierWord } from "./service-detail.utils";
 
 export interface ServiceFormDialogProps {
 	open: boolean;
@@ -50,12 +50,10 @@ export interface ServiceFormDialogProps {
 
 const SERVICE_TYPES = enumOptions(ServiceTypeSchema, SERVICE_TYPE_LABEL);
 
-const SERVICE_TIERS: { value: ServiceTier; label: string }[] = Object.entries(
+/** "Tier 1", the word the services list and the band use. */
+const SERVICE_TIERS: { value: ServiceTier; label: string }[] = Object.keys(
 	SERVICE_TIER_METADATA,
-).map(([value, meta]) => ({
-	value: value as ServiceTier,
-	label: meta.shortName,
-}));
+).map((value) => ({ value: value as ServiceTier, label: tierWord(value) }));
 
 export function ServiceFormDialog({
 	open,
@@ -121,7 +119,7 @@ export function ServiceFormDialog({
 
 	const handleSubmit = async () => {
 		if (!name.trim()) {
-			setError("Name is required");
+			setError("A service needs a name.");
 			return;
 		}
 
@@ -157,7 +155,7 @@ export function ServiceFormDialog({
 				const repo = await addSource.mutateAsync({ serviceId, source });
 				if (repo.syncError) {
 					// The service and link are saved; keep the dialog open so git's answer is read.
-					setError(`Saved, but git could not read it: ${repo.syncError}`);
+					setError(`Saved, but git could not read the code: ${repo.syncError}`);
 					return;
 				}
 			}
@@ -165,91 +163,73 @@ export function ServiceFormDialog({
 			onSuccess?.();
 		} catch (err) {
 			const message =
-				err instanceof Error ? err.message : "Failed to save service";
+				err instanceof Error ? err.message : "The service was not saved.";
 			setError(message);
 		}
 	};
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+			<DialogContent data-testid="service-form-dialog">
 				<DialogHeader>
 					<DialogTitle>
-						{isEditing ? "Edit service" : "Add service"}
+						{isEditing ? `Edit ${service.name}` : "Add a service"}
 					</DialogTitle>
-					<DialogDescription>
-						{isEditing
-							? "Update the service configuration."
-							: "Add a new service to the catalog."}
-					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4 py-4">
-					{/* Name - required */}
-					<div className="space-y-2">
-						<Label htmlFor="name">
-							Name <span className="text-danger">*</span>
-						</Label>
-						<Input
-							id="name"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="payment-service"
-							disabled={isEditing} // Name should not change after creation
-						/>
-						<p className="text-xs text-text-2">
-							Unique identifier, typically kebab-case
-						</p>
+				<div className="space-y-4">
+					<div className="grid grid-cols-2 gap-3">
+						<Field label="Name" htmlFor="name">
+							<Input
+								id="name"
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="payments-api"
+								disabled={isEditing}
+							/>
+						</Field>
+						<Field label="Display name" htmlFor="displayName">
+							<Input
+								id="displayName"
+								value={displayName}
+								onChange={(e) => setDisplayName(e.target.value)}
+								placeholder="Payments API"
+							/>
+						</Field>
 					</div>
 
-					{/* Display name */}
-					<div className="space-y-2">
-						<Label htmlFor="displayName">Display name</Label>
-						<Input
-							id="displayName"
-							value={displayName}
-							onChange={(e) => setDisplayName(e.target.value)}
-							placeholder="Payment Service"
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="repository">Repository</Label>
+					<Field
+						label="Code"
+						htmlFor="repository"
+						hint="A folder on this machine or a git URL; a run reads its last commit"
+					>
 						<Input
 							id="repository"
 							value={repository}
 							onChange={(e) => setRepository(e.target.value)}
-							placeholder="~/code/payment-service or git@github.com:acme/payments.git"
+							placeholder="~/code/payments-api"
 							data-testid="service-repository-input"
 						/>
-						<p className="text-xs text-text-2">
-							A folder on this machine or a git URL. Each investigation reads a
-							fresh copy of its last commit; uncommitted changes are not
-							included.
-						</p>
-					</div>
+					</Field>
 
-					{/* Description */}
-					<div className="space-y-2">
-						<Label htmlFor="description">Description</Label>
+					<Field label="Description" htmlFor="description">
 						<Textarea
 							id="description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Handles payment processing..."
+							placeholder="Takes card payments for checkout"
 							rows={2}
+							className="min-h-14 resize-none"
 						/>
-					</div>
+					</Field>
 
-					{/* Type and Tier row */}
-					<div className="grid grid-cols-2 gap-4">
-						<div className="space-y-2">
-							<Label>Type</Label>
+					<div className="grid grid-cols-2 gap-3">
+						<Field label="Kind" htmlFor="service-kind">
 							<Select
 								value={type}
 								onValueChange={(v) => setType(v as ServiceType)}
 							>
-								<SelectTrigger>
+								<SelectTrigger id="service-kind" className="w-full">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -260,14 +240,13 @@ export function ServiceFormDialog({
 									))}
 								</SelectContent>
 							</Select>
-						</div>
-						<div className="space-y-2">
-							<Label>Tier</Label>
+						</Field>
+						<Field label="Tier" htmlFor="service-tier">
 							<Select
 								value={tier}
 								onValueChange={(v) => setTier(v as ServiceTier)}
 							>
-								<SelectTrigger>
+								<SelectTrigger id="service-tier" className="w-full">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -278,43 +257,44 @@ export function ServiceFormDialog({
 									))}
 								</SelectContent>
 							</Select>
-						</div>
+						</Field>
 					</div>
 
-					{/* Team */}
-					<div className="space-y-2">
-						<Label htmlFor="team">Team</Label>
-						<Input
-							id="team"
-							value={team}
-							onChange={(e) => setTeam(e.target.value)}
-							placeholder="platform-team"
-						/>
+					<div className="grid grid-cols-2 gap-3">
+						<Field label="Team" htmlFor="service-team">
+							<Input
+								id="service-team"
+								value={team}
+								onChange={(e) => setTeam(e.target.value)}
+								placeholder="Payments"
+							/>
+						</Field>
+						<Field label="Tags">
+							<TagInput tags={tags} onChange={setTags} />
+						</Field>
 					</div>
-
-					{/* Tags */}
-					<div className="space-y-2">
-						<Label>Tags</Label>
-						<TagInput
-							tags={tags}
-							onChange={setTags}
-							placeholder="Add tags (press Enter)"
-						/>
-					</div>
-
-					{/* Error message */}
-					{error && <p className="text-sm text-danger text-center">{error}</p>}
 				</div>
 
-				<DialogFooter>
-					<Button variant="outline" onClick={() => onOpenChange(false)}>
+				<DialogFooter className="items-center">
+					<div className="mr-auto min-h-5 min-w-0 flex-1">
+						{error && (
+							<p role="alert" className="text-meta text-danger">
+								{error}
+							</p>
+						)}
+					</div>
+					<Button variant="text" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button onClick={handleSubmit} disabled={isPending || !name.trim()}>
+					<Button
+						variant="primary"
+						onClick={handleSubmit}
+						disabled={isPending || !name.trim()}
+					>
 						{isPending && (
-							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+							<Loader2 className="size-3.5 motion-safe:animate-spin" />
 						)}
-						{isEditing ? "Save changes" : "Create service"}
+						{isEditing ? "Save" : "Create service"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

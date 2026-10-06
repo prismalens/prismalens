@@ -3,7 +3,7 @@
 
 import type { PermissionMode } from "@prismalens/config/harness";
 import { ACCESS_LABEL } from "@prismalens/contracts";
-import { ArrowUp, FileText, Paperclip, X } from "lucide-react";
+import { ArrowUp, FileText, Lock, Paperclip, X } from "lucide-react";
 import {
 	type ClipboardEvent,
 	type DragEvent,
@@ -57,8 +57,8 @@ export interface ComposerBoxProps {
 	stopping?: boolean;
 	/** Who a message goes to, for the placeholder: `the main agent`, `branch b1`. */
 	target?: string;
-	/** The agent and model a run is fixed on. */
-	fixed?: { agent: string; model: string };
+	/** The agent and model a run is fixed on; `id` names its mark. */
+	fixed?: { agent: string; model: string; id?: string | null };
 	/** The access level the run was given; the brief modes choose one. */
 	runAccess?: PermissionMode;
 	/** The agent the text goes to, and whether its check recorded image support (R4.3). */
@@ -125,6 +125,7 @@ export function ComposerBox({
 	const [access, setAccess] = useState<PermissionMode>("read-only");
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	const shell = useRef<HTMLDivElement>(null);
 	const talking = talksToSession(mode);
 	const live = mode === "live";
 	const blocked = !talking && !!blockedReason;
@@ -239,7 +240,8 @@ export function ComposerBox({
 	return (
 		<div className={cn("space-y-1.5", className)} data-testid="composer-box">
 			<div
-				className="raised rounded-[var(--radius-surface)] px-3 pt-2.5 pb-2 transition-shadow duration-150 focus-within:shadow-[inset_0_0_0_1px_var(--hairline-strong)] motion-reduce:transition-none"
+				ref={shell}
+				className="raised rounded-pool px-3 pt-2.5 pb-2"
 				data-mode={mode}
 				onDragOver={(e) => e.preventDefault()}
 				onDrop={onDrop}
@@ -281,7 +283,7 @@ export function ComposerBox({
 										release([d]);
 										setDrafts((all) => all.filter((x) => x !== d));
 									}}
-									className="rounded-[4px] p-0.5 text-text-3 outline-none hover:bg-surface-4 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+									className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-4 hover:text-text-1"
 								>
 									<X className="size-3" />
 								</button>
@@ -305,27 +307,32 @@ export function ComposerBox({
 					data-testid="composer-input"
 					className="block min-h-6 w-full resize-none bg-transparent text-body text-text-1 outline-none placeholder:text-text-3"
 				/>
-				<div className="mt-2 flex min-w-0 items-center gap-1">
+				<div className="mt-2 flex min-w-0 items-center gap-1.5">
 					{talking ? (
 						fixed && (
 							<AgentModelChip
 								agent={fixed.agent}
+								harness={fixed.id}
 								model={fixed.model}
-								className="shrink"
+								className="shrink max-sm:max-w-[50%]"
 							/>
 						)
 					) : (
 						<AgentModelPicker
 							side={docked ? "top" : "bottom"}
-							className="shrink"
+							anchor={docked ? shell : undefined}
+							className="shrink max-sm:max-w-[50%]"
 						/>
 					)}
 					{talking ? (
 						<span
-							className="hidden h-7 shrink-0 items-center px-2 text-meta text-text-3 sm:inline-flex"
+							className="inline-flex h-6 shrink-0 items-center px-1.5 text-meta font-medium text-text-2"
 							data-testid="access-chip"
 						>
-							{ACCESS_LABEL[runAccess ?? "read-only"]}
+							<Lock className="size-3.5 sm:hidden" aria-hidden />
+							<span className="max-sm:sr-only">
+								{ACCESS_LABEL[runAccess ?? "read-only"]}
+							</span>
 						</span>
 					) : (
 						<>
@@ -344,7 +351,7 @@ export function ComposerBox({
 							type="button"
 							aria-label="Attach a file"
 							onClick={() => picker.current?.click()}
-							className="inline-flex size-7 shrink-0 items-center justify-center rounded-control text-text-3 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
+							className="inline-flex size-7 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
 							data-testid="composer-attach"
 						>
 							<Paperclip className="size-3.5" />
@@ -382,9 +389,7 @@ export function ComposerBox({
 								side="top"
 							>
 								<Button
-									size="xs"
-									variant="ghost"
-									className="text-text-2"
+									variant="text"
 									disabled={busy}
 									onClick={() => void submit("now")}
 									data-testid="composer-send-now"
@@ -396,9 +401,7 @@ export function ComposerBox({
 						{live && (
 							<Hint label="Stop the agent" keys={["Esc"]} side="top">
 								<Button
-									size="xs"
-									variant="ghost"
-									className="text-danger hover:text-danger"
+									variant="danger"
 									disabled={stopping}
 									onClick={() => onStop?.()}
 									data-testid="composer-stop"
@@ -416,9 +419,9 @@ export function ComposerBox({
 								side="top"
 							>
 								<Button
-									size="icon-sm"
-									variant={hasText ? "default" : "secondary"}
-									className="rounded-full"
+									size="icon"
+									variant={hasText ? "primary" : "secondary"}
+									className="rounded-full active:scale-[0.94]"
 									aria-label="Send"
 									disabled={!hasText || busy}
 									onClick={() => void submit("queue")}
@@ -429,11 +432,9 @@ export function ComposerBox({
 							</Hint>
 						) : (
 							<Button
-								size="sm"
 								variant="secondary"
 								onClick={() => void submit("investigate")}
 								disabled={blocked || busy}
-								title={blocked ? blockedReason : undefined}
 								data-testid="composer-investigate"
 							>
 								{busy
@@ -465,9 +466,8 @@ export function ComposerBox({
 					The investigation ended before your message reached it.
 					{onSaveAsNote && (
 						<Button
-							variant="ghost"
-							size="xs"
-							className="text-text-1"
+							variant="text"
+							size="sm"
 							onClick={() => onSaveAsNote(undeliverable)}
 						>
 							Save as note

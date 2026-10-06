@@ -11,6 +11,8 @@ export type AlertsTab = "all" | "unmapped";
 
 export interface AlertsSearch {
 	tab?: AlertsTab;
+	/** The numbers page, kept when the landing would open the first firing alert. */
+	view?: "stats";
 	status?: AlertStatus;
 	severity?: Severity;
 }
@@ -22,6 +24,7 @@ function str<T extends string>(v: unknown): T | undefined {
 export const Route = createFileRoute("/_authenticated/alerts")({
 	validateSearch: (search: Record<string, unknown>): AlertsSearch => ({
 		tab: search.tab === "unmapped" ? "unmapped" : undefined,
+		view: search.view === "stats" ? "stats" : undefined,
 		status: str<AlertStatus>(search.status),
 		severity: str<Severity>(search.severity),
 	}),

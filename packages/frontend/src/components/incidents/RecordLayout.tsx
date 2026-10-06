@@ -15,11 +15,12 @@ export type RecordRoute = keyof typeof RECORD_ROUTES;
 
 /** The reading column and, from 1280, the facts rail beside it (study-v3 §3.3). */
 export const RECORD_GRID =
-	"mx-auto grid w-full max-w-[calc(var(--reading-w)+3rem)] grid-cols-1 gap-x-12 px-4 sm:px-6 xl:max-w-[calc(var(--reading-w)+var(--facts-w)+6rem)] xl:grid-cols-[minmax(0,var(--reading-w))_var(--facts-w)] xl:justify-center";
+	"mx-auto grid w-full max-w-[calc(var(--reading-w)+3rem)] grid-cols-1 gap-x-10 px-4 sm:px-6 xl:max-w-[calc(var(--reading-w)+var(--facts-w)+6rem)] xl:grid-cols-[minmax(0,var(--reading-w))_var(--facts-w)] xl:justify-center";
 
 /**
  * One incident tab: a centred reading column, the facts rail at 1280 and up,
- * and the box docked under the column so the two line up.
+ * and the box docked under the column so the two line up. The column fades
+ * out under the box rather than ending at a hard edge (look ruling L44).
  */
 export function RecordPage({
 	children,
@@ -48,13 +49,18 @@ export function RecordPage({
 					)}
 				</div>
 			</div>
-			{box && (
-				<div className="shrink-0 pt-1 pb-3">
-					<div className={RECORD_GRID}>
-						<div className="min-w-0">{box}</div>
-					</div>
-				</div>
-			)}
+			{box && <BoxDock>{box}</BoxDock>}
+		</div>
+	);
+}
+
+/** The box under the column, on a fade that lets the content scroll out beneath it. */
+export function BoxDock({ children }: { children: ReactNode }) {
+	return (
+		<div className="pointer-events-none relative -mt-8 shrink-0 bg-[linear-gradient(to_top,var(--canvas)_70%,transparent)] pt-8 pb-3 max-sm:pb-2">
+			<div className={RECORD_GRID}>
+				<div className="pointer-events-auto min-w-0">{children}</div>
+			</div>
 		</div>
 	);
 }
@@ -65,7 +71,7 @@ export interface Fact {
 	testId?: string;
 }
 
-/** The rail: one fact per row, label over value; actions under the facts. */
+/** The rail: an s1 pool, one fact per row, label over value; actions under the facts. */
 export function FactsRail({
 	facts,
 	actions,
@@ -74,7 +80,7 @@ export function FactsRail({
 	actions?: ReactNode;
 }) {
 	return (
-		<>
+		<div className="pool px-3.5 py-3" data-testid="facts-pool">
 			<dl className="grid gap-3.5">
 				{facts.map((f) => (
 					<div key={f.label} data-testid={f.testId}>
@@ -86,26 +92,11 @@ export function FactsRail({
 				))}
 			</dl>
 			{actions && (
-				<div className="mt-6 grid gap-1.5" data-testid="rail-actions">
+				<div className="mt-5 grid gap-1.5" data-testid="rail-actions">
 					{actions}
 				</div>
 			)}
-		</>
-	);
-}
-
-/** Below 1280 the rail's facts are one quiet line: separate spans, no separators. */
-export function DetailsLine({ parts }: { parts: ReactNode[] }) {
-	return (
-		<p
-			className="mt-10 flex flex-wrap gap-x-3.5 gap-y-1 text-meta text-text-3 xl:hidden"
-			data-testid="details-line"
-		>
-			{parts.map((p, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list of facts
-				<span key={i}>{p}</span>
-			))}
-		</p>
+		</div>
 	);
 }
 
@@ -186,6 +177,6 @@ export function TabSection({
 	);
 }
 
-/** Rows separated by hairlines, never enclosed. */
+/** Rows with a hairline between them, never enclosed (look ruling §1.1). */
 export const ROWS =
-	"[&>*]:flex [&>*]:min-w-0 [&>*]:items-start [&>*]:gap-3 [&>*]:border-t [&>*]:border-hairline [&>*]:py-2.5 [&>*:first-child]:border-t-0";
+	"divide-y divide-hairline [&>*]:flex [&>*]:min-w-0 [&>*]:items-start [&>*]:gap-3 [&>*]:py-2.5";
