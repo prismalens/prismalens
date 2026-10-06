@@ -103,6 +103,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
+	it("opencode keeps the user's global config visible, so their own model applies (ADR 0003 §2)", () => {
+		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
+			OPENCODE_CONFIG_DIR: "/c",
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
+		});
+	});
+
 	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
 		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
 		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
@@ -266,10 +274,34 @@ describe("access levels (r4 R4.1)", () => {
 		const config = JSON.parse(row.configFiles?.({ configDir: "/c", dataDir: "/d", cwd: "/w" })["opencode.json"] ?? "{}");
 		expect(config.permission).toMatchObject({ edit: "deny", bash: "ask", webfetch: "deny" });
 		expect(resolvePermissionOutcome("opencode", "read-only").configPatch).toBeUndefined();
-		expect(resolvePermissionOutcome("opencode", "workspace-write").configPatch).toEqual({ permission: { edit: "ask" } });
-		expect(resolvePermissionOutcome("opencode", "full-access").configPatch).toEqual({
-			permission: { edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" },
+		const both = (permission: Record<string, string>) => ({ permission, agent: { prismalens: { permission } } });
+		expect(resolvePermissionOutcome("opencode", "workspace-write").configPatch).toEqual(both({ edit: "ask" }));
+		expect(resolvePermissionOutcome("opencode", "full-access").configPatch).toEqual(
+			both({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow", task: "allow" }),
+		);
+	});
+
+	it("runs OpenCode on an agent whose every permission key is the overlay's, so a user's allow cannot outrank it (Step 0)", () => {
+		const config = JSON.parse(
+			HARNESS_REGISTRY.opencode.configFiles?.({ configDir: "/c", dataDir: "/d", cwd: "/w" })["opencode.json"] ?? "{}",
+		);
+		expect(config.default_agent).toBe("prismalens");
+		const agent = config.agent.prismalens;
+		expect(agent).toMatchObject({ mode: "primary", disable: false });
+		// "*" first: a user "*" anywhere takes the overlay's value, and tools nobody named (a user's MCP server) stay off.
+		expect(Object.entries(agent.permission)[0]).toEqual(["*", "deny"]);
+		expect(agent.permission).toMatchObject({
+			edit: "deny",
+			bash: "ask",
+			webfetch: "deny",
+			websearch: "deny",
+			external_directory: "deny",
+			task: "deny",
+			plan_enter: "deny",
+			plan_exit: "deny",
 		});
+		for (const tool of ["glob", "grep", "list", "lsp", "todowrite", "skill"]) expect(agent.permission[tool]).toBe("allow");
+		expect(agent.permission.read).toEqual({ "*": "allow", "*.env": "ask", "*.env.*": "ask", "*.env.example": "allow" });
 	});
 
 	it("Given Codex with the sandbox switch off, When a run starts at read-only, Then agent-full-access and cooperative", () => {

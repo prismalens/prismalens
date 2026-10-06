@@ -15,9 +15,11 @@
  * The predicates live in `admission-checks.ts` and are tested there; this file
  * is the unimportable top-level-await entrypoint that drives the run.
  */
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -34,9 +36,18 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
-import { runInvestigation } from "../src/run/investigate.js";
+import { buildChildEnv } from "../src/launch/process.js";
+import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
+import { readOnlyPolicy } from "../src/run/permission.js";
 import {
+	AcpSession,
+	offeredModes,
+	selectedModel,
+} from "../src/runner/acp-client.js";
+import {
+	configLayered,
 	initializeVersion,
+	lastMatch,
 	parseTranscript,
 	permissionDecisions,
 	proveCwd,
@@ -287,6 +298,110 @@ const r5 = await (async (): Promise<string> => {
 	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
 );
 console.log(`R5 resume: ${r5}`);
+
+/**
+ * R6 (OpenCode only): a hostile user global config, read through the run's own
+ * env. Its model must be served, and every user allow must lose to the overlay.
+ */
+const r6 = await (async (): Promise<boolean> => {
+	if (harness !== "opencode") return true;
+	const model = "opencode/space-bunny-free";
+	const yolo = { permission: { edit: "allow", "*": "allow" } };
+	const xdg = mkdtempSync(join(tmpdir(), "pl-r6-"));
+	mkdirSync(join(xdg, "opencode"));
+	writeFileSync(
+		join(xdg, "opencode", "opencode.json"),
+		JSON.stringify({
+			model,
+			default_agent: "yolo",
+			permission: { edit: "allow", bash: "allow", webfetch: "allow" },
+			agent: {
+				yolo: { mode: "primary", ...yolo },
+				helper: { mode: "subagent", ...yolo },
+				build: yolo,
+				plan: yolo,
+				general: yolo,
+				explore: yolo,
+				prismalens: { ...yolo, disable: true, mode: "subagent" },
+			},
+		}),
+	);
+	const { env, runEnv } = prepareRunEnv({
+		harness,
+		cwd: cloneDir,
+		runDir: mkdtempSync(join(tmpdir(), "pl-r6-run-")),
+	});
+	const opencode = (...args: string[]): unknown =>
+		JSON.parse(
+			execFileSync(HARNESS_REGISTRY.opencode.binary, args, {
+				cwd: cloneDir,
+				env: buildChildEnv({ ...env, XDG_CONFIG_HOME: xdg }),
+				encoding: "utf8",
+			}),
+		);
+	try {
+		const config = opencode("debug", "config") as {
+			model?: string;
+			default_agent?: string;
+		};
+		const agent = config.default_agent ?? "build";
+		const { permission: rules } = opencode("debug", "agent", agent) as {
+			permission: { permission: string; action: string; pattern: string }[];
+		};
+		const r = configLayered({ config, rules }, model);
+		const answers: unknown[] = [];
+		const acp = new AcpSession({
+			command: HARNESS_REGISTRY.opencode.binary,
+			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
+			cwd: cloneDir,
+			env: { ...env, XDG_CONFIG_HOME: xdg },
+			permission: readOnlyPolicy,
+			onWire: (d, l) => {
+				if (d === "in") answers.push(JSON.parse(l));
+			},
+		});
+		await acp.open();
+		await acp.close();
+		const opened = answers.find(
+			(a) => (a as { result?: { sessionId?: string } }).result?.sessionId,
+		) as { result: Parameters<typeof offeredModes>[0] } | undefined;
+		const mode = offeredModes(opened?.result ?? null).current;
+		const served = selectedModel(opened?.result?.configOptions);
+		const step0 = {
+			bash: lastMatch(rules, "bash"),
+			webfetch: lastMatch(rules, "webfetch"),
+			task: lastMatch(rules, "task", "helper"),
+			mcp: lastMatch(rules, "usermcp_write"),
+		};
+		console.log(
+			`R6 config layering: model=${r.model} editDenied=${r.editDenied}`,
+		);
+		console.log(`R6 ACP session/new: mode=${mode} model=${served}`);
+		console.log(
+			`R6 user allows vs overlay: agent=${agent} ${Object.entries(step0)
+				.map(([k, v]) => `${k}=${v}`)
+				.join(" ")}`,
+		);
+		return (
+			r.model &&
+			r.editDenied &&
+			agent === "prismalens" &&
+			mode === "prismalens" &&
+			served === model &&
+			step0.bash !== "allow" &&
+			step0.webfetch === "deny" &&
+			step0.task === "deny" &&
+			step0.mcp === "deny"
+		);
+	} catch (e) {
+		console.log(
+			`R6 config layering: fail (${e instanceof Error ? e.message : String(e)})`,
+		);
+		return false;
+	} finally {
+		rmSync(xdg, { recursive: true, force: true });
+	}
+})();
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
 	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);
@@ -295,4 +410,4 @@ if (pass && installedVersion) {
 		"no tested record: the harness reported no version in initialize",
 	);
 }
-process.exit(pass ? 0 : 1);
+process.exit(pass && r6 ? 0 : 1);

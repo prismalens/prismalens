@@ -284,7 +284,7 @@ export function checkAutoSelection(): Check[] {
 					? `${model.model} (from ${HARNESS_REGISTRY[selection.harness].envModelKey}; Settings → Agent → Model overrides it)`
 					: model.source === "product-default"
 						? `${model.model} (tested default; Settings → Agent → Model overrides it)`
-						: `${HARNESS_REGISTRY[selection.harness].label} picks its own model unless Settings → Agent → Model sets one`,
+						: `${HARNESS_REGISTRY[selection.harness].label} runs the model set in its own config, else its default, unless Settings → Agent → Model sets one`,
 			hard: false,
 		},
 	];

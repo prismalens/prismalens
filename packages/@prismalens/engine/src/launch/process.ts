@@ -144,6 +144,7 @@ export const SAFE_ENV_ALLOWLIST = [
 	// A relocated data home is where OpenCode keeps a `/connect` login (review N5).
 	"XDG_DATA_HOME",
 	// An agent runs on the user's own config and sign-in, wherever they moved it.
+	"XDG_CONFIG_HOME",
 	"CLAUDE_CONFIG_DIR",
 	"CODEX_HOME",
 	"GEMINI_CLI_HOME",
