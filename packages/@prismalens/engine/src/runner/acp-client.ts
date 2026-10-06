@@ -326,6 +326,39 @@ export function offeredEffort(
 	return null;
 }
 
+/** The id of the `select` option in `category`; null when the harness offers none. */
+export function optionIdOf(
+	configOptions: NewSessionResponse["configOptions"] | unknown,
+	category: "model" | "thought_level",
+): string | null {
+	if (!Array.isArray(configOptions)) return null;
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.category === category && option.type === "select")
+			return typeof option.id === "string" ? option.id : null;
+	}
+	return null;
+}
+
+/** The `currentValue` of option `configId`; null when the list has no such option. */
+function currentValueOf(
+	configOptions: unknown,
+	configId: string,
+): string | null {
+	if (!Array.isArray(configOptions)) return null;
+	for (const option of configOptions as Array<Record<string, unknown>>) {
+		if (option?.id === configId)
+			return typeof option.currentValue === "string"
+				? option.currentValue
+				: null;
+	}
+	return null;
+}
+
+/** What a prompt turn carries: text always; an image only where `initialize` advertised it (R4.3). */
+export type PromptPart =
+	| { type: "text"; text: string }
+	| { type: "image"; data: string; mimeType: string };
+
 export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
@@ -352,6 +385,8 @@ export class AcpSession {
 	servedModel: string | null = null;
 	/** The `thought_level` option `session/new` offered; null when none. */
 	effort: AcpOfferedEffort | null = null;
+	/** The id of the `model` config option; null when the harness offers none. */
+	modelOptionId: string | null = null;
 	/** `initialize` advertised `promptCapabilities.image` (R4.3). */
 	takesImages = false;
 	/** The harness advertised `loadSession` at `initialize`. */
@@ -475,9 +510,7 @@ export class AcpSession {
 			).finally(() => {
 				this.loading = false;
 			})) as Partial<LoadSessionResponse> | null;
-			this.models = offeredModels(loaded?.configOptions);
-			this.servedModel = selectedModel(loaded?.configOptions);
-			this.effort = offeredEffort(loaded?.configOptions);
+			this.takeOptions(loaded?.configOptions);
 			this.modes = offeredModes(loaded);
 			return;
 		}
@@ -489,10 +522,37 @@ export class AcpSession {
 		if (!session?.sessionId)
 			throw new Error("ACP session/new returned no sessionId");
 		this.currentSessionId = session.sessionId;
-		this.models = offeredModels(session.configOptions);
-		this.servedModel = selectedModel(session.configOptions);
-		this.effort = offeredEffort(session.configOptions);
+		this.takeOptions(session.configOptions);
 		this.modes = offeredModes(session);
+	}
+
+	private takeOptions(configOptions: unknown): void {
+		const options = configOptions as NewSessionResponse["configOptions"];
+		this.models = offeredModels(options);
+		this.servedModel = selectedModel(options);
+		this.effort = offeredEffort(options);
+		this.modelOptionId = optionIdOf(options, "model");
+	}
+
+	/**
+	 * `session/set_config_option` (R4.2). Answers the option's `currentValue`
+	 * from the harness's reply, the proof of what it took; null when the reply
+	 * carries no such option. The caller refuses anything but the asked value.
+	 */
+	async setConfigOption(
+		configId: string,
+		value: string,
+	): Promise<string | null> {
+		if (!this.currentSessionId)
+			throw new Error("setConfigOption before open()");
+		const answer = (await this.request(
+			"session/set_config_option",
+			{ sessionId: this.currentSessionId, configId, value },
+			this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
+		)) as { configOptions?: unknown } | null;
+		if (!Array.isArray(answer?.configOptions)) return null;
+		this.takeOptions(answer.configOptions);
+		return currentValueOf(answer.configOptions, configId);
 	}
 
 	/**
@@ -530,9 +590,18 @@ export class AcpSession {
 	}
 
 	/** One prompt turn. Yields updates and permission decisions, then exactly one done or error. */
-	async *prompt(text: string): AsyncGenerator<AcpStreamItem> {
+	async *prompt(input: string | PromptPart[]): AsyncGenerator<AcpStreamItem> {
 		if (!this.currentSessionId)
 			throw new Error("AcpSession.prompt before open()");
+		const prompt =
+			typeof input === "string"
+				? [{ type: "text" as const, text: input }]
+				: input;
+		// An image the harness never said it reads is refused before it is sent (R4.3).
+		if (!this.takesImages && prompt.some((p) => p.type === "image"))
+			throw new Error(
+				`${this.agent.name ?? this.config.command} can't take images`,
+			);
 		if (this.exitMessage) {
 			yield { kind: "error", message: this.exitMessage };
 			return;
@@ -540,7 +609,7 @@ export class AcpSession {
 		let turnDone = false;
 		this.request(
 			"session/prompt",
-			{ sessionId: this.currentSessionId, prompt: [{ type: "text", text }] },
+			{ sessionId: this.currentSessionId, prompt },
 			this.config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
 		)
 			.then((res) => {
@@ -705,10 +774,9 @@ export class AcpSession {
 				...this.modes,
 				current: typeof id === "string" ? id : null,
 			};
-		} else if (
-			u.sessionUpdate === "config_option_update" &&
-			this.modes.configId
-		) {
+		} else if (u.sessionUpdate === "config_option_update") {
+			this.takeOptions(u.configOptions);
+			if (!this.modes.configId) return;
 			const next = offeredModes({
 				configOptions: u.configOptions as NewSessionResponse["configOptions"],
 			});

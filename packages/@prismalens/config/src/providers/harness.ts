@@ -117,12 +117,11 @@ export interface HarnessDescriptor {
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
 	tested?: { version: string; date: string };
 	/**
-	 * How `HarnessRunEnv.model` reaches the harness: `config` (a file
-	 * `configFiles` writes), `env` (a var `acpEnv` sets), or `unsupported` (the
-	 * harness has no way to take it, so an operator-set model refuses the run
-	 * before it starts; see `refuseModel`).
+	 * How a chosen model reaches the harness (R4.2): `acp`, the session's own
+	 * `model` config option, verified by its answer; or `unsupported`, so an
+	 * operator-set model refuses the run before it starts (`refuseModel`).
 	 */
-	modelVia: "config" | "env" | "unsupported";
+	modelVia: "acp" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: string;
 	/** The host env var naming the model the harness runs when PrismaLens sets none. */
@@ -150,11 +149,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
 			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		}),
-		configFiles: ({ model }) => ({
+		configFiles: () => ({
 			"opencode.json": JSON.stringify(
 				{
 					$schema: "https://opencode.ai/config.json",
-					...(model ? { model } : {}),
 					permission: {
 						edit: "deny",
 						bash: "ask",
@@ -220,7 +218,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 		},
 		tested: { version: "1.18.30", date: "2026-09-20" },
-		modelVia: "config",
+		modelVia: "acp",
 		loginHint: "`opencode auth login`, or a provider key in env",
 		resume: true,
 	},
@@ -230,19 +228,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "claude-agent-acp",
 		companionBinary: "claude",
 		acpArgs: () => [],
-		acpEnv: ({ model, companionPath }) => ({
+		acpEnv: ({ companionPath }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-			// Claude Code reads the model from env; one model for every tier and sub-agent.
-			...(model
-				? {
-						ANTHROPIC_MODEL: model,
-						ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-						ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-						ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
-						CLAUDE_CODE_SUBAGENT_MODEL: model,
-					}
-				: {}),
 		}),
 		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
 		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
@@ -288,7 +276,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
-		modelVia: "env",
+		modelVia: "acp",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		resume: true,
 	},
@@ -340,7 +328,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "1.13.1", date: "2026-09-24" },
-		modelVia: "unsupported",
+		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
+		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		resume: true,
 	},

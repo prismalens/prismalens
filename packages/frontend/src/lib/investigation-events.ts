@@ -29,6 +29,8 @@ export interface EventRow {
 	/** Optional secondary line (thinking text, result preview). */
 	detail?: string;
 	ok?: boolean;
+	/** The tool call a row belongs to, so a call and its result read as one. */
+	callId?: string;
 }
 
 export const REPORT_DRAFTED = "Report drafted";
@@ -131,6 +133,7 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 				message: event.result.source,
 				detail: event.result.preview?.slice(0, 240) || undefined,
 				ok: event.result.ok,
+				callId: event.result.toolCallId,
 			};
 		}
 		case "branch_done":
@@ -159,6 +162,12 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 					? "Your message"
 					: "Your message, not delivered",
 				detail: event.text,
+			};
+		case "session_config":
+			return {
+				key: `${event.branchId}-${event.seq}`,
+				icon: event.accepted ? "check" : "warning",
+				message: sessionConfigLine(event),
 			};
 		default:
 			return null;
@@ -291,6 +300,26 @@ export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
 	not_delivered: "Not delivered",
 };
 
+/** What the harness answered when the run set its model or effort (R4.2). */
+export function sessionConfigLine(e: {
+	option: "model" | "effort";
+	value: string;
+	accepted: boolean;
+}): string {
+	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
+	return e.accepted
+		? `The agent took ${what} before the first prompt`
+		: `The agent would not take ${what}`;
+}
+
+/** What the conversation shows of a file that went with a message (R4.3). */
+export interface AttachmentView {
+	id: string;
+	name: string;
+	mimeType: string;
+	size: number;
+}
+
 /** A message the API accepted that has not come back as an event yet. */
 export interface PendingMessage {
 	id: string;
@@ -298,6 +327,7 @@ export interface PendingMessage {
 	mode: "queue" | "now";
 	at: string;
 	undelivered?: boolean;
+	attachments?: AttachmentView[];
 }
 
 export interface TranscriptRun {
@@ -333,6 +363,8 @@ export type TranscriptItem =
 			text: string;
 			at: string;
 			state: OperatorState;
+			mode: "queue" | "now";
+			attachments: AttachmentView[];
 	  }
 	| {
 			kind: "end";
@@ -514,7 +546,12 @@ export function deriveTranscript(
 					g.calls.set(call.toolCallId, null);
 					const row = canonicalEventToRow({ ...event, toolCalls: [call] });
 					if (row)
-						g.item.rows.push({ ...row, key: `${key}-${call.toolCallId}` });
+						g.item.rows.push({
+							...row,
+							message: `${call.name}(${JSON.stringify(call.args)})`,
+							key: `${key}-${call.toolCallId}`,
+							callId: call.toolCallId,
+						});
 					refresh(g);
 				}
 				break;
@@ -540,6 +577,8 @@ export function deriveTranscript(
 					key,
 					text: event.text,
 					at: event.ts,
+					mode: event.mode,
+					attachments: event.attachments ?? [],
 					state: !event.delivered
 						? "not_delivered"
 						: event.mode === "now"
@@ -552,7 +591,10 @@ export function deriveTranscript(
 			}
 			case "branch_done":
 				closeGroup();
-				items.push({ kind: "line", key, text: `Finished: ${event.reason}` });
+				break;
+			case "session_config":
+				closeGroup();
+				items.push({ kind: "line", key, text: sessionConfigLine(event) });
 				break;
 			case "error":
 				closeGroup();
@@ -586,6 +628,8 @@ export function deriveTranscript(
 			key: `pending-${p.id}`,
 			text: p.text,
 			at: p.at,
+			mode: p.mode,
+			attachments: p.attachments ?? [],
 			state: p.undelivered
 				? "not_delivered"
 				: p.mode === "now"

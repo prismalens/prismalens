@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_AUTO_ORDER, type HarnessId } from "@prismalens/config/harness";
-import type {
-	FavouriteModel,
-	HarnessSetting,
-	HarnessStatus,
+import {
+	HARNESS_AUTO_ORDER,
+	type HarnessId,
+	PERMISSION_MODES,
+	type PermissionMode,
+} from "@prismalens/config/harness";
+import {
+	ACCESS_BOUNDARY_NOTE,
+	ACCESS_LABEL,
+	ACCESS_LINE,
+	accessAllowed,
+	type FavouriteModel,
+	type HarnessSetting,
+	type HarnessStatus,
 } from "@prismalens/contracts";
-import { Search, Star } from "lucide-react";
+import { Check, ChevronDown, Search, Star } from "lucide-react";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -29,14 +38,9 @@ import {
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
 
-/**
- * The Read-only level's words (r4 R4.1 rev). PR 1.5 moves them into
- * `ACCESS_LINE` in the contracts; the box and Settings read them from there.
- */
-export const READ_ONLY_LINE =
-	"Reads the copied code and queries the telemetry addresses in the brief. PrismaLens refuses writes, installs, other addresses and other ways out that it can see. A guardrail for an honest agent, not a sandbox.";
-export const BOUNDARY_NOTE =
-	"An operating-system boundary needs Codex's sandbox (Settings, Agent) or a container.";
+/** The Read-only level's words (r4 R4.1 rev), from the contracts the gate's tests read. */
+export const READ_ONLY_LINE = ACCESS_LINE["read-only"];
+export const BOUNDARY_NOTE = ACCESS_BOUNDARY_NOTE;
 
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
@@ -58,6 +62,8 @@ export function useAgentChoice() {
 			"",
 		models: settingsQuery.data?.models ?? {},
 		favourites: settingsQuery.data?.favourites ?? [],
+		efforts: settingsQuery.data?.efforts ?? {},
+		allowWriteLevels: settingsQuery.data?.allowWriteLevels === true,
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};
@@ -94,10 +100,14 @@ export function agentModelLabel(
 	};
 }
 
-/** Codex and Gemini take a model only once a check confirms it (r4 R4.1 rev). */
+/**
+ * An agent with nothing to list (no catalogue entry, no check yet) is
+ * "pending a check" (r4 R4.1 rev); a run still refuses a model it will not take.
+ */
 function modelState(h: HarnessStatus): "list" | "pending" | "own" {
-	if (h.modelVia !== "unsupported") return "list";
-	return h.id === "deepagents" ? "own" : "pending";
+	if (h.modelVia === "unsupported")
+		return h.id === "deepagents" ? "own" : "pending";
+	return h.checked || h.models.entries.length > 0 ? "list" : "pending";
 }
 
 const PROVIDERS: Record<string, string> = {
@@ -673,5 +683,152 @@ export function AgentModelChip({
 			<span className="truncate">{agent}</span>
 			{model && <span className="truncate text-text-3">{model}</span>}
 		</span>
+	);
+}
+
+const CHIP =
+	"inline-flex h-7 min-w-0 items-center gap-1 rounded-control px-2 text-meta text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-surface-3 data-[state=open]:text-text-1";
+
+/**
+ * What the next run may touch (r4 R4.1 rev): the four levels with their one
+ * line each; the write levels stay greyed until Settings, Agent allows them.
+ */
+export function AccessMenu({
+	value,
+	onChange,
+	side = "top",
+}: {
+	value: PermissionMode;
+	onChange: (level: PermissionMode) => void;
+	side?: "top" | "bottom";
+}) {
+	const { allowWriteLevels } = useAgentChoice();
+	const [open, setOpen] = useState(false);
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<Hint label={`${ACCESS_LINE[value]} ${ACCESS_BOUNDARY_NOTE}`} side="top">
+				<PopoverTrigger asChild>
+					<button
+						type="button"
+						className={CHIP}
+						data-testid="access-chip"
+						aria-label={`Access: ${ACCESS_LABEL[value]}`}
+					>
+						<span className="truncate">{ACCESS_LABEL[value]}</span>
+						<ChevronDown className="size-3 shrink-0 text-text-3" />
+					</button>
+				</PopoverTrigger>
+			</Hint>
+			<PopoverContent
+				side={side}
+				align="start"
+				className="w-80 max-w-[calc(100vw-2rem)] p-1"
+				data-testid="access-menu"
+			>
+				<p className="px-2.5 pt-1.5 pb-1 text-meta text-text-3">Access level</p>
+				<div role="listbox" aria-label="Access level">
+					{PERMISSION_MODES.map((level) => {
+						const allowed = accessAllowed(level, allowWriteLevels);
+						return (
+							<button
+								key={level}
+								type="button"
+								role="option"
+								aria-selected={level === value}
+								aria-disabled={!allowed}
+								disabled={!allowed}
+								onClick={() => {
+									onChange(level);
+									setOpen(false);
+								}}
+								className={cn(
+									"flex w-full flex-col items-start gap-0.5 rounded-control px-2.5 py-2 text-left outline-none focus-visible:bg-surface-3 enabled:hover:bg-surface-3",
+									level === value && "bg-surface-3",
+									!allowed && "cursor-not-allowed opacity-50",
+								)}
+								data-testid={`access-level-${level}`}
+							>
+								<span className="flex w-full items-center gap-2 text-body text-text-1">
+									{ACCESS_LABEL[level]}
+									{level === value && (
+										<Check className="ml-auto size-3.5 text-accent" />
+									)}
+								</span>
+								<span
+									className="text-meta text-text-3"
+									data-testid="access-line"
+								>
+									{ACCESS_LINE[level]}
+								</span>
+								{!allowed && (
+									<span className="text-meta text-text-2">
+										Allow in Settings, Agent
+									</span>
+								)}
+							</button>
+						);
+					})}
+				</div>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+const word = (v: string) =>
+	v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " ");
+
+/**
+ * Effort, only when the agent offers a `thought_level` option over ACP (R4.2):
+ * the agent's own values, its default marked. Saved per agent, like the model.
+ */
+export function EffortMenu({ side = "top" }: { side?: "top" | "bottom" }) {
+	const { effective, efforts } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	const [open, setOpen] = useState(false);
+	const offered = effective?.checked?.effort;
+	if (!effective || !offered) return null;
+	const id = effective.id as HarnessId;
+	const value = efforts[id] ?? offered.default ?? offered.values[0] ?? "";
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button type="button" className={CHIP} data-testid="effort-chip">
+					<span className="truncate">{word(value)} effort</span>
+					<ChevronDown className="size-3 shrink-0 text-text-3" />
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				side={side}
+				align="start"
+				className="w-56 p-1"
+				data-testid="effort-menu"
+			>
+				<p className="px-2.5 pt-1.5 pb-1 text-meta text-text-3">Reasoning</p>
+				{offered.values.map((v) => (
+					<button
+						key={v}
+						type="button"
+						onClick={() => {
+							update.mutate({
+								efforts: { [id]: v === offered.default ? null : v },
+							});
+							setOpen(false);
+						}}
+						className={cn(
+							"flex w-full items-center gap-2 rounded-control px-2.5 py-1.5 text-left text-body text-text-1 outline-none hover:bg-surface-3 focus-visible:bg-surface-3",
+							v === value && "bg-surface-3",
+						)}
+						data-testid="effort-option"
+					>
+						{word(v)}
+						{v === offered.default && (
+							<span className="ml-auto text-meta text-text-3">
+								{effective.label} default
+							</span>
+						)}
+					</button>
+				))}
+			</PopoverContent>
+		</Popover>
 	);
 }

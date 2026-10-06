@@ -35,7 +35,7 @@ describe("HarnessStatusSchema", () => {
 			tested: null,
 			install: "npm i -g @anthropic-ai/claude-code",
 			defaultModel: null,
-			modelVia: "env",
+			modelVia: "acp",
 			loginHint: "claude login",
 			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 		});

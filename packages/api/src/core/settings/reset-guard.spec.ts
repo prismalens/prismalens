@@ -67,6 +67,7 @@ describe("the resetting flag", () => {
 					recommendation: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
+					attachment: { deleteMany: vi.fn() },
 					incident: { deleteMany: vi.fn() },
 					alert: { deleteMany: vi.fn() },
 					event: { deleteMany: vi.fn() },
@@ -89,6 +90,7 @@ describe("the resetting flag", () => {
 					recommendation: { deleteMany: vi.fn() },
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
+					attachment: { deleteMany: vi.fn() },
 					incident: { deleteMany: vi.fn() },
 					alert: { deleteMany: vi.fn() },
 					event: { deleteMany: vi.fn() },
@@ -237,6 +239,7 @@ describe("creating a run while a reset is in progress", () => {
 			{} as DispatchService,
 			telemetryStub(),
 			{ post: vi.fn() } as unknown as any,
+			{} as never,
 		);
 		const create = (
 			controller.investigations() as unknown as Record<

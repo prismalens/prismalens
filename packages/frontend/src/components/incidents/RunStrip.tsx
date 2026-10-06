@@ -7,24 +7,15 @@ import {
 	isWorkflowLive,
 	RUN_STATE_LABEL,
 } from "@prismalens/contracts";
-import { useState } from "react";
 import {
 	agentModelLabel,
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { StateWord } from "@/components/shared/StateWord";
-import { Button } from "@/components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
 import { useNow } from "@/hooks/use-now";
-import { useToast } from "@/hooks/use-toast";
 import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
 import { formatClock, formatElapsed } from "@/lib/format-time";
-import { getErrorMessage } from "@/lib/get-error-message";
 import { runStepText } from "@/lib/investigation-events";
 import { runStateTone } from "@/lib/state-tone";
 import { cn } from "@/lib/utils";
@@ -81,7 +72,7 @@ export function runElapsed(
 /**
  * The run's status (#743 §2), at the right end of the tab row: the
  * investigation's own words, never the incident's: state, agent and model,
- * what it is doing, elapsed, and Stop while it is live. With the stream lost,
+ * what it is doing and elapsed; Stop lives in the box (R4.4). With the stream lost,
  * the live mark goes grey and the clock stops at when it was last seen.
  */
 export function RunStrip() {
@@ -154,79 +145,6 @@ export function RunStrip() {
 					? `Last seen ${formatClock(lostAt)}`
 					: formatElapsed(runElapsed(investigation, now))}
 			</span>
-			<div className="ml-auto flex shrink-0 items-center gap-1">
-				{live && <StopButton />}
-			</div>
 		</div>
-	);
-}
-
-/** Stop, behind a confirm: a stop is final for this run (#743 §4.5). */
-function StopButton() {
-	const { run } = useIncidentRecord();
-	const { toast } = useToast();
-	const [open, setOpen] = useState(false);
-	const stopping = run.stopRequested;
-
-	const confirm = () => {
-		setOpen(false);
-		run.stop({
-			onError: (error) =>
-				toast({
-					title: "Stop did not reach the investigation",
-					description: getErrorMessage(error),
-					variant: "destructive",
-				}),
-		});
-	};
-
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button
-					variant="ghost"
-					size="xs"
-					className="text-danger hover:text-danger"
-					disabled={stopping}
-					data-testid="run-stop"
-				>
-					{stopping ? "Stopping" : "Stop"}
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent
-				align="end"
-				className="w-80 space-y-3 p-3"
-				data-testid="run-stop-confirm"
-				onOpenAutoFocus={(e) => {
-					e.preventDefault();
-					(e.currentTarget as HTMLElement)
-						.querySelector<HTMLButtonElement>("[data-stop-run]")
-						?.focus();
-				}}
-			>
-				<div className="space-y-1">
-					<p className="text-body font-medium">Stop this investigation?</p>
-					<p className="text-body text-text-2">
-						The agent stops at its current step. Everything it found so far
-						stays in the conversation. You can start a new investigation
-						afterwards.
-					</p>
-				</div>
-				<div className="flex justify-end gap-2">
-					<Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-						Keep going
-					</Button>
-					<Button
-						variant="destructive"
-						size="sm"
-						onClick={confirm}
-						data-stop-run
-						data-testid="run-stop-confirm-button"
-					>
-						Stop
-					</Button>
-				</div>
-			</PopoverContent>
-		</Popover>
 	);
 }

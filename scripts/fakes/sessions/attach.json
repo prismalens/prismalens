@@ -1,0 +1,100 @@
+{
+	"agent": {
+		"name": "opencode",
+		"version": "1.18.30-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Reading what you attached: {{attached}}.\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_a1",
+					"title": "`git log --oneline -3`",
+					"rawInput": {
+						"command": "git log --oneline -3"
+					},
+					"output": "7f3c2a1 Call the provider with the shared session"
+				}
+			},
+			{
+				"report": {
+					"summary": "Checkout's provider call has no timeout since 7f3c2a1, so the provider's 503s hold every worker.",
+					"rootCause": "Checkout calls the payment provider with no `timeout`, so its 503s hold every worker.",
+					"rootCauseCategory": "code",
+					"culprit": {
+						"service": "payments-api",
+						"changeRef": "7f3c2a1",
+						"mechanism": null
+					},
+					"hypotheses": [
+						{
+							"statement": "The provider call in 7f3c2a1 has no timeout",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "`requests.post(provider_url, json=body)` has no `timeout`; the default is none.",
+									"source": "api/payments/provider.py:48",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_read"
+								},
+								{
+									"observation": "7f3c2a1 'Call the provider with the shared session' is the newest commit.",
+									"source": "git log --oneline -3",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_log"
+								},
+								{
+									"observation": "A pool held by slow calls fits p99 climbing to the request timeout.",
+									"source": "the two observations above",
+									"direction": "supports",
+									"status": "inferred"
+								},
+								{
+									"observation": "The attached log shows the pool exhausted at 14:02",
+									"source": "attachment: app.log",
+									"direction": "supports",
+									"status": "inferred"
+								}
+							]
+						}
+					],
+					"ruledOut": [
+						{
+							"statement": "The database",
+							"why": "pool and query latency were flat through the window",
+							"evidence": [
+								{
+									"observation": "no change in the window",
+									"source": "git log --oneline -3",
+									"direction": "contradicts",
+									"status": "verified",
+									"toolCallId": "call_log"
+								}
+							]
+						}
+					],
+					"coverage": {
+						"queried": ["git log --oneline -3", "api/payments/provider.py"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Roll back 7f3c2a1 or set a 5 s timeout on the provider call",
+							"detail": "The call is at api/payments/provider.py:48.",
+							"priority": "critical"
+						},
+						{
+							"title": "Confirm the error rate falls after the rollback",
+							"detail": "`rate(http_errors{path=\"/checkout\"}[5m])` back under 1% for 10 minutes.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	]
+}

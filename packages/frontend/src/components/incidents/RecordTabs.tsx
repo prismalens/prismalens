@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Link, useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect } from "react";
+import { Link } from "@tanstack/react-router";
+import { type ReactNode, useEffect, useMemo } from "react";
+import { inIncident, useBack } from "@/hooks/use-back";
 import { cn } from "@/lib/utils";
 import { RECORD_ROUTES, type RecordRoute } from "./RecordLayout";
 
@@ -27,8 +28,9 @@ function isTyping(target: EventTarget | null): boolean {
 /**
  * The incident's tabs (#743): Overview is the card page, the others are the
  * routes a card's link opens. Every tab keeps its place whichever is open.
- * The run's state rides at the right end of the same row. Esc walks up a
- * level, tab to Overview to the board, unless typing or a popover has it.
+ * The run's state rides at the right end of the same row. Esc is the band's
+ * chevron (R4.4): back to where you came from, unless the box, a field or a
+ * popover has it.
  */
 export function RecordTabs({
 	incidentId,
@@ -44,7 +46,8 @@ export function RecordTabs({
 	dimmed?: RecordRoute[];
 	status: ReactNode;
 }) {
-	const navigate = useNavigate();
+	const leaf = useMemo(() => inIncident(incidentId), [incidentId]);
+	const back = useBack(leaf, "/incidents");
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -56,18 +59,11 @@ export function RecordTabs({
 				)
 			)
 				return;
-			if (here)
-				navigate({
-					to: "/incidents/$id",
-					params: { id: incidentId },
-					search: true,
-					viewTransition: true,
-				});
-			else navigate({ to: "/incidents", viewTransition: true });
+			back();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [incidentId, here, navigate]);
+	}, [back]);
 
 	const tab = (active: boolean) =>
 		cn(

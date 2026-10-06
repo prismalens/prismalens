@@ -97,7 +97,7 @@ export interface HarnessStatus {
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
 	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
-	modelVia: "config" | "env" | "unsupported";
+	modelVia: "acp" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: string;
 	/** The model the host env names for this harness (e.g. ANTHROPIC_MODEL); a run with no model set uses it. */

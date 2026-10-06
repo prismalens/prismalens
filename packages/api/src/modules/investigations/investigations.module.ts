@@ -8,6 +8,7 @@ import { ReportDeliveryModule } from "../delivery/report-delivery.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { OverlayModule } from "../overlay/overlay.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
+import { AttachmentsService } from "./attachments.service.js";
 import { ContextPackService } from "./context-pack.service.js";
 import { InvestigationStreamController } from "./investigation-stream.controller.js";
 import { InvestigationTriggerService } from "./investigation-trigger.service.js";
@@ -32,8 +33,10 @@ import { StreamRelayService } from "./stream-relay.service.js";
 		InvestigationUpdateService,
 		StreamRelayService,
 		ContextPackService,
+		AttachmentsService,
 	],
 	exports: [
+		AttachmentsService,
 		InvestigationsService,
 		InvestigationTriggerService,
 		InvestigationUpdateService,

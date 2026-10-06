@@ -22,6 +22,10 @@ const ROWS: { keys: string[]; label: string }[] = [
 	{ keys: ["1", "4"], label: "Jump to a column on the board" },
 	{ keys: ["["], label: "Fold the sidebar to its icons" },
 	{ keys: ["Esc"], label: "Go back" },
+	{ keys: ["Enter"], label: "Send, at the agent's next pause" },
+	{ keys: ["Ctrl", "Enter"], label: "Send now, ending the agent's step" },
+	{ keys: ["Shift", "Enter"], label: "New line in the box" },
+	{ keys: ["Esc"], label: "Stop the agent, from the box while it works" },
 	{ keys: ["?"], label: "This sheet" },
 ];
 

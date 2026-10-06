@@ -114,6 +114,30 @@ describe("seedDemoData", () => {
 		expect(withoutCulprit).toBeDefined();
 	});
 
+	it("the attachments migration's table round-trips a row (#335-walk 2d)", async () => {
+		const incident = await prisma.incident.findFirstOrThrow();
+		const made = await prisma.attachment.create({
+			data: {
+				incidentId: incident.id,
+				name: "app.log",
+				mimeType: "text/plain",
+				size: 21,
+				sha256: "e".repeat(64),
+			},
+		});
+		const read = await prisma.attachment.findUniqueOrThrow({ where: { id: made.id } });
+		expect(read).toMatchObject({
+			incidentId: incident.id,
+			investigationId: null,
+			name: "app.log",
+			mimeType: "text/plain",
+			size: 21,
+			sha256: "e".repeat(64),
+		});
+		expect(read.createdAt).toBeInstanceOf(Date);
+		await prisma.attachment.delete({ where: { id: made.id } });
+	});
+
 	it("is idempotent on second run (no duplicate rows, identical IDs)", async () => {
 		const alertsBefore = await prisma.alert.findMany({ select: { id: true } });
 		const incidentsBefore = await prisma.incident.findMany({ select: { id: true } });

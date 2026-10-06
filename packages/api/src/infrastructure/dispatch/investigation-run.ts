@@ -14,6 +14,8 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	type ModelSource,
+	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
@@ -146,7 +148,8 @@ async function runJobInternal(
 			}
 		}
 
-		const { selection, model, modelSource } = await ports.resolveHarness();
+		const { selection, model, modelSource, effort } =
+			await ports.resolveHarness();
 		if (!selection.runnable) throw new Error(selection.reason);
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
@@ -211,6 +214,9 @@ async function runJobInternal(
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(effort ? { effort } : {}),
+				...(data.access ? { access: data.access } : {}),
+				...(data.attachments?.length ? { attachments: data.attachments } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
 				env: getHarnessProviderKeys(selection.harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -312,7 +318,9 @@ function keepSession(
  * A message on a finished run: the same harness session loaded again in the
  * first run's workspace, rebuilt at the same path and commits (#747). Chat
  * only: the report, the incident and deliveries never change, and the row's
- * status, completedAt and error are put back when it ends.
+ * status, completedAt and error are put back when it ends. A `continue` on a
+ * stopped run is the run again (R4.4): it ends completed with a report,
+ * cancelled, or failed, and is put back only if the agent never ran.
  */
 async function runFollowUp(
 	rawPayload: InvestigationJobData,
@@ -321,8 +329,10 @@ async function runFollowUp(
 ): Promise<InvestigationResult> {
 	const data = InvestigationJobDataSchema.parse(rawPayload);
 	const resume = data.resume as NonNullable<InvestigationJobData["resume"]>;
+	const continuing = resume.kind === "continue";
 	const id = data.investigationId;
 	const runDir = runDirFor(id);
+	// A continued run that reached its agent owns its own end state.
 	let restored = false;
 	const restore = async (): Promise<void> => {
 		if (restored) return;
@@ -380,12 +390,21 @@ async function runFollowUp(
 		if (multi) context.workspace = multi;
 
 		mkdirSync(runDir, { recursive: true });
-		const store = createPrismaInvestigationStore(ports, {
+		const base = createPrismaInvestigationStore(ports, {
 			investigationId: id,
 			incidentId: data.incidentId,
 			runId: id,
-			resume: { note: workspace.note },
+			resume: { note: workspace.note, continuing },
 		});
+		// The row is the continued run's once it went live; a failure before that puts it back.
+		const store = {
+			...base,
+			create: async () => {
+				await base.create();
+				if (continuing) restored = true;
+			},
+		};
+		const modelSource = followUpModelSource(harness, inv.model);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -394,6 +413,8 @@ async function runFollowUp(
 				cwd: workspace.cwd,
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
+				...(modelSource ? { modelSource } : {}),
+				...(data.access ? { access: data.access } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -411,6 +432,12 @@ async function runFollowUp(
 					text: resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
+					...(continuing
+						? { kind: "continue" as const, sawEvidence: !!resume.sawEvidence }
+						: {}),
+					...(resume.attachments?.length
+						? { attachments: resume.attachments }
+						: {}),
 				},
 				seqStart,
 			},
@@ -423,8 +450,12 @@ async function runFollowUp(
 		);
 		await restore();
 		await io.streamDone();
-		if (outcome.failureKind === "cancelled") return cancelledResult(data);
+		if (outcome.failureKind === "cancelled") {
+			if (continuing) await persistCancelled(data, ports);
+			return cancelledResult(data);
+		}
 		if (outcome.error) return failureResult(data, outcome.error);
+		if (outcome.report) return successResult(data, outcome.report);
 		return {
 			success: true,
 			investigationId: id,
@@ -448,6 +479,19 @@ async function runFollowUp(
 		await restore();
 		clearRunWorkspace(runDir);
 	}
+}
+
+/**
+ * The row keeps the model, not where it came from: the env or the product default
+ * when they still name it, else the operator's pick, which the agent must take (R4.2).
+ */
+export function followUpModelSource(
+	harness: HarnessId,
+	model: string | null,
+): ModelSource | undefined {
+	if (!model) return undefined;
+	const now = resolveHarnessModel(harness, undefined, process.env);
+	return now.model === model ? now.source : "operator";
 }
 
 /** The follow-up's message, not delivered, and why: what the conversation shows when it never ran. */

@@ -61,8 +61,8 @@ export async function conductRun(
 		await io.store.flush?.();
 		return { runId, report: null, error: lastError, failureKind: "cancelled" };
 	}
-	// A follow-up answers in the stream and never reports (#747).
-	if (opts.resume && lastError === null) {
+	// A follow-up answers in the stream and never reports (#747); a continued stopped run does (R4.4).
+	if (opts.resume && opts.resume.kind !== "continue" && lastError === null) {
 		await io.store.flush?.();
 		return { runId, report: null, error: null, failureKind: "none" };
 	}

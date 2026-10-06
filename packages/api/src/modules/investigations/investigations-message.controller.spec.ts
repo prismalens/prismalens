@@ -10,10 +10,11 @@ import { Reflector } from "@nestjs/core";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { ThrottlerException, ThrottlerStorageService } from "@nestjs/throttler";
 import { ORPCError } from "@orpc/nest";
-import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { DispatchService, FollowUpRefused } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { GitHubCommentService } from "../delivery/github-comment.service.js";
+import { AttachmentsService } from "./attachments.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -60,6 +61,7 @@ describe("InvestigationsController.message (#743)", () => {
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
+				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)
@@ -68,7 +70,7 @@ describe("InvestigationsController.message (#743)", () => {
 		controller = module.get(InvestigationsController);
 	});
 
-	type Input = { id: string; text: string; mode: "queue" | "now" };
+	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue" };
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	function messageHandler(): (args: { input: Input }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
@@ -82,7 +84,7 @@ describe("InvestigationsController.message (#743)", () => {
 
 		const result = await messageHandler()({ input: { id: "inv-1", text: "check the TTL", mode: "queue" } });
 
-		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue");
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", []);
 		expect(result).toEqual({ state: "queued" });
 	});
 
@@ -142,8 +144,34 @@ describe("InvestigationsController.message (#743)", () => {
 			const result = await messageHandler()({ input: { id: "inv-1", text: "why the pool?", mode: "queue" } });
 
 			expect(result).toEqual({ state: "resumed" });
-			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue");
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue", "chat", []);
 			expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+		});
+
+		it("continues a stopped run unless asked for a chat (R4.4)", async () => {
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), status: "cancelled" });
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+
+			await messageHandler()({ input: { id: "inv-1", text: "only the 14:02 deploy", mode: "queue" } });
+
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith(
+				"inv-1",
+				"only the 14:02 deploy",
+				"queue",
+				"continue",
+				[],
+			);
+		});
+
+		it("answers CONFLICT when the run is not a stopped one and the message asks to continue (R4.4)", async () => {
+			mockInvestigationsService.findById.mockResolvedValue(finished("opencode"));
+			mockDispatchService.resumeInvestigation.mockRejectedValue(
+				new FollowUpRefused("Only a stopped run can be continued."),
+			);
+
+			await expect(
+				messageHandler()({ input: { id: "inv-1", text: "go on", mode: "queue", kind: "continue" } }),
+			).rejects.toMatchObject({ code: "CONFLICT", message: "Only a stopped run can be continued." });
 		});
 
 		it("refuses a harness that cannot reopen a session with the registry's words", async () => {

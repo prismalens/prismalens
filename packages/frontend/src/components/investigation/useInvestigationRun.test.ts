@@ -46,8 +46,10 @@ describe("followUpState (#747)", () => {
 	it("is never resumable while the run is live", () => {
 		expect(followUpState({ status: "running", resumable: true })).toEqual({
 			resumable: false,
+			continuable: false,
 			resumeBlockedReason: null,
 		});
+		expect(followUpState({ status: "cancelled", resumable: true, continuable: true }).continuable).toBe(true);
 		expect(followUpState({ status: "completed", resumable: true }).resumable).toBe(true);
 		expect(
 			followUpState({
@@ -78,7 +80,7 @@ describe("the follow-up divider (#747)", () => {
 			Date.parse(at),
 		);
 		expect(items.map((i) => i.kind)).toEqual(["prose", "divider", "operator"]);
-		const html = renderToStaticMarkup(createElement(Transcript, { items, incidentId: "inc-1" }));
+		const html = renderToStaticMarkup(createElement(Transcript, { items, incidentId: "inc-1", agent: "OpenCode" }));
 		expect(html).toContain('data-testid="transcript-divider"');
 		expect(html).toContain("Resumed in the same session, code at 1a2b3c4");
 	});

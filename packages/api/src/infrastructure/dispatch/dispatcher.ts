@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { JobAttachment } from "@prismalens/contracts";
+
 /**
  * The dispatch loop (0005 §2): one process runs every investigation
  * in-process, so this loop needs no poll timer, no heartbeat, and no reclaim
@@ -47,7 +49,11 @@ export interface RunningJob {
 	cancel(): void;
 	kill(): void;
 	/** Hand the run an operator message; null once it no longer listens. */
-	message?(text: string, mode: "queue" | "now"): "queued" | "sent" | null;
+	message?(
+		text: string,
+		mode: "queue" | "now",
+		attachments?: JobAttachment[],
+	): "queued" | "sent" | null;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -172,7 +178,7 @@ export class Dispatcher {
 		);
 		const messageSub = this.bus.subscribe<RunMessageRequest>(
 			runMessageTopic(job.investigationId),
-			(m) => m.reply(running.message?.(m.text, m.mode) ?? null),
+			(m) => m.reply(running.message?.(m.text, m.mode, m.attachments) ?? null),
 		);
 
 		void running.done

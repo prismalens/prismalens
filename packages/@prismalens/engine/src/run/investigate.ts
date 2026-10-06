@@ -7,7 +7,12 @@
  * permission requests, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
 	HARNESS_REGISTRY,
@@ -21,15 +26,23 @@ import {
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
+	AttachmentRef,
 	CanonicalEvent,
+	FollowUpKind,
 	InvestigationContext,
+	JobAttachment,
 	OperatorMessageMode,
 	RunFidelity,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
-import { AcpSession, type AcpStreamItem } from "../runner/acp-client.js";
+import {
+	AcpSession,
+	type AcpStreamItem,
+	type PromptPart,
+} from "../runner/acp-client.js";
 import { telemetryOrigins } from "./connectors.js";
+import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
 import { buildInvestigationPrompt } from "./prompt.js";
 import {
@@ -62,6 +75,10 @@ export interface RunInvestigationOptions {
 	model?: string;
 	/** Where `model` came from; recorded in the run's fidelity. */
 	modelSource?: ModelSource;
+	/** A value of the harness's `thought_level` option; set before every prompt (R4.2). */
+	effort?: string;
+	/** Files that go with the brief (R4.3). */
+	attachments?: JobAttachment[];
 	/** What the agent may touch (r4 R4.1); Read-only when absent. The host checks the ceiling. */
 	access?: PermissionMode;
 	/** The operator's sandbox switch for a harness that has one (Codex); `SANDBOX_DEFAULT` when absent. */
@@ -93,6 +110,11 @@ export interface RunInvestigationOptions {
 		text: string;
 		mode: OperatorMessageMode;
 		heads: { name: string; head: string }[];
+		/** `continue` takes a stopped run on to its report (R4.4); `chat` when absent. */
+		kind?: FollowUpKind;
+		attachments?: JobAttachment[];
+		/** The stopped run already ran a tool, so its report has evidence behind it. */
+		sawEvidence?: boolean;
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -107,8 +129,14 @@ export interface RunInvestigationOptions {
  * has no mid-turn injection, so a turn boundary is the earliest pause (#743).
  */
 export interface SteerPort {
-	next(): string | null;
-	onNow(deliver: (text: string) => void): () => void;
+	next(): SteerLine | null;
+	onNow(deliver: (line: SteerLine) => void): () => void;
+}
+
+/** One operator message and the files that go with it (R4.3). */
+export interface SteerLine {
+	text: string;
+	attachments?: JobAttachment[];
 }
 
 /**
@@ -117,10 +145,14 @@ export interface SteerPort {
  */
 export function createSteerChannel(): {
 	port: SteerPort;
-	send(text: string, mode: OperatorMessageMode): "queued" | "sent" | null;
+	send(
+		text: string,
+		mode: OperatorMessageMode,
+		attachments?: JobAttachment[],
+	): "queued" | "sent" | null;
 } {
-	const queue: string[] = [];
-	let deliverNow: ((text: string) => void) | null = null;
+	const queue: SteerLine[] = [];
+	let deliverNow: ((line: SteerLine) => void) | null = null;
 	let open = true;
 	return {
 		port: {
@@ -133,13 +165,14 @@ export function createSteerChannel(): {
 				};
 			},
 		},
-		send(text, mode) {
+		send(text, mode, attachments) {
 			if (!open) return null;
+			const line = attachments?.length ? { text, attachments } : { text };
 			if (mode === "now" && deliverNow) {
-				deliverNow(text);
+				deliverNow(line);
 				return "sent";
 			}
-			queue.push(text);
+			queue.push(line);
 			return "queued";
 		},
 	};
@@ -148,6 +181,41 @@ export function createSteerChannel(): {
 export const CANCELLED_MESSAGE = "investigation cancelled";
 export function isCancelledError(message: string): boolean {
 	return message === CANCELLED_MESSAGE;
+}
+
+/** What the conversation shows of a message's files. */
+function refsOf(attachments: JobAttachment[] | undefined): AttachmentRef[] {
+	return (attachments ?? []).map(({ id, name, mimeType, size }) => ({
+		id,
+		name,
+		mimeType,
+		size,
+	}));
+}
+
+/**
+ * A message as ACP content (R4.3): text files fenced as data inside the text,
+ * images as `image` blocks after it. Files are read here, never carried as bytes.
+ */
+export function promptParts(
+	text: string,
+	attachments: JobAttachment[] = [],
+): PromptPart[] {
+	const fenced: string[] = [];
+	const images: PromptPart[] = [];
+	for (const a of attachments) {
+		const bytes = readFileSync(a.path);
+		if (a.mimeType.startsWith("image/"))
+			images.push({
+				type: "image",
+				data: bytes.toString("base64"),
+				mimeType: a.mimeType,
+			});
+		else fenced.push(renderAttachment(a.name, bytes.toString("utf8")));
+	}
+	if (images.length) fenced.push(ATTACHED_IMAGE_GUARD);
+	const body = [text, ...fenced].filter(Boolean).join("\n\n");
+	return [{ type: "text", text: body }, ...images];
 }
 
 export function buildRunFidelity(
@@ -350,13 +418,16 @@ export async function* runInvestigation(
 		return { error: "harness stream ended without a stop reason" };
 	};
 
-	const sendNow: string[] = [];
+	const sendNow: SteerLine[] = [];
 	const unsubscribe = opts.steer?.onNow((line) => {
 		sendNow.push(line);
 		session.cancel();
 	});
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
+	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
+	const modelVia =
+		descriptor.modelVia ?? HARNESS_REGISTRY[opts.harness]?.modelVia;
 
 	try {
 		await session.open();
@@ -376,27 +447,88 @@ export async function* runInvestigation(
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
-		// An env-supplied model leaves the selector at its default alias, so the
-		// selector says nothing about what ran (#733).
-		const selectorIsModel = !(descriptor.modelVia === "env" && opts.model);
-		if (session.servedModel && selectorIsModel) {
+		// A chosen model goes over the session's own option and must come back as asked,
+		// a reopened session included (R4.2); an env-named one the harness read itself (walk f18).
+		const chosenModel =
+			opts.model && modelVia === "acp" && opts.modelSource !== "env"
+				? opts.model
+				: null;
+		if (chosenModel) {
+			const configId = session.modelOptionId;
+			const took = !configId
+				? null
+				: session.servedModel === chosenModel
+					? chosenModel
+					: await session.setConfigOption(configId, chosenModel);
+			yield adapter.sessionConfig("model", chosenModel, took === chosenModel);
+			if (took !== chosenModel) {
+				const offered = session.models.map((m) => m.id).join(", ");
+				yield adapter.error(
+					configId
+						? `${label} would not switch to ${chosenModel}; it offered ${offered || "no models"}`
+						: `${label} offers no model option, so it cannot take ${chosenModel}`,
+				);
+				return;
+			}
+		}
+		if (session.servedModel && opts.modelSource !== "env") {
 			fidelity = { ...fidelity, servedModel: session.servedModel };
 		}
+		const effortId = opts.effort ? (session.effort?.id ?? null) : null;
+		const sendEffort = async (): Promise<boolean> =>
+			!opts.effort ||
+			(!!effortId &&
+				(await session.setConfigOption(effortId, opts.effort)) === opts.effort);
+		if (opts.effort) {
+			const ok = await sendEffort();
+			yield adapter.sessionConfig("effort", opts.effort, ok);
+			if (!ok) {
+				yield adapter.error(
+					`${label} would not take ${opts.effort} effort; it offered ${session.effort?.values.join(", ") || "none"}`,
+				);
+				return;
+			}
+			fidelity = { ...fidelity, effort: opts.effort };
+		}
+		// codex-acp drops the effort after a turn (codex-acp#336), so it is sent again before each later one.
+		let turns = 0;
+		const turn = async function* (
+			parts: PromptPart[],
+		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
+			if (turns++ > 0 && opts.effort && !(await sendEffort()))
+				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
+			return yield* consume(session.prompt(parts));
+		};
+
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
-			const { text: line, mode, heads } = opts.resume;
-			yield adapter.operatorMessage(line, mode, true, heads);
-			outcome = yield* consume(session.prompt(line));
+			const { text: line, mode, heads, attachments } = opts.resume;
+			yield adapter.operatorMessage(
+				line,
+				mode,
+				true,
+				heads,
+				refsOf(attachments),
+			);
+			outcome = yield* turn(promptParts(line, attachments));
 		} else {
 			const brief = opts.brief?.trim();
-			if (brief) yield adapter.operatorMessage(brief, "queue", true);
-			outcome = yield* consume(
-				session.prompt(
+			if (brief || opts.attachments?.length)
+				yield adapter.operatorMessage(
+					brief ?? "",
+					"queue",
+					true,
+					undefined,
+					refsOf(opts.attachments),
+				);
+			outcome = yield* turn(
+				promptParts(
 					buildInvestigationPrompt(opts.context, access, {
 						noNetwork: sandboxWithoutNetwork(opts, access),
 					}) +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
+					opts.attachments,
 				),
 			);
 		}
@@ -405,13 +537,25 @@ export async function* runInvestigation(
 			const now = sendNow.shift();
 			const line = now ?? opts.steer?.next() ?? null;
 			if (line === null) break;
-			yield adapter.operatorMessage(line, now ? "now" : "queue", true);
+			yield adapter.operatorMessage(
+				line.text,
+				now ? "now" : "queue",
+				true,
+				undefined,
+				refsOf(line.attachments),
+			);
 			text = "";
-			outcome = yield* consume(session.prompt(line));
+			outcome = yield* turn(promptParts(line.text, line.attachments));
 		}
 		unsubscribe?.();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
-			yield adapter.operatorMessage(line, "queue", false);
+			yield adapter.operatorMessage(
+				line.text,
+				"queue",
+				false,
+				undefined,
+				refsOf(line.attachments),
+			);
 		}
 
 		if ("error" in outcome) {
@@ -425,10 +569,12 @@ export async function* runInvestigation(
 			return;
 		}
 		// A follow-up is chat only: its answer lives in the stream, never in a report (#747).
-		if (opts.resume) {
+		// Continuing a stopped run finishes it as the run it was, report and all (R4.4).
+		if (opts.resume && opts.resume.kind !== "continue") {
 			yield adapter.branchDone(mapStopReason(outcome.stop));
 			return;
 		}
+		if (opts.resume?.sawEvidence) sawEvidence = true;
 
 		let parsed = parseReport(text);
 		const spent = { extraction: false, schema: false };
@@ -439,7 +585,7 @@ export async function* runInvestigation(
 			spent[key] = true;
 			retries += 1;
 			text = "";
-			const retry = yield* consume(session.prompt(retryPrompt(parsed)));
+			const retry = yield* turn([{ type: "text", text: retryPrompt(parsed) }]);
 			if ("error" in retry) {
 				yield adapter.error(retry.error);
 				return;
@@ -499,8 +645,8 @@ function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 	};
 }
 
-function drain(steer: SteerPort | undefined): string[] {
-	const left: string[] = [];
+function drain(steer: SteerPort | undefined): SteerLine[] {
+	const left: SteerLine[] = [];
 	for (let line = steer?.next(); line; line = steer?.next()) left.push(line);
 	return left;
 }

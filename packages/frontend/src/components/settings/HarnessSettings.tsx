@@ -28,10 +28,12 @@ import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
 	useCheckHarness,
 	useHarnesses,
 	useHarnessSettings,
+	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +47,8 @@ interface ProbeState {
 
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
-	const { isLoading: settingsLoading } = useHarnessSettings();
+	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
+	const updateSettings = useUpdateHarnessSettings();
 	const checkHarness = useCheckHarness();
 	const [probes, setProbes] = useState<Partial<Record<HarnessId, ProbeState>>>(
 		{},
@@ -122,7 +125,23 @@ export function HarnessSettings() {
 					description={`${READ_ONLY_LINE} ${BOUNDARY_NOTE}`}
 					testId="harness-access"
 				>
-					<span className="text-body text-text-2">Read-only</span>
+					<span className="text-body text-text-2">
+						Read-only, chosen per run in the box
+					</span>
+				</SettingRow>
+				<SettingRow
+					label="Allow write levels"
+					description="Edit the copy writes inside the run's throwaway clone. Full access lets the agent do anything on this machine."
+					testId="harness-allow-write"
+				>
+					<Switch
+						checked={settings?.allowWriteLevels === true}
+						onCheckedChange={(on) =>
+							updateSettings.mutate({ allowWriteLevels: on })
+						}
+						aria-label="Allow write levels"
+						data-testid="harness-allow-write-switch"
+					/>
 				</SettingRow>
 			</SettingGroup>
 
@@ -215,13 +234,11 @@ export function HarnessSettings() {
 /** What the agent takes from PrismaLens, as the last check read it (r4 R4.1 rev, R4.2, R4.3). */
 function capabilities(h: HarnessStatus): string {
 	const model =
-		h.modelVia === "config"
-			? "Takes a model through its config."
-			: h.modelVia === "env"
-				? "Takes a model through its environment."
-				: h.id === "deepagents"
-					? "Uses its own model."
-					: "Model: pending a check.";
+		h.modelVia === "acp"
+			? "Takes a model over ACP."
+			: h.id === "deepagents"
+				? "Uses its own model."
+				: "Model: pending a check.";
 	const effort = h.checked?.effort
 		? ` Effort over ACP: ${h.checked.effort.values.join(", ")}.`
 		: "";

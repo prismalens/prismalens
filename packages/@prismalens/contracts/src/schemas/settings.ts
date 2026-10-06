@@ -48,8 +48,8 @@ export const HarnessStatusSchema = z.object({
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: z.string().nullable(),
-	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
-	modelVia: z.enum(["config", "env", "unsupported"]),
+	/** How the Model setting reaches this harness: ACP `session/set_config_option`, or not at all (R4.2). */
+	modelVia: z.enum(["acp", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: z.string(),
 	/** The model the host env names for this harness; a run with no model set uses it (walk f18). Absent from older APIs. */
@@ -104,6 +104,7 @@ export type HarnessSelectionStatus = z.infer<
 >;
 
 const ModelIdSchema = z.string().min(1).max(200);
+const EffortValueSchema = z.string().min(1).max(64);
 
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
@@ -115,6 +116,10 @@ export const HarnessSettingsSchema = z.object({
 	/** Model id per harness; a harness without one uses its default. */
 	models: z.partialRecord(z.enum(HARNESS_IDS), ModelIdSchema).optional(),
 	favourites: z.array(FavouriteModelSchema).optional(),
+	/** Effort per harness, one of the values its `thought_level` option offers (R4.2). */
+	efforts: z.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema).optional(),
+	/** The ceiling: Edit the copy and Full access are offered only when on (r4 R4.1). */
+	allowWriteLevels: z.boolean().optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
@@ -127,6 +132,11 @@ export const UpdateHarnessSettingsSchema = z
 			.optional(),
 		/** Replaces the whole list. */
 		favourites: z.array(FavouriteModelSchema).max(100).optional(),
+		/** Merges per harness; `null` goes back to the harness's own default. */
+		efforts: z
+			.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema.nullable())
+			.optional(),
+		allowWriteLevels: z.boolean().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;

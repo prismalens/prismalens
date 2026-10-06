@@ -103,12 +103,11 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
-	it("claude-code takes the operator's model for every tier", () => {
+	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
 		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
 		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {
-			expect(env[key]).toBe("gemma4:31b-cloud");
+			expect(env[key]).toBeUndefined();
 		}
-		expect(HARNESS_REGISTRY["claude-code"].acpEnv(runEnv).ANTHROPIC_MODEL).toBeUndefined();
 	});
 
 	it("codex's mode comes from the access level, not its base env (r4 R4.1 rev)", () => {
@@ -171,9 +170,9 @@ describe("row data every reader needs (#634)", () => {
 	});
 
 	it("gives every row a modelVia matching how it actually takes a model", () => {
-		expect(HARNESS_REGISTRY.opencode.modelVia).toBe("config");
-		expect(HARNESS_REGISTRY["claude-code"].modelVia).toBe("env");
-		expect(HARNESS_REGISTRY.codex.modelVia).toBe("unsupported");
+		expect(HARNESS_REGISTRY.opencode.modelVia).toBe("acp");
+		expect(HARNESS_REGISTRY["claude-code"].modelVia).toBe("acp");
+		expect(HARNESS_REGISTRY.codex.modelVia).toBe("acp");
 		expect(HARNESS_REGISTRY.gemini.modelVia).toBe("unsupported");
 		expect(HARNESS_REGISTRY.deepagents.modelVia).toBe("unsupported");
 	});
@@ -229,11 +228,12 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 
 describe("refuseModel (#639 rec 4)", () => {
 	it("refuses a model on a harness that cannot take one, and nothing else", () => {
-		expect(refuseModel("codex", "synthetic/model-a")).toBe(
-			"Codex picks its own model. Clear synthetic/model-a in the picker above.",
+		expect(refuseModel("gemini", "synthetic/model-a")).toBe(
+			"Gemini CLI picks its own model. Clear synthetic/model-a in the picker above.",
 		);
-		expect(refuseModel("codex", undefined)).toBeNull();
-		expect(refuseModel("codex", "  ")).toBeNull();
+		expect(refuseModel("gemini", undefined)).toBeNull();
+		expect(refuseModel("gemini", "  ")).toBeNull();
+		expect(refuseModel("codex", "synthetic/model-a")).toBeNull();
 		expect(refuseModel("opencode", "synthetic/model-a")).toBeNull();
 	});
 });
