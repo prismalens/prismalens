@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { orpc } from "@/lib/api/orpc-client";
 import { download } from "@/lib/download";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { cn } from "@/lib/utils";
 
 /** Downloads the server-rendered Markdown of a completed report (#606). */
 export function ExportReportButton({
@@ -33,9 +32,8 @@ export function ExportReportButton({
 
 	return (
 		<Button
-			variant="ghost"
-			size="sm"
-			className={cn("h-7 px-2 text-body text-text-2", className)}
+			variant="text"
+			className={className}
 			onClick={() => exportMutation.mutate({ id: investigationId })}
 			disabled={exportMutation.isPending}
 			data-testid="export-report-markdown"

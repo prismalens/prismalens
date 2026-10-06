@@ -15,12 +15,12 @@ import {
 } from "@/components/incidents/IncidentFacts";
 import { NoteField } from "@/components/incidents/NoteField";
 import {
-	DetailsLine,
 	FactsRail,
 	RecordPage,
 	ROWS,
 	TabSection,
 } from "@/components/incidents/RecordLayout";
+import { useRunAgentModel } from "@/components/incidents/RunStrip";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { TimelineList } from "@/components/incidents/TimelineList";
 import { DockedComposer } from "@/components/investigation/DockedComposer";
@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { alertGroups } from "@/lib/alert-groups";
 import { answerWord } from "@/lib/answer-word";
-import { failureWords } from "@/lib/failure-words";
+import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
 import { incidentLineage } from "@/lib/incident-board";
@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/")({
 });
 
 function IncidentOverview() {
-	const { rail, line } = useIncidentFacts();
+	const { rail } = useIncidentFacts();
 	return (
 		<RecordPage
 			testId="incident-record"
@@ -57,7 +57,6 @@ function IncidentOverview() {
 			<ReportBrief />
 			<AlertsBrief />
 			<TimelineBrief />
-			<DetailsLine parts={line} />
 		</RecordPage>
 	);
 }
@@ -166,9 +165,9 @@ function Cause() {
 				</p>
 				{resolved && (
 					<Button
-						variant="ghost"
+						variant="text"
 						size="sm"
-						className="-my-1"
+						className="-my-0.5"
 						onClick={openEditCause}
 						data-testid="edit-cause"
 					>
@@ -188,6 +187,7 @@ function plural(n: number, one: string, many = `${one}s`) {
 function ReportBrief() {
 	const { incident, run, investigationId } = useIncidentRecord();
 	const inv = run.investigation;
+	const who = useRunAgentModel(inv);
 	const report = inv?.report ?? null;
 	let body: React.ReactNode;
 	if (!investigationId) body = "No investigation yet.";
@@ -218,7 +218,16 @@ function ReportBrief() {
 			</>
 		);
 	} else if (run.state === "failed")
-		body = `No report. The run failed: ${lower(failureWords(inv.error).what)}`;
+		body = (
+			<p className="text-body text-text-2">
+				No report.{" "}
+				<StateWord tone="danger" className="text-body">
+					Run failed
+				</StateWord>
+				{inv.completedAt ? ` at ${formatClock(inv.completedAt)}` : ""}:{" "}
+				{failureSentence(who.agent, inv.error).said}
+			</p>
+		);
 	else if (run.state === "stopped")
 		body = `No report. You stopped the run${inv.completedAt ? ` at ${formatClock(inv.completedAt)}` : ""}.`;
 	else body = "The report comes when the run finishes.";
@@ -271,9 +280,19 @@ function AlertsBrief() {
 							<div className="min-w-0 flex-1">
 								<p className="truncate text-body">{g.name}</p>
 								<p className="text-meta text-text-3">
-									{g.firing > 0
-										? `firing since ${formatClock(g.firstAt)}${g.alerts.length > 1 ? `, ${g.alerts.length} alerts` : ""}`
-										: `${formatClock(g.firstAt)} to ${formatClock(clearedAt(g))}, cleared`}
+									{g.firing > 0 ? (
+										<>
+											<StateWord tone="danger">Firing</StateWord> since{" "}
+											{formatClock(g.firstAt)}
+											{g.alerts.length > 1 ? `, ${g.alerts.length} alerts` : ""}
+										</>
+									) : (
+										<>
+											<StateWord tone="ok">Cleared</StateWord> at{" "}
+											{formatClock(clearedAt(g))}, fired{" "}
+											{formatClock(g.firstAt)}
+										</>
+									)}
 								</p>
 							</div>
 						</li>

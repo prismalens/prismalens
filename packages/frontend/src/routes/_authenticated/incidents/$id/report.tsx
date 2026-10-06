@@ -39,13 +39,14 @@ import {
 	Similar,
 	Why,
 } from "@/components/investigation/ReportSections";
+import { StateWord } from "@/components/shared/StateWord";
 import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
+import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
 	fixBrief,
 	groundedIn,
-	harnessWords,
 	nowLine,
 	workDone,
 	workSentence,
@@ -82,7 +83,6 @@ function ShareActions({
 		<>
 			<CopyFixBrief
 				text={brief}
-				variant="ghost"
 				label={compact ? "Copy fix brief" : "Copy fix brief for your agent"}
 			/>
 			<ExportReportButton
@@ -194,15 +194,16 @@ function ReportPage({
 					facts={rail}
 					actions={
 						wide && (
-							<>
-								<CopyFixBrief text={brief} className="justify-center" />
-								<div className="flex flex-wrap gap-1 [&>*]:px-1.5">
-									<ExportReportButton investigationId={investigation.id} />
-									{investigation.status === "completed" && (
-										<PostToGitHubButton investigationId={investigation.id} />
-									)}
-								</div>
-							</>
+							<div className="flex flex-wrap items-center gap-1">
+								<CopyFixBrief text={brief} />
+								<ExportReportButton
+									investigationId={investigation.id}
+									label="Export"
+								/>
+								{investigation.status === "completed" && (
+									<PostToGitHubButton investigationId={investigation.id} />
+								)}
+							</div>
 						)
 					}
 				/>
@@ -233,7 +234,6 @@ function ReportPage({
 				<RunLine
 					incidentId={incident.id}
 					investigationId={investigation.id}
-					parts={[`Investigation #${number}`, agent, took, access]}
 					className={`${later} xl:hidden`}
 				/>
 				{phone && (
@@ -249,9 +249,7 @@ function ReportPage({
 	);
 }
 
-function seconds(n: number): string {
-	return n < 60 ? `${n} second${n === 1 ? "" : "s"}` : formatElapsed(n);
-}
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 
 /** No report: none yet, still working, failed or stopped; each says why and where to look. */
 function NoReportPage() {
@@ -298,31 +296,45 @@ function NoReportPage() {
 		const work = workDone(run.events);
 		const late = work.commands + work.files > 0;
 		const words = failureWords(inv.error);
+		const said = failureSentence(who.agent, inv.error);
+		// An early failure is not a duration worth stating (look ruling L48).
 		title = late
 			? `No report. The run failed after ${formatElapsed(took)}.`
-			: `No report. The run failed ${seconds(took)} in.`;
+			: "No report.";
 		body = (
 			<>
+				<StateWord tone="danger" className="text-body">
+					Run failed
+				</StateWord>
+				{inv.completedAt ? ` at ${formatClock(inv.completedAt)}` : ""}:{" "}
+				{said.words ? (
+					<>
+						{who.agent} answered "
+						<span className="text-text-1" data-testid="report-error">
+							{said.words}
+						</span>
+						".
+					</>
+				) : (
+					said.said
+				)}{" "}
 				{late && (
 					<>
 						It {workSentence(work)} before it stopped; what it found is in the{" "}
 						<RecordLink incidentId={incident.id} to="conversation">
 							Conversation
 						</RecordLink>
-						.{" "}
+						.
 					</>
 				)}
-				{who.agent} answered:{" "}
-				<span
-					className="font-mono text-mono text-text-1"
-					data-testid="report-error"
-				>
-					{inv.error ? harnessWords(inv.error) : "no error was recorded"}
+				<span className="mt-1.5 block" data-testid="report-next">
+					Next:{" "}
+					{words.what.startsWith("The agent is not signed in")
+						? `sign ${who.agent} in on this machine, then investigate again. PrismaLens never signs an agent in for you.`
+						: lowerFirst(
+								words.next ?? "read the Event log, then investigate again.",
+							)}
 				</span>
-				.{" "}
-				{words.what.startsWith("The agent is not signed in")
-					? "PrismaLens never signs an agent in for you; sign it in on this machine, then start again."
-					: words.next}
 			</>
 		);
 	} else if (run.state === "stopped") {
@@ -342,7 +354,7 @@ function NoReportPage() {
 		>
 			<div data-testid="report-empty">
 				<h2 className="text-title">{title}</h2>
-				{body && <p className="mt-1.5 text-body text-text-2">{body}</p>}
+				{body && <div className="mt-1.5 text-body text-text-2">{body}</div>}
 				<Now now={now} severity={incident.severity} />
 				{links}
 				{lastGoodRun && (

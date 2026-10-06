@@ -445,15 +445,14 @@ Given(
 );
 
 Then(
-	'the box reads "Continue the investigation" with a note naming the code it saw',
+	'the box reads "Continue the investigation" and no note explains it',
 	async ({ page }) => {
 		await expect(box(page)).toHaveAttribute(
 			"placeholder",
 			"Continue the investigation",
 		);
-		await expect(page.getByTestId("composer-note")).toHaveText(
-			/^Picks up the stopped run on (the code it saw \(.+\)|the workspace it had)\. OpenCode reopens its own session\.$/,
-		);
+		// The placeholder names what the box does; explaining copy is gone (look ruling L43).
+		await expect(page.getByTestId("composer-note")).toHaveCount(0);
 	},
 );
 

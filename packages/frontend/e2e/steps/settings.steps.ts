@@ -603,7 +603,7 @@ Then("the model list appears and no effort control", async ({ page }) => {
 });
 
 Then(
-	'every agent shows "Read-only" with a tooltip saying what the agent may read',
+	'every agent shows "Read-only" with a hint saying what the agent may read',
 	async ({ page }) => {
 		for (const id of ["opencode", "claude-code", "codex"]) {
 			await picker(page).getByTestId(`rail-${id}`).click();
@@ -615,7 +615,7 @@ Then(
 				await page.mouse.move(0, 0);
 				await chip.hover();
 				await expect(page.getByTestId("hint").last()).toContainText(
-					"Reads the copied code and queries the telemetry addresses in the brief",
+					"Reads the code and the brief's telemetry",
 					{ timeout: 1_500 },
 				);
 			}).toPass({ timeout: 10_000 });
@@ -679,29 +679,51 @@ Then(
 );
 
 Then(
-	"every rail tile shows the agent's mark with its name under it",
+	"every rail tile is a tab showing the agent's mark and no label, and the list opens with the agent's name",
 	async ({ page }) => {
 		await openPicker(page);
+		const rail = picker(page).getByRole("tablist", { name: "Agents" });
+		await expect(rail).toHaveAttribute("aria-orientation", "vertical");
 		for (const [id, name] of [
 			["opencode", "OpenCode"],
-			["claude-code", "Claude"],
+			["claude-code", "Claude Code"],
 			["codex", "Codex"],
-			["gemini", "Gemini"],
-			["deepagents", "deepagents"],
 		] as const) {
 			const tile = picker(page).getByTestId(`rail-${id}`);
-			// A vendor mark, or a two-letter tile where none reads at 20 px.
-			const mark = tile
-				.locator('svg, [data-testid="agent-lettermark"]')
-				.first();
-			const label = tile.locator("span").last();
-			await expect(mark).toBeVisible();
-			await expect(label).toHaveText(name);
-			const [m, l] = [await mark.boundingBox(), await label.boundingBox()];
-			expect(l?.y ?? 0).toBeGreaterThan(m?.y ?? 0);
+			await expect(tile).toHaveAttribute("role", "tab");
+			// A vendor mark, or a two-letter tile where none reads at 20 px; never a text label.
+			await expect(
+				tile.locator('svg, [data-testid="agent-lettermark"]').first(),
+			).toBeVisible();
+			const text = (await tile.innerText()).trim();
+			expect(text === "" || /^[A-Z]{2}$/.test(text)).toBe(true);
+			await tile.click();
+			await expect(tile).toHaveAttribute("aria-selected", "true");
+			await expect(picker(page).getByTestId("picker-agent-name")).toHaveText(
+				name,
+			);
 		}
+		// One tab stop: Down moves along the rail and shows that agent.
+		await picker(page).getByTestId("rail-opencode").click();
+		await page.keyboard.press("ArrowDown");
+		await expect(picker(page).getByTestId("rail-claude-code")).toBeFocused();
+		await expect(picker(page).getByTestId("picker-agent-name")).toHaveText(
+			"Claude Code",
+		);
+		await page.keyboard.press("ArrowRight");
+		await expect(picker(page).getByTestId("picker-search")).toBeFocused();
 	},
 );
+
+Then("the panel measures 440 by 360 px on every agent", async ({ page }) => {
+	for (const id of ["starred", "opencode", "claude-code", "codex"]) {
+		await picker(page).getByTestId(`rail-${id}`).click();
+		const b = await picker(page).boundingBox();
+		expect([Math.round(b?.width ?? 0), Math.round(b?.height ?? 0)]).toEqual([
+			440, 360,
+		]);
+	}
+});
 
 When('I open the "Starred" tile', async ({ page, agents }) => {
 	// Starring is the picker's own write; two agents' stars set the scene here.

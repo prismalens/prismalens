@@ -187,11 +187,12 @@ export function useInvestigationRun(investigationId: string | null) {
 
 	const { mutate: cancelMutate } = cancel;
 	const stop = useCallback(
-		(opts?: { onError?: (error: unknown) => void }) => {
+		(opts?: { onSuccess?: () => void; onError?: (error: unknown) => void }) => {
 			setStopRequestedFor(id);
 			cancelMutate(
 				{ id },
 				{
+					onSuccess: () => opts?.onSuccess?.(),
 					onError: (error) => {
 						setStopRequestedFor(null);
 						opts?.onError?.(error);

@@ -4,6 +4,7 @@
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useMemo } from "react";
 import { inIncident, useBack } from "@/hooks/use-back";
+import { useSlidingMark } from "@/hooks/use-sliding-mark";
 import { cn } from "@/lib/utils";
 import { RECORD_ROUTES, type RecordRoute } from "./RecordLayout";
 
@@ -27,27 +28,26 @@ function isTyping(target: EventTarget | null): boolean {
 
 /**
  * The incident's tabs (#743): Overview is the card page, the others are the
- * routes a card's link opens. Every tab keeps its place whichever is open.
- * The run's state rides at the right end of the same row. Esc is the band's
- * chevron (R4.4): back to where you came from, unless the box, a field or a
- * popover has it.
+ * routes a card's link opens. With the band they form the record's s1 header
+ * region; the active tab's underline is one mark that slides (look ruling §2).
+ * Every tab exists whatever the run did. The run's state rides at the right
+ * end of the row. Esc is the band's chevron (R4.4): back to where you came
+ * from, unless the box, a field or a popover has it.
  */
 export function RecordTabs({
 	incidentId,
 	here,
 	counts,
-	dimmed = [],
 	status,
 }: {
 	incidentId: string;
 	here: RecordRoute | null;
 	counts: Partial<Record<RecordRoute, number>>;
-	/** Tabs with nothing in them yet: still reachable, drawn quieter. */
-	dimmed?: RecordRoute[];
-	status: ReactNode;
+	status?: ReactNode;
 }) {
 	const leaf = useMemo(() => inIncident(incidentId), [incidentId]);
 	const back = useBack(leaf, "/incidents");
+	const { ref, box } = useSlidingMark<HTMLElement>('[data-state="active"]');
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -67,20 +67,19 @@ export function RecordTabs({
 
 	const tab = (active: boolean) =>
 		cn(
-			"inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-2 text-body outline-none focus-visible:ring-2 focus-visible:ring-accent",
-			active
-				? "border-accent font-medium text-text-1"
-				: "border-transparent text-text-2 hover:text-text-1",
+			"inline-flex h-9 shrink-0 items-center gap-1.5 text-body transition-colors duration-(--dur-fast)",
+			active ? "font-medium text-text-1" : "text-text-2 hover:text-text-1",
 		);
 
 	return (
 		<div
-			className="flex shrink-0 flex-wrap items-center gap-x-3 border-b px-2"
+			className="flex shrink-0 items-center gap-x-3 bg-surface-1 px-4"
 			data-testid="record-tabs"
 		>
 			<nav
+				ref={ref}
 				aria-label="Incident"
-				className="-mb-px flex min-w-0 items-center overflow-x-auto [scrollbar-width:none]"
+				className="relative flex min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] md:gap-[18px]"
 			>
 				<Link
 					to="/incidents/$id"
@@ -88,6 +87,7 @@ export function RecordTabs({
 					search={true}
 					viewTransition
 					aria-current={here === null ? "page" : undefined}
+					data-state={here === null ? "active" : "inactive"}
 					className={tab(here === null)}
 					data-testid="tab-overview"
 				>
@@ -101,22 +101,30 @@ export function RecordTabs({
 						search={true}
 						viewTransition
 						aria-current={here === r ? "page" : undefined}
-						className={cn(
-							tab(here === r),
-							here !== r && dimmed.includes(r) && "text-text-2/50",
-						)}
+						data-state={here === r ? "active" : "inactive"}
+						className={tab(here === r)}
 						data-testid={`tab-${r}`}
 					>
 						{NAMES[r]}
 						{counts[r] !== undefined && (
-							<span className="text-meta tabular-nums text-text-2">
+							<span className="text-meta font-normal text-text-3 tabular-nums">
 								{counts[r]}
 							</span>
 						)}
 					</Link>
 				))}
+				{box && (
+					<span
+						aria-hidden
+						data-testid="tab-underline"
+						className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-accent transition-[left,width] duration-(--dur-fast) ease-(--ease-standard)"
+						style={{ left: box.x, width: box.w }}
+					/>
+				)}
 			</nav>
-			<div className="ml-auto flex min-w-0 items-center">{status}</div>
+			{status && (
+				<div className="ml-auto flex min-w-0 items-center">{status}</div>
+			)}
 		</div>
 	);
 }

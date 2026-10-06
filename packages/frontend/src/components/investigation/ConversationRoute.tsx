@@ -3,10 +3,10 @@
 
 import { isRunStateLive } from "@prismalens/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAccessFact } from "@/components/incidents/IncidentFacts";
 import {
+	BoxDock,
 	type Fact,
 	FactsRail,
 	RECORD_GRID,
@@ -15,6 +15,7 @@ import {
 import { runElapsed, useRunAgentModel } from "@/components/incidents/RunStrip";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { Mono } from "@/components/shared/Mono";
+import { Empty, Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { Progress } from "@/components/ui/progress";
 import { useNow } from "@/hooks/use-now";
@@ -22,7 +23,6 @@ import { formatClock, formatElapsed } from "@/lib/format-time";
 import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
 import { DockedComposer } from "./DockedComposer";
-import { InvestigationDetailSkeleton } from "./InvestigationDetailSkeleton";
 import { InvestigationStreamPanel } from "./InvestigationStreamPanel";
 import { Transcript } from "./Transcript";
 
@@ -114,10 +114,10 @@ export function ConversationRoute() {
 							aria-selected={b === openBranch}
 							onClick={() => setBranch(b)}
 							className={cn(
-								"-mb-px border-b-2 py-1.5 text-meta",
+								"py-1.5 text-meta underline-offset-[9px]",
 								b === openBranch
-									? "border-accent text-text-1"
-									: "border-transparent text-text-2 hover:text-text-1",
+									? "font-medium text-text-1 underline decoration-accent decoration-2"
+									: "text-text-2 hover:text-text-1",
 							)}
 						>
 							{b === MAIN_BRANCH ? "Main" : b}
@@ -127,22 +127,16 @@ export function ConversationRoute() {
 			)}
 			<div className="min-h-0 flex-1">
 				{!investigationId ? (
-					<p className="p-6 text-center text-body text-text-2">
-						No investigation yet. Brief the agent below and start one.
-					</p>
+					<div className={cn(RECORD_GRID, "pt-6")}>
+						<Empty text="No investigation yet. Brief the agent below to start one." />
+					</div>
 				) : run.isLoading ? (
-					<div className="p-4">
-						<InvestigationDetailSkeleton />
+					<div className={cn(RECORD_GRID, "pt-6")}>
+						<Loading rows={5} />
 					</div>
 				) : run.error || !investigation ? (
-					<div className="flex flex-col items-center justify-center py-8">
-						<AlertCircle className="mb-3 h-8 w-8 text-danger" />
-						<p className="text-body font-medium text-danger">
-							Failed to load the run
-						</p>
-						<p className="text-meta text-text-2">
-							{run.error?.message || "Investigation not found"}
-						</p>
+					<div className={cn(RECORD_GRID, "pt-6")}>
+						<Problem text="This run did not load." />
 					</div>
 				) : search.ledger ? (
 					<LedgerView events={events} incidentId={incident.id} />
@@ -157,17 +151,13 @@ export function ConversationRoute() {
 					/>
 				)}
 			</div>
-			<div className="shrink-0 pt-1 pb-3">
-				<div className={RECORD_GRID}>
-					<div className="min-w-0">
-						<DockedComposer
-							className="px-0 pt-0 pb-0 sm:px-0"
-							branchId={openBranch ?? undefined}
-							{...(addressee ? { target: addressee } : {})}
-						/>
-					</div>
-				</div>
-			</div>
+			<BoxDock>
+				<DockedComposer
+					className="px-0 pt-0 pb-0 sm:px-0"
+					branchId={openBranch ?? undefined}
+					{...(addressee ? { target: addressee } : {})}
+				/>
+			</BoxDock>
 		</div>
 	);
 }
@@ -275,12 +265,13 @@ function LedgerView({
 			</div>
 			{run.failed && (
 				<div
-					className="rounded-md border border-danger/40 bg-danger/8 p-3"
+					className="pool px-3.5 py-3"
 					data-testid="investigation-failed-state"
 				>
 					<div className="flex items-center gap-2">
-						<StateWord tone="failed">failed</StateWord>
-						<span className="text-body font-medium">Investigation failed</span>
+						<StateWord tone="danger" className="text-body">
+							Run failed
+						</StateWord>
 					</div>
 					<p className="mt-2 whitespace-pre-wrap font-mono text-meta">
 						{investigation.error ?? "No error was recorded."}
@@ -295,13 +286,13 @@ function LedgerView({
 			)}
 			{run.streamFailed ? (
 				<div
-					className="rounded-md border p-3"
+					className="pool px-3.5 py-3"
 					data-testid="investigation-fallback-panel"
 				>
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-2 text-body font-medium">
 							Investigation progress
-							<StateWord tone="stale" data-testid="stream-fallback-badge">
+							<StateWord tone="warn" data-testid="stream-fallback-badge">
 								polling
 							</StateWord>
 						</div>

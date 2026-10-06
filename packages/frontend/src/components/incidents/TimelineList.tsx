@@ -8,6 +8,7 @@ import {
 } from "@prismalens/contracts";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
@@ -26,14 +27,16 @@ function who(entry: TimelineEntryWithRelations): string | null {
 function Clock({ at }: { at: string }) {
 	const now = useNow();
 	return (
-		<span
-			className="font-mono text-meta text-text-2 tabular-nums"
-			title={ago(at, now)}
-		>
-			{formatClock(at)}
-		</span>
+		<Hint label={ago(at, now)} side="left">
+			<span className="font-mono text-mono text-text-3 tabular-nums">
+				{formatClock(at)}
+			</span>
+		</Hint>
 	);
 }
+
+const ROW =
+	"grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-3 py-2 text-body";
 
 function EntryRow({
 	entry,
@@ -45,10 +48,7 @@ function EntryRow({
 	const note = entry.type === "comment";
 	const by = who(entry);
 	return (
-		<li
-			className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 py-0.5 text-body"
-			data-testid="timeline-row"
-		>
+		<li className={ROW} data-testid="timeline-row">
 			<Clock at={entry.occurredAt} />
 			<span className="min-w-0">
 				<span
@@ -56,17 +56,16 @@ function EntryRow({
 						"block",
 						note && full ? "whitespace-pre-wrap break-words" : "truncate",
 					)}
-					title={entry.title}
 				>
 					{entry.title}
 				</span>
 				{full && entry.description && !note && (
-					<span className="block truncate text-meta text-text-2">
+					<span className="block truncate text-meta text-text-3">
 						{entry.description}
 					</span>
 				)}
 			</span>
-			<span className="text-meta text-text-2">{by}</span>
+			<span className="text-meta text-text-3">{by}</span>
 		</li>
 	);
 }
@@ -90,38 +89,41 @@ function InvestigationRow({
 				onClick={() => setOpen((v) => !v)}
 				aria-expanded={open}
 				disabled={!full}
-				className="grid w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-baseline gap-2 rounded py-0.5 text-left text-body enabled:hover:bg-surface-3/60"
+				className={cn(
+					ROW,
+					"-mx-2 w-[calc(100%+1rem)] rounded-control px-2 text-left transition-colors duration-(--dur-instant) enabled:hover:bg-surface-3",
+				)}
 			>
 				<Clock at={item.at} />
 				<span className="flex min-w-0 items-baseline gap-2">
+					{full && (
+						<ChevronRight
+							className={cn(
+								"size-3.5 shrink-0 self-center text-text-3 transition-transform duration-(--dur-fast)",
+								open && "rotate-90",
+							)}
+						/>
+					)}
 					<span className="shrink-0">
 						Investigation{item.number ? ` #${item.number}` : ""}
 					</span>
-					{state && (
-						<StateWord tone={runStateTone(state)} className="shrink-0">
-							{RUN_STATE_LABEL[state]}
-						</StateWord>
-					)}
 					{reason && <span className="truncate text-text-2">{reason}</span>}
 					{item.noRepo && (
-						<StateWord tone="stale" className="shrink-0">
+						<span className="shrink-0 truncate text-meta text-text-3">
 							No repository
-						</StateWord>
+						</span>
 					)}
 				</span>
-				{full ? (
-					<ChevronRight
-						className={cn(
-							"h-3.5 w-3.5 self-center text-text-2",
-							open && "rotate-90",
-						)}
-					/>
+				{state ? (
+					<StateWord tone={runStateTone(state)} className="shrink-0">
+						{RUN_STATE_LABEL[state]}
+					</StateWord>
 				) : (
 					<span />
 				)}
 			</button>
 			{full && open && (
-				<ul className="ml-[3.25rem] border-l pl-3">
+				<ul className="ml-14 divide-y divide-hairline">
 					{item.entries.map((e) => (
 						<EntryRow key={e.id} entry={e} full />
 					))}
@@ -144,7 +146,7 @@ export function TimelineList({
 	full?: boolean;
 }) {
 	return (
-		<ul className="space-y-0.5" data-testid="timeline-list">
+		<ul className="divide-y divide-hairline" data-testid="timeline-list">
 			{items.map((item) =>
 				item.kind === "entry" ? (
 					<EntryRow key={item.entry.id} entry={item.entry} full={full} />

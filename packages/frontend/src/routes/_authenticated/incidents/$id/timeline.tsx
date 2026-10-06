@@ -1,9 +1,11 @@
 /**
  * The Timeline route (#743 §3c, layer 2): the full record with its filters,
- * the note field pinned at the top.
+ * the note field at the top, on the same column and rail as every tab (L54).
  */
 import { createFileRoute } from "@tanstack/react-router";
+import { useIncidentFacts } from "@/components/incidents/IncidentFacts";
 import { NoteField } from "@/components/incidents/NoteField";
+import { FactsRail, RecordPage } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import { TimelineTab } from "@/components/incidents/TimelineTab";
 
@@ -13,21 +15,16 @@ export const Route = createFileRoute("/_authenticated/incidents/$id/timeline")({
 
 function TimelineRoute() {
 	const { incident, runs, timeline, timelineLoading } = useIncidentRecord();
+	const { rail } = useIncidentFacts();
 	return (
-		<div className="flex h-full min-h-0 flex-col" data-testid="timeline-route">
-			<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 sm:px-6">
-				<NoteField />
-			</div>
-			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto max-w-[52rem] px-4 py-4 sm:px-6">
-					<TimelineTab
-						incidentId={incident.id}
-						entries={timeline}
-						runs={runs}
-						isLoading={timelineLoading}
-					/>
-				</div>
-			</div>
-		</div>
+		<RecordPage testId="timeline-route" rail={<FactsRail facts={rail} />}>
+			<NoteField className="mt-0 mb-4" />
+			<TimelineTab
+				incidentId={incident.id}
+				entries={timeline}
+				runs={runs}
+				isLoading={timelineLoading}
+			/>
+		</RecordPage>
 	);
 }
