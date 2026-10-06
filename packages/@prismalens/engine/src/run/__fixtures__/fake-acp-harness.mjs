@@ -13,7 +13,10 @@
 // later turns echo the prompt), "silent" (a turn that emits nothing until cancelled),
 // "resume" (a turn answers `Heard: <prompt>` with no tool call; FAKE_LOAD_SESSION=1
 // advertises loadSession and replays two updates before answering session/load),
-// or "auth-required" (offers authMethods, then answers session/new with ACP's -32000). It always attempts one read-only shell call and one write,
+// "continue" (like "resume", but every turn also writes a valid report: a stopped run taken on, R4.4),
+// or "auth-required" (offers authMethods, then answers session/new with ACP's -32000).
+// FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
+// switches (FAKE_REFUSE_SET keeps the old value); FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { createInterface } from "node:readline";
 
@@ -74,6 +77,41 @@ const report = {
 };
 
 let turns = 0;
+// What session/set_config_option can switch, and the value each option holds now.
+const offered = {
+	model: (process.env.FAKE_MODELS ?? process.env.FAKE_SERVED_MODEL ?? "")
+		.split(",")
+		.filter(Boolean),
+	reasoning_effort: (process.env.FAKE_EFFORTS ?? "").split(",").filter(Boolean),
+};
+const current = {
+	model: process.env.FAKE_SERVED_MODEL ?? offered.model[0],
+	reasoning_effort: offered.reasoning_effort[0],
+};
+const configOptions = () => [
+	...(offered.model.length
+		? [
+				{
+					id: "model",
+					type: "select",
+					category: "model",
+					currentValue: current.model,
+					options: offered.model.map((v) => ({ value: v, name: v })),
+				},
+			]
+		: []),
+	...(offered.reasoning_effort.length
+		? [
+				{
+					id: "reasoning_effort",
+					type: "select",
+					category: "thought_level",
+					currentValue: current.reasoning_effort,
+					options: offered.reasoning_effort.map((v) => ({ value: v, name: v })),
+				},
+			]
+		: []),
+];
 let onCancel = null;
 const cancelled = () =>
 	new Promise((resolve) => {
@@ -82,10 +120,13 @@ const cancelled = () =>
 async function turn(sessionId, promptText) {
 	turns += 1;
 	if (mode === "crash") process.exit(3);
-	if (mode === "resume") {
+	if (mode === "resume" || mode === "continue") {
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
-			content: { type: "text", text: `Heard: ${promptText}` },
+			content: {
+				type: "text",
+				text: `Heard: ${promptText}${mode === "continue" ? `\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n` : ""}`,
+			},
 		});
 		return { stopReason: "end_turn" };
 	}
@@ -247,9 +288,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			result: {
 				protocolVersion: 1,
 				agentInfo: { name: "fake", version: "0" },
-				...(process.env.FAKE_LOAD_SESSION
-					? { agentCapabilities: { loadSession: true } }
-					: {}),
+				agentCapabilities: {
+					...(process.env.FAKE_LOAD_SESSION ? { loadSession: true } : {}),
+					...(process.env.FAKE_IMAGES
+						? { promptCapabilities: { image: true } }
+						: {}),
+				},
 				...(mode === "auth-required"
 					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
 					: {}),
@@ -267,18 +311,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
-		const served = process.env.FAKE_SERVED_MODEL;
-		const configOptions = served
-			? [
-					{
-						id: "model",
-						type: "select",
-						category: "model",
-						currentValue: served,
-						options: [{ value: served, name: served }],
-					},
-				]
-			: undefined;
+		const options = configOptions();
 		// FAKE_MODES: the session modes it advertises, comma-separated, the first current.
 		const modeIds = (process.env.FAKE_MODES ?? "").split(",").filter(Boolean);
 		const modes = modeIds.length
@@ -292,7 +325,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			id: msg.id,
 			result: {
 				sessionId: "s1",
-				...(configOptions ? { configOptions } : {}),
+				...(options.length ? { configOptions: options } : {}),
 				...(modes ? { modes } : {}),
 			},
 		});
@@ -307,8 +340,21 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			content: { type: "text", text: "REPLAYED" },
 		});
 		send({ jsonrpc: "2.0", id: msg.id, result: {} });
+	} else if (msg.method === "session/set_config_option") {
+		const { configId, value } = msg.params ?? {};
+		if (!process.env.FAKE_REFUSE_SET && offered[configId]?.includes(value))
+			current[configId] = value;
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: { configOptions: configOptions() },
+		});
 	} else if (msg.method === "session/prompt") {
-		const text = msg.params?.prompt?.[0]?.text ?? "";
+		const blocks = msg.params?.prompt ?? [];
+		for (const b of blocks)
+			if (b.type === "image")
+				process.stderr.write(`fake: image ${b.mimeType}\n`);
+		const text = blocks[0]?.text ?? "";
 		const result = await turn(msg.params.sessionId, text);
 		send({ jsonrpc: "2.0", id: msg.id, result });
 	} else if (msg.method === "session/cancel") {
