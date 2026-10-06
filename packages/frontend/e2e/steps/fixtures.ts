@@ -2,11 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { readFileSync, renameSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test as base, createBdd } from "playwright-bdd";
 import {
 	installFakeAgent,
+	releaseDir,
 	releaseRun,
 } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import {
@@ -35,18 +35,17 @@ interface Fixtures {
 }
 
 const DEFAULT_AGENTS = ["opencode", "claude-agent-acp"];
-const binDir = () =>
-	join(process.env.PRISMALENS_E2E_WORKSPACE_DIR ?? "", "harness-bin");
+const workspace = () => process.env.PRISMALENS_E2E_WORKSPACE_DIR ?? "";
+const binDir = () => join(workspace(), "harness-bin");
+// This stack's fakes keep their state here, apart from other workers' (playwright.config.ts).
+const fakeAgentStateDir = () => join(workspace(), "fake-agent-state");
 
 export const test = base.extend<Fixtures>({
 	page: async ({ page }, use) => {
 		await hideQueryDevtools(page);
 		await use(page);
 		// A release names a title; later prompts quote past titles, so none outlive the scenario.
-		rmSync(join(tmpdir(), "prismalens-fake-acp-agent", "release"), {
-			recursive: true,
-			force: true,
-		});
+		rmSync(releaseDir(fakeAgentStateDir()), { recursive: true, force: true });
 		// A held run never ends on its own; left running it would take a slot of the
 		// dispatch cap from every scenario after this one.
 		for (const status of ["running", "pending"]) {
@@ -91,7 +90,11 @@ export const test = base.extend<Fixtures>({
 			install: (binaries, session) => {
 				for (const b of binaries) if (!DEFAULT_AGENTS.includes(b)) extra.add(b);
 				changed = true;
-				installFakeAgent(binDir(), { binaries, session });
+				installFakeAgent(binDir(), {
+					binaries,
+					session,
+					stateDir: fakeAgentStateDir(),
+				});
 			},
 			hide: () => {
 				hidden = true;
@@ -108,7 +111,10 @@ export const test = base.extend<Fixtures>({
 			for (const f of [b, `${b}.cmd`])
 				rmSync(join(binDir(), f), { force: true });
 		if (changed) {
-			installFakeAgent(binDir(), { session: "success" });
+			installFakeAgent(binDir(), {
+				session: "success",
+				stateDir: fakeAgentStateDir(),
+			});
 			// What a scenario chose in the picker is not the next scenario's choice.
 			await page.request.patch("/api/settings/harness", {
 				data: {
@@ -121,20 +127,14 @@ export const test = base.extend<Fixtures>({
 	},
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern.
 	release: async ({}, use) => {
-		await use((key) => releaseRun(key));
+		await use((key) => releaseRun(key, fakeAgentStateDir()));
 	},
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern.
 	hold: async ({}, use) => {
 		await use((key) =>
-			rmSync(
-				join(
-					tmpdir(),
-					"prismalens-fake-acp-agent",
-					"release",
-					encodeURIComponent(key),
-				),
-				{ force: true },
-			),
+			rmSync(join(releaseDir(fakeAgentStateDir()), encodeURIComponent(key)), {
+				force: true,
+			}),
 		);
 	},
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern.

@@ -60,6 +60,30 @@ pnpm --filter @prismalens/frontend test:e2e --project=journeys  # runs bddgen fi
   `fake-session:<name>` in the alert's name or annotations to pick another for that run. A
   follow-up reopens the same session.
 
+## Running in parallel
+
+Every Playwright worker owns one stack: an API, a Vite, a workspace (its own SQLite database,
+pairing and fake-agent state) under one temp root. Worker *n* binds `3000+2n` (Vite) and `3001+2n`
+(API); both are ready when their own startup line appears, not on a port probe.
+
+```bash
+pnpm --filter @prismalens/frontend test:e2e --workers=4          # four stacks: 3000-3007
+PRISMALENS_FRONTEND_PORT=3480 PRISMALENS_PORT=3481 \
+  pnpm --filter @prismalens/frontend test:e2e --workers=4          # 3480-3487, beside pnpm dev
+pnpm --filter @prismalens/frontend test:e2e --workers=1          # one stack, serial
+```
+
+The default is 4 workers locally (fewer on a smaller machine) and one per CPU in CI. The harness
+refuses a workspace inside `~/.prismalens`.
+
+## Agents on PATH
+
+An agent installed on your machine would answer the harness gate and turn a scenario into a real
+run. So the servers and the tests get a PATH of small wrappers for `node`, `pnpm` and `git`, the
+fake agents, and the OS base directories (`/usr/bin:/bin`, or `System32`). If a real agent binary
+sits in one of those base directories, the run stops and names it. `PRISMALENS_E2E_KEEP_PATH=1`
+runs with your own PATH instead.
+
 **Tags.** `@responsive` on a feature also runs it on the `Pixel 7` and `iPad (gen 7)` projects
 (Chromium at those sizes), nightly in `e2e-responsive.yml`. Tag a feature whose layout matters
 on a phone.

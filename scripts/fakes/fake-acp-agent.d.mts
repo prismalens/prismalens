@@ -38,8 +38,9 @@ export interface FakeSession {
 export const SESSIONS_DIR: string;
 export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
-export function releaseRun(key: string): void;
+export function releaseDir(stateDir?: string): string;
+export function releaseRun(key: string, stateDir?: string): void;
 export function installFakeAgent(
 	binDir: string,
-	opts?: { session?: string; binaries?: string[] },
+	opts?: { session?: string; binaries?: string[]; stateDir?: string },
 ): string[];
