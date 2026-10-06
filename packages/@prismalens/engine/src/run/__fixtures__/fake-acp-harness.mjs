@@ -278,8 +278,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		return;
 	}
 	if (msg.method === "initialize") {
-		// "slow-init": answer initialize after FAKE_INIT_DELAY_MS, then never answer session/new.
-		if (mode === "slow-init")
+		// FAKE_INIT_DELAY_MS delays initialize in any mode; "slow-init" then never answers session/new.
+		if (process.env.FAKE_INIT_DELAY_MS)
 			await new Promise((r) =>
 				setTimeout(r, Number(process.env.FAKE_INIT_DELAY_MS)),
 			);
