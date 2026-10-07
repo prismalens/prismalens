@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	awaitTrial,
+	failureLine,
 	readLastLogLines,
 	completePendingRestore,
 	readOutcome,
@@ -142,8 +143,10 @@ describe("settleTrial", () => {
 		expect(outcome.result).toBe("rolled-back");
 		expect(outcome.reason).toContain("0.5.2 exited during the trial");
 		expect(outcome.reason).toContain("log line 30");
-		expect(outcome.reason).toContain("log line 11");
-		expect(outcome.reason).not.toContain("log line 10\n");
+		expect(outcome.reason).not.toContain("log line 29");
+		expect(outcome.reason).toContain(
+			`(full log: ${join(logDir, "service.log")})`,
+		);
 		expect(read("prismalens.db")).toBe("old-db");
 	});
 });
@@ -256,6 +259,55 @@ describe("switchInstallerRuntime", () => {
 		expect(outcome.reason).toContain("couldn't be stopped");
 		expect(read("prismalens.db")).toBe("new-db");
 		expect(existsSync(join(ws, SNAPSHOT_DIR))).toBe(true);
+	});
+});
+
+describe("trial failure reason (#673)", () => {
+	const TOKEN = "pl_pair_Zq8xK2mN4vB7cT1yR9wE";
+	const console = [
+		"ℹ Open: http://localhost:6473/pair#" + TOKEN,
+		"ℹ It works once, for 15 minutes; treat it as a password.",
+		`{"level":50,"msg":"Nest can't resolve dependencies","token":"${TOKEN}"}`,
+		"\u001b[31mError: listen EADDRINUSE: address already in use 127.0.0.1:6473\u001b[39m",
+		`  at Server.listen (node:net:1) token=${TOKEN}`,
+	];
+
+	it("a token in the trial's console never reaches the reason", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-trial-"));
+		const log = join(dir, "service.log");
+		writeFileSync(log, `${console.join("\n")}\n`);
+		const outcome = await awaitTrial({
+			base: "http://127.0.0.1:9",
+			instanceId: "a",
+			version: "0.5.2",
+			deadlineMs: 0,
+			logPath: log,
+			serviceProbe: () => true,
+		});
+		const reason = outcome.ok ? "" : outcome.reason;
+		expect(reason).not.toContain(TOKEN);
+		expect(reason).toBe(
+			`0.5.2 exited during the trial: Error: listen EADDRINUSE: address already in use 127.0.0.1:6473 (full log: ${log})`,
+		);
+		expect(failureLine([`listen failed token=${TOKEN}`])).toBe(
+			"listen failed token=[redacted]",
+		);
+	});
+
+	it("prefers the last error line and never the pairing link", () => {
+		for (let n = 1; n <= console.length; n++) {
+			expect(failureLine(console.slice(0, n)) ?? "").not.toContain(TOKEN);
+		}
+		expect(failureLine(console.slice(0, 4))).toBe(
+			"Error: listen EADDRINUSE: address already in use 127.0.0.1:6473",
+		);
+		expect(failureLine(console.slice(0, 3))).toBe(
+			"error: Nest can't resolve dependencies",
+		);
+		expect(failureLine(console.slice(0, 1))).toBe(
+			"ℹ Open: http://localhost:6473/pair#[redacted]",
+		);
+		expect(failureLine([])).toBeNull();
 	});
 });
 
