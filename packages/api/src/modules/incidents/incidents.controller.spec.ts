@@ -242,7 +242,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		alertCount: 1,
 	};
 
-	it("happy path: usable harness flips incident to investigating and enqueues job", async () => {
+	it("happy path: usable harness enqueues the job and leaves the incident status alone (#673 w19)", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({ ...mockIncident, status: "investigating" }),
@@ -286,12 +286,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			queued: true,
 		});
 
-		// Status flipped to investigating
-		expect(incidentsService.update).toHaveBeenCalledTimes(1);
-		expect(incidentsService.update).toHaveBeenCalledWith(
-			"123e4567-e89b-12d3-a456-426614174000",
-			{ status: "investigating" },
-		);
+		// A run never moves the incident's status (#673 w19)
+		expect(incidentsService.update).not.toHaveBeenCalled();
 
 		// Investigation created and job enqueued
 		expect(investigationsService.startOrGet).toHaveBeenCalledTimes(1);

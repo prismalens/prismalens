@@ -15,7 +15,6 @@ import {
 	INVESTIGATION_REPORT_BRANCH,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
-	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
 import {
 	type Investigation,
@@ -393,7 +392,7 @@ export class InvestigationsService {
 	/**
 	 * Write full investigation result with all relations (atomic transaction).
 	 * Called from the in-process run through `RunPorts.writeResult` (0005 §2).
-	 * Writes: investigation, agent_executions, tool_executions, recommendations, incident update, timeline
+	 * Writes: investigation, agent_executions, tool_executions, recommendations, timeline
 	 */
 	async writeResultWithRelations(
 		id: string,
@@ -450,21 +449,8 @@ export class InvestigationsService {
 					});
 				}
 
-				// 3. Update incident status (only if not already resolved/closed)
-				if (dto.status === "completed") {
-					await tx.incident.updateMany({
-						where: {
-							id: dto.incidentId,
-							status: { in: [...OPEN_INCIDENT_STATUSES] },
-						},
-						data: {
-							status: "identified",
-							updatedAt: new Date(),
-						},
-					});
-				}
-
-				// 4. Create timeline entry for completion
+				// A run never moves the incident's status (#673 w19, w20).
+				// 3. Create timeline entry for completion
 				const timelineTitle =
 					dto.status === "failed"
 						? "Investigation failed"

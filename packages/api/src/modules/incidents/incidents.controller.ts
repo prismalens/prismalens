@@ -223,12 +223,6 @@ export class IncidentsController {
 						};
 					}
 
-					if (!isIncidentEnded(incident.status)) {
-						await this.incidentsService.update(input.id, {
-							status: "investigating",
-						});
-					}
-
 					// Fetch integrations and extract connectionIds for the job payload.
 					// Only connectionIds are persisted — the run fetches credentials on-demand.
 					const integrations =
