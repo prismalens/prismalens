@@ -20,7 +20,6 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
-	type PermissionMode,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type {
@@ -77,10 +76,13 @@ export type { InvestigationJobData };
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
 
-/** The access level a stored job payload names; undefined when it names none or does not parse. */
-function jobAccess(payload: string): InvestigationJobData["access"] {
+/**
+ * The agent mode a stored job payload names; undefined when it names none or
+ * does not parse. A legacy `access` is dropped, so the run takes its row's default.
+ */
+function jobAgentMode(payload: string): string | undefined {
 	try {
-		return InvestigationJobDataSchema.parse(JSON.parse(payload)).access;
+		return InvestigationJobDataSchema.parse(JSON.parse(payload)).agentMode;
 	} catch {
 		return undefined;
 	}
@@ -169,6 +171,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						model: dto.model,
 						acpSessionId: dto.acpSessionId,
 						workspace: dto.workspace,
+						agentMode: dto.agentMode,
 					},
 				);
 				if (dto.status === "failed") void this.reportDelivery.deliver(id);
@@ -219,7 +222,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					settings.models?.[selection.harness],
 				);
 				const effort = settings.efforts?.[selection.harness];
-				return { selection, ...modelResult, ...(effort ? { effort } : {}) };
+				const agentMode = settings.agentModes?.[selection.harness];
+				return {
+					selection,
+					...modelResult,
+					...(effort ? { effort } : {}),
+					...(agentMode ? { agentMode } : {}),
+				};
 			},
 			incidentRepos: async (incidentId) => {
 				const service = {
@@ -442,17 +451,21 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				status: true,
 				completedAt: true,
 				error: true,
+				agentMode: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
 		if (kind === "continue" && row.status !== "cancelled")
 			throw new FollowUpRefused("Only a stopped run can be continued.");
-		// The run keeps the access it was started with; its first job recorded it.
-		const first = await this.prisma.job.findUnique({
-			where: { investigationId: id },
-			select: { payload: true },
-		});
-		const access = first ? jobAccess(first.payload) : undefined;
+		// The run keeps the mode it ran in: the row's, else what its first job asked for.
+		const first = row.agentMode
+			? null
+			: await this.prisma.job.findUnique({
+					where: { investigationId: id },
+					select: { payload: true },
+				});
+		const agentMode =
+			row.agentMode ?? (first ? jobAgentMode(first.payload) : undefined);
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
@@ -479,7 +492,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const jobId = await this.addInvestigationJob({
 			incidentId: row.incidentId,
 			investigationId: id,
-			...(access ? { access } : {}),
+			...(agentMode ? { agentMode } : {}),
 			resume: {
 				text,
 				mode,
@@ -500,15 +513,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			throw new Error("The follow-up could not be queued.");
 		}
 		return true;
-	}
-
-	/** The access level a run was started with (r4 R4.1): its job's, else Read-only. */
-	async runAccess(investigationId: string): Promise<PermissionMode> {
-		const job = await this.prisma.job.findUnique({
-			where: { investigationId },
-			select: { payload: true },
-		});
-		return (job && jobAccess(job.payload)) || "read-only";
 	}
 
 	/**

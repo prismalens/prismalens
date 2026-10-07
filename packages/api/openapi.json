@@ -5929,14 +5929,9 @@
                     "type": "string",
                     "maxLength": 4000
                   },
-                  "access": {
-                    "enum": [
-                      "read-only",
-                      "read-only-tools",
-                      "workspace-write",
-                      "full-access"
-                    ],
-                    "type": "string"
+                  "agentMode": {
+                    "type": "string",
+                    "maxLength": 64
                   },
                   "attachments": {
                     "type": "array",
@@ -7613,12 +7608,6 @@
                                       "type": "string"
                                     },
                                     "mode": {
-                                      "enum": [
-                                        "read-only",
-                                        "read-only-tools",
-                                        "workspace-write",
-                                        "full-access"
-                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -8056,15 +8045,9 @@
                     "continuable": {
                       "type": "boolean"
                     },
-                    "access": {
+                    "agentModeName": {
                       "anyOf": [
                         {
-                          "enum": [
-                            "read-only",
-                            "read-only-tools",
-                            "workspace-write",
-                            "full-access"
-                          ],
                           "type": "string"
                         },
                         {
@@ -8589,12 +8572,6 @@
                                             "type": "string"
                                           },
                                           "mode": {
-                                            "enum": [
-                                              "read-only",
-                                              "read-only-tools",
-                                              "workspace-write",
-                                              "full-access"
-                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -9032,15 +9009,9 @@
                           "continuable": {
                             "type": "boolean"
                           },
-                          "access": {
+                          "agentModeName": {
                             "anyOf": [
                               {
-                                "enum": [
-                                  "read-only",
-                                  "read-only-tools",
-                                  "workspace-write",
-                                  "full-access"
-                                ],
                                 "type": "string"
                               },
                               {
@@ -9584,12 +9555,6 @@
                                       "type": "string"
                                     },
                                     "mode": {
-                                      "enum": [
-                                        "read-only",
-                                        "read-only-tools",
-                                        "workspace-write",
-                                        "full-access"
-                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -10027,15 +9992,9 @@
                     "continuable": {
                       "type": "boolean"
                     },
-                    "access": {
+                    "agentModeName": {
                       "anyOf": [
                         {
-                          "enum": [
-                            "read-only",
-                            "read-only-tools",
-                            "workspace-write",
-                            "full-access"
-                          ],
                           "type": "string"
                         },
                         {
@@ -10546,12 +10505,6 @@
                                           "type": "string"
                                         },
                                         "mode": {
-                                          "enum": [
-                                            "read-only",
-                                            "read-only-tools",
-                                            "workspace-write",
-                                            "full-access"
-                                          ],
                                           "type": "string"
                                         },
                                         "fidelity": {
@@ -10989,15 +10942,9 @@
                         "continuable": {
                           "type": "boolean"
                         },
-                        "access": {
+                        "agentModeName": {
                           "anyOf": [
                             {
-                              "enum": [
-                                "read-only",
-                                "read-only-tools",
-                                "workspace-write",
-                                "full-access"
-                              ],
                               "type": "string"
                             },
                             {
@@ -11574,12 +11521,6 @@
                                       "type": "string"
                                     },
                                     "mode": {
-                                      "enum": [
-                                        "read-only",
-                                        "read-only-tools",
-                                        "workspace-write",
-                                        "full-access"
-                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -12017,15 +11958,9 @@
                     "continuable": {
                       "type": "boolean"
                     },
-                    "access": {
+                    "agentModeName": {
                       "anyOf": [
                         {
-                          "enum": [
-                            "read-only",
-                            "read-only-tools",
-                            "workspace-write",
-                            "full-access"
-                          ],
                           "type": "string"
                         },
                         {
@@ -12967,12 +12902,6 @@
                                             "type": "string"
                                           },
                                           "mode": {
-                                            "enum": [
-                                              "read-only",
-                                              "read-only-tools",
-                                              "workspace-write",
-                                              "full-access"
-                                            ],
                                             "type": "string"
                                           },
                                           "fidelity": {
@@ -13530,12 +13459,6 @@
                                       "type": "string"
                                     },
                                     "mode": {
-                                      "enum": [
-                                        "read-only",
-                                        "read-only-tools",
-                                        "workspace-write",
-                                        "full-access"
-                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -13973,15 +13896,9 @@
                     "continuable": {
                       "type": "boolean"
                     },
-                    "access": {
+                    "agentModeName": {
                       "anyOf": [
                         {
-                          "enum": [
-                            "read-only",
-                            "read-only-tools",
-                            "workspace-write",
-                            "full-access"
-                          ],
                           "type": "string"
                         },
                         {
@@ -14522,12 +14439,6 @@
                                 "type": "string"
                               },
                               "mode": {
-                                "enum": [
-                                  "read-only",
-                                  "read-only-tools",
-                                  "workspace-write",
-                                  "full-access"
-                                ],
                                 "type": "string"
                               },
                               "fidelity": {
@@ -15082,12 +14993,6 @@
                                       "type": "string"
                                     },
                                     "mode": {
-                                      "enum": [
-                                        "read-only",
-                                        "read-only-tools",
-                                        "workspace-write",
-                                        "full-access"
-                                      ],
                                       "type": "string"
                                     },
                                     "fidelity": {
@@ -15525,15 +15430,9 @@
                     "continuable": {
                       "type": "boolean"
                     },
-                    "access": {
+                    "agentModeName": {
                       "anyOf": [
                         {
-                          "enum": [
-                            "read-only",
-                            "read-only-tools",
-                            "workspace-write",
-                            "full-access"
-                          ],
                           "type": "string"
                         },
                         {
@@ -26352,6 +26251,10 @@
                               }
                             ]
                           },
+                          "defaultMode": {
+                            "type": "string",
+                            "default": "agent-default"
+                          },
                           "modelVia": {
                             "enum": [
                               "acp",
@@ -26510,6 +26413,65 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "modes": {
+                                    "anyOf": [
+                                      {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            },
+                                            "description": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name"
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "efforts": {
+                                    "anyOf": [
+                                      {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            },
+                                            "default": {
+                                              "type": "boolean"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name",
+                                            "default"
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
                                   },
                                   "images": {
                                     "type": "boolean"
@@ -26698,8 +26660,23 @@
                         "maxLength": 64
                       }
                     },
-                    "allowWriteLevels": {
-                      "type": "boolean"
+                    "agentModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
                     }
                   },
                   "required": [
@@ -26813,8 +26790,30 @@
                       ]
                     }
                   },
-                  "allowWriteLevels": {
-                    "type": "boolean"
+                  "agentModes": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -26904,8 +26903,23 @@
                         "maxLength": 64
                       }
                     },
-                    "allowWriteLevels": {
-                      "type": "boolean"
+                    "agentModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
                     }
                   },
                   "required": [
@@ -27041,6 +27055,63 @@
                             "values",
                             "default"
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "modes": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ]
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "efforts": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "default": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "default"
+                            ]
+                          }
                         },
                         {
                           "type": "null"

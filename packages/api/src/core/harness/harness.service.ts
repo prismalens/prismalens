@@ -54,8 +54,8 @@ export interface HarnessSettings {
 	favourites?: FavouriteModel[];
 	/** Effort per harness, a value of its `thought_level` option (R4.2). */
 	efforts?: Partial<Record<HarnessId, string>>;
-	/** The access ceiling: the write levels are offered only when on (r4 R4.1). */
-	allowWriteLevels?: boolean;
+	/** The agent's own mode id per harness (#673 w21); absent means the row's default. */
+	agentModes?: Partial<Record<HarnessId, string>>;
 }
 
 export interface HarnessSettingsPatch {
@@ -66,10 +66,11 @@ export interface HarnessSettingsPatch {
 	favourites?: FavouriteModel[];
 	/** Merged per harness; `null` goes back to the harness's own default. */
 	efforts?: Partial<Record<HarnessId, string | null>>;
-	allowWriteLevels?: boolean;
+	/** Merged per harness; `null` goes back to the row's default. */
+	agentModes?: Partial<Record<HarnessId, string | null>>;
 }
 
-/** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models and efforts alike). */
+/** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models, efforts and modes alike). */
 function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 	const out: Partial<Record<HarnessId, string>> = {};
 	if (!raw || typeof raw !== "object") return out;
@@ -164,6 +165,14 @@ export class HarnessService implements OnApplicationBootstrap {
 		return next;
 	}
 
+	/** A mode's name as the agent's last check listed it; the id when it listed none (#673 w21). */
+	modeName(harness: string | null, modeId: string | null): string | null {
+		if (!modeId) return null;
+		const id = HARNESS_IDS.find((h) => h === harness);
+		const listed = id ? this.models.checked(id)?.modes : null;
+		return listed?.find((m) => m.id === modeId)?.name ?? modeId;
+	}
+
 	async getSettings(): Promise<HarnessSettings> {
 		const row = await this.prisma.setting.findUnique({
 			where: { key: SETTING_KEY },
@@ -179,12 +188,13 @@ export class HarnessService implements OnApplicationBootstrap {
 			const models = cleanModels(parsed.models);
 			const efforts = cleanModels(parsed.efforts);
 			const favourites = cleanFavourites(parsed.favourites);
+			const agentModes = cleanModels(parsed.agentModes);
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
-				...(parsed.allowWriteLevels === true ? { allowWriteLevels: true } : {}),
+				...(Object.keys(agentModes).length ? { agentModes } : {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -196,13 +206,16 @@ export class HarnessService implements OnApplicationBootstrap {
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
-		const allowWriteLevels = patch.allowWriteLevels ?? current.allowWriteLevels;
+		const agentModes = cleanModels({
+			...current.agentModes,
+			...patch.agentModes,
+		});
 		const next: HarnessSettings = {
 			harness: patch.harness ?? current.harness,
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
-			...(allowWriteLevels ? { allowWriteLevels: true } : {}),
+			...(Object.keys(agentModes).length ? { agentModes } : {}),
 		};
 		await this.prisma.setting.upsert({
 			where: { key: SETTING_KEY },

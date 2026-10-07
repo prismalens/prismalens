@@ -46,6 +46,8 @@ export interface PrismaInvestigationStoreParams {
 	model?: string;
 	/** JSON RunWorkspace, kept on the row so a follow-up can rebuild it (#747). */
 	workspace?: string;
+	/** The agent's own mode id the run asked for, kept so a follow-up runs in it (#673 w21). */
+	agentMode?: string;
 	/**
 	 * A follow-up (#747): the row only goes live, the timeline says resumed with
 	 * this note, and nothing is written at the end; the job puts the row back.
@@ -65,6 +67,7 @@ export function createPrismaInvestigationStore(
 		harness,
 		model,
 		workspace,
+		agentMode,
 		resume,
 		chat,
 	}: PrismaInvestigationStoreParams,
@@ -130,6 +133,7 @@ export function createPrismaInvestigationStore(
 				...(harness ? { harness } : {}),
 				...(model ? { model } : {}),
 				...(workspace ? { workspace } : {}),
+				...(agentMode ? { agentMode } : {}),
 			});
 			await ports.createTimelineEntry({
 				incidentId,

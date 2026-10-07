@@ -63,12 +63,6 @@ describe("the fake ACP agent through the real engine", () => {
 		expect(report.report.fidelity?.harnessVersion).toBe("0.85.1-fake");
 	});
 
-	it("Given `fake-session:refusal` in the prompt, Then PrismaLens refuses the write and the run still reports", async () => {
-		const { events } = await run("BooksSlow fake-session:refusal");
-		expect(toolResults(events).map((r) => r.ok)).toEqual([false, true]);
-		expect(events.at(-1)?.kind).toBe("report");
-	});
-
 	it("Given `fake-session:failure`, Then the run ends in an error naming the agent's exit", async () => {
 		const { events } = await run("BooksSlow fake-session:failure");
 		const last = events.at(-1);

@@ -21,12 +21,21 @@ export class HarnessProbeService {
 		const result = await probeHarness(id);
 		if (result.outcome === "answers-acp")
 			this.models.remember(id, result.models);
+		const effort = result.effort
+			? {
+					id: result.effort.id,
+					values: result.effort.values,
+					default: result.effort.default,
+				}
+			: null;
 		// Every outcome, so a run can be refused before it starts (#673 w9).
 		this.models.rememberCheck(id, {
 			outcome: result.outcome,
 			detail: result.detail,
 			servedModel: result.servedModel ?? null,
-			effort: result.effort ?? null,
+			effort,
+			modes: result.modes ?? null,
+			efforts: result.efforts ?? null,
 			images: result.images === true,
 		});
 		return {
@@ -38,7 +47,9 @@ export class HarnessProbeService {
 			...(result.outcome === "answers-acp"
 				? {
 						servedModel: result.servedModel ?? null,
-						effort: result.effort ?? null,
+						effort,
+						modes: result.modes ?? null,
+						efforts: result.efforts ?? null,
 						images: result.images === true,
 					}
 				: {}),

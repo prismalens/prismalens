@@ -23,6 +23,8 @@ import type { HarnessStatus } from "@prismalens/contracts/schemas";
 
 export const OPERATOR_CATALOGUE_FILE = "model-catalogue.json";
 
+type Check = NonNullable<HarnessStatus["checked"]>;
+
 @Injectable()
 export class HarnessModelsService {
 	private readonly logger = new Logger(HarnessModelsService.name);
@@ -50,9 +52,15 @@ export class HarnessModelsService {
 	/** What the check read from the harness itself: its current model, effort option and image capability. */
 	rememberCheck(
 		id: HarnessId,
-		facts: Omit<NonNullable<HarnessStatus["checked"]>, "at">,
+		facts: Omit<Check, "at" | "modes" | "efforts"> &
+			Partial<Pick<Check, "modes" | "efforts">>,
 	) {
-		this.checks.set(id, { at: new Date().toISOString(), ...facts });
+		this.checks.set(id, {
+			at: new Date().toISOString(),
+			modes: null,
+			efforts: null,
+			...facts,
+		});
 	}
 
 	/** Null until a readiness check has answered for this harness. */

@@ -534,6 +534,33 @@ describe("assembled investigation context (Date-typed incident fields)", () => {
 	});
 });
 
+describe("the agent's own mode (#673 w21)", () => {
+	it("asks for the job's mode, else Settings', else the row's default, and keeps it on the row", async () => {
+		const modeOf = async (job: { agentMode?: string }, settings?: string) => {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+			const ports = fakePorts();
+			const resolve = ports.resolveHarness;
+			ports.resolveHarness = vi.fn(async () => ({ ...(await resolve()), ...(settings ? { agentMode: settings } : {}) }));
+			await runInvestigationJob(
+				{ id: "job-mode", investigationId: "inv-mode", attempts: 1 },
+				{ investigationId: "inv-mode", incidentId: "inc-mode", ...job },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ agentMode?: string }];
+			expect(ports.updateStatus).toHaveBeenCalledWith("inv-mode", expect.objectContaining({ agentMode: opts.agentMode }));
+			return opts.agentMode;
+		};
+		expect(await modeOf({ agentMode: "build" }, "plan")).toBe("build");
+		expect(await modeOf({}, "build")).toBe("build");
+		expect(await modeOf({})).toBe("plan");
+	});
+});
+
 /**
  * ADR 0004 §5 / #628: the harness child never gets `process.env` verbatim. The
  * only env `conductRun` receives is the resolved harness's own provider keys,

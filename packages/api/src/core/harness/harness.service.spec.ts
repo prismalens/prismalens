@@ -133,6 +133,15 @@ describe("HarnessService", () => {
 			});
 		});
 
+		it("merges agent modes per harness, null going back to the row's default, and drops a stored allowWriteLevels (#673 w21)", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", agentModes: { codex: "agent", opencode: "build" }, allowWriteLevels: true }),
+			);
+			await expect(
+				service().updateSettings({ agentModes: { "claude-code": "acceptEdits", opencode: null } }),
+			).resolves.toEqual({ harness: "auto", agentModes: { codex: "agent", "claude-code": "acceptEdits" } });
+		});
+
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
@@ -326,6 +335,25 @@ describe("HarnessService", () => {
 			});
 			expect(status.selection.blockedReason).toMatch(/not a known harness/i);
 		});
+	});
+});
+
+describe("HarnessService.modeName (#673 w21)", () => {
+	it("names a mode as the agent's last check listed it, else by its id", () => {
+		const models = new HarnessModelsService();
+		models.rememberCheck("claude-code", {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			servedModel: null,
+			effort: null,
+			modes: [{ id: "default", name: "Manual" }],
+			images: false,
+		});
+		const svc = new HarnessService(mockPrismaService as unknown as PrismaService, models, {} as HarnessProbeService);
+		expect(svc.modeName("claude-code", "default")).toBe("Manual");
+		expect(svc.modeName("claude-code", "plan")).toBe("plan");
+		expect(svc.modeName("codex", "read-only")).toBe("read-only");
+		expect(svc.modeName("claude-code", null)).toBeNull();
 	});
 });
 

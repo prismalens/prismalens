@@ -102,7 +102,6 @@ describe("IncidentsController - storm path alert serialization", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -194,7 +193,6 @@ describe("IncidentsController - storm path alert serialization", () => {
 			{} as unknown as IntegrationsService,
 			{} as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -273,7 +271,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -313,7 +310,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			} as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		await (getHandlers(controller).investigate as (a: { input: { id: string; brief: string } }) => Promise<unknown>)({
@@ -324,6 +320,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		// A manual run records its trigger and its title, the brief's first line (#673).
 		expect(investigationsService.startOrGet).toHaveBeenCalledWith({
 			incidentId: mockIncident.id,
+			agentMode: null,
 			afterResolve: true,
 			triggerType: "manual",
 			title: "The fix did not hold.",
@@ -352,7 +349,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				dispatchService as unknown as DispatchService,
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				ready(),
-				{} as never,
 				{} as never,
 			);
 			const text = `Is the pool still saturated? ${"x".repeat(200)}`;
@@ -386,7 +382,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
 				ready(),
 				{} as never,
-				{} as never,
 			);
 			await expect(
 				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
@@ -410,7 +405,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					ensureReady: vi.fn().mockResolvedValue({ ready: false, reason: "Codex: sign in needed" }),
 				} as unknown as HarnessService,
 				{} as never,
-				{} as never,
 			);
 			await expect(
 				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
@@ -419,48 +413,41 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		});
 	});
 
-	it("refuses a write level until Settings allows it, and notes a raised level on the timeline (r4 R4.1)", async () => {
-		const make = (allowWriteLevels: boolean) => {
+	it("starts any agent mode with no ceiling, and carries the chosen one on the job and the row (#673 w21)", async () => {
+		const make = () => {
 			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-3") };
-			const timeline = { create: vi.fn() };
+			const investigationsService = {
+				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-3" }, created: true }),
+			};
 			const controller = new IncidentsController(
 				{ findById: vi.fn().mockResolvedValue(mockIncident), update: vi.fn() } as unknown as IncidentsService,
-				{
-					startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-3" }, created: true }),
-				} as unknown as InvestigationsService,
+				investigationsService as unknown as InvestigationsService,
 				dispatchService as unknown as DispatchService,
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				{
 					ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
-					getSettings: vi.fn().mockResolvedValue({ harness: "auto", allowWriteLevels }),
 				} as unknown as HarnessService,
 				{} as never,
-				timeline as never,
 			);
 			const investigate = getHandlers(controller).investigate as (a: {
-				input: { id: string; access: string };
+				input: { id: string; agentMode?: string };
 			}) => Promise<unknown>;
-			return { dispatchService, timeline, investigate };
+			return { dispatchService, investigationsService, investigate };
 		};
-		const off = make(false);
-		await expect(off.investigate({ input: { id: mockIncident.id, access: "workspace-write" } })).rejects.toMatchObject({
-			code: "CONFLICT",
-			message: 'Edit the copy is off. Turn on "Allow write levels" in Settings, Agent.',
-		});
-		expect(off.dispatchService.addInvestigationJob).not.toHaveBeenCalled();
-		// At or below the ceiling still passes with the setting off (#335-walk 2c).
-		// read-only is below the write-level ceiling, so it is the default and
-		// carries no "access" key on the job payload (see the controller above).
-		const belowCeiling = make(false);
-		await belowCeiling.investigate({ input: { id: mockIncident.id, access: "read-only" } });
-		expect(belowCeiling.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
-			expect.not.objectContaining({ access: expect.anything() }),
+		const full = make();
+		await full.investigate({ input: { id: mockIncident.id, agentMode: "bypassPermissions" } });
+		expect(full.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+			expect.objectContaining({ agentMode: "bypassPermissions" }),
 		);
-		const on = make(true);
-		await on.investigate({ input: { id: mockIncident.id, access: "full-access" } });
-		expect(on.dispatchService.addInvestigationJob).toHaveBeenCalledWith(expect.objectContaining({ access: "full-access" }));
-		expect(on.timeline.create).toHaveBeenCalledWith(expect.objectContaining({ title: "Started at Full access" }));
+		expect(full.investigationsService.startOrGet).toHaveBeenCalledWith(
+			expect.objectContaining({ agentMode: "bypassPermissions" }),
+		);
+		const none = make();
+		await none.investigate({ input: { id: mockIncident.id } });
+		expect(none.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+			expect.not.objectContaining({ agentMode: expect.anything() }),
+		);
 	});
 
 	it("returns the investigation already in progress instead of starting a second one", async () => {
@@ -482,7 +469,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			dispatchService as unknown as DispatchService,
 			{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
-			{} as never,
 			{} as never,
 		);
 
@@ -516,7 +502,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			dispatchService as unknown as DispatchService,
 			{} as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
-			{} as never,
 			{} as never,
 		);
 
@@ -564,7 +549,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			dispatchService as unknown as DispatchService,
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
-			{} as never,
 			{} as never,
 		);
 
@@ -631,7 +615,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -688,7 +671,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			integrationsService as unknown as IntegrationsService,
 			harnessService as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -725,7 +707,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as unknown as DispatchService,
 			{} as unknown as IntegrationsService,
 			{} as unknown as HarnessService,
-			{} as never,
 			{} as never,
 		);
 
@@ -791,7 +772,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			{} as any,
 			{} as unknown as HarnessService,
 			{} as never,
-			{} as never,
 		);
 
 		const handlers = getHandlers(controller);
@@ -848,7 +828,6 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 			{} as IntegrationsService,
 			{} as HarnessService,
 			{} as never,
-			{} as never,
 		);
 		const procedures = controller.incidents() as unknown as Record<
 			string,
@@ -900,7 +879,6 @@ describe("IncidentsController - runs as threads (#673)", () => {
 			{} as DispatchService,
 			{} as IntegrationsService,
 			{} as HarnessService,
-			{} as never,
 			{} as never,
 		);
 		const at = new Date("2026-10-07T10:00:00Z");

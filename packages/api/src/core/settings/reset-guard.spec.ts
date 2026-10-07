@@ -240,6 +240,7 @@ describe("creating a run while a reset is in progress", () => {
 			telemetryStub(),
 			{ post: vi.fn() } as unknown as any,
 			{} as never,
+			{} as never,
 		);
 		const create = (
 			controller.investigations() as unknown as Record<
