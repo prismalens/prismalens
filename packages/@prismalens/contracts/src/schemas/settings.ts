@@ -335,14 +335,15 @@ export const TestMcpResultSchema = z.object({
 export type TestMcpResult = z.infer<typeof TestMcpResultSchema>;
 
 /**
- * Opt-in product telemetry (#602). Off until the owner says yes; `decided` is
- * false until they answer once, which is what shows the consent line.
+ * Product telemetry, on after a notice (#673 w45). `noticed`: the notice was
+ * displayed somewhere; `dismissed`: OK or Turn off was pressed on it.
  * `forcedOff` means PRISMALENS_TELEMETRY=off (`pl up --telemetry=off`) wins.
  */
 export const TelemetrySettingsSchema = z.object({
 	enabled: z.boolean(),
-	decided: z.boolean(),
 	forcedOff: z.boolean(),
+	noticed: z.boolean(),
+	dismissed: z.boolean(),
 	recentlySent: z.array(
 		z.object({
 			payload: z.record(z.string(), z.unknown()),
@@ -377,7 +378,11 @@ export const AboutSchema = z.object({
 export type About = z.infer<typeof AboutSchema>;
 
 export const UpdateTelemetrySettingsSchema = z.object({
-	enabled: z.boolean(),
+	enabled: z.boolean().optional(),
+	/** The notice was displayed; sending starts on the next boot. */
+	noticed: z.literal(true).optional(),
+	/** OK or Turn off was pressed on the notice. */
+	dismissed: z.literal(true).optional(),
 });
 export type UpdateTelemetrySettings = z.infer<
 	typeof UpdateTelemetrySettingsSchema

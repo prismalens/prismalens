@@ -77,3 +77,27 @@ describe("SettingsController danger zone (#605 edge 28)", () => {
 		).resolves.toEqual({ success: true, message: "done" });
 	});
 });
+
+describe("SettingsController usage data (#673 w45)", () => {
+	it("passes the notice and the switch through to the service as sent", async () => {
+		const telemetry = telemetryStub();
+		const controller = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			{} as HarnessProbeService,
+			telemetry,
+			{} as AboutService,
+		);
+		const update = (
+			controller.telemetry() as unknown as Record<
+				string,
+				{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+			>
+		).update["~orpc"].handler;
+		await update({ input: { enabled: false, dismissed: true } });
+		expect(telemetry.update).toHaveBeenCalledWith({
+			enabled: false,
+			dismissed: true,
+		});
+	});
+});

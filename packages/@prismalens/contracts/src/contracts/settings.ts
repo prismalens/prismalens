@@ -41,27 +41,27 @@ export const settingsContract = {
 
 	telemetry: {
 		/**
-		 * Opt-in telemetry state (#602)
+		 * Usage telemetry state (#673 w45)
 		 * GET /settings/telemetry
 		 */
 		get: oc
 			.route({
 				method: "GET",
 				path: "/settings/telemetry",
-				summary: "Get the opt-in telemetry setting",
+				summary: "Get the usage telemetry setting",
 				tags: ["settings"],
 			})
 			.output(TelemetrySettingsSchema),
 
 		/**
-		 * Answer the telemetry question or flip the toggle
+		 * Record the notice shown or dismissed, or flip the toggle
 		 * PUT /settings/telemetry
 		 */
 		update: oc
 			.route({
 				method: "PUT",
 				path: "/settings/telemetry",
-				summary: "Turn opt-in telemetry on or off",
+				summary: "Turn usage telemetry on or off",
 				tags: ["settings"],
 			})
 			.input(UpdateTelemetrySettingsSchema)

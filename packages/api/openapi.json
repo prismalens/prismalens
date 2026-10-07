@@ -25409,7 +25409,7 @@
     "/settings/telemetry": {
       "get": {
         "operationId": "settings.telemetry.get",
-        "summary": "Get the opt-in telemetry setting",
+        "summary": "Get the usage telemetry setting",
         "tags": [
           "settings"
         ],
@@ -25424,10 +25424,13 @@
                     "enabled": {
                       "type": "boolean"
                     },
-                    "decided": {
+                    "forcedOff": {
                       "type": "boolean"
                     },
-                    "forcedOff": {
+                    "noticed": {
+                      "type": "boolean"
+                    },
+                    "dismissed": {
                       "type": "boolean"
                     },
                     "recentlySent": {
@@ -25451,8 +25454,9 @@
                   },
                   "required": [
                     "enabled",
-                    "decided",
                     "forcedOff",
+                    "noticed",
+                    "dismissed",
                     "recentlySent"
                   ]
                 }
@@ -25463,7 +25467,7 @@
       },
       "put": {
         "operationId": "settings.telemetry.update",
-        "summary": "Turn opt-in telemetry on or off",
+        "summary": "Turn usage telemetry on or off",
         "tags": [
           "settings"
         ],
@@ -25476,11 +25480,14 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "noticed": {
+                    "const": true
+                  },
+                  "dismissed": {
+                    "const": true
                   }
-                },
-                "required": [
-                  "enabled"
-                ]
+                }
               }
             }
           }
@@ -25496,10 +25503,13 @@
                     "enabled": {
                       "type": "boolean"
                     },
-                    "decided": {
+                    "forcedOff": {
                       "type": "boolean"
                     },
-                    "forcedOff": {
+                    "noticed": {
+                      "type": "boolean"
+                    },
+                    "dismissed": {
                       "type": "boolean"
                     },
                     "recentlySent": {
@@ -25523,8 +25533,9 @@
                   },
                   "required": [
                     "enabled",
-                    "decided",
                     "forcedOff",
+                    "noticed",
+                    "dismissed",
                     "recentlySent"
                   ]
                 }

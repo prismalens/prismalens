@@ -126,23 +126,20 @@ export async function waitForReady(
 }
 
 /**
- * The usage-data consent state from `/health` (#602), or null when it cannot
- * be read. `pl up` never prompts: it prints one line pointing at Settings while
- * the question is unanswered, and nothing once it has been.
+ * The usage-data state from `/health` (#673 w45), or null when it cannot be
+ * read. `notice` means this boot showed the first-run notice: `pl up` prints it.
  */
 export async function readTelemetryState(
 	healthUrl: string,
 	fetchImpl: typeof fetch = fetch,
-): Promise<"undecided" | "on" | "off" | null> {
+): Promise<"notice" | "on" | "off" | null> {
 	try {
 		const res = await fetchImpl(healthUrl, {
 			signal: AbortSignal.timeout(2_000),
 		});
 		if (res.status !== 200) return null;
 		const { telemetry } = (await res.json()) as { telemetry?: unknown };
-		return telemetry === "undecided" ||
-			telemetry === "on" ||
-			telemetry === "off"
+		return telemetry === "notice" || telemetry === "on" || telemetry === "off"
 			? telemetry
 			: null;
 	} catch {
@@ -150,9 +147,9 @@ export async function readTelemetryState(
 	}
 }
 
-/** The one line `pl up` prints while consent is undecided. */
-export const TELEMETRY_CONSENT_NOTICE =
-	"Usage data is off. PrismaLens can count product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
+/** The first-run notice `pl up` prints on a terminal; nothing is sent before the next start. */
+export const TELEMETRY_NOTICE =
+	"Usage data: PrismaLens counts feature use under a random install id. Never an alert, code, a repo or a report. Turn it off in Settings, Usage data, or with PRISMALENS_TELEMETRY=off or DO_NOT_TRACK=1. Nothing is sent before the next start. https://docs.prismalens.io/trust#usage-telemetry";
 
 export interface BrowserCommandOptions {
 	isOnPath?: (bin: string, pathEnv?: string) => boolean;

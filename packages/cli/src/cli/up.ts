@@ -37,7 +37,7 @@ import {
 	resolveConsoleMode,
 	resolveLogDir,
 	serviceHint,
-	TELEMETRY_CONSENT_NOTICE,
+	TELEMETRY_NOTICE,
 	waitForReady,
 } from "./up-console.js";
 import { updateNotice } from "./update-notice.js";
@@ -128,7 +128,7 @@ export default defineCommand({
 		telemetry: {
 			type: "string",
 			description:
-				"`off` disables opt-in usage telemetry for this run whatever Settings says (or PRISMALENS_TELEMETRY=off)",
+				"`off` disables usage telemetry for this run whatever Settings says (or PRISMALENS_TELEMETRY=off)",
 		},
 	},
 	async run({ args }) {
@@ -236,6 +236,9 @@ export default defineCommand({
 		// One process (0005 §1-2): the API runs each investigation in-process.
 		// Bootstrap exits the process itself on a fatal error, so the poll below
 		// only ever ends in "ready" or "still starting".
+		// The notice is printed only after the readiness probe below, so https never shows it.
+		if (process.stdout.isTTY && bind.protocol !== "https")
+			process.env.PRISMALENS_NOTICE_TTY = "1";
 		await import(pathToFileURL(app.main).href);
 
 		// A self-signed cert would fail the probe's TLS check; https installs get
@@ -265,10 +268,9 @@ export default defineCommand({
 			});
 			if (hint) consola.info(hint);
 			await printStartupLink(workspaceDir, url, args.open !== false);
-			// One pointer at Settings, never a prompt: consent is an owner
-			// decision and the CLI has no way to take it (#602, ADR 0005).
-			if ((await readTelemetryState(healthUrl(bind))) === "undecided") {
-				consola.info(TELEMETRY_CONSENT_NOTICE);
+			// Never a prompt: the notice, once, on the boot that stamped it (#673 w45).
+			if ((await readTelemetryState(healthUrl(bind))) === "notice") {
+				consola.info(TELEMETRY_NOTICE);
 			}
 		} else {
 			consola.warn(
