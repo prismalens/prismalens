@@ -112,8 +112,9 @@ You do not need an Alertmanager to see it work:
 1. **Install and start.** `npm install -g prismalens`, then `pl up`; it opens
    your browser on the link that pairs it, no account. `pl doctor` says
    whether a coding agent is on PATH and which model a run will ask it for.
-   PrismaLens sets no model of its own: the agent picks its default model
-   unless you set one under Settings → Agent → Model.
+   PrismaLens sets no model of its own: the agent runs the model set in its
+   own config, else its default, unless you set one under Settings → Agent →
+   Model.
 2. **Point a service at its code.** Services, then Add Service, then set
    **Repository** to a folder (`~/code/payments`) or a git URL
    (`git@github.com:acme/payments.git`). Saving asks git and shows the answer

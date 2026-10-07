@@ -14,14 +14,12 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
-	readFileSync,
 	renameSync,
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { rebuild } from "@electron/rebuild";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -63,10 +61,9 @@ execFileSync(
 );
 rmSync(tmp, { recursive: true, force: true });
 
-// The backend runs under Electron's Node, whose ABI differs from the system
-// Node the tarball's better-sqlite3 was built for. @electron/rebuild fetches
-// the prebuilt for Electron's ABI, or compiles one when better-sqlite3 12.x
-// ships none (Electron 44+, #762).
+// No @electron/rebuild: better-sqlite3 13's prebuild is N-API, so the copy npm
+// installed loads under Electron's Node ABI as it is (#762).
+
 // A global install lays packages out under `lib/node_modules` on POSIX and
 // `node_modules` on Windows. electron-builder drops a top-level `node_modules`
 // from extraResources, so Windows moves to the POSIX layout the app reads.
@@ -75,13 +72,4 @@ if (process.platform === "win32") {
 	renameSync(join(out, "node_modules"), join(out, "lib", "node_modules"));
 }
 const staged = join(out, "lib", "node_modules", "prismalens");
-const electronVersion = JSON.parse(
-	readFileSync(resolve(here, "../node_modules/electron/package.json"), "utf8"),
-).version;
-await rebuild({
-	buildPath: staged,
-	electronVersion,
-	onlyModules: ["better-sqlite3"],
-	force: true,
-});
-console.log(`staged ${staged} for electron ${electronVersion}`);
+console.log(`staged ${staged}`);

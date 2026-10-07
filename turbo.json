@@ -53,7 +53,8 @@
 		},
 		"db:migrate": {
 			"cache": false,
-			"persistent": true
+			"persistent": true,
+			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR", "PRISMALENS_DB_URL"]
 		},
 		"db:init": {
 			"cache": false,
@@ -61,10 +62,12 @@
 		},
 		"db:studio": {
 			"cache": false,
-			"persistent": true
+			"persistent": true,
+			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR", "PRISMALENS_DB_URL"]
 		},
 		"db:reset": {
-			"cache": false
+			"cache": false,
+			"passThroughEnv": ["PRISMALENS_WORKSPACE_DIR", "PRISMALENS_DB_URL"]
 		},
 		"//#format-and-lint": {},
 		"//#format-and-lint:fix": {

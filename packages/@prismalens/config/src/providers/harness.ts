@@ -142,8 +142,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "OpenCode",
 		binary: "opencode",
 		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
-		acpEnv: ({ configDir, dataDir }) => ({
-			XDG_CONFIG_HOME: dataDir,
+		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
+		// The boundary is the untrusted repo (ADR 0004), and every run works in a throwaway clone. #791
+		acpEnv: ({ configDir }) => ({
 			OPENCODE_CONFIG_DIR: configDir,
 			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
 			OPENCODE_DISABLE_PROJECT_CONFIG: "1",

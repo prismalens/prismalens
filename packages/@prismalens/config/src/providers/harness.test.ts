@@ -103,6 +103,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
+	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
+		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
+			OPENCODE_CONFIG_DIR: "/c",
+			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+			OPENCODE_DISABLE_CLAUDE_CODE: "1",
+		});
+	});
+
 	it("claude-code takes the operator's model over ACP, never from an env it writes (R4.2)", () => {
 		const env = HARNESS_REGISTRY["claude-code"].acpEnv({ ...runEnv, model: "gemma4:31b-cloud" });
 		for (const key of ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"]) {

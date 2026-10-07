@@ -2,7 +2,7 @@
 # SessionStart hook for Claude Code on the web: bring a fresh container to a
 # state where build/typecheck/test/lint all work immediately.
 # Order matters and mirrors CI (.github/workflows/ci.yml):
-#   1. pnpm install     — node_modules (postinstall rebuilds better-sqlite3)
+#   1. pnpm install     — node_modules
 #   2. pnpm db:generate — the Prisma client MUST be regenerated after every
 #                         install (a stale client from a different prisma
 #                         version breaks every DB consumer at import time)
