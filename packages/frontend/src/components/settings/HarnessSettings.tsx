@@ -20,9 +20,9 @@ import type { HarnessProbeResult, HarnessStatus } from "@prismalens/contracts";
 import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
+	AccessMenu,
 	AgentModelPicker,
-	BOUNDARY_NOTE,
-	READ_ONLY_LINE,
+	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -32,7 +32,6 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -49,8 +48,7 @@ interface ProbeState {
 
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
-	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
-	const updateSettings = useUpdateHarnessSettings();
+	const { isLoading: settingsLoading } = useHarnessSettings();
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
@@ -96,36 +94,7 @@ export function HarnessSettings() {
 					>
 						<AgentModelPicker />
 					</SettingRow>
-					<SettingRow
-						label="Access level"
-						description={
-							<Hint label={READ_ONLY_LINE} meta={BOUNDARY_NOTE} side="top">
-								<span>
-									Every run starts read-only; the box raises it for one run
-								</span>
-							</Hint>
-						}
-						testId="harness-access"
-					>
-						<span className="text-body font-medium text-text-1">Read-only</span>
-					</SettingRow>
-					<SettingRow
-						label={
-							<label htmlFor="harness-allow-write">Allow write levels</label>
-						}
-						description="Edit the copy and Full access appear in the box once this is on"
-						testId="harness-allow-write"
-					>
-						<Switch
-							id="harness-allow-write"
-							checked={settings?.allowWriteLevels === true}
-							onCheckedChange={(on) =>
-								updateSettings.mutate({ allowWriteLevels: on })
-							}
-							aria-label="Allow write levels"
-							data-testid="harness-allow-write-switch"
-						/>
-					</SettingRow>
+					<PermissionModeRow />
 				</Pool>
 			</SettingGroup>
 
@@ -152,6 +121,28 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 		</div>
+	);
+}
+
+/** The agent's own mode a run on the next agent starts in, saved per agent (#673 w21). */
+function PermissionModeRow() {
+	const { effective } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	if (!effective) return null;
+	return (
+		<SettingRow
+			label="Permission mode"
+			description={`For ${effective.label}; the agent's own modes`}
+			testId="harness-permission-mode"
+		>
+			<AccessMenu
+				value={undefined}
+				side="bottom"
+				onChange={(mode) =>
+					update.mutate({ agentModes: { [effective.id as HarnessId]: mode } })
+				}
+			/>
+		</SettingRow>
 	);
 }
 

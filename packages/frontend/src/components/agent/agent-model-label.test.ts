@@ -13,6 +13,7 @@ const claudeCode: HarnessStatus = {
 	tested: null,
 	install: "",
 	defaultModel: null,
+	defaultMode: "default",
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,

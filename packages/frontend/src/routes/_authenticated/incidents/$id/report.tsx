@@ -4,7 +4,6 @@
  * page; Markdown is only the export. A run with no report says why not.
  */
 import {
-	ACCESS_LABEL,
 	type InvestigationReport,
 	type InvestigationWithRelations,
 	runState,
@@ -131,7 +130,8 @@ function ReportPage({
 	});
 	const number = runs.length - runs.findIndex((r) => r.id === investigation.id);
 	const took = formatElapsed(runElapsed(investigation, null));
-	const access = ACCESS_LABEL[report.fidelity?.mode ?? "read-only"];
+	const access =
+		investigation.agentModeName ?? report.fidelity?.mode ?? "Agent default";
 	const version = report.fidelity?.harnessVersion;
 	const agent = [
 		who.agent,
@@ -156,7 +156,7 @@ function ReportPage({
 	const rail: Fact[] = [
 		{ label: "Run", value: `Investigation #${number}, done in ${took}` },
 		{ label: "Agent", value: agent },
-		{ label: "Access", value: access, testId: "fact-access" },
+		{ label: "Permission mode", value: access, testId: "fact-access" },
 		{
 			label: "Grounded in",
 			value: `${sources} source${sources === 1 ? "" : "s"}`,

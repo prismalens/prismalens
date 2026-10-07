@@ -198,7 +198,7 @@ function conversationFacts(
 	const repos = inv?.workspace?.repos ?? [];
 	const facts: Fact[] = [
 		{ label: "Agent", value: `${who.agent}, ${who.model}` },
-		{ label: "Access", value: access, testId: "fact-access" },
+		{ label: "Permission mode", value: access, testId: "fact-access" },
 		{ label: "So far", value: soFar(run.events), testId: "fact-so-far" },
 		{
 			label: "Code",

@@ -192,9 +192,7 @@ function IncidentLayout() {
 				await investigateMutation.mutateAsync({
 					id,
 					...(start.brief ? { brief: start.brief } : {}),
-					...(start.access && start.access !== "read-only"
-						? { access: start.access }
-						: {}),
+					...(start.agentMode ? { agentMode: start.agentMode } : {}),
 					...(start.attachments?.length
 						? { attachments: start.attachments }
 						: {}),

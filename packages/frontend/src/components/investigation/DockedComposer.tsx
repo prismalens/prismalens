@@ -70,7 +70,7 @@ export function DockedComposer({
 				mode={mode}
 				target={target}
 				fixed={who}
-				runAccess={run.investigation?.access ?? undefined}
+				runModeName={run.investigation?.agentModeName ?? undefined}
 				agent={agent}
 				waiting={run.waiting}
 				isPending={record.isInvestigating}
@@ -111,11 +111,11 @@ export function DockedComposer({
 							}),
 					})
 				}
-				onInvestigate={async ({ text, files, access }) => {
+				onInvestigate={async ({ text, files, agentMode }) => {
 					const attachments = await upload(files);
 					await record.investigate({
 						brief: text || undefined,
-						access,
+						agentMode,
 						attachments: attachments.map((a) => a.id),
 					});
 				}}
