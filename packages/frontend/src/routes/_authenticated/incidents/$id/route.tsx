@@ -1,14 +1,9 @@
 /**
- * The incident's layout (#743 §3c): the band and the tab row, with the
- * run's status at its right end, stay pinned over every tab; each tab's body
- * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
- * started, else the newest.
+ * The incident's layout: the band and the tab row stay pinned over every tab;
+ * each tab is one 52rem column with nothing beside it (#673 w29). The run
+ * the tabs show is the one in the URL, else the one just started, else the newest.
  */
-import {
-	canIncidentAction,
-	isWorkflowLive,
-	latestRun,
-} from "@prismalens/contracts";
+import { isWorkflowLive, latestRun } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -22,15 +17,15 @@ import type { RecordRoute } from "@/components/incidents/RecordLayout";
 import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
-import { RunStrip } from "@/components/incidents/RunStrip";
 import {
+	DRAFT,
 	type IncidentRecord,
 	IncidentRecordContext,
+	type RunStart,
 } from "@/components/incidents/record-context";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
-import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useToast } from "@/hooks/use-toast";
 import {
 	useCreateTimelineEntry,
@@ -43,7 +38,6 @@ import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id")({
-	// `tab` is accepted and ignored so links from before the reshape still resolve.
 	validateSearch: (
 		search: Record<string, unknown>,
 	): { investigation?: string } => ({
@@ -76,54 +70,73 @@ function IncidentLayout() {
 		error,
 		refetch,
 	} = useQuery(orpc.incidents.get.queryOptions({ input: { id } }));
-	const phone = useMediaQuery(PHONE);
 	const { data: timeline = [], isLoading: timelineLoading } = useTimeline(id);
 	const createNote = useCreateTimelineEntry();
 
 	const [startedId, setStartedId] = useState<string | null>(null);
+	const [drafts, setDrafts] = useState<
+		Record<string, { mode?: string; text: string }>
+	>({});
+	const draftOf = drafts[id] ?? { text: "" };
+	const setDraft = (patch: Partial<{ mode?: string; text: string }>) =>
+		setDrafts((all) => ({
+			...all,
+			[id]: { ...(all[id] ?? { text: "" }), ...patch },
+		}));
+
 	const runs = incident?.investigations ?? [];
-	// The layout stays mounted across incident ids; a run started on another incident is not this one's.
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
-	// Report opens the newest run that left one; every other tab the newest of any kind (#673).
-	const newest = pathname.endsWith("/report")
-		? latestRun({ investigations: runs.filter((r) => r.hasReport) })
-		: latestRun({ investigations: runs });
-	const investigationId = search.investigation ?? started ?? newest?.id ?? null;
+	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
+	const newest =
+		here === "report"
+			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
+			: latestRun({ investigations: runs });
+	const draft =
+		search.investigation === DRAFT ||
+		(here === "conversation" && !search.investigation && runs.length === 0);
+	const investigationId = draft
+		? null
+		: (search.investigation ?? started ?? newest?.id ?? null);
 	const run = useInvestigationRun(investigationId);
 
-	// oRPC query keys start with a path array, so a string key such as ["incidents"] never
-	// matches and nothing refetches until a reload (#337 run e, G13). Use the key builders.
 	const invalidateIncident = () =>
 		queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+	const onStarted = (runId: string | undefined) => {
+		invalidateIncident();
+		queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
+		setDraft({ text: "", mode: undefined });
+		if (!runId) return;
+		setStartedId(runId);
+		navigate({
+			to: "/incidents/$id/conversation",
+			params: { id },
+			search: { investigation: runId },
+			replace: true,
+		});
+	};
 	const updateMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
 		onSuccess: invalidateIncident,
 	});
 	const investigateMutation = useMutation({
 		...orpc.incidents.investigate.mutationOptions(),
-		onSuccess: (data) => {
-			invalidateIncident();
-			queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
-			if (data.investigationId) {
-				setStartedId(data.investigationId);
-				navigate({
-					search: (prev) => ({ ...prev, investigation: data.investigationId }),
-					replace: true,
-				});
-			}
-		},
-		onError: (err) =>
-			toast({
-				title: "Investigation refused",
-				description: getErrorMessage(err),
-				variant: "destructive",
-			}),
+		onSuccess: (data) => onStarted(data.investigationId),
+	});
+	const chatMutation = useMutation({
+		...orpc.incidents.chat.mutationOptions(),
+		onSuccess: (data) => onStarted(data.investigationId),
 	});
 	const resolveMutation = useMutation({
 		...orpc.incidents.resolve.mutationOptions(),
 		onSuccess: invalidateIncident,
 	});
+	const failed = (title: string) => (err: unknown) =>
+		toast({
+			title,
+			description: getErrorMessage(err),
+			variant: "destructive",
+		});
 	const [closeOpen, setCloseOpen] = useState(false);
 	const closeMutation = useMutation({
 		...orpc.incidents.close.mutationOptions(),
@@ -131,12 +144,7 @@ function IncidentLayout() {
 			setCloseOpen(false);
 			return invalidateIncident();
 		},
-		onError: (err) =>
-			toast({
-				title: "Not resolved",
-				description: getErrorMessage(err),
-				variant: "destructive",
-			}),
+		onError: failed("Not resolved"),
 	});
 	const [editOpen, setEditOpen] = useState(false);
 	const editCause = useMutation({
@@ -145,14 +153,8 @@ function IncidentLayout() {
 			setEditOpen(false);
 			return invalidateIncident();
 		},
-		onError: (err) =>
-			toast({
-				title: "Cause not saved",
-				description: getErrorMessage(err),
-				variant: "destructive",
-			}),
+		onError: failed("Cause not saved"),
 	});
-
 	const [reopenOpen, setReopenOpen] = useState(false);
 	const reopenMutation = useMutation({
 		...orpc.incidents.update.mutationOptions(),
@@ -160,17 +162,19 @@ function IncidentLayout() {
 			setReopenOpen(false);
 			return invalidateIncident();
 		},
-		onError: (err) =>
-			toast({
-				title: "Not reopened",
-				description: getErrorMessage(err),
-				variant: "destructive",
-			}),
+		onError: failed("Not reopened"),
 	});
 
-	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
-	// Any live run on the incident withholds Investigate, whichever run is selected.
-	const runLive = run.isActive || runs.some((r) => isWorkflowLive(r.status));
+	const liveRun =
+		runs.find(
+			(r) =>
+				isWorkflowLive(r.status) ||
+				(r.id === run.investigation?.id && run.isActive),
+		) ?? null;
+	const startInput = (start: RunStart) => ({
+		...(start.agentMode ? { agentMode: start.agentMode } : {}),
+		...(start.attachments?.length ? { attachments: start.attachments } : {}),
+	});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: mutation objects change identity every render; their pending state is listed.
 	const record: IncidentRecord | null = useMemo(() => {
@@ -179,26 +183,42 @@ function IncidentLayout() {
 			incident,
 			runs,
 			investigationId,
+			draft,
 			selectRun: (next: string) =>
 				navigate({
 					search: (prev) => ({ ...prev, investigation: next }),
 					replace: true,
 				}),
+			newRun: (prefill) => {
+				if (prefill?.agentMode) setDraft({ mode: prefill.agentMode });
+				navigate({
+					to: "/incidents/$id/conversation",
+					params: { id },
+					search: { investigation: DRAFT },
+				});
+			},
+			draftMode: draftOf.mode,
+			setDraftMode: (mode) => setDraft({ mode }),
+			draftText: draftOf.text,
+			setDraftText: (text) => setDraft({ text }),
 			run,
-			canInvestigate:
-				canIncidentAction("investigate", incident.status) && !runLive,
+			liveRun,
 			investigateBlocked: agentReady ? undefined : blockedReason,
 			investigate: async (start = {}) => {
 				await investigateMutation.mutateAsync({
 					id,
-					...(start.brief ? { brief: start.brief } : {}),
-					...(start.agentMode ? { agentMode: start.agentMode } : {}),
-					...(start.attachments?.length
-						? { attachments: start.attachments }
-						: {}),
+					...(start.text ? { brief: start.text } : {}),
+					...startInput(start),
 				});
 			},
-			isInvestigating: investigateMutation.isPending,
+			chat: async (start) => {
+				await chatMutation.mutateAsync({
+					id,
+					text: start.text,
+					...startInput(start),
+				});
+			},
+			isStarting: investigateMutation.isPending || chatMutation.isPending,
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
 			resolve: () => resolveMutation.mutate({ id }),
 			openClose: () => setCloseOpen(true),
@@ -209,12 +229,7 @@ function IncidentLayout() {
 					{ incidentId: id, title: text, type: "comment", source: "user" },
 					{
 						onSuccess: () => onDone?.(),
-						onError: (err) =>
-							toast({
-								title: "Note not saved",
-								description: getErrorMessage(err),
-								variant: "destructive",
-							}),
+						onError: failed("Note not saved"),
 					},
 				),
 			isSavingNote: createNote.isPending,
@@ -225,11 +240,15 @@ function IncidentLayout() {
 		incident,
 		runs,
 		investigationId,
+		draft,
+		draftOf.mode,
+		draftOf.text,
 		run,
-		runLive,
+		liveRun,
 		agentReady,
 		blockedReason,
 		investigateMutation.isPending,
+		chatMutation.isPending,
 		createNote.isPending,
 		timeline,
 		timelineLoading,
@@ -266,23 +285,17 @@ function IncidentLayout() {
 			>
 				<IncidentStateBand
 					incident={incident}
-					runLive={runLive}
 					onAcknowledge={record.acknowledge}
-					onInvestigate={() => void record.investigate().catch(() => {})}
+					onNewRun={() => record.newRun()}
 					onClose={record.openClose}
 					onReopen={record.openReopen}
 					onEditCause={record.openEditCause}
-					isInvestigating={investigateMutation.isPending}
-					investigateDisabled={!agentReady}
-					investigateDisabledReason={blockedReason}
 				/>
 				<RecordTabs
 					incidentId={id}
 					here={here}
 					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
-					status={phone ? undefined : <RunStrip />}
 				/>
-				{phone && <RunStrip phone />}
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
@@ -324,8 +337,8 @@ function IncidentLayout() {
 function IncidentSkeleton() {
 	return (
 		<div className="flex h-full flex-col">
-			<div className="h-[76px] shrink-0 bg-surface-1" />
-			<div className="mx-auto w-full max-w-[46rem] px-4 pt-6 sm:px-6">
+			<div className="h-20 shrink-0" />
+			<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-6">
 				<Loading rows={5} />
 			</div>
 		</div>

@@ -1,63 +1,57 @@
 /**
- * The Report tab (study-v3 §3.2): the answer and how sure, whether it is still
- * broken, why, what could not be checked and what to do now, as a designed
- * page; Markdown is only the export. A run with no report says why not.
+ * The Report tab (#673, report-is-a-hero-surface): the run's header, the
+ * answer, a summary pool and the sections on pools; Markdown is only the
+ * export. A run with no report says so and names the runs that have one.
  */
 import {
 	type InvestigationReport,
 	type InvestigationWithRelations,
-	runState,
+	isAlertFiring,
 } from "@prismalens/contracts";
 import { createFileRoute } from "@tanstack/react-router";
+import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-	useIncidentFacts,
-	useRanWithoutRepo,
-} from "@/components/incidents/IncidentFacts";
-import {
-	type Fact,
-	FactsRail,
-	RecordLink,
-	RecordPage,
-} from "@/components/incidents/RecordLayout";
-import { runElapsed, useRunAgentModel } from "@/components/incidents/RunStrip";
+import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
+import { useRanWithoutRepo } from "@/components/incidents/IncidentFacts";
+import { RecordLink, RecordPage } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
-import { DockedComposer } from "@/components/investigation/DockedComposer";
+import {
+	modelSource,
+	runElapsed,
+	runName,
+	runNumber,
+	useRunAgentModel,
+} from "@/components/incidents/run-facts";
 import { DoNow, useDoNow } from "@/components/investigation/DoNow";
 import { ExportReportButton } from "@/components/investigation/ExportReportButton";
 import { PostToGitHubButton } from "@/components/investigation/PostToGitHubButton";
 import {
 	Answer,
-	CopyFixBrief,
 	Gaps,
 	Grounded,
 	Integrity,
-	Now,
 	RuledOut,
-	RunLine,
 	Similar,
+	SummaryPool,
 	Why,
 } from "@/components/investigation/ReportSections";
 import { StateWord } from "@/components/shared/StateWord";
-import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
-import { failureSentence } from "@/lib/failure-sentence";
-import { failureWords } from "@/lib/failure-words";
-import { formatClock, formatElapsed } from "@/lib/format-time";
+import { Button } from "@/components/ui/button";
 import {
-	fixBrief,
-	groundedIn,
-	nowLine,
-	workDone,
-	workSentence,
-} from "@/lib/report-view";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ago, useNow } from "@/hooks/use-now";
+import { useToast } from "@/hooks/use-toast";
+import { failureSentence } from "@/lib/failure-sentence";
+import { formatClock, formatElapsed } from "@/lib/format-time";
+import { fixBrief } from "@/lib/report-view";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 	component: ReportRoute,
 });
-
-const box = (
-	<DockedComposer className="bg-transparent px-0 pt-0 pb-0 sm:px-0" />
-);
 
 function ReportRoute() {
 	const { run } = useIncidentRecord();
@@ -68,30 +62,85 @@ function ReportRoute() {
 	return <NoReportPage />;
 }
 
-/** Below the answer on the phone, or in the header between 768 and 1279. */
-function ShareActions({
+/** `Run #N` with its kind, who ran it and when, and the share actions. */
+function ReportHeader({
 	investigation,
+	report,
 	brief,
-	compact,
 }: {
 	investigation: InvestigationWithRelations;
+	report: InvestigationReport;
 	brief: string;
-	compact?: boolean;
 }) {
+	const { runs } = useIncidentRecord();
+	const { harnesses } = useAgentChoice();
+	const { toast } = useToast();
+	const now = useNow();
+	const who = useRunAgentModel(investigation);
+	const harness = harnesses.find((h) => h.id === investigation.harness);
+	const version = report.fidelity?.harnessVersion;
+	const source = modelSource(
+		investigation,
+		(id) => modelName(harness, id) ?? id,
+	).replace(/^model /, "");
 	return (
-		<>
-			<CopyFixBrief
-				text={brief}
-				label={compact ? "Copy fix brief" : "Copy fix brief for your agent"}
-			/>
-			<ExportReportButton
-				investigationId={investigation.id}
-				label={compact ? "Export" : "Export Markdown"}
-			/>
-			{investigation.status === "completed" && (
-				<PostToGitHubButton investigationId={investigation.id} />
-			)}
-		</>
+		<header className="pt-1 pb-4" data-testid="report-header">
+			<div className="flex items-center gap-3">
+				<h2 className="text-title">Run #{runNumber(runs, investigation.id)}</h2>
+				<span className="rounded-[4px] bg-surface-3 px-1.5 text-[11px] leading-4 font-medium text-text-2">
+					{investigation.kind === "chat" ? "Chat" : "Investigation"}
+				</span>
+				<div className="ml-auto flex items-center gap-1">
+					<ExportReportButton
+						investigationId={investigation.id}
+						label="Export"
+					/>
+					{investigation.status === "completed" && (
+						<PostToGitHubButton investigationId={investigation.id} />
+					)}
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="text"
+								size="icon"
+								aria-label="More report actions"
+								data-testid="report-more"
+							>
+								<MoreHorizontal className="size-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="w-[220px]">
+							<DropdownMenuItem
+								onClick={() =>
+									navigator.clipboard.writeText(brief).then(
+										() =>
+											toast({ title: "Fix brief copied", variant: "neutral" }),
+										() =>
+											toast({
+												title: "Not copied",
+												description: "The browser did not allow the clipboard.",
+												variant: "destructive",
+											}),
+									)
+								}
+								data-testid="copy-fix-brief"
+							>
+								Copy fix brief
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			</div>
+			<p className="mt-0.5 flex flex-wrap gap-x-3 text-meta text-text-2">
+				<span>
+					Ran on {who.agent}
+					{version ? ` ${version}` : ""}, model {who.model} ({source})
+				</span>
+				{investigation.completedAt && (
+					<span>Completed {ago(investigation.completedAt, now)}</span>
+				)}
+			</p>
+		</header>
 	);
 }
 
@@ -102,8 +151,7 @@ function ReportPage({
 	investigation: InvestigationWithRelations;
 	report: InvestigationReport;
 }) {
-	const { incident, run, runs } = useIncidentRecord();
-	const who = useRunAgentModel(investigation);
+	const { incident, run } = useIncidentRecord();
 	const noRepo =
 		useRanWithoutRepo(investigation.id) ||
 		investigation.workspace?.layout === "unmapped";
@@ -128,179 +176,92 @@ function ReportPage({
 				: { title: s.title, detail: s.detail, done: s.done },
 		),
 	});
-	const number = runs.length - runs.findIndex((r) => r.id === investigation.id);
-	const took = formatElapsed(runElapsed(investigation, null));
-	const access =
-		investigation.agentModeName ?? report.fidelity?.mode ?? "Agent default";
-	const version = report.fidelity?.harnessVersion;
-	const agent = [
-		who.agent,
-		who.model,
-		version && `${report.fidelity?.harness} ${version}`,
-	]
-		.filter(Boolean)
-		.join(", ");
-	const sources = groundedIn(report, investigation.workspace?.cwd).length;
-	const now = nowLine(incident.alerts ?? [], service?.name ?? null);
+	const alert = alertAsWritten(
+		incident.alerts ?? [],
+		investigation.completedAt,
+	);
 	const props = {
 		incidentId: incident.id,
 		investigation,
 		report,
 		events: run.events,
 	};
-	const later = "max-md:order-2";
-	// Share actions render once: in the rail from 1280, the header from 768, last on the phone.
-	const wide = useMediaQuery(SIDEBAR_FULL);
-	const phone = useMediaQuery(PHONE);
-
-	const rail: Fact[] = [
-		{ label: "Run", value: `Investigation #${number}, done in ${took}` },
-		{ label: "Agent", value: agent },
-		{ label: "Permission mode", value: access, testId: "fact-access" },
-		{
-			label: "Grounded in",
-			value: `${sources} source${sources === 1 ? "" : "s"}`,
-		},
-		{
-			label: "Links",
-			value: (
-				<>
-					<RecordLink
-						incidentId={incident.id}
-						to="conversation"
-						search={{ investigation: investigation.id }}
-					>
-						Conversation
-					</RecordLink>
-					<RecordLink
-						incidentId={incident.id}
-						to="conversation"
-						search={{ investigation: investigation.id, ledger: "1" }}
-					>
-						Event log
-					</RecordLink>
-				</>
-			),
-			testId: "report-rail-links",
-		},
-	];
-
 	return (
-		<RecordPage
-			testId="report-route"
-			box={box}
-			rail={
-				<FactsRail
-					facts={rail}
-					actions={
-						wide && (
-							<div className="flex flex-wrap items-center gap-1">
-								<CopyFixBrief text={brief} />
-								<ExportReportButton
-									investigationId={investigation.id}
-									label="Export"
-								/>
-								{investigation.status === "completed" && (
-									<PostToGitHubButton investigationId={investigation.id} />
-								)}
-							</div>
-						)
-					}
-				/>
-			}
-		>
-			{!wide && !phone && (
-				<div
-					className="-mt-2 mb-3 flex justify-end gap-1"
-					data-testid="report-header-actions"
-				>
-					<ShareActions investigation={investigation} brief={brief} compact />
-				</div>
-			)}
-			<div className="flex flex-col">
-				<Answer report={report} />
-				<Now now={now} severity={incident.severity} />
-				<Why {...props} className={later} />
-				<Gaps {...props} className={later} />
-				<DoNow steps={steps} className="max-md:order-1" />
-				<RuledOut {...props} className={later} />
-				<Grounded
-					investigation={investigation}
-					report={report}
-					className={later}
-				/>
-				<Similar investigation={investigation} className={later} />
-				<Integrity report={report} className={later} />
-				<RunLine
-					incidentId={incident.id}
-					investigationId={investigation.id}
-					className={`${later} xl:hidden`}
-				/>
-				{phone && (
-					<div
-						className={`${later} mt-3 flex flex-wrap gap-1`}
-						data-testid="report-phone-actions"
-					>
-						<ShareActions investigation={investigation} brief={brief} compact />
-					</div>
+		<RecordPage testId="report-route">
+			<ReportHeader
+				investigation={investigation}
+				report={report}
+				brief={brief}
+			/>
+			<Answer report={report} />
+			<SummaryPool
+				investigation={investigation}
+				report={report}
+				alert={alert}
+				steps={steps.map((s) =>
+					s.kind === "link"
+						? { title: s.title, done: false }
+						: { title: s.title, priority: s.priority, done: s.done },
 				)}
-			</div>
+			/>
+			<Why {...props} />
+			<Gaps {...props} />
+			<DoNow steps={steps} />
+			<RuledOut {...props} />
+			<Grounded investigation={investigation} report={report} />
+			<Similar investigation={investigation} />
+			<Integrity report={report} />
 		</RecordPage>
 	);
 }
 
-const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+/** The first alert as it stood when the report was written. */
+function alertAsWritten(
+	alerts: {
+		title?: string | null;
+		alertName?: string | null;
+		status: string;
+		triggeredAt: string;
+		resolvedAt?: string | null;
+	}[],
+	at: string | Date | null,
+): { name: string; line: string; firing: boolean } | null {
+	const a = alerts[0];
+	if (!a) return null;
+	const written = at ? new Date(at).getTime() : Date.now();
+	const resolved = a.resolvedAt ? Date.parse(a.resolvedAt) : null;
+	const firing =
+		resolved === null ? isAlertFiring(a.status) : resolved > written;
+	return {
+		name: a.alertName || a.title || "Alert",
+		line:
+			resolved !== null
+				? `cleared at ${formatClock(resolved)}`
+				: firing
+					? "still firing"
+					: "not firing",
+		firing,
+	};
+}
 
-/** No report: none yet, still working, failed or stopped; each says why and where to look. */
+/** No report: none yet, working, failed, stopped or a chat; it names the runs that have one. */
 function NoReportPage() {
 	const { incident, run, runs, investigationId, selectRun } =
 		useIncidentRecord();
-	const { rail } = useIncidentFacts();
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
-	const now = nowLine(
-		incident.alerts ?? [],
-		incident.service?.displayName || incident.service?.name || null,
-	);
-	const lastGood = runs.findIndex(
-		(r) =>
-			r.id !== investigationId &&
-			runState(r.status, { hasEvents: true }) === "done",
-	);
-	const lastGoodRun = lastGood >= 0 ? runs[lastGood] : null;
-	const links = inv && (
-		<p className="mt-3 flex gap-3.5 text-body" data-testid="report-links">
-			<RecordLink
-				incidentId={incident.id}
-				to="conversation"
-				search={{ ledger: "1" }}
-			>
-				Event log
-			</RecordLink>
-			<RecordLink incidentId={incident.id} to="conversation">
-				Conversation
-			</RecordLink>
-		</p>
-	);
+	const withReport = runs.filter((r) => r.hasReport);
 
 	let title: string;
 	let body: ReactNode = null;
 	if (investigationId && (!inv || !run.state)) {
 		title = run.error ? "The run did not load." : "Loading the run.";
 	} else if (!investigationId || !inv || !run.state) {
-		title = "No investigation yet.";
-		body =
-			"The report lands here when one finishes. Brief the agent in the box below to start one.";
+		title = "No report";
+		body = "No run yet. Start one with + New run.";
 	} else if (run.state === "failed") {
-		const took = runElapsed(inv, null);
-		const work = workDone(run.events);
-		const late = work.commands + work.files > 0;
-		const words = failureWords(inv.error);
 		const said = failureSentence(who.agent, inv.error);
-		// An early failure is not a duration worth stating (look ruling L48).
-		title = late
-			? `No report. The run failed after ${formatElapsed(took)}.`
-			: "No report.";
+		title = "No report";
 		body = (
 			<>
 				<StateWord tone="danger" className="text-body">
@@ -317,56 +278,53 @@ function NoReportPage() {
 					</>
 				) : (
 					said.said
-				)}{" "}
-				{late && (
-					<>
-						It {workSentence(work)} before it stopped; what it found is in the{" "}
-						<RecordLink incidentId={incident.id} to="conversation">
-							Conversation
-						</RecordLink>
-						.
-					</>
 				)}
-				<span className="mt-1.5 block" data-testid="report-next">
-					Next:{" "}
-					{words.what.startsWith("The agent is not signed in")
-						? `sign ${who.agent} in on this machine, then investigate again. PrismaLens never signs an agent in for you.`
-						: lowerFirst(
-								words.next ?? "read the Event log, then investigate again.",
-							)}
-				</span>
 			</>
 		);
 	} else if (run.state === "stopped") {
-		title = `No report. You stopped the run${inv.completedAt ? ` at ${formatClock(inv.completedAt)}` : ""} after ${formatElapsed(runElapsed(inv, null))}.`;
-		body =
-			"What it found so far is in the Conversation. Start a new investigation from the box below.";
+		title = "No report";
+		body = `You stopped Run #${runNumber(runs, inv.id)}${inv.completedAt ? ` at ${formatClock(inv.completedAt)}` : ""} after ${formatElapsed(runElapsed(inv, null))}. What it found is in the Conversation.`;
+	} else if (inv.kind === "chat") {
+		title = "No report";
+		body = "A chat run ends with no report.";
 	} else {
-		title = "The report comes when the run finishes.";
-		body = "Follow the run in the Conversation.";
+		title = "No report yet";
+		body = "The report comes when the run finishes.";
 	}
 
 	return (
-		<RecordPage
-			testId="report-route"
-			box={box}
-			rail={<FactsRail facts={rail} />}
-		>
-			<div data-testid="report-empty">
-				<h2 className="text-title">{title}</h2>
-				{body && <div className="mt-1.5 text-body text-text-2">{body}</div>}
-				<Now now={now} severity={incident.severity} />
-				{links}
-				{lastGoodRun && (
-					<p className="mt-6 text-body text-text-2">
-						<button
-							type="button"
-							onClick={() => selectRun(lastGoodRun.id)}
-							className="text-accent hover:underline"
-							data-testid="report-last-good"
-						>
-							Read the report from investigation #{runs.length - lastGood}
-						</button>
+		<RecordPage testId="report-route">
+			<div className="pool px-3.5 py-3" data-testid="report-empty">
+				<h2 className="text-heading">{title}</h2>
+				{body && <div className="mt-1 text-body text-text-2">{body}</div>}
+				<p className="mt-2 text-meta text-text-2" data-testid="report-runs">
+					{withReport.length === 0 ? (
+						"No run on this incident has a report."
+					) : (
+						<>
+							{withReport.length === 1 ? "A report is on " : "Reports are on "}
+							{withReport.map((r, i) => (
+								<span key={r.id}>
+									{i > 0 ? ", " : ""}
+									<button
+										type="button"
+										onClick={() => selectRun(r.id)}
+										className="text-accent hover:underline"
+										data-testid="report-last-good"
+									>
+										{runName(runs, r)}
+									</button>
+								</span>
+							))}
+							.
+						</>
+					)}
+				</p>
+				{inv && (
+					<p className="mt-2 text-meta">
+						<RecordLink incidentId={incident.id} to="conversation">
+							Open the conversation
+						</RecordLink>
 					</p>
 				)}
 			</div>

@@ -1,8 +1,6 @@
 /**
- * The conversation under an incident (#743 §3c, layer 2): how the agent got
- * there, and the box that messages it while it runs. `?ledger=1` opens the
- * row-per-event view, so a link can land on it; `?call=` opens the tool call a
- * report's evidence cites.
+ * The conversation under an incident (#673): the selected run's transcript
+ * and the box. `?call=` opens the tool call a report's evidence cites.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { ConversationRoute } from "@/components/investigation/ConversationRoute";
@@ -10,12 +8,7 @@ import { ConversationRoute } from "@/components/investigation/ConversationRoute"
 export const Route = createFileRoute(
 	"/_authenticated/incidents/$id/conversation",
 )({
-	validateSearch: (
-		search: Record<string, unknown>,
-	): { ledger?: "1"; call?: string } => ({
-		...(search.ledger === "1" || search.ledger === 1
-			? { ledger: "1" as const }
-			: {}),
+	validateSearch: (search: Record<string, unknown>): { call?: string } => ({
 		...(typeof search.call === "string" ? { call: search.call } : {}),
 	}),
 	component: ConversationRoute,

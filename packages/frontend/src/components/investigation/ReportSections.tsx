@@ -24,6 +24,7 @@ import {
 	type NowLine as NowFact,
 	shortPath,
 } from "@/lib/report-view";
+import { sourceLabel } from "@/lib/source-label";
 import { cn } from "@/lib/utils";
 
 /** A list's rows, a hairline between them and nothing around them. */
@@ -66,7 +67,7 @@ function EvidenceRow({
 				</p>
 				{source && (
 					<p className="mt-0.5 text-meta text-text-3">
-						<span className="font-mono">{source}</span>
+						<span className="font-mono">{sourceLabel(source)}</span>
 						{call && (
 							<>
 								{" "}
@@ -95,47 +96,124 @@ interface ReportProps {
 	events: readonly CanonicalEvent[];
 }
 
-/** The answer with its confidence word, and the culprit in one line. */
+/** The confidence word and its basis, then the conclusion in two lines with Show all. */
 export function Answer({ report }: { report: InvestigationReport }) {
 	const { word, tone, basis } = answerWord(report);
-	const c = report.culprit;
-	const culprit = [
-		c?.service ? `Code in ${c.service}.` : null,
-		c?.changeRef ? `Introduced by \`${c.changeRef}\`.` : null,
-		c?.mechanism
-			? `${c.mechanism.charAt(0).toUpperCase()}${c.mechanism.slice(1)}.`
-			: null,
-	]
-		.filter(Boolean)
-		.join(" ");
+	const [all, setAll] = useState(false);
 	return (
-		<div data-testid="report-answer">
-			<p className="mb-1.5 flex flex-wrap items-baseline gap-x-2 text-body">
+		<div className="mb-3" data-testid="report-answer">
+			<p className="mb-1.5 flex flex-wrap items-baseline gap-x-2 text-meta">
 				<StateWord
 					tone={tone}
-					className="text-body"
+					className="font-semibold"
 					data-testid="report-answer-word"
 				>
 					{word}
 				</StateWord>
-				<span className="text-text-3">{basis}</span>
+				<span className="text-text-2">{basis}</span>
 			</p>
-			<h2
-				className="text-display [overflow-wrap:anywhere]"
-				data-testid="report-headline"
-			>
-				<InlineCode
-					text={
-						report.rootCause ??
-						`The run could not name a cause. ${report.summary}`
-					}
-				/>
-			</h2>
-			{culprit && (
-				<p className="mt-2 text-body text-text-2">
-					<InlineCode text={culprit} />
-				</p>
-			)}
+			<div className="flex items-end gap-3">
+				<h2
+					className={cn(
+						"min-w-0 flex-1 text-[18px] leading-6 font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]",
+						!all && "line-clamp-2",
+					)}
+					data-testid="report-headline"
+				>
+					<InlineCode
+						text={
+							report.rootCause ??
+							`The run could not name a cause. ${report.summary}`
+						}
+					/>
+				</h2>
+				<Button
+					variant="text"
+					size="sm"
+					onClick={() => setAll((v) => !v)}
+					aria-expanded={all}
+				>
+					{all ? "Show less" : "Show all"}
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+/** Cause, Do now and Alert at a glance, one pool of three cells above the fold. */
+export function SummaryPool({
+	investigation,
+	report,
+	alert,
+	steps,
+}: {
+	investigation: InvestigationWithRelations;
+	report: InvestigationReport;
+	alert: { name: string; line: string; firing: boolean } | null;
+	steps: { title: string; priority?: string | null; done: boolean }[];
+}) {
+	const { word, tone } = answerWord(report);
+	const top = report.hypotheses.find((h) => h.status !== "refuted");
+	const evidence = top?.evidence ?? [];
+	const against = evidence.filter((e) => e.direction !== "supports").length;
+	const forIt = evidence.length - against;
+	const repo = investigation.workspace?.repos[0];
+	const code = repo ? `in ${repo.name} at ${repo.head.slice(0, 7)}` : "";
+	const first = steps[0];
+	const done = steps.filter((s) => s.done).length;
+	const cell = "grid min-w-0 gap-0.5";
+	const k = "text-meta text-text-3";
+	const s = "truncate text-meta text-text-2";
+	return (
+		<div
+			className="pool mb-3 grid grid-cols-1 gap-4 px-3.5 py-3 md:grid-cols-3"
+			data-testid="report-summary"
+		>
+			<div className={cell}>
+				<span className={k}>Cause</span>
+				<StateWord tone={tone} className="truncate text-body font-medium">
+					{word}
+				</StateWord>
+				<span className={s}>
+					{forIt} for, {against === 0 ? "none" : against} against
+					{code ? `, ${code}` : ""}
+				</span>
+			</div>
+			<div className={cell}>
+				<span className={k}>Do now</span>
+				<span className="flex min-w-0 items-baseline gap-2 text-body font-medium">
+					<span className="truncate">
+						{first ? first.title : "Nothing to do"}
+					</span>
+					{first?.priority && (
+						<StateWord
+							tone={
+								first.priority === "critical" || first.priority === "high"
+									? "danger"
+									: "warn"
+							}
+							className="shrink-0 text-meta"
+						>
+							{first.priority}
+						</StateWord>
+					)}
+				</span>
+				<span className={s}>
+					<a href="#do-now" className="text-accent hover:underline">
+						{steps.length} step{steps.length === 1 ? "" : "s"}
+					</a>
+					, {done === 0 ? "none" : done} done
+				</span>
+			</div>
+			<div className={cell}>
+				<span className={k}>Alert</span>
+				<span className="truncate text-body font-medium">
+					{alert ? (alert.firing ? "Firing" : "Cleared") : "None"}
+				</span>
+				<span className={s}>
+					{alert ? `${alert.name}, ${alert.line}` : "No alert is correlated"}
+				</span>
+			</div>
 		</div>
 	);
 }
@@ -246,6 +324,34 @@ export function Why({
 	);
 }
 
+/** A command, mono, two lines until Show. */
+function Clamped({ text }: { text: string }) {
+	const [all, setAll] = useState(false);
+	return (
+		<div className="flex items-start gap-2">
+			<p
+				className={cn(
+					"min-w-0 flex-1 font-mono text-mono text-text-1",
+					!all && "line-clamp-2",
+				)}
+			>
+				{text}
+			</p>
+			{text.length > 90 && (
+				<Button
+					variant="text"
+					size="sm"
+					className="-my-0.5"
+					onClick={() => setAll((v) => !v)}
+					aria-expanded={all}
+				>
+					{all ? "Hide" : "Show"}
+				</Button>
+			)}
+		</div>
+	);
+}
+
 function GapRow({
 	gap,
 	incidentId,
@@ -266,7 +372,7 @@ function GapRow({
 			/>
 			{gap.kind === "refused" ? (
 				<div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-					<p className="font-mono text-mono text-text-1">{gap.source}</p>
+					<Clamped text={gap.source} />
 					<p className="mt-0.5 text-meta text-text-2">
 						{refusalSentence(gap.reason)}{" "}
 						<RecordLink
@@ -390,7 +496,7 @@ export function Grounded({
 							className="font-mono text-mono text-text-2 [overflow-wrap:anywhere]"
 							data-testid="report-grounded-row"
 						>
-							{s}
+							{sourceLabel(s)}
 						</li>
 					))}
 				</ul>
@@ -484,45 +590,6 @@ export function Similar({
 				))}
 			</ul>
 		</TabSection>
-	);
-}
-
-/**
- * Below 1280, where the rail is not: the way to the run itself. Its agent,
- * model and time are on the strip above (look ruling L45).
- */
-export function RunLine({
-	incidentId,
-	investigationId,
-	className,
-}: {
-	incidentId: string;
-	investigationId: string;
-	className?: string;
-}) {
-	return (
-		<p
-			className={cn(
-				"mt-8 flex flex-wrap gap-x-3.5 gap-y-1 text-meta",
-				className,
-			)}
-			data-testid="report-run-line"
-		>
-			<RecordLink
-				incidentId={incidentId}
-				to="conversation"
-				search={{ investigation: investigationId }}
-			>
-				Conversation
-			</RecordLink>
-			<RecordLink
-				incidentId={incidentId}
-				to="conversation"
-				search={{ investigation: investigationId, ledger: "1" }}
-			>
-				Event log
-			</RecordLink>
-		</p>
 	);
 }
 

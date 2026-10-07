@@ -24,7 +24,7 @@ export function NoteField({ className }: { className?: string }) {
 		<form
 			onSubmit={submit}
 			className={cn(
-				"raised mt-3 flex h-8 items-center gap-1 rounded-control pr-1 pl-3",
+				"mt-3 flex h-9 items-center gap-1 rounded-surface bg-well-in-pool pr-1.5 pl-3",
 				className,
 			)}
 			data-testid="note-field"
