@@ -115,7 +115,7 @@ describe("boardColumn (R1a d6)", () => {
 					reopened,
 				),
 			),
-		).toEqual({ text: "Reopened by you, cause not confirmed", attention: true });
+		).toEqual({ text: "Reopened by you, cause not confirmed", tone: "warn" });
 		expect(
 			boardColumn(
 				incident(
@@ -148,19 +148,39 @@ describe("cardWord (study-v3 §4)", () => {
 	it("says what is left to do, never Closed or Awaiting close", () => {
 		expect(cardWord(incident("triggered"))).toEqual({
 			text: "Needs acknowledging",
-			attention: true,
+			tone: "danger",
 		});
 		expect(cardWord(incident("resolved"))).toEqual({
-			text: "Alerts cleared, resolve it",
-			attention: false,
+			text: "Alerts cleared",
+			tone: "plain",
+			since: undefined,
 		});
 		expect(
 			cardWord(incident("investigating", { status: "failed" }))?.text,
 		).toBe("Run failed");
+		expect(cardWord(incident("investigating"))?.text).toBe("Acknowledged");
+		expect(cardWord(incident("closed"))?.text).toBe("Resolved");
+	});
+
+	it("names how a concluded run ended and how long it took (#673 w14)", () => {
 		expect(
-			cardWord(incident("investigating", { status: "completed" }))?.text,
-		).toBe("Acknowledged");
-		expect(cardWord(incident("closed"))).toBeNull();
+			cardWord(
+				incident("investigating", {
+					status: "completed",
+					createdAt: "2026-09-30T15:00:00Z",
+					completedAt: "2026-09-30T15:01:02Z",
+				}),
+			),
+		).toEqual({ text: "Done", tone: "plain", since: "1m 02s" });
+		expect(
+			cardWord(
+				incident("investigating", {
+					status: "cancelled",
+					createdAt: "2026-09-30T15:00:00Z",
+					completedAt: "2026-09-30T15:00:38Z",
+				}),
+			),
+		).toEqual({ text: "Stopped by you", tone: "plain", since: "38s" });
 	});
 
 	it("reads Back again for a flap refire, not Fired again", () => {
@@ -171,7 +191,7 @@ describe("cardWord (study-v3 §4)", () => {
 					reopenedAt: "2026-09-30T15:00:00Z",
 				}),
 			),
-		).toEqual({ text: "Back again", attention: true });
+		).toEqual({ text: "Back again", tone: "danger" });
 	});
 });
 

@@ -11,6 +11,7 @@ import type { BoardColumn } from "./incident-board";
 export type DropAction =
 	| { kind: "investigate" }
 	| { kind: "reopen-investigate" }
+	| { kind: "reopen" }
 	| { kind: "stop" }
 	| { kind: "resolve"; stopFirst: boolean }
 	| { kind: "none"; reason?: string };
@@ -47,6 +48,8 @@ export function dropAction({
 	}
 	if (to === "concluded") {
 		if (from === "working" && live) return { kind: "stop" };
+		// A Resolved card back on Concluded is a plain Reopen, asked first (#673 w42).
+		if (from === "resolved" && canReopen) return { kind: "reopen" };
 		return {
 			kind: "none",
 			reason: "Concluded follows from a finished investigation",

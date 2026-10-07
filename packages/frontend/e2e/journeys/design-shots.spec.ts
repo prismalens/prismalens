@@ -7,9 +7,12 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
 import {
+	ensureService,
 	fireIncident,
 	LIVE,
 	openBoard,
+	QUIET,
+	resolveIncident,
 	visit,
 	waitForRun,
 } from "../steps/product";
@@ -125,4 +128,93 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 			}
 		}
 	}
+});
+
+/** The usage strip shows until OK, so the first-run shots serve a fresh install's flags. */
+async function freshTelemetry(page: Page) {
+	await page.route("**/api/settings/telemetry", (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				enabled: true,
+				forcedOff: false,
+				noticed: true,
+				dismissed: false,
+				recentlySent: [],
+			}),
+		}),
+	);
+}
+
+test("design shots D2", async ({
+	page,
+	agents,
+	alertmanager,
+	deliverWebhook,
+}) => {
+	mkdirSync(OUT, { recursive: true });
+	agents.install(["claude-agent-acp"], "claude");
+	const res = await page.request.post("/api/settings/harness/check", {
+		data: { id: "claude-code" },
+	});
+	expect(res.ok(), await res.text()).toBe(true);
+
+	const shots = async (name: string, path: string, ready: string) => {
+		for (const size of SIZES) {
+			await page.setViewportSize({ width: size.width, height: size.height });
+			for (const t of size.themes) {
+				await theme(page, t);
+				await visit(page, path);
+				await expect(page.getByTestId(ready).first()).toBeVisible();
+				await shot(page, `${name}-${size.width}-${t}`);
+			}
+		}
+	};
+
+	// First run: an empty workspace, before anything below fires.
+	await page.request.post("/api/settings/danger/reset-data", {
+		data: { confirmation: "RESET" },
+	});
+	await freshTelemetry(page);
+	await shots("first-run", "/incidents", "first-run");
+	await page.unrouteAll();
+
+	const done = await fireIncident(page, alertmanager, deliverWebhook, {
+		name: "WalkOutOfOrder",
+		service: LIVE,
+		severity: "high",
+		session: "success",
+	});
+	await waitForRun(page, done.id, (r) => r.status === "completed", "done");
+	const ended = await fireIncident(page, alertmanager, deliverWebhook, {
+		name: "BooklogrApiLatencyP99High",
+		service: LIVE,
+		severity: "critical",
+		session: "success",
+	});
+	await waitForRun(page, ended.id, (r) => r.status === "completed", "ended");
+	await resolveIncident(page, ended.id, {
+		actualCause: "Pool size reduced to 1 while the server uses 8 threads.",
+	});
+	await fireIncident(page, alertmanager, deliverWebhook, {
+		name: "WalkPicker",
+		service: QUIET,
+		severity: "warning",
+		quiet: true,
+	});
+	const live = await fireIncident(page, alertmanager, deliverWebhook, {
+		name: "BooklogrCacheMissSpike",
+		service: LIVE,
+		severity: "warning",
+		session: "live",
+	});
+	await waitForRun(page, live.id, (r) => r.status === "running", "live");
+	const service = await ensureService(page, LIVE);
+
+	await shots("board", "/incidents", "incident-board");
+	await shots("services", "/services", "services-page");
+	await shots("service-detail", `/services/${service}`, "service-page");
+	await shots("settings-agent", "/settings?tab=harness", "harness-settings");
+	await shots("settings-usage", "/settings?tab=usage", "telemetry-row");
 });

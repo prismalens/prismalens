@@ -18,10 +18,12 @@ import {
 	canIncidentAction,
 	type IncidentWithRelations,
 	isWorkflowLive,
+	RUN_STATE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
 import {
 	type ReactNode,
 	useEffect,
@@ -30,6 +32,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { AgentMark } from "@/components/agent/AgentMark";
 import { Mono } from "@/components/shared/Mono";
 import { WrapText } from "@/components/shared/WrapText";
 import {
@@ -54,17 +57,19 @@ import {
 import { useStreamStatus } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { type DropAction, dropAction } from "@/lib/board-drop";
-import { formatClock } from "@/lib/format-time";
+import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import {
 	BOARD_COLUMNS,
 	type BoardColumn,
 	boardColumn,
+	type CardTone,
+	COLUMN_TONE,
 	cardWord,
-	clockElapsed,
 	headlineAddsInfo,
 	incidentHeadline,
 	incidentLineage,
+	isSettled,
 	isWrapUp,
 	latestRun,
 	orderNeedsYou,
@@ -206,6 +211,7 @@ interface Dragging {
 type Prompt = { incident: IncidentWithRelations } & (
 	| { kind: "stop" }
 	| { kind: "reopen-investigate" }
+	| { kind: "reopen" }
 	| { kind: "resolve"; stopFirst: boolean }
 );
 
@@ -391,6 +397,9 @@ export function IncidentBoard({
 	);
 	const needs = columns.needs_you.filter((i) => !isWrapUp(i));
 	const wrapUp = columns.needs_you.filter(isWrapUp);
+	const at = now ?? Date.now();
+	const settled = columns.resolved.filter((i) => isSettled(i, at));
+	const resolved = columns.resolved.filter((i) => !isSettled(i, at));
 	// Any live run lights Working's head, one sitting in Needs you included (ruling m15).
 	const liveMark = incidents.some((i) => {
 		const run = latestRun(i);
@@ -416,7 +425,11 @@ export function IncidentBoard({
 					<DropColumn
 						key={column.id}
 						column={column}
-						count={columns[column.id].length}
+						count={
+							column.id === "resolved"
+								? resolved.length
+								: columns[column.id].length
+						}
 						mark={
 							column.id === "working" && liveMark
 								? offline !== null
@@ -431,10 +444,7 @@ export function IncidentBoard({
 							<>
 								{needs.map((i) => card(i, column.id))}
 								{wrapUp.length > 0 && (
-									<li className="mt-2" data-testid="board-wrap-up">
-										<p className="flex h-7 items-center px-1.5 text-meta text-text-3">
-											To wrap up
-										</p>
+									<li data-testid="board-wrap-up">
 										<ul className="flex flex-col gap-2">
 											{wrapUp.map((i) => card(i, column.id))}
 										</ul>
@@ -442,11 +452,14 @@ export function IncidentBoard({
 								)}
 							</>
 						) : (
-							columns[column.id].map((i) => card(i, column.id))
+							(column.id === "resolved" ? resolved : columns[column.id]).map(
+								(i) => card(i, column.id),
+							)
 						)}
 					</DropColumn>
 				))}
 			</div>
+			<SettledFold incidents={settled} search={search} />
 			<DragOverlay dropAnimation={prefersReducedMotion() ? null : undefined}>
 				{dragging && (
 					// A picture of the card, not a second card: dnd-kit keeps it ~250ms after the drop (#780).
@@ -504,6 +517,25 @@ export function IncidentBoard({
 					}}
 				/>
 			)}
+			{prompt?.kind === "reopen" && (
+				<ReopenDialog
+					open
+					incidentNumber={prompt.incident.number}
+					onOpenChange={(open) => !open && setPrompt(null)}
+					onConfirm={() => {
+						const { incident } = prompt;
+						setPrompt(null);
+						setBusy((b) => ({ ...b, [incident.id]: "Reopening" }));
+						update.mutate(
+							{ id: incident.id, status: "investigating" },
+							{
+								onSuccess: settle(incident.id),
+								onError: fail(incident.id, "Not reopened"),
+							},
+						);
+					}}
+				/>
+			)}
 			<AlertDialog
 				open={prompt?.kind === "stop"}
 				onOpenChange={(open) => !open && setPrompt(null)}
@@ -538,6 +570,70 @@ export function IncidentBoard({
 		</DndContext>
 	);
 }
+
+/** Resolved cards older than a day, folded under the columns until opened. */
+function SettledFold({
+	incidents,
+	search,
+}: {
+	incidents: IncidentWithRelations[];
+	search: IncidentsSearch;
+}) {
+	const [open, setOpen] = useState(false);
+	if (incidents.length === 0) return null;
+	return (
+		<div className="mt-2 shrink-0" data-testid="board-settled">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={open}
+				className="flex h-7 items-center gap-2 rounded-control px-2.5 text-meta text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+			>
+				<ChevronRight
+					className={cn(
+						"size-3 transition-transform duration-(--dur-fast)",
+						open && "rotate-90",
+					)}
+				/>
+				Settled
+				<span className="tabular-nums">{incidents.length}</span>
+			</button>
+			{open && (
+				<ul className="mt-1 grid gap-px md:max-h-48 md:overflow-y-auto">
+					{incidents.map((i) => (
+						<li key={i.id}>
+							<Link
+								to="/incidents/$id"
+								params={{ id: i.id }}
+								search={search}
+								className="flex h-7 min-w-0 items-center gap-2.5 rounded-control px-2.5 text-text-2 hover:bg-surface-2 hover:text-text-1"
+							>
+								<Mono className="shrink-0 text-meta text-text-3">
+									INC-{i.number}
+								</Mono>
+								<span className="truncate">{i.title}</span>
+							</Link>
+						</li>
+					))}
+				</ul>
+			)}
+		</div>
+	);
+}
+
+const WORD_TONE: Record<CardTone, string> = {
+	danger: "text-danger",
+	warn: "text-warn",
+	plain: "text-text-1",
+};
+
+/** The head's dot and word, each in the column's state colour (#673 w14). */
+const HEAD_TONE: Record<(typeof COLUMN_TONE)[BoardColumn], string> = {
+	warn: "text-warn",
+	live: "text-live",
+	"text-2": "text-text-2",
+	ok: "text-ok",
+};
 
 const EMPTY: Record<BoardColumn, string> = {
 	needs_you: "Nothing needs you.",
@@ -579,21 +675,21 @@ function DropColumn({
 		>
 			<h2
 				id={`board-${column.id}`}
-				className="flex h-7 shrink-0 items-center gap-2 px-1.5 pb-1 font-medium text-text-1"
+				className={cn(
+					"flex h-7 shrink-0 items-center gap-2 px-1.5 font-medium",
+					mark === "off" ? "text-text-3" : HEAD_TONE[COLUMN_TONE[column.id]],
+				)}
 				data-testid="board-column-heading"
 			>
-				{mark && (
-					<span
-						aria-hidden
-						className={cn(
-							"h-3 w-[3px] shrink-0 rounded-full",
-							mark === "live" ? "breathe bg-live" : "bg-text-3",
-						)}
-						data-testid="lane-live-bar"
-					/>
-				)}
+				<span
+					aria-hidden
+					className="size-1.5 shrink-0 rounded-full bg-current"
+					data-testid={mark ? "lane-live-bar" : undefined}
+				/>
 				{column.label}
-				<span className="font-normal text-text-3 tabular-nums">{count}</span>
+				<span className="ml-auto text-meta font-normal text-text-3 tabular-nums">
+					{count}
+				</span>
 			</h2>
 			<ul
 				ref={setNodeRef}
@@ -712,10 +808,14 @@ function CardBody({
 	/** The drag overlay's copy, which must not read as a board card. */
 	overlay?: boolean;
 }) {
-	const word = cardWord(incident);
+	const word = cardWord(incident, now);
 	const live = runWord(incident, now);
 	const headline = incidentHeadline(incident);
 	const lineage = incidentLineage(incident);
+	const run = latestRun(incident);
+	const runs = incident.investigations ?? [];
+	// The list carries the newest five runs, so a number is known only below that.
+	const runNo = run && runs.length < 5 ? runs.length : null;
 	const service =
 		incident.service?.displayName ||
 		incident.service?.name ||
@@ -724,10 +824,14 @@ function CardBody({
 	const wrapUp = isWrapUp(incident);
 	const quiet = live?.quietFor !== null && live?.quietFor !== undefined;
 	const breathing = !!live && !quiet && offline === null && !overlay;
+	const step =
+		live && !quiet && live.step !== RUN_STATE_LABEL[live.state]
+			? live.step
+			: null;
 	return (
 		<article
 			className={cn(
-				"raised relative min-w-0 rounded-surface px-3 py-2.5 transition-[background-color,translate,scale] duration-(--dur-fast) ease-(--ease-out) hover:-translate-y-px hover:bg-surface-3 active:scale-[0.99]",
+				"raised relative grid min-w-0 gap-0.5 rounded-surface px-3 py-2.5 transition-[background-color,translate,scale,box-shadow] duration-(--dur-fast) ease-(--ease-out) hover:-translate-y-px hover:shadow-float active:scale-[0.99]",
 				breathing && "live-glow",
 			)}
 			style={
@@ -740,10 +844,13 @@ function CardBody({
 			data-number={incident.number}
 		>
 			<div className="flex min-w-0 items-center gap-2 text-meta text-text-3">
+				{run?.harness && (
+					<AgentMark id={run.harness} className="mr-0.5 size-3.5" />
+				)}
 				<span
 					role="img"
 					aria-label={SEVERITY_LABEL[incident.severity]}
-					className="relative -top-px size-2 shrink-0 rounded-full"
+					className="relative size-1.5 shrink-0 rounded-full"
 					style={{ background: `var(--sev-${incident.severity})` }}
 					data-testid="card-dot"
 				/>
@@ -756,75 +863,65 @@ function CardBody({
 			</div>
 			<div
 				className={cn(
-					"mt-0.5 line-clamp-2 [overflow-wrap:anywhere]",
-					wrapUp ? "text-text-2" : "font-medium text-text-1",
+					"truncate font-semibold",
+					wrapUp ? "text-text-2" : "text-text-1",
 				)}
 				data-testid="card-title"
 			>
-				{link ?? <WrapText text={incident.title} />}
+				{link ?? incident.title}
 			</div>
 			<div
-				className="mt-0.5 truncate text-meta text-text-3"
+				className="truncate text-meta text-text-3"
 				data-testid="card-service"
 			>
 				{service ?? "No service"}
 			</div>
-			{(word || live) && (
-				<div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-meta text-text-2">
-					{word && (
-						<span
-							className={cn(
-								"font-medium",
-								word.attention ? "text-danger" : "text-text-2",
-							)}
-							data-testid="card-word"
-						>
-							{word.text}
-						</span>
+			{word && (
+				<div className="mt-1 flex flex-wrap items-center gap-x-2.5 text-meta text-text-2 tabular-nums">
+					<span
+						className={cn("font-medium", WORD_TONE[word.tone])}
+						data-testid="card-word"
+					>
+						{word.text}
+					</span>
+					{word.since && <span>{word.since}</span>}
+				</div>
+			)}
+			{live && (
+				<div
+					className={cn(
+						"mt-1 grid min-w-0 gap-1 text-meta text-text-2 tabular-nums",
+						quiet && offline === null && "font-medium text-warn",
 					)}
-					{live && (
-						<span
-							className={cn(
-								"inline-flex min-w-0 items-center gap-1.5 tabular-nums",
-								quiet && !offline && "font-medium text-warn",
-							)}
-							data-testid="card-step"
-						>
-							<span
-								aria-hidden
-								className={cn(
-									"h-3 w-[3px] shrink-0 rounded-full",
-									offline !== null
-										? "bg-text-3"
-										: quiet
-											? "bg-warn"
-											: "breathe bg-live",
-								)}
-								data-testid="card-live-bar"
-							/>
-							{offline !== null ? (
-								<span className="min-w-0 truncate">
-									Last seen {formatClock(offline)}
+					data-testid="card-step"
+				>
+					{offline !== null ? (
+						<span className="truncate">Last seen {formatClock(offline)}</span>
+					) : quiet ? (
+						<span className="truncate">{live.text}</span>
+					) : (
+						<>
+							<span className="flex min-w-0 items-center gap-x-2.5">
+								<span className="font-medium text-live">
+									{RUN_STATE_LABEL[live.state]}
 								</span>
-							) : quiet ? (
-								<span className="min-w-0 truncate">{live.text}</span>
-							) : (
-								<>
-									<span className="min-w-0 truncate">{live.step}</span>
-									<span className="shrink-0">{clockElapsed(live.elapsed)}</span>
-								</>
-							)}
-						</span>
+								<span>{formatElapsed(live.elapsed)}</span>
+								{runNo !== null && (
+									<span className="text-text-3">Run #{runNo}</span>
+								)}
+							</span>
+							{step && <span className="line-clamp-2">{step}</span>}
+						</>
 					)}
 				</div>
 			)}
 			{busy ? (
-				<p className="mt-1.5 text-meta text-text-1">{busy}</p>
+				<p className="mt-1 text-meta text-text-1">{busy}</p>
 			) : (
 				<>
 					{lineage && (
 						<p
-							className="mt-1.5 line-clamp-2 text-meta text-text-2"
+							className="mt-1 line-clamp-2 text-meta text-text-2"
 							data-testid="card-lineage"
 						>
 							<span className="font-medium text-text-1">{lineage.lead}</span>{" "}
@@ -833,7 +930,7 @@ function CardBody({
 					)}
 					{!live && headlineAddsInfo(headline) && (
 						<p
-							className="mt-1.5 line-clamp-2 text-meta text-text-2"
+							className="mt-1 line-clamp-2 text-meta text-text-2"
 							data-testid="board-card-headline"
 						>
 							{headline.lead && (
@@ -844,6 +941,7 @@ function CardBody({
 							{headline.text}
 						</p>
 					)}
+					{wrapUp && <p className="mt-1.5 text-meta text-text-3">To wrap up</p>}
 				</>
 			)}
 			{incident.status === "triggered" && onAcknowledge && !busy && (
