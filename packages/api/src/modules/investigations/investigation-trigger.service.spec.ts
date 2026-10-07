@@ -229,6 +229,26 @@ describe("InvestigationTriggerService", () => {
 			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
 			expect(mockTimelineService.create).not.toHaveBeenCalled();
 		});
+
+		it("a refire that reopened the incident runs the policy and starts a re_trigger run (#673 w25)", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValue(null);
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-2" }, created: true });
+			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-2");
+
+			await service.onAlertCorrelated(alert, withService("always"), false, true);
+
+			expect(mockInvestigationsService.startOrGet).toHaveBeenCalledWith(
+				expect.objectContaining({ incidentId: "inc-1", triggerType: "re_trigger" }),
+			);
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalled();
+		});
+
+		it("a reopened incident whose policy says never starts no run", async () => {
+			await service.onAlertCorrelated(alert, withService("never"), false, true);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("triggerInvestigation", () => {
@@ -381,7 +401,7 @@ describe("InvestigationTriggerService", () => {
 				incidentId: "i1",
 				isNewIncident: false,
 			});
-			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident, false);
+			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident, false, false);
 		});
 	});
 });

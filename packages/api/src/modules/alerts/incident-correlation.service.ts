@@ -61,14 +61,20 @@ export class IncidentCorrelationService {
 	 */
 	async correlateAlert(
 		alert: Alert,
-		options: { autoInvestigate?: boolean } = {},
+		options: { autoInvestigate?: boolean; reopened?: boolean } = {},
 	): Promise<IncidentCorrelationResult> {
 		const result = await this.runCorrelation(alert);
-		if (!result.alreadyCorrelated && options.autoInvestigate !== false) {
+		const reopened =
+			result.alreadyCorrelated === true && options.reopened === true;
+		if (
+			(!result.alreadyCorrelated || reopened) &&
+			options.autoInvestigate !== false
+		) {
 			const payload: AlertCorrelatedEvent = {
 				alertId: alert.id,
 				incidentId: result.incidentId,
 				isNewIncident: result.isNewIncident,
+				...(reopened && { reopened: true }),
 			};
 			this.eventEmitter.emit(ALERT_CORRELATED_EVENT, payload);
 		}
@@ -130,21 +136,27 @@ export class IncidentCorrelationService {
 
 		// The same alert's last incident, when it ended: the new one names it
 		// so a refire after Close reads as a second outage, not a swallowed one (walk f32).
-		const prior = alert.fingerprint
-			? await this.prisma.alert.findFirst({
-					where: {
-						fingerprint: alert.fingerprint,
-						id: { not: alert.id },
-						incidentId: { not: null },
-						incident: {
-							status: { in: [...ENDED_INCIDENT_STATUSES] },
-							serviceId: alert.serviceId ?? null,
+		// dedupKey too: the fingerprint hashes the description, which can change (#673 w43).
+		const identity = [
+			...(alert.dedupKey ? [{ dedupKey: alert.dedupKey }] : []),
+			...(alert.fingerprint ? [{ fingerprint: alert.fingerprint }] : []),
+		];
+		const prior =
+			identity.length > 0
+				? await this.prisma.alert.findFirst({
+						where: {
+							OR: identity,
+							id: { not: alert.id },
+							incidentId: { not: null },
+							incident: {
+								status: { in: [...ENDED_INCIDENT_STATUSES] },
+								serviceId: alert.serviceId ?? null,
+							},
 						},
-					},
-					include: { incident: true },
-					orderBy: { triggeredAt: "desc" },
-				})
-			: null;
+						include: { incident: true },
+						orderBy: { triggeredAt: "desc" },
+					})
+				: null;
 		const incident = await this.incidentsService.create({
 			title: alert.title,
 			description: alert.description ?? undefined,

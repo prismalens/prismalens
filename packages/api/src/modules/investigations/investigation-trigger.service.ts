@@ -170,29 +170,39 @@ export class InvestigationTriggerService {
 			);
 			return;
 		}
-		await this.onAlertCorrelated(alert, incident, event.isNewIncident);
+		await this.onAlertCorrelated(
+			alert,
+			incident,
+			event.isNewIncident,
+			event.reopened === true,
+		);
 	}
 
 	/**
 	 * The auto-investigation decision for an alert that just landed on an
-	 * incident. Only the alert that opened the incident decides; a later alert
-	 * correlated into an open incident never starts a second run (re-running
-	 * on new evidence is the 0.6 storm work). When the decision is no, the
-	 * incident's timeline says why and where to change it.
+	 * incident. The alert that opened the incident decides, and so does a refire
+	 * that reopened it (`re_trigger`, #673 w25); a later alert correlated into an
+	 * open incident never starts a second run (re-running on new evidence is the
+	 * 0.6 storm work). When the decision is no, the timeline says why.
 	 */
 	async onAlertCorrelated(
 		alert: Alert,
 		incident: Incident & { service?: Service | null },
 		isNewIncident: boolean,
+		reopened = false,
 	): Promise<void> {
-		if (!isNewIncident) {
+		if (!isNewIncident && !reopened) {
 			this.logger.debug(
 				`Alert ${alert.id} joined open incident ${incident.number}; auto-investigation decides on the opening alert only`,
 			);
 			return;
 		}
 
-		const decision = await this.shouldTriggerInvestigation(incident);
+		const policy = await this.shouldTriggerInvestigation(incident);
+		const decision: TriggerDecision =
+			reopened && policy.shouldTrigger
+				? { ...policy, triggerType: "re_trigger" }
+				: policy;
 
 		if (!decision.shouldTrigger) {
 			this.logger.log(

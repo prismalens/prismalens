@@ -521,6 +521,7 @@ describe("WebhooksService", () => {
 			vi.mocked(alertsService.create).mockResolvedValueOnce({
 				...mockAlert,
 				occurrenceCount: 2,
+				outcome: "counted",
 			});
 
 			const result = await service.processPrometheusAlert(firing, {
@@ -566,7 +567,7 @@ describe("WebhooksService", () => {
 
 			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
 				expect.objectContaining({ id: "alt-123" }),
-				{ autoInvestigate: false },
+				{ autoInvestigate: false, reopened: false },
 			);
 		});
 
@@ -578,7 +579,24 @@ describe("WebhooksService", () => {
 
 			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
 				expect.objectContaining({ id: "alt-123" }),
-				{ autoInvestigate: true },
+				{ autoInvestigate: true, reopened: false },
+			);
+		});
+
+		it("tells correlation when the refire reopened the alert (#673 w25)", async () => {
+			vi.mocked(alertsService.create).mockResolvedValueOnce({
+				...mockAlert,
+				outcome: "reopened",
+			});
+
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "alt-123" }),
+				{ autoInvestigate: true, reopened: true },
 			);
 		});
 

@@ -42,7 +42,7 @@ const mockPrismaService = {
 };
 
 /** The #231 flap window, in the units the service reads it in (minutes). */
-const FLAP_WINDOW_MINUTES = 15;
+const FLAP_WINDOW_MINUTES = 1440;
 const mockConfigService = {
 	get: vi.fn(() => FLAP_WINDOW_MINUTES),
 };
@@ -95,7 +95,7 @@ describe("AlertsService (BDD)", () => {
 
 			const result = await service.create(createDto);
 
-			expect(result).toEqual(expectedAlert);
+			expect(result).toEqual({ ...expectedAlert, outcome: "created" });
 			expect(mockPrismaService.alert.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({
 					source: "prometheus",
@@ -281,9 +281,10 @@ describe("AlertsService (BDD)", () => {
 			});
 			expect(result.status).toBe(AlertStatus.triggered);
 			expect(result.occurrenceCount).toBe(4);
+			expect(result.outcome).toBe("reopened");
 		});
 
-		it("R1: the reopen appends a 'reopened by refire (flap)' timeline entry", async () => {
+		it("R1: the reopen appends a 'reopened: fired again' timeline entry", async () => {
 			existing({
 				status: AlertStatus.resolved,
 				resolvedAt: new Date(NOW.getTime() - 5 * MINUTE),
@@ -294,7 +295,7 @@ describe("AlertsService (BDD)", () => {
 			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({
 					incidentId: "incident-1",
-					title: "Alert reopened by refire (flap)",
+					title: "Alert reopened: fired again",
 				}),
 			});
 		});
@@ -322,7 +323,7 @@ describe("AlertsService (BDD)", () => {
 			expect(mockPrismaService.timelineEntry.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({
 					incidentId: "incident-1",
-					title: "Incident reopened: alert refired (flap)",
+					title: "Incident reopened: alert fired again",
 				}),
 			});
 		});
@@ -369,7 +370,7 @@ describe("AlertsService (BDD)", () => {
 		it("R2b: a refire of a resolved alert OUTSIDE the flap window inserts a new alert row", async () => {
 			existing({
 				status: AlertStatus.resolved,
-				resolvedAt: new Date(NOW.getTime() - 16 * MINUTE),
+				resolvedAt: new Date(NOW.getTime() - 1441 * MINUTE),
 			});
 			mockPrismaService.alert.create.mockResolvedValue(
 				AlertFactory.create({ id: "alert-new-episode" }),
@@ -385,6 +386,7 @@ describe("AlertsService (BDD)", () => {
 				}),
 			});
 			expect(result.id).toBe("alert-new-episode");
+			expect(result.outcome).toBe("new-episode");
 		});
 
 		it("a refire on a closed incident is a new episode, even inside the flap window (walk f32)", async () => {
@@ -432,10 +434,10 @@ describe("AlertsService (BDD)", () => {
 			expect(result.status).toBe(AlertStatus.triggered);
 		});
 
-		it("R2b: the window boundary is inclusive — exactly 15 min still reopens", async () => {
+		it("R2b: the window boundary is inclusive — exactly 24 h still reopens", async () => {
 			existing({
 				status: AlertStatus.resolved,
-				resolvedAt: new Date(NOW.getTime() - 15 * MINUTE),
+				resolvedAt: new Date(NOW.getTime() - 1440 * MINUTE),
 			});
 
 			const result = await service.create(refireDto);
@@ -482,7 +484,7 @@ describe("AlertsService (BDD)", () => {
 			const fingerprint = "fp-stable-123";
 			existing({
 				status: AlertStatus.resolved,
-				resolvedAt: new Date(NOW.getTime() - 16 * MINUTE),
+				resolvedAt: new Date(NOW.getTime() - 1441 * MINUTE),
 				externalId: fingerprint,
 			});
 			const newEpisodeAlert = AlertFactory.create({

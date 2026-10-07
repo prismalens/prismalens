@@ -168,6 +168,29 @@ describe("IncidentCorrelationService", () => {
 			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
 		});
 
+		it("emits alert.correlated with reopened for a refire that reopened its incident (#673 w25)", async () => {
+			const alert = alertRow({ id: "alert-1", incidentId: "incident-1" });
+			mockPrismaService.incident.findUnique.mockResolvedValue({ id: "incident-1", number: 1 });
+
+			await service.correlateAlert(alert, { reopened: true });
+
+			expect(mockEventEmitter.emit).toHaveBeenCalledWith("alert.correlated", {
+				alertId: "alert-1",
+				incidentId: "incident-1",
+				isNewIncident: false,
+				reopened: true,
+			});
+		});
+
+		it("withholds the reopened event when autoInvestigate is false", async () => {
+			const alert = alertRow({ id: "alert-1", incidentId: "incident-1" });
+			mockPrismaService.incident.findUnique.mockResolvedValue({ id: "incident-1", number: 1 });
+
+			await service.correlateAlert(alert, { reopened: true, autoInvestigate: false });
+
+			expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+		});
+
 		it("attaches a second alert with the same fingerprint to the open incident instead of opening another", async () => {
 			const first = alertRow({ id: "alert-1", fingerprint: "fp-shared" });
 			const second = alertRow({ id: "alert-2", fingerprint: "fp-shared" });
@@ -280,7 +303,7 @@ describe("IncidentCorrelationService", () => {
 				2,
 				expect.objectContaining({
 					where: expect.objectContaining({
-						fingerprint: "fp-1",
+						OR: [{ dedupKey: "dedup-1" }, { fingerprint: "fp-1" }],
 						incident: expect.objectContaining({ status: { in: ["resolved", "closed"] }, serviceId: null }),
 					}),
 				}),
@@ -295,6 +318,26 @@ describe("IncidentCorrelationService", () => {
 						alertName: "BooklogrLibraryListSlow",
 					},
 				}),
+			);
+		});
+
+		it("finds the ended incident by dedupKey when the description changed the fingerprint (#673 w43)", async () => {
+			const alert = alertRow({ id: "alert-new", dedupKey: "dedup-1", fingerprint: "fp-new" });
+			mockPrismaService.alert.findFirst.mockImplementation(
+				async ({ where }: { where: { OR?: Array<{ dedupKey?: string }> } }) =>
+					where.OR?.some((m) => m.dedupKey === "dedup-1")
+						? {
+								...alertRow({ id: "alert-old", dedupKey: "dedup-1", fingerprint: "fp-old", incidentId: "inc-3" }),
+								incident: { id: "inc-3", number: 3, status: "closed", resolvedAt: null },
+							}
+						: null,
+			);
+			mockIncidentsService.create.mockResolvedValue({ id: "inc-7", number: 7 });
+
+			await service.correlateAlert(alert);
+
+			expect(mockIncidentsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ priorIncident: expect.objectContaining({ number: 3 }) }),
 			);
 		});
 
