@@ -687,6 +687,9 @@ describe("buckets and classes", () => {
 		// Neither, rather than mislabelled as a webhook.
 		expect(triggerFor("scheduled")).toBe("other");
 		expect(triggerFor(null)).toBe("other");
+		// A chat run says so, whatever started it (#673).
+		expect(triggerFor("manual", "chat")).toBe("chat");
+		expect(triggerFor("manual", "investigation")).toBe("manual");
 	});
 
 	it("reduces an integration template to its vendor", () => {

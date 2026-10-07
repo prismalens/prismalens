@@ -92,7 +92,12 @@ export const INTEGRATION_KINDS = [
 	"other",
 ] as const;
 export const WEBHOOK_PROVIDERS = ["prometheus", "generic", "render"] as const;
-export const INVESTIGATION_TRIGGERS = ["manual", "webhook", "other"] as const;
+export const INVESTIGATION_TRIGGERS = [
+	"manual",
+	"webhook",
+	"chat",
+	"other",
+] as const;
 export const INVESTIGATION_STATES = [
 	"completed",
 	"failed",
@@ -122,7 +127,12 @@ export const ERROR_CLASSES = [
  * vocabulary is wider than the two cases that matter, and `other` keeps this a
  * closed enum rather than labelling an unmapped trigger as a webhook.
  */
-export function triggerFor(triggerType?: string | null): InvestigationTrigger {
+export function triggerFor(
+	triggerType?: string | null,
+	kind?: string | null,
+): InvestigationTrigger {
+	// A chat run is started by a person's message, whatever its trigger row says (#673).
+	if (kind === "chat") return "chat";
 	if (triggerType === "manual") return "manual";
 	if (
 		triggerType === "auto_critical" ||

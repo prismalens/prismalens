@@ -8,6 +8,7 @@ import {
 	incidentAttention,
 	isIncidentEnded,
 	isWorkflowLive,
+	latestRun,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
@@ -42,6 +43,12 @@ export type IncidentWithRelations = Incident & {
 	investigations?: Array<{
 		id: string;
 		status: string;
+		kind?: string;
+		agentMode?: string | null;
+		title?: string | null;
+		startedAt?: Date | null;
+		/** A completed investigation wrote its summary from its report; a chat has none (#673). */
+		hasReport?: boolean;
 		summary: string | null;
 		rootCause: string | null;
 		rootCauseCategory: string | null;
@@ -171,6 +178,10 @@ export class IncidentsService {
 						harness: true,
 						model: true,
 						stopRequestedAt: true,
+						kind: true,
+						agentMode: true,
+						title: true,
+						startedAt: true,
 						createdAt: true,
 						completedAt: true,
 					},
@@ -254,6 +265,10 @@ export class IncidentsService {
 							harness: true,
 							model: true,
 							stopRequestedAt: true,
+							kind: true,
+							agentMode: true,
+							title: true,
+							startedAt: true,
 							createdAt: true,
 							completedAt: true,
 						},
@@ -439,7 +454,13 @@ export class IncidentsService {
 						evidenceCount: evidence.get(run.id) ?? null,
 					},
 					...rest,
-				],
+				].map((r) => ({
+					...r,
+					hasReport:
+						r.kind !== "chat" &&
+						r.status === "completed" &&
+						typeof r.summary === "string",
+				})),
 			};
 		});
 	}
@@ -829,10 +850,10 @@ export class IncidentsService {
 					status: true,
 					reopenReason: true,
 					reopenedAt: true,
+					// Every kind: a failed run counts only if it is an investigation, a reopen clears on any run (#673).
 					investigations: {
 						orderBy: { createdAt: "desc" },
-						take: 1,
-						select: { status: true, createdAt: true },
+						select: { status: true, createdAt: true, kind: true },
 					},
 				},
 			}),
@@ -848,12 +869,15 @@ export class IncidentsService {
 			awaiting_close: 0,
 		};
 		for (const row of candidates) {
-			const run = row.investigations[0];
-			const why = incidentAttention(row.status, run?.status, {
-				reason: row.reopenReason,
-				at: row.reopenedAt,
-				latestRunAt: run?.createdAt,
-			});
+			const why = incidentAttention(
+				row.status,
+				latestRun(row, { kind: "investigation" })?.status,
+				{
+					reason: row.reopenReason,
+					at: row.reopenedAt,
+					latestRunAt: latestRun(row)?.createdAt,
+				},
+			);
 			if (why) attention[why] += 1;
 		}
 

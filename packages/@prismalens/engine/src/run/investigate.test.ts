@@ -478,6 +478,31 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect([finished, failed]).toEqual([0, 0]);
 	});
 
+	it("a chat run sends the message as the whole first turn and completes with no report (#673)", async () => {
+		const finished: unknown[] = [];
+		let failed = 0;
+		const o = opts("ok", { kind: "chat", brief: "Is the pool still saturated?" });
+		const outcome = await conductRun(o, {
+			sink: () => {},
+			store: {
+				create: async () => {},
+				append: async () => {},
+				finish: async (report) => {
+					finished.push(report);
+				},
+				fail: async () => {
+					failed += 1;
+				},
+			},
+		});
+		expect(outcome).toMatchObject({ report: null, error: null, failureKind: "none" });
+		expect([finished, failed]).toEqual([[null], 0]);
+		const wire = readFileSync(join(o.runDir, "transcript.jsonl"), "utf8");
+		const prompt = wire.split("\n").find((l) => l.includes('"d":"out"') && l.includes("session/prompt")) ?? "";
+		expect(prompt).toContain("Is the pool still saturated?");
+		expect(prompt).not.toContain("FIRING ALERT");
+	});
+
 	it("conductRun classifies the outcome and drives both ports", async () => {
 		const stored: CanonicalEvent[] = [];
 		let finished = 0;

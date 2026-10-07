@@ -33,30 +33,12 @@ const ACCESS_METHOD: Record<PermissionMode, string[]> = {
 	],
 };
 
-/** Replaces the Network line when the harness's own sandbox allows none (r4 R4.1 rev). */
-const NO_NETWORK =
-	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
-
-export function buildInvestigationPrompt(
+/** What the agent can reach: telemetry addresses, then the code, one line each. */
+function renderSurfaces(
 	context: InvestigationContext,
-	access: PermissionMode = "read-only",
-	options: { noNetwork?: boolean } = {},
-): string {
-	const [primary, ...rest] = context.alerts;
-	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
-
-	const s = context.service;
-	const serviceBlock = s
-		? `\n\nAFFECTED SERVICE\n  name: ${s.name}${
-				s.tier ? `   ·   tier: ${s.tier}` : ""
-			}${s.repo ? `   ·   repo: ${s.repo}` : ""}${
-				s.dependsOn?.length ? `\n  depends on: ${s.dependsOn.join(", ")}` : ""
-			}`
-		: "";
-
+	online: boolean,
+): string[] {
 	const t = context.telemetry;
-	// With no network, only the addresses remain, for What we could not check (#778).
-	const online = !options.noNetwork;
 	const surfaces: string[] = [];
 	if (t?.prometheusUrl) {
 		surfaces.push(
@@ -94,6 +76,53 @@ export function buildInvestigationPrompt(
 			"  - Application SOURCE CODE is in your current working directory — ls / cat / grep / head / git log.",
 		);
 	}
+	return surfaces;
+}
+
+/**
+ * A chat run's first turn (#673): the surfaces and the untrusted-data guard,
+ * then the person's message. No alert block, no method, no report ask.
+ */
+export function buildChatPrompt(
+	context: InvestigationContext,
+	text: string,
+	options: { noNetwork?: boolean } = {},
+): string {
+	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Do not deploy, restart or change infrastructure.
+
+SURFACES
+${renderSurfaces(context, !options.noNetwork).join("\n")}
+
+${UNTRUSTED_DATA_METHOD_GUARD}
+
+${text}`;
+}
+
+/** Replaces the Network line when the harness's own sandbox allows none (r4 R4.1 rev). */
+const NO_NETWORK =
+	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
+
+export function buildInvestigationPrompt(
+	context: InvestigationContext,
+	access: PermissionMode = "read-only",
+	options: { noNetwork?: boolean } = {},
+): string {
+	const [primary, ...rest] = context.alerts;
+	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
+
+	const s = context.service;
+	const serviceBlock = s
+		? `\n\nAFFECTED SERVICE\n  name: ${s.name}${
+				s.tier ? `   ·   tier: ${s.tier}` : ""
+			}${s.repo ? `   ·   repo: ${s.repo}` : ""}${
+				s.dependsOn?.length ? `\n  depends on: ${s.dependsOn.join(", ")}` : ""
+			}`
+		: "";
+
+	const t = context.telemetry;
+	// With no network, only the addresses remain, for What we could not check (#778).
+	const online = !options.noNetwork;
+	const surfaces = renderSurfaces(context, online);
 
 	const pack = context.contextPack;
 	const packBlock = pack ? `\n\n${renderContextPack(pack)}` : "";

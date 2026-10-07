@@ -965,3 +965,30 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
 	});
 });
+
+describe("a chat run (#673)", () => {
+	it("hands the engine the message as a chat and succeeds with no report, never failing the run", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ runId: "inv-chat", report: null, error: null, failureKind: "none" });
+		const ports = fakePorts();
+
+		const result = await runInvestigationJob(
+			{ id: "job-chat", investigationId: "inv-chat", attempts: 1 },
+			{
+				investigationId: "inv-chat",
+				incidentId: "inc-chat",
+				brief: "never sent",
+				kind: "chat",
+				chat: { text: "Is the pool still saturated?" },
+			},
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ kind?: string; brief?: string }];
+		expect(opts).toMatchObject({ kind: "chat", brief: "Is the pool still saturated?" });
+		expect(result).toMatchObject({ success: true, investigationId: "inv-chat" });
+		expect(result).not.toHaveProperty("error");
+		expect(ports.updateStatus).not.toHaveBeenCalledWith("inv-chat", expect.objectContaining({ status: "failed" }));
+	});
+});

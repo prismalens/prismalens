@@ -120,6 +120,9 @@ AI-driven analysis of an incident. Each investigation runs the two-tier engine (
 | `schemaVersion` | int | Persisted schema version stamp (default `1`, ADR-0026) |
 | `triggerType` | InvestigationTriggerType? | How this investigation was triggered |
 | `triggerReason` | string? | Human-readable trigger reason |
+| `kind` | string | `investigation` (the alert workflow) or `chat` (started by a person's message); a run is a thread (#673) |
+| `agentMode` | string? | The agent's own ACP mode id the run asked for; `agent-default` means none was asked |
+| `title` | string? | Investigation: the brief's first line; chat: the message's first 120 characters |
 
 ### Service
 Monitored components - "what can break". Used for topology-based correlation.

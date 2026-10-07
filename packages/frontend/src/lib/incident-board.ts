@@ -8,6 +8,7 @@ import {
 	type IncidentWithRelations,
 	isIncidentOpen,
 	isWorkflowLive,
+	latestRun as newestRun,
 	REFIRE_LABEL,
 	RUN_STATE_LABEL,
 	type RunState,
@@ -29,8 +30,9 @@ export const BOARD_COLUMNS: { id: BoardColumn; label: string }[] = [
 
 type LatestRun = NonNullable<IncidentWithRelations["investigations"]>[number];
 
+/** The newest run of any kind: a live chat is Working too (#673). */
 export function latestRun(incident: IncidentWithRelations): LatestRun | null {
-	return incident.investigations?.[0] ?? null;
+	return newestRun(incident);
 }
 
 /**

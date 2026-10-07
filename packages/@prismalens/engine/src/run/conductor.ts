@@ -21,7 +21,8 @@ export type InvestigationSink = (event: CanonicalEvent) => void | Promise<void>;
 export interface InvestigationStore {
 	create(): Promise<void>;
 	append(event: CanonicalEvent): Promise<void>;
-	finish(report: InvestigationReport): Promise<void>;
+	/** `null`: a chat run ended its turn; it has no report (#673). */
+	finish(report: InvestigationReport | null): Promise<void>;
 	fail(error: string): Promise<void>;
 	flush?(): Promise<void>;
 }
@@ -64,6 +65,10 @@ export async function conductRun(
 	// A follow-up answers in the stream and never reports (#747); a continued stopped run does (R4.4).
 	if (opts.resume && opts.resume.kind !== "continue" && lastError === null) {
 		await io.store.flush?.();
+		return { runId, report: null, error: null, failureKind: "none" };
+	}
+	if (opts.kind === "chat" && lastError === null) {
+		await io.store.finish(null);
 		return { runId, report: null, error: null, failureKind: "none" };
 	}
 	if (report) {

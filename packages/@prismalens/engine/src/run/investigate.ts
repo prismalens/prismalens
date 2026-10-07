@@ -30,6 +30,7 @@ import type {
 	CanonicalEvent,
 	FollowUpKind,
 	InvestigationContext,
+	InvestigationKind,
 	JobAttachment,
 	OperatorMessageMode,
 	RunFidelity,
@@ -44,7 +45,7 @@ import {
 import { telemetryOrigins } from "./connectors.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
-import { buildInvestigationPrompt } from "./prompt.js";
+import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -93,6 +94,8 @@ export interface RunInvestigationOptions {
 	steer?: SteerPort;
 	/** The operator's brief: appended to the first prompt and recorded as its first message. */
 	brief?: string;
+	/** `chat`: `brief` is a person's message, the whole first turn; the run ends with no report (#673). */
+	kind?: InvestigationKind;
 	/** Appended to the prompt. Used by the registry admission script to provoke a write; never by the API. */
 	promptSuffix?: string;
 	/** Harness stderr, chunk by chunk, for the host's logger (#600). */
@@ -513,6 +516,23 @@ export async function* runInvestigation(
 				refsOf(attachments),
 			);
 			outcome = yield* turn(promptParts(line, attachments));
+		} else if (opts.kind === "chat") {
+			const message = opts.brief?.trim() ?? "";
+			yield adapter.operatorMessage(
+				message,
+				"queue",
+				true,
+				undefined,
+				refsOf(opts.attachments),
+			);
+			outcome = yield* turn(
+				promptParts(
+					buildChatPrompt(opts.context, message, {
+						noNetwork: sandboxWithoutNetwork(opts, access),
+					}),
+					opts.attachments,
+				),
+			);
 		} else {
 			const brief = opts.brief?.trim();
 			if (brief || opts.attachments?.length)
@@ -572,7 +592,10 @@ export async function* runInvestigation(
 		}
 		// A follow-up is chat only: its answer lives in the stream, never in a report (#747).
 		// Continuing a stopped run finishes it as the run it was, report and all (R4.4).
-		if (opts.resume && opts.resume.kind !== "continue") {
+		if (
+			opts.kind === "chat" ||
+			(opts.resume && opts.resume.kind !== "continue")
+		) {
 			yield adapter.branchDone(mapStopReason(outcome.stop));
 			return;
 		}

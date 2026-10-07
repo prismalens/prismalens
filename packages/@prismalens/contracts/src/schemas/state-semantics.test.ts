@@ -11,6 +11,7 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	latestRun,
 	isAlertFiring,
 	ALERT_ACTION_FROM,
 	ALERT_STATUS_PHASE,
@@ -192,5 +193,30 @@ describe("state semantics", () => {
 		expect(runState("completed")).toBe("done");
 		expect(isRunStateLive("stopping")).toBe(true);
 		expect(isRunStateLive("stopped")).toBe(false);
+	});
+});
+
+describe("latestRun (#673: runs as threads)", () => {
+	const incident = {
+		investigations: [
+			{ id: "chat-new", kind: "chat", createdAt: "2026-10-07T12:00:00Z" },
+			{ id: "inv", kind: "investigation", createdAt: "2026-10-07T10:00:00Z" },
+			{ id: "legacy", createdAt: "2026-10-07T09:00:00Z" },
+		],
+	};
+
+	it("is the newest of any kind by default", () => {
+		expect(latestRun(incident)?.id).toBe("chat-new");
+	});
+
+	it("filters by kind, and a row without one is an investigation", () => {
+		expect(latestRun(incident, { kind: "investigation" })?.id).toBe("inv");
+		expect(
+			latestRun(
+				{ investigations: [incident.investigations[2]] },
+				{ kind: "investigation" },
+			)?.id,
+		).toBe("legacy");
+		expect(latestRun({ investigations: [] }, { kind: "chat" })).toBeNull();
 	});
 });

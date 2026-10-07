@@ -329,7 +329,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				.catch(() => null);
 			await this.telemetry.capture("investigation_started", {
 				harness: selection?.runnable ? selection.harness : null,
-				trigger: triggerFor(investigation?.triggerType),
+				trigger: triggerFor(investigation?.triggerType, investigation?.kind),
 			});
 			return;
 		}

@@ -52,6 +52,8 @@ export interface PrismaInvestigationStoreParams {
 	 * `continuing` (R4.4): the end is written as a run's would be.
 	 */
 	resume?: { note: string; continuing?: boolean };
+	/** A chat run (#673): its timeline says Chat, and it finishes with no report. */
+	chat?: boolean;
 }
 
 export function createPrismaInvestigationStore(
@@ -64,6 +66,7 @@ export function createPrismaInvestigationStore(
 		model,
 		workspace,
 		resume,
+		chat,
 	}: PrismaInvestigationStoreParams,
 ): InvestigationStore {
 	let buffer: CanonicalEvent[] = [];
@@ -131,8 +134,10 @@ export function createPrismaInvestigationStore(
 			await ports.createTimelineEntry({
 				incidentId,
 				type: "investigation_started",
-				title: "Agent started",
-				description: "The agent is reading the incident.",
+				title: chat ? "Chat started" : "Agent started",
+				description: chat
+					? "The agent is answering your message."
+					: "The agent is reading the incident.",
 				source: "ai_worker",
 				metadata: { investigationId },
 			});
@@ -151,7 +156,7 @@ export function createPrismaInvestigationStore(
 			}
 		},
 
-		async finish(report: InvestigationReport) {
+		async finish(report: InvestigationReport | null) {
 			// Drain the durable record (incl. the buffered terminal `report` event)
 			// BEFORE the status write, then persist the result. writeResult ONLY on
 			// success — no "completed" timeline entry on success; only the started +
@@ -163,6 +168,14 @@ export function createPrismaInvestigationStore(
 				);
 			}
 			if (resume && !resume.continuing) return;
+			// A chat ends its turn with no report; the row completes all the same (#673).
+			if (!report) {
+				await ports.writeResult(investigationId, {
+					status: "completed",
+					incidentId,
+				});
+				return;
+			}
 			await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,

@@ -714,7 +714,29 @@ describe("IncidentsService", () => {
 
 			expect(data[0]?.investigations?.[0]).toMatchObject({ lastEventAt: at, latestText: "Checking the pool size." });
 			expect(data[1]?.investigations?.[0]).toMatchObject({ evidenceCount: 2, latestText: null });
-			expect(data[1]?.investigations?.[1]).toEqual({ id: "old", status: "failed" });
+			expect(data[1]?.investigations?.[1]).toEqual({ id: "old", status: "failed", hasReport: false });
+		});
+
+		it("lists every run with its kind, title and whether it left a report (#673)", async () => {
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{
+					id: "inc-1",
+					service: null,
+					investigations: [
+						{ id: "chat", status: "completed", kind: "chat", title: "Is the pool full?", summary: null },
+						{ id: "inv", status: "completed", kind: "investigation", title: null, summary: "Pool exhausted" },
+					],
+				},
+			]);
+			mockPrisma.incident.count.mockResolvedValue(1);
+			mockPrisma.investigation.findMany.mockResolvedValueOnce([{ id: "chat", report: null }]);
+
+			const { data } = await service.findAll({ limit: 50, offset: 0 });
+
+			expect(data[0]?.investigations).toEqual([
+				expect.objectContaining({ id: "chat", kind: "chat", title: "Is the pool full?", hasReport: false }),
+				expect.objectContaining({ id: "inv", kind: "investigation", hasReport: true }),
+			]);
 		});
 
 		it("filters by a service the incident or any of its alerts touches (#743)", async () => {

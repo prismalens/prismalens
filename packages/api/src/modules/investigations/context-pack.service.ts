@@ -260,7 +260,7 @@ export class ContextPackService {
 				createdAt: true,
 				alerts: { select: { title: true, labels: true } },
 				investigations: {
-					where: { status: "completed" },
+					where: { status: "completed", kind: "investigation" },
 					orderBy: { completedAt: "desc" },
 					take: 1,
 					select: { rootCause: true },

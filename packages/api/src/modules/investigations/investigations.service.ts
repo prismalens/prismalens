@@ -9,7 +9,7 @@ import {
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent, InvestigationKind } from "@prismalens/contracts";
 import {
 	CanonicalEventSchema,
 	INVESTIGATION_REPORT_BRANCH,
@@ -111,6 +111,10 @@ export class InvestigationsService {
 			triggerReason?: string;
 			/** The incident was already resolved or closed; it stays so (#743). */
 			afterResolve?: boolean;
+			/** A run is a thread (#673); set at create, never scanned for later. */
+			kind?: InvestigationKind;
+			title?: string | null;
+			agentMode?: string | null;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -140,6 +144,9 @@ export class InvestigationsService {
 						status: "pending",
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
+						...(dto.kind ? { kind: dto.kind } : {}),
+						...(dto.title ? { title: dto.title } : {}),
+						...(dto.agentMode ? { agentMode: dto.agentMode } : {}),
 					},
 				});
 				return { investigation, created: true };
@@ -175,9 +182,12 @@ export class InvestigationsService {
 		await this.timelineService.create({
 			incidentId: dto.incidentId,
 			type: TimelineEntryType.investigation_started,
-			title: dto.afterResolve
-				? "Investigation started after resolve"
-				: "Investigation started",
+			title:
+				dto.kind === "chat"
+					? "Chat queued"
+					: dto.afterResolve
+						? "Investigation started after resolve"
+						: "Investigation started",
 			description: "Queued for the agent.",
 			source: TimelineSource.system,
 			metadata: { investigationId: investigation.id },
@@ -226,11 +236,13 @@ export class InvestigationsService {
 	 * Find all investigations
 	 */
 	async findAll(options?: {
+		incidentId?: string;
 		status?: string;
 		limit?: number;
 		offset?: number;
 	}): Promise<{ data: InvestigationWithRelations[]; total: number }> {
 		const where = {
+			...(options?.incidentId && { incidentId: options.incidentId }),
 			...(options?.status && { status: options.status }),
 		};
 
@@ -408,10 +420,11 @@ export class InvestigationsService {
 		try {
 			const investigation = await this.prisma.investigation.findUnique({
 				where: { id },
-				select: { incidentId: true, status: true },
+				select: { incidentId: true, status: true, kind: true },
 			});
 
 			if (!investigation) return null;
+			const chat = investigation.kind === "chat";
 
 			// Cancelled is sticky (CANCEL slice): a late or retried worker must not
 			// overwrite the user's cancellation with a completed/failed result.
@@ -458,16 +471,21 @@ export class InvestigationsService {
 
 				// A run never moves the incident's status (#673 w19, w20).
 				// 3. Create timeline entry for completion
-				const timelineTitle =
-					dto.status === "failed"
+				const timelineTitle = chat
+					? dto.status === "failed"
+						? "Chat failed"
+						: "Chat ended"
+					: dto.status === "failed"
 						? "Investigation failed"
 						: "Investigation completed";
 				const timelineDescription =
 					dto.status === "failed"
-						? `Investigation failed: ${dto.error ?? "Unknown error"}`
-						: dto.rootCause
-							? `Root cause identified: ${dto.rootCause}`
-							: "Investigation completed";
+						? `${chat ? "Chat" : "Investigation"} failed: ${dto.error ?? "Unknown error"}`
+						: chat
+							? "The agent answered; the conversation holds it."
+							: dto.rootCause
+								? `Root cause identified: ${dto.rootCause}`
+								: "Investigation completed";
 
 				await tx.timelineEntry.create({
 					data: {
@@ -498,7 +516,8 @@ export class InvestigationsService {
 			// writeResult call returns) cannot beat the overlay row to the UI's
 			// completion refetch; still guarded, because overlay failure must NEVER
 			// fail the investigation write.
-			if (dto.status === "completed") {
+			// A chat has no report, so nothing to enrich (#673).
+			if (dto.status === "completed" && dto.report) {
 				await this.overlayService.computeOverlay(id).catch((error) => {
 					this.logger.error(
 						`Overlay computation failed for investigation ${id}`,

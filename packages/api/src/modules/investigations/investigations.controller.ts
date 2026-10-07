@@ -87,6 +87,7 @@ export class InvestigationsController {
 			list: implement(investigationsContract.list).handler(
 				async ({ input }) => {
 					const { data, total } = await this.investigationsService.findAll({
+						incidentId: input.incidentId,
 						status: input.status,
 						limit: input.limit,
 						offset: input.offset,
@@ -501,6 +502,13 @@ export class InvestigationsController {
 			id: investigation.id,
 			incidentId: investigation.incidentId,
 			status: investigation.status as WorkflowStatus,
+			kind:
+				investigation.kind === "chat"
+					? ("chat" as const)
+					: ("investigation" as const),
+			agentMode: investigation.agentMode ?? null,
+			title: investigation.title ?? null,
+			hasReport: investigation.report !== null,
 			startedAt: investigation.startedAt?.toISOString() ?? null,
 			completedAt: investigation.completedAt?.toISOString() ?? null,
 			summary: investigation.summary ?? null,

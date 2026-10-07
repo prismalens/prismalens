@@ -18,6 +18,7 @@ import type {
 	Alert,
 	Incident,
 	IncidentWithRelations,
+	InvestigationJobData,
 	RootCauseCategory,
 } from "@prismalens/contracts/schemas";
 import type {
@@ -196,37 +197,15 @@ export class IncidentsController {
 						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
-					const selection = await this.harnessService.resolveSelection();
-					if (!selection.runnable) {
-						throw new ORPCError("PRECONDITION_FAILED", {
-							message: selection.reason,
-							data: {
-								failure: selection.failure,
-								reason: selection.reason,
-								harness: selection.harness,
-							},
-						});
-					}
-					// An agent that is not signed in never gets a run (#673 w9).
-					const readiness = await this.harnessService.ensureReady(
-						selection.harness,
-					);
-					if (!readiness.ready) {
-						throw new ORPCError("PRECONDITION_FAILED", {
-							message: readiness.reason,
-							data: {
-								failure: "not-ready",
-								reason: readiness.reason,
-								harness: selection.harness,
-							},
-						});
-					}
+					await this.requireReadyHarness();
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
 					const { investigation, created } =
 						await this.investigationsService.startOrGet({
 							incidentId: input.id,
 							afterResolve: isIncidentEnded(incident.status),
+							triggerType: "manual",
+							title: input.brief?.trim().split("\n")[0]?.slice(0, 120) || null,
 						});
 					if (!created) {
 						return {
@@ -237,31 +216,7 @@ export class IncidentsController {
 						};
 					}
 
-					// Fetch integrations and extract connectionIds for the job payload.
-					// Only connectionIds are persisted — the run fetches credentials on-demand.
-					const integrations =
-						await this.integrationsService.getIntegrationsForService(
-							incident.serviceId ?? undefined,
-						);
-					const connectionIds = integrations.map((i) => i.connectionId);
-
-					// Enqueue the investigation job
-					const jobId = await this.dispatchService.addInvestigationJob({
-						incidentId: input.id,
-						investigationId: investigation.id,
-						priority: this.mapPriorityToJobPriority(incident.priority),
-						context: {
-							title: incident.title,
-							severity: incident.severity,
-							alertCount: incident.alertCount,
-							serviceName: incident.service?.name,
-						},
-						connectionIds,
-						alerts: incident.alerts
-							? incident.alerts.map((a: Record<string, unknown>) =>
-									toFiringAlert(a),
-								)
-							: undefined,
+					const jobId = await this.enqueueRun(incident, investigation.id, {
 						...(input.brief ? { brief: input.brief } : {}),
 						...(access !== "read-only" ? { access } : {}),
 						...(attachments.length ? { attachments } : {}),
@@ -283,6 +238,55 @@ export class IncidentsController {
 					};
 				},
 			),
+
+			// POST /incidents/:id/chat - A person's message starts a chat run (#673)
+			chat: implement(incidentsContract.chat).handler(async ({ input }) => {
+				const incident = await this.incidentsService.findById(input.id);
+				if (!incident) {
+					throw new ORPCError("NOT_FOUND", {
+						message: `Incident ${input.id} not found`,
+					});
+				}
+				refuseUnless("investigate", incident.status);
+				const attachments = input.attachments?.length
+					? await this.attachments.forJob(input.id, input.attachments)
+					: [];
+				await this.requireReadyHarness();
+				const { investigation, created } =
+					await this.investigationsService.startOrGet({
+						incidentId: input.id,
+						afterResolve: isIncidentEnded(incident.status),
+						triggerType: "manual",
+						kind: "chat",
+						title: input.text.slice(0, 120),
+						agentMode: input.agentMode ?? null,
+					});
+				// Never hand the message to the live run silently (#673 review M7).
+				if (!created) {
+					const runs = await this.investigationsService.findByIncidentId(
+						input.id,
+					);
+					const n =
+						runs.length - runs.findIndex((r) => r.id === investigation.id);
+					throw new ORPCError("CONFLICT", {
+						message: `Run #${n} is working; message it or stop it`,
+						data: { liveInvestigationId: investigation.id },
+					});
+				}
+				const jobId = await this.enqueueRun(incident, investigation.id, {
+					kind: "chat",
+					chat: {
+						text: input.text,
+						...(attachments.length ? { attachments } : {}),
+					},
+				});
+				return {
+					incidentId: input.id,
+					investigationId: investigation.id,
+					jobId,
+					queued: jobId !== null,
+				};
+			}),
 
 			// POST /incidents/:id/attachments - A file for the agent (R4.3)
 			uploadAttachment: implement(incidentsContract.uploadAttachment).handler(
@@ -335,6 +339,60 @@ export class IncidentsController {
 				return this.serializeIncident(incident);
 			}),
 		};
+	}
+
+	/** No run starts on an agent that is missing or not signed in (#520, #673 w9). */
+	private async requireReadyHarness(): Promise<void> {
+		const selection = await this.harnessService.resolveSelection();
+		if (!selection.runnable) {
+			throw new ORPCError("PRECONDITION_FAILED", {
+				message: selection.reason,
+				data: {
+					failure: selection.failure,
+					reason: selection.reason,
+					harness: selection.harness,
+				},
+			});
+		}
+		const readiness = await this.harnessService.ensureReady(selection.harness);
+		if (!readiness.ready) {
+			throw new ORPCError("PRECONDITION_FAILED", {
+				message: readiness.reason,
+				data: {
+					failure: "not-ready",
+					reason: readiness.reason,
+					harness: selection.harness,
+				},
+			});
+		}
+	}
+
+	/** The job for a new run; only connectionIds ride in it, credentials are fetched on demand. */
+	private async enqueueRun(
+		incident: NonNullable<Awaited<ReturnType<IncidentsService["findById"]>>>,
+		investigationId: string,
+		extra: Partial<InvestigationJobData>,
+	): Promise<string | null> {
+		const integrations =
+			await this.integrationsService.getIntegrationsForService(
+				incident.serviceId ?? undefined,
+			);
+		return this.dispatchService.addInvestigationJob({
+			incidentId: incident.id,
+			investigationId,
+			priority: this.mapPriorityToJobPriority(incident.priority),
+			context: {
+				title: incident.title,
+				severity: incident.severity,
+				alertCount: incident.alertCount,
+				serviceName: incident.service?.name,
+			},
+			connectionIds: integrations.map((i) => i.connectionId),
+			alerts: incident.alerts
+				? incident.alerts.map((a: Record<string, unknown>) => toFiringAlert(a))
+				: undefined,
+			...extra,
+		});
 	}
 
 	private mapPriorityToJobPriority(
@@ -495,6 +553,11 @@ export class IncidentsController {
 			serialized.investigations = incident.investigations.map((i: any) => ({
 				id: i.id,
 				status: i.status,
+				kind: i.kind === "chat" ? "chat" : "investigation",
+				agentMode: i.agentMode ?? null,
+				title: i.title ?? null,
+				startedAt: iso(i.startedAt),
+				...(i.hasReport !== undefined ? { hasReport: i.hasReport } : {}),
 				rootCause: i.rootCause ?? null,
 				rootCauseCategory: i.rootCauseCategory ?? null,
 				...(i.error !== undefined ? { error: i.error } : {}),

@@ -8,6 +8,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AttachmentSchema,
+	ChatIncidentSchema,
 	CloseIncidentSchema,
 	CreateIncidentSchema,
 	GetAttachmentSchema,
@@ -110,6 +111,30 @@ export const incidentsContract = {
 			PRECONDITION_FAILED: {
 				data: InvestigationRefusalSchema,
 				message: "Investigation cannot be started",
+			},
+		}),
+
+	/**
+	 * Start a chat run: a person's message is its first turn, and it ends with no report (#673)
+	 * POST /incidents/:id/chat
+	 */
+	chat: oc
+		.route({
+			method: "POST",
+			path: "/incidents/{id}/chat",
+			summary: "Start a chat run on the incident",
+			tags: ["incidents"],
+		})
+		.input(IdParamSchema.merge(ChatIncidentSchema))
+		.output(InvestigateIncidentResponseSchema)
+		.errors({
+			PRECONDITION_FAILED: {
+				data: InvestigationRefusalSchema,
+				message: "Chat cannot be started",
+			},
+			CONFLICT: {
+				data: z.object({ liveInvestigationId: z.string().uuid() }),
+				message: "A run is working on this incident",
 			},
 		}),
 
