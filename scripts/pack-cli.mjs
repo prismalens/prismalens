@@ -103,6 +103,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -122,16 +123,22 @@ const NOTICES = "THIRD_PARTY_NOTICES.txt";
 const ENGINES_NODE = ">=24";
 
 /**
- * `better-sqlite3` is a native addon: a caret range that floats onto a version
- * whose prebuilds lag the Node 24 ABI turns `npm i -g prismalens` into a
- * compile-from-source (and a failure on any machine without a toolchain).
- * Pinned exactly, bumped deliberately, verified by the packed smoke.
+ * `better-sqlite3` 13 carries N-API prebuilds in its own tarball and has no
+ * install script, which npm 12 no longer runs. Pinned exactly so a release
+ * that drops a platform's prebuild is a deliberate bump, verified by the smoke.
  */
 const PINNED = {
-	"better-sqlite3": "12.11.1",
+	"better-sqlite3": "13.0.3",
 	// Better Auth 1.7.3 dropped the required issuer column our schema requires (#580).
 	"better-auth": "1.7.2",
 };
+
+/**
+ * Bundled like first-party packages, deps hoisted into the union under PINNED: npm
+ * honours `overrides` only in a root project, never in a global install (npm 12.2.0),
+ * so the adapter's `better-sqlite3: ^12.6.0` would nest a 12.x that needs its script.
+ */
+const VENDORED = ["@prisma/adapter-better-sqlite3"];
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -363,6 +370,52 @@ function stagedManifest(manifest) {
 	return staged;
 }
 
+/**
+ * Copy each VENDORED package from the workspace package that declares it and
+ * move its dependencies into the union. A bundled package's declared deps are
+ * treated as bundled too: npm 12 leaves them as empty directories.
+ */
+function stageVendored(copied, workspace, union) {
+	const versions = {};
+	for (const name of VENDORED) {
+		const owner = [...copied].find(
+			(c) => workspace.get(c).manifest.dependencies?.[name],
+		);
+		if (!owner)
+			fail(`vendored ${name} is not a dependency of any copied package`);
+		const from = realpathSync(
+			join(workspace.get(owner).dir, "node_modules", name),
+		);
+		const target = join(STAGING, "node_modules", name);
+		copyTree(
+			from,
+			target,
+			(src) => !relative(from, src).split(sep).includes("node_modules"),
+		);
+		const manifest = readJson(join(from, "package.json"));
+		for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
+			const range = PINNED[dep] ?? spec;
+			const existing = union.get(dep);
+			if (existing && existing.range !== range && !PINNED[dep]) {
+				fail(
+					`vendored ${name} wants ${dep}@${range}, the union has ${existing.range}`,
+				);
+			}
+			if (existing) existing.requiredBy.push(name);
+			else union.set(dep, { range, requiredBy: [name] });
+		}
+		manifest["//"] =
+			"dependencies moved into the prismalens manifest by its scripts/pack-cli.mjs";
+		manifest.dependencies = undefined;
+		writeFileSync(
+			join(target, "package.json"),
+			`${JSON.stringify(manifest, null, 2)}\n`,
+		);
+		versions[name] = manifest.version;
+	}
+	return versions;
+}
+
 // ---------------------------------------------------------------------------
 // 4. The import scan
 // ---------------------------------------------------------------------------
@@ -497,6 +550,13 @@ function assertTarball(tarball, copiedNames) {
 				`the tarball has no node_modules/@prismalens/${short} — ` +
 					`bundleDependencies did not survive \`npm pack\``,
 			);
+		}
+	}
+	for (const name of VENDORED) {
+		const entry = `package/node_modules/${name}/package.json`;
+		if (!has((e) => e === entry)) fail(`the tarball has no vendored ${name}`);
+		if (JSON.parse(tar(tarball, ["-xzOf", entry])).dependencies) {
+			fail(`vendored ${name} still declares dependencies`);
 		}
 	}
 
@@ -767,6 +827,8 @@ export function packCli() {
 		}
 	}
 
+	const vendored = stageVendored(copied, workspace, union);
+
 	scanImports(stagedModules, union, new Set(copied), optional);
 	console.log(
 		`==> import scan: every bare specifier resolves` +
@@ -789,13 +851,20 @@ export function packCli() {
 	for (const name of [...copied].sort()) {
 		dependencies[name] = workspace.get(name).manifest.version;
 	}
+	Object.assign(dependencies, vendored);
 
 	const buildSha = resolveBuildSha();
 	const publishManifest = {
 		...cliPkg.manifest,
 		dependencies,
-		bundleDependencies: [...copied].sort(),
-		files: ["dist", "NOTICE", NOTICES, "node_modules/@prismalens"],
+		bundleDependencies: [...copied, ...VENDORED].sort(),
+		files: [
+			"dist",
+			"NOTICE",
+			NOTICES,
+			"node_modules/@prismalens",
+			...VENDORED.map((name) => `node_modules/${name}`),
+		],
 		engines: {
 			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
 			// `@prismalens/database` both declare >=24 and are now IN this tarball.
