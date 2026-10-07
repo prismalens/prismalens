@@ -48,6 +48,7 @@ export function Transcript({
 	focus,
 	cwd,
 	agent,
+	lead,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -56,18 +57,32 @@ export function Transcript({
 	/** The run's workspace, shown as `repo/` (walk f16). */
 	cwd?: string | null;
 	agent: string;
+	/** What the run started with, the transcript's first line (#673). */
+	lead?: string;
 }) {
 	return (
 		<Conversation
 			className="h-full [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]"
 			data-testid="transcript-scroller"
 		>
-			<ConversationContent className="pt-4 pb-8">
+			{/* The library's both-edges gutter insets the phone column 15 px a side. */}
+			<ConversationContent
+				className="pt-4 pb-8"
+				scrollClassName="max-md:[scrollbar-gutter:auto]!"
+			>
 				<div className={RECORD_GRID}>
 					<div
 						className="flex min-w-0 flex-col gap-3.5"
 						data-testid="transcript"
 					>
+						{lead && (
+							<p
+								className="text-meta text-text-2"
+								data-testid="transcript-gather"
+							>
+								{lead}
+							</p>
+						)}
 						{items.map((item) => (
 							<TranscriptRow
 								key={item.key}

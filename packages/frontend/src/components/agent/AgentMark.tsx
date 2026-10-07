@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { SquareTerminal, Star } from "lucide-react";
-import { siClaudecode, siGooglegemini } from "simple-icons";
+import { siClaude, siGooglegemini } from "simple-icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * mark that reads at 20 px get a two-letter tile until one is sourced.
  */
 const MARKS: Record<string, { path: string; color: string }> = {
-	"claude-code": { path: siClaudecode.path, color: `#${siClaudecode.hex}` },
+	"claude-code": { path: siClaude.path, color: `#${siClaude.hex}` },
 	gemini: { path: siGooglegemini.path, color: `#${siGooglegemini.hex}` },
 };
 

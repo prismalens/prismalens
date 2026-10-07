@@ -30,9 +30,10 @@ import {
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useUpdateHarnessSettings } from "@/lib/api/hooks";
+import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
 import { uploadAttachment } from "@/lib/attachments";
 import { composerMode } from "@/lib/composer-keys";
-import { formatElapsed } from "@/lib/format-time";
+import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { pinnedTo } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
@@ -214,9 +215,12 @@ function RunStatusLine() {
 	const { run, runs, incident } = useIncidentRecord();
 	const { harnesses } = useAgentChoice();
 	const now = useNow(1000);
+	const stream = useStreamStatus();
 	const inv = run.investigation;
 	if (!inv || !run.state) return null;
 	const live = isRunStateLive(run.state);
+	// With the stream lost the clock stops at when the run was last heard from.
+	const lostAt = live && now !== null ? reconnectAsOf(stream, now) : null;
 	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
 	const state = RUN_STATE_LABEL[run.state];
 	const sha = pinnedTo(inv.workspace);
@@ -226,6 +230,7 @@ function RunStatusLine() {
 		<div
 			className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-0.5 text-meta text-text-3"
 			data-testid="run-status"
+			data-disconnected={lostAt !== null ? "" : undefined}
 		>
 			<span className="inline-flex items-center gap-1.5 text-text-2">
 				Run #{runNumber(runs, inv.id)}
@@ -236,14 +241,16 @@ function RunStatusLine() {
 			<span
 				className={cn(
 					"tabular-nums",
-					live && "text-live",
+					live && lostAt === null && "text-live",
 					run.state === "failed" && "text-danger",
 				)}
 				data-testid="run-status-state"
 			>
-				{live
-					? `${state}${took ? ` ${took}` : ""}`
-					: `${state}${took ? ` after ${took}` : ""}`}
+				{lostAt !== null
+					? `${state}, last seen ${formatClock(lostAt)}`
+					: live
+						? `${state}${took ? ` ${took}` : ""}`
+						: `${state}${took ? ` after ${took}` : ""}`}
 			</span>
 			{sha && (
 				<span>

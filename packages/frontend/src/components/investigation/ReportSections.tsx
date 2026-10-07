@@ -8,7 +8,7 @@ import type {
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RecordLink, TabSection } from "@/components/incidents/RecordLayout";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { StateWord } from "@/components/shared/StateWord";
@@ -55,7 +55,7 @@ function EvidenceRow({
 }) {
 	return (
 		<li
-			className="grid grid-cols-1 gap-0.5 py-2.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-3"
+			className="grid grid-cols-1 gap-0.5 py-2.5 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:gap-3"
 			data-testid="evidence-row"
 		>
 			<StateWord tone={tone} className="sm:pt-0.5" data-testid="evidence-label">
@@ -100,6 +100,23 @@ interface ReportProps {
 export function Answer({ report }: { report: InvestigationReport }) {
 	const { word, tone, basis } = answerWord(report);
 	const [all, setAll] = useState(false);
+	const headline = useRef<HTMLHeadingElement>(null);
+	const [clamped, setClamped] = useState(false);
+	// Show all only when the two-line clamp actually cut the conclusion.
+	useLayoutEffect(() => {
+		const el = headline.current;
+		if (el && !all) setClamped(el.scrollHeight > el.clientHeight + 1);
+	});
+	const c = report.culprit;
+	const culprit = [
+		c?.service ? `Code in ${c.service}.` : null,
+		c?.changeRef ? `Introduced by \`${c.changeRef}\`.` : null,
+		c?.mechanism
+			? `${c.mechanism.charAt(0).toUpperCase()}${c.mechanism.slice(1)}.`
+			: null,
+	]
+		.filter(Boolean)
+		.join(" ");
 	return (
 		<div className="mb-3" data-testid="report-answer">
 			<p className="mb-1.5 flex flex-wrap items-baseline gap-x-2 text-meta">
@@ -119,6 +136,7 @@ export function Answer({ report }: { report: InvestigationReport }) {
 						!all && "line-clamp-2",
 					)}
 					data-testid="report-headline"
+					ref={headline}
 				>
 					<InlineCode
 						text={
@@ -127,15 +145,25 @@ export function Answer({ report }: { report: InvestigationReport }) {
 						}
 					/>
 				</h2>
-				<Button
-					variant="text"
-					size="sm"
-					onClick={() => setAll((v) => !v)}
-					aria-expanded={all}
-				>
-					{all ? "Show less" : "Show all"}
-				</Button>
+				{(clamped || all) && (
+					<Button
+						variant="text"
+						size="sm"
+						onClick={() => setAll((v) => !v)}
+						aria-expanded={all}
+					>
+						{all ? "Show less" : "Show all"}
+					</Button>
+				)}
 			</div>
+			{culprit && (
+				<p
+					className="mt-1 text-meta text-text-2 [overflow-wrap:anywhere]"
+					data-testid="report-culprit"
+				>
+					<InlineCode text={culprit} />
+				</p>
+			)}
 		</div>
 	);
 }

@@ -8,7 +8,7 @@ import type {
 	HarnessStatus,
 } from "@prismalens/contracts";
 import { Check, ChevronDown, Lock, LockOpen, Pencil, Star } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
 	ModelSelector,
 	ModelSelectorEmpty,
@@ -184,6 +184,7 @@ interface Row {
 	name: string;
 	provider: string;
 	warn?: string;
+	legacy?: boolean;
 }
 
 /**
@@ -222,6 +223,10 @@ export function ModelChip({
 			model: id,
 			name: m?.name ?? id,
 			provider: shown === "starred" ? h.label : providerOf(h.id, id),
+			// The agent still lists it but marks it on the way out (#639).
+			...(m?.status === "legacy" ? { legacy: true } : {}),
+			// A free tier that trains on what it is sent says so on its row.
+			...(m?.status === "training" ? { warn: "trains on your prompts" } : {}),
 		};
 	};
 	let rows: Row[] = [];
@@ -265,6 +270,36 @@ export function ModelChip({
 				: [...favourites, { harness: h.id as HarnessId, model: id }],
 		});
 
+	// The rail is one tab stop: Up and Down move along it and show that agent, Right goes to the search.
+	const rail = useRef<HTMLDivElement>(null);
+	const search = useRef<HTMLInputElement>(null);
+	const tiles = [
+		"starred",
+		...installed.filter((h) => !unreadyReason(h)).map((h) => h.id),
+	];
+	const onRailKeys = (e: KeyboardEvent<HTMLDivElement>) => {
+		// The shown agent may be off the rail (stored, then uninstalled): Down takes the first, Up the last.
+		const found = tiles.indexOf(shown);
+		const at = found === -1 ? (e.key === "ArrowUp" ? 0 : -1) : found;
+		const go = (i: number) => {
+			e.preventDefault();
+			const next = tiles[(i + tiles.length) % tiles.length];
+			if (!next) return;
+			setTile(next);
+			rail.current
+				?.querySelector<HTMLElement>(`[data-tile="${next}"]`)
+				?.focus();
+		};
+		if (e.key === "ArrowDown") go(at + 1);
+		else if (e.key === "ArrowUp") go(at - 1);
+		else if (e.key === "Home") go(0);
+		else if (e.key === "End") go(tiles.length - 1);
+		else if (e.key === "ArrowRight") {
+			e.preventDefault();
+			search.current?.focus();
+		}
+	};
+
 	const label = isLoading ? "…" : chipModel(harness, model);
 	return (
 		<Popover
@@ -296,11 +331,18 @@ export function ModelChip({
 				className="grid h-[400px] w-[min(380px,calc(100vw-32px))] grid-cols-[44px_minmax(0,1fr)] overflow-hidden rounded-surface p-0"
 				data-testid="agent-picker-list"
 				aria-label="Agent and model"
+				onOpenAutoFocus={(e) => {
+					// The search takes the keys, so Enter picks the highlighted row.
+					e.preventDefault();
+					search.current?.focus();
+				}}
 			>
 				<div
+					ref={rail}
 					role="tablist"
 					aria-orientation="vertical"
 					aria-label="Agents"
+					onKeyDown={onRailKeys}
 					className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto bg-surface-1 py-1.5 [scrollbar-width:none]"
 					data-testid="picker-rail"
 				>
@@ -330,8 +372,14 @@ export function ModelChip({
 						);
 					})}
 				</div>
-				<ModelSelector className="min-h-0" loop>
+				<ModelSelector
+					key={shown}
+					className="min-h-0"
+					loop
+					filter={containsFilter}
+				>
 					<ModelSelectorInput
+						ref={search}
 						placeholder={
 							shown === "starred"
 								? "Search starred models"
@@ -339,7 +387,7 @@ export function ModelChip({
 						}
 						data-testid="picker-search"
 					/>
-					<ModelSelectorList className="[scrollbar-width:thin]">
+					<ModelSelectorList label="Models" className="[scrollbar-width:thin]">
 						<ModelSelectorEmpty>
 							{shown === "starred" && favourites.length === 0
 								? "Star a model under any agent and it lists here."
@@ -371,7 +419,10 @@ export function ModelChip({
 								>
 									<RowText
 										name={r.name}
-										sub={r.warn ?? r.provider}
+										sub={
+											r.warn ??
+											(r.legacy ? `${r.provider}, legacy` : r.provider)
+										}
 										warn={!!r.warn}
 										mark={
 											shown === "starred"
@@ -389,6 +440,13 @@ export function ModelChip({
 										}
 										aria-pressed={isStarred(favourites, r.harness.id, r.model)}
 										onPointerDown={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											star(r.harness, r.model);
+										}}
+										onKeyDown={(e) => {
+											// cmdk takes Enter for the row; a focused star keeps it.
+											if (e.key !== "Enter" && e.key !== " ") return;
 											e.preventDefault();
 											e.stopPropagation();
 											star(r.harness, r.model);
@@ -433,6 +491,10 @@ export function ModelChip({
 		</Popover>
 	);
 }
+
+/** Rows whose words contain the search, not cmdk's fuzzy letter match. */
+const containsFilter = (value: string, query: string) =>
+	value.toLowerCase().includes(query.trim().toLowerCase()) ? 1 : 0;
 
 function Tick() {
 	return <Check className="size-4 shrink-0 text-text-1" aria-hidden />;
@@ -492,6 +554,7 @@ function RailTile({
 				aria-selected={on}
 				aria-disabled={off}
 				aria-label={label}
+				tabIndex={on ? 0 : -1}
 				onClick={onClick}
 				className={cn(
 					"relative inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
@@ -500,6 +563,7 @@ function RailTile({
 					off && "cursor-default opacity-40 hover:bg-transparent",
 				)}
 				data-testid={testId}
+				data-tile={testId.replace(/^rail-/, "")}
 				data-off={off ? "" : undefined}
 			>
 				{children}
@@ -582,9 +646,7 @@ export function EffortChip({
 	const item =
 		"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body font-medium transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3";
 	const tag = (
-		<span className="ml-auto rounded-[4px] bg-surface-3 px-1.5 text-[11px] leading-4 font-medium text-text-2">
-			Default
-		</span>
+		<span className="ml-auto text-[11px] leading-4 text-text-2">Default</span>
 	);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>

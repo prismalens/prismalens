@@ -129,7 +129,7 @@ export function DoNow({
 									className="mt-0.5 size-4 shrink-0 rounded-[4px] bg-track"
 								/>
 								<div className="min-w-0 flex-1 text-body">
-									<p>{s.title}</p>
+									<p className="font-medium">{s.title}</p>
 									<Link
 										to="/services/$id"
 										params={{ id: s.serviceId }}
@@ -162,7 +162,7 @@ export function DoNow({
 										s.done && "text-text-3",
 									)}
 								>
-									<span className={cn(s.done && "line-through")}>
+									<span className={cn("font-medium", s.done && "line-through")}>
 										<InlineCode text={s.title} />
 									</span>
 									{s.priority && !s.done && (

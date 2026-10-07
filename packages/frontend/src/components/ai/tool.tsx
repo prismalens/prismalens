@@ -37,8 +37,8 @@ export const ToolHeader = ({
 	children: ReactNode;
 	aside?: ReactNode;
 }) => (
-	<CollapsibleTrigger className="flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-control text-meta text-text-3 transition-colors duration-(--dur-instant) hover:text-text-2">
-		<ChevronRight className="size-3 shrink-0 transition-transform duration-150 group-data-[state=open]/tool:rotate-90 motion-reduce:transition-none" />
+	<CollapsibleTrigger className="flex h-6 max-w-full min-w-0 items-center gap-2 rounded-control text-body text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1">
+		<ChevronRight className="size-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]/tool:rotate-90 motion-reduce:transition-none" />
 		<span className="truncate">{children}</span>
 		{aside}
 	</CollapsibleTrigger>
@@ -50,7 +50,7 @@ export const ToolContent = ({
 }: ComponentProps<typeof CollapsibleContent>) => (
 	<CollapsibleContent
 		className={cn(
-			"mt-0.5 pl-[18px] motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0",
+			"mt-1 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0",
 			className,
 		)}
 		{...props}

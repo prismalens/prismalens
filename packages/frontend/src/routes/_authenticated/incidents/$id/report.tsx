@@ -30,6 +30,7 @@ import {
 	Gaps,
 	Grounded,
 	Integrity,
+	Now,
 	RuledOut,
 	Similar,
 	SummaryPool,
@@ -46,8 +47,9 @@ import {
 import { ago, useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { failureSentence } from "@/lib/failure-sentence";
+import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
-import { fixBrief } from "@/lib/report-view";
+import { fixBrief, nowLine, workDone, workSentence } from "@/lib/report-view";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 	component: ReportRoute,
@@ -244,6 +246,8 @@ function alertAsWritten(
 	};
 }
 
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
 /** No report: none yet, working, failed, stopped or a chat; it names the runs that have one. */
 function NoReportPage() {
 	const { incident, run, runs, investigationId, selectRun } =
@@ -251,6 +255,10 @@ function NoReportPage() {
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
 	const withReport = runs.filter((r) => r.hasReport);
+	const now = nowLine(
+		incident.alerts ?? [],
+		incident.service?.displayName || incident.service?.name || null,
+	);
 
 	let title: string;
 	let body: ReactNode = null;
@@ -261,7 +269,13 @@ function NoReportPage() {
 		body = "No run yet. Start one with + New run.";
 	} else if (run.state === "failed") {
 		const said = failureSentence(who.agent, inv.error);
-		title = "No report";
+		const words = failureWords(inv.error);
+		const work = workDone(run.events);
+		// An early failure is not a duration worth stating; a late one says what it got through.
+		const late = work.commands + work.files > 0;
+		title = late
+			? `No report. The run failed after ${formatElapsed(runElapsed(inv, null))}.`
+			: "No report";
 		body = (
 			<>
 				<StateWord tone="danger" className="text-body">
@@ -278,7 +292,16 @@ function NoReportPage() {
 					</>
 				) : (
 					said.said
-				)}
+				)}{" "}
+				{late && `It ${workSentence(work)} before it stopped.`}
+				<span className="mt-1.5 block" data-testid="report-next">
+					Next:{" "}
+					{words.what.startsWith("The agent is not signed in")
+						? `sign ${who.agent} in on this machine, then start a new run. PrismaLens never signs an agent in for you.`
+						: lowerFirst(
+								words.next ?? "read the conversation, then start a new run.",
+							)}
+				</span>
 			</>
 		);
 	} else if (run.state === "stopped") {
@@ -297,6 +320,7 @@ function NoReportPage() {
 			<div className="pool px-3.5 py-3" data-testid="report-empty">
 				<h2 className="text-heading">{title}</h2>
 				{body && <div className="mt-1 text-body text-text-2">{body}</div>}
+				<Now now={now} severity={incident.severity} className="mt-2" />
 				<p className="mt-2 text-meta text-text-2" data-testid="report-runs">
 					{withReport.length === 0 ? (
 						"No run on this incident has a report."

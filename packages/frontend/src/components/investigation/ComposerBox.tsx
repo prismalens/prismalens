@@ -28,6 +28,7 @@ import {
 	composerKeyAction,
 	talksToSession,
 } from "@/lib/composer-keys";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 
 interface Draft {
@@ -167,7 +168,8 @@ export function ComposerBox({
 			setDrafts([]);
 			setRefusal(null);
 		} catch (e) {
-			setRefusal(e instanceof Error ? e.message : String(e));
+			// The server's own reason, from an oRPC refusal's data when it has one (#531).
+			setRefusal(getErrorMessage(e));
 		} finally {
 			setSending(false);
 		}
@@ -303,7 +305,7 @@ export function ComposerBox({
 				<PromptInputFooter className="max-sm:flex-wrap">
 					<div className="relative flex min-w-0 flex-1 max-sm:basis-full max-sm:after:pointer-events-none max-sm:after:absolute max-sm:after:inset-y-0 max-sm:after:right-0 max-sm:after:w-4 max-sm:after:bg-[linear-gradient(90deg,transparent,var(--surface-1))]">
 						<PromptInputTools
-							className="-ml-2 max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
+							className="max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
 							data-testid="composer-chips"
 						>
 							{chips}
@@ -355,7 +357,7 @@ export function ComposerBox({
 									<span className="inline-flex">
 										<Button
 											variant="primary"
-											className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-3 disabled:opacity-100"
+											className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-2 disabled:opacity-100"
 											disabled={blocked || busy}
 											onClick={() => void submit("investigate")}
 											data-testid="composer-investigate"

@@ -428,7 +428,8 @@ function IncidentRowBody({
 				className="absolute top-2 left-0.5 h-3 w-[3px] rounded-full"
 				style={{
 					background:
-						glyph === "live"
+						// A working run shows on the bar even before anyone acknowledges.
+						glyph === "live" || word
 							? "var(--live)"
 							: `var(--sev-${incident.severity})`,
 				}}

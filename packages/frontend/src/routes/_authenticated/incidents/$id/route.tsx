@@ -88,10 +88,11 @@ function IncidentLayout() {
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
 	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
+	// Report opens on the newest run with a report; with none, on the newest run, so its failure shows.
 	const newest =
-		here === "report"
+		(here === "report"
 			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
-			: latestRun({ investigations: runs });
+			: null) ?? latestRun({ investigations: runs });
 	const draft =
 		search.investigation === DRAFT ||
 		(here === "conversation" && !search.investigation && runs.length === 0);
@@ -256,7 +257,8 @@ function IncidentLayout() {
 	]);
 
 	if (isLoading) return <IncidentSkeleton />;
-	if (error || !incident || !record) {
+	// A failed refetch (the run tree polls this query) keeps the page it already has.
+	if (!incident || !record) {
 		const back = (
 			<Button variant="text" size="sm" asChild>
 				<Link to="/incidents">Back to the board</Link>

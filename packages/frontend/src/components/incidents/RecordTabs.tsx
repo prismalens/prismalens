@@ -68,13 +68,13 @@ export function RecordTabs({
 
 	return (
 		<div
-			className="flex h-9 shrink-0 items-center gap-x-3 px-3 max-md:pr-4 max-md:pl-4"
+			className="flex shrink-0 flex-wrap items-center gap-x-3 px-5 md:h-9 max-md:pr-4 max-md:pl-4"
 			data-testid="record-tabs"
 		>
 			<nav
 				ref={ref}
 				aria-label="Incident"
-				className="relative flex min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] md:gap-[18px]"
+				className="relative flex h-9 min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] max-md:w-full md:gap-[18px]"
 			>
 				<Link
 					to="/incidents/$id"
@@ -117,7 +117,8 @@ export function RecordTabs({
 					/>
 				)}
 			</nav>
-			<RunChip className="ml-auto xl:hidden [[data-sidebar-folded]_&]:inline-flex" />
+			{/* On the phone the chip takes its own row, so every tab keeps its room. */}
+			<RunChip className="ml-auto max-md:mt-2 max-md:mb-1 max-md:ml-0 xl:hidden [[data-sidebar-folded]_&]:inline-flex" />
 		</div>
 	);
 }

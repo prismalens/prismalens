@@ -10,7 +10,8 @@ import { useIncidentRecord } from "@/components/incidents/record-context";
 import { useRunAgentModel } from "@/components/incidents/run-facts";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
-import { deriveTranscript } from "@/lib/investigation-events";
+import { alertsWord, gatherLine } from "@/lib/gather-line";
+import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
 import { DockedComposer } from "./DockedComposer";
 import { Transcript } from "./Transcript";
@@ -71,6 +72,18 @@ export function ConversationRoute() {
 		[events, now, run.pending, run.stopRequested, investigation, live],
 	);
 	const who = useRunAgentModel(investigation);
+	const telemetry = useTelemetryNames(incident.service?.id);
+	// Only once the run has started: before that nothing has been gathered.
+	const lead =
+		investigation && run.events.length > 0
+			? gatherLine({
+					chat: investigation.kind === "chat",
+					alerts: incident.alertCount,
+					code: pinnedTo(investigation.workspace),
+					telemetry: telemetry ?? [],
+					agent: who.agent,
+				})
+			: undefined;
 
 	return (
 		<div
@@ -121,6 +134,7 @@ export function ConversationRoute() {
 						focus={search.call}
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
+						lead={lead}
 					/>
 				)}
 			</div>
@@ -139,9 +153,8 @@ function DraftHeading() {
 	const { incident } = useIncidentRecord();
 	const telemetry = useTelemetryNames(incident.service?.id);
 	const service = incident.service?.displayName || incident.service?.name;
-	const n = incident.alertCount;
 	const parts = [
-		`${n === 0 ? "no alerts" : n === 1 ? "1 alert" : `${n} alerts`}`,
+		alertsWord(incident.alertCount),
 		service ? `${service}'s code` : "no repository",
 		...(telemetry ?? []),
 	];

@@ -67,7 +67,7 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 				>
 					<RunDot draft className={dot} />
 					<span className="min-w-0 flex-1 truncate">Draft</span>
-					<span className="shrink-0 text-text-3">Not sent</span>
+					<span className="shrink-0 text-text-2">Not sent</span>
 				</span>
 			)}
 			{runs.map((r) => {
