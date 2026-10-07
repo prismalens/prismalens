@@ -18,6 +18,7 @@
 import { randomBytes } from "node:crypto";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -34,7 +35,9 @@ import type {
 	CanonicalEvent,
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
-import { runInvestigation } from "../src/run/investigate.js";
+import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
+import { readOnlyPolicy } from "../src/run/permission.js";
+import { AcpSession } from "../src/runner/acp-client.js";
 import {
 	initializeVersion,
 	parseTranscript,
@@ -287,6 +290,53 @@ const r5 = await (async (): Promise<string> => {
 	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
 );
 console.log(`R5 resume: ${r5}`);
+
+/**
+ * R6 (OpenCode only, #791): the model in the user's own OpenCode config is the
+ * one served, and a Settings model sent over `session/set_config_option` beats it.
+ */
+const r6 = await (async (): Promise<string> => {
+	if (harness !== "opencode") return "skipped (OpenCode only)";
+	const userModel = "opencode/space-bunny-free";
+	const xdg = mkdtempSync(join(tmpdir(), "pl-r6-"));
+	mkdirSync(join(xdg, "opencode"));
+	writeFileSync(
+		join(xdg, "opencode", "opencode.json"),
+		JSON.stringify({ model: userModel }),
+	);
+	const runDir = mkdtempSync(join(tmpdir(), "pl-r6-run-"));
+	try {
+		const { env, runEnv } = prepareRunEnv({ harness, cwd: cloneDir, runDir });
+		const acp = new AcpSession({
+			command: HARNESS_REGISTRY.opencode.binary,
+			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
+			cwd: cloneDir,
+			env: { ...env, XDG_CONFIG_HOME: xdg },
+			permission: readOnlyPolicy,
+		});
+		try {
+			await acp.open();
+			const served = acp.servedModel;
+			const settingsModel = acp.models.find((m) => m.id !== userModel)?.id;
+			const took =
+				acp.modelOptionId && settingsModel
+					? await acp.setConfigOption(acp.modelOptionId, settingsModel)
+					: null;
+			const seen = `user config served ${served}; set_config_option ${settingsModel} answered ${took}`;
+			return served === userModel && took === settingsModel
+				? `pass (${seen})`
+				: `fail (${seen})`;
+		} finally {
+			await acp.close();
+		}
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+		rmSync(xdg, { recursive: true, force: true });
+	}
+})().catch(
+	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
+);
+console.log(`R6 user model: ${r6}`);
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
 	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);
@@ -295,4 +345,4 @@ if (pass && installedVersion) {
 		"no tested record: the harness reported no version in initialize",
 	);
 }
-process.exit(pass ? 0 : 1);
+process.exit(pass && !r6.startsWith("fail") ? 0 : 1);

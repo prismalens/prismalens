@@ -56,7 +56,9 @@ describe("doctor — harness detection", () => {
 		expect(selected).toMatchObject({ name: "Selected harness", pass: true });
 		expect(selected?.detail).toContain("Settings → Agent");
 		expect(model).toMatchObject({ name: "Model", pass: true });
-		expect(model?.detail).toContain("OpenCode picks its own model");
+		expect(model?.detail).toBe(
+			"OpenCode runs the model set in its own config, else its default, unless Settings → Agent → Model sets one",
+		);
 		expect(model?.detail).not.toContain("muse-spark");
 		expect(model?.detail).toContain("Settings → Agent → Model");
 	});

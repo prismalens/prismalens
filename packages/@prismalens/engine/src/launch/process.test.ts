@@ -62,11 +62,13 @@ describe("buildChildEnv (ADR 0004 §5)", () => {
 	});
 
 	it("keeps an agent config dir the user relocated (#650)", () => {
+		vi.stubEnv("XDG_CONFIG_HOME", "/home/dev/.config-alt");
 		vi.stubEnv("CLAUDE_CONFIG_DIR", "/home/dev/.config/claude");
 		vi.stubEnv("CODEX_HOME", "/home/dev/.codex-alt");
 		const env = buildChildEnv();
 		expect(env.CLAUDE_CONFIG_DIR).toBe("/home/dev/.config/claude");
 		expect(env.CODEX_HOME).toBe("/home/dev/.codex-alt");
+		expect(env.XDG_CONFIG_HOME).toBe("/home/dev/.config-alt");
 	});
 
 	it("skips undefined caller entries instead of stringifying them", () => {
