@@ -111,6 +111,8 @@ export interface WslProbe {
 	lock: WorkspaceLockState;
 	/** The workspace's own port; null before its first `pl up`. */
 	port: number | null;
+	/** The workspace's instance id, from the same `instance.json`. */
+	instanceId: string | null;
 }
 
 export function parseProbe(stdout: string): WslProbe {
@@ -151,6 +153,10 @@ export function parseProbe(stdout: string): WslProbe {
 		hasService: fields.get("service") === "1",
 		lock,
 		port,
+		instanceId:
+			typeof instance?.instanceId === "string" && instance.instanceId
+				? instance.instanceId
+				: null,
 	};
 }
 
@@ -195,20 +201,35 @@ export function wslPairOperator(distro: string | null): WslRun {
 	return run(distro, "pl pair --operator\n");
 }
 
-export function wslMissingPl(distro: string | null): {
+const RUN_ON_WINDOWS = "Run on Windows instead";
+
+export const MISSING_PL_BUTTONS = [RUN_ON_WINDOWS, "Retry", "Quit"] as const;
+
+/** No `pl` in the distro (#673 w49); `defaultName` names WSL's default distro when known. */
+export function wslMissingPl(
+	distro: string | null,
+	defaultName: string | null = null,
+): {
 	message: string;
 	detail: string;
+	buttons: string[];
 } {
-	const where = distro ? `the ${distro} WSL distro` : "the default WSL distro";
+	const where = distro
+		? `the ${distro} WSL distro`
+		: defaultName
+			? `the default WSL distro (${defaultName})`
+			: "the default WSL distro";
 	return {
 		message: `PrismaLens is not installed in ${where}`,
-		detail: `Install it there (npm install -g prismalens) so \`pl\` is on the login shell's PATH, or turn off "${WSL_TOGGLE_LABEL}" in the tray menu.`,
+		detail:
+			"Install it there (npm install -g prismalens) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead.",
+		buttons: [...MISSING_PL_BUTTONS],
 	};
 }
 
 export const NOTHING_RUNNING_BUTTONS = [
 	"Retry",
-	"Use the Windows copy",
+	RUN_ON_WINDOWS,
 	"Quit",
 ] as const;
 
@@ -230,19 +251,47 @@ export type NothingRunningChoice =
 	| { kind: "relaunch"; settings: WslSettings }
 	| { kind: "quit" };
 
-/** What the dialog's button index means; "Use the Windows copy" turns the switch off. */
-export function nothingRunningChoice(
+function wslDialogChoice(
 	settings: WslSettings,
-	response: number,
+	label: string | undefined,
 ): NothingRunningChoice {
-	switch (NOTHING_RUNNING_BUTTONS[response]) {
+	switch (label) {
 		case "Retry":
 			return { kind: "retry" };
-		case "Use the Windows copy":
+		case RUN_ON_WINDOWS:
 			return { kind: "relaunch", settings: { ...settings, enabled: false } };
 		default:
 			return { kind: "quit" };
 	}
+}
+
+/** What the dialog's button index means; "Run on Windows instead" turns the switch off. */
+export function nothingRunningChoice(
+	settings: WslSettings,
+	response: number,
+): NothingRunningChoice {
+	return wslDialogChoice(settings, NOTHING_RUNNING_BUTTONS[response]);
+}
+
+/** The same for the missing-`pl` dialog, whose buttons come in another order. */
+export function missingPlChoice(
+	settings: WslSettings,
+	response: number,
+): NothingRunningChoice {
+	return wslDialogChoice(settings, MISSING_PL_BUTTONS[response]);
+}
+
+/** The Windows copy's port is held by the PrismaLens running in WSL (#673 w50). */
+export function portTakenByWslDialog(input: {
+	port: number;
+	distro: string | null;
+}): { message: string; detail: string; buttons: string[] } {
+	return {
+		message: `Port ${input.port} is used by the PrismaLens running in WSL (${input.distro ?? "the default distro"})`,
+		detail:
+			"Use it from this app, or stop it in WSL and relaunch to run a Windows copy here.",
+		buttons: ["Use the PrismaLens in WSL", "Quit"],
+	};
 }
 
 export const WSL_TOGGLE_LABEL = "Use PrismaLens in WSL";
