@@ -37,26 +37,14 @@ export type HarnessSelectionFailure =
 
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
-/** What the agent may touch, named by reach (r4 R4.1); the gate in `permission.ts` enforces each. */
-export const PERMISSION_MODES = [
-	"read-only",
-	"read-only-tools",
-	"workspace-write",
-	"full-access",
-] as const;
-export type PermissionMode = (typeof PERMISSION_MODES)[number];
+/**
+ * The reserved mode id that asks for no mode: `session/set_mode` is never
+ * called and the run records what the agent reports as current (#673 w21).
+ */
+export const AGENT_DEFAULT_MODE = "agent-default";
 
-/** A harness's own second layer at one access level, set beside the gate. */
-export interface HarnessAccess {
-	/** The layer this level sets, recorded on the run as `fidelity.mechanism`. */
-	mechanism: string;
-	/** Merged over `acpEnv`. */
-	env?: Record<string, string>;
-	/** Deep-merged into every JSON file `configFiles` writes. */
-	configPatch?: Record<string, unknown>;
-	/** ACP session mode id set after `session/new` when offered; null when the harness has none. */
-	mode?: string | null;
-}
+/** How a mode reaches the agent: ACP `session/set_mode` (or its `mode` option), an env var at spawn, or not at all. */
+export type ModeMechanism = "acp" | "env" | "none";
 
 /**
  * Per-run environment for the harness child. Config is isolated to what
@@ -102,18 +90,13 @@ export interface HarnessDescriptor {
 	 * schema twice). Recorded per run with its source in `RunFidelity`.
 	 */
 	defaultModel?: string;
-	readOnlyFidelity: PermissionFidelity;
-	/** The harness's own layer per access level (r4 R4.1); the gate enforces every level regardless. */
-	access: Record<PermissionMode, HarnessAccess>;
-	/** An OS sandbox the operator can switch on at the read levels; off by default (r4 R4.1 rev, option B). */
-	sandbox?: {
-		settingKey: "codexSandbox";
-		/** The env var `onMode` and `offMode` are written to. */
-		envKey: "INITIAL_AGENT_MODE";
-		onMode: "read-only";
-		offMode: "agent-full-access";
-		onMechanism: string;
-	};
+	/** The agent's own permission mode a run asks for when the operator set none (#673 w21). */
+	defaultMode: string;
+	modeMechanism: ModeMechanism;
+	/** For `env`: the variable the mode id is written to before spawn. */
+	modeEnvKey?: string;
+	/** Modes the agent enforces with an OS sandbox that has no network. */
+	sandboxedModes?: readonly string[];
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
 	tested?: { version: string; date: string };
 	/**
@@ -154,14 +137,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"opencode.json": JSON.stringify(
 				{
 					$schema: "https://opencode.ai/config.json",
-					permission: {
-						edit: "deny",
-						bash: "ask",
-						webfetch: "deny",
-						websearch: "deny",
-						external_directory: "deny",
-					},
-					// Without it a refused tool ends the turn, so a read-only run rarely reaches its report (#639 finding 1).
+					// Without it a refused tool ends the turn, so a plan-mode run rarely reaches its report (#639 finding 1).
 					experimental: { continue_loop_on_deny: true },
 					share: "disabled",
 				},
@@ -189,35 +165,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		readOnlyFidelity: "cooperative",
-		access: {
-			"read-only": {
-				mechanism:
-					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
-			},
-			"read-only-tools": {
-				mechanism:
-					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
-			},
-			"workspace-write": {
-				mechanism:
-					"opencode.json edit/bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
-				configPatch: { permission: { edit: "ask" } },
-			},
-			"full-access": {
-				mechanism:
-					"opencode.json edit, bash, webfetch, websearch, external_directory allowed; PrismaLens allows every request it sees and logs it",
-				configPatch: {
-					permission: {
-						edit: "allow",
-						bash: "allow",
-						webfetch: "allow",
-						websearch: "allow",
-						external_directory: "allow",
-					},
-				},
-			},
-		},
+		// OpenCode offers its agents as the ACP `mode` config option; `plan` denies edits only.
+		defaultMode: "plan",
+		modeMechanism: "acp",
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "acp",
 		loginHint: "`opencode auth login`, or a provider key in env",
@@ -251,30 +201,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		envModelKey: "ANTHROPIC_MODEL",
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
-		readOnlyFidelity: "cooperative",
-		// `plan` is never set: it rewrites the system prompt into planning (r4 R4.1).
-		access: {
-			"read-only": {
-				mechanism:
-					"mode default; ACP session/request_permission answered by PrismaLens; settingSources: [] keeps repo settings and hooks inert",
-				mode: "default",
-			},
-			"read-only-tools": {
-				mechanism:
-					"mode default; ACP session/request_permission answered by PrismaLens; settingSources: [] keeps repo settings and hooks inert",
-				mode: "default",
-			},
-			"workspace-write": {
-				mechanism:
-					"mode default; ACP session/request_permission answered by PrismaLens; settingSources: [] keeps repo settings and hooks inert",
-				mode: "default",
-			},
-			"full-access": {
-				mechanism:
-					"mode bypassPermissions; PrismaLens allows every request it sees and logs it; settingSources: []",
-				mode: "bypassPermissions",
-			},
-		},
+		// `plan` is never the default: it rewrites the system prompt into planning (r4 R4.1).
+		defaultMode: "default",
+		modeMechanism: "acp",
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
 		modelVia: "acp",
@@ -295,38 +224,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
 		install:
 			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
-		readOnlyFidelity: "cooperative",
-		// codex-acp 1.13.1 mode ids are read-only, agent and agent-full-access; its
-		// read-only and agent modes are both a workspace-write sandbox with no network.
-		access: {
-			"read-only": {
-				mechanism:
-					"Codex sandbox off (agent-full-access); PrismaLens gate only",
-				env: { INITIAL_AGENT_MODE: "agent-full-access" },
-			},
-			"read-only-tools": {
-				mechanism:
-					"Codex sandbox off (agent-full-access); PrismaLens gate only",
-				env: { INITIAL_AGENT_MODE: "agent-full-access" },
-			},
-			"workspace-write": {
-				mechanism:
-					"Codex agent mode (workspace-write sandbox, no network) plus PrismaLens gate",
-				env: { INITIAL_AGENT_MODE: "agent" },
-			},
-			"full-access": {
-				mechanism:
-					"Codex agent-full-access; PrismaLens allows every request it sees and logs it",
-				env: { INITIAL_AGENT_MODE: "agent-full-access" },
-			},
-		},
-		sandbox: {
-			settingKey: "codexSandbox",
-			envKey: "INITIAL_AGENT_MODE",
-			onMode: "read-only",
-			offMode: "agent-full-access",
-			onMechanism: "Codex read-only sandbox (no network)",
-		},
+		// codex-acp 1.13.1 mode ids are read-only, agent and agent-full-access; read-only is its OS sandbox with no network.
+		defaultMode: "read-only",
+		modeMechanism: "env",
+		modeEnvKey: "INITIAL_AGENT_MODE",
+		sandboxedModes: ["read-only"],
 		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "1.13.1", date: "2026-09-24" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
@@ -347,29 +249,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
-		readOnlyFidelity: "cooperative",
-		access: {
-			"read-only": {
-				mechanism:
-					"approval mode plan when offered; ACP permission answers; GEMINI_CLI_TRUST_WORKSPACE=false keeps repo config inert",
-				mode: "plan",
-			},
-			"read-only-tools": {
-				mechanism:
-					"approval mode plan when offered; ACP permission answers; GEMINI_CLI_TRUST_WORKSPACE=false keeps repo config inert",
-				mode: "plan",
-			},
-			"workspace-write": {
-				mechanism:
-					"approval mode default when offered; ACP permission answers; GEMINI_CLI_TRUST_WORKSPACE=false keeps repo config inert",
-				mode: "default",
-			},
-			"full-access": {
-				mechanism:
-					"approval mode yolo when offered; PrismaLens allows every request it sees and logs it",
-				mode: "yolo",
-			},
-		},
+		defaultMode: "plan",
+		modeMechanism: "acp",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		resume: true,
@@ -387,17 +268,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// not yet re-checked against `dcode`, which may read more providers.
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
-		readOnlyFidelity: "cooperative",
-		// No modes over ACP (deepagents #4254): the gate is the only layer.
-		access: {
-			"read-only": { mechanism: "enforced by PrismaLens only; --no-mcp" },
-			"read-only-tools": { mechanism: "enforced by PrismaLens only; --no-mcp" },
-			"workspace-write": { mechanism: "enforced by PrismaLens only; --no-mcp" },
-			"full-access": {
-				mechanism:
-					"PrismaLens allows every request it sees and logs it; --no-mcp",
-			},
-		},
+		// No modes over ACP (deepagents #4254).
+		defaultMode: AGENT_DEFAULT_MODE,
+		modeMechanism: "none",
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
@@ -501,53 +374,32 @@ export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
 ) as Record<HarnessId, string>;
 
-export interface PermissionOutcome {
-	mode: PermissionMode;
-	fidelity: PermissionFidelity;
-	mechanism: string;
-	env: Record<string, string>;
-	configPatch?: Record<string, unknown>;
-	agentMode: string | null;
+/** The mode a run asks for: the operator's per-agent setting, else the row's default. */
+export function resolveAgentMode(
+	harnessId: HarnessId,
+	setting?: string | null,
+): string {
+	return setting?.trim() || HARNESS_REGISTRY[harnessId].defaultMode;
 }
 
-/**
- * The sandbox switch when the operator has not set it: on. codex-acp 1.13.1's
- * agent-full-access mode runs with approvals "never", so Codex would ask the gate nothing; held at on pending the operator.
- */
-export const SANDBOX_DEFAULT = true;
-
-/** The read levels, where a harness sandbox switch applies. */
-const READ_LEVELS: ReadonlySet<PermissionMode> = new Set([
-	"read-only",
-	"read-only-tools",
-]);
-
-/**
- * The second layer a run at `mode` gets on `harnessId`. `sandbox` is the
- * operator's switch for a row that has one; it changes the read levels only.
- */
-export function resolvePermissionOutcome(
+/** Env a row with `modeMechanism: "env"` takes the mode through; empty otherwise. */
+export function agentModeEnv(
 	harnessId: HarnessId,
-	mode: PermissionMode = "read-only",
-	options: { sandbox?: boolean } = {},
-): PermissionOutcome {
+	mode: string,
+): Record<string, string> {
 	const row = HARNESS_REGISTRY[harnessId];
-	const access = row.access[mode];
-	const sandbox =
-		(options.sandbox ?? SANDBOX_DEFAULT) && READ_LEVELS.has(mode)
-			? row.sandbox
-			: null;
-	return {
-		mode,
-		// Only an OS sandbox the operator switched on is a boundary (r4 R4.1 rev).
-		fidelity: sandbox ? "enforced" : row.readOnlyFidelity,
-		mechanism: sandbox ? sandbox.onMechanism : access.mechanism,
-		env: sandbox
-			? { ...access.env, [sandbox.envKey]: sandbox.onMode }
-			: { ...access.env },
-		...(access.configPatch ? { configPatch: access.configPatch } : {}),
-		agentMode: access.mode ?? null,
-	};
+	if (row.modeMechanism !== "env" || !row.modeEnvKey) return {};
+	if (mode === AGENT_DEFAULT_MODE) return {};
+	return { [row.modeEnvKey]: mode };
+}
+
+/** `enforced` only where the agent's own OS sandbox holds the mode; every other mode is the agent's word. */
+export function modeFidelity(
+	harnessId: HarnessId,
+	mode: string | null,
+): PermissionFidelity {
+	const sandboxed = HARNESS_REGISTRY[harnessId].sandboxedModes ?? [];
+	return mode && sandboxed.includes(mode) ? "enforced" : "cooperative";
 }
 
 /**

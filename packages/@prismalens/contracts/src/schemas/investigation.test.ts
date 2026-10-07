@@ -40,6 +40,13 @@ describe("RunFidelitySchema", () => {
 		expect("placement" in parsed).toBe(false);
 		expect("sandbox" in parsed).toBe(false);
 	});
+
+	it("reads an access level stored since #778 as the nearest agent mode, and takes any agent mode id (#673 w21)", () => {
+		const base = { harness: "codex", fidelity: "cooperative", mechanism: "agent" };
+		expect(RunFidelitySchema.parse({ ...base, mode: "read-only-tools" }).mode).toBe("read-only");
+		expect(RunFidelitySchema.parse({ ...base, mode: "workspace-write" }).mode).toBe("full-access");
+		expect(RunFidelitySchema.parse({ ...base, mode: "acceptEdits" }).mode).toBe("acceptEdits");
+	});
 });
 
 describe("CulpritSchema and InvestigationReportSchema culprit (ADR-0026)", () => {

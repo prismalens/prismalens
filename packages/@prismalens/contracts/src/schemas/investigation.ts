@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { PERMISSION_MODES } from "@prismalens/config/harness";
 /**
  * Investigation, Agent Execution, and Tool Execution schemas
  */
@@ -92,14 +91,20 @@ export const NextStepSchema = z.object({
 	priority: RecommendationPrioritySchema.nullable().optional(),
 });
 
+/** Access levels stored before #673 w21, read as the nearest agent mode word. */
+const LEGACY_ACCESS_MODE: Record<string, string> = {
+	"read-only-tools": "read-only",
+	"workspace-write": "full-access",
+};
+
 /**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
 export const RunFidelitySchema = z.object({
 	harness: z.string(),
-	/** The access level the run was given (r4 R4.1); older records all read "read-only". */
-	mode: z.enum(PERMISSION_MODES),
+	/** The agent's own mode id the run ran in (#673 w21); records from #778 carry the old access level. */
+	mode: z.preprocess((v) => LEGACY_ACCESS_MODE[v as string] ?? v, z.string()),
 	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
 	mechanism: z.string(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
@@ -255,8 +260,8 @@ export const InvestigationSchema = z.object({
 	resumeBlockedReason: z.string().nullable().optional(),
 	/** A stopped run whose session can be reopened and taken on to a report (R4.4). */
 	continuable: z.boolean().optional(),
-	/** The access level the run was given (r4 R4.1); absent on runs from before it was recorded. */
-	access: z.enum(PERMISSION_MODES).nullable().optional(),
+	/** That mode's name as the agent's last readiness check listed it; the id when it listed none. */
+	agentModeName: z.string().nullable().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -839,8 +844,8 @@ export const InvestigationJobDataSchema = z.object({
 	alerts: z.array(FiringAlertSchema).optional(),
 	/** The operator's brief for the agent (#743). */
 	brief: z.string().max(4000).optional(),
-	/** What the agent may touch (r4 R4.1); Read-only when absent. */
-	access: z.enum(PERMISSION_MODES).optional(),
+	/** The agent's own mode id (#673 w21); the agent's row default when absent, a queued legacy job included. */
+	agentMode: z.string().max(64).optional(),
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),
 	/** `chat`: a conversation `chat.text` started; it ends with no report (#673). */

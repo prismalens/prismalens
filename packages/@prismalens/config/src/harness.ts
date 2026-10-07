@@ -2,13 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 export {
+	AGENT_DEFAULT_MODE,
+	agentModeEnv,
 	getHarnessProviderKeys,
 	HARNESS_AUTO_ORDER,
 	HARNESS_BINARY,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	HARNESS_SELECTION_FAILURES,
-	type HarnessAccess,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
@@ -16,16 +17,14 @@ export {
 	harnessEnvModel,
 	MODEL_SOURCES,
 	type ModelSource,
-	PERMISSION_MODES,
+	type ModeMechanism,
+	modeFidelity,
 	type PermissionFidelity,
-	type PermissionMode,
-	type PermissionOutcome,
 	type ResolvedModel,
 	refuseModel,
+	resolveAgentMode,
 	resolveHarnessModel,
-	resolvePermissionOutcome,
 	resumeBlockedReason,
-	SANDBOX_DEFAULT,
 } from "./providers/harness.js";
 export {
 	annotateModel,
