@@ -9,8 +9,6 @@ import {
 	proveCwd,
 	redactNonce,
 	initializeVersion,
-	configLayered,
-	lastMatch,
 	type WireLine,
 } from "./admission-checks.js";
 
@@ -214,36 +212,5 @@ describe("initializeVersion", () => {
 			{ t: 2, d: "in", m: "plain text" },
 		];
 		expect(initializeVersion(lines)).toBeNull();
-	});
-});
-
-describe("configLayered (R6)", () => {
-	const rule = (permission: string, action: string, pattern = "*") => ({ permission, action, pattern });
-	const model = "opencode/space-bunny-free";
-
-	it("Given the user's model and the overlay's deny last, Then both hold", () => {
-		const rules = [rule("*", "allow"), rule("edit", "allow"), rule("edit", "deny")];
-		expect(configLayered({ config: { model }, rules }, model)).toEqual({ model: true, editDenied: true });
-	});
-
-	it("Given another model and the user's per-agent allow after the overlay's deny, Then neither holds", () => {
-		const rules = [rule("edit", "deny"), rule("edit", "allow")];
-		expect(configLayered({ config: { model: "opencode/big-pickle" }, rules }, model)).toEqual({
-			model: false,
-			editDenied: false,
-		});
-	});
-
-	it("Given no model and a wildcard allow after the deny, Then neither holds", () => {
-		const rules = [rule("edit", "deny"), rule("*", "allow")];
-		expect(configLayered({ config: {}, rules }, model)).toEqual({ model: false, editDenied: false });
-	});
-
-	it("matches OpenCode's wildcards in the permission and the pattern, last rule winning", () => {
-		const rules = [rule("ed*", "allow"), rule("read", "ask", "*.env"), rule("read", "allow")];
-		expect(lastMatch(rules, "edit")).toBe("allow");
-		expect(lastMatch(rules, "read", ".env")).toBe("allow");
-		expect(lastMatch([rule("read", "allow"), rule("read", "ask", "*.env")], "read", "a.env")).toBe("ask");
-		expect(lastMatch([], "edit")).toBe("ask");
 	});
 });

@@ -136,50 +136,14 @@ export interface HarnessDescriptor {
 	resume: boolean;
 }
 
-/**
- * The agent an OpenCode run uses. The overlay writes every key of its permission object, "*" first,
- * so a user key appends after ours and never reorders them; subagents stay off (Step 0, #791).
- */
-const OPENCODE_AGENT_PERMISSION = {
-	"*": "deny",
-	read: {
-		"*": "allow",
-		"*.env": "ask",
-		"*.env.*": "ask",
-		"*.env.example": "allow",
-	},
-	glob: "allow",
-	grep: "allow",
-	list: "allow",
-	lsp: "allow",
-	todowrite: "allow",
-	todoread: "allow",
-	skill: "allow",
-	question: "allow",
-	doom_loop: "ask",
-	plan_enter: "deny",
-	plan_exit: "deny",
-	task: "deny",
-	edit: "deny",
-	bash: "ask",
-	webfetch: "deny",
-	websearch: "deny",
-	external_directory: "deny",
-};
-
-const opencodePatch = (permission: Record<string, string>) => ({
-	permission,
-	agent: { prismalens: { permission } },
-});
-
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
 		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
-		// The user's global opencode config stays visible on purpose (ADR 0003 §2): their model and providers apply.
-		// OPENCODE_CONFIG_DIR loads after it, so PrismaLens's permissions still win; the repo's own config stays off. #791
+		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
+		// The boundary is the untrusted repo (ADR 0004), and every run works in a throwaway clone. #791
 		acpEnv: ({ configDir }) => ({
 			OPENCODE_CONFIG_DIR: configDir,
 			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
@@ -196,16 +160,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 						webfetch: "deny",
 						websearch: "deny",
 						external_directory: "deny",
-					},
-					default_agent: "prismalens",
-					agent: {
-						prismalens: {
-							mode: "primary",
-							// A user's `disable: true` here would drop the run back onto `build`, which their config can open.
-							disable: false,
-							description: "A PrismaLens investigation run",
-							permission: OPENCODE_AGENT_PERMISSION,
-						},
 					},
 					// Without it a refused tool ends the turn, so a read-only run rarely reaches its report (#639 finding 1).
 					experimental: { continue_loop_on_deny: true },
@@ -239,28 +193,29 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		access: {
 			"read-only": {
 				mechanism:
-					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory, subagents denied; repo config disabled",
+					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
 			},
 			"read-only-tools": {
 				mechanism:
-					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory, subagents denied; repo config disabled",
+					"opencode.json edit denied, bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
 			},
 			"workspace-write": {
 				mechanism:
-					"opencode.json edit/bash=ask answered by PrismaLens; webfetch, websearch, external_directory, subagents denied; repo config disabled",
-				configPatch: opencodePatch({ edit: "ask" }),
+					"opencode.json edit/bash=ask answered by PrismaLens; webfetch, websearch, external_directory denied; repo config disabled",
+				configPatch: { permission: { edit: "ask" } },
 			},
 			"full-access": {
 				mechanism:
-					"opencode.json edit, bash, webfetch, websearch, external_directory, subagents allowed; PrismaLens allows every request it sees and logs it",
-				configPatch: opencodePatch({
-					edit: "allow",
-					bash: "allow",
-					webfetch: "allow",
-					websearch: "allow",
-					external_directory: "allow",
-					task: "allow",
-				}),
+					"opencode.json edit, bash, webfetch, websearch, external_directory allowed; PrismaLens allows every request it sees and logs it",
+				configPatch: {
+					permission: {
+						edit: "allow",
+						bash: "allow",
+						webfetch: "allow",
+						websearch: "allow",
+						external_directory: "allow",
+					},
+				},
 			},
 		},
 		tested: { version: "1.18.30", date: "2026-09-20" },

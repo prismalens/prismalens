@@ -606,14 +606,10 @@ describe("the run's access level (r4 R4.1)", () => {
 		const runDir = tmp("run");
 		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, access: "full-access" });
 		const config = JSON.parse(readFileSync(join(runDir, "config", "opencode.json"), "utf8"));
-		const open = { edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow", task: "allow" };
-		expect(config.permission).toEqual(open);
-		expect(config.agent.prismalens.permission).toMatchObject(open);
+		expect(config.permission).toEqual({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" });
 		const readOnly = tmp("run");
 		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir: readOnly });
-		const closed = JSON.parse(readFileSync(join(readOnly, "config", "opencode.json"), "utf8"));
-		expect(closed.permission.edit).toBe("deny");
-		expect(closed.agent.prismalens.permission).toMatchObject({ edit: "deny", task: "deny" });
+		expect(JSON.parse(readFileSync(join(readOnly, "config", "opencode.json"), "utf8")).permission.edit).toBe("deny");
 	});
 
 	it("Given Codex's sandbox on at a read level, Then What we could not check names it", async () => {
