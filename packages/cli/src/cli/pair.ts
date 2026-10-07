@@ -214,7 +214,7 @@ export async function pairRefusal(
 		});
 		if (remote.kind === "ok") {
 			options.onWarn?.(
-				`This machine can't resolve ${host} (no MagicDNS here, common under WSL). Checked the server through its tailscale serve route instead.`,
+				`This machine can't resolve ${host} (no MagicDNS here, common under WSL). The local server accepted ${host} as its host, but whether other devices can reach it was not checked.`,
 			);
 		}
 	}

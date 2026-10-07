@@ -205,11 +205,15 @@ export function readLastLogLines(logPath: string, maxLines = 20): string[] {
 
 const ERROR_LINE = /\b(error|fatal|exception|failed|cannot|E[A-Z]{3,})\b/i;
 
-/** Pairing links and tokens a trial prints to its console; the reason is stored and shown later (#673). */
+/**
+ * Pairing links and tokens a trial prints to its console; the reason is stored and shown later (#673).
+ * A bare token is 43 base64url chars: generateToken() in @prismalens/auth.
+ */
 export function redactSecrets(line: string): string {
 	return line
 		.replace(/(\/pair)#[^\s"'<>]+/g, "$1#[redacted]")
-		.replace(/(token["']?\s*[=:]\s*["']?)[^\s"'&,}]+/gi, "$1[redacted]");
+		.replace(/(token["']?\s*[=:]\s*["']?)[^\s"'&,}]+/gi, "$1[redacted]")
+		.replace(/(?<![\w-])[\w-]{43}(?![\w-])/g, "[redacted]");
 }
 
 /**
