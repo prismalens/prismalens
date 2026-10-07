@@ -81,6 +81,34 @@ describe("reportToMarkdown", () => {
 		expect([...order].sort((a, b) => a - b)).toEqual(order);
 	});
 
+	it("carries the actual cause a person recorded, after the root cause (#673 w41)", () => {
+		const md = reportToMarkdown({
+			incident: {
+				number: 7,
+				title: "Checkout 500s",
+				actualCause: "A cron job held every pool connection",
+				actualCauseCategory: "infrastructure",
+				closedAt: new Date("2026-09-20T08:00:00Z"),
+			},
+			report: REPORT,
+			completedAt: null,
+		});
+		expect(md).toContain(
+			"## Actual cause (recorded by a person)\n\nA cron job held every pool connection\n\nCategory: Infrastructure. Recorded on close, 2026-09-20T08:00:00.000Z.\n",
+		);
+		expect(md.indexOf("## Actual cause")).toBeGreaterThan(md.indexOf("## Root cause"));
+		expect(md.indexOf("## Actual cause")).toBeLessThan(md.indexOf("## Hypotheses"));
+	});
+
+	it("has no actual-cause section when none was recorded", () => {
+		const md = reportToMarkdown({
+			incident: { number: 7, title: "Checkout 500s", actualCause: null },
+			report: REPORT,
+			completedAt: null,
+		});
+		expect(md).not.toContain("Actual cause");
+	});
+
 	it("names the agent's version and where the model came from", () => {
 		const md = reportToMarkdown({
 			incident: { number: 7, title: "Checkout 500s" },

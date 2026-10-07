@@ -78,6 +78,10 @@ export type InvestigationWithRelations = Investigation & {
 		title: string;
 		severity: string;
 		status: string;
+		/** Selected by findById only, for the report export (#673 w41). */
+		actualCause?: string | null;
+		actualCauseCategory?: string | null;
+		closedAt?: Date | null;
 	};
 	recommendations: Recommendation[];
 };
@@ -196,6 +200,9 @@ export class InvestigationsService {
 						title: true,
 						severity: true,
 						status: true,
+						actualCause: true,
+						actualCauseCategory: true,
+						closedAt: true,
 					},
 				},
 				recommendations: {

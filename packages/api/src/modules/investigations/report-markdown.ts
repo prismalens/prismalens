@@ -14,10 +14,18 @@ import {
 	MODEL_SOURCE_LABEL,
 	modelSubstituted,
 	ROOT_CAUSE_CATEGORY_LABEL,
+	RootCauseCategorySchema,
 } from "@prismalens/contracts";
 
 export interface ReportMarkdownInput {
-	incident: { number: number; title: string };
+	incident: {
+		number: number;
+		title: string;
+		/** What a person recorded on Resolve (#338); the export carries it (#673 w41). */
+		actualCause?: string | null;
+		actualCauseCategory?: string | null;
+		closedAt?: Date | null;
+	};
 	report: InvestigationReport;
 	completedAt: Date | null;
 }
@@ -45,6 +53,27 @@ export function reportToMarkdown({
 			? ` (${ROOT_CAUSE_CATEGORY_LABEL[report.rootCauseCategory]})`
 			: "";
 		out.push(`## Root cause${category}`, "", report.rootCause, "");
+	}
+
+	if (incident.actualCause) {
+		const parsed = RootCauseCategorySchema.safeParse(
+			incident.actualCauseCategory,
+		);
+		const facts = [
+			parsed.success
+				? `Category: ${ROOT_CAUSE_CATEGORY_LABEL[parsed.data]}.`
+				: null,
+			incident.closedAt
+				? `Recorded on close, ${incident.closedAt.toISOString()}.`
+				: null,
+		].filter((f): f is string => f !== null);
+		out.push(
+			"## Actual cause (recorded by a person)",
+			"",
+			incident.actualCause,
+			"",
+			...(facts.length > 0 ? [facts.join(" "), ""] : []),
+		);
 	}
 
 	if (report.hypotheses.length > 0) {
