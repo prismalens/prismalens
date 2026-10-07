@@ -190,7 +190,12 @@ export function headlineAddsInfo(h: Headline): boolean {
  * what the list payload carries: the latest run, the recorded cause.
  */
 export function incidentHeadline(incident: IncidentWithRelations): Headline {
-	const run = latestRun(incident);
+	const newest = latestRun(incident);
+	// A live chat speaks; an ended one leaves the headline to the investigation (#673).
+	const run =
+		newest?.kind === "chat" && !isWorkflowLive(newest.status)
+			? (newestRun(incident, { kind: "investigation" }) ?? newest)
+			: newest;
 	// A run started after Resolve speaks for the incident again.
 	const endedAt = incident.closedAt ?? incident.resolvedAt;
 	const runAfterEnd =

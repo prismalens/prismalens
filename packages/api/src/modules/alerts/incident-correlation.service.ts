@@ -136,27 +136,31 @@ export class IncidentCorrelationService {
 
 		// The same alert's last incident, when it ended: the new one names it
 		// so a refire after Close reads as a second outage, not a swallowed one (walk f32).
-		// dedupKey too: the fingerprint hashes the description, which can change (#673 w43).
+		// dedupKey first: the fingerprint hashes the description, which can change
+		// (#673 w43), and a shared fingerprint must not pick another alert's incident.
 		const identity = [
 			...(alert.dedupKey ? [{ dedupKey: alert.dedupKey }] : []),
 			...(alert.fingerprint ? [{ fingerprint: alert.fingerprint }] : []),
 		];
-		const prior =
-			identity.length > 0
-				? await this.prisma.alert.findFirst({
-						where: {
-							OR: identity,
-							id: { not: alert.id },
-							incidentId: { not: null },
-							incident: {
-								status: { in: [...ENDED_INCIDENT_STATUSES] },
-								serviceId: alert.serviceId ?? null,
-							},
-						},
-						include: { incident: true },
-						orderBy: { triggeredAt: "desc" },
-					})
-				: null;
+		const endedMatch = (match: (typeof identity)[number]) =>
+			this.prisma.alert.findFirst({
+				where: {
+					...match,
+					id: { not: alert.id },
+					incidentId: { not: null },
+					incident: {
+						status: { in: [...ENDED_INCIDENT_STATUSES] },
+						serviceId: alert.serviceId ?? null,
+					},
+				},
+				include: { incident: true },
+				orderBy: { triggeredAt: "desc" },
+			});
+		let prior: Awaited<ReturnType<typeof endedMatch>> = null;
+		for (const match of identity) {
+			prior = await endedMatch(match);
+			if (prior) break;
+		}
 		const incident = await this.incidentsService.create({
 			title: alert.title,
 			description: alert.description ?? undefined,
