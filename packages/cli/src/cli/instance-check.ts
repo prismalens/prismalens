@@ -7,6 +7,8 @@
  * Accident prevention, not authentication: the instance id is public.
  */
 
+import { request } from "node:http";
+
 export type IdentityOutcome =
 	| { kind: "ok" }
 	| { kind: "not-running" }
@@ -58,6 +60,36 @@ export async function probeInstance(
 				kind: "different-instance",
 				instanceId: typeof id === "string" ? id : null,
 			};
+}
+
+/**
+ * A plain-HTTP GET that sends `host` as the Host header, which fetch() will not
+ * set. It stands in for the request `tailscale serve` forwards locally (#673).
+ */
+export function fetchWithHost(host: string): typeof fetch {
+	return ((input: string | URL, init?: RequestInit) =>
+		new Promise<Response>((resolve, reject) => {
+			const req = request(
+				input,
+				{ headers: { host }, signal: init?.signal ?? undefined },
+				(res) => {
+					const chunks: Buffer[] = [];
+					res.on("data", (chunk: Buffer) => chunks.push(chunk));
+					res.on("end", () => {
+						const status = res.statusCode ?? 500;
+						const empty = [204, 205, 304].includes(status);
+						resolve(
+							new Response(empty ? null : Buffer.concat(chunks), { status }),
+						);
+					});
+					res.on("error", reject);
+				},
+			);
+			req.on("error", (error) =>
+				reject(new TypeError("fetch failed", { cause: error })),
+			);
+			req.end();
+		})) as typeof fetch;
 }
 
 function pidAlive(pid: number): boolean {

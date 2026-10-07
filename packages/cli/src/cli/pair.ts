@@ -13,6 +13,7 @@ import consola from "consola";
 import {
 	checkIdentity,
 	describeOutcome,
+	fetchWithHost,
 	lockBase,
 	type ProbeOptions,
 	probeInstance,
@@ -94,17 +95,19 @@ export default defineCommand({
 			}
 		}
 		const { origin, loopback } = resolveOrigin(address, lock.port);
-		const refusal = await pairRefusal({
-			lock,
-			instanceId: readInstanceFile(workspaceDir)?.instanceId ?? null,
-			address: address ? origin : null,
-		});
+		const refusal = await pairRefusal(
+			{
+				lock,
+				instanceId: readInstanceFile(workspaceDir)?.instanceId ?? null,
+				address: address ? origin : null,
+				served: Boolean(args.tailscale),
+			},
+			{ onWarn: (message) => consola.warn(message) },
+		);
 		if (refusal) {
 			consola.error(refusal);
-			if (args.tailscale) {
-				consola.info("Or restart it with `pl up --tailscale-serve`.");
-			}
 			if (createdServe) {
+				consola.info("Or restart it with `pl up --tailscale-serve`.");
 				try {
 					removeServe(createdServe);
 				} catch (error) {
@@ -167,14 +170,22 @@ export function resolveOrigin(
 	return { origin: url.origin, loopback };
 }
 
+const DNS_FAILURES = ["ENOTFOUND", "EAI_AGAIN"];
+
 /** Why no link should be minted, or null: the lock's server and `--address` must both be this workspace's. */
 export async function pairRefusal(
 	input: {
 		lock: { pid: number; host?: string; port: number };
 		instanceId: string | null;
 		address: string | null;
+		/** `tailscale serve` maps the address to this server's port. */
+		served?: boolean;
 	},
-	options: ProbeOptions & { isAlive?: (pid: number) => boolean } = {},
+	options: ProbeOptions & {
+		isAlive?: (pid: number) => boolean;
+		withHost?: (host: string) => typeof fetch;
+		onWarn?: (message: string) => void;
+	} = {},
 ): Promise<string | null> {
 	if (!input.instanceId) {
 		return "This workspace has no instance.json yet. Restart `pl up` with this version, then pair.";
@@ -188,7 +199,25 @@ export async function pairRefusal(
 		return `Not pairing: ${describeOutcome(local, base)}.`;
 	}
 	if (!input.address) return null;
-	const remote = await probeInstance(input.address, input.instanceId, options);
+	let remote = await probeInstance(input.address, input.instanceId, options);
+	if (
+		input.served &&
+		remote.kind === "unreachable" &&
+		DNS_FAILURES.includes(remote.reason)
+	) {
+		// WSL's resolver has no MagicDNS, yet the phone resolves the name fine:
+		// ask the local server as the tailnet name, the way serve forwards it (#673).
+		const host = new URL(input.address).hostname;
+		remote = await probeInstance(base, input.instanceId, {
+			...options,
+			fetchImpl: (options.withHost ?? fetchWithHost)(host),
+		});
+		if (remote.kind === "ok") {
+			options.onWarn?.(
+				`This machine can't resolve ${host} (no MagicDNS here, common under WSL). Checked the server through its tailscale serve route instead.`,
+			);
+		}
+	}
 	return remote.kind === "ok"
 		? null
 		: `Not pairing: ${describeOutcome(remote, input.address)}${remote.kind === "forbidden-host" ? "" : "."}`;
