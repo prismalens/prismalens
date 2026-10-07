@@ -207,6 +207,20 @@ export class IncidentsController {
 							},
 						});
 					}
+					// An agent that is not signed in never gets a run (#673 w9).
+					const readiness = await this.harnessService.ensureReady(
+						selection.harness,
+					);
+					if (!readiness.ready) {
+						throw new ORPCError("PRECONDITION_FAILED", {
+							message: readiness.reason,
+							data: {
+								failure: "not-ready",
+								reason: readiness.reason,
+								harness: selection.harness,
+							},
+						});
+					}
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
 					const { investigation, created } =

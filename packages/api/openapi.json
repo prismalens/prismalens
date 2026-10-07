@@ -25874,6 +25874,18 @@
                                   "at": {
                                     "type": "string"
                                   },
+                                  "outcome": {
+                                    "enum": [
+                                      "answers-acp",
+                                      "sign-in-needed",
+                                      "no-answer",
+                                      "failed-to-start"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "detail": {
+                                    "type": "string"
+                                  },
                                   "servedModel": {
                                     "anyOf": [
                                       {
@@ -25926,6 +25938,8 @@
                                 },
                                 "required": [
                                   "at",
+                                  "outcome",
+                                  "detail",
                                   "servedModel",
                                   "effort",
                                   "images"

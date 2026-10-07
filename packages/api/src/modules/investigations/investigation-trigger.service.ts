@@ -29,6 +29,7 @@ import type {
 	Investigation,
 	Service,
 } from "@prismalens/database";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -95,6 +96,7 @@ export class InvestigationTriggerService {
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
 		private readonly investigationsService: InvestigationsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	/**
@@ -236,6 +238,28 @@ export class InvestigationTriggerService {
 		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
+		// Readiness before a run, not a run that fails on sign-in (#673 w9).
+		const selection = await this.harnessService.resolveSelection();
+		if (selection.runnable) {
+			const readiness = await this.harnessService.ensureReady(
+				selection.harness,
+			);
+			if (!readiness.ready) {
+				this.logger.log(
+					`No auto-investigation for incident ${incident.number}: ${readiness.reason}`,
+				);
+				await this.timelineService.create({
+					incidentId: incident.id,
+					type: TimelineEntryType.custom,
+					title: `Auto-investigation skipped: ${readiness.reason}`,
+					description: readiness.reason,
+					source: TimelineSource.system,
+					metadata: { harness: selection.harness },
+				});
+				return;
+			}
+		}
+
 		let investigation: Investigation;
 		let created: boolean;
 		try {

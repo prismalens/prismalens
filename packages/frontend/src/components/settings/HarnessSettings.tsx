@@ -51,28 +51,6 @@ export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
 	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
 	const updateSettings = useUpdateHarnessSettings();
-	const checkHarness = useCheckHarness();
-	const [probes, setProbes] = useState<Partial<Record<HarnessId, ProbeState>>>(
-		{},
-	);
-
-	async function handleCheck(id: HarnessId) {
-		try {
-			const result = await checkHarness.mutateAsync({ id });
-			setProbes((prev) => ({
-				...prev,
-				[id]: { outcome: result.outcome, detail: result.detail },
-			}));
-		} catch (err) {
-			setProbes((prev) => ({
-				...prev,
-				[id]: {
-					outcome: "failed-to-start",
-					detail: "The check did not run. Try it again.",
-				},
-			}));
-		}
-	}
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
@@ -153,7 +131,7 @@ export function HarnessSettings() {
 
 			<SettingGroup
 				title="Agents on this machine"
-				count={harnesses.length || undefined}
+				count={harnesses.filter((h) => h.installed).length || undefined}
 				testId="harness-registry"
 				description={
 					harnesses.length > 0 && harnesses.every((h) => !h.installed) ? (
@@ -164,79 +142,113 @@ export function HarnessSettings() {
 				}
 			>
 				<Pool>
-					{harnesses.map((harness) => {
-						const harnessId = harness.id as HarnessId;
-						const probe = probes[harnessId];
-						const checking =
-							checkHarness.isPending &&
-							checkHarness.variables?.id === harnessId;
-						const inUse = selection?.harness === harness.id;
-						return (
-							<Row
-								key={harness.id}
-								testId={`harness-row-${harness.id}`}
-								lead={<AgentMark id={harness.id} />}
-								label={
-									<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-										{harness.label}
-										{harness.installed ? (
-											harness.tested && (
-												<Hint
-													label={`Tested with ${harness.tested.version}`}
-													meta={harness.tested.date}
-												>
-													<span
-														className="font-mono text-meta text-text-3"
-														data-testid={`harness-tested-${harness.id}`}
-													>
-														{harness.tested.version}
-													</span>
-												</Hint>
-											)
-										) : (
-											<StateWord tone="quiet">not installed</StateWord>
-										)}
-										{inUse && <StateWord tone="ok">in use</StateWord>}
-									</span>
-								}
-								meta={
-									probe && !checking ? (
-										<StateWord
-											tone={PROBE_TONE[probe.outcome]}
-											className="whitespace-normal"
-											data-testid={`harness-check-result-${harness.id}`}
-										>
-											{probe.detail}
-										</StateWord>
-									) : harness.installed ? (
-										// app.css's `code` chip is unlayered, so it outranks a plain utility.
-										<span className="[&_code]:bg-transparent! [&_code]:p-0!">
-											{capabilities(harness)}{" "}
-											<InlineCode text={harness.loginHint} />
-										</span>
-									) : (
-										<Mono>{harness.install}</Mono>
-									)
-								}
-								trailing={
-									harness.installed && (
-										<Button
-											variant="text"
-											size="sm"
-											onClick={() => handleCheck(harnessId)}
-											disabled={checking}
-											data-testid={`harness-check-${harness.id}`}
-										>
-											{checking ? "Checking" : "Check"}
-										</Button>
-									)
-								}
-							/>
-						);
-					})}
+					{harnesses.map((harness) => (
+						<AgentRow
+							key={harness.id}
+							harness={harness}
+							inUse={selection?.harness === harness.id}
+						/>
+					))}
 				</Pool>
 			</SettingGroup>
 		</div>
+	);
+}
+
+/**
+ * One agent on this machine, with its own check: a check on one row never
+ * shows as pending on another (#673 w17). Shows the server's last check
+ * (boot sweep or a run's readiness check) until this row runs its own.
+ */
+function AgentRow({
+	harness,
+	inUse,
+}: {
+	harness: HarnessStatus;
+	inUse: boolean;
+}) {
+	const harnessId = harness.id as HarnessId;
+	const checkHarness = useCheckHarness();
+	const [ownProbe, setOwnProbe] = useState<ProbeState | null>(null);
+	const checking = checkHarness.isPending;
+	const probe: ProbeState | null =
+		ownProbe ??
+		(harness.checked
+			? { outcome: harness.checked.outcome, detail: harness.checked.detail }
+			: null);
+
+	async function handleCheck() {
+		try {
+			const result = await checkHarness.mutateAsync({ id: harnessId });
+			setOwnProbe({ outcome: result.outcome, detail: result.detail });
+		} catch {
+			setOwnProbe({
+				outcome: "failed-to-start",
+				detail: "The check did not run. Try it again.",
+			});
+		}
+	}
+
+	return (
+		<Row
+			key={harness.id}
+			testId={`harness-row-${harness.id}`}
+			lead={<AgentMark id={harness.id} />}
+			label={
+				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+					{harness.label}
+					{harness.installed ? (
+						harness.tested && (
+							<Hint
+								label={`Tested with ${harness.tested.version}`}
+								meta={harness.tested.date}
+							>
+								<span
+									className="font-mono text-meta text-text-3"
+									data-testid={`harness-tested-${harness.id}`}
+								>
+									{harness.tested.version}
+								</span>
+							</Hint>
+						)
+					) : (
+						<StateWord tone="quiet">not installed</StateWord>
+					)}
+					{inUse && <StateWord tone="ok">in use</StateWord>}
+				</span>
+			}
+			meta={
+				probe && !checking ? (
+					<StateWord
+						tone={PROBE_TONE[probe.outcome]}
+						className="whitespace-normal"
+						data-testid={`harness-check-result-${harness.id}`}
+					>
+						{probe.detail}
+					</StateWord>
+				) : harness.installed ? (
+					// app.css's `code` chip is unlayered, so it outranks a plain utility.
+					<span className="[&_code]:bg-transparent! [&_code]:p-0!">
+						{capabilities(harness)} <InlineCode text={harness.loginHint} />
+					</span>
+				) : (
+					<Mono>{harness.install}</Mono>
+				)
+			}
+			trailing={
+				harness.installed && (
+					<Button
+						variant="text"
+						size="sm"
+						onClick={handleCheck}
+						disabled={checking}
+						data-testid={`harness-check-${harness.id}`}
+					>
+						{checking ? "Checking" : "Check"}
+					</Button>
+				)
+			}
+		/>
 	);
 }
 
@@ -256,11 +268,12 @@ function capabilities(h: HarnessStatus): string {
 			: h.id === "deepagents"
 				? "Uses its own model."
 				: "Model: pending a check.";
-	const effort = h.checked?.effort
-		? ` Effort over ACP: ${h.checked.effort.values.join(", ")}.`
+	const answered = h.checked?.outcome === "answers-acp" ? h.checked : null;
+	const effort = answered?.effort
+		? ` Effort over ACP: ${answered.effort.values.join(", ")}.`
 		: "";
-	const images = h.checked
-		? ` Images: ${h.checked.images ? "yes" : "no"}.`
+	const images = answered
+		? ` Images: ${answered.images ? "yes" : "no"}.`
 		: " Images: not checked yet.";
 	return `${model}${effort}${images}`;
 }

@@ -58,6 +58,8 @@ describe("HarnessModelsService (#639)", () => {
 	it("says nothing was checked until a check answers, then what the harness reported (R4.2, R4.3)", () => {
 		expect(service.checked("codex")).toBeNull();
 		service.rememberCheck("codex", {
+			outcome: "answers-acp",
+			detail: "Codex answers ACP",
 			servedModel: "gpt-5.6",
 			effort: { id: "reasoning_effort", values: ["low", "medium", "high"], default: "medium" },
 			images: true,

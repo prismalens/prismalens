@@ -3,6 +3,7 @@
 
 import { forwardRef, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { HarnessModule } from "../../core/harness/harness.module.js";
 import { SettingsModule } from "../../core/settings/settings.module.js";
 import { ReportDeliveryModule } from "../delivery/report-delivery.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
@@ -20,6 +21,7 @@ import { StreamRelayService } from "./stream-relay.service.js";
 @Module({
 	imports: [
 		ConfigModule,
+		HarnessModule,
 		forwardRef(() => TimelineModule),
 		OverlayModule,
 		SettingsModule,

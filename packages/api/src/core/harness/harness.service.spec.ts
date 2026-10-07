@@ -12,7 +12,10 @@
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessService } from "./harness.service.js";
+import { HarnessModelsService } from "./harness-models.service.js";
+import type { HarnessProbeService } from "./harness-probe.service.js";
 
 const mockPrismaService = {
 	setting: {
@@ -323,5 +326,66 @@ describe("HarnessService", () => {
 			});
 			expect(status.selection.blockedReason).toMatch(/not a known harness/i);
 		});
+	});
+});
+
+describe("HarnessService.ensureReady (#673 w9)", () => {
+	type Outcome = "answers-acp" | "sign-in-needed";
+	function withProbe(outcomes: Outcome[]) {
+		const models = new HarnessModelsService();
+		const check = vi.fn(async (id: "codex") => {
+			const outcome = outcomes.shift() ?? "answers-acp";
+			const detail =
+				outcome === "answers-acp"
+					? "answers ACP"
+					: "sign in needed (API Key, ChatGPT)";
+			models.rememberCheck(id, {
+				outcome,
+				detail,
+				servedModel: null,
+				effort: null,
+				images: false,
+			});
+			return { id, outcome, detail, hard: false as const };
+		});
+		const svc = new HarnessService(
+			mockPrismaService as unknown as PrismaService,
+			models,
+			{ check } as unknown as HarnessProbeService,
+		);
+		return { svc, check };
+	}
+
+	it("refuses with the agent's name and the check's words", async () => {
+		const { svc } = withProbe(["sign-in-needed"]);
+		expect(await svc.ensureReady("codex")).toEqual({
+			ready: false,
+			reason: "Codex: sign in needed (API Key, ChatGPT)",
+		});
+	});
+
+	it("reuses a remembered ready check instead of probing again", async () => {
+		const { svc, check } = withProbe(["answers-acp"]);
+		expect(await svc.ensureReady("codex")).toEqual({ ready: true });
+		expect(await svc.ensureReady("codex")).toEqual({ ready: true });
+		expect(check).toHaveBeenCalledTimes(1);
+	});
+
+	it("checks again after a not-ready answer, so signing in takes effect on the next run", async () => {
+		const { svc, check } = withProbe(["sign-in-needed", "answers-acp"]);
+		expect((await svc.ensureReady("codex")).ready).toBe(false);
+		expect(await svc.ensureReady("codex")).toEqual({ ready: true });
+		expect(check).toHaveBeenCalledTimes(2);
+	});
+
+	it("two callers at once share one probe", async () => {
+		const { svc, check } = withProbe(["answers-acp"]);
+		const [a, b] = await Promise.all([
+			svc.ensureReady("codex"),
+			svc.ensureReady("codex"),
+		]);
+		expect(a).toEqual({ ready: true });
+		expect(b).toEqual({ ready: true });
+		expect(check).toHaveBeenCalledTimes(1);
 	});
 });

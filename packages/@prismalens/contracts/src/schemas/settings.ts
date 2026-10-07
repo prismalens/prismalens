@@ -32,6 +32,15 @@ export const FavouriteModelSchema = z.object({
 });
 export type FavouriteModel = z.infer<typeof FavouriteModelSchema>;
 
+/** A readiness check's verdict; only `answers-acp` is a pass. */
+export const HarnessProbeOutcomeSchema = z.enum([
+	"answers-acp",
+	"sign-in-needed",
+	"no-answer",
+	"failed-to-start",
+]);
+export type HarnessProbeOutcome = z.infer<typeof HarnessProbeOutcomeSchema>;
+
 export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
@@ -76,10 +85,14 @@ export const HarnessStatusSchema = z.object({
 	/**
 	 * What the last readiness check read from the harness itself (R4.2 d4,
 	 * R4.3 d2); null until one has run, which the picker says as "pending a check".
+	 * Every outcome is kept; only `answers-acp` lets a run start (#673 w9).
 	 */
 	checked: z
 		.object({
 			at: z.string(),
+			outcome: HarnessProbeOutcomeSchema,
+			/** The check's one line, as `pl doctor` prints it. */
+			detail: z.string(),
 			/** The model it reported as current: "Agent default" names this, never a PrismaLens choice. */
 			servedModel: z.string().nullable(),
 			effort: EffortOptionSchema.nullable(),
@@ -156,12 +169,7 @@ export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
 /** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
 export const HarnessProbeResultSchema = z.object({
 	id: z.enum(HARNESS_IDS),
-	outcome: z.enum([
-		"answers-acp",
-		"sign-in-needed",
-		"no-answer",
-		"failed-to-start",
-	]),
+	outcome: HarnessProbeOutcomeSchema,
 	detail: z.string(),
 	hard: z.literal(false),
 	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */

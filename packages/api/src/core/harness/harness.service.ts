@@ -6,7 +6,11 @@
  * PATH, unless PRISMALENS_HARNESS or the persisted setting pins one.
  * Prismalens never bundles, installs or authenticates a harness.
  */
-import { Injectable } from "@nestjs/common";
+import {
+	Injectable,
+	Logger,
+	type OnApplicationBootstrap,
+} from "@nestjs/common";
 import {
 	type HarnessSelection,
 	listHarnessStatus,
@@ -14,15 +18,30 @@ import {
 } from "@prismalens/config";
 import {
 	HARNESS_IDS,
+	HARNESS_REGISTRY,
 	type HarnessId,
 	refuseModel,
 } from "@prismalens/config/harness";
 import type {
 	FavouriteModel,
 	HarnessesResponse,
+	HarnessStatus,
 } from "@prismalens/contracts/schemas";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
+import { HarnessProbeService } from "./harness-probe.service.js";
+
+/** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
+export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type Readiness = { ready: true } | { ready: false; reason: string };
+
+type Check = NonNullable<HarnessStatus["checked"]>;
+
+/** A failed check in the words the box, the picker and the Timeline share: "<agent>: <detail>". */
+function notReadyReason(id: HarnessId, check: Pick<Check, "detail">): string {
+	return `${HARNESS_REGISTRY[id].label}: ${check.detail}`;
+}
 
 const SETTING_KEY = "HARNESS";
 
@@ -82,11 +101,68 @@ function cleanFavourites(raw: unknown): FavouriteModel[] {
 }
 
 @Injectable()
-export class HarnessService {
+export class HarnessService implements OnApplicationBootstrap {
+	private readonly logger = new Logger(HarnessService.name);
+	/** One probe per harness at a time: a second caller shares the first's answer. */
+	private readonly inFlight = new Map<HarnessId, Promise<Check | null>>();
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly models: HarnessModelsService = new HarnessModelsService(),
+		private readonly probe: HarnessProbeService = new HarnessProbeService(
+			models,
+		),
 	) {}
+
+	/** Check each installed agent once, in the background, so the picker is right on first open. */
+	onApplicationBootstrap(): void {
+		if (process.env.NODE_ENV === "test") return;
+		void this.sweep();
+	}
+
+	async sweep(): Promise<void> {
+		for (const h of listHarnessStatus()) {
+			if (h.installed) await this.checkOnce(h.id as HarnessId);
+		}
+	}
+
+	/**
+	 * Would a run on this agent start? A remembered `answers-acp` under a day
+	 * old, else a check now: a remembered failure is checked again, so signing
+	 * in takes effect on the next run (#673 w9).
+	 */
+	async ensureReady(id: HarnessId): Promise<Readiness> {
+		const remembered = this.models.checked(id);
+		const fresh =
+			remembered?.outcome === "answers-acp" &&
+			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
+		const check = fresh ? remembered : await this.checkOnce(id);
+		if (!check)
+			return {
+				ready: false,
+				reason: `${HARNESS_REGISTRY[id].label}: the readiness check did not run`,
+			};
+		return check.outcome === "answers-acp"
+			? { ready: true }
+			: { ready: false, reason: notReadyReason(id, check) };
+	}
+
+	private checkOnce(id: HarnessId): Promise<Check | null> {
+		const running = this.inFlight.get(id);
+		if (running) return running;
+		const next = this.probe
+			.check(id)
+			.then(() => this.models.checked(id) ?? null)
+			.catch((err: unknown) => {
+				this.logger.warn(
+					`Readiness check for ${id} failed: ${(err as Error).message}`,
+				);
+				return null;
+			})
+			.finally(() => this.inFlight.delete(id));
+		this.inFlight.set(id, next);
+		return next;
+	}
 
 	async getSettings(): Promise<HarnessSettings> {
 		const row = await this.prisma.setting.findUnique({

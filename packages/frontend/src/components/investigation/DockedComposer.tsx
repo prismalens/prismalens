@@ -51,7 +51,10 @@ export function DockedComposer({
 	const talksTo = mode === "brief" || mode === "again" ? effective : runHarness;
 	const agent = {
 		label: talksTo?.label ?? who.agent,
-		images: talksTo?.checked ? talksTo.checked.images : null,
+		images:
+			talksTo?.checked?.outcome === "answers-acp"
+				? talksTo.checked.images
+				: null,
 	};
 
 	const upload = (files: File[]) =>

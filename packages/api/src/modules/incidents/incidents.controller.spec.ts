@@ -87,6 +87,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		};
 
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
@@ -257,6 +258,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
@@ -307,6 +309,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			dispatchService as unknown as DispatchService,
 			{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 			{
+				ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			} as unknown as HarnessService,
 			{} as never,
@@ -336,6 +339,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				dispatchService as unknown as DispatchService,
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				{
+					ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 					getSettings: vi.fn().mockResolvedValue({ harness: "auto", allowWriteLevels }),
 				} as unknown as HarnessService,
@@ -377,6 +381,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		};
 		const dispatchService = { addInvestigationJob: vi.fn() };
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 		};
 		const controller = new IncidentsController(
@@ -403,6 +408,40 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(incidentsService.update).not.toHaveBeenCalled();
 	});
 
+	it("refuses with PRECONDITION_FAILED naming the agent when it is not signed in, and starts nothing (#673 w9)", async () => {
+		const investigationsService = { startOrGet: vi.fn() };
+		const dispatchService = { addInvestigationJob: vi.fn() };
+		const harnessService = {
+			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "codex", auto: true }),
+			ensureReady: vi.fn().mockResolvedValue({
+				ready: false,
+				reason: "Codex: sign in needed (API Key, ChatGPT)",
+			}),
+		};
+		const controller = new IncidentsController(
+			{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+			investigationsService as unknown as InvestigationsService,
+			dispatchService as unknown as DispatchService,
+			{} as unknown as IntegrationsService,
+			harnessService as unknown as HarnessService,
+			{} as never,
+			{} as never,
+		);
+
+		const thrown = await getHandlers(controller)
+			.investigate({ input: { id: "123e4567-e89b-12d3-a456-426614174000" } })
+			.catch((err: unknown) => err);
+
+		expect(thrown).toBeInstanceOf(ORPCError);
+		const orpcErr = thrown as ORPCError<"PRECONDITION_FAILED", { reason: string; harness: string }>;
+		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
+		expect(orpcErr.message).toBe("Codex: sign in needed (API Key, ChatGPT)");
+		expect(orpcErr.data).toMatchObject({ harness: "codex" });
+		expect(harnessService.ensureReady).toHaveBeenCalledWith("codex");
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+	});
+
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
@@ -418,6 +457,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "no-harness",
@@ -482,6 +522,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "pinned-harness-missing",
@@ -539,6 +580,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "invalid-env-harness",
