@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { generateToken } from "@prismalens/auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	awaitTrial,
@@ -308,6 +309,13 @@ describe("trial failure reason (#673)", () => {
 			"ℹ Open: http://localhost:6473/pair#[redacted]",
 		);
 		expect(failureLine([])).toBeNull();
+	});
+
+	it("redacts a bare pairing token in an error line", () => {
+		const bare = generateToken();
+		const reason = failureLine([`Error: pairing rejected ${bare}`]);
+		expect(reason).not.toContain(bare);
+		expect(reason).toBe("Error: pairing rejected [redacted]");
 	});
 });
 

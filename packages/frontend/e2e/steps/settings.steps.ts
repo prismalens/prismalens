@@ -71,8 +71,9 @@ When('I open "booklogr-api" again and press Escape', async ({ page }) => {
 async function serveTelemetry(page: Page) {
 	const state = {
 		enabled: false,
-		decided: false,
 		forcedOff: false,
+		noticed: true,
+		dismissed: true,
 		recentlySent: [] as { payload: Record<string, unknown> }[],
 	};
 	await page.route("**/api/settings/telemetry", async (route) => {
@@ -84,7 +85,7 @@ async function serveTelemetry(page: Page) {
 				state.recentlySent.unshift({
 					payload: { event: "setup_completed", distinct_id: "install-id" },
 				});
-			Object.assign(state, { enabled, decided: true });
+			Object.assign(state, { enabled });
 		}
 		await route.fulfill({
 			status: 200,
@@ -133,7 +134,7 @@ Then(
 		for (const words of [
 			"What is sent",
 			"What is never sent",
-			"The install id, and your consent",
+			"The install id",
 			"How long it is kept",
 		])
 			await expect(d.getByText(words, { exact: true })).toBeVisible();
