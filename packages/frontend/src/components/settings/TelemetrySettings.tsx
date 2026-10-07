@@ -15,12 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { orpc } from "@/lib/api/orpc-client";
 
-/**
- * The one-sentence version, on the notice where the owner first meets it.
- * Settings carries the full disclosure below it (#602, #673 w45).
- */
+/** The one line on the first-run strip and the Settings row (#673 w45). */
 export const TELEMETRY_SUMMARY =
-	"Usage data: which features get used and whether investigations finish: counts and categories only, never the content of an alert, a repository or a report.";
+	"Feature use under a random install id; never an alert, a repo or a report.";
 
 /** Everything sent, in the order it is worth reading. */
 export const TELEMETRY_SENT = [
@@ -45,12 +42,11 @@ export function useTelemetrySettings() {
 	return { query, update };
 }
 
-/** The first-run notice, until OK or Turn off (#673 w45); showing it is what lets sending start. */
-export function TelemetryConsent({
-	variant = "card",
-}: {
-	variant?: "card" | "strip";
-}) {
+/**
+ * The first-run strip above the board, until OK or Turn off (#673 w45);
+ * showing it is what lets sending start.
+ */
+export function TelemetryConsent() {
 	const { query, update } = useTelemetrySettings();
 	const data = query.data;
 	const show = !!data && data.enabled && !data.dismissed && !data.forcedOff;
@@ -60,57 +56,34 @@ export function TelemetryConsent({
 		if (unnoticed) mutate({ noticed: true });
 	}, [unnoticed, mutate]);
 	if (!show) return null;
-
-	const buttons = (
-		<>
-			<Button
-				variant="text"
-				size="sm"
-				className={variant === "strip" ? "flex-1" : undefined}
-				disabled={update.isPending}
-				onClick={() => update.mutate({ enabled: false, dismissed: true })}
-			>
-				Turn off
-			</Button>
-			<Button
-				size="sm"
-				variant={variant === "strip" ? "secondary" : "primary"}
-				className={variant === "strip" ? "flex-1" : undefined}
-				disabled={update.isPending}
-				onClick={() => update.mutate({ dismissed: true })}
-			>
-				OK
-			</Button>
-		</>
-	);
-
-	if (variant === "strip") {
-		return (
-			<div
-				className="mx-2 mb-2 space-y-1.5 rounded-surface bg-surface-2 px-3 py-2 text-meta text-text-2"
-				data-testid="telemetry-consent"
-			>
-				<p>Usage counts are on. Never an alert, a repo or a report.</p>
-				<div className="flex items-center gap-1">{buttons}</div>
-				{update.isError && <p className="text-danger">Not saved. Try again.</p>}
-			</div>
-		);
-	}
-
 	return (
 		<div
-			className="raised flex flex-col gap-3 rounded-surface px-4 py-3 text-body sm:flex-row sm:items-center sm:justify-between"
+			className="pool mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-body text-text-2"
 			data-testid="telemetry-consent"
 		>
-			<p className="text-text-2">
-				{TELEMETRY_SUMMARY} It is on; nothing is sent before the next start, and
-				Settings, Usage data turns it off at any time.
+			<p className="min-w-0 flex-1 basis-64">
+				Usage counts are on. {TELEMETRY_SUMMARY}
 			</p>
-			<div className="flex shrink-0 items-center gap-2">
+			<div className="flex shrink-0 items-center gap-1">
 				{update.isError && (
-					<span className="text-danger">Not saved. Try again.</span>
+					<span className="mr-2 text-danger">Not saved. Try again.</span>
 				)}
-				{buttons}
+				<Button
+					size="sm"
+					variant="secondary"
+					disabled={update.isPending}
+					onClick={() => update.mutate({ dismissed: true })}
+				>
+					OK
+				</Button>
+				<Button
+					variant="text"
+					size="sm"
+					disabled={update.isPending}
+					onClick={() => update.mutate({ enabled: false, dismissed: true })}
+				>
+					Turn off
+				</Button>
 			</div>
 		</div>
 	);
@@ -127,82 +100,92 @@ export function TelemetrySettings() {
 	const sent = settings?.recentlySent ?? [];
 	return (
 		<>
-			<Pool>
-				<SettingRow
-					label={<label htmlFor="telemetry-enabled">Share usage counts</label>}
-					description={
-						settings?.forcedOff ? (
-							<>
-								Off for this process: <Mono>PRISMALENS_TELEMETRY=off</Mono> or{" "}
-								<Mono>pl up --telemetry=off</Mono> is set
-							</>
+			<SettingGroup title="Sending">
+				<Pool>
+					<SettingRow
+						label={
+							<label htmlFor="telemetry-enabled">Share usage counts</label>
+						}
+						description={
+							settings?.forcedOff ? (
+								<>
+									Off for this process: <Mono>PRISMALENS_TELEMETRY=off</Mono> or{" "}
+									<Mono>pl up --telemetry=off</Mono> is set
+								</>
+							) : (
+								TELEMETRY_SUMMARY
+							)
+						}
+						testId="telemetry-row"
+					>
+						{settings?.forcedOff ? (
+							<span className="text-meta text-text-3">Locked off</span>
 						) : (
-							"Feature use and run outcomes under a random install id; never an alert, code or a report"
-						)
-					}
-					testId="telemetry-row"
-				>
-					{settings?.forcedOff ? (
-						<span className="text-meta text-text-3">Locked off</span>
-					) : (
-						<Switch
-							id="telemetry-enabled"
-							checked={settings?.enabled ?? true}
-							disabled={!settings || update.isPending}
-							onCheckedChange={(checked) => update.mutate({ enabled: checked })}
-							data-testid="telemetry-switch"
-						/>
-					)}
-				</SettingRow>
-				<Row
-					testId="telemetry-disclosure-row"
-					label={
-						<details className="group" data-testid="telemetry-disclosure">
-							<summary className="flex cursor-pointer list-none items-center gap-1.5 text-accent [&::-webkit-details-marker]:hidden">
-								<ChevronRight className="size-3.5 transition-transform duration-(--dur-fast) group-open:rotate-90" />
-								What is sent, what never is, and how to turn it off
-							</summary>
-							<div className="mt-3 mb-1 space-y-3 text-text-2">
-								<div>
-									<p className="font-medium text-text-1">What is sent</p>
-									<ul className="mt-1 space-y-1">
-										{TELEMETRY_SENT.map((item) => (
-											<li key={item}>{item}</li>
-										))}
-									</ul>
+							<Switch
+								id="telemetry-enabled"
+								checked={settings?.enabled ?? true}
+								disabled={!settings || update.isPending}
+								onCheckedChange={(checked) =>
+									update.mutate({ enabled: checked })
+								}
+								data-testid="telemetry-switch"
+							/>
+						)}
+					</SettingRow>
+					<Row
+						testId="telemetry-disclosure-row"
+						label={
+							<details className="group" data-testid="telemetry-disclosure">
+								<summary className="flex cursor-pointer list-none items-center gap-1.5 text-accent [&::-webkit-details-marker]:hidden">
+									<ChevronRight className="size-3.5 transition-transform duration-(--dur-fast) group-open:rotate-90" />
+									What is sent, what never is, and how to turn it off
+								</summary>
+								<div className="mt-3 mb-1 space-y-3 font-normal text-text-2">
+									<div>
+										<p className="font-medium text-text-1">What is sent</p>
+										<ul className="mt-1 space-y-1">
+											{TELEMETRY_SENT.map((item) => (
+												<li key={item}>{item}</li>
+											))}
+										</ul>
+									</div>
+									<div>
+										<p className="font-medium text-text-1">
+											What is never sent
+										</p>
+										<p className="mt-1">{TELEMETRY_NEVER_SENT}</p>
+									</div>
+									<div>
+										<p className="font-medium text-text-1">The install id</p>
+										<p className="mt-1">
+											The install id is random, but it is the same on every
+											event this install sends, which is what makes it possible
+											to count installs rather than events. That makes it
+											pseudonymous rather than anonymous, so it is treated as
+											personal data. It is not joined to an account or a
+											profile, and the IP address a request arrives from is
+											discarded rather than stored or resolved to a location.
+										</p>
+									</div>
+									<div>
+										<p className="font-medium text-text-1">
+											How long it is kept
+										</p>
+										<p className="mt-1">
+											Events are kept for as long as PostHog's plan retains
+											them, at least one year on the plan we use, and are not
+											joined to anything else. Turning the switch off stops
+											collection from that moment. A factory reset deletes the
+											id with everything else, so a reset install starts over as
+											a new, unrelated one.
+										</p>
+									</div>
 								</div>
-								<div>
-									<p className="font-medium text-text-1">What is never sent</p>
-									<p className="mt-1">{TELEMETRY_NEVER_SENT}</p>
-								</div>
-								<div>
-									<p className="font-medium text-text-1">The install id</p>
-									<p className="mt-1">
-										The install id is random, but it is the same on every event
-										this install sends, which is what makes it possible to count
-										installs rather than events. That makes it pseudonymous
-										rather than anonymous, so it is treated as personal data. It
-										is not joined to an account or a profile, and the IP address
-										a request arrives from is discarded rather than stored or
-										resolved to a location.
-									</p>
-								</div>
-								<div>
-									<p className="font-medium text-text-1">How long it is kept</p>
-									<p className="mt-1">
-										Events are kept for as long as PostHog's plan retains them,
-										at least one year on the plan we use, and are not joined to
-										anything else. Turning the switch off stops collection from
-										that moment. A factory reset deletes the id with everything
-										else, so a reset install starts over as a new, unrelated
-										one.
-									</p>
-								</div>
-							</div>
-						</details>
-					}
-				/>
-			</Pool>
+							</details>
+						}
+					/>
+				</Pool>
+			</SettingGroup>
 			<MutationError error={update.error} className="mt-2" />
 			<SettingGroup
 				title="Recently sent"
@@ -221,7 +204,7 @@ export function TelemetrySettings() {
 								key={`${index}-${String(entry.payload.event ?? "")}`}
 								testId="telemetry-sent"
 								label={
-									<details className="group">
+									<details className="group font-normal">
 										<summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
 											<ChevronRight className="size-3.5 text-text-3 transition-transform duration-(--dur-fast) group-open:rotate-90" />
 											<Mono>{String(entry.payload.event ?? "event")}</Mono>

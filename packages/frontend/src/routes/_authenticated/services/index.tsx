@@ -5,7 +5,7 @@ import type { ServiceWithRelations } from "@prismalens/contracts";
 import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
 import {
@@ -20,7 +20,6 @@ import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Empty, Loading } from "@/components/shared/State";
-import { StateWord } from "@/components/shared/StateWord";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
@@ -418,8 +417,21 @@ function ServicesPage() {
 			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas md:left-(--sidebar-w)"
 			data-testid="services-page"
 		>
-			<PageHeader title="Services">
-				<div className="flex basis-full items-center gap-2 md:ml-auto md:basis-auto">
+			<PageHeader
+				title="Services"
+				primary={
+					<Button
+						size="sm"
+						className="pl-2"
+						onClick={() => setShowAddDialog(true)}
+						data-testid="add-service"
+					>
+						<Plus />
+						New service
+					</Button>
+				}
+			>
+				<div className="flex basis-full items-center gap-2 md:basis-auto">
 					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
 						<Search className="size-3.5 shrink-0 text-text-3" />
 						<input
@@ -461,7 +473,7 @@ function ServicesPage() {
 				</div>
 			</PageHeader>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="px-4 pt-3 pb-12 md:px-6">
+				<div className="mx-auto w-full max-w-[52rem] px-4 pt-4 pb-12">
 					{isLoading ? (
 						<Loading />
 					) : services.length === 0 ? (
@@ -469,39 +481,22 @@ function ServicesPage() {
 							<Empty text="No service matches." testId="services-empty" />
 						) : (
 							<Empty
-								text="No services yet. A service names the code a run reads and the telemetry it may query."
+								text="No services yet. A service names the code the agent reads."
 								testId="services-empty"
-								action={
-									<Button
-										variant="text"
-										size="sm"
-										onClick={() => setShowAddDialog(true)}
-										data-testid="add-service"
-									>
-										Add a service
-									</Button>
-								}
 							/>
 						)
 					) : (
-						<div className="mb-2 flex min-h-7 items-center justify-between gap-3">
-							<h2 className="text-heading" data-testid="services-count">
-								{`${total} service${total === 1 ? "" : "s"}`}
-							</h2>
-							<Button
-								variant="text"
-								size="sm"
-								onClick={() => setShowAddDialog(true)}
-								data-testid="add-service"
-							>
-								Add a service
-							</Button>
-						</div>
+						<h2
+							className="mb-3 text-body font-medium text-text-2"
+							data-testid="services-count"
+						>
+							{`${total} service${total === 1 ? "" : "s"}`}
+						</h2>
 					)}
 					<ul
 						className={cn(
 							"divide-y divide-hairline",
-							services.length > 0 && "pool px-2 py-1",
+							services.length > 0 && "pool px-4 py-1",
 						)}
 						data-testid="services-list"
 					>
@@ -566,7 +561,7 @@ function ServicesPage() {
 									None waiting.
 								</p>
 							) : (
-								<ul className="pool divide-y divide-hairline px-3.5 py-1">
+								<ul className="divide-y divide-hairline">
 									{reviewItems.map((item) => {
 										const selected = selectedServiceForRepo[item.key] ?? "";
 										return (
@@ -688,68 +683,77 @@ function ServiceRow({
 			<Link
 				to="/services/$id"
 				params={{ id: service.id }}
-				className="group/row my-px flex items-start gap-3 rounded-control px-1.5 py-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
+				className="group/row -mx-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 rounded-control px-2 py-2.5 transition-colors duration-(--dur-instant) hover:bg-surface-2"
 				data-testid="service-row-link"
 			>
-				<div className="min-w-0 flex-1">
-					<p className="flex flex-wrap items-baseline gap-x-2">
-						<span
-							className="font-medium text-text-1"
-							data-testid="service-name"
-						>
-							{service.name}
-						</span>
-						<span className="text-meta text-text-2" data-testid="service-kind">
-							{kindWord(service.type)}
-						</span>
-						<Hint label={tierMeaning(service.tier)}>
-							<span className="text-meta text-text-3 group-hover/row:text-text-2">
-								{tierWord(service.tier)}
-							</span>
-						</Hint>
-						{service.team && (
-							<span className="text-meta text-text-3 group-hover/row:text-text-2">
-								{service.team}
-							</span>
-						)}
-					</p>
-					<p
-						className="mt-0.5 text-meta text-text-2"
-						data-testid="service-line"
+				<p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+					<span
+						className="font-semibold text-text-1"
+						data-testid="service-name"
 					>
-						{!code && telemetry.length === 0 && (
-							<StateWord
-								tone="warn"
-								className="mr-1.5"
-								data-testid="service-not-set-up"
-							>
-								Not set up
-							</StateWord>
-						)}
-						{code ? (
-							<Mono className="break-all" data-testid="service-code">
-								{code}
-							</Mono>
-						) : (
-							"No code"
-						)}
-						.{" "}
-						<span data-testid="service-telemetry">
-							{telemetry.length
-								? `Telemetry from ${telemetry.join(", ")}.`
-								: "No telemetry."}
+						{service.name}
+					</span>
+					<span className="text-meta text-text-3" data-testid="service-kind">
+						{kindWord(service.type)}
+					</span>
+					<Hint label={tierMeaning(service.tier)}>
+						<span className="text-meta text-text-3">
+							{tierWord(service.tier)}
 						</span>
-						{uses.length > 0 && ` Depends on ${uses.join(", ")}.`}
-						{usedBy.length > 0 && ` Used by ${usedBy.join(", ")}.`}
-					</p>
-				</div>
+					</Hint>
+					{service.team && (
+						<span className="text-meta text-text-3">{service.team}</span>
+					)}
+				</p>
 				<span
-					className="shrink-0 pt-0.5 text-meta text-text-3 tabular-nums group-hover/row:text-text-2"
+					className="row-span-2 text-meta text-text-3 tabular-nums group-hover/row:text-text-2"
 					data-testid="service-open"
 				>
 					{open ? `${open} open` : "none open"}
 				</span>
+				<p
+					className="flex min-w-0 items-baseline gap-2 text-meta text-text-2"
+					data-testid="service-line"
+				>
+					{code ? (
+						<LeftTruncated text={code} testId="service-code" />
+					) : (
+						<span className="shrink-0">No code</span>
+					)}
+					<span
+						className="shrink-0 whitespace-nowrap text-text-3"
+						data-testid="service-telemetry"
+					>
+						{telemetry.length
+							? `Telemetry from ${telemetry.join(", ")}`
+							: "No telemetry"}
+					</span>
+					{uses.length > 0 && (
+						<span className="truncate text-text-3">
+							Depends on {uses.join(", ")}
+						</span>
+					)}
+					{usedBy.length > 0 && (
+						<span className="truncate text-text-3">
+							Used by {usedBy.join(", ")}
+						</span>
+					)}
+				</p>
 			</Link>
 		</li>
+	);
+}
+
+/** A path cut from the left, so its end shows; the tooltip holds all of it. */
+function LeftTruncated({ text, testId }: { text: string; testId?: string }) {
+	return (
+		<Hint label={text}>
+			<span
+				className="min-w-0 truncate text-left font-mono [direction:rtl]"
+				data-testid={testId}
+			>
+				<bdi>{text}</bdi>
+			</span>
+		</Hint>
 	);
 }

@@ -21,7 +21,6 @@ import {
 } from "@/components/services/service-detail.utils";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
-import { RecordSection } from "@/components/shared/RecordSection";
 import { NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { backTarget, useBack } from "@/hooks/use-back";
@@ -190,7 +189,7 @@ function ServicePage() {
 				</Button>
 			</header>
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-3 pb-12 md:px-6">
+				<div className="mx-auto w-full max-w-[52rem] px-4 pt-3 pb-12">
 					{service.description && (
 						<p className="text-body text-text-1">{service.description}</p>
 					)}
@@ -212,9 +211,6 @@ function ServicePage() {
 							topology={topology}
 							onRemove={setRemoving}
 						/>
-						<RecordSection id="deployments" title="Deployments">
-							<p className="text-body text-text-2">None recorded.</p>
-						</RecordSection>
 						<ServiceInvestigationsSection
 							serviceId={id}
 							metadata={service.metadata}

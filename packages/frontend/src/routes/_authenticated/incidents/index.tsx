@@ -12,6 +12,7 @@ import { IncidentAnalytics } from "@/components/incidents/analytics/IncidentAnal
 import { FirstRunPanel, SetupLine } from "@/components/incidents/FirstRunPanel";
 import { IncidentBoard } from "@/components/incidents/IncidentBoard";
 import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
+import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
 import { Segmented } from "@/components/shared/Segmented";
 import { Empty, Loading, Problem } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
@@ -175,6 +176,11 @@ function IncidentsLanding() {
 					</>
 				)}
 			</PageHeader>
+			{!analytics && (
+				<div className="px-4 md:px-6">
+					<TelemetryConsent />
+				</div>
+			)}
 
 			<div
 				className={cn(

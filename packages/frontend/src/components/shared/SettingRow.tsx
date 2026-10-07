@@ -62,9 +62,9 @@ export function SettingGroup({
 }) {
 	return (
 		<section className={cn("mt-8 first:mt-0", className)} data-testid={testId}>
-			<div className="mb-2">
-				<div className="flex min-h-6 items-center justify-between gap-3">
-					<h3 className="flex items-baseline gap-2 text-heading">
+			<div className="mb-3">
+				<div className="flex min-h-5 items-center justify-between gap-3">
+					<h3 className="flex items-baseline gap-2 text-body font-medium text-text-2">
 						{title}
 						{count !== undefined && (
 							<span className="font-normal text-text-3 tabular-nums">
@@ -74,7 +74,9 @@ export function SettingGroup({
 					</h3>
 					{actions}
 				</div>
-				{description && <p className="text-meta text-text-3">{description}</p>}
+				{description && (
+					<p className="mt-0.5 text-meta text-text-3">{description}</p>
+				)}
 			</div>
 			<div>{children}</div>
 		</section>
