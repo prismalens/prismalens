@@ -37,7 +37,7 @@
 					"rawInput": {
 						"command": "curl -s https://status.booklogr.example/api"
 					},
-					"output": "{}"
+					"fail": "Refused by PrismaLens's read-only policy: reaches a host outside the brief: https://status.booklogr.example."
 				}
 			},
 			{

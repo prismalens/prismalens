@@ -9,6 +9,8 @@ export interface ToolStep {
 	/** false: run it without a permission request. */
 	ask?: boolean;
 	output?: string;
+	/** Ends the call failed with this text, unasked: a refusal stored before #673 w21. */
+	fail?: string;
 }
 
 export interface Step {

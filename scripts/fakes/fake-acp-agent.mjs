@@ -242,8 +242,8 @@ function run() {
 			title: t.title,
 			rawInput: t.rawInput,
 		});
-		let allowed = true;
-		if (t.ask !== false) {
+		let allowed = t.fail === undefined;
+		if (allowed && t.ask !== false) {
 			const answer = await askPermission({
 				sessionId,
 				toolCall: {
@@ -276,7 +276,8 @@ function run() {
 					content: text(
 						allowed
 							? (t.output ?? "")
-							: "The user rejected permission to use this specific tool call.",
+							: (t.fail ??
+									"The user rejected permission to use this specific tool call."),
 					),
 				},
 			],

@@ -12,7 +12,7 @@
 					"rawInput": {
 						"command": "curl -s https://metrics.elsewhere.example/api/v1/query -d query=up"
 					},
-					"output": "{}"
+					"fail": "Refused by PrismaLens's read-only policy: reaches a host outside the brief: https://metrics.elsewhere.example."
 				}
 			},
 			{
