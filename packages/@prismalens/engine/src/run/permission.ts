@@ -38,8 +38,3 @@ export const allowAllPolicy: PermissionPolicy = (req) => {
 		? { allow: true, optionId: allow.optionId }
 		: { allow: false, why: "harness offered no allow option" };
 };
-
-/** Kept so callers compile until item 6 renames them; options are ignored. */
-export const readOnlyPolicyFor = (_options: unknown = {}): PermissionPolicy =>
-	allowAllPolicy;
-export const readOnlyPolicy: PermissionPolicy = allowAllPolicy;

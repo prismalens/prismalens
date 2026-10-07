@@ -15,14 +15,15 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
+	AGENT_DEFAULT_MODE,
+	agentModeEnv,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
 	type ModelSource,
-	type PermissionMode,
-	resolvePermissionOutcome,
-	SANDBOX_DEFAULT,
+	modeFidelity,
+	resolveAgentMode,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import type {
@@ -42,9 +43,8 @@ import {
 	type AcpStreamItem,
 	type PromptPart,
 } from "../runner/acp-client.js";
-import { telemetryOrigins } from "./connectors.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
-import { type PermissionPolicy, readOnlyPolicyFor } from "./permission.js";
+import { allowAllPolicy, type PermissionPolicy } from "./permission.js";
 import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
 import {
 	parseReport,
@@ -80,10 +80,8 @@ export interface RunInvestigationOptions {
 	effort?: string;
 	/** Files that go with the brief (R4.3). */
 	attachments?: JobAttachment[];
-	/** What the agent may touch (r4 R4.1); Read-only when absent. The host checks the ceiling. */
-	access?: PermissionMode;
-	/** The operator's sandbox switch for a harness that has one (Codex); `SANDBOX_DEFAULT` when absent. */
-	sandbox?: boolean;
+	/** The agent's own mode id (#673 w21); the row's default when absent, `agent-default` asks for none. */
+	agentMode?: string;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
 	limits?: RunLimits;
@@ -221,20 +219,19 @@ export function promptParts(
 	return [{ type: "text", text: body }, ...images];
 }
 
+/** `mode` is the id the agent reported as current, else the one asked for (#673 w21). */
 export function buildRunFidelity(
 	harness: HarnessId,
-	model?: { id?: string; source?: ModelSource },
-	access: PermissionMode = "read-only",
-	options: { sandbox?: boolean } = {},
+	model: { id?: string; source?: ModelSource } | undefined,
+	mode: string,
 ): RunFidelity {
-	const outcome = resolvePermissionOutcome(harness, access, options);
 	return {
 		harness,
-		mode: outcome.mode,
-		fidelity: outcome.fidelity,
+		mode,
+		fidelity: modeFidelity(harness, mode),
 		...(model?.id ? { model: model.id } : {}),
 		...(model?.source ? { modelSource: model.source } : {}),
-		mechanism: outcome.mechanism,
+		mechanism: "agent",
 	};
 }
 
@@ -246,25 +243,8 @@ export function buildRunFidelity(
  */
 export type PrepareRunEnvOptions = Pick<
 	RunInvestigationOptions,
-	| "harness"
-	| "descriptor"
-	| "cwd"
-	| "runDir"
-	| "model"
-	| "env"
-	| "access"
-	| "sandbox"
+	"harness" | "descriptor" | "cwd" | "runDir" | "model" | "env" | "agentMode"
 >;
-
-/** `patch` merged into `base`, objects key by key; anything else replaced. */
-function deepMerge(base: unknown, patch: unknown): unknown {
-	if (!isPlainObject(base) || !isPlainObject(patch)) return patch;
-	const out: Record<string, unknown> = { ...base };
-	for (const [k, v] of Object.entries(patch)) out[k] = deepMerge(base[k], v);
-	return out;
-}
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-	typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -286,28 +266,20 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 	};
-	const layer = resolvePermissionOutcome(
-		opts.harness,
-		opts.access ?? "read-only",
-		{ sandbox: opts.sandbox },
-	);
 	for (const [rel, content] of Object.entries(
 		descriptor.configFiles?.(runEnv) ?? {},
 	)) {
 		const path = join(configDir, rel);
 		mkdirSync(join(path, ".."), { recursive: true });
-		const patched =
-			layer.configPatch && rel.endsWith(".json")
-				? JSON.stringify(
-						deepMerge(JSON.parse(content), layer.configPatch),
-						null,
-						2,
-					)
-				: content;
-		writeFileSync(path, patched);
+		writeFileSync(path, content);
 	}
+	const mode = resolveAgentMode(opts.harness, opts.agentMode);
 	return {
-		env: { ...(opts.env ?? {}), ...descriptor.acpEnv(runEnv), ...layer.env },
+		env: {
+			...(opts.env ?? {}),
+			...descriptor.acpEnv(runEnv),
+			...agentModeEnv(opts.harness, mode),
+		},
 		runEnv,
 	};
 }
@@ -316,22 +288,16 @@ export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
-	const refusals = new Map<string, string>();
 	const adapter = new AcpAdapter({
 		runId: opts.runId,
 		branchId: "run",
-		refusals,
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
-	const access = opts.access ?? "read-only";
-	const layer = resolvePermissionOutcome(opts.harness, access, {
-		sandbox: opts.sandbox,
-	});
+	const agentMode = resolveAgentMode(opts.harness, opts.agentMode);
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
-		access,
-		{ sandbox: opts.sandbox },
+		agentMode,
 	);
 	const { env, runEnv } = prepareRunEnv(opts);
 	const transcript = join(opts.runDir, "transcript.jsonl");
@@ -352,13 +318,7 @@ export async function* runInvestigation(
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission:
-			opts.permission ??
-			readOnlyPolicyFor({
-				cwd: opts.cwd,
-				level: access,
-				allowedOrigins: telemetryOrigins(opts.context),
-			}),
+		permission: opts.permission ?? allowAllPolicy,
 		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -405,9 +365,6 @@ export async function* runInvestigation(
 					}),
 				);
 				if (item.warn) opts.onPolicyWarning?.(item.warn);
-				const refusedId = item.request.toolCall?.toolCallId;
-				if (!item.allowed && item.why && refusedId)
-					refusals.set(refusedId, item.why);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -441,12 +398,27 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
-		// The harness's own mode is the second layer; the gate answers either way.
-		if (layer.agentMode && !(await session.setMode(layer.agentMode))) {
-			const note = `mode ${layer.agentMode} not offered, gate only`;
-			opts.onPolicyWarning?.(note);
-			fidelity = { ...fidelity, mechanism: `${fidelity.mechanism}; ${note}` };
+		// The agent's own mode is the only limit; a reopened session keeps the mode it had (#747).
+		if (
+			!opts.resume &&
+			agentMode !== AGENT_DEFAULT_MODE &&
+			!(await session.setMode(agentMode))
+		) {
+			yield adapter.error(
+				`${label} did not offer mode "${agentMode}"; run a check in Settings, Agent`,
+			);
+			return;
 		}
+		const ranMode = session.currentMode ?? agentMode;
+		fidelity = {
+			...fidelity,
+			mode: ranMode,
+			fidelity: modeFidelity(opts.harness, ranMode),
+		};
+		const noNetwork = fidelity.fidelity === "enforced";
+		const modeName =
+			session.offeredModes.find((m) => m.id === ranMode)?.name ??
+			(ranMode === AGENT_DEFAULT_MODE ? "the agent's default" : ranMode);
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
@@ -527,9 +499,7 @@ export async function* runInvestigation(
 			);
 			outcome = yield* turn(
 				promptParts(
-					buildChatPrompt(opts.context, message, {
-						noNetwork: sandboxWithoutNetwork(opts, access),
-					}),
+					buildChatPrompt(opts.context, message, { noNetwork }),
 					opts.attachments,
 				),
 			);
@@ -545,9 +515,7 @@ export async function* runInvestigation(
 				);
 			outcome = yield* turn(
 				promptParts(
-					buildInvestigationPrompt(opts.context, access, {
-						noNetwork: sandboxWithoutNetwork(opts, access),
-					}) +
+					buildInvestigationPrompt(opts.context, { modeName, noNetwork }) +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
@@ -629,7 +597,10 @@ export async function* runInvestigation(
 		}
 		yield adapter.branchDone(mapStopReason(outcome.stop));
 		yield adapter.report(
-			stampReport(withSandboxGap(parsed.report, opts, access), fidelity),
+			stampReport(
+				noNetwork ? withSandboxGap(parsed.report, label) : parsed.report,
+				fidelity,
+			),
 		);
 	} catch (err) {
 		yield adapter.error(err instanceof Error ? err.message : String(err));
@@ -640,26 +611,12 @@ export async function* runInvestigation(
 	}
 }
 
-/** The operator switched on a harness sandbox that has no network at this level. */
-function sandboxWithoutNetwork(
-	opts: Pick<RunInvestigationOptions, "harness" | "sandbox">,
-	access: PermissionMode,
-): boolean {
-	return !!(
-		(opts.sandbox ?? SANDBOX_DEFAULT) &&
-		HARNESS_REGISTRY[opts.harness].sandbox &&
-		(access === "read-only" || access === "read-only-tools")
-	);
-}
-
-/** A sandbox with no network at a read level is named under What we could not check (r4 R4.1 rev). */
+/** An agent sandbox with no network is named under What we could not check (#778). */
 function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 	report: R,
-	opts: Pick<RunInvestigationOptions, "harness" | "sandbox">,
-	access: PermissionMode,
+	label: string,
 ): R {
-	if (!sandboxWithoutNetwork(opts, access)) return report;
-	const gap = `${HARNESS_REGISTRY[opts.harness].label}'s sandbox allows no network`;
+	const gap = `${label}'s sandbox allows no network`;
 	if (report.coverage.notQueried.includes(gap)) return report;
 	return {
 		...report,

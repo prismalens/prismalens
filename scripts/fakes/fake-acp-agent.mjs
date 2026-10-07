@@ -43,6 +43,15 @@ export function loadSession(nameOrPath) {
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
 
+/** The modes a run asks for by default (#673 w21): Claude Code's `default`, OpenCode's `plan`. */
+const DEFAULT_MODES = {
+	currentModeId: "default",
+	availableModes: [
+		{ id: "default", name: "Manual" },
+		{ id: "plan", name: "Plan" },
+	],
+};
+
 /** The release directory of the fakes installed with `stateDir`. */
 export function releaseDir(stateDir = DEFAULT_STATE_DIR) {
 	return join(stateDir, "release");
@@ -323,6 +332,7 @@ function run() {
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				return reply({
 					sessionId,
+					modes: script.modes ?? DEFAULT_MODES,
 					...(script.configOptions
 						? { configOptions: script.configOptions }
 						: {}),

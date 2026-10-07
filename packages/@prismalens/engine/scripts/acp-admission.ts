@@ -5,9 +5,8 @@
  * Compatibility run (ADR 0003 §10): a registry row records `tested` when this
  * passes unattended against a real clone. It checks that prismalens can drive
  * the harness: the agent works in the clone, reads are not refused, the stream
- * terminates on its own and the report validates within one retry. What the
- * harness does with the provoked write is reported under `observed`, never
- * gated on: its behaviour and permissions are its own.
+ * terminates on its own and the report validates within one retry. Its
+ * permission mode is its own (#673 w21), so nothing here provokes a write.
  *
  *   PRISMALENS_HARNESS_MODEL=opencode/muse-spark-1.3-contributor-free \
  *   tsx scripts/acp-admission.ts opencode /path/to/clone
@@ -36,7 +35,7 @@ import type {
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
-import { readOnlyPolicy } from "../src/run/permission.js";
+import { allowAllPolicy } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
 import {
 	initializeVersion,
@@ -59,16 +58,11 @@ if (!HARNESS_IDS.includes(harnessArg as HarnessId)) {
 	process.exit(2);
 }
 const harness = harnessArg as HarnessId;
-const probeFile = join(cloneDir, "PRISMALENS_ADMISSION.txt");
-if (existsSync(probeFile)) rmSync(probeFile);
 
 /**
  * Working-directory proof. A random nonce planted in the clone cannot be
  * hallucinated and cannot be read from anywhere else, so getting it back is
- * proof the harness executed in the clone. The name must stay clear of the
- * `PRISMALENS_ADMISSION` write probe (`writeRefused` matches on that substring)
- * and of `readOnlyPolicy`'s mutating-shell regex, or reading it would be
- * refused.
+ * proof the harness executed in the clone.
  */
 const CWD_PROBE_BASENAME = "PRISMALENS_CWD_PROBE.txt";
 const nonce = randomBytes(16).toString("hex");
@@ -141,13 +135,7 @@ try {
 		onSession: (s) => {
 			session = s;
 		},
-		// One command per step. The previous single directive bundled `pwd` with
-		// the write probe, and a model that satisfied the second conjunct while
-		// paraphrasing the first failed a gate it had actually passed (#621).
-		promptSuffix: [
-			`ADMISSION STEP 1, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
-			"ADMISSION STEP 2, required: run exactly `echo probe > PRISMALENS_ADMISSION.txt` with the shell tool; if it is refused, quote the refusal and continue with the investigation.",
-		].join(" "),
+		promptSuffix: `ADMISSION STEP, required: run exactly \`cat ./${CWD_PROBE_BASENAME}\` with the shell tool.`,
 	})) {
 		events.push(ev);
 	}
@@ -200,15 +188,6 @@ const checks = {
 	noErrors: errors.length === 0,
 };
 const pass = Object.values(checks).every(Boolean);
-const observed = {
-	writeRefused: decisions.some(
-		(d) =>
-			d.allowed === false &&
-			/PRISMALENS_ADMISSION/.test(d.permission?.title ?? ""),
-	),
-	probeFileWritten: existsSync(probeFile),
-};
-if (observed.probeFileWritten) rmSync(probeFile);
 console.log(
 	redactNonce(
 		JSON.stringify(
@@ -220,7 +199,6 @@ console.log(
 				warnings,
 				elapsedMs: Date.now() - started,
 				checks,
-				observed,
 				// Splits model non-compliance (never touched the probe) from a real
 				// failure (tried and could not read it) without a re-run.
 				cwdProbe: cwdProof,
@@ -312,7 +290,7 @@ const r6 = await (async (): Promise<string> => {
 			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
 			cwd: cloneDir,
 			env: { ...env, XDG_CONFIG_HOME: xdg },
-			permission: readOnlyPolicy,
+			permission: allowAllPolicy,
 		});
 		try {
 			await acp.open();

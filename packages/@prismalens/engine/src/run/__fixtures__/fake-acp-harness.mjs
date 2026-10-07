@@ -122,6 +122,41 @@ async function turn(sessionId, promptText) {
 	turns += 1;
 	if (mode === "crash") process.exit(3);
 	if (mode === "resume" || mode === "continue") {
+		// FAKE_RESUME_CURL: the reopened session queries a host address first (#673 w26).
+		if (process.env.FAKE_RESUME_CURL) {
+			const command = "curl -s http://localhost:9090/api/v1/query?query=up";
+			const toolCall = {
+				toolCallId: "t_curl",
+				title: command,
+				kind: "execute",
+				rawInput: { command },
+			};
+			notify(sessionId, {
+				sessionUpdate: "tool_call",
+				status: "pending",
+				...toolCall,
+			});
+			const c = await ask({
+				sessionId,
+				toolCall,
+				options: [
+					{ optionId: "once", kind: "allow_once" },
+					{ optionId: "reject", kind: "reject_once" },
+				],
+			});
+			const ok = c.outcome?.optionId === "once";
+			notify(sessionId, {
+				sessionUpdate: "tool_call_update",
+				toolCallId: "t_curl",
+				status: ok ? "completed" : "failed",
+				content: [
+					{
+						type: "content",
+						content: { type: "text", text: ok ? "up 1" : "denied" },
+					},
+				],
+			});
+		}
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
 			content: {
@@ -313,13 +348,16 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
 		const options = configOptions();
-		// FAKE_MODES: the session modes it advertises, comma-separated, the first current.
-		const modeIds = (process.env.FAKE_MODES ?? "").split(",").filter(Boolean);
-		const modes = modeIds.length
-			? {
-					currentModeId: modeIds[0],
-					availableModes: modeIds.map((id) => ({ id, name: id })),
-				}
+		// FAKE_MODES: the session modes it advertises, comma-separated `id` or `id=Name`, the first current.
+		const offeredModes = (process.env.FAKE_MODES ?? "")
+			.split(",")
+			.filter(Boolean)
+			.map((m) => {
+				const [id, name] = m.split("=");
+				return { id, name: name ?? id };
+			});
+		const modes = offeredModes.length
+			? { currentModeId: offeredModes[0].id, availableModes: offeredModes }
 			: undefined;
 		send({
 			jsonrpc: "2.0",

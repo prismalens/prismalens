@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AGENT_DEFAULT_MODE } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
@@ -50,6 +51,7 @@ function opts(mode: string, extra: Partial<Parameters<typeof runInvestigation>[0
 		cwd,
 		runDir,
 		env: { ...process.env, FAKE_ACP_MODE: mode },
+		agentMode: AGENT_DEFAULT_MODE,
 		initTimeoutMs: 10_000,
 		promptTimeoutMs: 10_000,
 		...extra,
@@ -175,7 +177,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(report.report.fidelity?.servedModel).toBeUndefined();
 	});
 
-	it("runs in the clone, refuses the write, validates the report first try, writes the transcript", async () => {
+	it("runs in the clone, allows every request, validates the report first try, writes the transcript", async () => {
 		const { events, cwd, runDir } = await collect("ok");
 		const kinds = events.map((e) => e.kind);
 		expect(kinds).toContain("tool_result");
@@ -187,12 +189,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(report.report.fidelity?.harness).toBe("opencode");
 		expect(report.report.fidelity?.harnessVersion).toBe("0");
 		const results = events.filter((e) => e.kind === "tool_result");
-		expect(results.map((r) => (r.kind === "tool_result" ? r.result.ok : null))).toEqual([true, false]);
-		const refused = results[1];
-		if (refused?.kind !== "tool_result") throw new Error("no refused result");
-		expect(refused.result.preview).toMatch(/^Refused by PrismaLens's read-only policy: shell command would mutate/);
-		expect(refused.result.error).toBe(refused.result.preview);
-		expect(existsSync(join(cwd, "PRISMALENS_SPIKE.txt"))).toBe(false);
+		expect(results.map((r) => (r.kind === "tool_result" ? r.result.ok : null))).toEqual([true, true]);
 		const decisions = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
 			.split("\n")
 			.filter(Boolean)
@@ -205,8 +202,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 				}
 			})
 			.filter((e) => e.permission !== undefined);
-		expect(decisions.map((d) => d.allowed)).toEqual([true, false]);
-		expect(decisions[1]?.why).toBe("shell command would mutate");
+		expect(decisions.map((d) => d.allowed)).toEqual([true, true]);
 		expect(existsSync(join(runDir, "config", "marker.json"))).toBe(true);
 	});
 
@@ -292,7 +288,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		});
 		for await (const ev of runInvestigation(o)) {
 			events.push(ev);
-			if (ev.kind === "tool_result" && ev.result.ok === false) deliver?.({ text: "Stop and look at the TTL." });
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") deliver?.({ text: "Stop and look at the TTL." });
 		}
 		const msg = events.find((e) => e.kind === "operator_message");
 		expect(msg).toMatchObject({ text: "Stop and look at the TTL.", mode: "now", delivered: true });
@@ -569,7 +565,7 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 	});
 });
 
-describe("the run's access level (r4 R4.1)", () => {
+describe("the agent's own mode (#673 w21)", () => {
 	const wireOut = (runDir: string) =>
 		readFileSync(join(runDir, "transcript.jsonl"), "utf8")
 			.split("\n")
@@ -578,88 +574,75 @@ describe("the run's access level (r4 R4.1)", () => {
 			.filter((e) => e.d === "out")
 			.map((e) => e.m);
 
-	it("defaults to Read-only: the write is refused and the report records the level", async () => {
-		const { events } = await collect("ok");
-		const report = events.at(-1);
-		if (report?.kind !== "report") throw new Error("no report");
-		expect(report.report.fidelity?.mode).toBe("read-only");
-	});
-
-	it("Given Edit the copy, When the agent writes inside the copy, Then the gate allows it", async () => {
-		const { events, runDir } = await collect("ok", { access: "workspace-write" });
-		const report = events.at(-1);
-		if (report?.kind !== "report") throw new Error("no report");
-		expect(report.report.fidelity?.mode).toBe("workspace-write");
-		const decisions = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
-			.split("\n")
-			.filter(Boolean)
-			.map((l) => JSON.parse(JSON.parse(l).m) as { permission?: unknown; allowed?: boolean })
-			.filter((e) => e.permission !== undefined);
-		expect(decisions.map((d) => d.allowed)).toEqual([true, true]);
-	});
-
-	it("Given Full access on Claude Code, When the harness offers bypassPermissions, Then session/set_mode asks for it", async () => {
+	it("Given the row's default mode, When the agent offers it, Then set_mode asks for it and the brief and report name it", async () => {
 		const { events, runDir } = await collect("ok", {
 			harness: "claude-code",
-			access: "full-access",
-			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default,bypassPermissions" },
+			agentMode: undefined,
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "plan=Plan,default=Manual" },
 		});
 		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
-		expect(sent.find((m) => m.method === "session/set_mode")?.params?.modeId).toBe("bypassPermissions");
+		expect(sent.find((m) => m.method === "session/set_mode")?.params?.modeId).toBe("default");
+		expect(wireOut(runDir).find((m) => m.includes("session/prompt"))).toContain("Permission mode: Manual, the agent's own.");
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
-		expect(report.report.fidelity).toMatchObject({ mode: "full-access" });
-		expect(report.report.fidelity?.mechanism).toContain("mode bypassPermissions");
-		expect(report.report.fidelity?.mechanism).not.toContain("not offered");
+		expect(report.report.fidelity).toMatchObject({ mode: "default", mechanism: "agent", fidelity: "cooperative" });
 	});
 
-	it("Given a mode the harness does not offer, Then the run says the gate is the only layer and sends no set_mode", async () => {
-		const warnings: string[] = [];
-		const { events, runDir } = await collect("ok", {
-			harness: "claude-code",
-			onPolicyWarning: (m) => warnings.push(m),
+	it("Given a mode the agent does not offer, Then the run fails before the first prompt", async () => {
+		const { events, runDir } = await collect("ok", { harness: "claude-code", agentMode: "bypassPermissions", env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default" } });
+		expect(events.at(-1)).toMatchObject({
+			kind: "error",
+			message: 'Claude Code did not offer mode "bypassPermissions"; run a check in Settings, Agent',
 		});
+		expect(wireOut(runDir).some((m) => m.includes("session/prompt"))).toBe(false);
+	});
+
+	it("Given agent-default, Then no set_mode is sent and the report records the mode the agent reports", async () => {
+		const { events, runDir } = await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "build=Build" } });
 		expect(wireOut(runDir).some((m) => m.includes("session/set_mode"))).toBe(false);
-		expect(warnings).toContain("mode default not offered, gate only");
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
-		expect(report.report.fidelity?.mechanism).toMatch(/mode default not offered, gate only$/);
+		expect(report.report.fidelity?.mode).toBe("build");
 	});
 
-	it("Given Codex with the sandbox switch off, When a run starts at Read-only, Then agent-full-access and cooperative", () => {
-		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only", sandbox: false }).env;
-		expect(env.INITIAL_AGENT_MODE).toBe("agent-full-access");
-		expect(buildRunFidelity("codex", {}, "read-only", { sandbox: false })).toMatchObject({ mode: "read-only", fidelity: "cooperative" });
+	it("passes Codex its mode at spawn and calls only its read-only sandbox enforced", () => {
+		expect(prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env.INITIAL_AGENT_MODE).toBe("read-only");
+		const full = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), agentMode: "agent-full-access" });
+		expect(full.env.INITIAL_AGENT_MODE).toBe("agent-full-access");
+		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "enforced", mechanism: "agent" });
+		expect(buildRunFidelity("codex", {}, "agent-full-access").fidelity).toBe("cooperative");
 	});
 
-	it("Given no sandbox setting, When Codex starts at Read-only, Then its sandbox stays on (SANDBOX_DEFAULT)", () => {
-		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env;
-		expect(env.INITIAL_AGENT_MODE).toBe("read-only");
-	});
-
-	it("Given Codex with the sandbox switch on, When a run starts at Read-only, Then read-only and enforced", () => {
-		const env = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), access: "read-only", sandbox: true }).env;
-		expect(env.INITIAL_AGENT_MODE).toBe("read-only");
-		expect(buildRunFidelity("codex", {}, "read-only", { sandbox: true })).toMatchObject({
-			fidelity: "enforced",
-			mechanism: "Codex read-only sandbox (no network)",
-		});
-	});
-
-	it("merges a level's config patch into the harness's own config file", () => {
+	it("writes OpenCode's config with no permission block of PrismaLens's own", () => {
 		const runDir = tmp("run");
-		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir, access: "full-access" });
+		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir });
 		const config = JSON.parse(readFileSync(join(runDir, "config", "opencode.json"), "utf8"));
-		expect(config.permission).toEqual({ edit: "allow", bash: "allow", webfetch: "allow", websearch: "allow", external_directory: "allow" });
-		const readOnly = tmp("run");
-		prepareRunEnv({ harness: "opencode", cwd: tmp("clone"), runDir: readOnly });
-		expect(JSON.parse(readFileSync(join(readOnly, "config", "opencode.json"), "utf8")).permission.edit).toBe("deny");
+		expect(config.permission).toBeUndefined();
+		expect(config.experimental).toEqual({ continue_loop_on_deny: true });
 	});
 
-	it("Given Codex's sandbox on at a read level, Then What we could not check names it", async () => {
-		const { events } = await collect("ok", { harness: "codex", sandbox: true });
+	it("Given Codex read-only, Then What we could not check names its sandbox's missing network", async () => {
+		const { events } = await collect("ok", {
+			harness: "codex",
+			agentMode: undefined,
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" },
+		});
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
 		expect(report.report.coverage.notQueried).toContain("Codex's sandbox allows no network");
+	});
+
+	// w26: no host fence; Codex read-only still blocks the network by its own sandbox.
+	it("answers a resumed session's curl to a host address allow, and never sets a mode on it (#673 w26)", async () => {
+		const { events, runDir } = await collect("resume", {
+			harness: "claude-code",
+			agentMode: "default",
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_RESUME_CURL: "1" },
+			resume: { sessionId: "ses_old", text: "Is Prometheus up?", mode: "queue", heads: [] },
+		});
+		const curl = events.find((e) => e.kind === "tool_result");
+		expect(curl).toMatchObject({ kind: "tool_result", result: { ok: true, preview: "up 1" } });
+		expect(wireOut(runDir).some((m) => m.includes("session/set_mode"))).toBe(false);
+		expect(events.at(-1)?.kind).toBe("branch_done");
 	});
 });

@@ -3,8 +3,6 @@
 
 import type { InvestigationContext } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
-import { telemetryOrigins } from "./connectors.js";
-import { readOnlyPolicyFor } from "./permission.js";
 import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
 
 describe("buildInvestigationPrompt (#633)", () => {
@@ -98,47 +96,31 @@ describe("buildInvestigationPrompt (#633)", () => {
 		expect(buildInvestigationPrompt(baseContext)).not.toContain("context-pack:");
 	});
 
-	describe("the brief's network lines and the gate agree (r4 R4.1 d3)", () => {
+	describe("the agent's own mode and the network (#673 w21)", () => {
 		const context: InvestigationContext = {
 			...baseContext,
 			telemetry: { prometheusUrl: "http://prometheus.internal:9090", alertmanagerUrl: "http://am.internal:9093" },
 		};
 
-		it("queries Prometheus with a GET and says at Read-only that nothing else is reachable", () => {
-			const prompt = buildInvestigationPrompt(context);
+		it("names the agent's own mode, keeps the job's scope line, and makes no write or network rule of its own", () => {
+			const prompt = buildInvestigationPrompt(context, { modeName: "Manual" });
 			expect(prompt).toContain(
 				"curl -sG 'http://prometheus.internal:9090/api/v1/query' --data-urlencode 'query=<promql>'",
 			);
 			expect(prompt).toContain("curl -s 'http://am.internal:9093/api/v2/alerts'");
-			expect(prompt).toContain(
-				"Network: only the addresses listed above, with GET; nothing else is reachable at this access level.",
-			);
-			expect(prompt).toContain("Never modify, deploy, restart, or write anything.");
+			expect(prompt).toContain("Permission mode: Manual, the agent's own.");
+			expect(prompt).toContain("This is an investigation: report; do not deploy, restart or change infrastructure.");
+			expect(prompt).toContain("\nSURFACES\n");
+			expect(prompt).not.toContain("READ-ONLY SURFACES");
+			expect(prompt).not.toMatch(/Writes will be refused|Network: only|Never modify/);
 		});
 
-		it("every curl line in the brief passes the Read-only gate", () => {
-			const lines = [...buildInvestigationPrompt(context).matchAll(/curl [^\n·]+?(?=\s{3}|$)/gm)].map((m) =>
-				m[0].trim().replace("<promql>", "up"),
-			);
-			expect(lines.length).toBe(2);
-			const policy = readOnlyPolicyFor({ cwd: "/work/runs/abc/repo", allowedOrigins: telemetryOrigins(context) });
-			for (const command of lines) {
-				const d = policy({ options: [{ optionId: "once", kind: "allow_once" }], toolCall: { kind: "execute", rawInput: { command } } });
-				expect(d.allow, command).toBe(true);
-			}
-		});
-
-		it("says what a wider level allows instead of the Read-only lines", () => {
-			const tools = buildInvestigationPrompt(context, "read-only-tools");
-			expect(tools).not.toContain("nothing else is reachable");
-			expect(tools).toContain("Network: GET requests to any address, without a request body");
-			const write = buildInvestigationPrompt(context, "workspace-write");
-			expect(write).not.toContain("Never modify, deploy, restart, or write anything.");
-			expect(write).toContain("Write only inside your current working directory");
+		it("says the agent's default when no mode name is known", () => {
+			expect(buildInvestigationPrompt(context)).toContain("Permission mode: the agent's default, the agent's own.");
 		});
 
 		it("tells an agent whose sandbox has no network not to query, and to say so", () => {
-			const prompt = buildInvestigationPrompt(context, "read-only", { noNetwork: true });
+			const prompt = buildInvestigationPrompt(context, { noNetwork: true });
 			expect(prompt).not.toContain("nothing else is reachable");
 			expect(prompt).toContain("Your sandbox allows no network");
 		});
@@ -146,7 +128,6 @@ describe("buildInvestigationPrompt (#633)", () => {
 		it("Given no network, Then the brief keeps the addresses but never tells the agent to query them (#778)", () => {
 			const prompt = buildInvestigationPrompt(
 				{ ...context, logs: { kind: "loki", url: "http://logs.internal" } },
-				"read-only",
 				{ noNetwork: true },
 			);
 			expect(prompt).not.toContain("curl");

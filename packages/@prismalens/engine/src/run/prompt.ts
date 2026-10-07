@@ -5,7 +5,6 @@
  * The one investigation prompt (ADR 0002). Telemetry surfaces appear only when
  * the host configured them; the report contract is the last fenced json block.
  */
-import type { PermissionMode } from "@prismalens/config/harness";
 import type { InvestigationContext } from "@prismalens/contracts/schemas";
 import {
 	renderAlertPayload,
@@ -13,25 +12,6 @@ import {
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
-
-/** What the brief tells the agent about the network and writes, per access level (r4 R4.1). */
-const ACCESS_METHOD: Record<PermissionMode, string[]> = {
-	"read-only": [
-		"Network: only the addresses listed above, with GET; nothing else is reachable at this access level.",
-		"Never modify, deploy, restart, or write anything. Writes will be refused; do not retry them.",
-	],
-	"read-only-tools": [
-		"Network: GET requests to any address, without a request body, and the read commands of the CLIs you are signed in to.",
-		"Never modify, deploy, restart, or write anything. Writes will be refused; do not retry them.",
-	],
-	"workspace-write": [
-		"Network: GET requests to any address, without a request body.",
-		"Write only inside your current working directory, a throwaway copy; you may run its tests. Never deploy or restart anything.",
-	],
-	"full-access": [
-		"Write only inside your current working directory, a throwaway copy. Never deploy or restart anything.",
-	],
-};
 
 /** What the agent can reach: telemetry addresses, then the code, one line each. */
 function renderSurfaces(
@@ -104,8 +84,7 @@ const NO_NETWORK =
 
 export function buildInvestigationPrompt(
 	context: InvestigationContext,
-	access: PermissionMode = "read-only",
-	options: { noNetwork?: boolean } = {},
+	options: { modeName?: string; noNetwork?: boolean } = {},
 ): string {
 	const [primary, ...rest] = context.alerts;
 	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
@@ -142,9 +121,10 @@ export function buildInvestigationPrompt(
 		"After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
 		`Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about, then READ that code path's handler and the configuration it depends on. Use git log and git blame on the files you read; a recent change is a suspect.`,
 		"Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
-		...ACCESS_METHOD[access].map((line) =>
-			options.noNetwork && line.startsWith("Network:") ? NO_NETWORK : line,
-		),
+		...(options.noNetwork ? [NO_NETWORK] : []),
+		`Permission mode: ${options.modeName ?? "the agent's default"}, the agent's own.`,
+		// The job's scope (ADR 0001 detect-and-report), not a permission rule (#673 w21).
+		"This is an investigation: report; do not deploy, restart or change infrastructure.",
 	];
 	const methodBlock = methodSteps
 		.map((step, i) => `  ${i + 1}. ${step}`)
@@ -155,7 +135,7 @@ export function buildInvestigationPrompt(
 FIRING ALERT
 ${renderAlertPayload(primary, rest)}${serviceBlock}
 
-READ-ONLY SURFACES
+SURFACES
 ${surfaces.join("\n")}${packBlock}
 
 METHOD (work iteratively — think → run a command → observe → decide)

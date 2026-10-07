@@ -30,6 +30,11 @@ export interface FakeSession {
 	agent?: { name: string; version: string };
 	loadSession?: boolean;
 	configOptions?: unknown[];
+	/** `session/new`'s `modes`; absent advertises Claude Code's `default` and `plan`. */
+	modes?: {
+		currentModeId: string;
+		availableModes: { id: string; name: string; description?: string }[];
+	};
 	turns?: Step[][];
 	followUp?: Step[];
 	load?: Step[];
