@@ -233,7 +233,8 @@ export function failureLine(lines: string[]): string | null {
 			return line;
 		})
 		.filter((line) => line.length > 0);
-	const pick = texts.findLast((line) => ERROR_LINE.test(line)) ?? texts.at(-1);
+	const pick =
+		[...texts].reverse().find((line) => ERROR_LINE.test(line)) ?? texts.at(-1);
 	return pick === undefined ? null : redactSecrets(pick);
 }
 
