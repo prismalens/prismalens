@@ -25817,6 +25817,17 @@
                             ],
                             "default": null
                           },
+                          "windowsOnlyPath": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "models": {
                             "type": "object",
                             "properties": {

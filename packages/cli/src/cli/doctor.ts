@@ -23,6 +23,8 @@ import {
 	getAppDataDir,
 	installChannel,
 	installedService,
+	isWindowsMountPath,
+	isWsl,
 	readInstanceFile,
 	secretFileName,
 	serviceOwnsWorkspace,
@@ -34,9 +36,10 @@ import {
 } from "@prismalens/config/harness";
 import {
 	installHints,
-	isOnPath,
+	type PathScanOptions,
 	resolveHarnessSelection,
 	resolveOnPath,
+	windowsInstallOnPath,
 } from "@prismalens/config/harness-selection";
 import { probeHarness, windowsSpawnPlan } from "@prismalens/engine";
 import { defineCommand } from "citty";
@@ -90,23 +93,31 @@ function checkAppDataDir(): Check {
 }
 
 /** For every registry entry, is its binary on PATH — the existing PATH scan. */
-export function checkHarnessesOnPath(): Check[] {
+export function checkHarnessesOnPath(
+	path = process.env.PATH ?? "",
+	scan: PathScanOptions = {},
+): Check[] {
 	return (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
 	).map((descriptor) => {
-		const resolved = resolveOnPath(descriptor.binary);
+		const resolved = resolveOnPath(descriptor.binary, path, scan);
+		const windowsOnly = resolved
+			? null
+			: windowsInstallOnPath(descriptor.binary, path, scan);
 		const companion =
 			!resolved && descriptor.companionBinary
-				? resolveOnPath(descriptor.companionBinary)
+				? resolveOnPath(descriptor.companionBinary, path, scan)
 				: null;
 		return {
 			name: `Harness: ${descriptor.label}`,
 			pass: resolved !== null,
 			detail: resolved
 				? `${descriptor.binary} found at ${resolved}`
-				: companion
-					? `${descriptor.label} found at ${companion}, adapter missing. Install: ${descriptor.install}`
-					: `${descriptor.binary} not found on PATH`,
+				: windowsOnly
+					? `${descriptor.binary}: ${windowsOnly} is the Windows install; it can't run inside WSL. Install it in this distro: ${descriptor.install}`
+					: companion
+						? `${descriptor.label} found at ${companion}, adapter missing. Install: ${descriptor.install}`
+						: `${descriptor.binary} not found on PATH`,
 			hard: false,
 		};
 	});
@@ -180,11 +191,10 @@ export function checkInstalls(
 		const version = out.status === 0 ? out.stdout.trim() : "version unknown";
 		return `${p} (${channelOfPath(seen.get(p) ?? p, contents)}, ${version})`;
 	});
-	const isWsl = Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
 	const wslHints: string[] = [];
-	if (isWsl) {
+	if (isWsl(env)) {
 		for (const p of seen.keys()) {
-			if (/^\/mnt\/[a-zA-Z](\/|$)/.test(p)) {
+			if (isWindowsMountPath(p)) {
 				wslHints.push(
 					`${p} is the Windows install; it can't run inside WSL. Install PrismaLens inside this distro.`,
 				);
@@ -233,10 +243,14 @@ export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
  * `session/new`, no prompt turn, 10 s per harness, sequential — a hung
  * harness reports its own line and the doctor moves on to the next one.
  */
-export async function checkHarnessHandshake(): Promise<Check[]> {
+export async function checkHarnessHandshake(
+	path = process.env.PATH ?? "",
+	scan: PathScanOptions = {},
+): Promise<Check[]> {
+	// A Windows install under WSL is not "on PATH", so it is never probed (#673 w8).
 	const installed = (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
-	).filter((descriptor) => isOnPath(descriptor.binary));
+	).filter((descriptor) => resolveOnPath(descriptor.binary, path, scan));
 	const results: Check[] = [];
 	for (const descriptor of installed) {
 		const probe = await probeHarness(descriptor.id);

@@ -66,6 +66,8 @@ export const HarnessStatusSchema = z.object({
 		.object({ key: z.string(), model: z.string() })
 		.nullable()
 		.default(null),
+	/** Under WSL, a Windows install on PATH that cannot run here (#673 w8). Absent from older APIs. */
+	windowsOnlyPath: z.string().nullable().default(null),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model

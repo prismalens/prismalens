@@ -211,6 +211,14 @@ function AgentRow({
 								</span>
 							</Hint>
 						)
+					) : harness.windowsOnlyPath ? (
+						<StateWord
+							tone="warn"
+							className="whitespace-normal"
+							data-testid={`harness-windows-only-${harness.id}`}
+						>
+							Windows install at {harness.windowsOnlyPath}; can't run in WSL
+						</StateWord>
 					) : (
 						<StateWord tone="quiet">not installed</StateWord>
 					)}
@@ -218,7 +226,9 @@ function AgentRow({
 				</span>
 			}
 			meta={
-				probe && !checking ? (
+				harness.windowsOnlyPath ? (
+					<Mono>{harness.install}</Mono>
+				) : probe && !checking ? (
 					<StateWord
 						tone={PROBE_TONE[probe.outcome]}
 						className="whitespace-normal"

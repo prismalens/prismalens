@@ -16,6 +16,7 @@ import {
 	type HarnessSelectionFailure,
 	harnessEnvModel,
 } from "./providers/harness.js";
+import { isWindowsMountPath, isWsl } from "./utils/wsl.js";
 
 // Re-exported so the union stays importable from the module that produces it,
 // even though it is now declared beside the registry.
@@ -28,28 +29,66 @@ export function isOnPath(
 	return resolveOnPath(bin, pathEnv) !== null;
 }
 
-/** The first executable `bin` on PATH, or null. The doctor prints it so a bare sudo or service PATH shows. */
-export function resolveOnPath(
+export interface PathScanOptions {
+	/** Read for WSL detection; process.env when absent. */
+	env?: NodeJS.ProcessEnv;
+	/** Whether a candidate is executable; an X_OK access check when absent. */
+	isExecutable?: (path: string) => boolean;
+}
+
+function executable(path: string): boolean {
+	try {
+		accessSync(path, fsConstants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function scanPath(
 	bin: string,
-	pathEnv = process.env.PATH ?? "",
-): string | null {
+	pathEnv: string,
+	options: PathScanOptions,
+): { resolved: string | null; windowsOnly: string | null } {
 	const exts =
 		process.platform === "win32"
 			? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";")
 			: [""];
+	const wsl = isWsl(options.env ?? process.env);
+	const isExecutable = options.isExecutable ?? executable;
+	let windowsOnly: string | null = null;
 	for (const dir of pathEnv.split(delimiter)) {
 		if (dir.length === 0) continue;
 		for (const ext of exts) {
 			const candidate = join(dir, bin + ext);
-			try {
-				accessSync(candidate, fsConstants.X_OK);
-				return candidate;
-			} catch {
-				// not here; keep scanning
+			if (!isExecutable(candidate)) continue;
+			// A Windows shim on WSL's PATH starts but never answers ACP (#673 w8).
+			if (wsl && isWindowsMountPath(candidate)) {
+				windowsOnly ??= candidate;
+				continue;
 			}
+			return { resolved: candidate, windowsOnly: null };
 		}
 	}
-	return null;
+	return { resolved: null, windowsOnly };
+}
+
+/** The first executable `bin` on PATH, or null. The doctor prints it so a bare sudo or service PATH shows. */
+export function resolveOnPath(
+	bin: string,
+	pathEnv = process.env.PATH ?? "",
+	options: PathScanOptions = {},
+): string | null {
+	return scanPath(bin, pathEnv, options).resolved;
+}
+
+/** Under WSL, the Windows install of `bin` that `resolveOnPath` skipped, when nothing else resolved. */
+export function windowsInstallOnPath(
+	bin: string,
+	pathEnv = process.env.PATH ?? "",
+	options: PathScanOptions = {},
+): string | null {
+	return scanPath(bin, pathEnv, options).windowsOnly;
 }
 
 /** Who pinned the harness: the env var, or the persisted Settings → Agent choice. */
@@ -76,6 +115,8 @@ export interface HarnessSelectionInput {
 	/** Which of the two pinned it; the refusal names that one (#337 run e, G15). */
 	pinSource?: PinSource;
 	isOnPath?: (bin: string) => boolean;
+	/** The Windows install WSL skipped; `windowsInstallOnPath`, or none when `isOnPath` is injected. */
+	windowsInstall?: (bin: string) => string | null;
 	/** The host env a run inherits its model from; process.env when absent. */
 	env?: Record<string, string | undefined>;
 }
@@ -102,19 +143,26 @@ export interface HarnessStatus {
 	loginHint: string;
 	/** The model the host env names for this harness (e.g. ANTHROPIC_MODEL); a run with no model set uses it. */
 	envModel: { key: string; model: string } | null;
+	/** Under WSL, a Windows install on PATH that cannot run here; null otherwise. */
+	windowsOnlyPath: string | null;
 }
 
 export function listHarnessStatus(
 	input: HarnessSelectionInput = {},
 ): HarnessStatus[] {
 	const check = input.isOnPath ?? isOnPath;
+	const windowsInstall =
+		input.windowsInstall ??
+		(input.isOnPath ? () => null : (bin: string) => windowsInstallOnPath(bin));
 	return HARNESS_IDS.map((id) => {
 		const d = HARNESS_REGISTRY[id];
+		const installed = check(d.binary);
 		return {
 			id,
 			label: d.label,
 			binary: d.binary,
-			installed: check(d.binary),
+			installed,
+			windowsOnlyPath: installed ? null : windowsInstall(d.binary),
 			tested: d.tested ?? null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,

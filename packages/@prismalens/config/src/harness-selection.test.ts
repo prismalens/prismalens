@@ -5,7 +5,12 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listHarnessStatus, resolveHarnessSelection, resolveOnPath } from "./harness-selection.js";
+import {
+	listHarnessStatus,
+	resolveHarnessSelection,
+	resolveOnPath,
+	windowsInstallOnPath,
+} from "./harness-selection.js";
 
 const onPath = (present: string[]) => (bin: string) => present.includes(bin);
 
@@ -95,5 +100,34 @@ describe.skipIf(process.platform === "win32")("resolveOnPath", () => {
 			rmSync(a, { recursive: true, force: true });
 			rmSync(b, { recursive: true, force: true });
 		}
+	});
+
+	it("skips a Windows install under WSL and keeps it outside WSL (#673 w8)", () => {
+		const shim = "/mnt/c/Users/me/AppData/Roaming/npm/gemini";
+		const path = "/mnt/c/Users/me/AppData/Roaming/npm:/usr/local/bin";
+		const only = (...paths: string[]) => ({ isExecutable: (p: string) => paths.includes(p) });
+		const wsl = { WSL_DISTRO_NAME: "Ubuntu" };
+
+		expect(resolveOnPath("gemini", path, { env: wsl, ...only(shim) })).toBeNull();
+		expect(windowsInstallOnPath("gemini", path, { env: wsl, ...only(shim) })).toBe(shim);
+		// A copy in the distro wins and nothing is reported as Windows-only.
+		const linux = "/usr/local/bin/gemini";
+		expect(resolveOnPath("gemini", path, { env: wsl, ...only(shim, linux) })).toBe(linux);
+		expect(windowsInstallOnPath("gemini", path, { env: wsl, ...only(shim, linux) })).toBeNull();
+
+		expect(resolveOnPath("gemini", path, { env: {}, ...only(shim) })).toBe(shim);
+		expect(windowsInstallOnPath("gemini", path, { env: {}, ...only(shim) })).toBeNull();
+	});
+
+	it("lists the Windows-only path on a row that is not installed", () => {
+		const rows = listHarnessStatus({
+			isOnPath: onPath([]),
+			windowsInstall: (bin) => (bin === "gemini" ? "/mnt/c/npm/gemini" : null),
+		});
+		expect(rows.find((r) => r.binary === "gemini")).toMatchObject({
+			installed: false,
+			windowsOnlyPath: "/mnt/c/npm/gemini",
+		});
+		expect(listHarnessStatus({ isOnPath: onPath(["gemini"]) }).every((r) => r.windowsOnlyPath === null)).toBe(true);
 	});
 });
