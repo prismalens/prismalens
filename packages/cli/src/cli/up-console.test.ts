@@ -7,6 +7,7 @@ import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
+	networkBindWarning,
 	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
@@ -163,6 +164,22 @@ describe("readTelemetryState (#602)", () => {
 		expect(TELEMETRY_CONSENT_NOTICE).toContain("Settings");
 		expect(TELEMETRY_CONSENT_NOTICE).toContain("nothing is sent");
 		expect(TELEMETRY_CONSENT_NOTICE).not.toMatch(/\[y\/n\]|\?$/);
+	});
+});
+
+describe("networkBindWarning (#673)", () => {
+	it("says nothing for a loopback bind", () => {
+		for (const host of ["127.0.0.1", "127.0.1.1", "localhost", "::1", "[::1]"]) {
+			expect(networkBindWarning({ host, protocol: "http" })).toBeNull();
+		}
+	});
+	it("prints one plain line for a network bind", () => {
+		const line = networkBindWarning({ host: "0.0.0.0", protocol: "http" });
+		expect(line).toMatch(/^Bound to 0\.0\.0\.0: .*plain HTTP/);
+		expect(line).not.toMatch(/[\n{}]/);
+		expect(networkBindWarning({ host: "::", protocol: "https" })).toMatch(
+			/over HTTPS/,
+		);
 	});
 });
 

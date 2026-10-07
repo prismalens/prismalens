@@ -7,6 +7,7 @@
  * URL once /health answers, and errors (#600).
  */
 
+import { isIP } from "node:net";
 import { join } from "node:path";
 import { isOnPath } from "@prismalens/config";
 
@@ -61,6 +62,22 @@ export function displayUrl(bind: {
 			? "localhost"
 			: urlHost(bind.host);
 	return `${bind.protocol}://${shown}:${bind.port}`;
+}
+
+/** The one terminal line for a bind that other machines can reach, or null for loopback. */
+export function networkBindWarning(bind: {
+	host: string;
+	protocol: string;
+}): string | null {
+	const host = bind.host.replace(/^\[|\]$/g, "").toLowerCase();
+	const loopback =
+		host === "localhost" ||
+		host === "::1" ||
+		(isIP(host) === 4 && host.startsWith("127."));
+	if (loopback) return null;
+	const transport =
+		bind.protocol === "https" ? "over HTTPS" : "over plain HTTP, unencrypted";
+	return `Bound to ${bind.host}: PrismaLens is reachable from the network ${transport}. Keep it behind a trusted network and list the names you reach it by in PRISMALENS_ALLOWED_HOSTS.`;
 }
 
 /** Where the readiness probe connects: a wildcard bind is reached over loopback. */

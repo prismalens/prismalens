@@ -258,8 +258,11 @@ async function bootstrap() {
 	// A non-loopback bind puts the app on the network. That is a supported
 	// opt-in, but it must never be silent: Ollama's default-open bind is how
 	// hundreds of thousands of hosts ended up internet-exposed.
+	// `pl up` already printed one terminal line, so the detail goes to the log
+	// file only: info sits below the quiet console's warn floor (#673).
 	if (!isLoopbackBindAddress(host)) {
-		logger.warn(
+		const log = process.env.PRISMALENS_BIND_WARNED === "1" ? "info" : "warn";
+		logger[log](
 			`Binding to ${host} — PrismaLens is reachable from the network, not just this machine. ` +
 				(httpsOptions
 					? "It serves HTTPS directly. "

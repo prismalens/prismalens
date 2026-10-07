@@ -31,6 +31,7 @@ import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
+	networkBindWarning,
 	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
@@ -211,6 +212,12 @@ export default defineCommand({
 		}
 		consola.info(`Workspace: ${workspaceDir}`);
 		consola.info(`Logs: ${logDir}`);
+		const exposed = networkBindWarning(bind);
+		if (exposed) {
+			consola.warn(exposed);
+			// The API then logs its detail to the file only (#673).
+			process.env.PRISMALENS_BIND_WARNED = "1";
+		}
 		if (process.env.PRISMALENS_LOG_CONSOLE === "verbose") {
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}
