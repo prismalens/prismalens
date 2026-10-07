@@ -6,8 +6,8 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import { trackRequests } from "./settled";
 
 /**
- * Doubles shared by the specs that drive the live investigation stream
- * (`investigation-stream-panel.spec.ts` #280).
+ * Doubles shared by the specs that drive the live investigation stream (#280),
+ * the conversation and its box.
  *
  * The real producers cannot be summoned from a spec: the demo seed ships no
  * `running` investigation, and the genuine `/stream` endpoint needs a live
@@ -45,8 +45,7 @@ declare global {
  * /api/investigations/:id` can fire twice for one navigation; the browser
  * cancels whichever one a newer request supersedes, and reading `.json()` on
  * that cancelled response throws `Response has been disposed` (observed
- * 2026-09-22, `investigation-stream-panel.spec.ts`'s "renders terminal failed
- * state..." — reproduces in the full suite, not always alone). That discarded
+ * 2026-09-22 in the full suite, not always alone). That discarded
  * fetch has nothing left reading it — the surviving duplicate carries the
  * page — so this is swallowed rather than failing the test.
  */
@@ -140,7 +139,7 @@ export async function serveInvestigationAs(
  * Fake the durable canonical event history (`GET /investigations/:id/events`)
  * for an investigation whose events the seed never wrote — the demo seed
  * ships completed investigations with a report but no event rows, so the
- * ledger otherwise has nothing to unfold.
+ * conversation otherwise has nothing to show.
  */
 export async function serveEventsHistory(
 	page: Page,

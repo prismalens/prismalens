@@ -71,6 +71,13 @@ test.describe("Accessibility at 1440, dark", () => {
 		});
 		found.record = await blocking(page, "record");
 
+		// The box and its chips live on Conversation (#673); a draft shows all three.
+		await page.goto(`${DEMO_INCIDENT}/conversation?investigation=new`);
+		await expect(page.getByTestId("docked-composer")).toBeVisible({
+			timeout: 15_000,
+		});
+		found.conversation = await blocking(page, "conversation");
+
 		await page.getByTestId("agent-picker").click();
 		const picker = page.getByTestId("agent-picker-list");
 		await expect(picker).toBeVisible();
@@ -84,6 +91,12 @@ test.describe("Accessibility at 1440, dark", () => {
 		});
 		found.settings = await blocking(page, "settings");
 
-		expect(found).toEqual({ board: [], record: [], picker: [], settings: [] });
+		expect(found).toEqual({
+			board: [],
+			record: [],
+			conversation: [],
+			picker: [],
+			settings: [],
+		});
 	});
 });

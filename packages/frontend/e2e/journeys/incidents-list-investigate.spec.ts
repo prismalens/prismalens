@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 /**
  * #520 part B — Incidents list investigate button gating & refusal handling.
@@ -99,17 +99,26 @@ async function createIncident(page: Page, title: string): Promise<string> {
 }
 
 /**
- * The band's Investigate again: a text button beside the lifecycle action
- * (look ruling L56), the gate's reason in its hint.
+ * The band's New run opens the draft on Conversation (#673); the draft's
+ * Investigate carries the gate, its reason under the box.
  */
 async function bandInvestigate(page: Page) {
-	return page.getByTestId("band-menu-investigate");
+	await page.getByTestId("band-more").click({ timeout: 15_000 });
+	await page.getByTestId("band-menu-new-run").click();
+	return page.getByTestId("composer-investigate");
 }
 
-async function expectReason(page: Page, button: Locator, reason: string) {
-	await button.locator("..").hover();
-	await expect(page.getByTestId("hint").last()).toHaveText(reason);
-	await page.mouse.move(0, 0);
+async function expectReason(page: Page, reason: string) {
+	await expect(page.getByTestId("composer-blocked")).toContainText(reason, {
+		timeout: 15_000,
+	});
+}
+
+/** A refused start says why under the box, in the server's words. */
+async function expectRefusal(page: Page, reason: string) {
+	await expect(page.getByTestId("composer-refusal")).toHaveText(reason, {
+		timeout: 15_000,
+	});
 }
 
 test.describe("#520 part B — incident record investigate gate", () => {
@@ -127,13 +136,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		const investigateBtn = await bandInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeDisabled();
-		await expectReason(page, investigateBtn, UNUSABLE_SELECTION_REASON);
-
-		// The reason is on screen under the box on Overview.
-		await page.getByTestId("tab-overview").click();
-		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
-			{ timeout: 15_000 },
-		);
+		await expectReason(page, UNUSABLE_SELECTION_REASON);
 	});
 
 	test("band investigate is enabled when a harness or provider is usable", async ({
@@ -152,7 +155,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(investigateBtn).toBeEnabled();
 	});
 
-	test("handles server refusal (412) by rendering the refusal reason in a toast", async ({
+	test("handles server refusal (412) by rendering the refusal reason under the box", async ({
 		page,
 	}) => {
 		const refusalReason =
@@ -191,15 +194,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		await expect(investigateBtn).toBeEnabled();
 		await investigateBtn.click();
 
-		// Toast appears with refusal reason rather than a generic error
-		await expect(
-			page.getByText("Investigation refused", { exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
-		await expect(page.getByText(refusalReason, { exact: true })).toBeVisible({
-			timeout: 15_000,
-		});
+		await expectRefusal(page, refusalReason);
 	});
 
 	test("design evidence: default, dark, and refusal error states", async ({
@@ -223,11 +218,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		const defaultBtn = await bandInvestigate(page);
 		await expect(defaultBtn).toBeDisabled({ timeout: 15_000 });
-		await expectReason(page, defaultBtn, UNUSABLE_SELECTION_REASON);
-		await page.getByTestId("tab-overview").click();
-		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
-			{ timeout: 15_000 },
-		);
+		await expectReason(page, UNUSABLE_SELECTION_REASON);
 
 		// 2. Dark: disabled button with reason tooltip in dark theme
 		await page.emulateMedia({ colorScheme: "dark" });
@@ -241,11 +232,7 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		const darkBtn = await bandInvestigate(page);
 		await expect(darkBtn).toBeDisabled({ timeout: 15_000 });
-		await expectReason(page, darkBtn, UNUSABLE_SELECTION_REASON);
-		await page.getByTestId("tab-overview").click();
-		await expect(page.getByText(UNUSABLE_SELECTION_REASON).first()).toBeVisible(
-			{ timeout: 15_000 },
-		);
+		await expectReason(page, UNUSABLE_SELECTION_REASON);
 
 		// 3. Error state: server refusal toast
 		const refusalReason =
@@ -283,13 +270,6 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		const errorBtn = await bandInvestigate(page);
 		await expect(errorBtn).toBeEnabled({ timeout: 15_000 });
 		await errorBtn.click();
-		await expect(
-			page.getByText("Investigation refused", { exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
-		await expect(page.getByText(refusalReason, { exact: true })).toBeVisible({
-			timeout: 15_000,
-		});
+		await expectRefusal(page, refusalReason);
 	});
 });

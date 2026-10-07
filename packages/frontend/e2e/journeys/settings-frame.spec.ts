@@ -61,7 +61,7 @@ test.describe("#523 — the settings frame", () => {
 		if ((await def.count()) > 0) {
 			await def.click();
 			await expect(pickerList).toHaveCount(0);
-			await expect(page.getByTestId("model-pill")).toHaveText("Agent default");
+			await expect(page.getByTestId("model-pill")).toHaveText(/ default$/);
 		} else {
 			await page.keyboard.press("Escape");
 			await expect(pickerList).toHaveCount(0);

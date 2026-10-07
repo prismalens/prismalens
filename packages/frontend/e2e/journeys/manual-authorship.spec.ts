@@ -103,8 +103,9 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.getByTestId("note-input").press("Enter");
 		await expect(page.getByTestId("overview-timeline")).toContainText(note);
 
-		// 4. Start the investigation from the box, with a brief: the
-		//    investigate call must accept an incident that has zero alerts.
+		// 4. Start the investigation from the draft's box on Conversation, with a
+		//    brief: the investigate call must accept an incident with zero alerts.
+		await page.getByTestId("tab-conversation").click();
 		const investigate = page.waitForRequest(
 			(req) =>
 				/\/api\/incidents\/[^/]+\/investigate$/.test(req.url()) &&
@@ -122,10 +123,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 
 		// 5. An investigation exists and the app stays on the incident, now
-		//    pointed at it — the incident URL carries `?investigation=<id>`
+		//    pointed at it — the Conversation URL carries `?investigation=<id>`
 		//    rather than navigating away to a separate /investigations/:id route.
 		await expect(page).toHaveURL(
-			/\/incidents\/[0-9a-f-]{36}\?investigation=[0-9a-f-]{36}$/,
+			/\/incidents\/[0-9a-f-]{36}\/conversation\?investigation=[0-9a-f-]{36}$/,
 			{ timeout: 20_000 },
 		);
 	});
@@ -164,7 +165,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		expect(created.ok()).toBeTruthy();
 		const incident: { id: string } = await created.json();
 
-		await page.goto(`/incidents/${incident.id}`);
+		await page.goto(`/incidents/${incident.id}/conversation`);
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
@@ -290,14 +291,18 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		expect(created.ok()).toBeTruthy();
 		const incident: { id: string } = await created.json();
 
-		await page.goto(`/incidents/${incident.id}`);
+		await page.goto(`/incidents/${incident.id}/conversation`);
 
-		// Both affordances for the same procedure must agree that it is blocked,
-		// and the gate's own words say why (#521).
+		// The draft is the one way to start a run (#673); it is blocked, and the
+		// gate's own words say why (#521). The band's New run leads to the same.
 		await expect(boxInvestigateButton(page)).toBeDisabled();
-		await expect(page.getByText(NO_HARNESS_REASON).first()).toBeVisible();
+		await expect(page.getByTestId("composer-blocked")).toContainText(
+			NO_HARNESS_REASON,
+		);
 		await page.getByTestId("tab-alerts").click();
-		await expect(page.getByTestId("band-menu-investigate")).toBeDisabled();
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-new-run").click();
+		await expect(boxInvestigateButton(page)).toBeDisabled();
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {

@@ -273,19 +273,21 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		).toBeVisible();
 
 		// OpenCode takes a model: the picker lists Agent default and its models.
-		await expect(page.getByTestId("model-pill")).toHaveText("Agent default");
+		// The chip never reads a bare "Agent default" (#673 w7).
+		await expect(page.getByTestId("model-pill")).toHaveText("OpenCode default");
 		await page.getByTestId("agent-picker").click();
 		const list = page.getByTestId("agent-picker-list");
 		await expect(list.getByTestId("model-default")).toBeVisible();
 
-		// Codex takes its model by its own settings until a check says otherwise.
+		// Codex takes its model by its own settings until a check says otherwise:
+		// Agent default and a line asking for a check, no models.
 		await list.getByTestId("rail-codex").click();
 		await expect(list.getByTestId("model-pending")).toBeVisible();
-		await expect(list.getByTestId("model-default")).toHaveCount(0);
+		await expect(list.getByTestId("model-default")).toHaveCount(1);
 		await expect(list.getByTestId("model-option")).toHaveCount(0);
 	});
 
-	test("offers only Clear for a model stored for a harness that cannot take one (#639)", async ({
+	test("offers only Agent default for a model stored for a harness that cannot take one (#639)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -304,21 +306,16 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-run-row")).toContainText(
 			"Codex picks its own model",
 		);
-		// A model stored for an agent that cannot take one: clearing it is the
-		// only choice in the model list.
-		await expect(page.getByTestId("model-pill")).toHaveText("Codex");
+		// A model stored for an agent that cannot take one: Agent default, which
+		// clears it, is the only choice in the model list (#673 replaced Clear).
 		await page.getByTestId("agent-picker").click();
 		const list = page.getByTestId("agent-picker-list");
 		await expect(list.getByRole("option")).toHaveCount(1);
-		await list.getByTestId("model-clear").click();
+		await list.getByTestId("model-default").click();
 		await expect(list).toHaveCount(0);
-		await page.getByTestId("agent-picker").click();
-		await expect(
-			page.getByTestId("agent-picker-list").getByTestId("model-clear"),
-		).toHaveCount(0);
 	});
 
-	test("works from the keyboard: Enter clears a blocking model, picks a starred row, and toggles a star (#781 review)", async ({
+	test("works from the keyboard: Enter clears a blocking model with Agent default, picks a starred row, and toggles a star (#781 review)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -358,9 +355,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		const picker = page.getByTestId("agent-picker");
 		const list = page.getByTestId("agent-picker-list");
 
-		// The Clear row is the cursor's first stop.
+		// Agent default, which clears the stored model, is the cursor's first stop.
 		await picker.click();
-		await expect(list.getByTestId("model-clear")).toBeVisible({
+		await expect(list.getByTestId("model-default")).toBeVisible({
 			timeout: 15_000,
 		});
 		await page.keyboard.press("Enter");
@@ -435,7 +432,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
 			"aria-label",
-			/^Agent and model for the next run: OpenCode, /,
+			/^Agent and model: OpenCode, /,
 		);
 		await expect(page.getByTestId("harness-run-row")).toContainText(
 			"The same control sits in the box on an incident",
@@ -457,7 +454,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
 			"aria-label",
-			/^Agent and model for the next run: Claude Code, /,
+			/^Agent and model: Claude Code, /,
 		);
 		await expect(page.getByTestId("harness-pinned-notice")).toContainText(
 			"PRISMALENS_HARNESS",
@@ -601,7 +598,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		const models = list.getByRole("listbox", { name: "Models" });
 		await expect(models).toContainText("Fixture Current");
 		await expect(models).toContainText("legacy");
-		await expect(models).toContainText("not in the agent's list");
+		await expect(models).toContainText("Not confirmed for OpenCode");
 		// Search filters the agent's list; it is no field to type an id into (#743 §4.1).
 		await list.getByTestId("picker-search").fill("vendor/brand-new");
 		await expect(models).toContainText("No model matches.");

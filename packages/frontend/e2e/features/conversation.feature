@@ -11,8 +11,8 @@ Feature: The conversation and the box
       And INC-1 is Triggered with no run yet
 
     Scenario: Starting a run from the box
-      When I type "Start with the 14:02 deploy" in the box and press "Start investigation"
-      Then the run strip reads "Working" with the agent and model
+      When I type "Start with the 14:02 deploy" in the draft's box and press "Investigate"
+      Then the status line reads "Working" and the chips name the agent and model
       And the box reads "Message the agent" with one Stop button
 
   Rule: Conversation
@@ -42,15 +42,15 @@ Feature: The conversation and the box
     Scenario: Esc stops the agent while the box is focused
       Given the agent is working and the box has focus
       When I press Escape
-      Then the run strip reads "Stopped by you" and I am still on the Conversation
+      Then the status line reads "Stopped by you" and I am still on the Conversation
       Given the box has no focus
       When I press Escape
       Then I am on the board
 
-    Scenario: The event log is a link
+    Scenario: The conversation is the whole record, with no event log
       Then the Conversation header shows no "Transcript / Ledger" control
       When the run ends
-      Then the end line offers "Event log"
+      Then the end line offers "Read the report" and no "Event log"
 
   Rule: Stop then continue
     Stop ends the run as the agent ends a cancelled turn; continuing is what the agent supports.
@@ -60,25 +60,25 @@ Feature: The conversation and the box
 
     Scenario: Stop ends the run
       When I press "Stop" in the box
-      Then the run strip reads "Stopped by you" and the conversation ends with "Stopped by you at <time> after <elapsed>" with "Event log", and no "Failed"
+      Then the status line reads "Stopped by you" and the conversation ends with "Stopped by you at <time> after <elapsed>", and no "Failed"
       And nothing counts down or waits
 
     Scenario: Continue a stopped run to a report
       Given INC-1's run was stopped and OpenCode can reopen it
-      Then the box reads "Continue the investigation" and no note explains it
+      Then the box reads "Continue this run" and no note explains it
       When I type "Only look at the 14:02 deploy" and press Enter
-      Then the strip reads "Working" and the agent's next message answers with what it had already found
+      Then the run is working again and the agent's next message answers with what it had already found
       When the run finishes
       Then the Report tab shows a report
 
     Scenario: A finished run takes follow-ups, the report stays
       Given INC-1's run finished with a report
-      When I send "Why the 14:02 deploy?" from the box reading "Ask a follow-up"
+      When I send "Why the 14:02 deploy?" from the box reading "Continue this run"
       Then the agent answers in the conversation and the report is unchanged
 
     Scenario: An agent that cannot continue says so
       Given the run was on deepagents and was stopped
-      Then the box reads "Brief a new investigation" with "Investigate again" and a note saying deepagents cannot reopen a finished session
+      Then the box reads "This run can't continue. Start a new run." with "New run", and no field to type into
 
   Rule: Agent controls
 
@@ -89,9 +89,9 @@ Feature: The conversation and the box
     Scenario: The model reaches the agent
       Given Codex is picked with "GPT-5.6"
       When a run starts
-      Then the report's run line names "GPT-5.6" and the event log shows the agent accepting it before the first prompt
+      Then the report's header names "GPT-5.6" and the conversation shows the agent accepting it before its first words
       Given the agent will not take the model
-      Then the run does not start and the box says which models it offered
+      Then the run does not start and its end line says which models it offered
 
     Scenario: Attachments
       When I paste a screenshot into the box while Claude Code is picked
@@ -110,4 +110,4 @@ Feature: The conversation and the box
       When I send "Check the deploy diff" from the phone
       Then the laptop shows the message as "You" within 2 seconds
       When I press Stop on the laptop
-      Then the phone's strip reads "Stopped by you" and its box reads "Continue the investigation"
+      Then the phone's status line reads "Stopped by you" and its box reads "Continue this run"

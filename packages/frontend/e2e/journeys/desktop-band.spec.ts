@@ -13,7 +13,8 @@ const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
 /** The Windows/Linux window-control overlay the band must stay clear of. */
 const CONTROLS_W = 138;
 
-for (const width of [375, 1024, 1440]) {
+// The desktop window's minWidth is 800 (packages/desktop/src/main.ts).
+for (const width of [800, 1024, 1440]) {
 	test(`the band fills the desktop title strip at ${width}px`, async ({
 		page,
 	}) => {
@@ -26,11 +27,11 @@ for (const width of [375, 1024, 1440]) {
 
 		const band = page.getByTestId("incident-state-band");
 		await expect(band).toBeVisible({ timeout: 15_000 });
-		// The band's first row is the strip; a phone adds a facts line under it.
-		const strip = band.getByTestId("band-strip");
+		// The band is one row (#673), and on desktop that row is the strip.
+		const strip = band;
 		const box = await strip.boundingBox();
 		expect(box?.y).toBe(0);
-		if (width >= 640) expect(box?.height).toBe(40);
+		expect(box?.height).toBe(40);
 
 		const region = (el: Element) =>
 			getComputedStyle(el).getPropertyValue("-webkit-app-region");

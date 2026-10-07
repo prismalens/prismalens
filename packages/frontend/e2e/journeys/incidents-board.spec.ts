@@ -247,13 +247,11 @@ test.describe("#743 — the incidents board", () => {
 		await dialog.getByTestId("confirm-reopen-incident").click();
 		await expect.poll(() => statusOf(bandId)).toBe("investigating");
 		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
-		// No run started: the box still offers Investigate.
+		// No run started: the Report pool says so and points at New run.
 		await expect(page.getByTestId("overview-report")).toContainText(
-			"No investigation yet",
+			"No run yet. Start one with + New run.",
 		);
-		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Start investigation",
-		);
+		await expect(page.getByTestId("run-tree-row")).toHaveCount(0);
 
 		// On the board a Resolved card sits in Resolved; dropped on Working it
 		// asks first, and Cancel leaves it Resolved with no run.
