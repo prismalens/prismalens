@@ -25,10 +25,10 @@ describe("composerKeyAction", () => {
 		);
 	});
 
-	it("starts the run on Enter in brief and new-run modes", () => {
-		expect(composerKeyAction(key("Enter"), "brief")).toBe("investigate");
-		expect(composerKeyAction(key("Enter"), "again")).toBe("investigate");
-		expect(composerKeyAction(key("Enter", { ctrlKey: true }), "brief")).toBe(
+	it("starts the run on Enter in a draft", () => {
+		expect(composerKeyAction(key("Enter"), "draft")).toBe("investigate");
+		expect(composerKeyAction(key("Enter"), "ended")).toBe("investigate");
+		expect(composerKeyAction(key("Enter", { ctrlKey: true }), "draft")).toBe(
 			"investigate",
 		);
 	});
@@ -46,9 +46,9 @@ describe("composerKeyAction", () => {
 
 describe("composerMode", () => {
 	it("follows the selected run", () => {
-		expect(composerMode(null)).toBe("brief");
+		expect(composerMode(null)).toBe("draft");
 		expect(composerMode({ live: true })).toBe("live");
-		expect(composerMode({ live: false })).toBe("again");
+		expect(composerMode({ live: false })).toBe("ended");
 	});
 });
 
@@ -56,7 +56,7 @@ describe("Esc and continue (R4.4)", () => {
 	it("stops a working agent, and lets go of the box otherwise", () => {
 		expect(composerKeyAction(key("Escape"), "live")).toBe("stop");
 		expect(composerKeyAction(key("Escape"), "live", false)).toBe("blur");
-		expect(composerKeyAction(key("Escape"), "brief")).toBe("blur");
+		expect(composerKeyAction(key("Escape"), "draft")).toBe("blur");
 		expect(composerKeyAction(key("Escape"), "continue")).toBe("blur");
 	});
 
@@ -76,9 +76,9 @@ describe("resume mode (#747)", () => {
 		);
 	});
 
-	it("is picked for an ended run that can be reopened, again otherwise", () => {
+	it("is picked for an ended run that can be reopened, ended otherwise", () => {
 		expect(composerMode({ live: false, resumable: true })).toBe("resume");
-		expect(composerMode({ live: false, resumable: false })).toBe("again");
+		expect(composerMode({ live: false, resumable: false })).toBe("ended");
 		expect(composerMode({ live: true, resumable: true })).toBe("live");
 	});
 });

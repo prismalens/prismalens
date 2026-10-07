@@ -1,35 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	AGENT_DEFAULT_MODE,
-	HARNESS_AUTO_ORDER,
-	type HarnessId,
-} from "@prismalens/config/harness";
+import { AGENT_DEFAULT_MODE, type HarnessId } from "@prismalens/config/harness";
 import type {
 	FavouriteModel,
 	HarnessSetting,
 	HarnessStatus,
 } from "@prismalens/contracts";
-import { Check, ChevronDown, Lock, Search, Star } from "lucide-react";
+import { Check, ChevronDown, Lock, LockOpen, Pencil, Star } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import {
-	type KeyboardEvent,
-	type ReactNode,
-	type RefObject,
-	useId,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+	ModelSelector,
+	ModelSelectorEmpty,
+	ModelSelectorGroup,
+	ModelSelectorInput,
+	ModelSelectorItem,
+	ModelSelectorList,
+} from "@/components/ai/model-selector";
 import { Hint } from "@/components/shared/Hint";
+import { Button } from "@/components/ui/button";
 import {
 	Popover,
-	PopoverAnchor,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { useMediaQuery } from "@/hooks/use-media-query";
+import { type ModeIcon, modeIcon, modeLine } from "@/lib/agent-modes";
 import {
+	useCheckHarness,
 	useHarnesses,
 	useHarnessSettings,
 	useUpdateHarnessSettings,
@@ -51,7 +48,6 @@ export function useAgentChoice() {
 		selection,
 		setting,
 		effective,
-		// Stored per harness (#639): the picker shows the effective harness's own.
 		model:
 			(effective && settingsQuery.data?.models?.[effective.id as HarnessId]) ??
 			"",
@@ -91,6 +87,11 @@ export function modelName(
 	return harness?.models.entries.find((m) => m.id === id)?.name ?? id;
 }
 
+/** The model the agent picks for itself, when its check or the env says. */
+function resolvedModel(h: HarnessStatus): string | null {
+	return modelName(h, h.envModel?.model || h.checked?.servedModel || null);
+}
+
 /** The agent and model the next run starts with, each named once. */
 export function agentModelLabel(
 	effective: HarnessStatus | undefined,
@@ -103,20 +104,25 @@ export function agentModelLabel(
 	return {
 		agent: effective.label,
 		model:
-			modelName(
-				effective,
-				model ||
-					effective.envModel?.model ||
-					effective.checked?.servedModel ||
-					null,
-			) ?? "agent default",
+			modelName(effective, model || resolvedModel(effective)) ??
+			"agent default",
 	};
 }
 
-/**
- * An agent with nothing to list (no catalogue entry, no check yet) is
- * "pending a check" (r4 R4.1 rev); a run still refuses a model it will not take.
- */
+/** The chip's words for a model: never a bare `Agent default` (#673 w7). */
+export function chipModel(h: HarnessStatus | undefined, model: string): string {
+	if (!h) return "No agent";
+	if (h.modelVia === "unsupported") return h.label;
+	return modelName(h, model || resolvedModel(h)) ?? `${h.label} default`;
+}
+
+/** Why an installed agent cannot take a run, in the gate's words; null when it can. */
+export function unreadyReason(h: HarnessStatus): string | null {
+	if (!h.installed || !h.checked || h.checked.outcome === "answers-acp")
+		return null;
+	return `${h.label}: ${h.checked.detail}`;
+}
+
 function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 	if (h.modelVia === "unsupported")
 		return h.id === "deepagents" ? "own" : "pending";
@@ -133,14 +139,21 @@ const PROVIDERS: Record<string, string> = {
 	xai: "xAI",
 	mistral: "Mistral",
 	deepseek: "DeepSeek",
+	ollama: "Ollama",
 };
 const VENDOR: Record<string, string> = {
 	"claude-code": "Anthropic",
 	codex: "OpenAI",
 	gemini: "Google",
 };
+/** A provider's mark where an agent mark is the same company's. */
+const PROVIDER_MARK: Record<string, string> = {
+	Anthropic: "claude-code",
+	Google: "gemini",
+	"OpenCode Zen": "opencode",
+};
 
-/** The group a model id lists under: its provider prefix, else the agent's own vendor. */
+/** The provider a model id lists under: its prefix, else the agent's own vendor. */
 export function providerOf(harnessId: string, modelId: string): string {
 	const slash = modelId.indexOf("/");
 	if (slash > 0) {
@@ -149,7 +162,19 @@ export function providerOf(harnessId: string, modelId: string): string {
 			PROVIDERS[prefix] ?? prefix.charAt(0).toUpperCase() + prefix.slice(1)
 		);
 	}
+	if (/:[\w.-]*cloud$|^[\w.-]+:\d/.test(modelId)) return "Ollama";
 	return VENDOR[harnessId] ?? "Models";
+}
+
+const isStarred = (f: FavouriteModel[], harness: string, model: string) =>
+	f.some((x) => x.harness === harness && x.model === model);
+
+/** The chip every box control shares: ghost, h-8, 13/500, a 14 px caret. */
+export const CHIP =
+	"inline-flex h-8 min-w-0 shrink-0 items-center gap-1 rounded-control px-2 text-body font-medium whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1 disabled:cursor-default disabled:text-text-3 disabled:hover:bg-transparent";
+
+function Caret() {
+	return <ChevronDown className="size-3.5 shrink-0 text-text-3" aria-hidden />;
 }
 
 interface Row {
@@ -157,643 +182,613 @@ interface Row {
 	harness: HarnessStatus;
 	model: string;
 	name: string;
-	sub?: string;
-	training?: boolean;
-	group: string;
+	provider: string;
+	warn?: string;
 }
 
-const isStarred = (f: FavouriteModel[], harness: string, model: string) =>
-	f.some((x) => x.harness === harness && x.model === model);
-
 /**
- * The agent and model the next run starts with (look ruling §2, decision 13,
- * T3 Code's shape): a 44 px rail of agent marks as a vertical tablist, a
- * Starred tile across agents, and the chosen agent's panel: its name, a
- * searchable model list with "Agent default" first, favourites, then models
- * by provider. Fixed at 440 × 360 so switching agents never moves it.
- * Choosing saves at once. The same control sits in the box and in Settings.
+ * The agent and model chip (T3's shape, #673 w7): a 44 px rail of installed
+ * agents and a cmdk list of the shown agent's models, fixed at 380 × 400.
  */
-export function AgentModelPicker({
-	side = "bottom",
+export function ModelChip({
+	harness,
+	model,
+	onPick,
+	disabled,
+	side = "top",
 	className,
-	defaultOpen = false,
-	anchor,
 }: {
+	harness: HarnessStatus | undefined;
+	model: string;
+	onPick: (harness: HarnessStatus, model: string) => void;
+	disabled?: boolean;
 	side?: "top" | "bottom";
 	className?: string;
-	defaultOpen?: boolean;
-	/** The box the panel opens 8 px above, rather than the chip. */
-	anchor?: RefObject<HTMLElement | null>;
 }) {
-	const {
-		harnesses,
-		setting,
-		effective,
-		model,
-		models,
-		favourites,
-		isLoading,
-	} = useAgentChoice();
+	const { harnesses, favourites, models, isLoading } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
-	const [open, setOpen] = useState(defaultOpen);
+	const check = useCheckHarness();
+	const [open, setOpen] = useState(false);
 	const [tile, setTile] = useState<string | null>(null);
-	const [q, setQ] = useState("");
-	const [cursor, setCursor] = useState(0);
-	const search = useRef<HTMLInputElement>(null);
-	const rail = useRef<HTMLDivElement>(null);
-	const coarse = useMediaQuery("(pointer: coarse)");
-	const ids = useId();
-	const shown = tile ?? effective?.id ?? "starred";
+	const shown = tile ?? harness?.id ?? "starred";
 	const agent = harnesses.find((h) => h.id === shown);
+	const installed = harnesses.filter((h) => h.installed);
 
-	const autoHarness = useMemo(() => {
-		const autoId = HARNESS_AUTO_ORDER.find(
-			(id) => harnesses.find((h) => h.id === id)?.installed,
-		);
-		return autoId ? harnesses.find((h) => h.id === autoId) : undefined;
-	}, [harnesses]);
-
-	const rows: Row[] = useMemo(() => {
-		const byId = new Map(harnesses.map((h) => [h.id, h]));
-		const entry = (h: HarnessStatus, id: string, group: string): Row => {
-			const m = h.models.entries.find((e) => e.id === id);
-			return {
-				key: `${group}:${h.id}:${id}`,
-				harness: h,
-				model: id,
-				name: m?.name ?? id,
-				training: m?.status === "training",
-				sub:
-					m?.status === "legacy"
-						? "legacy"
-						: group === "Starred" && shown === "starred"
-							? h.label
-							: undefined,
-				group,
-			};
+	const row = (h: HarnessStatus, id: string, key: string): Row => {
+		const m = h.models.entries.find((e) => e.id === id);
+		return {
+			key: `${key}:${h.id}:${id}`,
+			harness: h,
+			model: id,
+			name: m?.name ?? id,
+			provider: shown === "starred" ? h.label : providerOf(h.id, id),
 		};
-		const needle = q.trim().toLowerCase();
-		const keep = (r: Row) =>
-			!needle ||
-			r.name.toLowerCase().includes(needle) ||
-			r.model.toLowerCase().includes(needle);
-		if (shown === "starred") {
-			return favourites
-				.flatMap((f) => {
-					const h = byId.get(f.harness);
-					return h?.installed ? [entry(h, f.model, "Starred")] : [];
-				})
-				.filter(keep);
-		}
-		if (!agent || modelState(agent) !== "list") return [];
-		const starred = favourites
-			.filter((f) => f.harness === agent.id)
-			.map((f) => entry(agent, f.model, "Starred"));
-		const listed = agent.models.entries.map((m) =>
-			entry(agent, m.id, providerOf(agent.id, m.id)),
+	};
+	let rows: Row[] = [];
+	if (shown === "starred") {
+		rows = favourites.flatMap((f) => {
+			const h = harnesses.find((x) => x.id === f.harness);
+			return h?.installed ? [row(h, f.model, "star")] : [];
+		});
+	} else if (agent && modelState(agent) === "list") {
+		const listed = agent.models.entries.map((m) => row(agent, m.id, "m"));
+		const order = Array.from(new Set(listed.map((r) => r.provider)));
+		listed.sort(
+			(a, b) =>
+				Number(isStarred(favourites, b.harness.id, b.model)) -
+					Number(isStarred(favourites, a.harness.id, a.model)) ||
+				order.indexOf(a.provider) - order.indexOf(b.provider),
 		);
-		// A stored id the agent no longer lists stays choosable, and says so (#639).
 		const stored = models[agent.id as HarnessId];
 		const unknown =
 			stored && !agent.models.entries.some((m) => m.id === stored)
 				? [
 						{
-							...entry(agent, stored, providerOf(agent.id, stored)),
-							sub: "not in the agent's list",
+							...row(agent, stored, "u"),
+							warn: `Not confirmed for ${agent.label}`,
 						},
 					]
 				: [];
-		return [...starred, ...unknown, ...listed].filter(keep);
-	}, [harnesses, favourites, shown, agent, q, models]);
+		rows = [...unknown, ...listed];
+	}
 
 	const chosen = (h: HarnessStatus, id: string) =>
-		(setting === h.id || (setting === "auto" && effective?.id === h.id)) &&
-		(models[h.id as HarnessId] ?? "") === id;
-
+		harness?.id === h.id && model === id;
 	const pick = (h: HarnessStatus, id: string) => {
-		update.mutate({
-			harness: h.id as HarnessSetting,
-			models: { [h.id]: id || null },
-		});
 		setOpen(false);
+		if (!chosen(h, id)) onPick(h, id);
 	};
-	const star = (h: HarnessStatus, id: string) => {
-		const on = isStarred(favourites, h.id, id);
+	const star = (h: HarnessStatus, id: string) =>
 		update.mutate({
-			favourites: on
+			favourites: isStarred(favourites, h.id, id)
 				? favourites.filter((f) => !(f.harness === h.id && f.model === id))
 				: [...favourites, { harness: h.id as HarnessId, model: id }],
 		});
-	};
-	const show = (id: string) => {
-		setTile(id);
-		setCursor(0);
-	};
 
-	const defaultRow =
-		agent && modelState(agent) === "list" && shown !== "starred" && !q.trim();
-	// A model stored for an agent that cannot take one blocks its runs (#639).
-	const clearRow =
-		agent && modelState(agent) !== "list" && models[agent.id as HarnessId];
-	const lead = defaultRow || clearRow ? 1 : 0;
-	const count = rows.length + lead;
-	const onListKeys = (e: KeyboardEvent<HTMLDivElement>) => {
-		if ((e.target as HTMLElement).closest('[role="tablist"]')) return;
-		if (e.key === "ArrowDown") {
-			e.preventDefault();
-			setCursor((c) => Math.min(count - 1, c + 1));
-		} else if (e.key === "ArrowUp") {
-			e.preventDefault();
-			setCursor((c) => Math.max(0, c - 1));
-		} else if (e.key === "Enter") {
-			// Enter on a button is that control's own click.
-			if ((e.target as HTMLElement).closest("button")) return;
-			e.preventDefault();
-			if (agent && lead && cursor === 0) return pick(agent, "");
-			const r = rows[cursor - lead];
-			if (r) pick(r.harness, r.model);
-		}
-	};
-
-	// The rail is one tab stop: Up and Down move along it and show that agent, Right goes to the search.
-	const tiles = [
-		"starred",
-		...harnesses.filter((h) => h.installed).map((h) => h.id),
-	];
-	const onRailKeys = (e: KeyboardEvent<HTMLDivElement>) => {
-		// The shown agent may be off the rail (stored, then uninstalled): Down takes the first, Up the last.
-		const found = tiles.indexOf(shown);
-		const at = found === -1 ? (e.key === "ArrowUp" ? 0 : -1) : found;
-		const go = (i: number) => {
-			e.preventDefault();
-			const next = tiles[(i + tiles.length) % tiles.length];
-			if (!next) return;
-			show(next);
-			rail.current
-				?.querySelector<HTMLElement>(`[data-tile="${next}"]`)
-				?.focus();
-		};
-		if (e.key === "ArrowDown") go(at + 1);
-		else if (e.key === "ArrowUp") go(at - 1);
-		else if (e.key === "Home") go(0);
-		else if (e.key === "End") go(tiles.length - 1);
-		else if (e.key === "ArrowRight") {
-			e.preventDefault();
-			search.current?.focus();
-		}
-	};
-
-	const label = agentModelLabel(effective, model);
-	const heading =
-		shown === "starred" ? "Starred" : (agent?.label ?? "No agent");
-	let index = 0;
-	const groups: { name: string; rows: Row[] }[] = [];
-	for (const r of rows) {
-		const last = groups.at(-1);
-		if (last?.name === r.group) last.rows.push(r);
-		else groups.push({ name: r.group, rows: [r] });
-	}
-	const tabId = (id: string) => `${ids}-tab-${id}`;
-
+	const label = isLoading ? "…" : chipModel(harness, model);
 	return (
 		<Popover
 			open={open}
 			onOpenChange={(o) => {
 				setOpen(o);
-				if (o) {
-					setTile(null);
-					setQ("");
-					setCursor(0);
-				}
+				if (o) setTile(null);
 			}}
 		>
-			{anchor && (
-				<PopoverAnchor virtualRef={anchor as RefObject<HTMLElement>} />
-			)}
 			<PopoverTrigger asChild>
 				<button
 					type="button"
-					className={cn(AGENT_CHIP, "hover:bg-surface-4", className)}
+					disabled={disabled}
+					className={cn(CHIP, "max-w-56", className)}
 					data-testid="agent-picker"
-					aria-label={`Agent and model for the next run: ${label.agent}, ${label.model}`}
+					aria-label={`Agent and model: ${harness?.label ?? "none"}, ${label}`}
 				>
-					{effective && <AgentMark id={effective.id} />}
+					{harness && <AgentMark id={harness.id} />}
 					<span className="truncate" data-testid="model-pill">
-						{isLoading
-							? "…"
-							: effective?.modelVia === "unsupported"
-								? effective.label
-								: label.model === "agent default"
-									? "Agent default"
-									: label.model}
+						{label}
 					</span>
-					<ChevronDown className="size-3 shrink-0 text-text-3" />
+					<Caret />
 				</button>
 			</PopoverTrigger>
 			<PopoverContent
 				side={side}
 				align="start"
-				sideOffset={8}
-				className="grid h-[360px] w-[440px] max-w-[calc(100vw-2rem)] grid-cols-[44px_minmax(0,1fr)] overflow-hidden p-0"
+				sideOffset={6}
+				className="grid h-[400px] w-[min(380px,calc(100vw-32px))] grid-cols-[44px_minmax(0,1fr)] overflow-hidden rounded-surface p-0"
 				data-testid="agent-picker-list"
 				aria-label="Agent and model"
-				onOpenAutoFocus={(e) => {
-					e.preventDefault();
-					// A phone's keyboard would cover the list it is meant to filter.
-					if (!coarse) search.current?.focus();
-				}}
 			>
 				<div
-					ref={rail}
 					role="tablist"
 					aria-orientation="vertical"
 					aria-label="Agents"
 					className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto bg-surface-1 py-1.5 [scrollbar-width:none]"
-					onKeyDown={onRailKeys}
 					data-testid="picker-rail"
 				>
 					<RailTile
-						id={tabId("starred")}
-						panel={`${ids}-panel`}
-						tile="starred"
 						on={shown === "starred"}
 						label="Starred"
-						mark={<StarredMark className="size-[18px]" />}
-						onClick={() => show("starred")}
+						onClick={() => setTile("starred")}
 						testId="rail-starred"
-					/>
-					{harnesses.map((h) => (
-						<RailTile
-							key={h.id}
-							id={tabId(h.id)}
-							panel={`${ids}-panel`}
-							tile={h.id}
-							on={shown === h.id}
-							off={!h.installed}
-							label={h.installed ? h.label : `${h.label}, not installed`}
-							mark={<AgentMark id={h.id} className="size-5" />}
-							onClick={() => {
-								if (h.installed) show(h.id);
-							}}
-							testId={`rail-${h.id}`}
-						/>
-					))}
-				</div>
-				<div
-					role="tabpanel"
-					id={`${ids}-panel`}
-					aria-labelledby={tabId(shown)}
-					className="flex min-h-0 min-w-0 flex-col"
-					onKeyDown={onListKeys}
-				>
-					<label className="mx-2 mt-2 mb-1 flex h-[30px] shrink-0 items-center gap-2 rounded-control bg-surface-3 px-2.5">
-						<Search className="size-3.5 shrink-0 text-text-3" />
-						<input
-							ref={search}
-							value={q}
-							onChange={(e) => {
-								setQ(e.target.value);
-								setCursor(0);
-							}}
-							placeholder="Search models"
-							aria-label="Search models"
-							className="h-7 min-w-0 flex-1 bg-transparent text-body outline-none placeholder:text-text-3"
-							data-testid="picker-search"
-						/>
-					</label>
-					<div
-						role="listbox"
-						aria-label="Models"
-						className="min-h-0 flex-1 overflow-y-auto pb-1 [mask-image:linear-gradient(to_bottom,#000_calc(100%-16px),transparent)] [scrollbar-width:thin]"
 					>
-						<p
-							className="truncate px-3 pt-1.5 pb-0.5 text-body font-medium text-text-1"
-							data-testid="picker-agent-name"
-						>
-							{heading}
-						</p>
-						{agent && modelState(agent) === "pending" && (
-							<p
-								className="px-3 py-1.5 text-body text-text-2"
-								data-testid="model-pending"
-							>
-								Takes its model from its own settings until a check shows it
-								takes one from PrismaLens.
-							</p>
-						)}
-						{agent && modelState(agent) === "own" && (
-							<p className="px-3 py-1.5 text-body text-text-2">
-								Uses its own model.
-							</p>
-						)}
-						{agent && clearRow && (
-							<ModelRow
-								active={cursor === index++}
-								chosen={false}
-								name={`Clear ${models[agent.id as HarnessId]}`}
-								sub={`${agent.label} picks its own model`}
-								onPick={() => pick(agent, "")}
-								testId="model-clear"
-							/>
-						)}
-						{defaultRow && agent && (
-							<ModelRow
-								active={cursor === index++}
-								chosen={chosen(agent, "")}
-								name="Agent default"
-								sub={
-									agent.checked?.servedModel
-										? `${modelName(agent, agent.checked.servedModel)}, what ${agent.label} picks`
-										: `what ${agent.label} picks`
-								}
-								onPick={() => pick(agent, "")}
-								testId="model-default"
-							/>
-						)}
-						{groups.map((g) => (
-							<fieldset key={g.name} aria-label={g.name}>
-								<legend className="px-3 pt-2 pb-0.5 text-meta text-text-3">
-									{g.name}
-								</legend>
-								{g.rows.map((r) => (
-									<ModelRow
-										key={r.key}
-										active={cursor === index++}
-										chosen={chosen(r.harness, r.model)}
-										name={r.name}
-										sub={r.sub}
-										training={r.training}
-										starred={isStarred(favourites, r.harness.id, r.model)}
-										onStar={() => star(r.harness, r.model)}
-										onPick={() => pick(r.harness, r.model)}
-										testId="model-option"
-									/>
-								))}
-							</fieldset>
-						))}
-						{shown === "starred" && rows.length === 0 && (
-							<p className="px-3 py-1.5 text-body text-text-2">
-								{q.trim()
-									? "No starred model matches."
-									: "Star a model under any agent and it lists here."}
-							</p>
-						)}
-						{shown !== "starred" &&
-							agent &&
-							modelState(agent) === "list" &&
-							rows.length === 0 &&
-							q.trim() && (
-								<p className="px-3 py-1.5 text-body text-text-2">
-									No model matches.
-								</p>
-							)}
-					</div>
-					{agent && shown !== "starred" && <AgentControls agent={agent} />}
-					<div className="flex shrink-0 items-center gap-2 bg-surface-1 px-3 py-1.5 text-meta text-text-3">
-						<span className="min-w-0 flex-1 truncate">
-							Auto picks the first agent on PATH
-							{autoHarness ? `, now ${autoHarness.label}` : ""}
-						</span>
-						{setting !== "auto" && (
-							<button
-								type="button"
-								className="shrink-0 text-accent hover:underline"
+						<StarredMark className="size-[18px]" />
+					</RailTile>
+					{installed.map((h) => {
+						const why = unreadyReason(h);
+						return (
+							<RailTile
+								key={h.id}
+								on={shown === h.id}
+								off={!!why}
+								label={why ?? h.label}
 								onClick={() => {
-									update.mutate({ harness: "auto" });
-									setOpen(false);
+									if (!why) setTile(h.id);
 								}}
-								data-testid="agent-option-auto"
+								testId={`rail-${h.id}`}
 							>
-								Use Auto
-							</button>
-						)}
-					</div>
+								<AgentMark id={h.id} className="size-5" />
+							</RailTile>
+						);
+					})}
 				</div>
+				<ModelSelector className="min-h-0" loop>
+					<ModelSelectorInput
+						placeholder={
+							shown === "starred"
+								? "Search starred models"
+								: `Search ${agent?.label ?? ""} models`
+						}
+						data-testid="picker-search"
+					/>
+					<ModelSelectorList className="[scrollbar-width:thin]">
+						<ModelSelectorEmpty>
+							{shown === "starred" && favourites.length === 0
+								? "Star a model under any agent and it lists here."
+								: "No model matches."}
+						</ModelSelectorEmpty>
+						<ModelSelectorGroup>
+							{agent && shown !== "starred" && (
+								<ModelSelectorItem
+									value={`${agent.label} default`}
+									onSelect={() => pick(agent, "")}
+									data-testid="model-default"
+									data-checked={chosen(agent, "") ? "" : undefined}
+								>
+									<RowText
+										name="Agent default"
+										sub={resolvedModel(agent) ?? undefined}
+									/>
+									{chosen(agent, "") && <Tick />}
+									<span className="w-6 shrink-0" />
+								</ModelSelectorItem>
+							)}
+							{rows.map((r) => (
+								<ModelSelectorItem
+									key={r.key}
+									value={`${r.name} ${r.model} ${r.key}`}
+									onSelect={() => pick(r.harness, r.model)}
+									data-testid="model-option"
+									data-model={r.name}
+								>
+									<RowText
+										name={r.name}
+										sub={r.warn ?? r.provider}
+										warn={!!r.warn}
+										mark={
+											shown === "starred"
+												? r.harness.id
+												: PROVIDER_MARK[r.provider]
+										}
+									/>
+									{chosen(r.harness, r.model) && <Tick />}
+									<button
+										type="button"
+										aria-label={
+											isStarred(favourites, r.harness.id, r.model)
+												? `Unstar ${r.name}`
+												: `Star ${r.name}`
+										}
+										aria-pressed={isStarred(favourites, r.harness.id, r.model)}
+										onPointerDown={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											star(r.harness, r.model);
+										}}
+										className="inline-flex size-6 shrink-0 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4"
+										data-testid="model-star"
+									>
+										<Star
+											className={cn(
+												"size-3.5",
+												isStarred(favourites, r.harness.id, r.model) &&
+													"fill-warn text-warn",
+											)}
+										/>
+									</button>
+								</ModelSelectorItem>
+							))}
+						</ModelSelectorGroup>
+						{agent &&
+							shown !== "starred" &&
+							modelState(agent) === "pending" && (
+								<div
+									className="flex items-center gap-2 px-3 py-2 text-body text-text-2"
+									data-testid="model-pending"
+								>
+									<span className="min-w-0 flex-1">
+										Run a check to list models
+									</span>
+									<Button
+										variant="secondary"
+										size="sm"
+										disabled={check.isPending}
+										onClick={() => check.mutate({ id: agent.id as HarnessId })}
+									>
+										{check.isPending ? "Checking" : "Check"}
+									</Button>
+								</div>
+							)}
+					</ModelSelectorList>
+				</ModelSelector>
 			</PopoverContent>
 		</Popover>
 	);
 }
 
-/** Effort when the agent offers it over ACP, and the agent's own mode a run starts in. */
-function AgentControls({ agent }: { agent: HarnessStatus }) {
-	const effort = agent.checked?.effort;
-	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-1.5 bg-surface-1 px-2 py-1.5">
-			<AccessChip agent={agent} />
-			{effort && (
-				<span
-					className="inline-flex h-6 items-center gap-1 rounded-control bg-surface-3 px-2 text-meta font-medium text-text-1"
-					data-testid="effort-chip"
-				>
-					Effort {effort.default ?? effort.values[0]}
-					<span className="font-normal text-text-3">
-						{effort.default ? `, ${agent.label}'s default` : ""}
-					</span>
-				</span>
-			)}
-		</div>
-	);
+function Tick() {
+	return <Check className="size-4 shrink-0 text-text-1" aria-hidden />;
 }
 
-/** The agent's own mode a run on it starts in, by the agent's name for it (#673 w21). */
-export function AccessChip({ agent }: { agent: HarnessStatus }) {
-	const { agentModes } = useAgentChoice();
+function RowText({
+	name,
+	sub,
+	warn,
+	mark,
+}: {
+	name: string;
+	sub?: string;
+	warn?: boolean;
+	mark?: string;
+}) {
 	return (
-		<span
-			className="inline-flex h-6 items-center rounded-control bg-surface-3 px-2 text-meta font-medium text-text-1"
-			data-testid="access-chip"
-		>
-			{modeName(agent, defaultModeOf(agent, agentModes))}
+		<span className="grid min-w-0 flex-1 gap-0.5">
+			<span className="truncate text-body font-semibold text-text-1">
+				{name}
+			</span>
+			{sub && (
+				<span
+					className={cn(
+						"flex min-w-0 items-center gap-1.5 truncate text-meta whitespace-nowrap",
+						warn ? "text-warn" : "text-text-2",
+					)}
+				>
+					{mark && <AgentMark id={mark} className="size-3" />}
+					<span className="truncate">{sub}</span>
+				</span>
+			)}
 		</span>
 	);
 }
 
 function RailTile({
-	id,
-	panel,
-	tile,
 	on,
 	off,
 	label,
-	mark,
 	onClick,
 	testId,
+	children,
 }: {
-	id: string;
-	panel: string;
-	tile: string;
 	on: boolean;
 	off?: boolean;
 	label: string;
-	mark: ReactNode;
 	onClick: () => void;
 	testId: string;
+	children: ReactNode;
 }) {
 	return (
 		<Hint label={label} side="left">
 			<button
 				type="button"
 				role="tab"
-				id={id}
 				aria-selected={on}
-				aria-controls={panel}
 				aria-disabled={off}
 				aria-label={label}
-				tabIndex={on ? 0 : -1}
 				onClick={onClick}
 				className={cn(
-					"relative inline-flex size-8 shrink-0 items-center justify-center rounded-surface text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
+					"relative inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
 					on &&
-						"bg-surface-3 text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-1.5 before:w-0.5 before:rounded-full before:bg-accent",
-					off && "cursor-not-allowed opacity-40 hover:bg-transparent",
+						"bg-surface-3 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
+					off && "cursor-default opacity-40 hover:bg-transparent",
 				)}
 				data-testid={testId}
-				data-tile={tile}
 				data-off={off ? "" : undefined}
 			>
-				{mark}
+				{children}
 			</button>
 		</Hint>
 	);
 }
 
-function ModelRow({
-	active,
-	chosen,
-	name,
-	sub,
-	training,
-	starred,
-	onStar,
-	onPick,
-	testId,
-}: {
-	active: boolean;
-	chosen: boolean;
-	name: string;
-	sub?: string;
-	training?: boolean;
-	starred?: boolean;
-	onStar?: () => void;
-	onPick: () => void;
-	testId: string;
-}) {
-	const meta = training || !!sub;
-	return (
-		<div
-			role="option"
-			tabIndex={-1}
-			aria-selected={chosen}
-			onMouseDown={(e) => {
-				e.preventDefault();
-				onPick();
-			}}
-			className={cn(
-				"group flex cursor-pointer items-center gap-2 pr-1.5 pl-3 transition-colors duration-(--dur-instant) hover:bg-surface-3",
-				meta ? "h-11" : "h-8",
-				(active || chosen) && "bg-surface-3",
-			)}
-			data-testid={testId}
-			data-model={name}
-		>
-			<span className="min-w-0 flex-1">
-				<span className="block truncate text-body text-text-1">{name}</span>
-				{training ? (
-					<span
-						className="block truncate text-meta text-warn"
-						data-testid="model-training"
-					>
-						trains on your prompts
-					</span>
-				) : (
-					sub && (
-						<span className="block truncate text-meta text-text-2">{sub}</span>
-					)
-				)}
-			</span>
-			<span className="inline-flex size-7 shrink-0 items-center justify-center">
-				{onStar && (
-					<button
-						type="button"
-						aria-label={starred ? `Unstar ${name}` : `Star ${name}`}
-						aria-pressed={starred}
-						onMouseDown={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							onStar();
-						}}
-						onKeyDown={(e) => {
-							if (e.key !== "Enter" && e.key !== " ") return;
-							e.preventDefault();
-							e.stopPropagation();
-							onStar();
-						}}
-						className={cn(
-							"inline-flex size-7 items-center justify-center rounded-control hover:bg-surface-4",
-							!starred && "opacity-50 group-hover:opacity-100",
-						)}
-						data-testid="model-star"
-					>
-						<Star
-							className={cn(
-								"size-3.5",
-								starred ? "fill-warn text-warn" : "text-text-3",
-							)}
-						/>
-					</button>
-				)}
-			</span>
-			<span className="inline-flex w-3.5 shrink-0 justify-center">
-				{chosen && <Check className="size-3.5 text-accent" aria-hidden />}
-			</span>
-		</div>
-	);
+/** An agent's effort levels by its own names, the model's default marked. */
+export function effortLevels(
+	h: HarnessStatus | undefined,
+): { id: string; name: string; default: boolean }[] {
+	const listed = h?.checked?.efforts;
+	if (listed?.length) return listed;
+	const offered = h?.checked?.effort;
+	if (!offered) return [];
+	return offered.values.map((v) => ({
+		id: v,
+		name: v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " "),
+		default: v === offered.default,
+	}));
 }
 
-/** The one shape the box's agent takes in every state: mark, model, chevron when it opens. */
-const AGENT_CHIP =
-	"inline-flex h-6 min-w-0 max-w-full items-center gap-1.5 rounded-control bg-surface-3 pr-2 pl-1 text-meta font-medium whitespace-nowrap text-text-1 transition-colors duration-(--dur-instant)";
-
-/** The agent and model a live run is fixed on: the same chip, with nothing to open (#743 §6). */
-export function AgentModelChip({
-	agent,
-	harness,
-	model,
-	className,
-}: {
-	agent: string;
-	/** The agent's id, for its mark. */
-	harness?: string | null;
-	model?: string | null;
-	className?: string;
-}) {
-	const shown =
-		!model || model === "agent default" || model === "its own model"
-			? agent
-			: model;
-	return (
-		<Hint
-			label={`${agent}, ${model ?? "agent default"}`}
-			meta="Fixed for this run"
-			side="top"
-		>
-			<span className={cn(AGENT_CHIP, className)} data-testid="agent-chip">
-				{harness && <AgentMark id={harness} />}
-				<span className="truncate">{shown}</span>
-				<span className="sr-only">, fixed for this run</span>
-			</span>
-		</Hint>
-	);
-}
-
-const CHIP =
-	"inline-flex h-6 min-w-0 items-center gap-1 rounded-control px-2 text-meta font-medium text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1";
+/** Claude Code takes its 1M window as a model alias; no other agent offers a choice. */
+const WINDOW_ALIAS = "[1m]";
+const windowOf = (model: string) =>
+	model.endsWith(WINDOW_ALIAS) ? "1M" : "200k";
 
 /**
- * The next run's permission mode (#673 w21): the agent's own modes by its own
- * names and descriptions, the per-agent default tagged; with none advertised,
- * one row, Agent default. `value` undefined means that default.
+ * Effort and context window, one chip that is never hidden (#673): the
+ * level, then the window; disabled with its reason where the model has none.
  */
+export function EffortChip({
+	harness,
+	model,
+	effort,
+	onEffort,
+	onModel,
+	disabled,
+	side = "top",
+}: {
+	harness: HarnessStatus | undefined;
+	model: string;
+	effort: string | null;
+	onEffort: (id: string) => void;
+	onModel: (model: string) => void;
+	disabled?: boolean;
+	side?: "top" | "bottom";
+}) {
+	const [open, setOpen] = useState(false);
+	const levels = effortLevels(harness);
+	const windowed = harness?.id === "claude-code";
+	const current =
+		levels.find((l) => l.id === effort || l.name === effort) ??
+		levels.find((l) => l.default) ??
+		levels[0];
+	if (!harness || !current) {
+		const reason = `${chipModel(harness, model)} has no effort levels; the context window is fixed by the model`;
+		return (
+			<Hint label={reason} side="top">
+				<span className="inline-flex">
+					<button
+						type="button"
+						disabled
+						className={CHIP}
+						data-testid="effort-chip"
+						data-off=""
+					>
+						Effort
+						<Caret />
+					</button>
+				</span>
+			</Hint>
+		);
+	}
+	const win = windowOf(model);
+	const base = model.endsWith(WINDOW_ALIAS)
+		? model.slice(0, -WINDOW_ALIAS.length)
+		: model;
+	const item =
+		"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body font-medium transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3";
+	const tag = (
+		<span className="ml-auto rounded-[4px] bg-surface-3 px-1.5 text-[11px] leading-4 font-medium text-text-2">
+			Default
+		</span>
+	);
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					disabled={disabled}
+					className={CHIP}
+					data-testid="effort-chip"
+				>
+					<span>{current.name}</span>
+					{windowed && <span className="font-normal text-text-3">{win}</span>}
+					<Caret />
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				side={side}
+				align="start"
+				sideOffset={6}
+				className="w-60 rounded-surface p-1"
+				data-testid="effort-menu"
+			>
+				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Effort</p>
+				{levels.map((l) => (
+					<button
+						key={l.id}
+						type="button"
+						className={cn(item, l.id === current.id && "bg-surface-3")}
+						onClick={() => {
+							setOpen(false);
+							if (l.id !== current.id) onEffort(l.id);
+						}}
+						data-testid="effort-option"
+					>
+						{l.name}
+						{l.default && tag}
+					</button>
+				))}
+				<div className="mx-1.5 my-1 h-px bg-hairline" />
+				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Context window</p>
+				{(["200k", "1M"] as const).map((w) => (
+					<button
+						key={w}
+						type="button"
+						disabled={!windowed}
+						className={cn(
+							item,
+							windowed && w === win && "bg-surface-3",
+							!windowed && "cursor-default text-text-3 hover:bg-transparent",
+						)}
+						onClick={() => {
+							setOpen(false);
+							if (w !== win)
+								onModel(w === "1M" ? `${base}${WINDOW_ALIAS}` : base);
+						}}
+						data-testid="window-option"
+					>
+						{w}
+						{w === "200k" && windowed && tag}
+					</button>
+				))}
+				{!windowed && (
+					<p className="px-2.5 pb-2 text-meta text-text-3">
+						{harness.label} sets the context window with the model
+					</p>
+				)}
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+const MODE_ICON: Record<ModeIcon, typeof Lock> = {
+	lock: Lock,
+	pencil: Pencil,
+	open: LockOpen,
+};
+
+/** The agent's own permission modes, by its own names (#673 w21); its default first. */
+export function ModeChip({
+	harness,
+	mode,
+	onMode,
+	disabled,
+	side = "top",
+	testId = "access-chip",
+}: {
+	harness: HarnessStatus | undefined;
+	mode: string;
+	onMode: (id: string) => void;
+	disabled?: boolean;
+	side?: "top" | "bottom";
+	testId?: string;
+}) {
+	const { agentModes } = useAgentChoice();
+	const [open, setOpen] = useState(false);
+	const fallback = defaultModeOf(harness, agentModes);
+	const offered = harness?.checked?.modes ?? [];
+	const rows = offered.length
+		? [
+				...offered.filter((m) => m.id === fallback),
+				...offered.filter((m) => m.id !== fallback),
+			]
+		: [
+				{
+					id: AGENT_DEFAULT_MODE,
+					name: "Agent default",
+					description: undefined,
+				},
+			];
+	const name = modeName(harness, mode);
+	const Icon = MODE_ICON[modeIcon(mode)];
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					disabled={disabled}
+					className={cn(CHIP, "max-w-48")}
+					data-testid={testId}
+					aria-label={`Permission mode: ${name}`}
+				>
+					<Icon className="size-3.5 shrink-0" aria-hidden />
+					<span className="truncate">{name}</span>
+					<Caret />
+				</button>
+			</PopoverTrigger>
+			<PopoverContent
+				side={side}
+				align="start"
+				sideOffset={6}
+				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
+				data-testid="access-menu"
+			>
+				<div role="listbox" aria-label="Permission mode">
+					{rows.map((m) => {
+						const RowIcon = MODE_ICON[modeIcon(m.id)];
+						const line = modeLine(m.id, m.description);
+						return (
+							<button
+								key={m.id}
+								type="button"
+								role="option"
+								aria-selected={m.id === mode}
+								onClick={() => {
+									setOpen(false);
+									if (m.id !== mode) onMode(m.id);
+								}}
+								className={cn(
+									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
+									m.id === mode && "bg-surface-3",
+								)}
+								data-testid={`access-level-${m.id}`}
+							>
+								<RowIcon className="size-3.5 text-text-2" aria-hidden />
+								<span className="truncate text-body font-medium text-text-1">
+									{m.name}
+								</span>
+								{m.id === fallback ? (
+									<span className="text-meta text-text-3">Your default</span>
+								) : (
+									<span />
+								)}
+								{line && (
+									<span
+										className="col-start-2 col-end-4 truncate text-meta text-text-2"
+										data-testid="access-line"
+									>
+										{line}
+									</span>
+								)}
+							</button>
+						);
+					})}
+				</div>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+/** Settings' Next run row: the chip on the stored choice; choosing saves at once. */
+export function AgentModelPicker({
+	side = "bottom",
+}: {
+	side?: "top" | "bottom";
+}) {
+	const { effective, model } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	return (
+		<ModelChip
+			harness={effective}
+			model={model}
+			side={side}
+			className="bg-surface-2"
+			onPick={(h, id) =>
+				update.mutate({
+					harness: h.id as HarnessSetting,
+					models: { [h.id]: id || null },
+				})
+			}
+		/>
+	);
+}
+
+/** Settings' Permission mode row: the stored per-agent default. */
 export function AccessMenu({
 	value,
 	onChange,
@@ -804,142 +799,12 @@ export function AccessMenu({
 	side?: "top" | "bottom";
 }) {
 	const { effective, agentModes } = useAgentChoice();
-	const [open, setOpen] = useState(false);
-	const fallback = defaultModeOf(effective, agentModes);
-	const chosen = value ?? fallback;
-	const offered = effective?.checked?.modes ?? [];
-	const rows = offered.length
-		? offered
-		: [
-				{
-					id: AGENT_DEFAULT_MODE,
-					name: "Agent default",
-					description: undefined,
-				},
-			];
-	const name = modeName(effective, chosen);
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					className={CHIP}
-					data-testid="access-chip"
-					aria-label={`Permission mode: ${name}`}
-				>
-					<Lock className="size-3.5 shrink-0 sm:hidden" aria-hidden />
-					<span className="truncate max-sm:hidden">{name}</span>
-					<ChevronDown className="size-3 shrink-0 text-text-3" />
-				</button>
-			</PopoverTrigger>
-			<PopoverContent
-				side={side}
-				align="start"
-				className="w-[28.75rem] max-w-[calc(100vw-2rem)] p-1"
-				data-testid="access-menu"
-			>
-				<div role="listbox" aria-label="Permission mode">
-					{rows.map((mode) => (
-						<button
-							key={mode.id}
-							type="button"
-							role="option"
-							aria-selected={mode.id === chosen}
-							onClick={() => {
-								onChange(mode.id);
-								setOpen(false);
-							}}
-							className={cn(
-								"flex min-h-11 w-full items-center gap-2 rounded-control px-2.5 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-								mode.id === chosen && "bg-surface-3",
-							)}
-							data-testid={`access-level-${mode.id}`}
-						>
-							<span className="min-w-0 flex-1">
-								<span className="flex items-center gap-2 text-body text-text-1">
-									<span className="truncate">{mode.name}</span>
-									{mode.id === fallback && (
-										<span className="shrink-0 text-meta text-text-3">
-											Your default
-										</span>
-									)}
-								</span>
-								{mode.description && (
-									<span
-										className="block truncate text-meta text-text-2"
-										data-testid="access-line"
-									>
-										{mode.description}
-									</span>
-								)}
-							</span>
-							<span className="inline-flex w-3.5 shrink-0 justify-center">
-								{mode.id === chosen && (
-									<Check className="size-3.5 text-accent" aria-hidden />
-								)}
-							</span>
-						</button>
-					))}
-				</div>
-			</PopoverContent>
-		</Popover>
-	);
-}
-
-const word = (v: string) =>
-	v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " ");
-
-/**
- * Effort, only when the agent offers a `thought_level` option over ACP (R4.2):
- * the agent's own values, its default marked. Saved per agent, like the model.
- */
-export function EffortMenu({ side = "top" }: { side?: "top" | "bottom" }) {
-	const { effective, efforts } = useAgentChoice();
-	const update = useUpdateHarnessSettings();
-	const [open, setOpen] = useState(false);
-	const offered = effective?.checked?.effort;
-	if (!effective || !offered) return null;
-	const id = effective.id as HarnessId;
-	const value = efforts[id] ?? offered.default ?? offered.values[0] ?? "";
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button type="button" className={CHIP} data-testid="effort-chip">
-					<span className="truncate">{word(value)} effort</span>
-					<ChevronDown className="size-3 shrink-0 text-text-3" />
-				</button>
-			</PopoverTrigger>
-			<PopoverContent
-				side={side}
-				align="start"
-				className="w-56 p-1"
-				data-testid="effort-menu"
-			>
-				{offered.values.map((v) => (
-					<button
-						key={v}
-						type="button"
-						onClick={() => {
-							update.mutate({
-								efforts: { [id]: v === offered.default ? null : v },
-							});
-							setOpen(false);
-						}}
-						className={cn(
-							"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-							v === value && "bg-surface-3",
-						)}
-						data-testid="effort-option"
-					>
-						{word(v)}
-						{v === offered.default && (
-							<span className="ml-auto text-meta text-text-2">
-								{effective.label} default
-							</span>
-						)}
-					</button>
-				))}
-			</PopoverContent>
-		</Popover>
+		<ModeChip
+			harness={effective}
+			mode={value ?? defaultModeOf(effective, agentModes)}
+			onMode={onChange}
+			side={side}
+		/>
 	);
 }

@@ -2,28 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 import { isRunStateLive } from "@prismalens/contracts";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useAccessFact } from "@/components/incidents/IncidentFacts";
-import {
-	BoxDock,
-	type Fact,
-	FactsRail,
-	RECORD_GRID,
-	RecordLink,
-} from "@/components/incidents/RecordLayout";
-import { runElapsed, useRunAgentModel } from "@/components/incidents/RunStrip";
+import { useTelemetryNames } from "@/components/incidents/IncidentFacts";
+import { RECORD_GRID } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
-import { Mono } from "@/components/shared/Mono";
-import { Empty, Loading, Problem } from "@/components/shared/State";
-import { StateWord } from "@/components/shared/StateWord";
-import { Progress } from "@/components/ui/progress";
+import { useRunAgentModel } from "@/components/incidents/run-facts";
+import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
-import { formatClock, formatElapsed } from "@/lib/format-time";
-import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
+import { deriveTranscript } from "@/lib/investigation-events";
 import { cn } from "@/lib/utils";
 import { DockedComposer } from "./DockedComposer";
-import { InvestigationStreamPanel } from "./InvestigationStreamPanel";
 import { Transcript } from "./Transcript";
 
 /** The only branch that exists until fan-out lands (#280). */
@@ -39,14 +28,10 @@ function branchesOf(events: { kind: string; branchId?: string }[]): string[] {
 	return seen;
 }
 
-/**
- * The Conversation tab (#743, study-v3 §3.4): the transcript in the reading
- * column with its facts rail, the box docked under it. `?ledger=1` is the
- * Event log, reached from the end line and the rail, never a header toggle.
- */
+/** The Conversation tab (#673): the selected run's transcript in the one column, the box under it. */
 export function ConversationRoute() {
 	const record = useIncidentRecord();
-	const { incident, run, investigationId } = record;
+	const { incident, run, draft } = record;
 	const now = useNow(1000);
 	const search = useSearch({
 		from: "/_authenticated/incidents/$id/conversation",
@@ -85,14 +70,7 @@ export function ConversationRoute() {
 			}),
 		[events, now, run.pending, run.stopRequested, investigation, live],
 	);
-
-	const addressee =
-		openBranch && openBranch !== MAIN_BRANCH ? `branch ${openBranch}` : null;
 	const who = useRunAgentModel(investigation);
-	const access = useAccessFact();
-	const rail = investigation ? (
-		<FactsRail facts={conversationFacts(run, who, access, incident.id)} />
-	) : undefined;
 
 	return (
 		<div
@@ -103,7 +81,7 @@ export function ConversationRoute() {
 				<div
 					role="tablist"
 					aria-label="Branches"
-					className="flex shrink-0 gap-3 px-4 sm:px-6"
+					className={cn(RECORD_GRID, "flex shrink-0 gap-3")}
 					data-testid="branch-tabs"
 				>
 					{branches.map((b) => (
@@ -126,20 +104,16 @@ export function ConversationRoute() {
 				</div>
 			)}
 			<div className="min-h-0 flex-1">
-				{!investigationId ? (
-					<div className={cn(RECORD_GRID, "pt-6")}>
-						<Empty text="No investigation yet. Brief the agent below to start one." />
-					</div>
+				{draft ? (
+					<DraftHeading />
 				) : run.isLoading ? (
-					<div className={cn(RECORD_GRID, "pt-6")}>
+					<div className={cn(RECORD_GRID, "pt-4")}>
 						<Loading rows={5} />
 					</div>
 				) : run.error || !investigation ? (
-					<div className={cn(RECORD_GRID, "pt-6")}>
+					<div className={cn(RECORD_GRID, "pt-4")}>
 						<Problem text="This run did not load." />
 					</div>
-				) : search.ledger ? (
-					<LedgerView events={events} incidentId={incident.id} />
 				) : (
 					<Transcript
 						items={items}
@@ -147,173 +121,36 @@ export function ConversationRoute() {
 						focus={search.call}
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
-						rail={rail}
 					/>
 				)}
 			</div>
-			<BoxDock>
+			<div className={RECORD_GRID}>
 				<DockedComposer
-					className="px-0 pt-0 pb-0 sm:px-0"
+					key={draft ? "draft" : (investigation?.id ?? "none")}
 					branchId={openBranch ?? undefined}
-					{...(addressee ? { target: addressee } : {})}
 				/>
-			</BoxDock>
+			</div>
 		</div>
 	);
 }
 
-/** What the run has done so far, from its tool results: `3 commands, 2 files read, 1 refused`. */
-export function soFar(
-	events: {
-		kind: string;
-		result?: { ok: boolean; toolCategory?: string | null };
-	}[],
-): string {
-	let files = 0;
-	let commands = 0;
-	let refused = 0;
-	for (const e of events) {
-		if (e.kind !== "tool_result" || !e.result) continue;
-		if (!e.result.ok) refused++;
-		else if (e.result.toolCategory === "file") files++;
-		else commands++;
-	}
+/** A draft's head: what the run starts with, the facts its gather line will carry. */
+function DraftHeading() {
+	const { incident } = useIncidentRecord();
+	const telemetry = useTelemetryNames(incident.service?.id);
+	const service = incident.service?.displayName || incident.service?.name;
+	const n = incident.alertCount;
 	const parts = [
-		commands ? `${commands} command${commands === 1 ? "" : "s"}` : null,
-		files ? `${files} file${files === 1 ? "" : "s"} read` : null,
-		refused ? `${refused} refused` : null,
-	].filter(Boolean);
-	return parts.length ? parts.join(", ") : "Nothing yet";
-}
-
-/** The Conversation's rail (study-v3 §3.3): Agent, Access, So far, Code, and when it stopped. */
-function conversationFacts(
-	run: ReturnType<typeof useIncidentRecord>["run"],
-	who: { agent: string; model: string },
-	access: string,
-	incidentId: string,
-): Fact[] {
-	const inv = run.investigation;
-	const pinned = pinnedTo(inv?.workspace);
-	const repos = inv?.workspace?.repos ?? [];
-	const facts: Fact[] = [
-		{ label: "Agent", value: `${who.agent}, ${who.model}` },
-		{ label: "Permission mode", value: access, testId: "fact-access" },
-		{ label: "So far", value: soFar(run.events), testId: "fact-so-far" },
-		{
-			label: "Code",
-			value: pinned
-				? repos.length === 1
-					? `${pinned}, as repo/`
-					: pinned
-				: "No repository",
-		},
+		`${n === 0 ? "no alerts" : n === 1 ? "1 alert" : `${n} alerts`}`,
+		service ? `${service}'s code` : "no repository",
+		...(telemetry ?? []),
 	];
-	if (run.state === "stopped" && inv?.completedAt)
-		facts.push({
-			label: "Stopped",
-			value: `${formatClock(inv.completedAt)}${inv.startedAt ? `, after ${formatElapsed(runElapsed(inv, null))}` : ""}`,
-		});
-	facts.push({
-		label: "Links",
-		value: (
-			<RecordLink
-				incidentId={incidentId}
-				to="conversation"
-				search={{ ledger: "1" }}
-			>
-				Event log
-			</RecordLink>
-		),
-	});
-	return facts;
-}
-
-/** Today's row-per-event ledger, with the failed and polling panels it carried. */
-function LedgerView({
-	events,
-	incidentId,
-}: {
-	events: ReturnType<typeof useIncidentRecord>["run"]["events"];
-	incidentId: string;
-}) {
-	const { run } = useIncidentRecord();
-	const navigate = useNavigate({ from: "/incidents/$id/conversation" });
-	const investigation = run.investigation;
-	if (!investigation) return null;
 	return (
-		<div
-			className="h-full min-h-0 space-y-3 overflow-y-auto p-3"
-			data-testid="investigation-panel"
-		>
-			<div className="flex items-center gap-3 px-1">
-				<h2 className="text-heading">Event log</h2>
-				<button
-					type="button"
-					className="text-meta text-accent hover:underline"
-					onClick={() =>
-						navigate({
-							params: { id: incidentId },
-							search: (prev) => ({ ...prev, ledger: undefined }),
-							replace: true,
-						})
-					}
-					data-testid="event-log-back"
-				>
-					Back to the conversation
-				</button>
-			</div>
-			{run.failed && (
-				<div
-					className="pool px-3.5 py-3"
-					data-testid="investigation-failed-state"
-				>
-					<div className="flex items-center gap-2">
-						<StateWord tone="danger" className="text-body">
-							Run failed
-						</StateWord>
-					</div>
-					<p className="mt-2 whitespace-pre-wrap font-mono text-meta">
-						{investigation.error ?? "No error was recorded."}
-					</p>
-					<p className="mt-2 text-meta text-text-2">
-						The last events the harness sent are in the ledger below. The raw
-						wire transcript is at{" "}
-						<Mono>runs/{investigation.id}/transcript.jsonl</Mono> under the
-						workspace directory that pl up printed at start.
-					</p>
-				</div>
-			)}
-			{run.streamFailed ? (
-				<div
-					className="pool px-3.5 py-3"
-					data-testid="investigation-fallback-panel"
-				>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2 text-body font-medium">
-							Investigation progress
-							<StateWord tone="warn" data-testid="stream-fallback-badge">
-								polling
-							</StateWord>
-						</div>
-						<Mono className="text-meta text-text-2">{run.jobProgress}%</Mono>
-					</div>
-					<Progress value={run.jobProgress} className="mt-2 h-1.5" />
-					<div className="mt-2 flex items-center justify-between text-meta text-text-2">
-						<p data-testid="stream-fallback-message">
-							Live stream unavailable, polling for progress
-						</p>
-						{run.jobState && <Mono>job {run.jobState}</Mono>}
-					</div>
-				</div>
-			) : (
-				<InvestigationStreamPanel
-					key={investigation.id}
-					events={events}
-					latestText={run.isActive ? run.latestText : null}
-					status={run.ledgerStatus}
-				/>
-			)}
+		<div className={cn(RECORD_GRID, "pt-3")} data-testid="draft-heading">
+			<h2 className="text-title">New run</h2>
+			<p className="mt-0.5 text-body text-text-2">
+				Starts with {parts.join(", ")}
+			</p>
 		</div>
 	);
 }
