@@ -537,6 +537,9 @@ export class IncidentsService {
 							type: TimelineEntryType.status_changed,
 							title:
 								entryTitle ??
+								(statusNote?.reason === "alertmanager-absence"
+									? "Alerts cleared: no Alertmanager still lists it"
+									: undefined) ??
 								(ending === "incident-closed"
 									? "Resolved"
 									: reopened

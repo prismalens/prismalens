@@ -47,6 +47,8 @@ function EntryRow({
 }) {
 	const note = entry.type === "comment";
 	const by = who(entry);
+	// An entry with a reason says it in the summary view too (#673 w23).
+	const reasoned = typeof entry.metadata?.reason === "string";
 	return (
 		<li className={ROW} data-testid="timeline-row">
 			<Clock at={entry.occurredAt} />
@@ -59,7 +61,7 @@ function EntryRow({
 				>
 					{entry.title}
 				</span>
-				{full && entry.description && !note && (
+				{(full || reasoned) && entry.description && !note && (
 					<span className="block truncate text-meta text-text-3">
 						{entry.description}
 					</span>

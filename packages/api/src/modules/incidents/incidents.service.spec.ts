@@ -201,6 +201,7 @@ describe("IncidentsService", () => {
 
 			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
 				data: expect.objectContaining({
+					title: "Alerts cleared: no Alertmanager still lists it",
 					description:
 						"Status changed from open to resolved: no connected Alertmanager still lists HighLatency (fp-1); no resolved notification was received",
 					metadata: JSON.stringify({
