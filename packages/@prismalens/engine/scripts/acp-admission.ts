@@ -304,32 +304,33 @@ const r6 = await (async (): Promise<string> => {
 		join(xdg, "opencode", "opencode.json"),
 		JSON.stringify({ model: userModel }),
 	);
-	const { env, runEnv } = prepareRunEnv({
-		harness,
-		cwd: cloneDir,
-		runDir: mkdtempSync(join(tmpdir(), "pl-r6-run-")),
-	});
-	const acp = new AcpSession({
-		command: HARNESS_REGISTRY.opencode.binary,
-		args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
-		cwd: cloneDir,
-		env: { ...env, XDG_CONFIG_HOME: xdg },
-		permission: readOnlyPolicy,
-	});
+	const runDir = mkdtempSync(join(tmpdir(), "pl-r6-run-"));
 	try {
-		await acp.open();
-		const served = acp.servedModel;
-		const settingsModel = acp.models.find((m) => m.id !== userModel)?.id;
-		const took =
-			acp.modelOptionId && settingsModel
-				? await acp.setConfigOption(acp.modelOptionId, settingsModel)
-				: null;
-		const seen = `user config served ${served}; set_config_option ${settingsModel} answered ${took}`;
-		return served === userModel && took === settingsModel
-			? `pass (${seen})`
-			: `fail (${seen})`;
+		const { env, runEnv } = prepareRunEnv({ harness, cwd: cloneDir, runDir });
+		const acp = new AcpSession({
+			command: HARNESS_REGISTRY.opencode.binary,
+			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
+			cwd: cloneDir,
+			env: { ...env, XDG_CONFIG_HOME: xdg },
+			permission: readOnlyPolicy,
+		});
+		try {
+			await acp.open();
+			const served = acp.servedModel;
+			const settingsModel = acp.models.find((m) => m.id !== userModel)?.id;
+			const took =
+				acp.modelOptionId && settingsModel
+					? await acp.setConfigOption(acp.modelOptionId, settingsModel)
+					: null;
+			const seen = `user config served ${served}; set_config_option ${settingsModel} answered ${took}`;
+			return served === userModel && took === settingsModel
+				? `pass (${seen})`
+				: `fail (${seen})`;
+		} finally {
+			await acp.close();
+		}
 	} finally {
-		await acp.close();
+		rmSync(runDir, { recursive: true, force: true });
 		rmSync(xdg, { recursive: true, force: true });
 	}
 })().catch(
