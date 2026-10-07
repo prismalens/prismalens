@@ -58,6 +58,9 @@ export interface TriggerDecision {
 	reason: string | null;
 }
 
+/** At most one automatic reopen run per incident in this span: a flapping alert must not queue run after run (#673 w25 review M8). */
+export const REOPEN_RUN_SPACING_MS = 60 * 60 * 1000;
+
 export const NO_SERVICE_REASON =
 	"The incident has no service, so there is no repository to investigate. Alerts reach a service through a `service` label whose value is the service's name; add it to the alert, or pick the service on the incident and press Investigate.";
 
@@ -198,6 +201,29 @@ export class InvestigationTriggerService {
 				`Alert ${alert.id} joined open incident ${incident.number}; auto-investigation decides on the opening alert only`,
 			);
 			return;
+		}
+
+		if (reopened) {
+			const recent = await this.prisma.investigation.findFirst({
+				where: {
+					incidentId: incident.id,
+					triggerType: "re_trigger",
+					createdAt: { gte: new Date(Date.now() - REOPEN_RUN_SPACING_MS) },
+				},
+				orderBy: { createdAt: "desc" },
+				select: { createdAt: true },
+			});
+			if (recent) {
+				await this.timelineService.create({
+					incidentId: incident.id,
+					type: TimelineEntryType.custom,
+					title: "Not re-run: a reopen run started within the hour",
+					description: `A run started at ${recent.createdAt.toISOString()} when the alert last fired again. The incident is open again without a new run.`,
+					source: TimelineSource.system,
+					metadata: { alertId: alert.id },
+				});
+				return;
+			}
 		}
 
 		const policy = await this.shouldTriggerInvestigation(incident);

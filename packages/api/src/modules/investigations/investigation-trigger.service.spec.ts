@@ -258,6 +258,24 @@ describe("InvestigationTriggerService", () => {
 			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalled();
 		});
 
+		it("a second reopen within the hour starts no run and says so (#673 w25 review M8)", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValueOnce({
+				createdAt: new Date("2026-10-07T10:00:00.000Z"),
+			});
+
+			await service.onAlertCorrelated(alert, withService("always"), false, true);
+
+			expect(mockPrisma.investigation.findFirst).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ incidentId: "inc-1", triggerType: "re_trigger" }),
+				}),
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockTimelineService.create.mock.calls[0][0].title).toBe(
+				"Not re-run: a reopen run started within the hour",
+			);
+		});
+
 		it("a reopened incident whose policy says never starts no run", async () => {
 			await service.onAlertCorrelated(alert, withService("never"), false, true);
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();

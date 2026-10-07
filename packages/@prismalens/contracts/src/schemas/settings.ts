@@ -211,7 +211,7 @@ export const InvestigationTriggerTypeSchema = z.enum([
 	"auto_tier", // Auto-triggered based on service tier
 	"alert_threshold", // Auto-triggered when alert count exceeds threshold
 	"scheduled", // Auto-triggered for stale incidents
-	"re_trigger", // Re-triggered when new alerts are added
+	"re_trigger", // A refire reopened the incident (#673 w25)
 ]);
 export type InvestigationTriggerType = z.infer<
 	typeof InvestigationTriggerTypeSchema
