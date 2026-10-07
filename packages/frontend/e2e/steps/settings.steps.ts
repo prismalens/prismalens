@@ -366,7 +366,7 @@ Then(
 				/^(Service|Database|Queue|Cache|Gateway|External|Infrastructure)$/,
 			);
 			await expect(row.getByTestId("service-telemetry")).toHaveText(
-				/^(Telemetry from .+\.|No telemetry\.)$/,
+				/^(Telemetry from .+|No telemetry)$/,
 			);
 			await expect(row.getByTestId("service-open")).toHaveText(
 				/^(\d+ open|none open)$/,
@@ -390,15 +390,14 @@ When('I open "booklogr-api"', async ({ page }) => {
 });
 
 Then(
-	'I see "Code the run reads", "Telemetry", "Dependencies", "Deployments", "Investigations" and "Incidents" on one page with no tabs',
+	'I see "Code the run reads", "Telemetry", "Dependencies", "Runs" and "Incidents" on one page with no tabs',
 	async ({ page }) => {
 		const service = page.getByTestId("service-page");
 		for (const title of [
 			"Code the run reads",
 			"Telemetry",
 			"Dependencies",
-			"Deployments",
-			"Investigations",
+			"Runs",
 			"Incidents",
 		])
 			await expect(service.getByRole("heading", { name: title })).toBeVisible();

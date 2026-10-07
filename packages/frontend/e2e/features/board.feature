@@ -28,7 +28,7 @@ Feature: Board
     When the run finishes with a report
     Then the card is in "Concluded" with "Likely:" and the cause
     When the alert clears in Alertmanager
-    Then the card is in "Needs you" reading "Alerts cleared, resolve it"
+    Then the card is in "Needs you" reading "Alerts cleared"
     When I resolve INC-1 with a cause
     Then the card is in "Resolved" with "Cause:" and the text
     And no column or card says "Closed" or "Awaiting close"
@@ -55,6 +55,13 @@ Feature: Board
     Given INC-1 is Resolved
     When I drag its card to "Working"
     Then a dialog asks "Reopen INC-1 and investigate?"
+
+  Scenario: Dropping a resolved card on Concluded asks, then reopens
+    Given INC-1 is Resolved
+    When I drag its card to "Concluded"
+    Then a dialog asks "Reopen INC-1?"
+    When I confirm the reopen
+    Then INC-1 reads "Acknowledged", its card has left "Resolved", and no run started
 
   Scenario: Reopen and investigate with no agent frees the card
     Given INC-1 is Resolved with a cause

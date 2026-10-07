@@ -184,9 +184,12 @@ When(
 			const header = page.getByTestId("page-header");
 			await expect(header).toBeVisible();
 			await expect(header.getByRole("heading").first()).toBeVisible();
+			const label = door === "services" ? "New service" : "New incident";
 			counts.push({
 				screen: door,
-				header: await header.getByRole("button", { name: "New" }).count(),
+				header: await header
+					.getByRole("button", { name: label, exact: true })
+					.count(),
 				creators: await page
 					.getByRole("button", { name: /^(\+ )?new|create incident/i })
 					.count(),
@@ -197,8 +200,8 @@ When(
 );
 
 Then(
-	"each list screen's header shows one {string} button, Settings shows none, and nothing else creates an incident",
-	async ({ page }, _label: string) => {
+	'the board and Alerts show one "New incident", Services one "New service", Settings none, and nothing else creates',
+	async ({ page }) => {
 		expect(world(page).newCounts).toEqual(
 			["incidents", "alerts", "services", "settings"].map((screen) => {
 				const n = screen === "settings" ? 0 : 1;
@@ -209,10 +212,10 @@ Then(
 );
 
 When(
-	"I press {string} from Services and create {string} on {string}",
+	"I press {string} from Alerts and create {string} on {string}",
 	async ({ page, unique }, _button: string, title: string, service: string) => {
-		if (pathOf(page) !== "/services") {
-			await visit(page, "/services");
+		if (pathOf(page) !== "/alerts") {
+			await visit(page, "/alerts");
 		}
 		await page
 			.getByTestId("page-header")
@@ -426,15 +429,17 @@ When("I open the app", async ({ page }) => {
 });
 
 Then(
-	"the top strip shows Incidents, Alerts, Services, Settings and New, with Incidents current",
+	'the top strip shows Incidents, Alerts, Services and Settings as icons, with Incidents current, and the header carries "New incident"',
 	async ({ page }) => {
 		const strip = page.getByTestId("topbar");
 		for (const door of ["Incidents", "Alerts", "Services", "Settings"]) {
 			await expect(
 				strip.getByTestId(`strip-${door.toLowerCase()}`),
-			).toContainText(door);
+			).toHaveAccessibleName(door);
 		}
-		await expect(strip.getByTestId("strip-new")).toBeVisible();
+		await expect(
+			page.getByTestId("page-header").getByTestId("create-incident-button"),
+		).toHaveText("New incident");
 		await expect(strip.getByTestId("strip-incidents")).toHaveAttribute(
 			"aria-current",
 			"page",
@@ -500,10 +505,13 @@ Then("I am on the incident list", async ({ page }) => {
 	await expect(p.getByTestId("incident-board").first()).toBeVisible();
 });
 
-When("I press {string} in the strip", async ({ page }, _label: string) => {
+When("I press {string} in the header", async ({ page }, _label: string) => {
 	await visit(page, "/incidents");
 	await expect(page.getByTestId("incident-board")).toBeVisible();
-	await page.getByTestId("topbar").getByTestId("strip-new").click();
+	await page
+		.getByTestId("page-header")
+		.getByTestId("create-incident-button")
+		.click();
 });
 
 Then(

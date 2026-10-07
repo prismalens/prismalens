@@ -66,7 +66,7 @@ test.describe("#673 w45: usage data on after a notice", () => {
 		const notice = page.getByTestId("telemetry-consent");
 		await expect(notice).toBeVisible({ timeout: 15_000 });
 		await expect(notice).toContainText("Usage counts are on");
-		await expect(notice).toContainText("Never an alert, a repo or a report");
+		await expect(notice).toContainText("never an alert, a repo or a report");
 		await expect.poll(() => puts).toEqual([{ noticed: true }]);
 
 		await notice.getByRole("button", { name: "OK", exact: true }).click();

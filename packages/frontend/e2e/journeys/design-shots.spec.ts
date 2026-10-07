@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
 import {
+	acknowledge,
 	ensureService,
 	fireIncident,
 	LIVE,
@@ -159,6 +160,10 @@ test("design shots D2", async ({
 		data: { id: "claude-code" },
 	});
 	expect(res.ok(), await res.text()).toBe(true);
+	const set = await page.request.patch("/api/settings/harness", {
+		data: { harness: "claude-code" },
+	});
+	expect(set.ok(), await set.text()).toBe(true);
 
 	const shots = async (name: string, path: string, ready: string) => {
 		for (const size of SIZES) {
@@ -211,6 +216,12 @@ test("design shots D2", async ({
 	});
 	await waitForRun(page, live.id, (r) => r.status === "running", "live");
 	const service = await ensureService(page, LIVE);
+	// The board as the mockup draws it: acknowledged runs, the usage strip seen.
+	await acknowledge(page, done.id);
+	await acknowledge(page, live.id);
+	await page.request.put("/api/settings/telemetry", {
+		data: { noticed: true, dismissed: true },
+	});
 
 	await shots("board", "/incidents", "incident-board");
 	await shots("services", "/services", "services-page");
