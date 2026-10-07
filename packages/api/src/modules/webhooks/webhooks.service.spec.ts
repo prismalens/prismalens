@@ -152,6 +152,24 @@ describe("WebhooksService", () => {
 		expect(result.alert.id).toBe("alt-123");
 	});
 
+	it("tells correlation when a Render refire reopened the alert", async () => {
+		vi.mocked(alertsService.create).mockResolvedValueOnce({
+			...mockAlert,
+			outcome: "reopened",
+		});
+
+		await service.processRenderWebhook({
+			type: "deploy",
+			deploy: { id: "dep-1", status: "deploy_failed" },
+			service: { id: "srv-1", name: "my-service" },
+		});
+
+		expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "alt-123" }),
+			{ reopened: true },
+		);
+	});
+
 	it("returns cached response on idempotent replay without re-creating event or alert", async () => {
 		vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce({
 			...mockEvent,

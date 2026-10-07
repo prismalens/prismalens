@@ -523,8 +523,10 @@ export class WebhooksService {
 		await this.eventsService.markProcessed(event.id, alert.id);
 
 		// 5. Correlate alert to incident
-		const correlationResult =
-			await this.incidentCorrelation.correlateAlert(alert);
+		const correlationResult = await this.incidentCorrelation.correlateAlert(
+			alert,
+			{ reopened: alert.outcome === "reopened" },
+		);
 
 		return {
 			event,

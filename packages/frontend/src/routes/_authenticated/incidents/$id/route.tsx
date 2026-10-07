@@ -85,10 +85,12 @@ function IncidentLayout() {
 	// The layout stays mounted across incident ids; a run started on another incident is not this one's.
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
-	// Report opens the newest run that left one; every other tab the newest of any kind (#673).
-	const newest = pathname.endsWith("/report")
-		? latestRun({ investigations: runs.filter((r) => r.hasReport) })
-		: latestRun({ investigations: runs });
+	// Report opens the newest run that left one, else the newest so its No report state shows;
+	// every other tab the newest of any kind (#673).
+	const newest =
+		(pathname.endsWith("/report")
+			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
+			: null) ?? latestRun({ investigations: runs });
 	const investigationId = search.investigation ?? started ?? newest?.id ?? null;
 	const run = useInvestigationRun(investigationId);
 

@@ -303,7 +303,7 @@ describe("IncidentCorrelationService", () => {
 				2,
 				expect.objectContaining({
 					where: expect.objectContaining({
-						OR: [{ dedupKey: "dedup-1" }, { fingerprint: "fp-1" }],
+						dedupKey: "dedup-1",
 						incident: expect.objectContaining({ status: { in: ["resolved", "closed"] }, serviceId: null }),
 					}),
 				}),
@@ -324,8 +324,8 @@ describe("IncidentCorrelationService", () => {
 		it("finds the ended incident by dedupKey when the description changed the fingerprint (#673 w43)", async () => {
 			const alert = alertRow({ id: "alert-new", dedupKey: "dedup-1", fingerprint: "fp-new" });
 			mockPrismaService.alert.findFirst.mockImplementation(
-				async ({ where }: { where: { OR?: Array<{ dedupKey?: string }> } }) =>
-					where.OR?.some((m) => m.dedupKey === "dedup-1")
+				async ({ where }: { where: { dedupKey?: string } }) =>
+					where.dedupKey === "dedup-1"
 						? {
 								...alertRow({ id: "alert-old", dedupKey: "dedup-1", fingerprint: "fp-old", incidentId: "inc-3" }),
 								incident: { id: "inc-3", number: 3, status: "closed", resolvedAt: null },
@@ -338,6 +338,38 @@ describe("IncidentCorrelationService", () => {
 
 			expect(mockIncidentsService.create).toHaveBeenCalledWith(
 				expect.objectContaining({ priorIncident: expect.objectContaining({ number: 3 }) }),
+			);
+		});
+
+		it("prefers the dedupKey match over a newer alert sharing only the fingerprint", async () => {
+			const alert = alertRow({ id: "alert-new", dedupKey: "dedup-1", fingerprint: "fp-1" });
+			mockPrismaService.alert.findFirst.mockImplementation(
+				async ({
+					where,
+				}: {
+					where: { dedupKey?: string; fingerprint?: string; incident?: { status: { in: string[] } } };
+				}) => {
+					if (where.dedupKey === "dedup-1") {
+						return {
+							...alertRow({ id: "alert-own", dedupKey: "dedup-1", incidentId: "inc-4" }),
+							incident: { id: "inc-4", number: 4, status: "closed", resolvedAt: null },
+						};
+					}
+					if (where.fingerprint === "fp-1" && where.incident?.status.in.includes("closed")) {
+						return {
+							...alertRow({ id: "alert-other", dedupKey: "dedup-2", incidentId: "inc-9" }),
+							incident: { id: "inc-9", number: 9, status: "closed", resolvedAt: null },
+						};
+					}
+					return null;
+				},
+			);
+			mockIncidentsService.create.mockResolvedValue({ id: "inc-12", number: 12 });
+
+			await service.correlateAlert(alert);
+
+			expect(mockIncidentsService.create).toHaveBeenCalledWith(
+				expect.objectContaining({ priorIncident: expect.objectContaining({ number: 4 }) }),
 			);
 		});
 

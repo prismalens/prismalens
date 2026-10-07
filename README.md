@@ -84,8 +84,9 @@ investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
 PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
 is first in the pick order). For each one on PATH it also opens an ACP handshake and
 reports `ready` or the harness's own reason (for example "not logged in") — the
-same check Settings → Agent runs on demand. PrismaLens runs it again before
-a run starts, so an agent that is not signed in gets no run until it is. PrismaLens never bundles,
+same check Settings → Agent runs on demand. Before a run starts, PrismaLens
+reuses a passing check under a day old and otherwise checks again, so an agent
+that is not signed in gets no run until it is. PrismaLens never bundles,
 installs or authenticates a harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
