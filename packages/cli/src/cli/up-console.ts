@@ -163,7 +163,18 @@ export function browserCommand(
 		if (check("wslview", env.PATH)) {
 			return { file: "wslview", args: [url] };
 		}
-		return { file: "cmd.exe", args: ["/c", "start", '""', `"${url}"`] };
+		// Interop re-quotes argv, so cmd.exe saw literal quotes and `&` split the
+		// URL; a single-quoted PowerShell literal survives both (#673).
+		const literal = `'${url.replaceAll("'", "''")}'`;
+		return {
+			file: "powershell.exe",
+			args: [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`Start-Process ${literal}`,
+			],
+		};
 	}
 	if (env.DISPLAY || env.WAYLAND_DISPLAY) {
 		return { file: "xdg-open", args: [url] };

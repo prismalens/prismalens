@@ -209,7 +209,7 @@ describe("browserCommand", () => {
 		});
 	});
 
-	it("opens under WSL with cmd.exe quoting the URL when wslview is missing", () => {
+	it("opens under WSL with a PowerShell literal when wslview is missing", () => {
 		const pairingUrl = "http://localhost:3170/pair#token123&foo=bar";
 		expect(
 			browserCommand(
@@ -219,9 +219,24 @@ describe("browserCommand", () => {
 				{ isOnPath: () => false },
 			),
 		).toEqual({
-			file: "cmd.exe",
-			args: ["/c", "start", '""', `"${pairingUrl}"`],
+			file: "powershell.exe",
+			args: [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`Start-Process '${pairingUrl}'`,
+			],
 		});
+	});
+
+	it("doubles a single quote so the URL stays one PowerShell literal", () => {
+		const command = browserCommand(
+			"linux",
+			{ WSL_INTEROP: "/run/WSL/1_interop" },
+			"http://h/it's",
+			{ isOnPath: () => false },
+		);
+		expect(command?.args.at(-1)).toBe("Start-Process 'http://h/it''s'");
 	});
 
 	it("opens nothing on CI or on Linux with no display", () => {
