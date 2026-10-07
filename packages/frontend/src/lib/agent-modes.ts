@@ -9,8 +9,11 @@ export type ModeIcon = "lock" | "pencil" | "open";
 
 const SANDBOXED = new Set(["plan", "read-only"]);
 const EDITS = new Set(["acceptEdits", "agent", "auto"]);
-/** Modes in which the agent never asks, so PrismaLens never answers for it. */
-const NEVER_ASKS = new Set(["bypassPermissions", "agent-full-access", "plan"]);
+/**
+ * Modes in which the agent never asks: only codex-acp's `agent-full-access` (approval "never").
+ * Claude's `bypassPermissions` still asks on safety checks and `plan` asks to leave the plan (#799).
+ */
+const NEVER_ASKS = new Set(["agent-full-access"]);
 
 export function modeIcon(id: string): ModeIcon {
 	if (SANDBOXED.has(id)) return "lock";

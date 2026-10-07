@@ -127,6 +127,9 @@ describe("the box's chips (#673)", () => {
 		expect(html).toContain(
 			"Always ask before making changes. PrismaLens answers yes and logs it.",
 		);
-		expect(html).not.toContain("Accepts all permissions. PrismaLens");
+		// claude-agent-acp still asks on bypass-immune safety checks, so bypass carries the clause too (#799).
+		expect(html).toContain(
+			"Accepts all permissions. PrismaLens answers yes and logs it.",
+		);
 	});
 });
