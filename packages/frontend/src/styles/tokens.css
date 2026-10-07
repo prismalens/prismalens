@@ -46,8 +46,7 @@
 	--sidebar-w: 240px;
 	--rail-w: 56px;
 	--header-h: 44px;
-	--reading-w: 46rem;
-	--facts-w: 256px;
+	--reading-w: 52rem;
 	/* The desktop window's top strip; equals TITLEBAR_HEIGHT in packages/desktop. */
 	--titlebar-h: 0px;
 	/* Set by the reconnect line while it shows; every frame starts below it. */
