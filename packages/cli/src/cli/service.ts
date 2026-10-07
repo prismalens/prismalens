@@ -64,16 +64,36 @@ async function manager(config: Config) {
 		kind === "systemd" &&
 		!exec(["systemctl", "--user", "show-environment"]).ok
 	) {
-		const wsl = /microsoft/i.test(safeRead("/proc/version"));
+		const uid = process.getuid?.() ?? 0;
+		const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
 		consola.error(
-			wsl
-				? "WSL isn't running systemd. Add `[boot]` and `systemd=true` to /etc/wsl.conf, run `wsl --shutdown` from Windows, then try again."
-				: "Can't reach the systemd user manager (`systemctl --user`). Run this from a login session as your own user, not with sudo.",
+			userManagerMissing({
+				wsl: /microsoft/i.test(safeRead("/proc/version")),
+				pid1: safeRead("/proc/1/comm").trim(),
+				userBus: existsSync(join(runtimeDir, "bus")),
+			}),
 		);
 		process.exit(1);
 	}
 	const unitPath = config.serviceUnitPath() as string;
 	return { kind, unitPath, uid: process.getuid?.() ?? 0 };
+}
+
+const ENABLE_LINGER = 'sudo loginctl enable-linger "$(id -un)"';
+
+/** Why `systemctl --user` can't be reached: no systemd at all, or no user manager (#673). */
+export function userManagerMissing(host: {
+	wsl: boolean;
+	pid1: string;
+	userBus: boolean;
+}): string {
+	if (host.wsl && host.pid1 !== "systemd") {
+		return "WSL isn't running systemd. Add `[boot]` and `systemd=true` to /etc/wsl.conf, run `wsl --shutdown` from Windows, then try again.";
+	}
+	if (host.pid1 === "systemd" && !host.userBus) {
+		return `systemd is running, but there's no user manager for you. Run \`${ENABLE_LINGER}\`, then open a new shell and try again.`;
+	}
+	return "Can't reach the systemd user manager (`systemctl --user`). Run this from a login session as your own user, not with sudo.";
 }
 
 function safeRead(path: string): string {
@@ -183,7 +203,7 @@ function lingerHint(): string | null {
 		"--value",
 	]);
 	if (linger.ok && linger.out === "yes") return null;
-	return 'Lingering is off, so the service stops when you log out and doesn\'t start at boot. Turn it on with: sudo loginctl enable-linger "$(id -un)"';
+	return `Lingering is off, so the service stops when you log out and doesn't start at boot. Turn it on with: ${ENABLE_LINGER}`;
 }
 
 const install = defineCommand({
@@ -324,12 +344,43 @@ function safeInstanceId(config: Config, workspace: string): string {
 	}
 }
 
+/**
+ * True while systemd moves the unit between states, as during `pl service
+ * restart`. A crash's wait before the next try (auto-restart) is down, as in
+ * serviceFailed.
+ */
+export function unitInTransition(
+	kind: ReturnType<Config["serviceManagerKind"]>,
+	execImpl = exec,
+): boolean {
+	if (kind !== "systemd") return false;
+	const out = execImpl([
+		"systemctl",
+		"--user",
+		"show",
+		"prismalens.service",
+		"-p",
+		"ActiveState",
+		"-p",
+		"SubState",
+	]);
+	if (!out.ok) return false;
+	const active = /^ActiveState=(.*)$/m.exec(out.out)?.[1] ?? "";
+	const sub = /^SubState=(.*)$/m.exec(out.out)?.[1];
+	return (
+		["activating", "deactivating", "reloading"].includes(active) &&
+		sub !== "auto-restart"
+	);
+}
+
 export function runningLine(
 	identity: IdentityOutcome,
 	base: string,
 	pid: number | null,
+	transitioning = false,
 ): string {
 	if (identity.kind === "ok") return `yes (pid ${pid})`;
+	if (transitioning) return "restarting";
 	if (identity.kind === "not-running") return "no";
 	return `no: ${describeOutcome(identity, base).trim()}`;
 }
@@ -379,7 +430,7 @@ const status = defineCommand({
 				`Unit:      ${service.unitPath}`,
 				`Workspace: ${service.workspace}`,
 				`Port:      ${service.port}`,
-				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null)}`,
+				`Running:   ${runningLine(identity, base, lock.kind === "held" ? lock.owner.pid : null, !healthy && unitInTransition(kind))}`,
 				...(info && typeof info !== "string"
 					? [`Version:   ${info.version ?? "unknown"}`]
 					: []),
