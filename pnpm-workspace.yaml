@@ -21,7 +21,10 @@ onlyBuiltDependencies:
   - '@nestjs/core'
   - electron
   - '@prisma/engines'
-  - better-sqlite3
   - esbuild
   - msgpackr-extract
   - prisma
+
+# better-sqlite3 13 loads a prebuild from its own tarball; its binding.gyp is a source fallback only.
+ignoredBuiltDependencies:
+  - better-sqlite3

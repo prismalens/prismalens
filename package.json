@@ -9,7 +9,6 @@
 		"url": "https://github.com/prismalens/prismalens.git"
 	},
 	"scripts": {
-		"postinstall": "pnpm rebuild better-sqlite3",
 		"prepare": "node scripts/install-hooks.mjs",
 		"build": "turbo run build",
 		"dev": "turbo run dev --filter=!prismalens --filter=!@prismalens/desktop",
@@ -47,7 +46,8 @@
 	"pnpm": {
 		"//overrides": {
 			"js-yaml@5": "GHSA-pm4m-ph32-ghv5 (js-yaml 5.0.0-5.2.1, exponential parse time in flow collections). @nestjs/swagger 11.4.6 — the latest release — pins `js-yaml: 5.2.1` EXACTLY, so no parent bump reaches the patch. Scoped to the 5.x line on purpose: js-yaml 3.x (read-yaml-file) and 4.x (cosmiconfig, xmlbuilder2) are patched by plain resolution and must NOT be dragged to 5.x. REMOVE once @nestjs/swagger > 11.4.6 pins js-yaml >= 5.2.2.",
-			"esbuild": "GHSA-g7r4-m6w7-qqqr (esbuild 0.27.3-0.28.0, dev-server arbitrary file read on Windows). tsup 8.5.1 — the latest release — declares `esbuild: ^0.27.0`, which excludes every patched version; vite 8.2.1 already admits ^0.28.0 and 0.28.1 is independently in the tree via tsx/webpack/unplugin, so this override merely unifies the tree on the patched major-minor. REMOVE once tsup > 8.5.1 declares esbuild ^0.28.0."
+			"esbuild": "GHSA-g7r4-m6w7-qqqr (esbuild 0.27.3-0.28.0, dev-server arbitrary file read on Windows). tsup 8.5.1 — the latest release — declares `esbuild: ^0.27.0`, which excludes every patched version; vite 8.2.1 already admits ^0.28.0 and 0.28.1 is independently in the tree via tsx/webpack/unplugin, so this override merely unifies the tree on the patched major-minor. REMOVE once tsup > 8.5.1 declares esbuild ^0.28.0.",
+			"@prisma/adapter-better-sqlite3>better-sqlite3": "@prisma/adapter-better-sqlite3 7.10.0 — the latest release — declares `better-sqlite3: ^12.6.0`, whose 12.x line ships prebuilds only through an install script that npm 12 no longer runs. 13.x carries N-API prebuilds inside its tarball and the adapter passes the database suite on it, so it shares the workspace's 13.x copy. REMOVE once the adapter's range admits ^13."
 		},
 		"overrides": {
 			"vite": "^8.1.3",
@@ -56,7 +56,8 @@
 			"solid-js": ">=1.9.4",
 			"@hono/node-server": ">=1.19.13",
 			"js-yaml@5": "^5.2.2",
-			"esbuild": "^0.28.1"
+			"esbuild": "^0.28.1",
+			"@prisma/adapter-better-sqlite3>better-sqlite3": "13.0.3"
 		}
 	}
 }
