@@ -220,6 +220,16 @@ describe("ContextPackService", () => {
 		);
 	});
 
+	it("draws prior incidents from ended incidents only (#673 w40)", async () => {
+		await service.assemble("inc-1");
+
+		expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: { not: "inc-1" }, status: { in: ["resolved", "closed"] } },
+			}),
+		);
+	});
+
 	it("caps prior incidents at 5, ranked by shared-label count then recency", async () => {
 		const make = (number: number, sharedLabels: number, createdAt: string) => ({
 			id: `inc-${number}`,

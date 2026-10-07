@@ -330,7 +330,7 @@ function matchedOn(f: SimilarityFactors): SimilarIncident["matchedOn"] {
 
 /**
  * Score `current` against every `past` incident, keep those at or above the
- * threshold, and return the top-K ranked 1..K (ties broken by higher incident
+ * threshold that match on more than the service, and return the top-K ranked 1..K (ties broken by higher incident
  * number for stable ordering).
  */
 export function selectSimilarIncidents(
@@ -338,26 +338,32 @@ export function selectSimilarIncidents(
 	past: PastIncidentInput[],
 	opts: SelectSimilarOptions = DEFAULT_SIMILAR_OPTIONS,
 ): SimilarIncidentResult[] {
-	return past
-		.map((p) => {
-			const f = scoreSimilarity(current, p.similarity);
-			return { p, f };
-		})
-		.filter(({ f }) => f.score >= opts.threshold)
-		.sort(
-			(a, b) =>
-				b.f.score - a.f.score || b.p.incidentNumber - a.p.incidentNumber,
-		)
-		.slice(0, opts.k)
-		.map(({ p, f }, i) => ({
-			incidentId: p.incidentId,
-			incidentNumber: p.incidentNumber,
-			title: p.title,
-			rank: i + 1,
-			matchedOn: matchedOn(f),
-			actualCause: p.actualCause,
-			score: f.score,
-		}));
+	return (
+		past
+			.map((p) => {
+				const f = scoreSimilarity(current, p.similarity);
+				return { p, f };
+			})
+			// A shared service alone is not similarity (#673 w40).
+			.filter(
+				({ f }) =>
+					f.score >= opts.threshold && (f.jaccard > 0 || f.sharedCategory),
+			)
+			.sort(
+				(a, b) =>
+					b.f.score - a.f.score || b.p.incidentNumber - a.p.incidentNumber,
+			)
+			.slice(0, opts.k)
+			.map(({ p, f }, i) => ({
+				incidentId: p.incidentId,
+				incidentNumber: p.incidentNumber,
+				title: p.title,
+				rank: i + 1,
+				matchedOn: matchedOn(f),
+				actualCause: p.actualCause,
+				score: f.score,
+			}))
+	);
 }
 
 /** 0..1 float → the 0-100 integer stored on IncidentSimilarity.similarityScore. */

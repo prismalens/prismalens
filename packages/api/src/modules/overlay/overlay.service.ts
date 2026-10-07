@@ -2,7 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
-import type { InvestigationReport, Overlay } from "@prismalens/contracts";
+import {
+	ENDED_INCIDENT_STATUSES,
+	type InvestigationReport,
+	type Overlay,
+} from "@prismalens/contracts";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
@@ -188,8 +192,12 @@ export class OverlayService {
 		// scan runs on every completed investigation, so it must stay bounded. A
 		// service/label pre-filter is a later design call (review note 2026-07-05);
 		// recency is the safe cap since similar incidents age out of relevance.
+		// Ended incidents only: an open one has no outcome to learn from (#673 w40).
 		const pastIncidents = await this.prisma.incident.findMany({
-			where: { id: { not: incident.id } },
+			where: {
+				id: { not: incident.id },
+				status: { in: [...ENDED_INCIDENT_STATUSES] },
+			},
 			orderBy: { createdAt: "desc" },
 			take: 200,
 			include: {
