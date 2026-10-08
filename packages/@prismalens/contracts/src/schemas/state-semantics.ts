@@ -351,6 +351,61 @@ export function isRunStateLive(state: RunState): boolean {
 export const INVESTIGATION_KINDS = ["investigation", "chat"] as const;
 export type InvestigationKind = (typeof INVESTIGATION_KINDS)[number];
 
+/** What a live turn owes (#673 w59): a report, or an answer. */
+export const LIVE_TURNS = ["report", "answer"] as const;
+export type LiveTurn = (typeof LIVE_TURNS)[number];
+
+/** How a thread's last message ended (#673 w59). */
+export const TURN_OUTCOMES = ["answered", "stopped", "error"] as const;
+export type TurnOutcome = (typeof TURN_OUTCOMES)[number];
+
+/** A live row's turn; a row claimed before the column existed reads by its kind. */
+export function effectiveLiveTurn(row: {
+	kind?: string | null;
+	liveTurn?: string | null;
+}): LiveTurn {
+	if (row.liveTurn === "report" || row.liveTurn === "answer")
+		return row.liveTurn;
+	return row.kind === "chat" ? "answer" : "report";
+}
+
+/**
+ * A thread `Investigate` can take on to its report in place: an investigation
+ * that stopped or failed before writing one, whose session can be reopened.
+ */
+export function continuableRun(row: {
+	kind?: string | null;
+	status: string;
+	hasReport?: boolean | null;
+	/** The session was kept and can be loaded again. */
+	sessionKept: boolean;
+}): boolean {
+	return (
+		row.sessionKept &&
+		(row.kind ?? "investigation") === "investigation" &&
+		(row.status === "cancelled" || row.status === "failed") &&
+		!row.hasReport
+	);
+}
+
+/**
+ * The incident's live row: at most one by the admission rule (#673 w59). Old
+ * data can hold two; the newest wins and `onMany` hears of it.
+ */
+export function liveRun<R extends { status: string; createdAt: string | Date }>(
+	incident: { investigations?: readonly R[] | null },
+	onMany?: (rows: readonly R[]) => void,
+): R | null {
+	const live = (incident.investigations ?? []).filter((r) =>
+		isWorkflowLive(r.status),
+	);
+	if (live.length > 1) onMany?.(live);
+	let newest: R | null = null;
+	for (const run of live)
+		if (!newest || time(run.createdAt) > time(newest.createdAt)) newest = run;
+	return newest;
+}
+
 /**
  * The incident's newest run, of `kind` when given. A row from before kinds
  * existed is an investigation. Chats have no report, so a consumer that wants

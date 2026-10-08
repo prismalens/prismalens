@@ -18,7 +18,11 @@ import {
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
-import { INVESTIGATION_KINDS } from "./state-semantics.js";
+import {
+	INVESTIGATION_KINDS,
+	LIVE_TURNS,
+	TURN_OUTCOMES,
+} from "./state-semantics.js";
 
 // =============================================================================
 // ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
@@ -253,6 +257,10 @@ export const InvestigationSchema = z.object({
 	effort: z.string().nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
+	/** What the live turn owes (#673 w59); null when nothing runs, or a legacy claim. */
+	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
+	/** How the last follow-up ended; null until one has (#673 w59). */
+	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
 	acpSessionId: z.string().nullable().optional(),
 	workspace: RunWorkspaceSchema.nullable().optional(),
@@ -260,7 +268,7 @@ export const InvestigationSchema = z.object({
 	resumable: z.boolean().optional(),
 	/** Why a finished run cannot be continued; null when it can. */
 	resumeBlockedReason: z.string().nullable().optional(),
-	/** A stopped run whose session can be reopened and taken on to a report (R4.4). */
+	/** A reportless stopped or failed investigation whose session reopens to a report (R4.4, #673 w59). */
 	continuable: z.boolean().optional(),
 	/** That mode's name as the agent's last readiness check listed it; the id when it listed none. */
 	agentModeName: z.string().nullable().optional(),
@@ -494,7 +502,7 @@ export const SendInvestigationMessageSchema = z.object({
 	/** Only the constant `run` branch exists until fan-out lands (#280). */
 	branchId: z.string().min(1).optional(),
 	mode: OperatorMessageModeSchema.default("queue"),
-	/** On an ended run; absent means `continue` for a stopped run and `chat` otherwise. */
+	/** What the message asks for; on a live run it must match the live turn (#673 w59). */
 	kind: FollowUpKindSchema.optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first. */
 	attachments: AttachmentIdsSchema.optional(),
