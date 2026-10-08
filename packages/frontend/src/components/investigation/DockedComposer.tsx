@@ -300,6 +300,22 @@ export function DockedComposer({
 	);
 }
 
+/**
+ * How the last message ended, when the standing does not already say it
+ * (#804 OBJ-028): an Ask that errored on a stopped run is not its old Stop.
+ */
+export function lastMessageWord(inv: {
+	status: string;
+	lastTurnOutcome?: string | null;
+}): string | null {
+	const o = inv.lastTurnOutcome;
+	if (o === "stopped" && inv.status !== "cancelled")
+		return `Last message: ${TURN_OUTCOME_LABEL.stopped}`;
+	if (o === "error" && inv.status !== "failed")
+		return `Last message: ${TURN_OUTCOME_LABEL.error}`;
+	return null;
+}
+
 /** Who started a thread, from its trigger (#673 w59). */
 export function originWord(triggerType: string | null | undefined): string {
 	if (triggerType === "re_trigger") return "Started by the alert, reopened";
@@ -330,13 +346,7 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 			: runStateLabel(inv.kind, run.state);
 	const sha = pinnedTo(inv.workspace);
 	const service = incident.service?.displayName || incident.service?.name;
-	const lastMessage =
-		!live &&
-		!chat &&
-		inv.hasReport &&
-		(inv.lastTurnOutcome === "stopped" || inv.lastTurnOutcome === "error")
-			? `Last message: ${TURN_OUTCOME_LABEL[inv.lastTurnOutcome]}`
-			: null;
+	const lastMessage = !live && !chat ? lastMessageWord(inv) : null;
 	return (
 		<div
 			className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-0.5 text-meta text-text-3"

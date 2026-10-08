@@ -6,7 +6,7 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerBox } from "./ComposerBox";
-import { DockedComposer } from "./DockedComposer";
+import { DockedComposer, lastMessageWord } from "./DockedComposer";
 
 const record = vi.hoisted(() => ({
 	sendMessage: vi.fn(),
@@ -259,5 +259,15 @@ describe("DockedComposer messages (#743)", () => {
 		await act(async () => fail(new Error("Internal server error")));
 		expect(q<HTMLTextAreaElement>("composer-input").value).toBe("why the pool?");
 		expect(q("composer-refusal").textContent).toBe("Internal server error");
+	});
+});
+
+describe("the status line's Last message (#804 OBJ-028)", () => {
+	it("says an Ask errored on a stopped run, and stays quiet when the standing already says it", () => {
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "error" })).toBe("Last message: error");
+		expect(lastMessageWord({ status: "completed", lastTurnOutcome: "stopped" })).toBe("Last message: stopped by you");
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "stopped" })).toBeNull();
+		expect(lastMessageWord({ status: "failed", lastTurnOutcome: "error" })).toBeNull();
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "answered" })).toBeNull();
 	});
 });

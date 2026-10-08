@@ -71,6 +71,7 @@ export function ConversationRoute() {
 							kind: investigation.kind,
 							hasReport: !!investigation.report,
 							continuable: run.continuable,
+							lastTurnOutcome: investigation.lastTurnOutcome,
 						}
 					: undefined,
 			}),

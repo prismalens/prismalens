@@ -342,6 +342,8 @@ export interface TranscriptRun {
 	kind?: string | null;
 	hasReport?: boolean;
 	continuable?: boolean;
+	/** How the last follow-up ended; read when its own events were dropped (#804 OBJ-028). */
+	lastTurnOutcome?: string | null;
 	stopRequested?: boolean;
 	error?: string | null;
 	startedAt?: string | null;
@@ -486,6 +488,25 @@ function transcriptPath(runId?: string): string {
 	return `runs/${runId ?? "<id>"}/transcript.jsonl`;
 }
 
+/** A stopped run's standing line: when, and after how long (walk f26). */
+function stoppedLine(
+	run: TranscriptRun,
+	fallback: string | null,
+): Extract<TranscriptItem, { kind: "end" }> {
+	const at = run.completedAt ?? fallback;
+	const took =
+		run.startedAt && run.completedAt
+			? seconds(run.startedAt, new Date(run.completedAt).getTime())
+			: null;
+	return {
+		kind: "end",
+		key: "stopped",
+		tone: "stale",
+		text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
+		detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
+	};
+}
+
 /**
  * The conversation as chat (#743 §3c): the agent's prose, tool calls folded to
  * one line per group, `Thought for Ns` for gaps, operator blocks with their
@@ -503,6 +524,10 @@ export function deriveTranscript(
 	let sawAgent = false;
 	let sawError = false;
 	let sawReport = false;
+	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
+	let sawEnd = false;
+	let standingAt = -1;
+	let lastFollowUpAt = -1;
 	const operators: {
 		item: Extract<TranscriptItem, { kind: "operator" }>;
 		brief: boolean;
@@ -637,6 +662,7 @@ export function deriveTranscript(
 									: "delivered",
 				};
 				operators.push({ item, brief });
+				if (sawEnd) lastFollowUpAt = items.length;
 				items.push(item);
 				break;
 			}
@@ -647,13 +673,24 @@ export function deriveTranscript(
 				closeGroup();
 				items.push({ kind: "line", key, text: sessionConfigLine(event) });
 				break;
-			case "error":
+			case "error": {
 				closeGroup();
-				// A stop ends the run with an error event; it reads once, as the stop (walk f26).
-				if (run?.status === "cancelled") break;
+				const first = !sawEnd;
+				sawEnd = true;
 				sawError = true;
-				// A message's own end on a thread whose standing it does not change (#673 w59).
-				if (sawReport || run?.kind === "chat" || isStopMessage(event.message)) {
+				// A stopped run's own stop reads once, where it happened, as the standing (walk f26).
+				if (first && run?.status === "cancelled") {
+					standingAt = items.length;
+					items.push(stoppedLine(run, event.ts));
+					break;
+				}
+				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
+				if (
+					!first ||
+					sawReport ||
+					run?.kind === "chat" ||
+					isStopMessage(event.message)
+				) {
 					items.push({
 						kind: "end",
 						key,
@@ -662,6 +699,7 @@ export function deriveTranscript(
 					});
 					break;
 				}
+				standingAt = items.length;
 				items.push({
 					kind: "end",
 					key,
@@ -672,9 +710,11 @@ export function deriveTranscript(
 					path: transcriptPath(run?.id),
 				});
 				break;
+			}
 			case "report":
 				closeGroup();
 				sawReport = true;
+				sawEnd = true;
 				items.push({
 					kind: "end",
 					key,
@@ -722,21 +762,11 @@ export function deriveTranscript(
 		return items;
 	}
 
-	if (run?.status === "cancelled") {
-		const at = run.completedAt ?? lastTs;
-		const took =
-			run.startedAt && run.completedAt
-				? seconds(run.startedAt, new Date(run.completedAt).getTime())
-				: null;
-		items.push({
-			kind: "end",
-			key: "stopped",
-			tone: "stale",
-			text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
-			detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
-			hint: run && endHint(run),
-		});
-	} else if (run?.status === "failed" && !sawError) {
+	if (run?.status === "cancelled" && standingAt < 0) {
+		standingAt = items.length;
+		items.push(stoppedLine(run, lastTs));
+	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {
+		standingAt = items.length;
 		items.push({
 			kind: "end",
 			key: "failed",
@@ -745,13 +775,28 @@ export function deriveTranscript(
 			error: run.error,
 			at: run.completedAt ?? lastTs,
 			path: transcriptPath(run.id),
-			hint: endHint(run),
 		});
-	} else if (run?.status === "failed") {
-		const last = items.findLast((i) => i.kind === "end");
-		if (last?.kind === "end" && last.tone === "failed")
-			last.hint = endHint(run);
 	}
+	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
+	const lastEnd = items.findLastIndex((i) => i.kind === "end");
+	if (
+		run &&
+		lastFollowUpAt > lastEnd &&
+		(run.lastTurnOutcome === "error" || run.lastTurnOutcome === "stopped")
+	)
+		items.push({
+			kind: "end",
+			key: "last-message",
+			tone: "stale",
+			text:
+				run.lastTurnOutcome === "stopped"
+					? "Stopped by you"
+					: "The agent stopped on your last message",
+		});
+	// What the box can do next sits under the last line, whichever it is.
+	const hint = run && endHint(run);
+	const tail = items.findLast((i) => i.kind === "end");
+	if (hint && tail?.kind === "end") tail.hint = hint;
 
 	if (items.length === 0) {
 		return [
