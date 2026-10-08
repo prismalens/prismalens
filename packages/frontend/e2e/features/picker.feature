@@ -17,7 +17,7 @@ Feature: Agent and model picker
     Then the effort chip reads Codex's default "Medium", and its menu tags it "Default"
     And the model chip's list is the one Codex offers, with no "Run a check to list models"
     When I pick Claude Code and open a new run's draft
-    Then the effort chip is disabled, reading "Effort"
+    Then the effort chip is disabled, reading "Default"
     And every agent shows its own default permission mode, by the agent's name once checked
 
   Scenario: A chip changes only this run, never Settings
