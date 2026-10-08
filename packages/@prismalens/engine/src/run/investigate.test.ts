@@ -297,6 +297,65 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(deliver).toBeUndefined();
 	});
 
+	it("Send now carries a message queued before it, in order (#673 w33)", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const queue: { text: string }[] = [];
+		const events: CanonicalEvent[] = [];
+		const brief = "Investigate latency.";
+		const o = opts("steerable", {
+			brief,
+			env: { ...process.env, FAKE_ACP_MODE: "steerable", FAKE_WAIT_CANCEL: "1" },
+			steer: {
+				next: () => queue.shift() ?? null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") {
+				queue.push({ text: "Queued first." });
+				deliver?.({ text: "Now second." });
+			}
+		}
+		const opMessages = events.filter((e) => e.kind === "operator_message");
+		const afterBrief = opMessages.slice(1).map((e) => [e.text, e.mode, e.delivered]);
+		expect(afterBrief).toEqual([
+			["Queued first.", "queue", true],
+			["Now second.", "now", true],
+		]);
+		const kinds = events.map((e) => e.kind);
+		const reportIdx = kinds.indexOf("report");
+		expect(reportIdx).toBeGreaterThan(0);
+		for (const m of opMessages.slice(1)) {
+			expect(events.indexOf(m)).toBeLessThan(reportIdx);
+		}
+		const prose = events.map((e) => (e.kind === "agent_step" ? e.text : "")).join("\n");
+		expect(prose).toContain("Heard: Queued first.\n\nNow second.");
+		expect(queue).toHaveLength(0);
+		expect(deliver).toBeUndefined();
+	});
+
+	it("a stop during the report retry ends as cancelled, never as a report failure (#673 w34)", async () => {
+		const stop = new AbortController();
+		const events: CanonicalEvent[] = [];
+		const o = opts("never", {
+			env: { ...process.env, FAKE_ACP_MODE: "never", FAKE_RETRY_WAIT_CANCEL: "1" },
+			signal: stop.signal,
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			// The first turn's invalid report is in; the retry turn now waits for a cancel.
+			if (ev.kind === "agent_step" && ev.text.includes("Done.")) setTimeout(() => stop.abort(), 300);
+		}
+		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });
+		expect(events.some((e) => e.kind === "error" && e.message.includes("did not validate"))).toBe(false);
+	});
+
 	it("marks a message the stopped run never read as not delivered, and refuses later ones (#743)", async () => {
 		const stop = new AbortController();
 		const channel = createSteerChannel();
