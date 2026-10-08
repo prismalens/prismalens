@@ -32,6 +32,15 @@ export const FavouriteModelSchema = z.object({
 });
 export type FavouriteModel = z.infer<typeof FavouriteModelSchema>;
 
+/** A readiness check's verdict; only `answers-acp` is a pass. */
+export const HarnessProbeOutcomeSchema = z.enum([
+	"answers-acp",
+	"sign-in-needed",
+	"no-answer",
+	"failed-to-start",
+]);
+export type HarnessProbeOutcome = z.infer<typeof HarnessProbeOutcomeSchema>;
+
 export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
@@ -57,6 +66,8 @@ export const HarnessStatusSchema = z.object({
 		.object({ key: z.string(), model: z.string() })
 		.nullable()
 		.default(null),
+	/** Under WSL, a Windows install on PATH that cannot run here (#673 w8). Absent from older APIs. */
+	windowsOnlyPath: z.string().nullable().default(null),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model
@@ -76,10 +87,14 @@ export const HarnessStatusSchema = z.object({
 	/**
 	 * What the last readiness check read from the harness itself (R4.2 d4,
 	 * R4.3 d2); null until one has run, which the picker says as "pending a check".
+	 * Every outcome is kept; only `answers-acp` lets a run start (#673 w9).
 	 */
 	checked: z
 		.object({
 			at: z.string(),
+			outcome: HarnessProbeOutcomeSchema,
+			/** The check's one line, as `pl doctor` prints it. */
+			detail: z.string(),
 			/** The model it reported as current: "Agent default" names this, never a PrismaLens choice. */
 			servedModel: z.string().nullable(),
 			effort: EffortOptionSchema.nullable(),
@@ -156,12 +171,7 @@ export type CheckHarnessInput = z.infer<typeof CheckHarnessInputSchema>;
 /** `initialize` + `session/new`, no prompt turn. Four outcomes; `detail` is the words `pl doctor` prints too, one line. */
 export const HarnessProbeResultSchema = z.object({
 	id: z.enum(HARNESS_IDS),
-	outcome: z.enum([
-		"answers-acp",
-		"sign-in-needed",
-		"no-answer",
-		"failed-to-start",
-	]),
+	outcome: HarnessProbeOutcomeSchema,
 	detail: z.string(),
 	hard: z.literal(false),
 	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
@@ -203,7 +213,7 @@ export const InvestigationTriggerTypeSchema = z.enum([
 	"auto_tier", // Auto-triggered based on service tier
 	"alert_threshold", // Auto-triggered when alert count exceeds threshold
 	"scheduled", // Auto-triggered for stale incidents
-	"re_trigger", // Re-triggered when new alerts are added
+	"re_trigger", // A refire reopened the incident (#673 w25)
 ]);
 export type InvestigationTriggerType = z.infer<
 	typeof InvestigationTriggerTypeSchema
@@ -325,14 +335,15 @@ export const TestMcpResultSchema = z.object({
 export type TestMcpResult = z.infer<typeof TestMcpResultSchema>;
 
 /**
- * Opt-in product telemetry (#602). Off until the owner says yes; `decided` is
- * false until they answer once, which is what shows the consent line.
+ * Product telemetry, on after a notice (#673 w45). `noticed`: the notice was
+ * displayed somewhere; `dismissed`: OK or Turn off was pressed on it.
  * `forcedOff` means PRISMALENS_TELEMETRY=off (`pl up --telemetry=off`) wins.
  */
 export const TelemetrySettingsSchema = z.object({
 	enabled: z.boolean(),
-	decided: z.boolean(),
 	forcedOff: z.boolean(),
+	noticed: z.boolean(),
+	dismissed: z.boolean(),
 	recentlySent: z.array(
 		z.object({
 			payload: z.record(z.string(), z.unknown()),
@@ -367,7 +378,11 @@ export const AboutSchema = z.object({
 export type About = z.infer<typeof AboutSchema>;
 
 export const UpdateTelemetrySettingsSchema = z.object({
-	enabled: z.boolean(),
+	enabled: z.boolean().optional(),
+	/** The notice was displayed; sending starts on the next boot. */
+	noticed: z.literal(true).optional(),
+	/** OK or Turn off was pressed on the notice. */
+	dismissed: z.literal(true).optional(),
 });
 export type UpdateTelemetrySettings = z.infer<
 	typeof UpdateTelemetrySettingsSchema

@@ -61,7 +61,13 @@ export function classify(
 	session: AcpSession,
 	timeoutMs: number,
 ): Pick<HarnessProbeResult, "outcome" | "detail"> {
-	const message = oneLine(err instanceof Error ? err.message : String(err));
+	const message = oneLine(
+		err instanceof AcpRpcError && err.data
+			? `${err.message} ${err.data}`
+			: err instanceof Error
+				? err.message
+				: String(err),
+	);
 	const isCodexAuth = /CODEX_API_KEY or OPENAI_API_KEY is not set/i.test(
 		message,
 	);

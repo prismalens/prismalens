@@ -51,7 +51,7 @@ describe("Walk f32: the same alert fires again after its incident ended", () => 
 	it("When the same alert fires again after the flap window, Then a new incident opens and names the one that ended", async () => {
 		am.clear(alert.fingerprint);
 		await deliver();
-		vi.setSystemTime(Date.now() + 20 * 60_000);
+		vi.setSystemTime(Date.now() + 25 * 60 * 60_000);
 		am.fire({ labels });
 		await deliver();
 

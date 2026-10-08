@@ -93,12 +93,15 @@ import {
 	updateCheckEnabled,
 } from "./updates.js";
 import {
+	missingPlChoice,
+	type NothingRunningChoice,
 	nothingRunningChoice,
 	parseDefaultDistro,
 	parseDistros,
 	parseProbe,
 	parseWslSettings,
 	planWslLaunch,
+	portTakenByWslDialog,
 	type WslRun,
 	type WslSettings,
 	wslActive,
@@ -222,10 +225,17 @@ async function boot(): Promise<void> {
 /** Spawn `pl up` on the workspace's own port, refusing one something else holds. */
 async function spawnOwned(target: Target): Promise<void> {
 	if (!(await portFree(target.port))) {
+		const holderInstanceId = await portHolder(target);
+		if (holderInstanceId && (await heldByWsl(holderInstanceId))) {
+			throw new LaunchRefused({
+				kind: "port-taken-wsl",
+				...portTakenByWslDialog({ port: target.port, distro: wsl.distro }),
+			});
+		}
 		throw new LaunchRefused(
 			portTakenDialog({
 				port: target.port,
-				holderInstanceId: await portHolder(target),
+				holderInstanceId,
 				instanceFile: join(workspaceDir(), "instance.json"),
 			}),
 		);
@@ -242,6 +252,18 @@ async function spawnOwned(target: Target): Promise<void> {
 			}),
 		),
 	);
+}
+
+/** Whether the port's holder is the chosen distro's PrismaLens; any probe failure says no. */
+async function heldByWsl(holderInstanceId: string): Promise<boolean> {
+	if (process.platform !== "win32" || inWsl) return false;
+	try {
+		// Mirrored networking puts the WSL pl on 127.0.0.1:6473 too (#673 w50).
+		const probe = parseProbe(await runWsl(wslProbe(wsl.distro)));
+		return probe.instanceId === holderInstanceId;
+	} catch {
+		return false;
+	}
 }
 
 /** Track an owned backend: its stderr tail, and a stop dialog when it exits. */
@@ -267,11 +289,17 @@ function adopt(backend: ChildProcess): void {
 async function bootWsl(): Promise<void> {
 	const probe = parseProbe(await runWsl(wslProbe(wsl.distro)));
 	if (!probe.hasPl) {
-		throw new LaunchRefused({
-			kind: "crashed",
-			...wslMissingPl(wsl.distro),
-			buttons: ["Quit"],
+		const defaultName = wsl.distro ? null : (await listDistros()).defaultName;
+		const d = wslMissingPl(wsl.distro, defaultName);
+		const { response } = await dialog.showMessageBox({
+			type: "error",
+			message: d.message,
+			detail: d.detail,
+			buttons: d.buttons,
+			defaultId: 0,
+			cancelId: d.buttons.length - 1,
 		});
+		return leaveOrRetry(missingPlChoice(wsl, response));
 	}
 	const plan = planWslLaunch(probe);
 	if (plan.kind === "none") {
@@ -284,14 +312,17 @@ async function bootWsl(): Promise<void> {
 			defaultId: 0,
 			cancelId: d.buttons.length - 1,
 		});
-		const choice = nothingRunningChoice(wsl, response);
-		if (choice.kind === "retry") return bootWsl();
-		if (choice.kind === "relaunch") saveWslSettings(choice.settings);
-		else app.quit();
-		throw new Leaving();
+		return leaveOrRetry(nothingRunningChoice(wsl, response));
 	}
 	owned = false;
 	await connect(plan.target);
+}
+
+async function leaveOrRetry(choice: NothingRunningChoice): Promise<void> {
+	if (choice.kind === "retry") return bootWsl();
+	if (choice.kind === "relaunch") saveWslSettings(choice.settings);
+	else app.quit();
+	throw new Leaving();
 }
 
 /** Run a short script in the distro and return its stdout. */
@@ -544,12 +575,17 @@ async function refuse(error: unknown): Promise<void> {
 				? OLDER_BACKEND_DIALOG
 				: null;
 	if (d) {
-		await dialog.showMessageBox({
+		const { response } = await dialog.showMessageBox({
 			type: "error",
 			message: d.message,
 			detail: d.detail,
 			buttons: d.buttons,
+			cancelId: d.buttons.length - 1,
 		});
+		if (d.kind === "port-taken-wsl" && response === 0) {
+			saveWslSettings({ ...wsl, enabled: true });
+			return;
+		}
 	} else {
 		dialog.showErrorBox("PrismaLens could not start", String(error));
 	}

@@ -354,6 +354,27 @@ describe("overlay.logic", () => {
 			expect(result[0].actualCause).toBe("DB_POOL_SIZE dropped to 5");
 			expect(result[1].matchedOn).toEqual(["alert labels", "same service"]);
 		});
+
+		it("drops a candidate that matches on the service alone, whatever the threshold (#673 w40)", () => {
+			const result = selectSimilarIncidents(
+				current,
+				[
+					{
+						incidentId: "i-svc",
+						incidentNumber: 3,
+						title: "unrelated alert on the same service",
+						actualCause: null,
+						similarity: {
+							labels: new Set(["alertname=DiskFull"]),
+							serviceId: "svc-1",
+							rootCauseCategory: null,
+						},
+					},
+				],
+				{ k: 5, threshold: 0 },
+			);
+			expect(result).toEqual([]);
+		});
 	});
 
 	describe("toStoredScore", () => {

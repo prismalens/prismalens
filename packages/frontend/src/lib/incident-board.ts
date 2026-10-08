@@ -8,6 +8,7 @@ import {
 	type IncidentWithRelations,
 	isIncidentOpen,
 	isWorkflowLive,
+	latestRun as newestRun,
 	REFIRE_LABEL,
 	RUN_STATE_LABEL,
 	type RunState,
@@ -29,8 +30,9 @@ export const BOARD_COLUMNS: { id: BoardColumn; label: string }[] = [
 
 type LatestRun = NonNullable<IncidentWithRelations["investigations"]>[number];
 
+/** The newest run of any kind: a live chat is Working too (#673). */
 export function latestRun(incident: IncidentWithRelations): LatestRun | null {
-	return incident.investigations?.[0] ?? null;
+	return newestRun(incident);
 }
 
 /**
@@ -188,7 +190,12 @@ export function headlineAddsInfo(h: Headline): boolean {
  * what the list payload carries: the latest run, the recorded cause.
  */
 export function incidentHeadline(incident: IncidentWithRelations): Headline {
-	const run = latestRun(incident);
+	const newest = latestRun(incident);
+	// A live chat speaks; an ended one leaves the headline to the investigation (#673).
+	const run =
+		newest?.kind === "chat" && !isWorkflowLive(newest.status)
+			? (newestRun(incident, { kind: "investigation" }) ?? newest)
+			: newest;
 	// A run started after Resolve speaks for the incident again.
 	const endedAt = incident.closedAt ?? incident.resolvedAt;
 	const runAfterEnd =

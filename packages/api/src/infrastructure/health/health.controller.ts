@@ -5,7 +5,10 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
 import { Public } from "../../core/auth/public.decorator.js";
-import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import {
+	type TelemetryNoticeState,
+	TelemetryService,
+} from "../../core/telemetry/telemetry.service.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 
 interface HealthResponse {
@@ -16,12 +19,11 @@ interface HealthResponse {
 		api: boolean;
 	};
 	/**
-	 * Whether the owner has answered the usage-data question (#602). `pl up`
-	 * reads this from its readiness probe to print one pointer at Settings; it
-	 * never prompts, and there is no CLI way to answer. Carries the state of a
-	 * preference, no identifier and no install id.
+	 * Usage data (#673 w45): `notice` on the boot that shows the first-run
+	 * notice, or while nobody has seen it; `pl up` prints it then. Carries the
+	 * state of a preference, no identifier and no install id.
 	 */
-	telemetry: "undecided" | "on" | "off";
+	telemetry: TelemetryNoticeState;
 }
 
 @Public()
@@ -34,9 +36,9 @@ export class HealthController {
 
 	@Get()
 	async health(): Promise<HealthResponse> {
-		const settings = await this.telemetry
-			.getSettings()
-			.catch(() => ({ enabled: false, decided: true, forcedOff: false }));
+		const telemetry = await this.telemetry
+			.noticeState()
+			.catch((): TelemetryNoticeState => "off");
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),
@@ -44,11 +46,7 @@ export class HealthController {
 			services: {
 				api: true,
 			},
-			telemetry: !settings.decided
-				? "undecided"
-				: settings.enabled
-					? "on"
-					: "off",
+			telemetry,
 		};
 	}
 

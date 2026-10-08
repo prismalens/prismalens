@@ -262,6 +262,21 @@ describe("doctor — WSL Windows install hint", () => {
 		expect(check.detail).toContain("C:\\npm\\pl.cmd");
 	});
 
+	it("names a Windows agent shim as the Windows install and never probes it (#673 w8)", async () => {
+		const dir = "/mnt/c/Users/sumit/AppData/Roaming/npm";
+		const shim = `${dir}/gemini`;
+		const scan = { env: { WSL_DISTRO_NAME: "Ubuntu" }, isExecutable: (p: string) => p === shim };
+
+		const row = checkHarnessesOnPath(dir, scan).find((c) => c.name === `Harness: ${HARNESS_REGISTRY.gemini.label}`);
+		expect(row).toEqual({
+			name: `Harness: ${HARNESS_REGISTRY.gemini.label}`,
+			pass: false,
+			detail: `gemini: ${shim} is the Windows install; it can't run inside WSL. Install it in this distro: ${HARNESS_REGISTRY.gemini.install}`,
+			hard: false,
+		});
+		expect(await checkHarnessHandshake(dir, scan)).toEqual([]);
+	});
+
 	it("omits the hint when not running in WSL", () => {
 		const check = checkInstalls(
 			"/mnt/c/Users/sumit/AppData/Roaming/npm",

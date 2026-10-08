@@ -87,6 +87,7 @@ describe("IncidentsController - storm path alert serialization", () => {
 		};
 
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
@@ -242,7 +243,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		alertCount: 1,
 	};
 
-	it("happy path: usable harness flips incident to investigating and enqueues job", async () => {
+	it("happy path: usable harness enqueues the job and leaves the incident status alone (#673 w19)", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
 			update: vi.fn().mockResolvedValue({ ...mockIncident, status: "investigating" }),
@@ -257,6 +258,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: true,
 				harness: "deepagents",
@@ -286,12 +288,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			queued: true,
 		});
 
-		// Status flipped to investigating
-		expect(incidentsService.update).toHaveBeenCalledTimes(1);
-		expect(incidentsService.update).toHaveBeenCalledWith(
-			"123e4567-e89b-12d3-a456-426614174000",
-			{ status: "investigating" },
-		);
+		// A run never moves the incident's status (#673 w19)
+		expect(incidentsService.update).not.toHaveBeenCalled();
 
 		// Investigation created and job enqueued
 		expect(investigationsService.startOrGet).toHaveBeenCalledTimes(1);
@@ -311,6 +309,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			dispatchService as unknown as DispatchService,
 			{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 			{
+				ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			} as unknown as HarnessService,
 			{} as never,
@@ -322,10 +321,102 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		});
 
 		expect(incidentsService.update).not.toHaveBeenCalled();
-		expect(investigationsService.startOrGet).toHaveBeenCalledWith({ incidentId: mockIncident.id, afterResolve: true });
+		// A manual run records its trigger and its title, the brief's first line (#673).
+		expect(investigationsService.startOrGet).toHaveBeenCalledWith({
+			incidentId: mockIncident.id,
+			afterResolve: true,
+			triggerType: "manual",
+			title: "The fix did not hold.",
+		});
 		expect(dispatchService.addInvestigationJob).toHaveBeenCalledWith(
 			expect.objectContaining({ brief: "The fix did not hold." }),
 		);
+	});
+
+	describe("chat (#673: runs as threads)", () => {
+		const ready = () =>
+			({
+				ensureReady: vi.fn().mockResolvedValue({ ready: true }),
+				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
+			}) as unknown as HarnessService;
+		type Chat = (a: { input: { id: string; text: string; agentMode?: string } }) => Promise<unknown>;
+
+		it("starts a chat run whose job carries the message and no brief", async () => {
+			const investigationsService = {
+				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-chat" }, created: true }),
+			};
+			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-c") };
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+				investigationsService as unknown as InvestigationsService,
+				dispatchService as unknown as DispatchService,
+				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
+				ready(),
+				{} as never,
+				{} as never,
+			);
+			const text = `Is the pool still saturated? ${"x".repeat(200)}`;
+			const result = await (getHandlers(controller).chat as Chat)({
+				input: { id: mockIncident.id, text, agentMode: "plan" },
+			});
+			expect(result).toMatchObject({ investigationId: "inv-chat", jobId: "job-c", queued: true });
+			expect(investigationsService.startOrGet).toHaveBeenCalledWith(
+				expect.objectContaining({
+					kind: "chat",
+					triggerType: "manual",
+					title: text.slice(0, 120),
+					agentMode: "plan",
+				}),
+			);
+			const job = dispatchService.addInvestigationJob.mock.calls[0][0];
+			expect(job).toMatchObject({ kind: "chat", chat: { text } });
+			expect(job).not.toHaveProperty("brief");
+		});
+
+		it("answers CONFLICT naming the live run, and never hands it the message", async () => {
+			const investigationsService = {
+				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-2" }, created: false }),
+				findByIncidentId: vi.fn().mockResolvedValue([{ id: "inv-2" }, { id: "inv-1" }]),
+			};
+			const dispatchService = { addInvestigationJob: vi.fn() };
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+				investigationsService as unknown as InvestigationsService,
+				dispatchService as unknown as DispatchService,
+				{ getIntegrationsForService: vi.fn() } as unknown as IntegrationsService,
+				ready(),
+				{} as never,
+				{} as never,
+			);
+			await expect(
+				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
+			).rejects.toMatchObject({
+				code: "CONFLICT",
+				message: "Run #2 is working; message it or stop it",
+				data: { liveInvestigationId: "inv-2" },
+			});
+			expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+		});
+
+		it("refuses before any run when the agent is not ready", async () => {
+			const investigationsService = { startOrGet: vi.fn() };
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+				investigationsService as unknown as InvestigationsService,
+				{} as DispatchService,
+				{} as IntegrationsService,
+				{
+					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "codex", auto: true }),
+					ensureReady: vi.fn().mockResolvedValue({ ready: false, reason: "Codex: sign in needed" }),
+				} as unknown as HarnessService,
+				{} as never,
+				{} as never,
+			);
+			await expect(
+				(getHandlers(controller).chat as Chat)({ input: { id: mockIncident.id, text: "hi" } }),
+			).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Codex: sign in needed" });
+			expect(investigationsService.startOrGet).not.toHaveBeenCalled();
+		});
 	});
 
 	it("refuses a write level until Settings allows it, and notes a raised level on the timeline (r4 R4.1)", async () => {
@@ -340,6 +431,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				dispatchService as unknown as DispatchService,
 				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
 				{
+					ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 					resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 					getSettings: vi.fn().mockResolvedValue({ harness: "auto", allowWriteLevels }),
 				} as unknown as HarnessService,
@@ -381,6 +473,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		};
 		const dispatchService = { addInvestigationJob: vi.fn() };
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 		};
 		const controller = new IncidentsController(
@@ -407,6 +500,40 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(incidentsService.update).not.toHaveBeenCalled();
 	});
 
+	it("refuses with PRECONDITION_FAILED naming the agent when it is not signed in, and starts nothing (#673 w9)", async () => {
+		const investigationsService = { startOrGet: vi.fn() };
+		const dispatchService = { addInvestigationJob: vi.fn() };
+		const harnessService = {
+			resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "codex", auto: true }),
+			ensureReady: vi.fn().mockResolvedValue({
+				ready: false,
+				reason: "Codex: sign in needed (API Key, ChatGPT)",
+			}),
+		};
+		const controller = new IncidentsController(
+			{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+			investigationsService as unknown as InvestigationsService,
+			dispatchService as unknown as DispatchService,
+			{} as unknown as IntegrationsService,
+			harnessService as unknown as HarnessService,
+			{} as never,
+			{} as never,
+		);
+
+		const thrown = await getHandlers(controller)
+			.investigate({ input: { id: "123e4567-e89b-12d3-a456-426614174000" } })
+			.catch((err: unknown) => err);
+
+		expect(thrown).toBeInstanceOf(ORPCError);
+		const orpcErr = thrown as ORPCError<"PRECONDITION_FAILED", { reason: string; harness: string }>;
+		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
+		expect(orpcErr.message).toBe("Codex: sign in needed (API Key, ChatGPT)");
+		expect(orpcErr.data).toMatchObject({ harness: "codex" });
+		expect(harnessService.ensureReady).toHaveBeenCalledWith("codex");
+		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
+		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
+	});
+
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
@@ -422,6 +549,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "no-harness",
@@ -486,6 +614,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "pinned-harness-missing",
@@ -543,6 +672,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			getIntegrationsForService: vi.fn().mockResolvedValue([]),
 		};
 		const harnessService = {
+			ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 			resolveSelection: vi.fn().mockResolvedValue({
 				runnable: false,
 				failure: "invalid-env-harness",
@@ -759,5 +889,45 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 		expect(reopen.incidentsService.update).toHaveBeenCalledWith(id, {
 			status: "investigating",
 		});
+	});
+});
+
+describe("IncidentsController - runs as threads (#673)", () => {
+	it("the incident carries each run's kind, title, mode and whether it left a report", () => {
+		const controller = new IncidentsController(
+			{} as IncidentsService,
+			{} as InvestigationsService,
+			{} as DispatchService,
+			{} as IntegrationsService,
+			{} as HarnessService,
+			{} as never,
+			{} as never,
+		);
+		const at = new Date("2026-10-07T10:00:00Z");
+		const out = (
+			controller as unknown as {
+				serializeIncidentWithRelations: (i: unknown) => {
+					investigations?: Array<Record<string, unknown>>;
+				};
+			}
+		).serializeIncidentWithRelations({
+			id: "123e4567-e89b-12d3-a456-426614174000",
+			status: "triggered",
+			triggeredAt: at,
+			createdAt: at,
+			updatedAt: at,
+			investigations: [
+				{ id: "chat", status: "completed", kind: "chat", title: "Is it full?", agentMode: "plan", hasReport: false, startedAt: at, createdAt: at, completedAt: at },
+				{ id: "old", status: "completed", createdAt: at, completedAt: at },
+			],
+		});
+		expect(out.investigations?.[0]).toMatchObject({
+			kind: "chat",
+			title: "Is it full?",
+			agentMode: "plan",
+			hasReport: false,
+			startedAt: at.toISOString(),
+		});
+		expect(out.investigations?.[1]).toMatchObject({ kind: "investigation", title: null });
 	});
 });

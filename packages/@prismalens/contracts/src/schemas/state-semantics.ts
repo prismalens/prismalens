@@ -346,3 +346,26 @@ export function runState(
 export function isRunStateLive(state: RunState): boolean {
 	return state === "starting" || state === "working" || state === "stopping";
 }
+
+/** A run is a thread (#673): the alert workflow, or a chat a person's message started. */
+export const INVESTIGATION_KINDS = ["investigation", "chat"] as const;
+export type InvestigationKind = (typeof INVESTIGATION_KINDS)[number];
+
+/**
+ * The incident's newest run, of `kind` when given. A row from before kinds
+ * existed is an investigation. Chats have no report, so a consumer that wants
+ * one asks for `investigation` (#673).
+ */
+export function latestRun<
+	R extends { kind?: string | null; createdAt: string | Date },
+>(
+	incident: { investigations?: readonly R[] | null },
+	opts: { kind?: InvestigationKind } = {},
+): R | null {
+	let newest: R | null = null;
+	for (const run of incident.investigations ?? []) {
+		if (opts.kind && (run.kind ?? "investigation") !== opts.kind) continue;
+		if (!newest || time(run.createdAt) > time(newest.createdAt)) newest = run;
+	}
+	return newest;
+}

@@ -17,6 +17,10 @@ import { cliVersion } from "../src/version.js";
 // process.emitWarning.
 (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 
+// consola right-aligns a clock time on every TTY line; piped output never had
+// one, and the log files keep their own timestamps (#673).
+consola.options.formatOptions.date = false;
+
 const originalEmit = process.emit;
 process.emit = ((name: string, ...args: unknown[]) => {
 	if (

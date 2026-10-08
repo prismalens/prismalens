@@ -168,12 +168,18 @@ interface JsonRpcMessage {
 	error?: { code?: number; message?: string; data?: unknown };
 }
 
+/** The error's own message; `data` stays off the line a person reads, and in the wire log (#673 w9). */
 function jsonRpcErrorText(error: NonNullable<JsonRpcMessage["error"]>): string {
-	const head = error.message ?? `ACP error ${error.code}`;
-	if (error.data === undefined) return head;
+	return error.message ?? `ACP error ${error.code}`;
+}
+
+function jsonRpcErrorData(
+	error: NonNullable<JsonRpcMessage["error"]>,
+): string | undefined {
+	if (error.data === undefined) return undefined;
 	const data =
 		typeof error.data === "string" ? error.data : JSON.stringify(error.data);
-	return `${head} — ${data.slice(0, 500)}`;
+	return data.slice(0, 500);
 }
 
 /** A JSON-RPC error answer from the harness, keeping its code (-32000 is ACP's auth_required). */
@@ -181,6 +187,8 @@ export class AcpRpcError extends Error {
 	constructor(
 		message: string,
 		readonly code: number | undefined,
+		/** The error's `data`, for classifying it; never shown. */
+		readonly data?: string,
 	) {
 		super(message);
 	}
@@ -742,7 +750,13 @@ export class AcpSession {
 			if (!p) return;
 			this.pending.delete(msg.id);
 			if (msg.error)
-				p.reject(new AcpRpcError(jsonRpcErrorText(msg.error), msg.error.code));
+				p.reject(
+					new AcpRpcError(
+						jsonRpcErrorText(msg.error),
+						msg.error.code,
+						jsonRpcErrorData(msg.error),
+					),
+				);
 			else p.resolve(msg.result);
 		} else if (msg.method === "session/update") {
 			const update = msg.params?.update;

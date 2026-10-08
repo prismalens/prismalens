@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { checkIdentity, lockBase, probeInstance } from "./instance-check.js";
+import {
+	checkIdentity,
+	fetchWithHost,
+	lockBase,
+	probeInstance,
+} from "./instance-check.js";
 import { pairRefusal } from "./pair.js";
 import { runningLine } from "./service.js";
 
@@ -148,6 +155,65 @@ describe("pairRefusal", () => {
 			},
 		);
 		expect(msg).toMatch(/different PrismaLens/);
+	});
+	describe("tailnet name this machine cannot resolve", () => {
+		const address = "https://box.tailnet.ts.net";
+		const notFound = (async () => {
+			throw Object.assign(new TypeError("fetch failed"), {
+				cause: { code: "ENOTFOUND" },
+			});
+		}) as unknown as typeof fetch;
+		const fetchImpl = byUrl({ "127.0.0.1:6473": local, "box.tailnet.ts.net": notFound });
+
+		it("pairs through the serve route, asking the local server as the tailnet name", async () => {
+			const hosts: string[] = [];
+			const warnings: string[] = [];
+			const msg = await pairRefusal(
+				{ lock, instanceId: ID, address, served: true },
+				{
+					isAlive: alive,
+					fetchImpl,
+					withHost: (host) => {
+						hosts.push(host);
+						return local;
+					},
+					onWarn: (w) => warnings.push(w),
+				},
+			);
+			expect(msg).toBeNull();
+			expect(hosts).toEqual(["box.tailnet.ts.net"]);
+			expect(warnings[0]).toMatch(/can't resolve box\.tailnet\.ts\.net/);
+		});
+		it("still refuses when the server rejects the tailnet name", async () => {
+			const msg = await pairRefusal(
+				{ lock, instanceId: ID, address, served: true },
+				{ isAlive: alive, fetchImpl, withHost: () => answering(403) },
+			);
+			expect(msg).toContain("PRISMALENS_ALLOWED_HOSTS=box.tailnet.ts.net");
+		});
+		it("refuses on ENOTFOUND for an address tailscale serve doesn't map", async () => {
+			const msg = await pairRefusal(
+				{ lock, instanceId: ID, address },
+				{ isAlive: alive, fetchImpl, withHost: () => local },
+			);
+			expect(msg).toMatch(/did not answer \(ENOTFOUND\)/);
+		});
+	});
+	it("fetchWithHost sends the Host header fetch() would drop", async () => {
+		const server = createServer((req, res) => {
+			res.end(JSON.stringify({ instanceId: req.headers.host === "box.ts.net" ? ID : OTHER }));
+		});
+		await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+		const { port } = server.address() as AddressInfo;
+		try {
+			expect(
+				await probeInstance(`http://127.0.0.1:${port}`, ID, {
+					fetchImpl: fetchWithHost("box.ts.net"),
+				}),
+			).toEqual({ kind: "ok" });
+		} finally {
+			server.close();
+		}
 	});
 	it("refuses a workspace with no instance file", async () => {
 		expect(

@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
+import { useEffect } from "react";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
@@ -15,8 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { orpc } from "@/lib/api/orpc-client";
 
 /**
- * The one-sentence version, on the consent line where the owner first meets the
- * question. Settings carries the full disclosure below it (#602).
+ * The one-sentence version, on the notice where the owner first meets it.
+ * Settings carries the full disclosure below it (#602, #673 w45).
  */
 export const TELEMETRY_SUMMARY =
 	"Usage data: which features get used and whether investigations finish: counts and categories only, never the content of an alert, a repository or a report.";
@@ -44,14 +45,44 @@ export function useTelemetrySettings() {
 	return { query, update };
 }
 
-/** The one-time question on /incidents, until the owner answers (#602). */
+/** The first-run notice, until OK or Turn off (#673 w45); showing it is what lets sending start. */
 export function TelemetryConsent({
 	variant = "card",
 }: {
 	variant?: "card" | "strip";
 }) {
 	const { query, update } = useTelemetrySettings();
-	if (!query.data || query.data.decided || query.data.forcedOff) return null;
+	const data = query.data;
+	const show = !!data && data.enabled && !data.dismissed && !data.forcedOff;
+	const unnoticed = show && !data.noticed;
+	const { mutate } = update;
+	useEffect(() => {
+		if (unnoticed) mutate({ noticed: true });
+	}, [unnoticed, mutate]);
+	if (!show) return null;
+
+	const buttons = (
+		<>
+			<Button
+				variant="text"
+				size="sm"
+				className={variant === "strip" ? "flex-1" : undefined}
+				disabled={update.isPending}
+				onClick={() => update.mutate({ enabled: false, dismissed: true })}
+			>
+				Turn off
+			</Button>
+			<Button
+				size="sm"
+				variant={variant === "strip" ? "secondary" : "primary"}
+				className={variant === "strip" ? "flex-1" : undefined}
+				disabled={update.isPending}
+				onClick={() => update.mutate({ dismissed: true })}
+			>
+				OK
+			</Button>
+		</>
+	);
 
 	if (variant === "strip") {
 		return (
@@ -59,27 +90,8 @@ export function TelemetryConsent({
 				className="mx-2 mb-2 space-y-1.5 rounded-surface bg-surface-2 px-3 py-2 text-meta text-text-2"
 				data-testid="telemetry-consent"
 			>
-				<p>Share usage counts? Never an alert, a repo or a report.</p>
-				<div className="flex items-center gap-1">
-					<Button
-						variant="text"
-						size="sm"
-						className="flex-1"
-						disabled={update.isPending}
-						onClick={() => update.mutate({ enabled: false })}
-					>
-						No thanks
-					</Button>
-					<Button
-						size="sm"
-						variant="secondary"
-						className="flex-1"
-						disabled={update.isPending}
-						onClick={() => update.mutate({ enabled: true })}
-					>
-						Share
-					</Button>
-				</div>
+				<p>Usage counts are on. Never an alert, a repo or a report.</p>
+				<div className="flex items-center gap-1">{buttons}</div>
 				{update.isError && <p className="text-danger">Not saved. Try again.</p>}
 			</div>
 		);
@@ -91,29 +103,14 @@ export function TelemetryConsent({
 			data-testid="telemetry-consent"
 		>
 			<p className="text-text-2">
-				Help improve PrismaLens? {TELEMETRY_SUMMARY} Nothing is sent unless you
-				say yes, and Settings → Usage data changes the answer at any time.
+				{TELEMETRY_SUMMARY} It is on; nothing is sent before the next start, and
+				Settings, Usage data turns it off at any time.
 			</p>
 			<div className="flex shrink-0 items-center gap-2">
 				{update.isError && (
 					<span className="text-danger">Not saved. Try again.</span>
 				)}
-				<Button
-					variant="text"
-					size="sm"
-					disabled={update.isPending}
-					onClick={() => update.mutate({ enabled: false })}
-				>
-					No thanks
-				</Button>
-				<Button
-					variant="primary"
-					size="sm"
-					disabled={update.isPending}
-					onClick={() => update.mutate({ enabled: true })}
-				>
-					Share usage data
-				</Button>
+				{buttons}
 			</div>
 		</div>
 	);
@@ -150,7 +147,7 @@ export function TelemetrySettings() {
 					) : (
 						<Switch
 							id="telemetry-enabled"
-							checked={settings?.enabled ?? false}
+							checked={settings?.enabled ?? true}
 							disabled={!settings || update.isPending}
 							onCheckedChange={(checked) => update.mutate({ enabled: checked })}
 							data-testid="telemetry-switch"
@@ -163,7 +160,7 @@ export function TelemetrySettings() {
 						<details className="group" data-testid="telemetry-disclosure">
 							<summary className="flex cursor-pointer list-none items-center gap-1.5 text-accent [&::-webkit-details-marker]:hidden">
 								<ChevronRight className="size-3.5 transition-transform duration-(--dur-fast) group-open:rotate-90" />
-								What is sent, what never is, and how consent works
+								What is sent, what never is, and how to turn it off
 							</summary>
 							<div className="mt-3 mb-1 space-y-3 text-text-2">
 								<div>
@@ -179,18 +176,15 @@ export function TelemetrySettings() {
 									<p className="mt-1">{TELEMETRY_NEVER_SENT}</p>
 								</div>
 								<div>
-									<p className="font-medium text-text-1">
-										The install id, and your consent
-									</p>
+									<p className="font-medium text-text-1">The install id</p>
 									<p className="mt-1">
 										The install id is random, but it is the same on every event
 										this install sends, which is what makes it possible to count
 										installs rather than events. That makes it pseudonymous
-										rather than anonymous, so it is treated as personal data,
-										and your consent, the switch above, is the only basis on
-										which any of it is collected. It is not joined to an account
-										or a profile, and the IP address a request arrives from is
-										discarded rather than stored or resolved to a location.
+										rather than anonymous, so it is treated as personal data. It
+										is not joined to an account or a profile, and the IP address
+										a request arrives from is discarded rather than stored or
+										resolved to a location.
 									</p>
 								</div>
 								<div>
@@ -198,10 +192,10 @@ export function TelemetrySettings() {
 									<p className="mt-1">
 										Events are kept for as long as PostHog's plan retains them,
 										at least one year on the plan we use, and are not joined to
-										anything else. Turning the switch off withdraws consent and
-										stops collection from that moment. A factory reset deletes
-										the id with everything else, so a reset install starts over
-										as a new, unrelated one.
+										anything else. Turning the switch off stops collection from
+										that moment. A factory reset deletes the id with everything
+										else, so a reset install starts over as a new, unrelated
+										one.
 									</p>
 								</div>
 							</div>

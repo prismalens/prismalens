@@ -158,6 +158,16 @@ describe("OverlayService", () => {
 			expect(written.similarIncidents[0].incidentId).toBe("inc-0");
 		});
 
+		it("draws similar-incident candidates from ended incidents only (#673 w40)", async () => {
+			await service.computeOverlay("invA");
+
+			expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: { not: "inc-1" }, status: { in: ["resolved", "closed"] } },
+				}),
+			);
+		});
+
 		it("writes the similar incident back to IncidentSimilarity via upsert", async () => {
 			await service.computeOverlay("invA");
 

@@ -109,11 +109,11 @@ export const globalSchema = z.object({
 		.number()
 		.int()
 		.min(0)
-		.default(15)
+		.default(1440)
 		.describe(
-			"Minutes after an alert resolves during which a refire of the same dedupKey " +
-				"reopens it as a flap instead of opening a new alert. One global knob, " +
-				"shared by the API dedup path and the CLI grouping layer (#231).",
+			"How long after its alerts cleared an incident takes a refire back, in " +
+				"minutes. Inside it a refire reopens the incident and starts a run; after " +
+				"it, or once the incident is closed, a new incident names the old one (#673 w25).",
 		),
 });
 

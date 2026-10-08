@@ -473,7 +473,7 @@ export class WebhooksService {
 		// interpreted: it only decides whether the auto-trigger hears about this.
 		const correlationResult = await this.incidentCorrelation.correlateAlert(
 			alert,
-			options,
+			{ ...options, reopened: alert.outcome === "reopened" },
 		);
 
 		return {
@@ -523,8 +523,10 @@ export class WebhooksService {
 		await this.eventsService.markProcessed(event.id, alert.id);
 
 		// 5. Correlate alert to incident
-		const correlationResult =
-			await this.incidentCorrelation.correlateAlert(alert);
+		const correlationResult = await this.incidentCorrelation.correlateAlert(
+			alert,
+			{ reopened: alert.outcome === "reopened" },
+		);
 
 		return {
 			event,

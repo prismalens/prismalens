@@ -7,6 +7,7 @@ import {
 	type IncidentWithRelations,
 	incidentAttention,
 	isFlapReopen,
+	latestRun,
 } from "@prismalens/contracts";
 import type { StateTone } from "@/components/shared/StateWord";
 
@@ -14,11 +15,12 @@ import type { StateTone } from "@/components/shared/StateWord";
 export function attentionFor(
 	incident: IncidentWithRelations,
 ): IncidentAttention | null {
-	const run = incident.investigations?.[0];
-	return incidentAttention(incident.status, run?.status, {
+	// A failed chat stays in its thread; any run since a reopen answers it (#673).
+	const investigation = latestRun(incident, { kind: "investigation" });
+	return incidentAttention(incident.status, investigation?.status, {
 		reason: incident.reopenReason,
 		at: incident.reopenedAt,
-		latestRunAt: run?.createdAt,
+		latestRunAt: latestRun(incident)?.createdAt,
 	});
 }
 

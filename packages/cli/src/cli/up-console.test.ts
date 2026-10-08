@@ -7,12 +7,13 @@ import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
+	networkBindWarning,
 	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
 	serviceHint,
-	TELEMETRY_CONSENT_NOTICE,
+	TELEMETRY_NOTICE,
 	waitForReady,
 } from "./up-console.js";
 
@@ -128,13 +129,13 @@ describe("waitForReady", () => {
 	});
 });
 
-describe("readTelemetryState (#602)", () => {
+describe("readTelemetryState (#602, #673 w45)", () => {
 	const health = (body: unknown, status = 200) =>
 		(async () =>
 			new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 
-	it("reads the consent state out of /health", async () => {
-		for (const state of ["undecided", "on", "off"] as const) {
+	it("reads the notice state out of /health", async () => {
+		for (const state of ["notice", "on", "off"] as const) {
 			expect(
 				await readTelemetryState("http://localhost:3001/health", health({ telemetry: state })),
 			).toBe(state);
@@ -146,7 +147,7 @@ describe("readTelemetryState (#602)", () => {
 			await readTelemetryState("http://localhost:3001/health", health({ status: "ok" })),
 		).toBe(null);
 		expect(
-			await readTelemetryState("http://localhost:3001/health", health({ telemetry: "maybe" })),
+			await readTelemetryState("http://localhost:3001/health", health({ telemetry: "undecided" })),
 		).toBe(null);
 		expect(
 			await readTelemetryState("http://localhost:3001/health", health({}, 503)),
@@ -159,10 +160,28 @@ describe("readTelemetryState (#602)", () => {
 		);
 	});
 
-	it("points at Settings and never asks the terminal to decide", () => {
-		expect(TELEMETRY_CONSENT_NOTICE).toContain("Settings");
-		expect(TELEMETRY_CONSENT_NOTICE).toContain("nothing is sent");
-		expect(TELEMETRY_CONSENT_NOTICE).not.toMatch(/\[y\/n\]|\?$/);
+	it("names the off switches and never asks the terminal to decide", () => {
+		expect(TELEMETRY_NOTICE).toContain("Settings, Usage data");
+		expect(TELEMETRY_NOTICE).toContain("PRISMALENS_TELEMETRY=off");
+		expect(TELEMETRY_NOTICE).toContain("DO_NOT_TRACK=1");
+		expect(TELEMETRY_NOTICE).toContain("Nothing is sent before the next start");
+		expect(TELEMETRY_NOTICE).not.toMatch(/\[y\/n\]|\?$/);
+	});
+});
+
+describe("networkBindWarning (#673)", () => {
+	it("says nothing for a loopback bind", () => {
+		for (const host of ["127.0.0.1", "127.0.1.1", "localhost", "::1", "[::1]"]) {
+			expect(networkBindWarning({ host, protocol: "http" })).toBeNull();
+		}
+	});
+	it("prints one plain line for a network bind", () => {
+		const line = networkBindWarning({ host: "0.0.0.0", protocol: "http" });
+		expect(line).toMatch(/^Bound to 0\.0\.0\.0: .*plain HTTP/);
+		expect(line).not.toMatch(/[\n{}]/);
+		expect(networkBindWarning({ host: "::", protocol: "https" })).toMatch(
+			/over HTTPS/,
+		);
 	});
 });
 
@@ -209,7 +228,7 @@ describe("browserCommand", () => {
 		});
 	});
 
-	it("opens under WSL with cmd.exe quoting the URL when wslview is missing", () => {
+	it("opens under WSL with a PowerShell literal when wslview is missing", () => {
 		const pairingUrl = "http://localhost:3170/pair#token123&foo=bar";
 		expect(
 			browserCommand(
@@ -219,9 +238,24 @@ describe("browserCommand", () => {
 				{ isOnPath: () => false },
 			),
 		).toEqual({
-			file: "cmd.exe",
-			args: ["/c", "start", '""', `"${pairingUrl}"`],
+			file: "powershell.exe",
+			args: [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`Start-Process '${pairingUrl}'`,
+			],
 		});
+	});
+
+	it("doubles a single quote so the URL stays one PowerShell literal", () => {
+		const command = browserCommand(
+			"linux",
+			{ WSL_INTEROP: "/run/WSL/1_interop" },
+			"http://h/it's",
+			{ isOnPath: () => false },
+		);
+		expect(command?.args.at(-1)).toBe("Start-Process 'http://h/it''s'");
 	});
 
 	it("opens nothing on CI or on Linux with no display", () => {

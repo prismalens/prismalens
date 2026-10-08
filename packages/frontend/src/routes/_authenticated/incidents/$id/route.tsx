@@ -4,7 +4,11 @@
  * scrolls inside its bounds. The run the strip follows is the one in the URL, else the one just
  * started, else the newest.
  */
-import { canIncidentAction, isWorkflowLive } from "@prismalens/contracts";
+import {
+	canIncidentAction,
+	isWorkflowLive,
+	latestRun,
+} from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -81,8 +85,13 @@ function IncidentLayout() {
 	// The layout stays mounted across incident ids; a run started on another incident is not this one's.
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
-	const investigationId =
-		search.investigation ?? started ?? runs[0]?.id ?? null;
+	// Report opens the newest run that left one, else the newest so its No report state shows;
+	// every other tab the newest of any kind (#673).
+	const newest =
+		(pathname.endsWith("/report")
+			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
+			: null) ?? latestRun({ investigations: runs });
+	const investigationId = search.investigation ?? started ?? newest?.id ?? null;
 	const run = useInvestigationRun(investigationId);
 
 	// oRPC query keys start with a path array, so a string key such as ["incidents"] never

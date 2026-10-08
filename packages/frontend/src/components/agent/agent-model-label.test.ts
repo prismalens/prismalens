@@ -16,6 +16,7 @@ const claudeCode: HarnessStatus = {
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,
+	windowsOnlyPath: null,
 	models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 };
 

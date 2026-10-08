@@ -2,19 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
-import type { TelemetrySettings } from "@prismalens/contracts";
-import type { TelemetryService } from "../../core/telemetry/telemetry.service.js";
+import type {
+	TelemetryNoticeState,
+	TelemetryService,
+} from "../../core/telemetry/telemetry.service.js";
 import { HealthController } from "./health.controller.js";
 
-const telemetry = (settings: Partial<TelemetrySettings>): TelemetryService =>
+const telemetry = (state: TelemetryNoticeState = "on"): TelemetryService =>
 	({
-		getSettings: vi.fn(async () => ({
-			enabled: false,
-			decided: true,
-			forcedOff: false,
-			recentlySent: [],
-			...settings,
-		})),
+		noticeState: vi.fn(async () => state),
 	}) as unknown as TelemetryService;
 
 /**
@@ -27,7 +23,7 @@ describe("HealthController", () => {
 	it("never claims an edition or a queue service", async () => {
 		const controller = new HealthController(
 			undefined as never,
-			telemetry({}),
+			telemetry(),
 		);
 		const body = await controller.health();
 
@@ -39,7 +35,7 @@ describe("HealthController", () => {
 	it("reports a real, non-hardcoded version", async () => {
 		const controller = new HealthController(
 			undefined as never,
-			telemetry({}),
+			telemetry(),
 		);
 		const body = await controller.health();
 
@@ -48,27 +44,23 @@ describe("HealthController", () => {
 	});
 
 	/**
-	 * `pl up` reads this to decide whether to print its one pointer at Settings
-	 * (#602). It is a preference, never an install id or anything that
+	 * `pl up` reads this to decide whether to print the first-run notice
+	 * (#673 w45). It is a preference, never an install id or anything that
 	 * identifies the machine.
 	 */
-	describe("the usage-data consent state", () => {
-		it.each([
-			[{ decided: false }, "undecided"],
-			[{ decided: true, enabled: true }, "on"],
-			[{ decided: true, enabled: false }, "off"],
-		])("%o reads as %s", async (settings, expected) => {
+	describe("the usage-data notice state", () => {
+		it.each(["notice", "on", "off"] as const)("passes %s through", async (state) => {
 			const controller = new HealthController(
 				undefined as never,
-				telemetry(settings),
+				telemetry(state),
 			);
-			expect((await controller.health()).telemetry).toBe(expected);
+			expect((await controller.health()).telemetry).toBe(state);
 		});
 
 		it("carries no identifier", async () => {
 			const controller = new HealthController(
 				undefined as never,
-				telemetry({ decided: false }),
+				telemetry("notice"),
 			);
 			const body = JSON.stringify(await controller.health());
 			expect(body).not.toMatch(/install/i);
@@ -77,7 +69,7 @@ describe("HealthController", () => {
 
 		it("still answers when the settings read fails", async () => {
 			const broken = {
-				getSettings: vi.fn(async () => {
+				noticeState: vi.fn(async () => {
 					throw new Error("database is locked");
 				}),
 			} as unknown as TelemetryService;

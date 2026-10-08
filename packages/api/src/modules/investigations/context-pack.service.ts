@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
-import type {
-	ChangeFact,
-	ContextPack,
-	NeighborService,
-	PriorIncidentFact,
-	UnavailableFamily,
+import {
+	type ChangeFact,
+	type ContextPack,
+	ENDED_INCIDENT_STATUSES,
+	type NeighborService,
+	type PriorIncidentFact,
+	type UnavailableFamily,
 } from "@prismalens/contracts/schemas";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -242,8 +243,12 @@ export class ContextPackService {
 		const currentAlertnames = alertnameSet(currentAlerts);
 		const currentLabelPairs = labelPairSet(currentAlerts);
 
+		// Ended incidents only, as the overlay's Similar past incidents (#673 w40).
 		const candidates = await this.prisma.incident.findMany({
-			where: { id: { not: incidentId } },
+			where: {
+				id: { not: incidentId },
+				status: { in: [...ENDED_INCIDENT_STATUSES] },
+			},
 			orderBy: { createdAt: "desc" },
 			take: 200,
 			select: {
@@ -255,7 +260,7 @@ export class ContextPackService {
 				createdAt: true,
 				alerts: { select: { title: true, labels: true } },
 				investigations: {
-					where: { status: "completed" },
+					where: { status: "completed", kind: "investigation" },
 					orderBy: { completedAt: "desc" },
 					take: 1,
 					select: { rootCause: true },

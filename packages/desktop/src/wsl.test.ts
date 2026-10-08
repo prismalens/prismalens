@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import * as wslModule from "./wsl.js";
 import {
+	missingPlChoice,
 	nothingRunningChoice,
 	parseDefaultDistro,
 	parseDistros,
@@ -11,8 +12,10 @@ import {
 	parseProbe,
 	parseWslSettings,
 	planWslLaunch,
+	portTakenByWslDialog,
 	wslActive,
 	wslMenuItems,
+	wslMissingPl,
 	wslNothingRunning,
 	wslPairOperator,
 	wslProbe,
@@ -106,7 +109,7 @@ describe("parseProbe and planWslLaunch", () => {
 		expect(wslNothingRunning("Ubuntu")).toEqual({
 			message: "Nothing is running in Ubuntu",
 			detail: "Run `pl up` there, or `pl service install` once. Then Retry.",
-			buttons: ["Retry", "Use the Windows copy", "Quit"],
+			buttons: ["Retry", "Run on Windows instead", "Quit"],
 		});
 		expect(wslNothingRunning(null).message).toBe("Nothing is running in the default WSL distro");
 		const on = { enabled: true, distro: "Ubuntu" };
@@ -116,6 +119,42 @@ describe("parseProbe and planWslLaunch", () => {
 			settings: { enabled: false, distro: "Ubuntu" },
 		});
 		expect(nothingRunningChoice(on, 2)).toEqual({ kind: "quit" });
+	});
+
+	it("names the distro with no pl and offers Windows, Retry or Quit (#673 w49)", () => {
+		expect(wslMissingPl("Ubuntu")).toEqual({
+			message: "PrismaLens is not installed in the Ubuntu WSL distro",
+			detail:
+				"Install it there (npm install -g prismalens) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead.",
+			buttons: ["Run on Windows instead", "Retry", "Quit"],
+		});
+		expect(wslMissingPl(null, "Debian").message).toBe(
+			"PrismaLens is not installed in the default WSL distro (Debian)",
+		);
+		expect(wslMissingPl(null).message).toBe("PrismaLens is not installed in the default WSL distro");
+		const on = { enabled: true, distro: null };
+		expect(missingPlChoice(on, 0)).toEqual({
+			kind: "relaunch",
+			settings: { enabled: false, distro: null },
+		});
+		expect(missingPlChoice(on, 1)).toEqual({ kind: "retry" });
+		expect(missingPlChoice(on, 2)).toEqual({ kind: "quit" });
+	});
+
+	it("keeps the instance id, and offers the WSL copy when it holds the port (#673 w50)", () => {
+		expect(parseProbe(`pl=1\ninstance={"instanceId":"abc","port":6473}\n`)).toMatchObject({
+			instanceId: "abc",
+			port: 6473,
+		});
+		expect(parseProbe("pl=1\n").instanceId).toBeNull();
+		expect(portTakenByWslDialog({ port: 6473, distro: "Ubuntu" })).toEqual({
+			message: "Port 6473 is used by the PrismaLens running in WSL (Ubuntu)",
+			detail: "Use it from this app, or stop it in WSL and relaunch to run a Windows copy here.",
+			buttons: ["Use the PrismaLens in WSL", "Quit"],
+		});
+		expect(portTakenByWslDialog({ port: 6473, distro: null }).message).toBe(
+			"Port 6473 is used by the PrismaLens running in WSL (the default distro)",
+		);
 	});
 
 	it("reports a missing pl and an unreadable lock", () => {

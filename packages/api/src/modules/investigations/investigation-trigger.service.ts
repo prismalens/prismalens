@@ -29,6 +29,7 @@ import type {
 	Investigation,
 	Service,
 } from "@prismalens/database";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -56,6 +57,9 @@ export interface TriggerDecision {
 		| null;
 	reason: string | null;
 }
+
+/** At most one automatic reopen run per incident in this span: a flapping alert must not queue run after run (#673 w25 review M8). */
+export const REOPEN_RUN_SPACING_MS = 60 * 60 * 1000;
 
 export const NO_SERVICE_REASON =
 	"The incident has no service, so there is no repository to investigate. Alerts reach a service through a `service` label whose value is the service's name; add it to the alert, or pick the service on the incident and press Investigate.";
@@ -95,6 +99,7 @@ export class InvestigationTriggerService {
 		@Inject(forwardRef(() => TimelineService))
 		private readonly timelineService: TimelineService,
 		private readonly investigationsService: InvestigationsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	/**
@@ -170,29 +175,62 @@ export class InvestigationTriggerService {
 			);
 			return;
 		}
-		await this.onAlertCorrelated(alert, incident, event.isNewIncident);
+		await this.onAlertCorrelated(
+			alert,
+			incident,
+			event.isNewIncident,
+			event.reopened === true,
+		);
 	}
 
 	/**
 	 * The auto-investigation decision for an alert that just landed on an
-	 * incident. Only the alert that opened the incident decides; a later alert
-	 * correlated into an open incident never starts a second run (re-running
-	 * on new evidence is the 0.6 storm work). When the decision is no, the
-	 * incident's timeline says why and where to change it.
+	 * incident. The alert that opened the incident decides, and so does a refire
+	 * that reopened it (`re_trigger`, #673 w25); a later alert correlated into an
+	 * open incident never starts a second run (re-running on new evidence is the
+	 * 0.6 storm work). When the decision is no, the timeline says why.
 	 */
 	async onAlertCorrelated(
 		alert: Alert,
 		incident: Incident & { service?: Service | null },
 		isNewIncident: boolean,
+		reopened = false,
 	): Promise<void> {
-		if (!isNewIncident) {
+		if (!isNewIncident && !reopened) {
 			this.logger.debug(
 				`Alert ${alert.id} joined open incident ${incident.number}; auto-investigation decides on the opening alert only`,
 			);
 			return;
 		}
 
-		const decision = await this.shouldTriggerInvestigation(incident);
+		if (reopened) {
+			const recent = await this.prisma.investigation.findFirst({
+				where: {
+					incidentId: incident.id,
+					triggerType: "re_trigger",
+					createdAt: { gte: new Date(Date.now() - REOPEN_RUN_SPACING_MS) },
+				},
+				orderBy: { createdAt: "desc" },
+				select: { createdAt: true },
+			});
+			if (recent) {
+				await this.timelineService.create({
+					incidentId: incident.id,
+					type: TimelineEntryType.custom,
+					title: "Not re-run: a reopen run started within the hour",
+					description: `A run started at ${recent.createdAt.toISOString()} when the alert last fired again. The incident is open again without a new run.`,
+					source: TimelineSource.system,
+					metadata: { alertId: alert.id },
+				});
+				return;
+			}
+		}
+
+		const policy = await this.shouldTriggerInvestigation(incident);
+		const decision: TriggerDecision =
+			reopened && policy.shouldTrigger
+				? { ...policy, triggerType: "re_trigger" }
+				: policy;
 
 		if (!decision.shouldTrigger) {
 			this.logger.log(
@@ -226,6 +264,28 @@ export class InvestigationTriggerService {
 		incident: Incident & { service?: Service | null },
 		decision: TriggerDecision,
 	): Promise<void> {
+		// Readiness before a run, not a run that fails on sign-in (#673 w9).
+		const selection = await this.harnessService.resolveSelection();
+		if (selection.runnable) {
+			const readiness = await this.harnessService.ensureReady(
+				selection.harness,
+			);
+			if (!readiness.ready) {
+				this.logger.log(
+					`No auto-investigation for incident ${incident.number}: ${readiness.reason}`,
+				);
+				await this.timelineService.create({
+					incidentId: incident.id,
+					type: TimelineEntryType.custom,
+					title: `Auto-investigation skipped: ${readiness.reason}`,
+					description: readiness.reason,
+					source: TimelineSource.system,
+					metadata: { harness: selection.harness },
+				});
+				return;
+			}
+		}
+
 		let investigation: Investigation;
 		let created: boolean;
 		try {

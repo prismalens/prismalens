@@ -45,24 +45,50 @@ function fakePrisma() {
 	};
 }
 
-function setup(clock?: () => Date) {
+function setup(clock?: () => Date, env: NodeJS.ProcessEnv = process.env) {
 	const prisma = fakePrisma();
 	const fetchImpl = vi.fn(
 		async (_url: string, _init: RequestInit) =>
 			new Response(null, { status: 200 }),
 	);
-	const service = new TelemetryService(
-		prisma as unknown as PrismaService,
-		fetchImpl as unknown as typeof fetch,
-		clock,
-	);
+	const boot = () =>
+		new TelemetryService(
+			prisma as unknown as PrismaService,
+			fetchImpl as unknown as typeof fetch,
+			clock,
+			env,
+		);
+	const service = boot();
 	const sent = () =>
 		fetchImpl.mock.calls.map(
 			([, init]) => JSON.parse(String(init.body)) as Record<string, unknown>,
 		);
+	const events = () => sent().map((e) => e.event);
 	const propsOf = (index: number) =>
 		sent()[index].properties as Record<string, unknown>;
-	return { prisma, service, fetchImpl, sent, propsOf };
+	/** A #602 row the owner answered yes to in Settings, then one boot: setup and install_active go out. */
+	const optIn = async () => {
+		prisma.rows.set("TELEMETRY", {
+			value: JSON.stringify({ enabled: true, installId: "install-1" }),
+		});
+		await service.checkInstallActive();
+	};
+	const stored = () =>
+		JSON.parse(prisma.rows.get("TELEMETRY")?.value ?? "null") as Record<
+			string,
+			unknown
+		> | null;
+	return {
+		prisma,
+		service,
+		boot,
+		fetchImpl,
+		sent,
+		events,
+		propsOf,
+		optIn,
+		stored,
+	};
 }
 
 /**
@@ -80,37 +106,149 @@ beforeEach(() => {
 	vi.stubEnv("CI", "");
 	vi.stubEnv("PRISMALENS_TELEMETRY", "");
 	vi.stubEnv("DO_NOT_TRACK", "");
+	vi.stubEnv("PRISMALENS_NOTICE_TTY", "");
 });
 afterEach(() => vi.unstubAllEnvs());
 
+describe("TelemetryService: on after a notice (#673 w45)", () => {
+	it("a fresh install on a terminal shows the notice, and that boot sends nothing", async () => {
+		let now = new Date("2026-10-07T10:00:00.000Z");
+		const clock = () => now;
+		vi.stubEnv("PRISMALENS_NOTICE_TTY", "1");
+		const { service, boot, events } = setup(clock);
+		await service.onApplicationBootstrap();
+		expect(await service.noticeState()).toBe("notice");
+		expect(await service.getSettings()).toMatchObject({
+			enabled: true,
+			noticed: true,
+			dismissed: false,
+		});
+		await service.capture("service_added", { source: "git" });
+		expect(events()).toEqual([]);
+		service.onModuleDestroy();
+
+		// The next start sends: the notice was shown before it booted.
+		now = new Date("2026-10-07T11:00:00.000Z");
+		const next = boot();
+		await next.onApplicationBootstrap();
+		expect(await next.noticeState()).toBe("on");
+		expect(events()).toEqual(["setup_completed", "install_active"]);
+		next.onModuleDestroy();
+	});
+
+	it("with no terminal, nothing is sent until the board shows the strip and the service restarts", async () => {
+		let now = new Date("2026-10-07T10:00:00.000Z");
+		const clock = () => now;
+		const { service, boot, events } = setup(clock);
+		await service.onApplicationBootstrap();
+		expect(await service.noticeState()).toBe("notice");
+		expect(await service.getSettings()).toMatchObject({
+			enabled: true,
+			noticed: false,
+		});
+		service.onModuleDestroy();
+
+		// A restart with nobody having seen it still sends nothing.
+		now = new Date("2026-10-07T11:00:00.000Z");
+		const unseen = boot();
+		await unseen.onApplicationBootstrap();
+		expect(events()).toEqual([]);
+
+		// The board mounts the strip.
+		await unseen.update({ noticed: true });
+		expect(await unseen.noticeState()).toBe("on");
+		await unseen.checkInstallActive();
+		expect(events()).toEqual([]);
+		unseen.onModuleDestroy();
+
+		now = new Date("2026-10-07T12:00:00.000Z");
+		const restarted = boot();
+		await restarted.onApplicationBootstrap();
+		expect(events()).toEqual(["setup_completed", "install_active"]);
+		restarted.onModuleDestroy();
+	});
+
+	it("OK and Turn off both dismiss; Turn off also stops sending", async () => {
+		const { service, optIn, events, fetchImpl } = setup();
+		await optIn();
+		await service.update({ dismissed: true });
+		expect(await service.getSettings()).toMatchObject({
+			enabled: true,
+			dismissed: true,
+		});
+		await service.update({ enabled: false, dismissed: true });
+		expect(await service.getSettings()).toMatchObject({
+			enabled: false,
+			dismissed: true,
+		});
+		fetchImpl.mockClear();
+		await service.capture("service_added", { source: "git" });
+		expect(events()).toEqual([]);
+		expect(await service.noticeState()).toBe("off");
+	});
+
+	it("a #602 row the owner declined stays off and shows no strip", async () => {
+		const { prisma, service, events } = setup();
+		prisma.rows.set("TELEMETRY", {
+			value: JSON.stringify({ enabled: false, installId: "install-1" }),
+		});
+		vi.stubEnv("PRISMALENS_NOTICE_TTY", "1");
+		await service.onApplicationBootstrap();
+		expect(await service.getSettings()).toMatchObject({
+			enabled: false,
+			noticed: true,
+			dismissed: true,
+		});
+		expect(await service.noticeState()).toBe("off");
+		await service.capture("service_added", { source: "git" });
+		expect(events()).toEqual([]);
+		service.onModuleDestroy();
+	});
+
+	it("a #602 row the owner accepted stays on, with no new notice", async () => {
+		const { prisma, service, events } = setup();
+		prisma.rows.set("TELEMETRY", {
+			value: JSON.stringify({
+				enabled: true,
+				installId: "install-1",
+				setupReported: true,
+			}),
+		});
+		vi.stubEnv("PRISMALENS_NOTICE_TTY", "1");
+		await service.onApplicationBootstrap();
+		expect(await service.noticeState()).toBe("on");
+		expect(await service.getSettings()).toMatchObject({
+			enabled: true,
+			dismissed: true,
+		});
+		expect(events()).toEqual(["install_active"]);
+		service.onModuleDestroy();
+	});
+
+	it.each([
+		["PRISMALENS_TELEMETRY", "off"],
+		["DO_NOT_TRACK", "1"],
+		["CI", "true"],
+	])("%s=%s wins over the stored answer", async (name, value) => {
+		const { service, optIn, fetchImpl } = setup();
+		await optIn();
+		fetchImpl.mockClear();
+		vi.stubEnv(name, value);
+		expect(await service.getSettings()).toMatchObject({
+			enabled: false,
+			forcedOff: true,
+		});
+		expect(await service.noticeState()).toBe("off");
+		await service.capture("service_added", { source: "git" });
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+});
+
 describe("TelemetryService (#602)", () => {
-	it("is off and undecided until the owner answers, and sends nothing", async () => {
-		const { service, fetchImpl } = setup();
-		expect(await service.getSettings()).toEqual({
-			enabled: false,
-			decided: false,
-			forcedOff: false,
-			recentlySent: [],
-		});
-		await service.capture("service_added", { source: "git" });
-		expect(fetchImpl).not.toHaveBeenCalled();
-	});
-
-	it("a no is remembered as decided and still sends nothing", async () => {
-		const { service, fetchImpl } = setup();
-		expect(await service.setEnabled(false)).toMatchObject({
-			enabled: false,
-			decided: true,
-		});
-		await service.capture("service_added", { source: "git" });
-		expect(fetchImpl).not.toHaveBeenCalled();
-	});
-
-	it("opting in reports setup once, then events with only the allowed fields", async () => {
-		const { service, sent, propsOf } = setup();
-		await service.setEnabled(true);
-		await service.setEnabled(false);
-		await service.setEnabled(true);
+	it("reports setup once, then events with only the allowed fields", async () => {
+		const { service, optIn, sent, propsOf } = setup();
+		await optIn();
+		await service.checkInstallActive();
 		await service.capture("investigation_started", {
 			harness: "opencode",
 			trigger: "webhook",
@@ -119,16 +257,17 @@ describe("TelemetryService (#602)", () => {
 		const events = sent();
 		expect(events.map((e) => e.event)).toEqual([
 			"setup_completed",
+			"install_active",
 			"investigation_started",
 		]);
-		expect(Object.keys(events[1]).sort()).toEqual([
+		expect(Object.keys(events[2]).sort()).toEqual([
 			"api_key",
 			"distinct_id",
 			"event",
 			"properties",
 			"timestamp",
 		]);
-		expect(Object.keys(propsOf(1)).sort()).toEqual([
+		expect(Object.keys(propsOf(2)).sort()).toEqual([
 			"$geoip_disable",
 			"$lib",
 			"$lib_version",
@@ -142,14 +281,13 @@ describe("TelemetryService (#602)", () => {
 			"run_mode",
 			"trigger",
 		]);
-		expect(events[1].distinct_id).toBe(events[0].distinct_id);
+		expect(events[2].distinct_id).toBe(events[0].distinct_id);
 	});
 
 	it("disables PostHog's server-side geolocation on every event", async () => {
-		const { service, sent, propsOf } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, sent, propsOf } = setup();
+		await optIn();
 		await service.capture("report_viewed", {});
-		await service.capture("incident_closed", {});
 		expect(sent()).toHaveLength(3);
 		for (let i = 0; i < 3; i++) {
 			// Without this PostHog attaches $ip and city-level $geoip_* at ingest.
@@ -159,16 +297,16 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("identifies itself in place of an SDK, at the app version", async () => {
-		const { service, propsOf } = setup();
-		await service.setEnabled(true);
+		const { optIn, propsOf } = setup();
+		await optIn();
 		expect(propsOf(0).$lib).toBe("prismalens-api");
 		expect(propsOf(0).$lib_version).toBe(propsOf(0).app_version);
 		expect(typeof propsOf(0).app_version).toBe("string");
 	});
 
 	it("carries the common fields on every event", async () => {
-		const { service, propsOf } = setup();
-		await service.setEnabled(true);
+		const { optIn, propsOf } = setup();
+		await optIn();
 		expect(propsOf(0).run_mode).toBe("npm");
 		expect(propsOf(0).build).toBe("dev");
 		expect(propsOf(0).os).toBe(process.platform);
@@ -179,8 +317,8 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("reports one terminal state per investigation, as a bucket and a class", async () => {
-		const { service, sent, propsOf } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, sent, propsOf } = setup();
+		await optIn();
 		const startedAt = new Date(Date.now() - 3 * 60_000);
 		await service.captureFinished("inv-1", "failed", {
 			startedAt,
@@ -192,20 +330,20 @@ describe("TelemetryService (#602)", () => {
 			(e) => e.event === "investigation_finished",
 		);
 		expect(finished).toHaveLength(2);
-		expect(propsOf(1)).toMatchObject({
+		expect(propsOf(2)).toMatchObject({
 			state: "failed",
 			duration_bucket: "1-5m",
 			error_class: "harness_unavailable",
 		});
-		expect(propsOf(2)).toMatchObject({
+		expect(propsOf(3)).toMatchObject({
 			state: "completed",
 			error_class: "none",
 		});
 	});
 
 	it("reports a report view once per investigation, not once per poll", async () => {
-		const { service, sent } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, sent } = setup();
+		await optIn();
 		await service.captureReportViewed("inv-1");
 		await service.captureReportViewed("inv-1");
 		await service.captureReportViewed("inv-2");
@@ -213,8 +351,8 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("reports the first webhook once per install, and remembers it on disk", async () => {
-		const { prisma, service, sent } = setup();
-		await service.setEnabled(true);
+		const { prisma, service, optIn, sent } = setup();
+		await optIn();
 		await service.captureFirstWebhook("prometheus");
 		await service.captureFirstWebhook("prometheus");
 		await service.captureFirstWebhook("generic");
@@ -237,34 +375,17 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("isEnabled answers before a caller gathers properties", async () => {
-		const { service } = setup();
+		const { service, optIn } = setup();
 		expect(await service.isEnabled()).toBe(false);
-		await service.setEnabled(true);
+		await optIn();
 		expect(await service.isEnabled()).toBe(true);
 		vi.stubEnv("PRISMALENS_TELEMETRY", "off");
 		expect(await service.isEnabled()).toBe(false);
 	});
 
-	it.each([
-		["PRISMALENS_TELEMETRY", "off"],
-		["DO_NOT_TRACK", "1"],
-		["CI", "true"],
-	])("%s=%s wins over an opt-in", async (name, value) => {
-		const { service, fetchImpl } = setup();
-		await service.setEnabled(true);
-		fetchImpl.mockClear();
-		vi.stubEnv(name, value);
-		expect(await service.getSettings()).toMatchObject({
-			enabled: false,
-			forcedOff: true,
-		});
-		await service.capture("service_added", { source: "git" });
-		expect(fetchImpl).not.toHaveBeenCalled();
-	});
-
 	it("never throws when the network fails", async () => {
-		const { service, fetchImpl } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, fetchImpl } = setup();
+		await optIn();
 		fetchImpl.mockRejectedValue(new TypeError("fetch failed"));
 		await expect(
 			service.capture("service_added", { source: "git" }),
@@ -272,8 +393,8 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("derives run_mode from PRISMALENS_RUN_MODE and build from NODE_ENV", async () => {
-		const { service, sent, propsOf } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, propsOf } = setup();
+		await optIn();
 
 		vi.stubEnv("PRISMALENS_RUN_MODE", "electron");
 		vi.stubEnv("NODE_ENV", "production");
@@ -283,10 +404,10 @@ describe("TelemetryService (#602)", () => {
 		vi.stubEnv("NODE_ENV", "development");
 		await service.capture("incident_closed", {});
 
-		expect(propsOf(1).run_mode).toBe("electron");
-		expect(propsOf(1).build).toBe("release");
-		expect(propsOf(2).run_mode).toBe("npm");
-		expect(propsOf(2).build).toBe("dev");
+		expect(propsOf(2).run_mode).toBe("electron");
+		expect(propsOf(2).build).toBe("release");
+		expect(propsOf(3).run_mode).toBe("npm");
+		expect(propsOf(3).build).toBe("dev");
 
 		expect(runMode({ PRISMALENS_RUN_MODE: "electron" })).toBe("electron");
 		expect(runMode({ PRISMALENS_RUN_MODE: "npm" })).toBe("npm");
@@ -310,39 +431,42 @@ describe("TelemetryService (#602)", () => {
 	it("every payload has timestamp equal to UTC midnight of the injected clock", async () => {
 		const clockLate = () => new Date("2026-09-25T23:59:59.999Z");
 		const lateSetup = setup(clockLate);
-		await lateSetup.service.setEnabled(true);
+		await lateSetup.optIn();
 		await lateSetup.service.capture("report_viewed", {});
-		const lateEvents = lateSetup.sent();
-		expect(lateEvents[0].timestamp).toBe("2026-09-25T00:00:00.000Z");
-		expect(lateEvents[1].timestamp).toBe("2026-09-25T00:00:00.000Z");
+		for (const e of lateSetup.sent())
+			expect(e.timestamp).toBe("2026-09-25T00:00:00.000Z");
 
 		const clockEarly = () => new Date("2026-09-26T00:01:00.000Z");
 		const earlySetup = setup(clockEarly);
-		await earlySetup.service.setEnabled(true);
+		await earlySetup.optIn();
 		await earlySetup.service.capture("report_viewed", {});
-		const earlyEvents = earlySetup.sent();
-		expect(earlyEvents[0].timestamp).toBe("2026-09-26T00:00:00.000Z");
-		expect(earlyEvents[1].timestamp).toBe("2026-09-26T00:00:00.000Z");
+		for (const e of earlySetup.sent())
+			expect(e.timestamp).toBe("2026-09-26T00:00:00.000Z");
 	});
 
 	it("sends install_active at most once per UTC day when enabled and not forced off", async () => {
 		let currentTime = new Date("2026-09-25T12:00:00.000Z");
 		const clock = () => currentTime;
 		const { prisma, service, fetchImpl, sent } = setup(clock);
+		const active = () => sent().filter((e) => e.event === "install_active");
 
-		// Telemetry disabled: bootstrap sends nothing
+		// A #602 row the owner declined: bootstrap sends nothing
+		prisma.rows.set("TELEMETRY", {
+			value: JSON.stringify({ enabled: false, installId: "install-1" }),
+		});
 		await service.onApplicationBootstrap();
 		expect(sent()).toHaveLength(0);
+		service.onModuleDestroy();
 
-		// Telemetry enabled: bootstrap sends install_active
-		await service.setEnabled(true);
+		// Turned on: bootstrap sends install_active
+		await service.update({ enabled: true });
 		fetchImpl.mockClear();
 		await service.onApplicationBootstrap();
-		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+		expect(active()).toHaveLength(1);
 
 		// Calling bootstrap again the same UTC day sends nothing
 		await service.onApplicationBootstrap();
-		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+		expect(active()).toHaveLength(1);
 
 		// Simulated restart: new service over the same stored row does not send again the same day
 		const restarted = new TelemetryService(
@@ -351,18 +475,18 @@ describe("TelemetryService (#602)", () => {
 			clock,
 		);
 		await restarted.onApplicationBootstrap();
-		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(1);
+		expect(active()).toHaveLength(1);
 
 		// Sent again the next UTC day
 		currentTime = new Date("2026-09-26T08:00:00.000Z");
 		await restarted.onApplicationBootstrap();
-		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(2);
+		expect(active()).toHaveLength(2);
 
 		// Nothing when forced off
 		currentTime = new Date("2026-09-27T08:00:00.000Z");
 		vi.stubEnv("PRISMALENS_TELEMETRY", "off");
 		await restarted.onApplicationBootstrap();
-		expect(sent().filter((e) => e.event === "install_active")).toHaveLength(2);
+		expect(active()).toHaveLength(2);
 
 		// Clean up interval
 		service.onModuleDestroy();
@@ -370,15 +494,14 @@ describe("TelemetryService (#602)", () => {
 	});
 
 	it("maintains a recentlySent ring buffer of the last 20 posted payloads without api_key, newest first", async () => {
-		const { service, fetchImpl } = setup();
+		const { service, optIn, fetchImpl } = setup();
 		expect((await service.getSettings()).recentlySent).toEqual([]);
 
-		await service.setEnabled(true); // sends setup_completed
-		// setup_completed is in recentlySent
+		await optIn(); // sends setup_completed and install_active
 		const initialSettings = await service.getSettings();
-		expect(initialSettings.recentlySent).toHaveLength(1);
+		expect(initialSettings.recentlySent).toHaveLength(2);
 		expect(initialSettings.recentlySent[0].payload).not.toHaveProperty("api_key");
-		expect(initialSettings.recentlySent[0].payload.event).toBe("setup_completed");
+		expect(initialSettings.recentlySent[1].payload.event).toBe("setup_completed");
 
 		// Send 25 more events
 		for (let i = 1; i <= 25; i++) {
@@ -454,8 +577,8 @@ describe("no event property is free text", () => {
 	});
 
 	it("sends only enums, buckets, booleans and bounded numbers", async () => {
-		const { service, sent } = setup();
-		await service.setEnabled(true);
+		const { service, optIn, sent } = setup();
+		await optIn();
 		for (const [event, props] of Object.entries(SAMPLES)) {
 			await service.capture(
 				event as TelemetryEvent,
@@ -564,6 +687,9 @@ describe("buckets and classes", () => {
 		// Neither, rather than mislabelled as a webhook.
 		expect(triggerFor("scheduled")).toBe("other");
 		expect(triggerFor(null)).toBe("other");
+		// A chat run says so, whatever started it (#673).
+		expect(triggerFor("manual", "chat")).toBe("chat");
+		expect(triggerFor("manual", "investigation")).toBe("manual");
 	});
 
 	it("reduces an integration template to its vendor", () => {

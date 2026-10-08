@@ -33,7 +33,7 @@ export class SettingsController {
 		};
 	}
 
-	/** Opt-in telemetry (#602) */
+	/** Usage telemetry, on after a notice (#673 w45) */
 	@Implement(settingsContract.telemetry)
 	telemetry() {
 		return {
@@ -41,7 +41,7 @@ export class SettingsController {
 				this.telemetryService.getSettings(),
 			),
 			update: implement(settingsContract.telemetry.update).handler(
-				({ input }) => this.telemetryService.setEnabled(input.enabled),
+				({ input }) => this.telemetryService.update(input),
 			),
 		};
 	}

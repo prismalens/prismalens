@@ -46,7 +46,7 @@ const SECTIONS = {
 	usage: {
 		title: "Usage data",
 		intro:
-			"Counts that show which features get used. Nothing is sent unless you turn it on.",
+			"Counts that show which features get used. On unless you turn it off.",
 	},
 	about: {
 		title: "About",

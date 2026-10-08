@@ -7,6 +7,7 @@
  * URL once /health answers, and errors (#600).
  */
 
+import { isIP } from "node:net";
 import { join } from "node:path";
 import { isOnPath } from "@prismalens/config";
 
@@ -63,6 +64,22 @@ export function displayUrl(bind: {
 	return `${bind.protocol}://${shown}:${bind.port}`;
 }
 
+/** The one terminal line for a bind that other machines can reach, or null for loopback. */
+export function networkBindWarning(bind: {
+	host: string;
+	protocol: string;
+}): string | null {
+	const host = bind.host.replace(/^\[|\]$/g, "").toLowerCase();
+	const loopback =
+		host === "localhost" ||
+		host === "::1" ||
+		(isIP(host) === 4 && host.startsWith("127."));
+	if (loopback) return null;
+	const transport =
+		bind.protocol === "https" ? "over HTTPS" : "over plain HTTP, unencrypted";
+	return `Bound to ${bind.host}: PrismaLens is reachable from the network ${transport}. Keep it behind a trusted network and list the names you reach it by in PRISMALENS_ALLOWED_HOSTS.`;
+}
+
 /** Where the readiness probe connects: a wildcard bind is reached over loopback. */
 export function healthUrl(bind: {
 	host: string;
@@ -109,23 +126,20 @@ export async function waitForReady(
 }
 
 /**
- * The usage-data consent state from `/health` (#602), or null when it cannot
- * be read. `pl up` never prompts: it prints one line pointing at Settings while
- * the question is unanswered, and nothing once it has been.
+ * The usage-data state from `/health` (#673 w45), or null when it cannot be
+ * read. `notice` means this boot showed the first-run notice: `pl up` prints it.
  */
 export async function readTelemetryState(
 	healthUrl: string,
 	fetchImpl: typeof fetch = fetch,
-): Promise<"undecided" | "on" | "off" | null> {
+): Promise<"notice" | "on" | "off" | null> {
 	try {
 		const res = await fetchImpl(healthUrl, {
 			signal: AbortSignal.timeout(2_000),
 		});
 		if (res.status !== 200) return null;
 		const { telemetry } = (await res.json()) as { telemetry?: unknown };
-		return telemetry === "undecided" ||
-			telemetry === "on" ||
-			telemetry === "off"
+		return telemetry === "notice" || telemetry === "on" || telemetry === "off"
 			? telemetry
 			: null;
 	} catch {
@@ -133,9 +147,9 @@ export async function readTelemetryState(
 	}
 }
 
-/** The one line `pl up` prints while consent is undecided. */
-export const TELEMETRY_CONSENT_NOTICE =
-	"Usage data is off. PrismaLens can count product events to see what gets used — Settings → Usage data decides, and nothing is sent until it does.";
+/** The first-run notice `pl up` prints on a terminal; nothing is sent before the next start. */
+export const TELEMETRY_NOTICE =
+	"Usage data: PrismaLens counts feature use under a random install id. Never an alert, code, a repo or a report. Turn it off in Settings, Usage data, or with PRISMALENS_TELEMETRY=off or DO_NOT_TRACK=1. Nothing is sent before the next start. https://docs.prismalens.io/trust#usage-telemetry";
 
 export interface BrowserCommandOptions {
 	isOnPath?: (bin: string, pathEnv?: string) => boolean;
@@ -163,7 +177,18 @@ export function browserCommand(
 		if (check("wslview", env.PATH)) {
 			return { file: "wslview", args: [url] };
 		}
-		return { file: "cmd.exe", args: ["/c", "start", '""', `"${url}"`] };
+		// Interop re-quotes argv, so cmd.exe saw literal quotes and `&` split the
+		// URL; a single-quoted PowerShell literal survives both (#673).
+		const literal = `'${url.replaceAll("'", "''")}'`;
+		return {
+			file: "powershell.exe",
+			args: [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`Start-Process ${literal}`,
+			],
+		};
 	}
 	if (env.DISPLAY || env.WAYLAND_DISPLAY) {
 		return { file: "xdg-open", args: [url] };

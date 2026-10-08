@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Opt-in product telemetry (#602). Off until the owner says yes in Settings;
- * the CLI never prompts.
+ * Product telemetry: on after a notice, off by setting or env (#673 w45). The
+ * boot that shows the notice sends nothing (Homebrew's rule); the CLI never prompts.
  *
  * The rule that shapes everything below: **every property is an enum, a bucket
  * or a boolean.** There is no free-text property anywhere in the taxonomy, and
@@ -18,8 +18,8 @@
  *
  * The install id is a random UUID kept in the workspace database. It is stable
  * per install and therefore pseudonymous, i.e. personal data under GDPR Recital
- * 26; the Settings disclosure says so, and the toggle is the Art 7(3)
- * withdrawal. A factory reset deletes the row, so the id does not survive it.
+ * 26; the Settings disclosure says so, and the toggle turns it off. A factory
+ * reset deletes the row, so the id does not survive it.
  *
  * PostHog ingest is a raw `fetch` (no `posthog-node`, and never `posthog-js` in
  * the frontend). That costs us the wrapper's defaults, so they are set by hand:
@@ -40,7 +40,10 @@ import {
 	installChannel,
 } from "@prismalens/config";
 import { HARNESS_IDS } from "@prismalens/config/harness";
-import type { TelemetrySettings } from "@prismalens/contracts";
+import type {
+	TelemetrySettings,
+	UpdateTelemetrySettings,
+} from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -89,7 +92,12 @@ export const INTEGRATION_KINDS = [
 	"other",
 ] as const;
 export const WEBHOOK_PROVIDERS = ["prometheus", "generic", "render"] as const;
-export const INVESTIGATION_TRIGGERS = ["manual", "webhook", "other"] as const;
+export const INVESTIGATION_TRIGGERS = [
+	"manual",
+	"webhook",
+	"chat",
+	"other",
+] as const;
 export const INVESTIGATION_STATES = [
 	"completed",
 	"failed",
@@ -119,7 +127,12 @@ export const ERROR_CLASSES = [
  * vocabulary is wider than the two cases that matter, and `other` keeps this a
  * closed enum rather than labelling an unmapped trigger as a webhook.
  */
-export function triggerFor(triggerType?: string | null): InvestigationTrigger {
+export function triggerFor(
+	triggerType?: string | null,
+	kind?: string | null,
+): InvestigationTrigger {
+	// A chat run is started by a person's message, whatever its trigger row says (#673).
+	if (kind === "chat") return "chat";
 	if (triggerType === "manual") return "manual";
 	if (
 		triggerType === "auto_critical" ||
@@ -283,7 +296,14 @@ interface StoredTelemetry {
 	firstWebhookReported?: boolean;
 	/** The UTC day `install_active` was last reported ("YYYY-MM-DD"). */
 	lastActiveDay?: string;
+	/** When the notice was first displayed, by `pl up` on a terminal or by the board. */
+	noticedAt: string | null;
+	/** When OK or Turn off was pressed on the notice. */
+	dismissedAt: string | null;
 }
+
+/** What `/health` tells `pl up`: print the notice, or the state it is in. */
+export type TelemetryNoticeState = "notice" | "on" | "off";
 
 /** `DO_NOT_TRACK` counts as set for anything but empty, `0`, `false`, `off`. */
 function doNotTrack(env: NodeJS.ProcessEnv): boolean {
@@ -332,14 +352,24 @@ export class TelemetryService
 
 	private activeInterval?: NodeJS.Timeout;
 
+	/** Sending waits for a boot after the notice was shown, so this is fixed at start. */
+	private readonly bootedAt: number;
+	/** This boot stamped `noticedAt`: `/health` says "notice" and nothing is sent. */
+	private noticeThisBoot = false;
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly fetchImpl: typeof fetch = fetch,
 		private readonly now: () => Date = () => new Date(),
 		private readonly env: NodeJS.ProcessEnv = process.env,
-	) {}
+	) {
+		this.bootedAt = this.now().getTime();
+	}
 
 	async onApplicationBootstrap(): Promise<void> {
+		await this.ensureRow().catch((e: unknown) =>
+			this.logger.debug(`telemetry row skipped: ${String(e)}`),
+		);
 		await this.checkInstallActive();
 		this.activeInterval = setInterval(() => {
 			void this.checkInstallActive();
@@ -354,11 +384,43 @@ export class TelemetryService
 		}
 	}
 
+	/**
+	 * A fresh install gets a row that is on; `pl up` on a terminal passes
+	 * PRISMALENS_NOTICE_TTY=1 because it prints the notice this boot.
+	 */
+	private async ensureRow(): Promise<void> {
+		const stored = await this.read();
+		// Forced off, `pl up` prints nothing, so nothing was shown.
+		const tty =
+			this.env.PRISMALENS_NOTICE_TTY === "1" && !telemetryForcedOff(this.env);
+		if (stored && (stored.noticedAt || !tty)) return;
+		await this.write({
+			enabled: true,
+			installId: randomUUID(),
+			...stored,
+			noticedAt: tty ? this.now().toISOString() : null,
+			dismissedAt: stored?.dismissedAt ?? null,
+		});
+		this.noticeThisBoot = tty;
+	}
+
+	/** On, not forced off, and the notice was shown before this process started. */
+	private canSend(stored: StoredTelemetry | null): stored is StoredTelemetry {
+		if (!stored?.enabled || !stored.noticedAt) return false;
+		if (telemetryForcedOff(this.env)) return false;
+		return this.bootedAt > Date.parse(stored.noticedAt);
+	}
+
 	async checkInstallActive(): Promise<void> {
 		try {
-			if (telemetryForcedOff(this.env)) return;
-			const stored = await this.read();
-			if (!stored?.enabled) return;
+			let stored = await this.read();
+			if (!this.canSend(stored)) return;
+			// Setup finished before the notice could be shown, so it is reported at the first send.
+			if (!stored.setupReported) {
+				stored = { ...stored, setupReported: true };
+				await this.write(stored);
+				await this.capture("setup_completed", {});
+			}
 			const today = utcDayString(this.now());
 			if (stored.lastActiveDay === today) return;
 			await this.write({ ...stored, lastActiveDay: today });
@@ -376,7 +438,12 @@ export class TelemetryService
 		try {
 			const parsed = JSON.parse(row.value) as Partial<StoredTelemetry>;
 			if (typeof parsed.enabled !== "boolean" || !parsed.installId) return null;
-			return parsed as StoredTelemetry;
+			if (parsed.noticedAt === undefined) {
+				// A #602 row was answered in Settings: noticed and dismissed then, its answer kept.
+				const at = (row.updatedAt ?? new Date(0)).toISOString();
+				return { ...parsed, noticedAt: at, dismissedAt: at } as StoredTelemetry;
+			}
+			return { dismissedAt: null, ...parsed } as StoredTelemetry;
 		} catch {
 			return null;
 		}
@@ -397,36 +464,39 @@ export class TelemetryService
 
 	/** Whether anything would be sent, so a caller can skip gathering properties. */
 	async isEnabled(): Promise<boolean> {
-		if (telemetryForcedOff(this.env)) return false;
-		return (await this.read())?.enabled === true;
+		return this.canSend(await this.read());
 	}
 
 	async getSettings(): Promise<TelemetrySettings> {
 		const stored = await this.read();
 		const forcedOff = telemetryForcedOff(this.env);
 		return {
-			enabled: !forcedOff && (stored?.enabled ?? false),
-			decided: stored !== null,
+			enabled: !forcedOff && (stored?.enabled ?? true),
 			forcedOff,
+			noticed: !!stored?.noticedAt,
+			dismissed: !!stored?.dismissedAt,
 			recentlySent: [...this.recentlySentBuffer],
 		};
 	}
 
-	async setEnabled(enabled: boolean): Promise<TelemetrySettings> {
+	/** `/health`'s word: "notice" on the boot that showed it, or while nobody has seen it. */
+	async noticeState(): Promise<TelemetryNoticeState> {
+		const settings = await this.getSettings();
+		if (!settings.enabled) return "off";
+		return this.noticeThisBoot || !settings.noticed ? "notice" : "on";
+	}
+
+	async update(patch: UpdateTelemetrySettings): Promise<TelemetrySettings> {
 		const stored = await this.read();
-		const next: StoredTelemetry = {
-			enabled,
+		const stamp = this.now().toISOString();
+		await this.write({
+			...stored,
+			enabled: patch.enabled ?? stored?.enabled ?? true,
 			installId: stored?.installId ?? randomUUID(),
-			setupReported: stored?.setupReported ?? false,
-			firstWebhookReported: stored?.firstWebhookReported ?? false,
-			lastActiveDay: stored?.lastActiveDay,
-		};
-		await this.write(next);
-		// Setup finishes before anyone can be asked, so it is reported once, at opt-in.
-		if (enabled && !next.setupReported && !telemetryForcedOff(this.env)) {
-			await this.write({ ...next, setupReported: true });
-			await this.capture("setup_completed", {});
-		}
+			noticedAt:
+				stored?.noticedAt ?? (patch.noticed || patch.dismissed ? stamp : null),
+			dismissedAt: stored?.dismissedAt ?? (patch.dismissed ? stamp : null),
+		});
 		return this.getSettings();
 	}
 
@@ -460,9 +530,8 @@ export class TelemetryService
 	 */
 	async captureFirstWebhook(provider: WebhookProvider): Promise<void> {
 		try {
-			if (telemetryForcedOff(this.env)) return;
 			const stored = await this.read();
-			if (!stored?.enabled || stored.firstWebhookReported) return;
+			if (!this.canSend(stored) || stored.firstWebhookReported) return;
 			await this.write({ ...stored, firstWebhookReported: true });
 			await this.capture("first_webhook_received", { provider });
 		} catch (e) {
@@ -487,9 +556,8 @@ export class TelemetryService
 		props: TelemetryEventProps[E],
 	): Promise<void> {
 		try {
-			if (telemetryForcedOff(this.env)) return;
 			const stored = await this.read();
-			if (!stored?.enabled) return;
+			if (!this.canSend(stored)) return;
 			const body = {
 				api_key: POSTHOG_KEY,
 				event,

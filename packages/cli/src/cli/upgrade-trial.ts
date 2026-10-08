@@ -24,6 +24,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { instanceUrl } from "./instance-check.js";
 
 export const DB_FILES = [
@@ -202,6 +203,45 @@ export function readLastLogLines(logPath: string, maxLines = 20): string[] {
 	}
 }
 
+const ERROR_LINE = /\b(error|fatal|exception|failed|cannot|E[A-Z]{3,})\b/i;
+
+/**
+ * Pairing links and tokens a trial prints to its console; the reason is stored and shown later (#673).
+ * A bare token is 43 base64url chars: generateToken() in @prismalens/auth.
+ */
+export function redactSecrets(line: string): string {
+	return line
+		.replace(/(\/pair)#[^\s"'<>]+/g, "$1#[redacted]")
+		.replace(/(token["']?\s*[=:]\s*["']?)[^\s"'&,}]+/gi, "$1[redacted]")
+		.replace(/(?<![\w-])[\w-]{43}(?![\w-])/g, "[redacted]");
+}
+
+/**
+ * The one line that says why a trial died: the last error-looking line of its
+ * console, else the last line, with secrets redacted. JSON log lines give their msg.
+ */
+export function failureLine(lines: string[]): string | null {
+	const texts = lines
+		.map((raw) => {
+			const line = stripVTControlCharacters(raw).trim();
+			try {
+				const parsed: unknown = JSON.parse(line);
+				if (parsed && typeof parsed === "object" && "msg" in parsed) {
+					const { msg, level } = parsed as { msg: unknown; level?: unknown };
+					const text = String(msg);
+					return typeof level === "number" && level >= 50
+						? `error: ${text}`
+						: text;
+				}
+			} catch {}
+			return line;
+		})
+		.filter((line) => line.length > 0);
+	const pick =
+		[...texts].reverse().find((line) => ERROR_LINE.test(line)) ?? texts.at(-1);
+	return pick === undefined ? null : redactSecrets(pick);
+}
+
 export interface AwaitTrialInput {
 	base: string;
 	instanceId: string;
@@ -221,11 +261,12 @@ export async function awaitTrial(
 	let reason = "no answer";
 	do {
 		if (input.serviceProbe && (await input.serviceProbe())) {
-			const lines = input.logPath ? readLastLogLines(input.logPath, 20) : [];
-			const logDetail = lines.length > 0 ? `:\n${lines.join("\n")}` : "";
+			const line = input.logPath
+				? failureLine(readLastLogLines(input.logPath, 20))
+				: null;
 			return {
 				ok: false,
-				reason: `${input.version} exited during the trial${logDetail}`,
+				reason: `${input.version} exited during the trial${line ? `: ${line}` : ""}${input.logPath ? ` (full log: ${input.logPath})` : ""}`,
 			};
 		}
 		const info = await fetchInstance(input.base, input.fetchImpl);

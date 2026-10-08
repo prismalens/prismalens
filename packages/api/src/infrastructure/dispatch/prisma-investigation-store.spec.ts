@@ -328,3 +328,30 @@ describe("createPrismaInvestigationStore — a follow-up (#747)", () => {
 		expect(ports.writeResult).not.toHaveBeenCalled();
 	});
 });
+
+describe("createPrismaInvestigationStore — a chat run (#673)", () => {
+	it("says Chat started, and finish(null) completes the row with no report", async () => {
+		const ports = makePorts(vi.fn(async () => {}));
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			chat: true,
+		});
+
+		await store.create();
+		await store.finish(null);
+
+		expect(ports.createTimelineEntry).toHaveBeenCalledWith(
+			expect.objectContaining({ title: "Chat started" }),
+		);
+		expect(ports.writeResult).toHaveBeenCalledWith(INVESTIGATION_ID, {
+			status: "completed",
+			incidentId: INCIDENT_ID,
+		});
+		expect(ports.updateStatus).not.toHaveBeenCalledWith(
+			INVESTIGATION_ID,
+			expect.objectContaining({ status: "failed" }),
+		);
+	});
+});

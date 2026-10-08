@@ -4007,6 +4007,48 @@
                                 "status": {
                                   "type": "string"
                                 },
+                                "kind": {
+                                  "enum": [
+                                    "investigation",
+                                    "chat"
+                                  ],
+                                  "type": "string",
+                                  "default": "investigation"
+                                },
+                                "agentMode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "title": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "startedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "hasReport": {
+                                  "type": "boolean"
+                                },
                                 "rootCause": {
                                   "anyOf": [
                                     {
@@ -5144,6 +5186,48 @@
                           "status": {
                             "type": "string"
                           },
+                          "kind": {
+                            "enum": [
+                              "investigation",
+                              "chat"
+                            ],
+                            "type": "string",
+                            "default": "investigation"
+                          },
+                          "agentMode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasReport": {
+                            "type": "boolean"
+                          },
                           "rootCause": {
                             "anyOf": [
                               {
@@ -5928,6 +6012,262 @@
                         "message": {
                           "type": "string",
                           "default": "Investigation cannot be started"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "failure": {
+                              "enum": [
+                                "invalid-env-harness",
+                                "pinned-harness-missing",
+                                "no-harness",
+                                "model-unsupported"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "harness": {
+                              "enum": [
+                                "opencode",
+                                "claude-code",
+                                "codex",
+                                "gemini",
+                                "deepagents"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "failure",
+                            "reason"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/chat": {
+      "post": {
+        "operationId": "incidents.chat",
+        "summary": "Start a chat run on the incident",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "agentMode": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "incidentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "investigationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "queued": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "incidentId",
+                    "investigationId",
+                    "jobId",
+                    "queued"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "A run is working on this incident"
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "liveInvestigationId": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          },
+                          "required": [
+                            "liveInvestigationId"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "412",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "PRECONDITION_FAILED"
+                        },
+                        "status": {
+                          "const": 412
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chat cannot be started"
                         },
                         "data": {
                           "type": "object",
@@ -6883,6 +7223,37 @@
                       ],
                       "type": "string"
                     },
+                    "kind": {
+                      "enum": [
+                        "investigation",
+                        "chat"
+                      ],
+                      "type": "string",
+                      "default": "investigation"
+                    },
+                    "agentMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasReport": {
+                      "type": "boolean"
+                    },
                     "startedAt": {
                       "anyOf": [
                         {
@@ -7827,6 +8198,37 @@
                               "cancelled"
                             ],
                             "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "investigation",
+                              "chat"
+                            ],
+                            "type": "string",
+                            "default": "investigation"
+                          },
+                          "agentMode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasReport": {
+                            "type": "boolean"
                           },
                           "startedAt": {
                             "anyOf": [
@@ -8792,6 +9194,37 @@
                       ],
                       "type": "string"
                     },
+                    "kind": {
+                      "enum": [
+                        "investigation",
+                        "chat"
+                      ],
+                      "type": "string",
+                      "default": "investigation"
+                    },
+                    "agentMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasReport": {
+                      "type": "boolean"
+                    },
                     "startedAt": {
                       "anyOf": [
                         {
@@ -9722,6 +10155,37 @@
                             "cancelled"
                           ],
                           "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "investigation",
+                            "chat"
+                          ],
+                          "type": "string",
+                          "default": "investigation"
+                        },
+                        "agentMode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "title": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "hasReport": {
+                          "type": "boolean"
                         },
                         "startedAt": {
                           "anyOf": [
@@ -10719,6 +11183,37 @@
                         "cancelled"
                       ],
                       "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "investigation",
+                        "chat"
+                      ],
+                      "type": "string",
+                      "default": "investigation"
+                    },
+                    "agentMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasReport": {
+                      "type": "boolean"
                     },
                     "startedAt": {
                       "anyOf": [
@@ -12645,6 +13140,37 @@
                       ],
                       "type": "string"
                     },
+                    "kind": {
+                      "enum": [
+                        "investigation",
+                        "chat"
+                      ],
+                      "type": "string",
+                      "default": "investigation"
+                    },
+                    "agentMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasReport": {
+                      "type": "boolean"
+                    },
                     "startedAt": {
                       "anyOf": [
                         {
@@ -14165,6 +14691,37 @@
                         "cancelled"
                       ],
                       "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "investigation",
+                        "chat"
+                      ],
+                      "type": "string",
+                      "default": "investigation"
+                    },
+                    "agentMode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasReport": {
+                      "type": "boolean"
                     },
                     "startedAt": {
                       "anyOf": [
@@ -25409,7 +25966,7 @@
     "/settings/telemetry": {
       "get": {
         "operationId": "settings.telemetry.get",
-        "summary": "Get the opt-in telemetry setting",
+        "summary": "Get the usage telemetry setting",
         "tags": [
           "settings"
         ],
@@ -25424,10 +25981,13 @@
                     "enabled": {
                       "type": "boolean"
                     },
-                    "decided": {
+                    "forcedOff": {
                       "type": "boolean"
                     },
-                    "forcedOff": {
+                    "noticed": {
+                      "type": "boolean"
+                    },
+                    "dismissed": {
                       "type": "boolean"
                     },
                     "recentlySent": {
@@ -25451,8 +26011,9 @@
                   },
                   "required": [
                     "enabled",
-                    "decided",
                     "forcedOff",
+                    "noticed",
+                    "dismissed",
                     "recentlySent"
                   ]
                 }
@@ -25463,7 +26024,7 @@
       },
       "put": {
         "operationId": "settings.telemetry.update",
-        "summary": "Turn opt-in telemetry on or off",
+        "summary": "Turn usage telemetry on or off",
         "tags": [
           "settings"
         ],
@@ -25476,11 +26037,14 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "noticed": {
+                    "const": true
+                  },
+                  "dismissed": {
+                    "const": true
                   }
-                },
-                "required": [
-                  "enabled"
-                ]
+                }
               }
             }
           }
@@ -25496,10 +26060,13 @@
                     "enabled": {
                       "type": "boolean"
                     },
-                    "decided": {
+                    "forcedOff": {
                       "type": "boolean"
                     },
-                    "forcedOff": {
+                    "noticed": {
+                      "type": "boolean"
+                    },
+                    "dismissed": {
                       "type": "boolean"
                     },
                     "recentlySent": {
@@ -25523,8 +26090,9 @@
                   },
                   "required": [
                     "enabled",
-                    "decided",
                     "forcedOff",
+                    "noticed",
+                    "dismissed",
                     "recentlySent"
                   ]
                 }
@@ -25817,6 +26385,17 @@
                             ],
                             "default": null
                           },
+                          "windowsOnlyPath": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -25874,6 +26453,18 @@
                                   "at": {
                                     "type": "string"
                                   },
+                                  "outcome": {
+                                    "enum": [
+                                      "answers-acp",
+                                      "sign-in-needed",
+                                      "no-answer",
+                                      "failed-to-start"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "detail": {
+                                    "type": "string"
+                                  },
                                   "servedModel": {
                                     "anyOf": [
                                       {
@@ -25926,6 +26517,8 @@
                                 },
                                 "required": [
                                   "at",
+                                  "outcome",
+                                  "detail",
                                   "servedModel",
                                   "effort",
                                   "images"

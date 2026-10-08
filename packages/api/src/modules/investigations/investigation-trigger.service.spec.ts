@@ -4,6 +4,7 @@
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { Alert, Incident, Service } from "@prismalens/database";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -57,8 +58,19 @@ describe("InvestigationTriggerService", () => {
 		startOrGet: vi.fn(),
 	};
 
+	const mockHarnessService = {
+		resolveSelection: vi.fn(),
+		ensureReady: vi.fn(),
+	};
+
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mockHarnessService.resolveSelection.mockResolvedValue({
+			runnable: true,
+			harness: "codex",
+			auto: true,
+		});
+		mockHarnessService.ensureReady.mockResolvedValue({ ready: true });
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
@@ -72,6 +84,7 @@ describe("InvestigationTriggerService", () => {
 				{ provide: IntegrationsService, useValue: mockIntegrationsService },
 				{ provide: TimelineService, useValue: mockTimelineService },
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
+				{ provide: HarnessService, useValue: mockHarnessService },
 			],
 		}).compile();
 
@@ -229,6 +242,44 @@ describe("InvestigationTriggerService", () => {
 			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
 			expect(mockTimelineService.create).not.toHaveBeenCalled();
 		});
+
+		it("a refire that reopened the incident runs the policy and starts a re_trigger run (#673 w25)", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValue(null);
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-2" }, created: true });
+			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-2");
+
+			await service.onAlertCorrelated(alert, withService("always"), false, true);
+
+			expect(mockInvestigationsService.startOrGet).toHaveBeenCalledWith(
+				expect.objectContaining({ incidentId: "inc-1", triggerType: "re_trigger" }),
+			);
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalled();
+		});
+
+		it("a second reopen within the hour starts no run and says so (#673 w25 review M8)", async () => {
+			mockPrisma.investigation.findFirst.mockResolvedValueOnce({
+				createdAt: new Date("2026-10-07T10:00:00.000Z"),
+			});
+
+			await service.onAlertCorrelated(alert, withService("always"), false, true);
+
+			expect(mockPrisma.investigation.findFirst).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({ incidentId: "inc-1", triggerType: "re_trigger" }),
+				}),
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockTimelineService.create.mock.calls[0][0].title).toBe(
+				"Not re-run: a reopen run started within the hour",
+			);
+		});
+
+		it("a reopened incident whose policy says never starts no run", async () => {
+			await service.onAlertCorrelated(alert, withService("never"), false, true);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("triggerInvestigation", () => {
@@ -246,6 +297,25 @@ describe("InvestigationTriggerService", () => {
 			triggerType: "auto_tier",
 			reason: "Test reason",
 		} as unknown as TriggerDecision;
+
+		it("skips with a timeline entry naming the agent when it is not ready, and starts nothing (#673 w9)", async () => {
+			mockHarnessService.ensureReady.mockResolvedValue({
+				ready: false,
+				reason: "Codex: sign in needed (API Key, ChatGPT)",
+			});
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockDispatchService.addInvestigationJob).not.toHaveBeenCalled();
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					incidentId: "inc-1",
+					type: TimelineEntryType.custom,
+					title: "Auto-investigation skipped: Codex: sign in needed (API Key, ChatGPT)",
+				}),
+			);
+		});
 
 		it("does not enqueue when an investigation is already in progress", async () => {
 			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-running" }, created: false });
@@ -381,7 +451,7 @@ describe("InvestigationTriggerService", () => {
 				incidentId: "i1",
 				isNewIncident: false,
 			});
-			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident, false);
+			expect(onAlertSpy).toHaveBeenCalledWith(alert, incident, false, false);
 		});
 	});
 });

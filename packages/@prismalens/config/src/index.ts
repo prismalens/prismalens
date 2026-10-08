@@ -40,6 +40,7 @@ export type {
 	HarnessSelectionFailure,
 	HarnessSelectionInput,
 	HarnessStatus,
+	PathScanOptions,
 } from "./harness-selection.js";
 // Detect-and-report harness selection (ADR 0003 §9)
 export {
@@ -47,6 +48,7 @@ export {
 	listHarnessStatus,
 	resolveHarnessSelection,
 	resolveOnPath,
+	windowsInstallOnPath,
 } from "./harness-selection.js";
 export {
 	type InstalledService,
@@ -103,6 +105,7 @@ export {
 	type WorkspaceLockOwner,
 	type WorkspaceLockState,
 } from "./utils/workspace-lock.js";
+export { isWindowsMountPath, isWsl } from "./utils/wsl.js";
 // Re-export app data utilities
 // Re-export encryption key and secret utilities
 export {

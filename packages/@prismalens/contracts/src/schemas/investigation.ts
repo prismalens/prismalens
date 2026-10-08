@@ -18,6 +18,7 @@ import {
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
+import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
 // =============================================================================
 // ORDERED-EVIDENCE REPORT (ADR-0002) — no numeric confidence
@@ -212,10 +213,20 @@ export const RunWorkspaceSchema = z.object({
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
+export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
+
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
 	incidentId: z.string().uuid(),
 	status: WorkflowStatusSchema,
+	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
+	kind: InvestigationKindSchema.optional().default("investigation"),
+	/** The agent's own mode id the run asked for; `agent-default` asked for none. */
+	agentMode: z.string().nullable().optional(),
+	/** Investigation: the brief's first line; chat: the message's first 120 characters. */
+	title: z.string().nullable().optional(),
+	/** The run left a report; a chat never does. */
+	hasReport: z.boolean().optional(),
 	startedAt: DateStringSchema.nullable(),
 	completedAt: DateStringSchema.nullable(),
 	summary: z.string().nullable(),
@@ -832,6 +843,14 @@ export const InvestigationJobDataSchema = z.object({
 	access: z.enum(PERMISSION_MODES).optional(),
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),
+	/** `chat`: a conversation `chat.text` started; it ends with no report (#673). */
+	kind: InvestigationKindSchema.optional(),
+	chat: z
+		.object({
+			text: z.string().min(1).max(4000),
+			attachments: z.array(JobAttachmentSchema).optional(),
+		})
+		.optional(),
 	/** A follow-up on a finished run: reopen its session and send this (#747). */
 	resume: z
 		.object({

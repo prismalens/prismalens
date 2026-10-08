@@ -22,6 +22,7 @@ import {
 } from "./common.js";
 import { AttachmentIdsSchema, AttachmentRefSchema } from "./investigation.js";
 import { ServiceSchema } from "./service.js";
+import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
 // =============================================================================
 // INCIDENT SCHEMAS
@@ -113,6 +114,12 @@ const UserRefSchema = z.object({
 const InvestigationRefSchema = z.object({
 	id: z.string().uuid(),
 	status: z.string(),
+	/** A run is a thread (#673); the run tabs read these without a second route. */
+	kind: z.enum(INVESTIGATION_KINDS).optional().default("investigation"),
+	agentMode: z.string().nullable().optional(),
+	title: z.string().nullable().optional(),
+	startedAt: DateStringSchema.nullable().optional(),
+	hasReport: z.boolean().optional(),
 	// Rendered by IncidentDetailPanel — omitting it here strips the field at
 	// the oRPC output boundary even though the service selects it.
 	rootCause: z.string().nullable(),
@@ -215,6 +222,13 @@ export const InvestigateIncidentSchema = z.object({
 	/** What the agent may touch (r4 R4.1); refused above the Settings ceiling. */
 	access: z.enum(PERMISSION_MODES).optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
+	attachments: AttachmentIdsSchema.optional(),
+});
+
+/** A person's message that starts a chat run on the incident (#673). */
+export const ChatIncidentSchema = z.object({
+	text: z.string().trim().min(1).max(4000),
+	agentMode: z.string().max(64).optional(),
 	attachments: AttachmentIdsSchema.optional(),
 });
 

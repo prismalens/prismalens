@@ -2,11 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The Settings Harness verdict's on-demand ACP handshake (#630, Unit D on
- * #337): the same probe `pl doctor` runs, behind a button rather than page
- * load. A real handshake costs the harness a login check, so it never fires
- * for free on every Settings visit — `getStatus` (PATH presence only) still
- * runs there.
+ * The ACP handshake `pl doctor` runs (#630, Unit D on #337): behind the
+ * Settings Check button, once per installed agent at boot, and before a run
+ * when no recent "ready" is remembered (#673 w9). Never on a Settings visit:
+ * `getStatus` (PATH presence only) runs there.
  */
 import { Injectable } from "@nestjs/common";
 import type { HarnessId } from "@prismalens/config/harness";
@@ -20,14 +19,16 @@ export class HarnessProbeService {
 
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
 		const result = await probeHarness(id);
-		if (result.outcome === "answers-acp") {
+		if (result.outcome === "answers-acp")
 			this.models.remember(id, result.models);
-			this.models.rememberCheck(id, {
-				servedModel: result.servedModel ?? null,
-				effort: result.effort ?? null,
-				images: result.images === true,
-			});
-		}
+		// Every outcome, so a run can be refused before it starts (#673 w9).
+		this.models.rememberCheck(id, {
+			outcome: result.outcome,
+			detail: result.detail,
+			servedModel: result.servedModel ?? null,
+			effort: result.effort ?? null,
+			images: result.images === true,
+		});
 		return {
 			id: result.id,
 			outcome: result.outcome,

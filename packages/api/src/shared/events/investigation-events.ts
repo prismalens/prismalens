@@ -11,4 +11,6 @@ export interface AlertCorrelatedEvent {
 	incidentId: string;
 	/** True when correlation created a brand-new incident for this alert. */
 	isNewIncident: boolean;
+	/** True when a refire inside the reopen window brought the alert back (#673 w25). */
+	reopened?: boolean;
 }

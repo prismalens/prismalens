@@ -35,6 +35,9 @@ export type DedupOutcome =
 	/** R2b — resolved outside the flap window: a new episode row. */
 	| "new-episode";
 
+/** The created or refired alert, with the branch that ran (`created`: no prior `dedupKey`). */
+export type CreatedAlert = Alert & { outcome: DedupOutcome | "created" };
+
 export type AlertWithRelations = Alert & {
 	incident?: {
 		id: string;
@@ -66,7 +69,7 @@ export class AlertsService {
 
 	/**
 	 * The #231 flap window in ms. No `.get(key, fallback)` fallback: the zod
-	 * schema default (15 min) is authoritative and would silently win anyway.
+	 * schema default (24 h) is authoritative and would silently win anyway.
 	 */
 	private flapWindowMs(): number {
 		return (
@@ -149,7 +152,7 @@ export class AlertsService {
 	 * On a `dedupKey` hit, resolves to a counter bump, a flap reopen,
 	 * or a new episode row, per the #231 rulings.
 	 */
-	async create(dto: CreateAlertDto): Promise<Alert> {
+	async create(dto: CreateAlertDto): Promise<CreatedAlert> {
 		const dedupKey = this.generateDedupKey(dto);
 		const fingerprint = this.generateFingerprint(dto);
 		const now = new Date();
@@ -192,7 +195,7 @@ export class AlertsService {
 						`Deduplicated alert ${existing.id} (${updated.occurrenceCount} occurrences, status ${updated.status})`,
 					);
 				}
-				return updated;
+				return { ...updated, outcome };
 			}
 
 			this.logger.log(
@@ -226,7 +229,7 @@ export class AlertsService {
 		await this.rememberSourceAlert(alert.id, dto.sourceAlertId, new Date());
 
 		this.logger.log(`Created alert ${alert.id}: ${alert.title}`);
-		return alert;
+		return { ...alert, outcome: existing ? "new-episode" : "created" };
 	}
 
 	/**
@@ -295,9 +298,9 @@ export class AlertsService {
 						type: TimelineEntryType.status_changed,
 						title:
 							reopened.count > 0
-								? "Incident reopened: alert refired (flap)"
-								: "Alert reopened by refire (flap)",
-						description: `Alert "${alert.title}" refired ${seconds}s after resolving, inside the flap window, and was reopened as occurrence ${alert.occurrenceCount}.${reopened.count > 0 ? " The incident is open again." : ""}`,
+								? "Incident reopened: alert fired again"
+								: "Alert reopened: fired again",
+						description: `Alert "${alert.title}" fired again ${seconds}s after resolving, inside the reopen window, and was reopened as occurrence ${alert.occurrenceCount}.${reopened.count > 0 ? " The incident is open again." : ""}`,
 						metadata: JSON.stringify({
 							alertId: alert.id,
 							dedupKey: alert.dedupKey,

@@ -152,6 +152,24 @@ describe("WebhooksService", () => {
 		expect(result.alert.id).toBe("alt-123");
 	});
 
+	it("tells correlation when a Render refire reopened the alert", async () => {
+		vi.mocked(alertsService.create).mockResolvedValueOnce({
+			...mockAlert,
+			outcome: "reopened",
+		});
+
+		await service.processRenderWebhook({
+			type: "deploy",
+			deploy: { id: "dep-1", status: "deploy_failed" },
+			service: { id: "srv-1", name: "my-service" },
+		});
+
+		expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "alt-123" }),
+			{ reopened: true },
+		);
+	});
+
 	it("returns cached response on idempotent replay without re-creating event or alert", async () => {
 		vi.mocked(eventsService.findByIdempotencyKey).mockResolvedValueOnce({
 			...mockEvent,
@@ -521,6 +539,7 @@ describe("WebhooksService", () => {
 			vi.mocked(alertsService.create).mockResolvedValueOnce({
 				...mockAlert,
 				occurrenceCount: 2,
+				outcome: "counted",
 			});
 
 			const result = await service.processPrometheusAlert(firing, {
@@ -566,7 +585,7 @@ describe("WebhooksService", () => {
 
 			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
 				expect.objectContaining({ id: "alt-123" }),
-				{ autoInvestigate: false },
+				{ autoInvestigate: false, reopened: false },
 			);
 		});
 
@@ -578,7 +597,24 @@ describe("WebhooksService", () => {
 
 			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
 				expect.objectContaining({ id: "alt-123" }),
-				{ autoInvestigate: true },
+				{ autoInvestigate: true, reopened: false },
+			);
+		});
+
+		it("tells correlation when the refire reopened the alert (#673 w25)", async () => {
+			vi.mocked(alertsService.create).mockResolvedValueOnce({
+				...mockAlert,
+				outcome: "reopened",
+			});
+
+			await service.processPrometheusAlert(firing, {
+				source: "prometheus",
+				autoInvestigate: true,
+			});
+
+			expect(incidentCorrelationService.correlateAlert).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "alt-123" }),
+				{ autoInvestigate: true, reopened: true },
 			);
 		});
 

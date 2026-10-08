@@ -203,8 +203,12 @@ async function runJobInternal(
 			harness: selection.harness,
 			...(model ? { model } : {}),
 			workspace: JSON.stringify(toRunWorkspace(workspace)),
+			...(data.chat ? { chat: true } : {}),
 		});
 		const harness = selection.harness;
+		// A chat run's message is its whole first turn, with its own files (#673).
+		const brief = data.chat?.text ?? data.brief;
+		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		const outcome = await conductRun(
 			{
 				runId,
@@ -216,7 +220,8 @@ async function runJobInternal(
 				...(modelSource ? { modelSource } : {}),
 				...(effort ? { effort } : {}),
 				...(data.access ? { access: data.access } : {}),
-				...(data.attachments?.length ? { attachments: data.attachments } : {}),
+				...(attachments?.length ? { attachments } : {}),
+				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
 				env: getHarnessProviderKeys(selection.harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -230,7 +235,7 @@ async function runJobInternal(
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
-				...(data.brief ? { brief: data.brief } : {}),
+				...(brief ? { brief } : {}),
 				onSession: (s) => keepSession(ports, runId, harness, s),
 			},
 			{ sink, store },
@@ -245,6 +250,10 @@ async function runJobInternal(
 				logger.error("Failed to persist cancelled status", e);
 			}
 			return cancelledResult(data);
+		}
+		if (data.chat && !outcome.error) {
+			logger.info(`Job ${job.id} chat ended`);
+			return chatResult(data);
 		}
 		if (!outcome.report) {
 			return failureResult(
@@ -961,6 +970,17 @@ function successResult(
 			rootCause: report.rootCause ?? undefined,
 			summary: report.summary,
 		},
+		recommendations: [],
+	};
+}
+
+/** A chat ended its turn: success, and nothing to report (#673). */
+function chatResult(data: InvestigationJobData): InvestigationResult {
+	return {
+		success: true,
+		investigationId: data.investigationId,
+		incidentId: data.incidentId,
+		findings: {},
 		recommendations: [],
 	};
 }

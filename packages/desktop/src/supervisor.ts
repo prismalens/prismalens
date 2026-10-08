@@ -93,7 +93,8 @@ export interface StopDialog {
 		| "crashed"
 		| "attached-gone"
 		| "older-backend"
-		| "port-taken";
+		| "port-taken"
+		| "port-taken-wsl";
 	message: string;
 	detail: string;
 	buttons: string[];

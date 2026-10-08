@@ -281,11 +281,17 @@ model Investigation {
   triggerType   String? // manual, auto_critical, auto_tier, alert_threshold, scheduled, re_trigger
   triggerReason String?
 
+  // A run is a thread (#673): an investigation workflow, or a chat a message started
+  kind      String  @default("investigation") // investigation | chat
+  agentMode String? // the agent's own ACP mode id asked for; agent-default: none asked
+  title     String? // investigation: the brief's first line; chat: the message's first 120 chars
+
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   recommendations Recommendation[]
   events          InvestigationEvent[]
 
   @@index([incidentId])
+  @@index([incidentId, createdAt])
   @@index([status])
   @@map("investigations")
 }

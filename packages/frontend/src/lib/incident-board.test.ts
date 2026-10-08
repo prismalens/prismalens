@@ -209,6 +209,34 @@ describe("incidentHeadline", () => {
 		).toMatch(/^Stopped by you at \d\d:\d\d$/);
 	});
 
+	it("keeps the investigation's cause after a chat ends, and shows a live chat", () => {
+		const withChat = (chatStatus: string) => {
+			const base = incident("investigating", {
+				status: "completed",
+				rootCause: "TTL cut in 3b7e0d",
+			});
+			const [investigation] = base.investigations ?? [];
+			return {
+				...base,
+				investigations: [
+					investigation,
+					{
+						...investigation,
+						id: "00000000-0000-0000-0000-000000000010",
+						kind: "chat",
+						status: chatStatus,
+						rootCause: null,
+						createdAt: "2026-09-30T15:00:00Z",
+					},
+				],
+			} as IncidentWithRelations;
+		};
+		const cause = { lead: "Likely:", text: "TTL cut in 3b7e0d" };
+		expect(incidentHeadline(withChat("completed"))).toEqual(cause);
+		expect(incidentHeadline(withChat("failed"))).toEqual(cause);
+		expect(incidentHeadline(withChat("pending"))).toEqual({ text: "Starting…" });
+	});
+
 	it("reads the live sentence's first clause", () => {
 		expect(
 			incidentHeadline(
