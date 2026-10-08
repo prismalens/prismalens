@@ -88,7 +88,10 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		await expect(report.getByTestId("report-empty")).toHaveCount(0);
 		const before = await report.innerText();
 
-		await page.goto(`/incidents/${INCIDENT_ID}/conversation`);
+		// The seeded run by id: an earlier journey can leave a newer run on this incident.
+		await page.goto(
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+		);
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		await input.fill("Why did the pool saturate at 14:02?");

@@ -979,34 +979,55 @@ Then(
 	},
 );
 
-/** The run read as a chat in `state`; the API behind it stays real. */
-const chatState: WeakMap<Page, Record<string, unknown>> = new WeakMap();
+/** A real chat on INC-1 whose agent dies mid-turn (the `failure` script), kept for its session. */
+const chats = new WeakMap<Page, string>();
 Given("the run is a chat that ended in an error", async ({ page }) => {
 	await page.getByTestId("composer-stop").click();
 	await expect(strip(page)).toHaveText(/^Stopped by you/);
-	const id = await runId(page);
-	chatState.set(page, {
-		kind: "chat",
-		status: "failed",
-		error: "the agent crashed",
-		liveTurn: null,
+	const res = await page.request.post(`/api/incidents/${inc(page).id}/chat`, {
+		data: { text: "What broke? fake-session:failure" },
 	});
-	await reshape(page, `/api/investigations/${id}`, (b) => ({
-		...b,
-		...chatState.get(page),
-	}));
-	await openConversation(page);
+	expect(res.ok(), await res.text()).toBe(true);
+	const { investigationId } = (await res.json()) as { investigationId: string };
+	chats.set(page, investigationId);
+	await waitFor(async () => {
+		const r = await page.request.get(`/api/investigations/${investigationId}`);
+		const run = (await r.json()) as {
+			status: string;
+			kind: string;
+			resumable?: boolean;
+		};
+		return run.kind === "chat" && run.status === "failed" ? run : undefined;
+	}, "the chat's error");
+	await visit(
+		page,
+		`/incidents/${inc(page).id}/conversation?investigation=${investigationId}`,
+	);
+	await expect(page.getByTestId("conversation-route")).toBeVisible();
 });
 
 When("the chat answers a message", async ({ page }) => {
-	chatState.set(page, {
-		kind: "chat",
-		status: "completed",
-		error: null,
-		liveTurn: null,
-		lastTurnOutcome: "answered",
-	});
-	await openConversation(page);
+	const id = chats.get(page);
+	if (!id) throw new Error("no chat was started");
+	// The box on a chat in Error continues it: the backend reopens the session and settles the turn.
+	await expect(box(page)).toHaveAttribute("placeholder", "Continue this chat");
+	await box(page).fill("Try again?");
+	await box(page).press("Enter");
+	await waitFor(async () => {
+		const r = await page.request.get(`/api/investigations/${id}`);
+		const run = (await r.json()) as {
+			status: string;
+			lastTurnOutcome?: string | null;
+		};
+		return run.status === "completed" && run.lastTurnOutcome === "answered"
+			? run
+			: undefined;
+	}, "the chat's answer to be settled");
+	await expect(
+		page
+			.getByTestId("transcript-prose")
+			.filter({ hasText: "Heard: Try again?" }),
+	).toBeVisible();
 });
 
 Then("the status line reads {string}", async ({ page }, word: string) => {
