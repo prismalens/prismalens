@@ -174,7 +174,7 @@ describe("deriveTranscript", () => {
 		});
 	});
 
-	it("shows the brief as delivered and a later message as answered once prose follows", () => {
+	it("shows the brief as the message that started the run and a later message as answered once prose follows", () => {
 		const items = deriveTranscript(
 			[
 				operator(0, "Focus on the cache layer."),
@@ -187,7 +187,7 @@ describe("deriveTranscript", () => {
 		);
 		const ops = items.filter((i) => i.kind === "operator");
 		expect(ops.map((o) => o.kind === "operator" && o.state)).toEqual([
-			"delivered",
+			"started",
 			"answered",
 		]);
 	});

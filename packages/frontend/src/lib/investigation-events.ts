@@ -285,6 +285,8 @@ export const THOUGHT_GAP_S = 20;
 export const STALE_AFTER_S = 90;
 
 export type OperatorState =
+	| "started"
+	| "resumed"
 	| "queued"
 	| "sent_now"
 	| "delivered"
@@ -293,6 +295,8 @@ export type OperatorState =
 
 /** The ruling's words for an operator message's delivery (#743 §3c). */
 export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
+	started: "Started the run",
+	resumed: "Continued the run",
 	queued: "Queued",
 	sent_now: "Sent now",
 	delivered: "Delivered",
@@ -395,22 +399,50 @@ interface OpenGroup {
 	calls: Map<string, StreamToolResult | null>;
 }
 
+export type FileVerb = "read" | "write" | "edit" | "delete" | "move";
+
+const FILE_VERBS: [RegExp, FileVerb][] = [
+	[/^(write|create)/i, "write"],
+	[/^(edit|multiedit|str_replace|replace|patch)/i, "edit"],
+	[/^(delete|remove|rm)\b/i, "delete"],
+	[/^(move|rename|mv)\b/i, "move"],
+];
+
+/** What a file tool did, from its name ("Write /tmp/x", "edit"); a read unless it says otherwise (#673). */
+export function fileVerb(name: string): FileVerb {
+	const word = name.trim().replace(/^`/, "");
+	return FILE_VERBS.find(([test]) => test.test(word))?.[1] ?? "read";
+}
+
+const FILE_PAST: Record<FileVerb, string> = {
+	read: "read",
+	write: "wrote",
+	edit: "edited",
+	delete: "deleted",
+	move: "moved",
+};
+
 /** `read 2 files, searched 1 pattern`: what a tool group did, by category. */
 export function summarizeTools(results: (StreamToolResult | null)[]): string {
-	let file = 0;
+	const files = new Map<FileVerb, number>();
 	let search = 0;
 	let source = 0;
 	let other = 0;
 	let running = 0;
 	for (const r of results) {
 		if (!r) running++;
-		else if (r.toolCategory === "file") file++;
-		else if (r.toolCategory === "search") search++;
+		else if (r.toolCategory === "file") {
+			const verb = fileVerb(r.name);
+			files.set(verb, (files.get(verb) ?? 0) + 1);
+		} else if (r.toolCategory === "search") search++;
 		else if (r.toolCategory) source++;
 		else other++;
 	}
 	const parts: string[] = [];
-	if (file) parts.push(`read ${plural(file, "file", "files")}`);
+	for (const verb of Object.keys(FILE_PAST) as FileVerb[]) {
+		const n = files.get(verb);
+		if (n) parts.push(`${FILE_PAST[verb]} ${plural(n, "file", "files")}`);
+	}
 	if (search) parts.push(`searched ${plural(search, "pattern", "patterns")}`);
 	if (source) parts.push(`queried ${plural(source, "source", "sources")}`);
 	if (other) parts.push(`ran ${plural(other, "command", "commands")}`);
@@ -575,6 +607,8 @@ export function deriveTranscript(
 						key: `resumed-${key}`,
 						text: resumedLine(event.resumed),
 					});
+				// The run's first message started it; it never waited for a pause (#673).
+				const brief = !sawAgent && operators.length === 0;
 				const item: Extract<TranscriptItem, { kind: "operator" }> = {
 					kind: "operator",
 					key,
@@ -584,11 +618,15 @@ export function deriveTranscript(
 					attachments: event.attachments ?? [],
 					state: !event.delivered
 						? "not_delivered"
-						: event.mode === "now"
-							? "sent_now"
-							: "delivered",
+						: event.resumed
+							? "resumed"
+							: brief
+								? "started"
+								: event.mode === "now"
+									? "sent_now"
+									: "delivered",
 				};
-				operators.push({ item, brief: !sawAgent && operators.length === 0 });
+				operators.push({ item, brief });
 				items.push(item);
 				break;
 			}
