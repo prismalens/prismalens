@@ -153,6 +153,41 @@ describe("ReportDeliveryService (#606)", () => {
 	});
 });
 
+describe("deliver() skips chats (#673 w59, T18, OBJ-018)", () => {
+	const row = (kind: string, status: string, report: unknown, error: string | null = null) => ({
+		kind,
+		status,
+		report: report ? JSON.stringify(report) : null,
+		error,
+		incident: { id: "inc-1", number: 7, title: "Checkout 500s" },
+	});
+
+	it.each([
+		["a chat that ended", row("chat", "completed", null)],
+		["a chat in error", row("chat", "failed", null, "the agent crashed")],
+		["a chat's follow-up", row("chat", "completed", null)],
+	])("%s posts nothing", async (_name, investigation) => {
+		const { service, fetchImpl, prisma, telemetry } = setup();
+		prisma.investigation.findUnique.mockResolvedValue(investigation as never);
+
+		await service.deliver(`inv-${_name}`);
+
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect(telemetry.capture).not.toHaveBeenCalledWith("report_exported", expect.anything());
+	});
+
+	it("an investigation's first report posts once", async () => {
+		const { service, fetchImpl, prisma } = setup();
+		prisma.investigation.findUnique.mockResolvedValue(row("investigation", "completed", REPORT) as never);
+
+		await service.deliver("inv-first");
+		await service.deliver("inv-first");
+
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1].body)).text).toContain("*Summary:*");
+	});
+});
+
 describe("report_exported telemetry (#602)", () => {
 	it("counts a Slack delivery once the post was attempted", async () => {
 		const { service, telemetry } = setup();

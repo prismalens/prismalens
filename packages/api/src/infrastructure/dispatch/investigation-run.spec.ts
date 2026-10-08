@@ -47,13 +47,15 @@ const {
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 	return {
 		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running", harness: null, model: null, acpSessionId: null, workspace: null })),
-		updateStatus: vi.fn(async () => {}),
+		updateStatus: vi.fn(async () => true),
 		appendEvents: vi.fn(async (_id: string, _events: CanonicalEvent[]) => {}),
 		clearEvents: vi.fn(async () => {}),
 		followUpStatus: vi.fn(async () => {}),
+		initLiveTurn: vi.fn(async () => {}),
+		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
-		writeResult: vi.fn(async () => {}),
+		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
@@ -320,7 +322,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 		it("the run records the workspace on the row and hands the prompt every repo", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", mkdtempSync(join(os.tmpdir(), "pl-appdata-")));
-			const updateStatus = vi.fn(async () => {});
+			const updateStatus = vi.fn(async () => true);
 			const ports = fakePorts({
 				updateStatus,
 				incidentRepos: vi.fn(async () => [
@@ -428,7 +430,7 @@ describe("runInvestigationJob schema validation", () => {
 					harnessThreadId?: string;
 					startedAt?: Date;
 				},
-			) => {},
+			) => true,
 		);
 		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
 		const ports = fakePorts({ updateStatus, createTimelineEntry });
@@ -469,7 +471,7 @@ describe("runInvestigationJob schema validation", () => {
 	// Refusal path (#520, ADR-0031): an unrunnable harness selection must fail the run
 	// with the selection's own reason, not a generic error.
 	it("an unrunnable harness selection fails the job with the selection's reason", async () => {
-		const updateStatus = vi.fn(async () => {});
+		const updateStatus = vi.fn(async () => true);
 		const ports = fakePorts({
 			updateStatus,
 			resolveHarness: vi.fn(async () => ({
@@ -900,12 +902,15 @@ describe("follow-up on a finished run (#747)", () => {
 				description: "Continuing the same OpenCode session in a fresh workspace pinned to 1a2b3c4.",
 			}),
 		);
-		// Chat only: no report write, no status write that delivers, and the row goes back.
+		// An Ask: no report write, no status write that delivers; the standing is kept (#673 w59, I1).
 		expect(ports.writeResult).not.toHaveBeenCalled();
 		expect(ports.updateStatus).not.toHaveBeenCalled();
-		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)).toEqual([
-			"inv-1",
-			{ status: "completed", completedAt: new Date(restore.completedAt), error: null },
+		expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
+			[
+				"inv-1",
+				{ status: "completed", completedAt: new Date(restore.completedAt), error: null, lastTurnOutcome: "answered" },
+				{ stopped: false },
+			],
 		]);
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
 	});
@@ -922,9 +927,10 @@ describe("follow-up on a finished run (#747)", () => {
 		);
 
 		expect(result.success).toBe(false);
-		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)).toEqual([
+		expect(vi.mocked(ports.settleFollowUp).mock.calls.at(-1)).toEqual([
 			"inv-1",
-			{ status: "completed", completedAt: new Date(restore.completedAt), error: null },
+			{ status: "completed", completedAt: new Date(restore.completedAt), error: null, lastTurnOutcome: "error" },
+			{ stopped: false },
 		]);
 	});
 
@@ -978,7 +984,10 @@ describe("follow-up on a finished run (#747)", () => {
 			["error", 43],
 		]);
 		expect(ports.updateStatus).not.toHaveBeenCalled();
-		expect(vi.mocked(ports.followUpStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "completed" });
+		expect(vi.mocked(ports.settleFollowUp).mock.calls.at(-1)?.[1]).toMatchObject({
+			status: "completed",
+			lastTurnOutcome: "error",
+		});
 	});
 
 	it("refuses to continue on a harness that can't reopen a session (deepagents), before any clone or conductRun", async () => {

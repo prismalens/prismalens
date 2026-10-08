@@ -7,7 +7,12 @@ import type { HarnessSelection } from "@prismalens/config";
  * testable without NestJS. Wired in dispatch.service.ts.
  */
 import type { ModelSource } from "@prismalens/config/harness";
-import type { CanonicalEvent, WorkflowStatus } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	LiveTurn,
+	TurnOutcome,
+	WorkflowStatus,
+} from "@prismalens/contracts";
 import type { ContextPack, RunChoice } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
@@ -39,7 +44,15 @@ export interface RunPorts {
 		acpSessionId: string | null;
 		/** JSON RunWorkspace. */
 		workspace: string | null;
+		/** A run is a thread (#673); absent on a row from before kinds. */
+		kind?: string | null;
+		/** Set once Stop was asked for; the run re-reads it to own its end (#673 w59). */
+		stopRequestedAt?: Date | string | null;
 	} | null>;
+	/**
+	 * A status write. False when the row refused it (cancelled, Stop asked for,
+	 * or gone): the caller then writes no timeline entry and delivers nothing.
+	 */
 	updateStatus(
 		id: string,
 		dto: {
@@ -55,8 +68,23 @@ export interface RunPorts {
 			workspace?: string;
 			/** The agent's own mode id the run asked for (#673 w21). */
 			agentMode?: string;
+			/** A follow-up `continue` ending: how its message ended (#673 w59). */
+			lastTurnOutcome?: TurnOutcome;
 		},
-	): Promise<void>;
+	): Promise<boolean>;
+	/** A row claimed with no `liveTurn` (queued before the column) gets one (#673 w59). */
+	initLiveTurn(id: string, turn: LiveTurn): Promise<void>;
+	/** The end of a follow-up that is not a `continue` (#673 w59, DESIGN §3.3); false when refused. */
+	settleFollowUp(
+		id: string,
+		end: {
+			status: WorkflowStatus;
+			completedAt: Date | null;
+			error: string | null;
+			lastTurnOutcome: TurnOutcome;
+		},
+		opts: { stopped: boolean },
+	): Promise<boolean>;
 	/**
 	 * A follow-up's own status write: no report delivery, no telemetry, and
 	 * `completedAt`/`error` exactly as given, so the row can be put back (#747).
@@ -78,7 +106,11 @@ export interface RunPorts {
 	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
 	clearEvents(id: string): Promise<void>;
-	writeResult(id: string, dto: InternalInvestigationResultDto): Promise<void>;
+	/** False when the row refused the result; the same rule as `updateStatus`. */
+	writeResult(
+		id: string,
+		dto: InternalInvestigationResultDto,
+	): Promise<boolean>;
 	createTimelineEntry(dto: CreateTimelineEntryDto): Promise<void>;
 	/** Detect-and-report verdict plus the model and effort: the run's own, else Settings', per field (#673 w52). */
 	resolveHarness(requested?: RunChoice): Promise<{

@@ -6,10 +6,13 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import type {
 	InvestigationReport,
+	LiveTurn,
 	RootCauseCategory,
+	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	continuableRun,
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
@@ -229,6 +232,7 @@ export class InvestigationsController {
 								.restoreFollowUp(
 									input.id,
 									"Stopped before the follow-up started. The report is unchanged.",
+									"stopped",
 								)
 								.catch(() => false);
 							if (restoredFollowUp) {
@@ -258,6 +262,18 @@ export class InvestigationsController {
 						// otherwise sit there until the next restart, when `failRunning`
 						// marks it failed instead of the cancellation the user asked for.
 						await this.dispatchService.cancelOrphanedRun(input.id);
+						// An orphaned follow-up puts its thread's standing back, as a stop (#673 w59).
+						const restored = await this.dispatchService
+							.restoreFollowUp(
+								input.id,
+								"Stopped; no run held the follow-up.",
+								"stopped",
+							)
+							.catch(() => false);
+						if (restored) {
+							const after = await this.investigationsService.findById(input.id);
+							return this.serializeInvestigation(after ?? investigation);
+						}
 						const cancelled = await this.investigationsService.cancelPending(
 							input.id,
 							investigation.incidentId,
@@ -301,7 +317,9 @@ export class InvestigationsController {
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
 						const kind =
 							input.kind ??
-							(investigation.status === "cancelled" ? "continue" : "chat");
+							(this.resumeState(investigation).continuable
+								? "continue"
+								: "chat");
 						const resumed = await this.dispatchService
 							.resumeInvestigation(
 								input.id,
@@ -320,6 +338,14 @@ export class InvestigationsController {
 								message: "A follow-up is already running.",
 							});
 						return { state: "resumed" as const };
+					}
+					// A message that says what it asks for must match the live turn (#673 w59, OBJ-004).
+					if (input.kind) {
+						const refusal = await this.investigationsService.liveKindRefusal(
+							investigation,
+							input.kind,
+						);
+						if (refusal) throw new ORPCError("CONFLICT", { message: refusal });
 					}
 					let state = this.dispatchService.sendMessage(
 						input.id,
@@ -498,7 +524,12 @@ export class InvestigationsController {
 		return {
 			resumable: reason === null,
 			resumeBlockedReason: reason,
-			continuable: reason === null && investigation.status === "cancelled",
+			continuable: continuableRun({
+				kind: investigation.kind,
+				status: investigation.status,
+				hasReport: investigation.report !== null,
+				sessionKept: reason === null,
+			}),
 		};
 	}
 
@@ -532,6 +563,9 @@ export class InvestigationsController {
 			model: investigation.model ?? null,
 			effort: investigation.effort ?? null,
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
+			liveTurn: (investigation.liveTurn as LiveTurn | null) ?? null,
+			lastTurnOutcome:
+				(investigation.lastTurnOutcome as TurnOutcome | null) ?? null,
 			acpSessionId: investigation.acpSessionId ?? null,
 			workspace: this.parseWorkspace(investigation.workspace),
 			...this.resumeState(investigation),
