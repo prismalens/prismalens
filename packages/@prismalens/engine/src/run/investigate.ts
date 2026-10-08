@@ -533,17 +533,28 @@ export async function* runInvestigation(
 
 		while ("stop" in outcome && !opts.signal?.aborted) {
 			const now = sendNow.shift();
-			const line = now ?? opts.steer?.next() ?? null;
-			if (line === null) break;
-			yield adapter.operatorMessage(
-				line.text,
-				now ? "now" : "queue",
-				true,
-				undefined,
-				refsOf(line.attachments),
+			// Send now carries what was queued before it, in order, in one turn (#673 w33).
+			const queued = now ? drain(opts.steer) : [opts.steer?.next() ?? null];
+			const lines = [...queued, now ?? null].filter(
+				(l): l is SteerLine => l !== null,
 			);
+			if (lines.length === 0) break;
+			for (const line of lines) {
+				yield adapter.operatorMessage(
+					line.text,
+					line === now ? "now" : "queue",
+					true,
+					undefined,
+					refsOf(line.attachments),
+				);
+			}
 			text = "";
-			outcome = yield* turn(promptParts(line.text, line.attachments));
+			outcome = yield* turn(
+				promptParts(
+					lines.map((l) => l.text).join("\n\n"),
+					lines.flatMap((l) => l.attachments ?? []),
+				),
+			);
 		}
 		unsubscribe?.();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
