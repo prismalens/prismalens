@@ -96,6 +96,20 @@ describe("refusals", () => {
 		expect(commandText("git log")).toBe("git log");
 	});
 
+	it("formats file operations and terminal calls into plain commands (#673)", () => {
+		expect(
+			commandText('Write /tmp/x({"file_path":"/tmp/x","content":"hi"})'),
+		).toBe("write /tmp/x");
+		expect(
+			commandText(
+				'Edit({"file_path":"/a.ts","old_string":"a","new_string":"b"})',
+			),
+		).toBe("edit /a.ts");
+		expect(commandText('Read({"path":"/b.ts"})')).toBe("read /b.ts");
+		expect(commandText('terminal({"command":"cat x"})')).toBe("cat x");
+	});
+
+
 	it("lists refusals before what the run did not query", () => {
 		const gaps = gapsOf(report(), [
 			refused(1, "curl https://example.com", "Refused by PrismaLens's read-only policy: sends a request body."),

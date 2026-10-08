@@ -126,8 +126,9 @@ export function ensureServe(
 	const existing = currentServeTarget(hostname, run);
 	if (existing && sameTarget(existing, target)) return { url, created: false };
 	if (existing) {
+		const port = localPort(existing);
 		throw new TailscaleError(
-			`${url} already serves ${existing}. Remove it with \`tailscale serve --https=443 off\` first, or pick that one.`,
+			`${url} already serves ${existing}. Remove it with \`tailscale serve --https=443 off\` first${port ? `, or start on port ${port} (--port ${port})` : ""}.`,
 		);
 	}
 	const result = run(["serve", "--bg", "--https=443", target]);
@@ -148,6 +149,14 @@ export function removeServe(target: string, run: Run = runTailscale): void {
 	if (!existing || !sameTarget(existing, target)) return;
 	const result = run(["serve", "--https=443", "off"]);
 	if (result.status !== 0) throw failure(result, "serve off");
+}
+
+/** The port of an http loopback target, which `pl up --port` could serve instead. */
+function localPort(target: string): string | null {
+	// Read the port from the text: URL drops a default :80, and an https target can't be matched by --port.
+	const match =
+		/^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)(?:\/|$)/.exec(target);
+	return match?.[1] ?? null;
 }
 
 function sameTarget(a: string, b: string): boolean {

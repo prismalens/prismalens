@@ -895,7 +895,14 @@ console.log("${next}");
 			["upgrade", "--version", next, "--trial-seconds", "60"],
 			npmEnv,
 		);
-		assert(upgrade.code !== 0, `upgrade to the broken ${next} succeeded`);
+		assert(
+			upgrade.code !== 0,
+			`upgrade to the broken ${next} succeeded: ${upgrade.out
+				.split("\n")
+				.filter((l) => l.trim() && !l.startsWith("npm "))
+				.join(" | ")
+				.slice(-600)}`,
+		);
 		assert(
 			/didn't come up/.test(upgrade.out),
 			`no rollback line: ${upgrade.out.slice(-600)}`,
@@ -922,6 +929,16 @@ console.log("${next}");
 		return `${current} → ${next} rolled back; "${line.slice(0, 140)}"; no token in the reason`;
 	} finally {
 		await run(pl, ["service", "uninstall"], npmEnv);
+		// A pl left at the broken version can't uninstall; the walk left the unit running (#673 w54).
+		if (existsSync(unit)) {
+			await run(
+				"systemctl",
+				["--user", "disable", "--now", "prismalens.service"],
+				env,
+			);
+			rmSync(unit, { force: true });
+			await run("systemctl", ["--user", "daemon-reload"], env);
+		}
 	}
 }
 

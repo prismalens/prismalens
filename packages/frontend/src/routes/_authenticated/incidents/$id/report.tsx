@@ -11,12 +11,10 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
-import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
 import { useRanWithoutRepo } from "@/components/incidents/IncidentFacts";
 import { RecordLink, RecordPage } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import {
-	modelSource,
 	runElapsed,
 	runName,
 	runNumber,
@@ -64,27 +62,17 @@ function ReportRoute() {
 	return <NoReportPage />;
 }
 
-/** `Run #N` with its kind, who ran it and when, and the share actions. */
+/** `Run #N` with its kind, when it finished, and the share actions; no agent or model (#673 w58). */
 function ReportHeader({
 	investigation,
-	report,
 	brief,
 }: {
 	investigation: InvestigationWithRelations;
-	report: InvestigationReport;
 	brief: string;
 }) {
 	const { runs } = useIncidentRecord();
-	const { harnesses } = useAgentChoice();
 	const { toast } = useToast();
 	const now = useNow();
-	const who = useRunAgentModel(investigation);
-	const harness = harnesses.find((h) => h.id === investigation.harness);
-	const version = report.fidelity?.harnessVersion;
-	const source = modelSource(
-		investigation,
-		(id) => modelName(harness, id) ?? id,
-	).replace(/^model /, "");
 	return (
 		<header className="pt-1 pb-4" data-testid="report-header">
 			<div className="flex items-center gap-3">
@@ -133,15 +121,11 @@ function ReportHeader({
 					</DropdownMenu>
 				</div>
 			</div>
-			<p className="mt-0.5 flex flex-wrap gap-x-3 text-meta text-text-2">
-				<span>
-					Ran on {who.agent}
-					{version ? ` ${version}` : ""}, model {who.model} ({source})
-				</span>
-				{investigation.completedAt && (
-					<span>Completed {ago(investigation.completedAt, now)}</span>
-				)}
-			</p>
+			{investigation.completedAt && (
+				<p className="mt-0.5 text-meta text-text-2">
+					Completed {ago(investigation.completedAt, now)}
+				</p>
+			)}
 		</header>
 	);
 }
@@ -190,11 +174,7 @@ function ReportPage({
 	};
 	return (
 		<RecordPage testId="report-route">
-			<ReportHeader
-				investigation={investigation}
-				report={report}
-				brief={brief}
-			/>
+			<ReportHeader investigation={investigation} brief={brief} />
 			<Answer report={report} />
 			<SummaryPool
 				investigation={investigation}

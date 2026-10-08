@@ -44,9 +44,7 @@ describe("backend", () => {
 			const tempResources = createTempDir("pl-resources-");
 			const binDir = join(
 				tempResources,
-				"prismalens",
-				"lib",
-				"node_modules",
+				"prismalens.asar",
 				"prismalens",
 				"dist",
 				"bin",
@@ -70,7 +68,7 @@ describe("backend", () => {
 					env: {},
 				}),
 			).toThrowError(
-				`No packed prismalens at ${join(missingResources, "prismalens")}.`,
+				`No packed prismalens at ${join(missingResources, "prismalens.asar", "prismalens")}.`,
 			);
 
 			const missingBackendDir = "/nonexistent/test-backend-env";

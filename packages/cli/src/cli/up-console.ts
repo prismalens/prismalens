@@ -7,9 +7,13 @@
  * URL once /health answers, and errors (#600).
  */
 
-import { isIP } from "node:net";
+import { createServer, isIP } from "node:net";
 import { join } from "node:path";
-import { isOnPath } from "@prismalens/config";
+import {
+	isOnPath,
+	resolveOnPath,
+	windowsInstallOnPath,
+} from "@prismalens/config";
 
 const DEFAULT_LOG_DIR = "logs";
 
@@ -153,6 +157,24 @@ export const TELEMETRY_NOTICE =
 
 export interface BrowserCommandOptions {
 	isOnPath?: (bin: string, pathEnv?: string) => boolean;
+	/** Where `bin` resolves on PATH, Windows mounts included; null when absent. */
+	which?: (bin: string, env: NodeJS.ProcessEnv) => string | null;
+}
+
+/** WSL's default automount, for when `appendWindowsPath=false` keeps it off PATH (#673 w3). */
+export const WSL_POWERSHELL =
+	"/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+/** Printed when the opener could not start or failed; the printed link still works. */
+export const NO_BROWSER_LINE =
+	"Couldn't open a browser on this machine. Open the link above.";
+
+function whichAnywhere(bin: string, env: NodeJS.ProcessEnv): string | null {
+	const path = env.PATH ?? "";
+	return (
+		resolveOnPath(bin, path, { env }) ??
+		windowsInstallOnPath(bin, path, { env })
+	);
 }
 
 /**
@@ -178,10 +200,12 @@ export function browserCommand(
 			return { file: "wslview", args: [url] };
 		}
 		// Interop re-quotes argv, so cmd.exe saw literal quotes and `&` split the
-		// URL; a single-quoted PowerShell literal survives both (#673).
+		// URL; a single-quoted PowerShell literal survives both, and Start-Process
+		// keeps the #token (checked with a page that reports location.hash, #673 w3).
 		const literal = `'${url.replaceAll("'", "''")}'`;
+		const which = opts.which ?? whichAnywhere;
 		return {
-			file: "powershell.exe",
+			file: which("powershell.exe", env) ?? WSL_POWERSHELL,
 			args: [
 				"-NoProfile",
 				"-NonInteractive",
@@ -194,6 +218,65 @@ export function browserCommand(
 		return { file: "xdg-open", args: [url] };
 	}
 	return null;
+}
+
+type PairedListener = (event: {
+	linkId: string;
+	device: { name: string };
+}) => void;
+
+/**
+ * A line when a device pairs, and one when the startup link lapses unused,
+ * so `pl up` is not silent after printing the link (#673 w55).
+ */
+export function watchPairings(
+	link: { id: string; expiresAt: Date },
+	subscribe: (listener: PairedListener) => unknown,
+	report: (line: string, kind: "paired" | "expired") => void,
+	now: () => number = Date.now,
+): void {
+	let used = false;
+	const expiry = setTimeout(
+		() => {
+			if (!used) {
+				report(
+					"The startup link expired unused. `pl pair --operator` prints another.",
+					"expired",
+				);
+			}
+		},
+		Math.max(0, link.expiresAt.getTime() - now()),
+	);
+	expiry.unref();
+	subscribe(({ linkId, device }) => {
+		if (linkId !== link.id) {
+			report(`A device paired: ${device.name}.`, "paired");
+			return;
+		}
+		used = true;
+		clearTimeout(expiry);
+		report(`Paired this machine's browser (${device.name}).`, "paired");
+	});
+}
+
+/** Whether `host:port` can be bound right now; false only for EADDRINUSE. */
+export function portFree(host: string, port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const server = createServer();
+		server.once("error", (error: NodeJS.ErrnoException) =>
+			resolve(error.code !== "EADDRINUSE"),
+		);
+		server.listen({ host, port, exclusive: true }, () =>
+			server.close(() => resolve(true)),
+		);
+	});
+}
+
+/** The one line for a taken port, in place of the API's two logger records (#673 w55). */
+export function portInUseLine(port: number, byPrismaLens: boolean): string {
+	return byPrismaLens
+		? `Port ${port} is in use by another PrismaLens. Stop it, or start this one on another port with --port.`
+		: `Port ${port} is in use. Start on another port with --port.`;
 }
 
 /** The `pl service install` pointer, for a foreground `pl up` on a platform that has a service. */

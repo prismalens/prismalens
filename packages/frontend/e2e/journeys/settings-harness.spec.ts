@@ -257,7 +257,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		const registry = page.getByTestId("harness-registry");
 		await expect(registry.getByTestId("harness-tested-opencode")).toHaveText(
-			"1.18.30",
+			"tested 1.18.30",
 		);
 		await expect(
 			registry.getByTestId("harness-tested-claude-code"),

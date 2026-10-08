@@ -18,11 +18,12 @@ import { RECORD_GRID, RecordLink } from "@/components/incidents/RecordLayout";
 import { StateWord } from "@/components/shared/StateWord";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
-import type {
-	AttachmentView,
-	EventRow,
-	OperatorState,
-	TranscriptItem,
+import {
+	type AttachmentView,
+	type EventRow,
+	OPERATOR_STATE_LABEL,
+	type OperatorState,
+	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { commandText, shortPath } from "@/lib/report-view";
@@ -34,6 +35,8 @@ const ENTER =
 /** The delivery word under "You" (decision 18): Enter waits for the agent's next pause. */
 function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
 	if (state === "not_delivered") return "Not delivered";
+	if (state === "started" || state === "resumed")
+		return OPERATOR_STATE_LABEL[state];
 	if (state === "queued") return "Waits for the next pause";
 	return mode === "now" ? "Sent now" : "Delivered at the next pause";
 }
@@ -202,17 +205,19 @@ function TranscriptRow({
 					)}
 				</Message>
 			);
-		case "end":
+		case "end": {
+			const failure =
+				item.tone === "failed" ? failureSentence(agent, item.error) : null;
 			return (
 				<div className={cn("space-y-1", ENTER)} data-testid="transcript-end">
 					<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-2">
-						{item.tone === "failed" ? (
+						{failure ? (
 							<span className="[overflow-wrap:anywhere]">
 								<StateWord tone="danger" className="text-body">
 									Run failed
 								</StateWord>
-								{item.at ? ` at ${formatClock(item.at)}` : ""}:{" "}
-								{failureSentence(agent, item.error).said}
+								{item.at ? ` at ${formatClock(item.at)}` : ""}: {failure.said}
+								{failure.detail && failure.next ? ` ${failure.next}` : ""}
 							</span>
 						) : (
 							<span className="[overflow-wrap:anywhere]">
@@ -226,8 +231,17 @@ function TranscriptRow({
 							</RecordLink>
 						)}
 					</p>
+					{failure?.detail && (
+						<p
+							className="text-meta text-text-3 [overflow-wrap:anywhere]"
+							data-testid="transcript-end-detail"
+						>
+							{failure.detail}
+						</p>
+					)}
 				</div>
 			);
+		}
 		case "empty":
 			return (
 				<p
@@ -297,6 +311,24 @@ function callsOf(rows: EventRow[]) {
 	return out;
 }
 
+/** A tool's output without the Markdown fences the agent wrapped it in (#673). */
+export function unfence(text: string): string {
+	return text.replace(/```[\w-]*[ \t]*\n|```/g, "").trim();
+}
+
+/** Refused calls did not run; the rest ran and failed (#673). */
+function FailedCount({ calls }: { calls: ReturnType<typeof callsOf> }) {
+	const failed = calls.filter((c) => c.result?.ok === false);
+	const refused = failed.filter((c) => refusalReason(c.result?.detail)).length;
+	const errored = failed.length - refused;
+	const parts = [
+		refused > 0 && `${refused} not run`,
+		errored > 0 && `${errored} failed`,
+	].filter(Boolean);
+	if (parts.length === 0) return null;
+	return <span className="shrink-0 text-danger">{parts.join(", ")}</span>;
+}
+
 function headline(item: Extract<TranscriptItem, { kind: "tools" }>): string {
 	const s = item.summary.replace(/^./, (c) => c.toUpperCase());
 	return s || `Ran ${item.count} tool${item.count === 1 ? "" : "s"}`;
@@ -312,6 +344,7 @@ function ToolGroup({
 	cwd?: string | null;
 }) {
 	const cited = !!focus && item.callIds.includes(focus);
+	const calls = callsOf(item.rows);
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (cited) ref.current?.scrollIntoView({ block: "center" });
@@ -323,32 +356,25 @@ function ToolGroup({
 			data-cited={cited ? "" : undefined}
 		>
 			<Tool defaultOpen={cited}>
-				<ToolHeader
-					aside={
-						item.failed > 0 && (
-							<span className="shrink-0 text-danger">
-								{item.failed} not run
-							</span>
-						)
-					}
-				>
+				<ToolHeader aside={<FailedCount calls={calls} />}>
 					{headline(item)}
 				</ToolHeader>
 				<ToolContent data-testid="transcript-tool-rows">
-					{callsOf(item.rows).map(({ key, source, result }) => {
+					{calls.map(({ key, source, result }) => {
 						const reason =
 							result?.ok === false ? refusalReason(result.detail) : null;
+						const detail = result?.detail && unfence(result.detail);
 						return (
 							<ToolCall
 								key={key}
 								command={commandText(source, cwd)}
 								running={!result}
-								output={result?.detail && shortPath(result.detail, cwd)}
+								output={detail && shortPath(detail, cwd)}
 								refused={
 									result?.ok === false
 										? reason
 											? refusalSentence(reason)
-											: `Failed: ${result.detail ?? "no output"}`
+											: `Failed: ${detail || "no output"}`
 										: undefined
 								}
 							/>

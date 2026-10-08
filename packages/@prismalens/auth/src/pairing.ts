@@ -152,10 +152,38 @@ export interface RedeemedDevice {
 	device: DeviceRecord;
 }
 
+export type DevicePairedListener = (event: {
+	linkId: string;
+	device: DeviceRecord;
+}) => void;
+
+const pairedListeners = new Set<DevicePairedListener>();
+
+/** In-process: `pl up` runs the API it started, and prints a line per pairing (#673 w55). */
+export function onDevicePaired(listener: DevicePairedListener): () => void {
+	pairedListeners.add(listener);
+	return () => pairedListeners.delete(listener);
+}
+
 export async function redeemPairingLink(
 	store: PairingStore,
 	input: { token: string; name: string; userAgent?: string; now?: Date },
 ): Promise<RedeemedDevice> {
+	const redeemed = await redeemLinkToken(store, input);
+	for (const listener of pairedListeners) {
+		try {
+			listener({ linkId: redeemed.linkId, device: redeemed.device });
+		} catch {
+			// A listener prints a line; its failure must not fail the pairing.
+		}
+	}
+	return { token: redeemed.token, device: redeemed.device };
+}
+
+async function redeemLinkToken(
+	store: PairingStore,
+	input: { token: string; name: string; userAgent?: string; now?: Date },
+): Promise<RedeemedDevice & { linkId: string }> {
 	const now = input.now ?? new Date();
 	const link = await store.findLinkByHash(hashToken(input.token));
 	if (!link) {
@@ -183,7 +211,7 @@ export async function redeemPairingLink(
 		scopes: parseScopes(link.scopes),
 		userAgent: input.userAgent ?? null,
 	});
-	return { token: deviceToken, device };
+	return { token: deviceToken, device, linkId: link.id };
 }
 
 /** How often `lastSeenAt` is written; a request inside the window costs no write. */

@@ -74,6 +74,7 @@ import {
 	type BackendSpawn,
 	backendSpawn,
 	backendUrl,
+	nextFreePort,
 	OLDER_BACKEND_DIALOG,
 	pairOperatorSpawn,
 	planLaunch,
@@ -116,6 +117,10 @@ const READY_TIMEOUT_MS = 60_000;
 /** `pnpm dev:desktop`: window on the running Vite dev server instead of a packed backend. */
 const DEV_URL = process.env.PRISMALENS_DESKTOP_DEV_URL;
 const POLL_MS = 15_000;
+/** Every dialog's title; the default is the package name, `@prismalens/desktop` (#673 w50). */
+const TITLE = "PrismaLens";
+/** A port chosen for this run because the workspace's own was taken; never saved. */
+let portOverride: number | null = null;
 
 let child: ChildProcess | null = null;
 let window: BrowserWindow | null = null;
@@ -226,16 +231,22 @@ async function boot(): Promise<void> {
 async function spawnOwned(target: Target): Promise<void> {
 	if (!(await portFree(target.port))) {
 		const holderInstanceId = await portHolder(target);
+		const freePort = await nextFreePort(target.port);
 		if (holderInstanceId && (await heldByWsl(holderInstanceId))) {
 			throw new LaunchRefused({
 				kind: "port-taken-wsl",
-				...portTakenByWslDialog({ port: target.port, distro: wsl.distro }),
+				...portTakenByWslDialog({
+					port: target.port,
+					distro: wsl.distro,
+					freePort,
+				}),
 			});
 		}
 		throw new LaunchRefused(
 			portTakenDialog({
 				port: target.port,
-				holderInstanceId,
+				byPrismaLens: holderInstanceId !== null,
+				freePort,
 				instanceFile: join(workspaceDir(), "instance.json"),
 			}),
 		);
@@ -292,6 +303,7 @@ async function bootWsl(): Promise<void> {
 		const defaultName = wsl.distro ? null : (await listDistros()).defaultName;
 		const d = wslMissingPl(wsl.distro, defaultName);
 		const { response } = await dialog.showMessageBox({
+			title: TITLE,
 			type: "error",
 			message: d.message,
 			detail: d.detail,
@@ -305,6 +317,7 @@ async function bootWsl(): Promise<void> {
 	if (plan.kind === "none") {
 		const d = wslNothingRunning(wsl.distro);
 		const { response } = await dialog.showMessageBox({
+			title: TITLE,
 			type: "warning",
 			message: d.message,
 			detail: d.detail,
@@ -507,6 +520,7 @@ async function showStop(input: {
 	ready = false;
 	const d = stopDialog(input);
 	const { response } = await dialog.showMessageBox({
+		title: TITLE,
 		type: d.kind === "attached-gone" ? "warning" : "error",
 		message: d.message,
 		detail: d.detail,
@@ -543,7 +557,7 @@ async function showStop(input: {
 			const target: Target = {
 				protocol: protocol(),
 				host: "127.0.0.1",
-				port: ensureInstanceFile(workspaceDir()).port,
+				port: portOverride ?? ensureInstanceFile(workspaceDir()).port,
 			};
 			await spawnOwned(target);
 			await connect(target);
@@ -576,6 +590,7 @@ async function refuse(error: unknown): Promise<void> {
 				: null;
 	if (d) {
 		const { response } = await dialog.showMessageBox({
+			title: TITLE,
 			type: "error",
 			message: d.message,
 			detail: d.detail,
@@ -586,10 +601,33 @@ async function refuse(error: unknown): Promise<void> {
 			saveWslSettings({ ...wsl, enabled: true });
 			return;
 		}
+		// "Start on port N" is the button just before Quit (#673 w50).
+		if (d.freePort && response === d.buttons.length - 2) {
+			return startOnPort(d.freePort);
+		}
 	} else {
 		dialog.showErrorBox("PrismaLens could not start", String(error));
 	}
 	app.quit();
+}
+
+/** Run this workspace's own backend on `port` for this launch only. */
+async function startOnPort(port: number): Promise<void> {
+	portOverride = port;
+	const target: Target = { protocol: protocol(), host: "127.0.0.1", port };
+	try {
+		await spawnOwned(target);
+		await connect(target);
+		if (!booted) {
+			afterBoot();
+			return;
+		}
+		refreshTray();
+		if (window) window.loadURL(baseUrl);
+		else openWindow();
+	} catch (error) {
+		await refuse(error);
+	}
 }
 
 function runForStdout(plan: BackendSpawn): Promise<string> {
@@ -785,6 +823,7 @@ function buildTray(): void {
 async function confirmReset(): Promise<void> {
 	const dir = workspaceDir();
 	const { response } = await dialog.showMessageBox({
+		title: TITLE,
 		type: "warning",
 		buttons: ["Cancel", "Delete and restart"],
 		defaultId: 0,
@@ -883,6 +922,7 @@ async function checkForUpdatesNow(): Promise<void> {
 		return;
 	}
 	await dialog.showMessageBox({
+		title: TITLE,
 		message: current
 			? "PrismaLens is up to date"
 			: "Could not read this build's version",
@@ -937,7 +977,7 @@ if (!app.requestSingleInstanceLock()) {
 				app.setAppUserModelId("io.prismalens.desktop");
 			Menu.setApplicationMenu(
 				((template) => (template ? Menu.buildFromTemplate(template) : null))(
-					appMenuTemplate(process.platform, app.name, {
+					appMenuTemplate(process.platform, TITLE, {
 						openSettings: () => openWindow("/settings"),
 						checkForUpdates: () => void checkForUpdatesNow(),
 					}),

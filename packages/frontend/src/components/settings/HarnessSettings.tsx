@@ -251,7 +251,7 @@ function AgentRow({
 								className="font-mono text-meta font-normal text-text-3"
 								data-testid={`harness-tested-${harness.id}`}
 							>
-								{harness.tested.version}
+								tested {harness.tested.version}
 							</span>
 						</Hint>
 					) : (

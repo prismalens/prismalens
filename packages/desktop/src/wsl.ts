@@ -285,12 +285,22 @@ export function missingPlChoice(
 export function portTakenByWslDialog(input: {
 	port: number;
 	distro: string | null;
-}): { message: string; detail: string; buttons: string[] } {
+	/** A free port to run a Windows copy on instead (#673 w50). */
+	freePort?: number | null;
+}): { message: string; detail: string; buttons: string[]; freePort?: number } {
 	return {
 		message: `Port ${input.port} is used by the PrismaLens running in WSL (${input.distro ?? "the default distro"})`,
-		detail:
-			"Use it from this app, or stop it in WSL and relaunch to run a Windows copy here.",
-		buttons: ["Use the PrismaLens in WSL", "Quit"],
+		detail: input.freePort
+			? `Use it from this app, or run this app's own copy on port ${input.freePort}.`
+			: "Use it from this app, or stop it in WSL and relaunch to run a Windows copy here.",
+		buttons: input.freePort
+			? [
+					"Use the PrismaLens in WSL",
+					`Start here on port ${input.freePort}`,
+					"Quit",
+				]
+			: ["Use the PrismaLens in WSL", "Quit"],
+		...(input.freePort ? { freePort: input.freePort } : {}),
 	};
 }
 

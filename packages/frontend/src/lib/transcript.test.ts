@@ -3,9 +3,12 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
+import { unfence } from "@/components/investigation/Transcript";
 import {
 	deriveTranscript,
+	fileVerb,
 	runStepText,
+	summarizeTools,
 	unmatchedPending,
 	type TranscriptItem,
 } from "./investigation-events";
@@ -174,7 +177,7 @@ describe("deriveTranscript", () => {
 		});
 	});
 
-	it("shows the brief as delivered and a later message as answered once prose follows", () => {
+	it("shows the brief as the message that started the run and a later message as answered once prose follows", () => {
 		const items = deriveTranscript(
 			[
 				operator(0, "Focus on the cache layer."),
@@ -187,10 +190,54 @@ describe("deriveTranscript", () => {
 		);
 		const ops = items.filter((i) => i.kind === "operator");
 		expect(ops.map((o) => o.kind === "operator" && o.state)).toEqual([
-			"delivered",
+			"started",
 			"answered",
 		]);
 	});
+
+	it("sets operator message states: started for initial message, resumed when resumed set, delivered then answered for queued messages (#673)", () => {
+		const chatItems = deriveTranscript([operator(0, "What failed?")], T0, {
+			run: ended,
+		});
+		const chatOps = chatItems.filter((i) => i.kind === "operator");
+		expect(chatOps).toHaveLength(1);
+		expect(chatOps[0]).toMatchObject({ state: "started" });
+
+		const resumedEvent: CanonicalEvent = {
+			...operator(0, "Continue investigation"),
+			resumed: [{ name: "repo", head: "3b7e0d" }],
+		} as CanonicalEvent;
+		const resumedItems = deriveTranscript([resumedEvent], T0, { run: ended });
+		const resumedOps = resumedItems.filter((i) => i.kind === "operator");
+		expect(resumedOps).toHaveLength(1);
+		expect(resumedOps[0]).toMatchObject({ state: "resumed" });
+
+		const deliveredItems = deriveTranscript(
+			[
+				operator(0, "Start here"),
+				step(1, "First step"),
+				operator(2, "Now check logs", "queue", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const deliveredOps = deliveredItems.filter((i) => i.kind === "operator");
+		expect(deliveredOps[1]).toMatchObject({ state: "delivered" });
+
+		const answeredItems = deriveTranscript(
+			[
+				operator(0, "Start here"),
+				step(1, "First step"),
+				operator(2, "Now check logs", "queue", true),
+				step(3, "Looking at logs"),
+			],
+			T0,
+			{ run: ended },
+		);
+		const answeredOps = answeredItems.filter((i) => i.kind === "operator");
+		expect(answeredOps[1]).toMatchObject({ state: "answered" });
+	});
+
 
 	it("marks sent-now and undelivered messages from their events", () => {
 		const items = deriveTranscript(
@@ -337,3 +384,49 @@ describe("unmatchedPending", () => {
 		expect(left.map((p) => p.id)).toEqual(["b"]);
 	});
 });
+
+describe("summarizeTools", () => {
+	it("summarizes file results in order: read, wrote, edited, deleted, moved (#673)", () => {
+		const results = [
+			{ name: "Write /tmp/x", toolCategory: "file" as const, toolCallId: "1", source: "1", ok: true, preview: "" },
+			{ name: "Edit `/a.ts`", toolCategory: "file" as const, toolCallId: "2", source: "2", ok: true, preview: "" },
+			{ name: "Read /b.ts", toolCategory: "file" as const, toolCallId: "3", source: "3", ok: true, preview: "" },
+		];
+		expect(summarizeTools(results)).toBe("read 1 file, wrote 1 file, edited 1 file");
+	});
+
+	it("formats deleted and moved file counts in order", () => {
+		const results = [
+			{ name: "rm /tmp/old", toolCategory: "file" as const, toolCallId: "1", source: "1", ok: true, preview: "" },
+			{ name: "mv /tmp/a /tmp/b", toolCategory: "file" as const, toolCallId: "2", source: "2", ok: true, preview: "" },
+			{ name: "write /tmp/new", toolCategory: "file" as const, toolCallId: "3", source: "3", ok: true, preview: "" },
+			{ name: "read /tmp/b", toolCategory: "file" as const, toolCallId: "4", source: "4", ok: true, preview: "" },
+			{ name: "edit /tmp/b", toolCategory: "file" as const, toolCallId: "5", source: "5", ok: true, preview: "" },
+		];
+		expect(summarizeTools(results)).toBe(
+			"read 1 file, wrote 1 file, edited 1 file, deleted 1 file, moved 1 file",
+		);
+	});
+});
+
+describe("fileVerb", () => {
+	it("identifies file verbs from tool names and defaults to read (#673)", () => {
+		expect(fileVerb("Write /tmp/x")).toBe("write");
+		expect(fileVerb("`Edit` x")).toBe("edit");
+		expect(fileVerb("Read /b.ts")).toBe("read");
+		expect(fileVerb("grep TTL")).toBe("read");
+		expect(fileVerb("editor_view /x")).toBe("read");
+		expect(fileVerb("created_files")).toBe("read");
+		expect(fileVerb("str_replace_editor")).toBe("edit");
+		expect(fileVerb("write_file /x")).toBe("write");
+	});
+});
+
+describe("unfence", () => {
+	it("strips code fences including language tags and leaves unfenced text unchanged (#673)", () => {
+		expect(unfence("```\nExit code 1\n```")).toBe("Exit code 1");
+		expect(unfence("```bash\nls\n```")).toBe("ls");
+		expect(unfence("no fences")).toBe("no fences");
+	});
+});
+

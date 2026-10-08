@@ -201,14 +201,13 @@ export default defineCommand({
 		}
 
 		// A background service on this workspace is stopped for the upgrade and started again after (#732).
-		const workspace = config.getAppDataDir();
+		// The service runs this install whatever workspace it serves, so its
+		// workspace is the one trialled; `pl upgrade` takes no --workspace (#673 w54).
 		const service = config.installedService();
 		const kind = config.serviceManagerKind();
+		const workspace = service?.workspace ?? config.getAppDataDir();
 		const uid = process.getuid?.() ?? 0;
-		const viaService =
-			kind !== null &&
-			service !== null &&
-			config.serviceOwnsWorkspace(workspace, service);
+		const viaService = kind !== null && service !== null;
 		const startService = () =>
 			!viaService || runAction(kind, "start", service.unitPath, uid);
 		const trialMs = Number(args["trial-seconds"] ?? 120) * 1000;
@@ -280,8 +279,10 @@ export default defineCommand({
 				() => config.readWorkspaceLockState(workspace).kind !== "held",
 			);
 		}
-		const lock = config.readWorkspaceLockState(workspace);
-		if (lock.kind === "held") {
+		const lock = [workspace, config.getAppDataDir()]
+			.map((w) => config.readWorkspaceLockState(w))
+			.find((state) => state.kind === "held");
+		if (lock?.kind === "held") {
 			consola.error(
 				`pl up is running (pid ${lock.owner.pid}). Stop it first, then run pl upgrade again.`,
 			);

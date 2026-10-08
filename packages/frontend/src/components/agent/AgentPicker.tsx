@@ -642,7 +642,8 @@ export function EffortChip({
 						data-testid="effort-chip"
 						data-off=""
 					>
-						Effort
+						{/* A bare "Effort" read as an empty value (#673 w56). */}
+						Default
 						<Caret />
 					</button>
 				</span>

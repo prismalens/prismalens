@@ -11,8 +11,6 @@ import {
 	EVIDENCE_DIRECTION_LABEL,
 	EVIDENCE_STATUS_LABEL,
 	HYPOTHESIS_STATUS_LABEL,
-	MODEL_SOURCE_LABEL,
-	modelSubstituted,
 	ROOT_CAUSE_CATEGORY_LABEL,
 	RootCauseCategorySchema,
 } from "@prismalens/contracts";
@@ -119,24 +117,7 @@ export function reportToMarkdown({
 		out.push("");
 	}
 
-	if (report.fidelity) {
-		const f = report.fidelity;
-		const agent = f.harnessVersion
-			? `${f.harness} ${f.harnessVersion}`
-			: f.harness;
-		const source = f.modelSource ? MODEL_SOURCE_LABEL[f.modelSource] : null;
-		const served = modelSubstituted(f)
-			? `; the agent ran ${f.servedModel} instead`
-			: !f.model && f.servedModel
-				? `, ran ${f.servedModel}`
-				: "";
-		const model = f.model
-			? `, model ${f.model}${source ? ` (${source})` : ""}${served}`
-			: source
-				? `, model: ${source}${served}`
-				: served;
-		out.push("---", "", `Run: ${agent}${model}`, "");
-	}
+	// No agent or model: the report is about the incident, not the run (#673 w58).
 	return out.join("\n");
 }
 

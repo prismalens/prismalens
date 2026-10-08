@@ -278,6 +278,14 @@ async function turn(sessionId, promptText) {
 			return { stopReason: "cancelled" };
 		}
 	}
+	// FAKE_RETRY_WAIT_CANCEL: the report retry turn waits for session/cancel (a Stop mid-retry).
+	if (
+		process.env.FAKE_RETRY_WAIT_CANCEL &&
+		promptText.startsWith("Your final message did not")
+	) {
+		await cancelled();
+		return { stopReason: "cancelled" };
+	}
 	if (mode === "steerable" && turns > 1)
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",

@@ -51,6 +51,15 @@ const KIND_LABEL: Record<Kind, string> = {
 	prometheus: "Prometheus",
 };
 
+interface SourceFields {
+	url: string;
+	name: string;
+}
+const EMPTY_FIELDS: Record<Kind, SourceFields> = {
+	alertmanager: { url: "", name: "" },
+	prometheus: { url: "", name: "" },
+};
+
 /**
  * Settings, Alert sources (study-v3 §7): where alerts come from. The webhook
  * Alertmanager pushes to, with its token and the last delivery; then the
@@ -321,8 +330,11 @@ function AddSourceDialog({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const [kind, setKind] = useState<Kind>("alertmanager");
-	const [url, setUrl] = useState("");
-	const [name, setName] = useState("");
+	// Each kind keeps its own fields, so a URL typed for one never lands on the other (#673 w56).
+	const [fields, setFields] = useState(EMPTY_FIELDS);
+	const { url, name } = fields[kind];
+	const setField = (patch: Partial<SourceFields>) =>
+		setFields((f) => ({ ...f, [kind]: { ...f[kind], ...patch } }));
 	const urlId = useId();
 	const nameId = useId();
 	const { data: integrations } = useIntegrations();
@@ -354,8 +366,7 @@ function AddSourceDialog({
 			// Reachable or not, the row says which; a failed check is not a failed add.
 			await test.mutateAsync({ id: connection.id }).catch(() => undefined);
 			onOpenChange(false);
-			setUrl("");
-			setName("");
+			setFields(EMPTY_FIELDS);
 		} catch (e) {
 			setError(e);
 		}
@@ -386,7 +397,7 @@ function AddSourceDialog({
 						<Input
 							id={urlId}
 							value={url}
-							onChange={(e) => setUrl(e.target.value)}
+							onChange={(e) => setField({ url: e.target.value })}
 							placeholder={
 								kind === "alertmanager"
 									? "http://alertmanager.internal:9093"
@@ -399,7 +410,7 @@ function AddSourceDialog({
 						<Input
 							id={nameId}
 							value={name}
-							onChange={(e) => setName(e.target.value)}
+							onChange={(e) => setField({ name: e.target.value })}
 							placeholder={`Lab ${KIND_LABEL[kind]}`}
 							data-testid="source-name-input"
 						/>

@@ -89,7 +89,7 @@ Feature: The conversation and the box
     Scenario: The model reaches the agent
       Given Codex is picked with "GPT-5.6"
       When a run starts
-      Then the report's header names "GPT-5.6" and the conversation shows the agent accepting it before its first words
+      Then the report's header names no agent or model, and the conversation shows the agent accepting "GPT-5.6" before its first words
       Given the agent will not take the model
       Then the run does not start and its end line says which models it offered
 

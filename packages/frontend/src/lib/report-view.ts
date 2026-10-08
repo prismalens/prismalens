@@ -9,6 +9,7 @@ import {
 } from "@prismalens/contracts";
 import { answerWord } from "./answer-word";
 import { formatClock } from "./format-time";
+import { fileVerb } from "./investigation-events";
 import { refusalReason } from "./refusal-sentence";
 
 /** The report's facts as pure data (study-v3 §3.2); the Report tab only lays them out. */
@@ -81,7 +82,17 @@ export function commandText(source: string, cwd?: string | null): string {
 		if (typeof command === "string" && command.trim())
 			return shortPath(command.trim(), cwd);
 		const path = args.path ?? args.filePath ?? args.file_path;
-		if (typeof path === "string") return `read ${shortPath(path, cwd)}`;
+		if (typeof path === "string") {
+			const verb =
+				fileVerb(name) !== "read"
+					? fileVerb(name)
+					: "new_string" in args || "old_string" in args
+						? "edit"
+						: "content" in args
+							? "write"
+							: "read";
+			return `${verb} ${shortPath(path, cwd)}`;
+		}
 	} catch {
 		// Not JSON after all: the name is the best there is.
 	}
