@@ -7,7 +7,12 @@ import { dropAction } from "./board-drop";
 const drop = (
 	from: Parameters<typeof dropAction>[0]["from"],
 	to: Parameters<typeof dropAction>[0]["to"],
-	opts: { live?: boolean; canResolve?: boolean; canReopen?: boolean } = {},
+	opts: {
+		live?: boolean;
+		canResolve?: boolean;
+		canReopen?: boolean;
+		mergedInto?: number;
+	} = {},
 ) =>
 	dropAction({
 		from,
@@ -15,6 +20,7 @@ const drop = (
 		live: opts.live ?? false,
 		canResolve: opts.canResolve ?? true,
 		canReopen: opts.canReopen ?? false,
+		mergedInto: opts.mergedInto ?? null,
 	});
 
 describe("dropAction", () => {
@@ -73,5 +79,13 @@ describe("dropAction", () => {
 			expect(action.kind === "none" && action.reason, `${from} -> ${to}`).toBeTruthy();
 		}
 		expect(drop("working", "working")).toEqual({ kind: "none" });
+	});
+
+	it("refuses every drop of a merged card, naming where it went (#673 w37)", () => {
+		for (const to of ["working", "concluded", "needs_you"] as const) {
+			expect(
+				drop("resolved", to, { canResolve: false, canReopen: true, mergedInto: 4 }),
+			).toEqual({ kind: "none", reason: "Merged into INC-4" });
+		}
 	});
 });

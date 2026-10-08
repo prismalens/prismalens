@@ -310,6 +310,8 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 export function incidentLineage(
 	incident: IncidentWithRelations,
 ): Headline | null {
+	if (incident.mergedInto)
+		return { lead: "Merged into", text: `INC-${incident.mergedInto.number}` };
 	const after = incident.refiredAs;
 	if (after && !isIncidentOpen(incident.status))
 		return {
@@ -344,4 +346,19 @@ export function rowGlyph(incident: IncidentWithRelations): RowGlyph {
 		default:
 			return "open";
 	}
+}
+
+/** What Merge into… does, said before it is confirmed (#673 w37). */
+export function mergeSentence(
+	source: Pick<IncidentWithRelations, "number" | "alertCount">,
+	target: Pick<IncidentWithRelations, "number" | "investigations">,
+	service?: string,
+): string {
+	const n = source.alertCount;
+	const moves = n === 1 ? "1 alert moves" : `${n} alerts move`;
+	const base = `Its ${moves} to INC-${target.number} and INC-${source.number} ends as merged. Its runs stay here.`;
+	const run = target.investigations?.[0];
+	if (!run || !isWorkflowLive(run.status)) return base;
+	const repos = service ? `the ${service} repositories` : "their repositories";
+	return `${base} INC-${target.number}'s working run keeps its workspace; the next run also clones ${repos}.`;
 }

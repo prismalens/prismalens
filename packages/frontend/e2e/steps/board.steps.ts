@@ -1481,3 +1481,89 @@ Then('the card moves to "Working"', async ({ page }) => {
 	await openBoard(page);
 	await expect(cardOf(column(page, "Working"), inc(page).title)).toBeVisible();
 });
+
+// #673 w37: Merge into…
+const ORDERS = { name: "pr2-orders", displayName: "Orders API" } as const;
+
+Given(
+	"INC-1 on one service and INC-2 on another, both open",
+	async ({ page, alertmanager, deliverWebhook, unique }) => {
+		w(page).named.target = await fireIncident(
+			page,
+			alertmanager,
+			deliverWebhook,
+			{
+				name: unique("MergeTarget"),
+				service: QUIET,
+				quiet: true,
+			},
+		);
+		w(page).named.source = await fireIncident(
+			page,
+			alertmanager,
+			deliverWebhook,
+			{
+				name: unique("MergeSource"),
+				service: ORDERS,
+				quiet: true,
+			},
+		);
+	},
+);
+
+When(
+	'I pick "Merge into…" in INC-2\'s band menu, choose INC-1 and confirm',
+	async ({ page }) => {
+		const { source, target } = w(page).named;
+		await visit(page, `/incidents/${source.id}`);
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-merge").click();
+		await page.getByTestId("merge-search").fill(`INC-${target.number}`);
+		await page
+			.getByTestId("merge-option")
+			.and(page.locator(`[data-number="${target.number}"]`))
+			.click();
+		await expect(page.getByTestId("merge-dialog")).toContainText(
+			`Merge INC-${source.number} into INC-${target.number}?`,
+		);
+		await expect(page.getByTestId("merge-sentence")).toHaveText(
+			`Its 1 alert moves to INC-${target.number} and INC-${source.number} ends as merged. Its runs stay here.`,
+		);
+		await page.getByTestId("confirm-merge").click();
+	},
+);
+
+Then(
+	'I am on INC-1, it carries both alerts, and its Timeline reads "Merged INC-2: 1 alert from Orders API"',
+	async ({ page }) => {
+		const { source, target } = w(page).named;
+		await expect(page).toHaveURL(new RegExp(`/incidents/${target.id}`));
+		await expect((await detail(page, target.id)).alerts).toHaveLength(2);
+		await visit(page, `/incidents/${target.id}/timeline`);
+		await expect(page.getByTestId("timeline-merge-link")).toHaveText(
+			`Merged INC-${source.number}: 1 alert from Orders API`,
+		);
+	},
+);
+
+Then(
+	'INC-2\'s card is in "Resolved" reading "Merged into INC-1", and its band offers neither "Reopen" nor "New run"',
+	async ({ page }) => {
+		const { source, target } = w(page).named;
+		await openBoard(page);
+		await expect(
+			cardOf(column(page, "Resolved"), source.title).getByTestId(
+				"card-lineage",
+			),
+		).toHaveText(`Merged into INC-${target.number}`);
+		await visit(page, `/incidents/${source.id}`);
+		await expect(page.getByTestId("band-merged")).toHaveText(
+			`Merged into INC-${target.number}`,
+		);
+		await expect(page.getByTestId("band-reopen")).toHaveCount(0);
+		await page.getByTestId("band-more").click();
+		await expect(page.getByTestId("band-menu-new-run")).toHaveCount(0);
+		await expect(page.getByTestId("band-menu-merge")).toHaveCount(0);
+		await page.keyboard.press("Escape");
+	},
+);

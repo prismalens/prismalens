@@ -34,3 +34,10 @@ Feature: Resolve, reopen, refire
     Then the band reads "Acknowledged", the Overview shows "Previous cause", and the card is in "Needs you" reading "Reopened by you, cause not confirmed"
     When I start a run from the box
     Then the card moves to "Working"
+
+  # #673 w37: incidents spanning several services.
+  Scenario: Merge one incident into another across two services
+    Given INC-1 on one service and INC-2 on another, both open
+    When I pick "Merge into…" in INC-2's band menu, choose INC-1 and confirm
+    Then I am on INC-1, it carries both alerts, and its Timeline reads "Merged INC-2: 1 alert from Orders API"
+    And INC-2's card is in "Resolved" reading "Merged into INC-1", and its band offers neither "Reopen" nor "New run"

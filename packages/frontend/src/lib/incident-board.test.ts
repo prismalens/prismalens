@@ -10,6 +10,7 @@ import {
 	headlineAddsInfo,
 	incidentHeadline,
 	incidentLineage,
+	mergeSentence,
 	orderNeedsYou,
 	rowGlyph,
 	runWord,
@@ -384,5 +385,33 @@ describe("rowGlyph (R1a d6)", () => {
 		);
 		expect(rowGlyph(incident("resolved"))).toBe("attention");
 		expect(rowGlyph(incident("closed"))).toBe("ended");
+	});
+});
+
+describe("merge (#673 w37)", () => {
+	const target = "00000000-0000-0000-0000-000000000004";
+
+	it("puts a merged incident in Resolved, its line naming the target", () => {
+		const merged = incident("closed", undefined, {
+			mergedIntoId: target,
+			mergedInto: { id: target, number: 4 },
+		});
+		expect(boardColumn(merged)).toBe("resolved");
+		expect(incidentLineage(merged)).toEqual({
+			lead: "Merged into",
+			text: "INC-4",
+		});
+	});
+
+	it("says what moves, and what the target's working run will not see", () => {
+		const source = { number: 9, alertCount: 2 };
+		const idle = { ...incident("investigating", { status: "completed" }), number: 4 };
+		expect(mergeSentence(source, idle, "orders")).toBe(
+			"Its 2 alerts move to INC-4 and INC-9 ends as merged. Its runs stay here.",
+		);
+		const live = { ...incident("investigating", { status: "running" }), number: 4 };
+		expect(mergeSentence({ number: 9, alertCount: 1 }, live, "orders")).toBe(
+			"Its 1 alert moves to INC-4 and INC-9 ends as merged. Its runs stay here. INC-4's working run keeps its workspace; the next run also clones the orders repositories.",
+		);
 	});
 });
