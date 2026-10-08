@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PermissionMode } from "@prismalens/config/harness";
-import { ACCESS_LABEL } from "@prismalens/contracts";
 import { ArrowUp, FileText, Lock, Paperclip, X } from "lucide-react";
 import {
 	type ClipboardEvent,
@@ -18,6 +16,7 @@ import {
 	AgentModelChip,
 	AgentModelPicker,
 	EffortMenu,
+	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -45,7 +44,7 @@ export interface ComposerBoxProps {
 	mode: ComposerMode;
 	/** Brief and new-run modes: start a run with the text as its brief. */
 	onInvestigate: (
-		send: ComposerSend & { access: PermissionMode },
+		send: ComposerSend & { agentMode?: string },
 	) => Promise<void> | void;
 	/** Talking modes: Enter queues for the agent's next pause, Send now interrupts. */
 	onMessage?: (
@@ -59,8 +58,8 @@ export interface ComposerBoxProps {
 	target?: string;
 	/** The agent and model a run is fixed on; `id` names its mark. */
 	fixed?: { agent: string; model: string; id?: string | null };
-	/** The access level the run was given; the brief modes choose one. */
-	runAccess?: PermissionMode;
+	/** The agent's own mode the run ran in, by its name; the brief modes choose one. */
+	runModeName?: string;
 	/** The agent the text goes to, and whether its check recorded image support (R4.3). */
 	agent: { label: string; images: boolean | null };
 	/** Messages queued and not yet delivered. */
@@ -94,7 +93,7 @@ const PLACEHOLDER: Record<ComposerMode, string> = {
 
 /**
  * The box (study-v3 §3.4, R4.4): one field with its controls inside. A brief
- * starts a run with the agent, model, effort and access chosen here; a
+ * starts a run with the agent, model, effort and mode chosen here; a
  * message goes to the run's own session, Enter at its next pause and Send now
  * at once; Stop and Esc end the run; after it ends the text continues a
  * stopped run, follows up a finished one, or briefs a new one.
@@ -107,7 +106,7 @@ export function ComposerBox({
 	stopping,
 	target = "the main agent",
 	fixed,
-	runAccess,
+	runModeName,
 	agent,
 	waiting = 0,
 	isPending,
@@ -122,7 +121,12 @@ export function ComposerBox({
 	const [drafts, setDrafts] = useState<Draft[]>([]);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
-	const [access, setAccess] = useState<PermissionMode>("read-only");
+	// Mode ids are per agent: a pick made for another agent is dropped (#798).
+	const { effective } = useAgentChoice();
+	const [picked, setPicked] = useState<{ harness?: string; mode?: string }>({});
+	const agentMode = picked.harness === effective?.id ? picked.mode : undefined;
+	const setAgentMode = (mode: string) =>
+		setPicked({ harness: effective?.id, mode });
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const shell = useRef<HTMLDivElement>(null);
@@ -186,7 +190,7 @@ export function ComposerBox({
 		setSending(true);
 		try {
 			if (send === "investigate")
-				await onInvestigate({ text: value, files, access });
+				await onInvestigate({ text: value, files, agentMode });
 			else await onMessage?.({ text: value, files }, send);
 			reset();
 		} catch (e) {
@@ -331,14 +335,14 @@ export function ComposerBox({
 						>
 							<Lock className="size-3.5 sm:hidden" aria-hidden />
 							<span className="max-sm:sr-only">
-								{ACCESS_LABEL[runAccess ?? "read-only"]}
+								{runModeName ?? "Agent default"}
 							</span>
 						</span>
 					) : (
 						<>
 							<AccessMenu
-								value={access}
-								onChange={setAccess}
+								value={agentMode}
+								onChange={setAgentMode}
 								side={docked ? "top" : "bottom"}
 							/>
 							<span className="hidden sm:contents">

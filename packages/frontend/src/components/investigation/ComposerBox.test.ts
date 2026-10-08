@@ -28,7 +28,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => ({
 		run: {
 			state: "working",
-			investigation: { harness: "opencode", access: "read-only" },
+			investigation: { harness: "opencode", agentMode: "plan", agentModeName: "Plan" },
 			sendMessage: record.sendMessage,
 			stop: vi.fn(),
 			waiting: 0,

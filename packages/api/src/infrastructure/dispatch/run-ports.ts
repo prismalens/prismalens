@@ -50,6 +50,8 @@ export interface RunPorts {
 			acpSessionId?: string;
 			/** JSON RunWorkspace. */
 			workspace?: string;
+			/** The agent's own mode id the run asked for (#673 w21). */
+			agentMode?: string;
 		},
 	): Promise<void>;
 	/**
@@ -82,6 +84,8 @@ export interface RunPorts {
 		modelSource?: ModelSource;
 		/** The operator's effort for this harness (R4.2); absent means its own default. */
 		effort?: string;
+		/** The operator's mode for this harness (#673 w21); absent means the row's default. */
+		agentMode?: string;
 	}>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**

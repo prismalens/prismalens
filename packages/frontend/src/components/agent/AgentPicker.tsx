@@ -2,19 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	AGENT_DEFAULT_MODE,
 	HARNESS_AUTO_ORDER,
 	type HarnessId,
-	PERMISSION_MODES,
-	type PermissionMode,
 } from "@prismalens/config/harness";
-import {
-	ACCESS_BOUNDARY_NOTE,
-	ACCESS_LABEL,
-	ACCESS_LINE,
-	accessAllowed,
-	type FavouriteModel,
-	type HarnessSetting,
-	type HarnessStatus,
+import type {
+	FavouriteModel,
+	HarnessSetting,
+	HarnessStatus,
 } from "@prismalens/contracts";
 import { Check, ChevronDown, Lock, Search, Star } from "lucide-react";
 import {
@@ -42,10 +37,6 @@ import {
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
 
-/** The Read-only level's words (r4 R4.1 rev), from the contracts the gate's tests read. */
-export const READ_ONLY_LINE = ACCESS_LINE["read-only"];
-export const BOUNDARY_NOTE = ACCESS_BOUNDARY_NOTE;
-
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
 	const harnessesQuery = useHarnesses();
@@ -67,10 +58,28 @@ export function useAgentChoice() {
 		models: settingsQuery.data?.models ?? {},
 		favourites: settingsQuery.data?.favourites ?? [],
 		efforts: settingsQuery.data?.efforts ?? {},
-		allowWriteLevels: settingsQuery.data?.allowWriteLevels === true,
+		agentModes: settingsQuery.data?.agentModes ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};
+}
+
+/** The mode a run on `agent` asks for when the box names none (#673 w21). */
+export function defaultModeOf(
+	agent: HarnessStatus | undefined,
+	agentModes: Partial<Record<HarnessId, string>>,
+): string {
+	if (!agent) return AGENT_DEFAULT_MODE;
+	return agentModes[agent.id as HarnessId] ?? agent.defaultMode;
+}
+
+/** A mode by the name the agent's own list gives it, else its id (#673 w21). */
+export function modeName(
+	agent: HarnessStatus | undefined,
+	id: string | null | undefined,
+): string {
+	if (!id || id === AGENT_DEFAULT_MODE) return "Agent default";
+	return agent?.checked?.modes?.find((m) => m.id === id)?.name ?? id;
 }
 
 /** A model id by the name the agent's own list gives it, else the id as is. */
@@ -565,12 +574,12 @@ export function AgentModelPicker({
 	);
 }
 
-/** Effort when the agent offers it over ACP, and the access level every agent runs at. */
+/** Effort when the agent offers it over ACP, and the agent's own mode a run starts in. */
 function AgentControls({ agent }: { agent: HarnessStatus }) {
 	const effort = agent.checked?.effort;
 	return (
 		<div className="flex shrink-0 flex-wrap items-center gap-1.5 bg-surface-1 px-2 py-1.5">
-			<AccessChip />
+			<AccessChip agent={agent} />
 			{effort && (
 				<span
 					className="inline-flex h-6 items-center gap-1 rounded-control bg-surface-3 px-2 text-meta font-medium text-text-1"
@@ -586,18 +595,16 @@ function AgentControls({ agent }: { agent: HarnessStatus }) {
 	);
 }
 
-/** Read-only, the one level every agent starts at, with what it means in the hint (R4.1 rev). */
-export function AccessChip() {
+/** The agent's own mode a run on it starts in, by the agent's name for it (#673 w21). */
+export function AccessChip({ agent }: { agent: HarnessStatus }) {
+	const { agentModes } = useAgentChoice();
 	return (
-		<Hint label={ACCESS_SHORT["read-only"]} meta={GUARDRAIL} side="top">
-			<button
-				type="button"
-				className="inline-flex h-6 items-center rounded-control bg-surface-3 px-2 text-meta font-medium text-text-1 hover:bg-surface-4"
-				data-testid="access-chip"
-			>
-				Read-only
-			</button>
-		</Hint>
+		<span
+			className="inline-flex h-6 items-center rounded-control bg-surface-3 px-2 text-meta font-medium text-text-1"
+			data-testid="access-chip"
+		>
+			{modeName(agent, defaultModeOf(agent, agentModes))}
+		</span>
 	);
 }
 
@@ -783,102 +790,97 @@ const CHIP =
 	"inline-flex h-6 min-w-0 items-center gap-1 rounded-control px-2 text-meta font-medium text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 data-[state=open]:bg-surface-3 data-[state=open]:text-text-1";
 
 /**
- * Each level in a word and one short line (look ruling L57); the full rule
- * lives in Settings, Agent. ACCESS_LINE stays the record the gate's tests read.
- */
-const ACCESS_SHORT: Record<PermissionMode, string> = {
-	"read-only": "Reads the code and the brief's telemetry",
-	"read-only-tools": "Adds GET anywhere and your CLIs' read commands",
-	"workspace-write": "Edits the run's copy and runs its tests",
-	"full-access": "Anything on this machine, every request logged",
-};
-const GUARDRAIL = "A guardrail for an honest agent, not a sandbox.";
-
-/**
- * What the next run may touch (r4 R4.1 rev): the four levels, a word and a
- * line each; the write levels stay greyed until Settings, Agent allows them.
- * On a phone the chip is a lock; the level is in its label and the menu.
+ * The next run's permission mode (#673 w21): the agent's own modes by its own
+ * names and descriptions, the per-agent default tagged; with none advertised,
+ * one row, Agent default. `value` undefined means that default.
  */
 export function AccessMenu({
 	value,
 	onChange,
 	side = "top",
 }: {
-	value: PermissionMode;
-	onChange: (level: PermissionMode) => void;
+	value: string | undefined;
+	onChange: (mode: string) => void;
 	side?: "top" | "bottom";
 }) {
-	const { allowWriteLevels } = useAgentChoice();
+	const { effective, agentModes } = useAgentChoice();
 	const [open, setOpen] = useState(false);
+	const fallback = defaultModeOf(effective, agentModes);
+	const chosen = value ?? fallback;
+	const offered = effective?.checked?.modes ?? [];
+	const rows = offered.length
+		? offered
+		: [
+				{
+					id: AGENT_DEFAULT_MODE,
+					name: "Agent default",
+					description: undefined,
+				},
+			];
+	const name = modeName(effective, chosen);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Hint label={ACCESS_SHORT[value]} meta={GUARDRAIL} side="top">
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						className={CHIP}
-						data-testid="access-chip"
-						aria-label={`Access: ${ACCESS_LABEL[value]}`}
-					>
-						<Lock className="size-3.5 shrink-0 sm:hidden" aria-hidden />
-						<span className="truncate max-sm:hidden">
-							{ACCESS_LABEL[value]}
-						</span>
-						<ChevronDown className="size-3 shrink-0 text-text-3" />
-					</button>
-				</PopoverTrigger>
-			</Hint>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					className={CHIP}
+					data-testid="access-chip"
+					aria-label={`Permission mode: ${name}`}
+				>
+					<Lock className="size-3.5 shrink-0 sm:hidden" aria-hidden />
+					<span className="truncate max-sm:hidden">{name}</span>
+					<ChevronDown className="size-3 shrink-0 text-text-3" />
+				</button>
+			</PopoverTrigger>
 			<PopoverContent
 				side={side}
 				align="start"
-				className="w-80 max-w-[calc(100vw-2rem)] p-1"
+				className="w-[28.75rem] max-w-[calc(100vw-2rem)] p-1"
 				data-testid="access-menu"
 			>
-				<div role="listbox" aria-label="Access level">
-					{PERMISSION_MODES.map((level) => {
-						const allowed = accessAllowed(level, allowWriteLevels);
-						return (
-							<button
-								key={level}
-								type="button"
-								role="option"
-								aria-selected={level === value}
-								aria-disabled={!allowed}
-								disabled={!allowed}
-								onClick={() => {
-									onChange(level);
-									setOpen(false);
-								}}
-								className={cn(
-									"flex h-11 w-full items-center gap-2 rounded-control px-2.5 text-left transition-colors duration-(--dur-instant) focus-visible:bg-surface-3 enabled:hover:bg-surface-3",
-									level === value && "bg-surface-3",
-									!allowed && "cursor-not-allowed opacity-50",
-								)}
-								data-testid={`access-level-${level}`}
-							>
-								<span className="min-w-0 flex-1">
-									<span className="block truncate text-body text-text-1">
-										{ACCESS_LABEL[level]}
-									</span>
+				<div role="listbox" aria-label="Permission mode">
+					{rows.map((mode) => (
+						<button
+							key={mode.id}
+							type="button"
+							role="option"
+							aria-selected={mode.id === chosen}
+							onClick={() => {
+								onChange(mode.id);
+								setOpen(false);
+							}}
+							className={cn(
+								"flex min-h-11 w-full items-center gap-2 rounded-control px-2.5 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
+								mode.id === chosen && "bg-surface-3",
+							)}
+							data-testid={`access-level-${mode.id}`}
+						>
+							<span className="min-w-0 flex-1">
+								<span className="flex items-center gap-2 text-body text-text-1">
+									<span className="truncate">{mode.name}</span>
+									{mode.id === fallback && (
+										<span className="shrink-0 text-meta text-text-3">
+											Your default
+										</span>
+									)}
+								</span>
+								{mode.description && (
 									<span
 										className="block truncate text-meta text-text-2"
 										data-testid="access-line"
 									>
-										{allowed
-											? ACCESS_SHORT[level]
-											: "Allow write levels in Settings, Agent"}
+										{mode.description}
 									</span>
-								</span>
-								<span className="inline-flex w-3.5 shrink-0 justify-center">
-									{level === value && (
-										<Check className="size-3.5 text-accent" aria-hidden />
-									)}
-								</span>
-							</button>
-						);
-					})}
+								)}
+							</span>
+							<span className="inline-flex w-3.5 shrink-0 justify-center">
+								{mode.id === chosen && (
+									<Check className="size-3.5 text-accent" aria-hidden />
+								)}
+							</span>
+						</button>
+					))}
 				</div>
-				<p className="px-2.5 pt-1.5 pb-1 text-meta text-text-3">{GUARDRAIL}</p>
 			</PopoverContent>
 		</Popover>
 	);

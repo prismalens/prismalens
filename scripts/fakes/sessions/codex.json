@@ -3,6 +3,14 @@
 		"name": "codex-acp",
 		"version": "1.13.1-fake"
 	},
+	"modes": {
+		"currentModeId": "read-only",
+		"availableModes": [
+			{ "id": "read-only", "name": "Ask for approval" },
+			{ "id": "agent", "name": "Approve for me" },
+			{ "id": "agent-full-access", "name": "Full access" }
+		]
+	},
 	"configOptions": [
 		{
 			"id": "model",

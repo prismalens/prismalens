@@ -17,7 +17,7 @@ Feature: Agent and model picker
     Then an effort control appears reading Codex's default, and the model list Codex offers ("pending a check" until the admission probe has run)
     When I pick Claude Code
     Then the model list appears and no effort control
-    And every agent shows "Read-only" with a hint saying what the agent may read
+    And every agent shows its own default permission mode, by the agent's name once checked
 
   Scenario: One model has one name, and a training tier says so
     Given OpenCode offers "Claude Sonnet 5.5" and "Muse Spark 1.3 (free)"

@@ -173,7 +173,7 @@ describe("resolveHarnessRunModel (#634, #639)", () => {
 });
 
 describe("DispatchService.resumeInvestigation (#747)", () => {
-	function withInvestigation(row: Row) {
+	function withInvestigation(row: Row, jobs: Row[] = []) {
 		const investigation = {
 			findUnique: vi.fn(async () => ({ ...row })),
 			updateMany: vi.fn(async (args: { where: Row; data: Row }) => {
@@ -183,7 +183,7 @@ describe("DispatchService.resumeInvestigation (#747)", () => {
 			}),
 			update: vi.fn(async (args: { data: Row }) => Object.assign(row, args.data)),
 		};
-		const prisma = { job: new FakeJobDelegate([]), investigation };
+		const prisma = { job: new FakeJobDelegate(jobs), investigation };
 		const service = new DispatchService(
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
 			fakeBus() as any,
@@ -221,6 +221,19 @@ describe("DispatchService.resumeInvestigation (#747)", () => {
 				restore: { status: "completed", completedAt: completedAt.toISOString(), error: null },
 			},
 		});
+	});
+
+	it("keeps the mode the run ran in, and drops a queued legacy access so the row's default applies (#673 w21)", async () => {
+		const ran: Row = { incidentId: "inc-1", status: "completed", completedAt: null, error: null, agentMode: "acceptEdits" };
+		const kept = withInvestigation(ran);
+		await kept.service.resumeInvestigation("inv-1", "and now?", "queue");
+		expect(kept.enqueue).toHaveBeenCalledWith(expect.objectContaining({ agentMode: "acceptEdits" }));
+
+		const legacy: Row = { incidentId: "inc-1", status: "completed", completedAt: null, error: null, agentMode: null };
+		const job = { investigationId: "inv-1", payload: JSON.stringify({ incidentId: "inc-1", investigationId: "inv-1", access: "workspace-write" }) };
+		const dropped = withInvestigation(legacy, [job]);
+		await dropped.service.resumeInvestigation("inv-1", "and now?", "queue");
+		expect(dropped.enqueue).toHaveBeenCalledWith(expect.not.objectContaining({ agentMode: expect.anything() }));
 	});
 
 	it("admits one of two follow-ups sent together", async () => {

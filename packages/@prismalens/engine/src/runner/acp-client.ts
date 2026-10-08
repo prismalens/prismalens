@@ -238,14 +238,38 @@ export function offeredModels(
 	return out;
 }
 
+/** A permission mode as the agent's own ACP list names it (#673 w21). */
+export interface AcpOfferedMode {
+	id: string;
+	name: string;
+	description?: string;
+}
+
 /**
  * How a session takes a mode: a `mode`-category select config option (ACP's
- * preferred shape) or the `modes` list of `session/new`. Ids only; empty when neither.
+ * preferred shape) or the `modes` list of `session/new`. Empty when neither.
  */
 interface AcpModeSurface {
 	configId: string | null;
-	ids: string[];
+	modes: AcpOfferedMode[];
 	current: string | null;
+}
+
+function modeOf(
+	id: unknown,
+	name: unknown,
+	description: unknown,
+): AcpOfferedMode[] {
+	if (typeof id !== "string") return [];
+	return [
+		{
+			id,
+			name: typeof name === "string" && name ? name : id,
+			...(typeof description === "string" && description
+				? { description }
+				: {}),
+		},
+	];
 }
 
 export function offeredModes(
@@ -256,16 +280,16 @@ export function offeredModes(
 		: [];
 	for (const option of options) {
 		if (option?.category !== "mode" || option.type !== "select") continue;
-		const ids = (Array.isArray(option.options) ? option.options : [])
+		const modes = (Array.isArray(option.options) ? option.options : [])
 			.flatMap((e: Record<string, unknown>) =>
 				Array.isArray(e?.options)
 					? (e.options as Array<Record<string, unknown>>)
 					: [e],
 			)
-			.flatMap((o) => (typeof o?.value === "string" ? [o.value] : []));
+			.flatMap((o) => modeOf(o?.value, o?.name, o?.description));
 		return {
 			configId: typeof option.id === "string" ? option.id : null,
-			ids,
+			modes,
 			current:
 				typeof option.currentValue === "string" ? option.currentValue : null,
 		};
@@ -273,9 +297,9 @@ export function offeredModes(
 	const modes = answer?.modes;
 	return {
 		configId: null,
-		ids: Array.isArray(modes?.availableModes)
+		modes: Array.isArray(modes?.availableModes)
 			? modes.availableModes.flatMap((m) =>
-					typeof m?.id === "string" ? [m.id] : [],
+					modeOf(m?.id, m?.name, m?.description),
 				)
 			: [],
 		current:
@@ -303,6 +327,8 @@ export function selectedModel(
 export interface AcpOfferedEffort {
 	id: string;
 	values: string[];
+	/** Each value with the agent's own name for it. */
+	levels: { id: string; name: string }[];
 	/** What the harness reports as current at `session/new`: its own default. */
 	default: string | null;
 }
@@ -316,17 +342,27 @@ export function offeredEffort(
 		if (option?.category !== "thought_level" || option.type !== "select")
 			continue;
 		const entries = Array.isArray(option.options) ? option.options : [];
-		const values = (entries as Array<Record<string, unknown>>)
+		const levels = (entries as Array<Record<string, unknown>>)
 			.flatMap((e) =>
 				Array.isArray(e?.options)
 					? (e.options as Array<Record<string, unknown>>)
 					: [e],
 			)
-			.flatMap((o) => (typeof o?.value === "string" ? [o.value] : []));
-		if (typeof option.id !== "string" || values.length === 0) continue;
+			.flatMap((o) =>
+				typeof o?.value === "string"
+					? [
+							{
+								id: o.value,
+								name: typeof o.name === "string" && o.name ? o.name : o.value,
+							},
+						]
+					: [],
+			);
+		if (typeof option.id !== "string" || levels.length === 0) continue;
 		return {
 			id: option.id,
-			values,
+			values: levels.map((l) => l.id),
+			levels,
 			default:
 				typeof option.currentValue === "string" ? option.currentValue : null,
 		};
@@ -400,7 +436,7 @@ export class AcpSession {
 	/** The harness advertised `loadSession` at `initialize`. */
 	loadSession = false;
 	/** The modes `session/new` (or `session/load`) offered. */
-	private modes: AcpModeSurface = { configId: null, ids: [], current: null };
+	private modes: AcpModeSurface = { configId: null, modes: [], current: null };
 	/** History updates `session/load` replayed; dropped, never yielded. */
 	replayed = 0;
 
@@ -563,12 +599,25 @@ export class AcpSession {
 		return currentValueOf(answer.configOptions, configId);
 	}
 
+	/** The agent's own permission modes, as it named them. */
+	get offeredModes(): AcpOfferedMode[] {
+		return this.modes.modes;
+	}
+
+	/** The mode the agent last reported as current; null when it reported none. */
+	get currentMode(): string | null {
+		return this.modes.current;
+	}
+
 	/**
-	 * Ask for an access mode (r4 R4.1): `session/set_config_option` when the mode
-	 * is a config option, else `session/set_mode`. False when the harness never offered it.
+	 * Ask for the agent's own mode (#673 w21): `session/set_config_option` when the
+	 * mode is a config option, else `session/set_mode`. False when the harness never offered it.
 	 */
 	async setMode(modeId: string): Promise<boolean> {
-		if (!this.currentSessionId || !this.modes.ids.includes(modeId))
+		if (
+			!this.currentSessionId ||
+			!this.modes.modes.some((m) => m.id === modeId)
+		)
 			return false;
 		if (this.modes.current === modeId) return true;
 		const timeout = this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;

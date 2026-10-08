@@ -24,6 +24,7 @@ import {
 	AcpSession,
 	type AcpStreamItem,
 	offeredEffort,
+	offeredModes,
 	offeredModels,
 	selectedModel,
 } from "./acp-client.js";
@@ -309,7 +310,16 @@ describe("offeredEffort (R4.2)", () => {
 					options: [{ value: "low" }, { value: "medium" }, { value: "high" }, "garbage"],
 				},
 			]),
-		).toEqual({ id: "reasoning_effort", values: ["low", "medium", "high"], default: "medium" });
+		).toEqual({
+			id: "reasoning_effort",
+			values: ["low", "medium", "high"],
+			levels: [
+				{ id: "low", name: "low" },
+				{ id: "medium", name: "medium" },
+				{ id: "high", name: "high" },
+			],
+			default: "medium",
+		});
 		expect(
 			offeredEffort([{ id: "e", type: "select", category: "thought_level", options: [] }]),
 		).toBeNull();
@@ -326,12 +336,69 @@ describe("offeredEffort (R4.2)", () => {
 					currentValue: "high",
 					options: [
 						{ group: "fast", name: "Fast", options: [{ value: "low" }] },
-						{ group: "deep", name: "Deep", options: [{ value: "high" }] },
+						{ group: "deep", name: "Deep", options: [{ value: "high", name: "High" }] },
 						{ value: "max" },
 					],
 				},
 			]),
-		).toEqual({ id: "effort", values: ["low", "high", "max"], default: "high" });
+		).toEqual({
+			id: "effort",
+			values: ["low", "high", "max"],
+			levels: [
+				{ id: "low", name: "low" },
+				{ id: "high", name: "High" },
+				{ id: "max", name: "max" },
+			],
+			default: "high",
+		});
+	});
+});
+
+describe("offeredModes (#673 w21)", () => {
+	it("reads the agent's own mode names from session/new's modes list", () => {
+		expect(
+			offeredModes({
+				sessionId: "s",
+				modes: {
+					currentModeId: "default",
+					availableModes: [
+						{ id: "default", name: "Manual", description: "Asks before edits" },
+						{ id: "plan", name: "Plan" },
+					],
+				},
+			}),
+		).toEqual({
+			configId: null,
+			modes: [
+				{ id: "default", name: "Manual", description: "Asks before edits" },
+				{ id: "plan", name: "Plan" },
+			],
+			current: "default",
+		});
+	});
+
+	it("reads OpenCode's mode config option, names falling back to ids", () => {
+		expect(
+			offeredModes({
+				configOptions: [
+					{
+						id: "mode",
+						type: "select",
+						category: "mode",
+						currentValue: "plan",
+						options: [{ value: "build", name: "build" }, { value: "plan" }],
+					},
+				],
+			} as never),
+		).toEqual({
+			configId: "mode",
+			modes: [
+				{ id: "build", name: "build" },
+				{ id: "plan", name: "plan" },
+			],
+			current: "plan",
+		});
+		expect(offeredModes(null)).toEqual({ configId: null, modes: [], current: null });
 	});
 });
 

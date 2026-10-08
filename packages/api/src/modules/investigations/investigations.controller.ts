@@ -16,6 +16,7 @@ import {
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
@@ -62,6 +63,7 @@ export class InvestigationsController {
 		private readonly telemetry: TelemetryService,
 		private readonly githubComment: GitHubCommentService,
 		private readonly attachments: AttachmentsService,
+		private readonly harnessService: HarnessService,
 	) {}
 
 	@Implement(investigationsContract)
@@ -123,11 +125,14 @@ export class InvestigationsController {
 					await this.telemetry.captureReportViewed(investigation.id);
 				}
 				const base = this.serializeInvestigationWithRelations(investigation);
+				const agentMode = base.report?.fidelity?.mode ?? base.agentMode ?? null;
 				return {
 					...base,
-					access:
-						base.report?.fidelity?.mode ??
-						(await this.dispatchService.runAccess(investigation.id)),
+					agentMode,
+					agentModeName: this.harnessService.modeName(
+						investigation.harness ?? null,
+						agentMode,
+					),
 				};
 			}),
 

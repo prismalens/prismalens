@@ -79,11 +79,7 @@ export interface AdapterContext {
 	previewLimit?: number;
 	/** First `seq`; a follow-up continues after the stored events (#747). */
 	seqStart?: number;
-	/** toolCallId → why the read-only policy refused it; the reason reaches the run record (walk f23). */
-	refusals?: ReadonlyMap<string, string>;
 }
-
-const REFUSAL_PREFIX = "Refused by PrismaLens's read-only policy";
 
 const DEFAULT_PREVIEW_LIMIT = 4000;
 
@@ -214,13 +210,7 @@ export class AcpAdapter {
 		const meta = this.toolMeta.get(toolCallId);
 		const name = meta?.name ?? pickName(u);
 		const ok = status !== "failed";
-		const why = ok ? undefined : this.ctx.refusals?.get(toolCallId);
-		const harnessText = flattenAcpContent(u.content);
-		// The harness's own refusal text ("User refused permission…") blames a user who never saw the call.
-		const preview = truncate(
-			why ? `${REFUSAL_PREFIX}: ${why}.` : harnessText,
-			this.previewLimit,
-		);
+		const preview = truncate(flattenAcpContent(u.content), this.previewLimit);
 		return {
 			kind: "tool_result",
 			...this.base(),

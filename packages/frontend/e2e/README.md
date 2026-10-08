@@ -63,8 +63,8 @@ export LD_LIBRARY_PATH=...   # the line it prints; it exits 1 if ldd still finds
   resolved. Fixtures `alertmanager` and `deliverWebhook` wrap it.
 - `fake-acp-agent.mjs`: on PATH as `opencode` and `claude-agent-acp`, it replays a session from
   `scripts/fakes/sessions/`: `success` (thinking, Markdown, a tool call opened empty and filled in
-  later the way Claude Code does, a permission request, a report), `refusal` (a write PrismaLens
-  refuses, then a report) and `failure` (the agent exits mid-turn). The default is `success`; put
+  later the way Claude Code does, a permission request, a report) and `failure` (the agent exits
+  mid-turn). The default is `success`; put
   `fake-session:<name>` in the alert's name or annotations to pick another for that run. A
   follow-up reopens the same session.
 

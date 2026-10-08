@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	ACCESS_LABEL,
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
 	isAlertFiring,
@@ -67,10 +66,11 @@ export function useRunFact(): string {
 	}
 }
 
-/** The access level the run had, from its report; a run before the report ran at the default. */
+/** The agent's own mode the run ran in, by the agent's name for it (#673 w21). */
 export function useAccessFact(): string {
 	const { run } = useIncidentRecord();
-	return ACCESS_LABEL[run.investigation?.report?.fidelity?.mode ?? "read-only"];
+	const inv = run.investigation;
+	return inv?.agentModeName ?? inv?.report?.fidelity?.mode ?? "Agent default";
 }
 
 /**
@@ -135,7 +135,7 @@ export function useIncidentFacts(): { rail: Fact[] } {
 		},
 		{ label: "Alerts", value: alertFact },
 		{ label: "Run", value: runFact, testId: "fact-run" },
-		{ label: "Access", value: access, testId: "fact-access" },
+		{ label: "Permission mode", value: access, testId: "fact-access" },
 	];
 	if (telemetry)
 		rail.push({

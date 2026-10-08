@@ -72,16 +72,16 @@ describe("answerWord", () => {
 });
 
 describe("refusals", () => {
-	it("keeps the gate's reason and drops its detail", () => {
+	it("keeps a stored legacy refusal's reason and drops its detail (#673 w21)", () => {
 		const why = refusalReason(
 			"Refused by PrismaLens's read-only policy: reaches a host outside the brief: https://example.com.",
 		);
 		expect(why).toBe("reaches a host outside the brief");
 		expect(refusalSentence(why ?? "")).toBe("Not run: it reaches a host outside the brief.");
+	});
+	it("reads a plain tool result, the agent's own refusal included, as no PrismaLens refusal", () => {
 		expect(refusalReason("ls: no such file")).toBeNull();
-		expect(refusalSentence(refusalReason("User refused permission to run tool") ?? "")).toBe(
-			"Not run: PrismaLens refused it.",
-		);
+		expect(refusalReason("User refused permission to run tool")).toBeNull();
 	});
 	it("reads a call's source as the command or path that ran", () => {
 		expect(

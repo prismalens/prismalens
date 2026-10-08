@@ -15,6 +15,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
+	resolveAgentMode,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
@@ -148,9 +149,18 @@ async function runJobInternal(
 			}
 		}
 
-		const { selection, model, modelSource, effort } =
-			await ports.resolveHarness();
+		const {
+			selection,
+			model,
+			modelSource,
+			effort,
+			agentMode: settingsMode,
+		} = await ports.resolveHarness();
 		if (!selection.runnable) throw new Error(selection.reason);
+		const agentMode = resolveAgentMode(
+			selection.harness,
+			data.agentMode ?? settingsMode,
+		);
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -203,6 +213,7 @@ async function runJobInternal(
 			harness: selection.harness,
 			...(model ? { model } : {}),
 			workspace: JSON.stringify(toRunWorkspace(workspace)),
+			agentMode,
 			...(data.chat ? { chat: true } : {}),
 		});
 		const harness = selection.harness;
@@ -219,7 +230,7 @@ async function runJobInternal(
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
 				...(effort ? { effort } : {}),
-				...(data.access ? { access: data.access } : {}),
+				agentMode,
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
@@ -394,7 +405,21 @@ async function runFollowUp(
 		} catch {
 			incident = null;
 		}
-		const context = await assembleInvestigationContext(incident, data);
+		let connectors: ResolvedConnector[] = [];
+		try {
+			const serviceId =
+				typeof incident?.serviceId === "string"
+					? incident.serviceId
+					: undefined;
+			connectors = await ports.resolveConnectors(serviceId);
+		} catch (e) {
+			logger.warn("Could not resolve connectors for the follow-up", e);
+		}
+		const context = await assembleInvestigationContext(
+			incident,
+			data,
+			connectors,
+		);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
 
@@ -423,7 +448,7 @@ async function runFollowUp(
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
 				...(modelSource ? { modelSource } : {}),
-				...(data.access ? { access: data.access } : {}),
+				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,

@@ -25,6 +25,22 @@ export const EffortOptionSchema = z.object({
 });
 export type EffortOption = z.infer<typeof EffortOptionSchema>;
 
+/** A permission mode as the agent's own ACP list names it (#673 w21). */
+export const AgentModeOptionSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	description: z.string().optional(),
+});
+export type AgentModeOption = z.infer<typeof AgentModeOptionSchema>;
+
+/** One value of the agent's `thought_level` option, with its own name; `default` marks the agent's current one. */
+export const EffortLevelSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	default: z.boolean(),
+});
+export type EffortLevel = z.infer<typeof EffortLevelSchema>;
+
 /** A starred model, across agents (T3's star tile; R4.2). */
 export const FavouriteModelSchema = z.object({
 	harness: z.enum(HARNESS_IDS),
@@ -57,6 +73,8 @@ export const HarnessStatusSchema = z.object({
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: z.string().nullable(),
+	/** The agent's own mode a run asks for when Settings names none; `agent-default` asks for none (#673 w21). */
+	defaultMode: z.string().default("agent-default"),
 	/** How the Model setting reaches this harness: ACP `session/set_config_option`, or not at all (R4.2). */
 	modelVia: z.enum(["acp", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
@@ -98,6 +116,10 @@ export const HarnessStatusSchema = z.object({
 			/** The model it reported as current: "Agent default" names this, never a PrismaLens choice. */
 			servedModel: z.string().nullable(),
 			effort: EffortOptionSchema.nullable(),
+			/** The agent's own permission modes; null when it advertised none. */
+			modes: z.array(AgentModeOptionSchema).nullable().default(null),
+			/** The effort levels the agent offered, by name; null when it offered none. */
+			efforts: z.array(EffortLevelSchema).nullable().default(null),
 			images: z.boolean(),
 		})
 		.nullable()
@@ -120,6 +142,7 @@ export type HarnessSelectionStatus = z.infer<
 
 const ModelIdSchema = z.string().min(1).max(200);
 const EffortValueSchema = z.string().min(1).max(64);
+const AgentModeIdSchema = z.string().min(1).max(64);
 
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
@@ -133,8 +156,10 @@ export const HarnessSettingsSchema = z.object({
 	favourites: z.array(FavouriteModelSchema).optional(),
 	/** Effort per harness, one of the values its `thought_level` option offers (R4.2). */
 	efforts: z.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema).optional(),
-	/** The ceiling: Edit the copy and Full access are offered only when on (r4 R4.1). */
-	allowWriteLevels: z.boolean().optional(),
+	/** The agent's own mode id per harness; a harness without one uses its row default (#673 w21). */
+	agentModes: z
+		.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema)
+		.optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
@@ -151,7 +176,10 @@ export const UpdateHarnessSettingsSchema = z
 		efforts: z
 			.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema.nullable())
 			.optional(),
-		allowWriteLevels: z.boolean().optional(),
+		/** Merges per harness; `null` goes back to the row default. */
+		agentModes: z
+			.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema.nullable())
+			.optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;
@@ -178,6 +206,8 @@ export const HarnessProbeResultSchema = z.object({
 	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 	servedModel: z.string().nullable().optional(),
 	effort: EffortOptionSchema.nullable().optional(),
+	modes: z.array(AgentModeOptionSchema).nullable().optional(),
+	efforts: z.array(EffortLevelSchema).nullable().optional(),
 	images: z.boolean().optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;

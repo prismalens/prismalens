@@ -117,7 +117,6 @@ function makeController(): IncidentsController {
 		null as never,
 		null as never,
 		{} as never,
-		{} as never,
 	);
 }
 

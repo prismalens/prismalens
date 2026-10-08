@@ -21,12 +21,13 @@ import {
 } from "@prismalens/config/harness";
 import {
 	type AcpOfferedEffort,
+	type AcpOfferedMode,
 	type AcpOfferedModel,
 	AcpRpcError,
 	AcpSession,
 } from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
-import { readOnlyPolicy } from "./permission.js";
+import { allowAllPolicy } from "./permission.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
 /** ACP's auth_required error code. */
@@ -49,7 +50,17 @@ export interface HarnessProbeResult {
 	/** What it reported as its current model, its effort option and whether it takes images (R4.2, R4.3). */
 	servedModel?: string | null;
 	effort?: AcpOfferedEffort | null;
+	/** The agent's own permission modes and effort levels, by its names (#673 w21); null when it offered none. */
+	modes?: AcpOfferedMode[] | null;
+	efforts?: { id: string; name: string; default: boolean }[] | null;
 	images?: boolean;
+}
+
+function effortLevels(
+	effort: AcpOfferedEffort | null,
+): HarnessProbeResult["efforts"] {
+	if (!effort) return null;
+	return effort.levels.map((l) => ({ ...l, default: l.id === effort.default }));
 }
 
 function oneLine(message: string): string {
@@ -146,7 +157,7 @@ export async function probeHarness(
 			env,
 			// Never exercised: open() sends no prompt turn, so no permission
 			// request can arrive. AcpSessionConfig has no optional form of it.
-			permission: readOnlyPolicy,
+			permission: allowAllPolicy,
 			sessionMeta: descriptor.sessionMeta?.(),
 			initTimeoutMs: timeoutMs,
 		});
@@ -172,6 +183,8 @@ export async function probeHarness(
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,
+				modes: session.offeredModes.length ? session.offeredModes : null,
+				efforts: effortLevels(session.effort),
 				images: session.takesImages,
 			};
 		} catch (err) {

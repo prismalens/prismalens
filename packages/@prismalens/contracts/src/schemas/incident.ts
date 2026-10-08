@@ -7,7 +7,6 @@
 import {
 	HARNESS_IDS,
 	HARNESS_SELECTION_FAILURES,
-	PERMISSION_MODES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
 import { AlertSchema } from "./alert.js";
@@ -219,8 +218,8 @@ export const IncidentStatsSchema = z.object({
 /** Optional operator brief, appended to the agent's first prompt (#743). */
 export const InvestigateIncidentSchema = z.object({
 	brief: z.string().trim().max(4000).optional(),
-	/** What the agent may touch (r4 R4.1); refused above the Settings ceiling. */
-	access: z.enum(PERMISSION_MODES).optional(),
+	/** The agent's own mode id (#673 w21); the agent's default when absent. */
+	agentMode: z.string().max(64).optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
 });

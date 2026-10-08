@@ -39,9 +39,28 @@ describe("probeHarness", () => {
 			// What it reported of itself, for the picker (R4.2, R4.3): nothing here.
 			servedModel: null,
 			effort: null,
+			modes: null,
+			efforts: null,
 			images: false,
 		});
 		expect(result.detail).not.toMatch(/ready/i);
+	});
+
+	it("lists the agent's own modes and effort levels by name (#673 w21)", async () => {
+		const result = await probeHarness("opencode", {
+			descriptor: {
+				...descriptor("ok"),
+				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_MODES: "default=Manual,plan=Plan", FAKE_EFFORTS: "low,high" }),
+			},
+		});
+		expect(result.modes).toEqual([
+			{ id: "default", name: "Manual" },
+			{ id: "plan", name: "Plan" },
+		]);
+		expect(result.efforts).toEqual([
+			{ id: "low", name: "low", default: true },
+			{ id: "high", name: "high", default: false },
+		]);
 	});
 
 	it('says "sign in needed" with the auth method names on ACP -32000', async () => {

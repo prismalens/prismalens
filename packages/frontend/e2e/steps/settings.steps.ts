@@ -607,23 +607,17 @@ Then("the model list appears and no effort control", async ({ page }) => {
 });
 
 Then(
-	'every agent shows "Read-only" with a hint saying what the agent may read',
+	"every agent shows its own default permission mode, by the agent's name once checked",
 	async ({ page }) => {
-		for (const id of ["opencode", "claude-code", "codex"]) {
+		// The agent's own name after a check, its mode id before one (#673 w21).
+		const expected: Record<string, RegExp> = {
+			opencode: /^(Plan|plan)$/,
+			"claude-code": /^(Manual|default)$/,
+			codex: /^(Ask for approval|read-only)$/,
+		};
+		for (const [id, text] of Object.entries(expected)) {
 			await picker(page).getByTestId(`rail-${id}`).click();
-			const chip = picker(page).getByTestId("access-chip");
-			await expect(chip).toHaveText("Read-only");
-			// After the rail click the panel can still reflow (Codex's effort row), so
-			// a first hover may miss the chip; hover again until the hint shows.
-			await expect(async () => {
-				await page.mouse.move(0, 0);
-				await chip.hover();
-				await expect(page.getByTestId("hint").last()).toContainText(
-					"Reads the code and the brief's telemetry",
-					{ timeout: 1_500 },
-				);
-			}).toPass({ timeout: 10_000 });
-			await page.mouse.move(0, 0);
+			await expect(picker(page).getByTestId("access-chip")).toHaveText(text);
 		}
 	},
 );

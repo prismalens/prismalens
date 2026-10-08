@@ -340,6 +340,7 @@ export class InvestigationsService {
 			model?: string;
 			acpSessionId?: string;
 			workspace?: string;
+			agentMode?: string;
 		},
 	): Promise<Investigation | null> {
 		try {
@@ -369,6 +370,7 @@ export class InvestigationsService {
 			if (facts?.model) updateData.model = facts.model;
 			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
 			if (facts?.workspace) updateData.workspace = facts.workspace;
+			if (facts?.agentMode) updateData.agentMode = facts.agentMode;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {

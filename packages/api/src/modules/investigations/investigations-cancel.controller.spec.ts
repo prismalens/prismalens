@@ -18,6 +18,7 @@ import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import { AttachmentsService } from "./attachments.service.js";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 
@@ -68,6 +69,7 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
+				{ provide: HarnessService, useValue: {} },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

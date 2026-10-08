@@ -4,8 +4,6 @@
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import {
-	ACCESS_LABEL,
-	accessAllowed,
 	canIncidentAction,
 	canSetIncidentStatus,
 	INCIDENT_ACTION_FROM,
@@ -30,7 +28,6 @@ import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
-import { TimelineService } from "../timeline/timeline.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
 import { IncidentsService } from "./incidents.service.js";
 
@@ -66,7 +63,6 @@ export class IncidentsController {
 		private readonly integrationsService: IntegrationsService,
 		private readonly harnessService: HarnessService,
 		private readonly attachments: AttachmentsService,
-		private readonly timeline: TimelineService,
 	) {}
 
 	@Implement(incidentsContract)
@@ -184,14 +180,6 @@ export class IncidentsController {
 					}
 
 					refuseUnless("investigate", incident.status);
-					const access = input.access ?? "read-only";
-					if (
-						!accessAllowed(access, false) &&
-						!(await this.harnessService.getSettings()).allowWriteLevels
-					)
-						throw new ORPCError("CONFLICT", {
-							message: `${ACCESS_LABEL[access]} is off. Turn on "Allow write levels" in Settings, Agent.`,
-						});
 					const attachments = input.attachments?.length
 						? await this.attachments.forJob(input.id, input.attachments)
 						: [];
@@ -206,6 +194,7 @@ export class IncidentsController {
 							afterResolve: isIncidentEnded(incident.status),
 							triggerType: "manual",
 							title: input.brief?.trim().split("\n")[0]?.slice(0, 120) || null,
+							agentMode: input.agentMode ?? null,
 						});
 					if (!created) {
 						return {
@@ -218,17 +207,9 @@ export class IncidentsController {
 
 					const jobId = await this.enqueueRun(incident, investigation.id, {
 						...(input.brief ? { brief: input.brief } : {}),
-						...(access !== "read-only" ? { access } : {}),
+						...(input.agentMode ? { agentMode: input.agentMode } : {}),
 						...(attachments.length ? { attachments } : {}),
 					});
-					if (access !== "read-only")
-						await this.timeline.create({
-							incidentId: input.id,
-							type: "investigation_started",
-							title: `Started at ${ACCESS_LABEL[access]}`,
-							source: "user",
-							metadata: { investigationId: investigation.id, access },
-						});
 
 					return {
 						incidentId: input.id,
@@ -275,6 +256,7 @@ export class IncidentsController {
 				}
 				const jobId = await this.enqueueRun(incident, investigation.id, {
 					kind: "chat",
+					...(input.agentMode ? { agentMode: input.agentMode } : {}),
 					chat: {
 						text: input.text,
 						...(attachments.length ? { attachments } : {}),
