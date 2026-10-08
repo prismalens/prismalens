@@ -331,7 +331,6 @@ export function ComposerBox({
 									verb={verb}
 									copy={verbCopy}
 									onVerb={onVerb}
-									disabled={blocked}
 								/>
 							)}
 							{chips}

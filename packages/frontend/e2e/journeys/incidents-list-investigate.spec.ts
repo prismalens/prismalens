@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page, test } from "@playwright/test";
+import { investigateButton } from "./verb";
 
 /**
  * #520 part B — Incidents list investigate button gating & refusal handling.
@@ -105,7 +106,7 @@ async function createIncident(page: Page, title: string): Promise<string> {
 async function bandInvestigate(page: Page) {
 	await page.getByTestId("band-more").click({ timeout: 15_000 });
 	await page.getByTestId("band-menu-new-run").click();
-	return page.getByTestId("composer-investigate");
+	return investigateButton(page);
 }
 
 async function expectReason(page: Page, reason: string) {

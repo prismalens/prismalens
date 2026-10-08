@@ -3,6 +3,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
+import { investigateButton } from "./verb";
 
 /**
  * J17 / C10 — manual authorship.
@@ -26,7 +27,7 @@ const NO_HARNESS_REASON =
  * shares its name with the band's button, so it is found by test id.
  */
 function boxInvestigateButton(page: Page) {
-	return page.getByTestId("composer-investigate");
+	return investigateButton(page);
 }
 
 /** Hold the client gate open so a test can drive the server's refusal path. */
@@ -111,13 +112,13 @@ test.describe("C10 — manual authorship without an alert source", () => {
 				/\/api\/incidents\/[^/]+\/investigate$/.test(req.url()) &&
 				req.method() === "POST",
 		);
-		await expect(boxInvestigateButton(page)).toBeEnabled({
+		await expect(await boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
 		await page
 			.getByTestId("composer-input")
 			.fill("Latency started after the 14:00 deploy.");
-		await boxInvestigateButton(page).click();
+		await (await boxInvestigateButton(page)).click();
 		expect((await investigate).postDataJSON()).toMatchObject({
 			brief: "Latency started after the 14:00 deploy.",
 		});
@@ -174,10 +175,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// The client's own gate is open — this is the surface #531 fixes: a
 		// server refusal the client didn't anticipate must not be a silent no-op.
-		await expect(boxInvestigateButton(page)).toBeEnabled({
+		await expect(await boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await boxInvestigateButton(page).click();
+		await (await boxInvestigateButton(page)).click();
 
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
@@ -188,10 +189,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await expect(boxInvestigateButton(page)).toBeEnabled({
+		await expect(await boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await boxInvestigateButton(page).click();
+		await (await boxInvestigateButton(page)).click();
 		await expect(page.getByText(refusalReason).first()).toBeVisible({
 			timeout: 15_000,
 		});
@@ -295,14 +296,14 @@ test.describe("C10 — manual authorship without an alert source", () => {
 
 		// The draft is the one way to start a run (#673); it is blocked, and the
 		// gate's own words say why (#521). The band's New run leads to the same.
-		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByTestId("composer-blocked")).toContainText(
 			NO_HARNESS_REASON,
 		);
 		await page.getByTestId("tab-alerts").click();
 		await page.getByTestId("band-more").click();
 		await page.getByTestId("band-menu-new-run").click();
-		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await expect(await boxInvestigateButton(page)).toBeDisabled();
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {

@@ -216,6 +216,23 @@ function ReportPool({ latest }: { latest: InvestigationRun }) {
 					)}
 					, {plural(report.nextSteps.length, "step")} to do.
 				</p>
+				{live && (
+					<p className="mt-1 flex items-center gap-2 text-meta text-text-2">
+						<span aria-hidden className="h-3 w-[3px] rounded-full bg-live" />
+						<span>
+							Run #{n} working on an answer{" "}
+							<span className="text-text-3">{took}</span>
+						</span>
+						<RecordLink
+							incidentId={incident.id}
+							to="conversation"
+							search={{ investigation: inv.id }}
+							testId="overview-open-conversation"
+						>
+							Open the conversation
+						</RecordLink>
+					</p>
+				)}
 			</>
 		);
 	} else

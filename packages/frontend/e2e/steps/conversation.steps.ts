@@ -12,6 +12,7 @@
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import type { FakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
+import { investigateButton } from "../journeys/verb";
 import { Given, Then, When } from "./fixtures";
 import {
 	detail,
@@ -751,7 +752,8 @@ When("I attach a 20-line log file", async ({ page }) => {
 	});
 	await expect(page.getByTestId("composer-file")).toContainText("app.log");
 	await box(page).fill("The log from the pod fake-session:attach");
-	await page.getByTestId("composer-investigate").click();
+	// The incident has a report by now, so its draft opens on Ask (#673 w59).
+	await (await investigateButton(page)).click();
 });
 
 Then(
@@ -913,6 +915,7 @@ When(
 	"I type {string} and attach {string}, then press {string}",
 	async ({ page }, text: string, file: string, link: string) => {
 		await box(page).fill(text);
+		await expect(box(page)).toHaveValue(text);
 		await page.getByTestId("composer-file-input").setInputFiles({
 			name: file,
 			mimeType: "text/plain",
@@ -935,9 +938,9 @@ Then(
 				.or(page.getByTestId("draft-heading"))
 				.first(),
 		).toBeVisible();
-		const value = await box(page).inputValue();
-		expect(value.startsWith(text)).toBe(true);
-		expect(value).toContain(quote);
+		await expect(box(page)).toHaveValue(
+			new RegExp(`^${text}\n\n${quote}\\d+\\. It found: `),
+		);
 		await expect(page.getByTestId("composer-file")).toContainText(file);
 		await expect(page.getByTestId("verb-chip")).toHaveAttribute(
 			"data-verb",
