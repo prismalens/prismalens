@@ -357,6 +357,20 @@ The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
 with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
+### Release-gate side checks
+
+Before a release PR merges, a packed-tarball walk passes on its base SHA (#673).
+`pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
+side checks against that tarball, or packs the built CLI when no tarball is given:
+the telemetry notice and its four off switches, the update notice, the workspace
+lock, reset racing an investigation, and the Host allowlist when pairing. It also
+covers the `pl upgrade` trial rollback through Verdaccio. Each check runs in its own
+throwaway HOME, workspace and port, with an agent-free PATH and the repository's
+fake ACP agent, so no real agent login is used. PostHog and GitHub requests go to
+a local stub. The script prints one PASS, FAIL or SKIP line per check and exits
+non-zero on any FAIL. The upgrade check is skipped when there is no systemd user
+manager or when a `prismalens.service` already exists.
+
 ## Documentation and milestone exit gates
 
 Product documentation lives on the documentation website at
