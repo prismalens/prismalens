@@ -315,6 +315,78 @@ const r6 = await (async (): Promise<string> => {
 	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
 );
 console.log(`R6 user model: ${r6}`);
+
+/**
+ * R7 (#673 w59, DESIGN §3.5): a session whose report never validated still
+ * reopens with session/load and answers, so a Failed reportless run can be
+ * continued. Data, not a gate; a fail narrows `continuable` to stopped runs.
+ */
+const r7 = await (async (): Promise<string> => {
+	if (!HARNESS_REGISTRY[harness].resume) return "skipped (no resume)";
+	const failedRunDir = mkdtempSync(join(tmpdir(), "pl-r7-"));
+	let opened: { sessionId: string; loadSession: boolean } | null = null;
+	const first: CanonicalEvent[] = [];
+	const common = {
+		runId: "00000000-0000-4000-8000-000000000007",
+		context,
+		harness,
+		cwd: cloneDir,
+		runDir: failedRunDir,
+		env: process.env,
+		...(process.env.PRISMALENS_HARNESS_MODEL
+			? { model: process.env.PRISMALENS_HARNESS_MODEL }
+			: {}),
+		initTimeoutMs: 120_000,
+		promptTimeoutMs: timeoutMs,
+	};
+	try {
+		for await (const ev of runInvestigation({
+			...common,
+			onSession: (s) => {
+				opened = s;
+			},
+			promptSuffix:
+				"ADMISSION STEP, required: run `ls` once with the shell tool, then answer in one plain sentence. Never write JSON or a code block, even when asked again.",
+		}))
+			first.push(ev);
+		const failed = first.find(
+			(e) =>
+				e.kind === "error" && e.message.startsWith("report did not validate"),
+		);
+		if (!failed)
+			return `inconclusive (the first run did not end on a failed report: ${first.filter((e) => e.kind === "error" || e.kind === "report").at(-1)?.kind ?? "no end"})`;
+		const session = opened as {
+			sessionId: string;
+			loadSession: boolean;
+		} | null;
+		if (!session?.loadSession)
+			return "fail (harness does not advertise loadSession)";
+		const followUp: CanonicalEvent[] = [];
+		for await (const ev of runInvestigation({
+			...common,
+			resume: {
+				sessionId: session.sessionId,
+				text: "Reply with the alert name from our conversation and nothing else.",
+				mode: "queue",
+				heads: [],
+			},
+		}))
+			followUp.push(ev);
+		const error = followUp.find((e) => e.kind === "error");
+		if (error?.kind === "error") return `fail (${error.message})`;
+		const reply = followUp
+			.map((e) => (e.kind === "agent_step" ? e.text : ""))
+			.join("");
+		return reply.includes(context.alerts[0]?.alertname ?? "")
+			? "pass (session/load after a failed report parse answered and named the alert)"
+			: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))})`;
+	} finally {
+		rmSync(failedRunDir, { recursive: true, force: true });
+	}
+})().catch(
+	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
+);
+console.log(`R7 resume after a failed report: ${r7}`);
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
 	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);

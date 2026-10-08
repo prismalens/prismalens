@@ -286,6 +286,19 @@ async function turn(sessionId, promptText) {
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
+	// FAKE_REPORT_THEN_WAIT_CANCEL: a valid report is already in the turn when Stop lands,
+	// and the agent still ends the turn as end_turn (#673 w59).
+	if (process.env.FAKE_REPORT_THEN_WAIT_CANCEL) {
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: {
+				type: "text",
+				text: `Done.\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n`,
+			},
+		});
+		await cancelled();
+		return { stopReason: "end_turn" };
+	}
 	if (mode === "steerable" && turns > 1)
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
