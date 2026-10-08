@@ -154,7 +154,6 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
-	const talksTo = draft ? choice.effective : runHarness;
 
 	return (
 		<div className="shrink-0 pb-3" data-testid="docked-composer">
@@ -166,10 +165,10 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 				autoFocus={draft}
 				enterInvestigates={incident.alertCount > 0}
 				agent={{
-					label: talksTo?.label ?? who.agent,
+					label: harness?.label ?? who.agent,
 					images:
-						talksTo?.checked?.outcome === "answers-acp"
-							? talksTo.checked.images
+						harness?.checked?.outcome === "answers-acp"
+							? harness.checked.images
 							: null,
 				}}
 				waiting={run.waiting}

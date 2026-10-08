@@ -200,8 +200,14 @@ export async function probeHarness(
 			await session.close();
 		}
 		const modeIds = answered.modes?.map((m) => m.id) ?? [AGENT_DEFAULT_MODE];
+		// A failed sandbox check must not lose an agent that answered ACP.
 		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {
 			env,
+		}).catch((err: unknown): SandboxChecks => {
+			const reason = `Sandbox check failed: ${err instanceof Error ? err.message : String(err)}`;
+			return Object.fromEntries(
+				modeIds.map((id) => [id, { state: "unknown", reason }]),
+			);
 		});
 		return { ...answered, sandbox };
 	} finally {

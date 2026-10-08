@@ -219,6 +219,8 @@ export class IncidentCorrelationService {
 
 /** An incident on this service: its own, or one of its alerts' after a merge. */
 function serviceScope(serviceId: string | null) {
+	// A serviceless alert matches only an incident with no service of its own.
+	if (serviceId === null) return { serviceId: null };
 	return { OR: [{ serviceId }, { alerts: { some: { serviceId } } }] };
 }
 

@@ -260,9 +260,9 @@ describe("IncidentCorrelationService", () => {
 			await service.correlateAlert(unmapped);
 
 			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
-				.toMatchObject({
-					OR: [{ serviceId: null }, { alerts: { some: { serviceId: null } } }],
-				});
+				.toMatchObject({ serviceId: null });
+			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
+				.not.toHaveProperty("OR");
 		});
 
 		it("opens a new incident for a different fingerprint even with an open incident already present", async () => {
@@ -330,7 +330,7 @@ describe("IncidentCorrelationService", () => {
 						dedupKey: "dedup-1",
 						incident: expect.objectContaining({
 							status: { in: ["resolved", "closed"] },
-							OR: [{ serviceId: null }, { alerts: { some: { serviceId: null } } }],
+							serviceId: null,
 						}),
 					}),
 				}),
