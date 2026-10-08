@@ -11,6 +11,7 @@
  * both optional so persisted report JSON still parses.
  */
 import { describe, expect, it } from "vitest";
+import { ChatIncidentSchema, InvestigateIncidentSchema } from "./incident.js";
 import {
 	CanonicalEventSchema,
 	CulpritSchema,
@@ -488,5 +489,31 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(CanonicalEventSchema.parse(message)).toEqual(message);
 		const first = { ...message, resumed: [{ name: "api", head: "1a2b3c4" }] };
 		expect(CanonicalEventSchema.parse(first)).toEqual(first);
+	});
+});
+
+describe("a run's own chips (#673 w52)", () => {
+	it("takes a known agent, a model or null, an effort or null, on investigate, chat and the job", () => {
+		const choice = { harness: "claude-code", model: "opus[1m]", effort: null };
+		expect(InvestigateIncidentSchema.parse(choice)).toMatchObject(choice);
+		expect(
+			ChatIncidentSchema.parse({ text: "hi", ...choice, model: null }),
+		).toMatchObject({ model: null });
+		expect(
+			InvestigationJobDataSchema.parse({
+				incidentId: "i",
+				investigationId: "v",
+				...choice,
+			}),
+		).toMatchObject(choice);
+	});
+
+	it("refuses an agent this build does not know, and an empty model", () => {
+		expect(
+			InvestigateIncidentSchema.safeParse({ harness: "cursor" }).success,
+		).toBe(false);
+		expect(InvestigateIncidentSchema.safeParse({ model: "" }).success).toBe(
+			false,
+		);
 	});
 });
