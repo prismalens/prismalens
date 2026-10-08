@@ -100,6 +100,15 @@ describe("reportToMarkdown", () => {
 		expect(md.indexOf("## Actual cause")).toBeLessThan(md.indexOf("## Hypotheses"));
 	});
 
+	it("says where a merged incident went, under the heading (#673 w37)", () => {
+		const md = reportToMarkdown({
+			incident: { number: 9, title: "Orders 500s", mergedInto: { number: 4 } },
+			report: REPORT,
+			completedAt: null,
+		});
+		expect(md.startsWith("# INC-9: Orders 500s\n\nMerged into INC-4.\n")).toBe(true);
+	});
+
 	it("has no actual-cause section when none was recorded", () => {
 		const md = reportToMarkdown({
 			incident: { number: 7, title: "Checkout 500s", actualCause: null },

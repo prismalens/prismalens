@@ -7,7 +7,9 @@ import {
 	type IncidentStats,
 	incidentAttention,
 	isIncidentEnded,
+	isIncidentOpen,
 	isWorkflowLive,
+	LIVE_WORKFLOW_STATUSES,
 	latestRun,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
@@ -72,7 +74,22 @@ export type IncidentWithRelations = Incident & {
 		actualCause: string | null;
 	} | null;
 	refiredAs?: { id: string; number: number; createdAt: Date } | null;
+	mergedInto?: { id: string; number: number } | null;
 };
+
+/** Why a merge was refused; the controller maps each to its HTTP error. */
+export type MergeRefusal =
+	| "same-incident"
+	| "source-missing"
+	| "target-missing"
+	| "source-merged"
+	| "source-ended"
+	| "source-run-live"
+	| "target-not-open";
+
+export type MergeOutcome =
+	| { ok: true; target: Incident; moved: number }
+	| { ok: false; reason: MergeRefusal; message: string };
 
 @Injectable()
 export class IncidentsService {
@@ -311,7 +328,12 @@ export class IncidentsService {
 				),
 			),
 		];
-		const [priors, refires] = await Promise.all([
+		const mergedIds = [
+			...new Set(
+				incidents.flatMap((i) => (i.mergedIntoId ? [i.mergedIntoId] : [])),
+			),
+		];
+		const [priors, refires, targets] = await Promise.all([
 			this.prisma.incident.findMany({
 				where: { id: { in: priorIds } },
 				select: { id: true, number: true, status: true, actualCause: true },
@@ -326,8 +348,15 @@ export class IncidentsService {
 				},
 				orderBy: { createdAt: "desc" },
 			}),
+			mergedIds.length
+				? this.prisma.incident.findMany({
+						where: { id: { in: mergedIds } },
+						select: { id: true, number: true },
+					})
+				: Promise.resolve<Array<{ id: string; number: number }>>([]),
 		]);
 		const prior = new Map(priors.map((p) => [p.id, p]));
+		const target = new Map(targets.map((t) => [t.id, t]));
 		const refired = new Map<
 			string,
 			{ id: string; number: number; createdAt: Date }
@@ -350,6 +379,9 @@ export class IncidentsService {
 					? { number: p.number, status: p.status, actualCause: p.actualCause }
 					: null,
 				refiredAs: refired.get(incident.id) ?? null,
+				mergedInto: incident.mergedIntoId
+					? (target.get(incident.mergedIntoId) ?? null)
+					: null,
 			};
 		});
 	}
@@ -758,6 +790,166 @@ export class IncidentsService {
 	}
 
 	/**
+	 * Merge `sourceId` into `targetId` (#673 w37): every alert on the source
+	 * moves, the source ends as Resolved with `mergedIntoId`, and both Timelines
+	 * say so. The source's runs stay on the source. One transaction.
+	 */
+	async merge(sourceId: string, targetId: string): Promise<MergeOutcome> {
+		const refuse = (reason: MergeRefusal, message: string): MergeOutcome => ({
+			ok: false,
+			reason,
+			message,
+		});
+		if (sourceId === targetId)
+			return refuse("same-incident", "An incident cannot merge into itself");
+		const live = { status: { in: [...LIVE_WORKFLOW_STATUSES] } };
+		const outcome = await this.prisma.$transaction(
+			async (tx): Promise<MergeOutcome> => {
+				const [source, target] = await Promise.all([
+					tx.incident.findUnique({
+						where: { id: sourceId },
+						include: {
+							service: { select: { name: true, displayName: true } },
+							investigations: { where: live, select: { id: true } },
+						},
+					}),
+					tx.incident.findUnique({
+						where: { id: targetId },
+						include: {
+							investigations: { where: live, select: { id: true } },
+						},
+					}),
+				]);
+				if (!source)
+					return refuse("source-missing", `Incident ${sourceId} not found`);
+				if (!target)
+					return refuse("target-missing", `Incident ${targetId} not found`);
+				if (source.mergedIntoId)
+					return refuse(
+						"source-merged",
+						`INC-${source.number} was already merged`,
+					);
+				if (isIncidentEnded(source.status))
+					return refuse(
+						"source-ended",
+						`INC-${source.number} has ended; reopen it to merge it`,
+					);
+				if (source.investigations.length > 0)
+					return refuse(
+						"source-run-live",
+						`INC-${source.number} has a run working; stop it before merging`,
+					);
+				if (!isIncidentOpen(target.status))
+					return refuse(
+						"target-not-open",
+						`INC-${target.number} has ended; merge into an open incident`,
+					);
+
+				const alerts = await tx.alert.findMany({
+					where: { incidentId: sourceId },
+					select: {
+						id: true,
+						service: {
+							select: {
+								name: true,
+								displayName: true,
+								repositories: {
+									select: { repository: { select: { url: true } } },
+								},
+							},
+						},
+					},
+				});
+				const alertIds = alerts.map((a) => a.id);
+				const now = new Date();
+				await tx.alert.updateMany({
+					where: { id: { in: alertIds } },
+					data: { incidentId: targetId, updatedAt: now },
+				});
+				await tx.incident.update({
+					where: { id: sourceId },
+					data: {
+						status: "closed",
+						closedAt: now,
+						reopenedAt: null,
+						reopenReason: null,
+						mergedIntoId: targetId,
+						alertCount: 0,
+						updatedAt: now,
+					},
+				});
+				const updated = await tx.incident.update({
+					where: { id: targetId },
+					data: { alertCount: { increment: alertIds.length }, updatedAt: now },
+				});
+
+				const services = [
+					...new Set(
+						alerts.flatMap((a) =>
+							a.service ? [a.service.displayName || a.service.name] : [],
+						),
+					),
+				];
+				if (services.length === 0 && source.service)
+					services.push(source.service.displayName || source.service.name);
+				const repos = [
+					...new Set(
+						alerts.flatMap(
+							(a) =>
+								a.service?.repositories.map((r) =>
+									repoName(r.repository.url),
+								) ?? [],
+						),
+					),
+				];
+				const count = `${alertIds.length} alert${alertIds.length === 1 ? "" : "s"}`;
+				// A live run keeps the workspace it cloned; only the next one sees the moved repos.
+				const liveNote =
+					target.investigations.length > 0 && repos.length > 0
+						? ` The working run keeps its workspace; the next run also clones ${repos.join(", ")}.`
+						: "";
+				await tx.timelineEntry.create({
+					data: {
+						incidentId: sourceId,
+						type: TimelineEntryType.status_changed,
+						title: `Merged into INC-${target.number}`,
+						description: `Its ${count} moved to INC-${target.number}`,
+						source: TimelineSource.user,
+						metadata: JSON.stringify({
+							previousStatus: source.status,
+							newStatus: "closed",
+							reason: "merged",
+							mergedIntoId: targetId,
+						}),
+						occurredAt: now,
+					},
+				});
+				await tx.timelineEntry.create({
+					data: {
+						incidentId: targetId,
+						type: TimelineEntryType.alert_added,
+						title: `Merged INC-${source.number}: ${count}${services.length ? ` from ${services.join(", ")}` : ""}`,
+						description: `INC-${source.number} ended; its alerts fire here now.${liveNote}`,
+						source: TimelineSource.user,
+						metadata: JSON.stringify({
+							reason: "merged",
+							mergedFromId: sourceId,
+							alertIds,
+						}),
+						occurredAt: now,
+					},
+				});
+				return { ok: true, target: updated, moved: alertIds.length };
+			},
+		);
+		if (outcome.ok)
+			this.logger.log(
+				`Merged incident ${sourceId} into ${targetId} (${outcome.moved} alerts)`,
+			);
+		return outcome;
+	}
+
+	/**
 	 * Resolve an incident
 	 */
 	async resolve(id: string, note?: StatusNote): Promise<Incident | null> {
@@ -816,6 +1008,8 @@ export class IncidentsService {
 		toDate?: Date;
 	}): Promise<IncidentStats> {
 		const where = {
+			// A merged incident is counted on its target (#673 w37).
+			mergedIntoId: null,
 			...(options?.serviceId && {
 				OR: [
 					{ serviceId: options.serviceId },
@@ -912,6 +1106,16 @@ export class IncidentsService {
 			},
 		});
 	}
+}
+
+/** The folder a repo URL or path clones to: its last segment, without `.git`. */
+function repoName(url: string): string {
+	const last =
+		url
+			.replace(/[/\\]+$/, "")
+			.split(/[/\\:]/)
+			.pop() ?? url;
+	return last.replace(/\.git$/, "") || url;
 }
 
 function stepText(raw: string): string | null {

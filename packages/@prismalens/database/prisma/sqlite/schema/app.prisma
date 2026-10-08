@@ -211,6 +211,7 @@ model Incident {
   closedAt          DateTime? // the operator's Resolve; resolvedAt is when the alerts cleared
   timeToClose       Int? // Seconds, first alert to the operator's Resolve
   priorIncidentId   String? // the ended incident whose alert fired again as this one (R1a d5)
+  mergedIntoId      String? // the incident this one's alerts were merged into (#673 w37)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -227,6 +228,7 @@ model Incident {
   @@index([serviceId])
   @@index([triggeredAt])
   @@index([priorIncidentId])
+  @@index([mergedIntoId])
   @@map("incidents")
 }
 

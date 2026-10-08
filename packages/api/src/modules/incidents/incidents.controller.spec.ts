@@ -871,6 +871,83 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 	});
 });
 
+describe("IncidentsController - merge (#673 w37)", () => {
+	const id = "123e4567-e89b-12d3-a456-426614174000";
+	const targetId = "223e4567-e89b-12d3-a456-426614174000";
+	const row = {
+		id,
+		number: 9,
+		title: "Orders 500s",
+		severity: "high",
+		priority: "p2",
+		status: "closed",
+		mergedIntoId: targetId,
+		triggeredAt: new Date("2026-10-08T07:00:00Z"),
+		createdAt: new Date("2026-10-08T07:00:00Z"),
+		updatedAt: new Date("2026-10-08T07:00:00Z"),
+		alertCount: 0,
+	};
+	function call(
+		name: string,
+		input: Record<string, unknown>,
+		merge?: unknown,
+	) {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue(row),
+			update: vi.fn(),
+			merge: vi.fn().mockResolvedValue(merge),
+		};
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			{} as InvestigationsService,
+			{} as DispatchService,
+			{} as IntegrationsService,
+			{} as HarnessService,
+			{} as never,
+		);
+		const procedures = controller.incidents() as unknown as Record<
+			string,
+			{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+		>;
+		return {
+			incidentsService,
+			result: procedures[name]["~orpc"].handler({ input: { id, ...input } }),
+		};
+	}
+
+	it("returns the target after a merge", async () => {
+		const { result, incidentsService } = call(
+			"merge",
+			{ targetId },
+			{ ok: true, moved: 2, target: { ...row, id: targetId, number: 4, status: "triggered", mergedIntoId: null } },
+		);
+		await expect(result).resolves.toMatchObject({ id: targetId, number: 4 });
+		expect(incidentsService.merge).toHaveBeenCalledWith(id, targetId);
+	});
+
+	it.each([
+		["same-incident", "BAD_REQUEST"],
+		["target-missing", "NOT_FOUND"],
+		["target-not-open", "CONFLICT"],
+		["source-run-live", "CONFLICT"],
+	])("answers %s with %s and the reason", async (reason, code) => {
+		const { result } = call("merge", { targetId }, { ok: false, reason, message: "why" });
+		await expect(result).rejects.toMatchObject({ code, message: "why" });
+	});
+
+	it("refuses Reopen and a new run on a merged incident", async () => {
+		const reopen = call("update", { status: "investigating" });
+		await expect(reopen.result).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(reopen.incidentsService.update).not.toHaveBeenCalled();
+		await expect(call("investigate", {}).result).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		await expect(call("chat", { text: "hi" }).result).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+});
+
 describe("IncidentsController - runs as threads (#673)", () => {
 	it("the incident carries each run's kind, title, mode and whether it left a report", () => {
 		const controller = new IncidentsController(

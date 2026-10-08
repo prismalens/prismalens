@@ -150,7 +150,7 @@ export class ContextPackService {
 		try {
 			priorIncidents = await this.loadPriorIncidents(
 				incident.id,
-				incident.serviceId,
+				affected,
 				incident.alerts,
 			);
 		} catch (e) {
@@ -237,17 +237,22 @@ export class ContextPackService {
 
 	private async loadPriorIncidents(
 		incidentId: string,
-		serviceId: string | null,
+		affected: string[],
 		currentAlerts: Array<{ title: string; labels: string | null }>,
 	): Promise<PriorIncidentFact[]> {
 		const currentAlertnames = alertnameSet(currentAlerts);
 		const currentLabelPairs = labelPairSet(currentAlerts);
+		const affectedSet = new Set(affected);
 
-		// Ended incidents only, as the overlay's Similar past incidents (#673 w40).
+		// Ended incidents only, as the overlay's Similar past incidents (#673 w40),
+		// plus the incidents merged into this one, whose findings lead (#673 w37).
 		const candidates = await this.prisma.incident.findMany({
 			where: {
 				id: { not: incidentId },
-				status: { in: [...ENDED_INCIDENT_STATUSES] },
+				OR: [
+					{ status: { in: [...ENDED_INCIDENT_STATUSES] }, mergedIntoId: null },
+					{ mergedIntoId: incidentId },
+				],
 			},
 			orderBy: { createdAt: "desc" },
 			take: 200,
@@ -256,64 +261,80 @@ export class ContextPackService {
 				number: true,
 				title: true,
 				serviceId: true,
+				mergedIntoId: true,
 				actualCause: true,
 				createdAt: true,
-				alerts: { select: { title: true, labels: true } },
+				alerts: { select: { title: true, labels: true, serviceId: true } },
 				investigations: {
 					where: { status: "completed", kind: "investigation" },
 					orderBy: { completedAt: "desc" },
 					take: 1,
-					select: { rootCause: true },
+					select: { rootCause: true, summary: true },
 				},
 			},
 		});
 
-		let serviceName: string | null = null;
-		if (serviceId) {
-			const svc = await this.prisma.service.findUnique({
-				where: { id: serviceId },
-				select: { name: true },
-			});
-			serviceName = svc?.name ?? null;
-		}
+		const names =
+			affected.length > 0
+				? await this.prisma.service.findMany({
+						where: { id: { in: affected } },
+						select: { id: true, name: true },
+					})
+				: [];
+		const nameById = new Map(names.map((n) => [n.id, n.name]));
 
+		const merged = candidates.filter((c) => c.mergedIntoId === incidentId);
 		const scored = candidates
+			.filter((c) => c.mergedIntoId !== incidentId)
 			.map((c) => {
-				const sameService = Boolean(serviceId) && serviceId === c.serviceId;
+				const shared = [c.serviceId, ...c.alerts.map((a) => a.serviceId)].find(
+					(id): id is string => !!id && affectedSet.has(id),
+				);
 				const sharedAlertnames = intersect(
 					alertnameSet(c.alerts),
 					currentAlertnames,
 				);
-				if (!sameService && sharedAlertnames.size === 0) return null;
+				if (!shared && sharedAlertnames.size === 0) return null;
 				const sharedLabels = intersect(
 					labelPairSet(c.alerts),
 					currentLabelPairs,
 				);
-				return { c, sameService, sharedLabels, sharedCount: sharedLabels.size };
+				const serviceName = shared ? (nameById.get(shared) ?? null) : null;
+				return { c, serviceName, sharedLabels, sharedCount: sharedLabels.size };
 			})
 			.filter((x): x is NonNullable<typeof x> => x !== null)
 			.sort(
 				(a, b) =>
 					b.sharedCount - a.sharedCount ||
 					b.c.createdAt.getTime() - a.c.createdAt.getTime(),
-			)
-			.slice(0, 5);
+			);
 
-		return scored.map(({ c, sameService, sharedLabels }) => {
-			const matchedOn: string[] = [];
-			if (sameService && serviceName)
-				matchedOn.push(`service: ${serviceName}`.slice(0, 80));
-			for (const pair of sharedLabels) {
-				if (matchedOn.length >= 10) break;
-				matchedOn.push(pair.slice(0, 80));
-			}
-			const rootCause = c.actualCause ?? c.investigations[0]?.rootCause ?? null;
-			return {
+		const cause = (c: (typeof candidates)[number]): string | null => {
+			const run = c.investigations[0];
+			const text = c.actualCause ?? run?.rootCause ?? run?.summary ?? null;
+			return text ? text.slice(0, 500) : null;
+		};
+		return [
+			...merged.map((c) => ({
 				reference: `INC-${c.number}`,
 				title: c.title.slice(0, 200),
-				rootCause: rootCause ? rootCause.slice(0, 500) : null,
-				matchedOn: matchedOn.slice(0, 10),
-			};
-		});
+				rootCause: cause(c),
+				matchedOn: ["merged into this incident"],
+			})),
+			...scored.map(({ c, serviceName, sharedLabels }) => {
+				const matchedOn: string[] = [];
+				if (serviceName) matchedOn.push(`service: ${serviceName}`.slice(0, 80));
+				for (const pair of sharedLabels) {
+					if (matchedOn.length >= 10) break;
+					matchedOn.push(pair.slice(0, 80));
+				}
+				return {
+					reference: `INC-${c.number}`,
+					title: c.title.slice(0, 200),
+					rootCause: cause(c),
+					matchedOn: matchedOn.slice(0, 10),
+				};
+			}),
+		].slice(0, 5);
 	}
 }

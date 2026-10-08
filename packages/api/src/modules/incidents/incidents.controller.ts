@@ -29,7 +29,7 @@ import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
-import { IncidentsService } from "./incidents.service.js";
+import { IncidentsService, type MergeRefusal } from "./incidents.service.js";
 
 /**
  * The action rules are the contracts package's (state-semantics); the UI greys
@@ -45,6 +45,30 @@ function refuseUnless(
 		message: `Cannot ${action} an incident that is ${status}; allowed from ${INCIDENT_ACTION_FROM[action].join(", ")}`,
 	});
 }
+
+/** A merged incident's work happens on its target (#673 w37). */
+function refuseIfMerged(incident: {
+	number: number;
+	mergedIntoId?: string | null;
+}): void {
+	if (!incident.mergedIntoId) return;
+	throw new ORPCError("CONFLICT", {
+		message: `INC-${incident.number} was merged; work it on the incident it was merged into`,
+	});
+}
+
+const MERGE_REFUSAL_CODE: Record<
+	MergeRefusal,
+	"BAD_REQUEST" | "NOT_FOUND" | "CONFLICT"
+> = {
+	"same-incident": "BAD_REQUEST",
+	"source-missing": "NOT_FOUND",
+	"target-missing": "NOT_FOUND",
+	"source-merged": "CONFLICT",
+	"source-ended": "CONFLICT",
+	"source-run-live": "CONFLICT",
+	"target-not-open": "CONFLICT",
+};
 
 /** What a resolved (stored `closed`) incident still takes on PATCH (R1a d3). */
 const EDITABLE_AFTER_RESOLVE: ReadonlySet<string> = new Set([
@@ -148,6 +172,8 @@ export class IncidentsController {
 							message: `A resolved incident takes only its cause, category, title and severity; got ${blocked.join(", ")}`,
 						});
 					}
+					if (updateData.status && updateData.status !== existing.status)
+						refuseIfMerged(existing);
 					if (
 						updateData.status &&
 						!canSetIncidentStatus(existing.status, updateData.status)
@@ -180,6 +206,7 @@ export class IncidentsController {
 					}
 
 					refuseUnless("investigate", incident.status);
+					refuseIfMerged(incident);
 					const attachments = input.attachments?.length
 						? await this.attachments.forJob(input.id, input.attachments)
 						: [];
@@ -229,6 +256,7 @@ export class IncidentsController {
 					});
 				}
 				refuseUnless("investigate", incident.status);
+				refuseIfMerged(incident);
 				const attachments = input.attachments?.length
 					? await this.attachments.forJob(input.id, input.attachments)
 					: [];
@@ -320,6 +348,20 @@ export class IncidentsController {
 				}
 				return this.serializeIncident(incident);
 			}),
+
+			// POST /incidents/:id/merge - Move its alerts to another open incident (#673 w37)
+			merge: implement(incidentsContract.merge).handler(async ({ input }) => {
+				const outcome = await this.incidentsService.merge(
+					input.id,
+					input.targetId,
+				);
+				if (!outcome.ok) {
+					throw new ORPCError(MERGE_REFUSAL_CODE[outcome.reason], {
+						message: outcome.message,
+					});
+				}
+				return this.serializeIncident(outcome.target);
+			}),
 		};
 	}
 
@@ -404,6 +446,7 @@ export class IncidentsController {
 			closedAt: incident.closedAt?.toISOString() ?? null,
 			timeToClose: incident.timeToClose ?? null,
 			priorIncidentId: incident.priorIncidentId ?? null,
+			mergedIntoId: incident.mergedIntoId ?? null,
 
 			description: incident.description ?? null,
 			serviceId: incident.serviceId ?? null,
@@ -569,6 +612,10 @@ export class IncidentsController {
 						createdAt: iso(incident.refiredAs.createdAt),
 					}
 				: null;
+		}
+
+		if (incident.mergedInto !== undefined) {
+			serialized.mergedInto = incident.mergedInto;
 		}
 
 		if (incident.services) {

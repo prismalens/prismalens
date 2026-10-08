@@ -29,6 +29,7 @@ describe("IncidentsService", () => {
 			create: vi.fn(),
 			update: vi.fn(),
 			findFirst: vi.fn(),
+			findUnique: vi.fn(),
 		},
 		timelineEntry: {
 			create: vi.fn(),
@@ -664,6 +665,7 @@ describe("IncidentsService", () => {
 					services: [],
 					priorIncident: null,
 					refiredAs: null,
+					mergedInto: null,
 				})),
 			);
 			expect(result.total).toBe(5);
@@ -853,9 +855,122 @@ describe("IncidentsService", () => {
 					where: expect.objectContaining({
 						status: { in: ["resolved", "closed"] },
 						timeToResolve: { not: null },
+						mergedIntoId: null,
 					}),
 				}),
 			);
+		});
+	});
+
+	describe("merge (#673 w37)", () => {
+		const source = {
+			id: "inc-src",
+			number: 9,
+			status: "investigating",
+			mergedIntoId: null,
+			service: { name: "orders", displayName: null },
+			investigations: [],
+		};
+		const target = {
+			id: "inc-tgt",
+			number: 4,
+			status: "triggered",
+			investigations: [],
+		};
+		const given = (src: object, tgt: object | null) =>
+			mockTx.incident.findUnique.mockImplementation(
+				async ({ where }: { where: { id: string } }) =>
+					where.id === "inc-src" ? src : tgt,
+			);
+
+		beforeEach(() => {
+			mockTx.alert.findMany.mockResolvedValue([
+				{
+					id: "a1",
+					service: {
+						name: "orders",
+						displayName: null,
+						repositories: [
+							{ repository: { url: "https://github.com/acme/orders.git" } },
+						],
+					},
+				},
+				{ id: "a2", service: null },
+			]);
+			mockTx.incident.update.mockImplementation(
+				async ({ where }: { where: { id: string } }) => ({ id: where.id }),
+			);
+		});
+
+		it("moves every alert, ends the source with a link, and writes both Timeline entries", async () => {
+			given(source, target);
+
+			const outcome = await service.merge("inc-src", "inc-tgt");
+
+			expect(outcome).toMatchObject({ ok: true, moved: 2 });
+			expect(mockTx.alert.updateMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: { in: ["a1", "a2"] } },
+					data: expect.objectContaining({ incidentId: "inc-tgt" }),
+				}),
+			);
+			const sourceWrite = mockTx.incident.update.mock.calls.find(
+				([a]: [{ where: { id: string } }]) => a.where.id === "inc-src",
+			)?.[0];
+			expect(sourceWrite.data).toMatchObject({
+				status: "closed",
+				mergedIntoId: "inc-tgt",
+				alertCount: 0,
+			});
+			// Merged is not resolved by a person: no time-to-close, no MTTR.
+			expect(sourceWrite.data).not.toHaveProperty("timeToClose");
+			expect(sourceWrite.data).not.toHaveProperty("timeToResolve");
+			expect(mockTx.incident.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "inc-tgt" },
+					data: expect.objectContaining({ alertCount: { increment: 2 } }),
+				}),
+			);
+			const entries = mockTx.timelineEntry.create.mock.calls.map(
+				([a]: [{ data: { incidentId: string; title: string; metadata: string; description: string } }]) => a.data,
+			);
+			expect(entries.map((e: { title: string }) => e.title)).toEqual([
+				"Merged into INC-4",
+				"Merged INC-9: 2 alerts from orders",
+			]);
+			expect(JSON.parse(entries[1].metadata)).toEqual({
+				reason: "merged",
+				mergedFromId: "inc-src",
+				alertIds: ["a1", "a2"],
+			});
+			expect(entries[1].description).not.toContain("next run");
+		});
+
+		it("says the next run clones the moved repos when the target's run is working", async () => {
+			given(source, { ...target, investigations: [{ id: "run-1" }] });
+
+			await service.merge("inc-src", "inc-tgt");
+
+			const entry = mockTx.timelineEntry.create.mock.calls[1][0].data;
+			expect(entry.description).toContain("the next run also clones orders");
+		});
+
+		it.each([
+			["same-incident", "inc-src", source, source],
+			["target-missing", "inc-tgt", source, null],
+			["source-merged", "inc-tgt", { ...source, mergedIntoId: "x" }, target],
+			["source-ended", "inc-tgt", { ...source, status: "closed" }, target],
+			["source-run-live", "inc-tgt", { ...source, investigations: [{ id: "r" }] }, target],
+			["target-not-open", "inc-tgt", source, { ...target, status: "resolved" }],
+		])("refuses %s and changes nothing", async (reason, targetId, src, tgt) => {
+			given(src, tgt);
+
+			const outcome = await service.merge("inc-src", targetId);
+
+			expect(outcome).toMatchObject({ ok: false, reason });
+			expect(mockTx.alert.updateMany).not.toHaveBeenCalled();
+			expect(mockTx.incident.update).not.toHaveBeenCalled();
+			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
 		});
 	});
 });

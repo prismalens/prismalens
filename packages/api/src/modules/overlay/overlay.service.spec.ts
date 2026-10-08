@@ -163,7 +163,11 @@ describe("OverlayService", () => {
 
 			expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
 				expect.objectContaining({
-					where: { id: { not: "inc-1" }, status: { in: ["resolved", "closed"] } },
+					where: {
+						id: { not: "inc-1" },
+						status: { in: ["resolved", "closed"] },
+						mergedIntoId: null,
+					},
 				}),
 			);
 		});

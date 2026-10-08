@@ -197,6 +197,8 @@ export class OverlayService {
 			where: {
 				id: { not: incident.id },
 				status: { in: [...ENDED_INCIDENT_STATUSES] },
+				// A merged incident's alerts live on its target (#673 w37).
+				mergedIntoId: null,
 			},
 			orderBy: { createdAt: "desc" },
 			take: 200,

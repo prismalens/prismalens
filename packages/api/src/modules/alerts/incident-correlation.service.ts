@@ -103,7 +103,8 @@ export class IncidentCorrelationService {
 			// The fingerprint carries the alert's `service` label, so two services
 			// in one grouped delivery never share one (#633 edge 12). The service
 			// scope below still narrows, never widens: an alert with no registered
-			// service matches only an incident with none.
+			// service matches only an incident with none. A merged incident carries
+			// several services, so its alerts' count too (#673 w37).
 			const openMatch = await this.prisma.alert.findFirst({
 				where: {
 					fingerprint: alert.fingerprint,
@@ -111,7 +112,7 @@ export class IncidentCorrelationService {
 					incidentId: { not: null },
 					incident: {
 						status: { in: [...OPEN_INCIDENT_STATUSES] },
-						serviceId: alert.serviceId ?? null,
+						...serviceScope(alert.serviceId),
 					},
 				},
 				include: { incident: true },
@@ -150,7 +151,7 @@ export class IncidentCorrelationService {
 					incidentId: { not: null },
 					incident: {
 						status: { in: [...ENDED_INCIDENT_STATUSES] },
-						serviceId: alert.serviceId ?? null,
+						...serviceScope(alert.serviceId),
 					},
 				},
 				include: { incident: true },
@@ -214,6 +215,11 @@ export class IncidentCorrelationService {
 			);
 		}
 	}
+}
+
+/** An incident on this service: its own, or one of its alerts' after a merge. */
+function serviceScope(serviceId: string | null) {
+	return { OR: [{ serviceId }, { alerts: { some: { serviceId } } }] };
 }
 
 /** The rule's name from the label set, else the alert's title. */
