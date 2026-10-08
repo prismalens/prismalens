@@ -82,6 +82,9 @@ export type InvestigationWithRelations = Investigation & {
 		actualCause?: string | null;
 		actualCauseCategory?: string | null;
 		closedAt?: Date | null;
+		mergedIntoId?: string | null;
+		/** The incident a merge moved this one's alerts to (#673 w37). */
+		mergedInto?: { number: number } | null;
 	};
 	recommendations: Recommendation[];
 };
@@ -200,7 +203,7 @@ export class InvestigationsService {
 	 * Find investigation by ID with all relations
 	 */
 	async findById(id: string): Promise<InvestigationWithRelations | null> {
-		return this.prisma.investigation.findUnique({
+		const investigation = await this.prisma.investigation.findUnique({
 			where: { id },
 			include: {
 				incident: {
@@ -213,6 +216,7 @@ export class InvestigationsService {
 						actualCause: true,
 						actualCauseCategory: true,
 						closedAt: true,
+						mergedIntoId: true,
 					},
 				},
 				recommendations: {
@@ -220,6 +224,16 @@ export class InvestigationsService {
 				},
 			},
 		});
+		const mergedIntoId = investigation?.incident?.mergedIntoId;
+		if (!investigation || !mergedIntoId) return investigation;
+		const mergedInto = await this.prisma.incident.findUnique({
+			where: { id: mergedIntoId },
+			select: { number: true },
+		});
+		return {
+			...investigation,
+			incident: { ...investigation.incident, mergedInto },
+		};
 	}
 
 	/**
@@ -338,6 +352,7 @@ export class InvestigationsService {
 		facts?: {
 			harness?: string;
 			model?: string;
+			effort?: string;
 			acpSessionId?: string;
 			workspace?: string;
 			agentMode?: string;
@@ -368,6 +383,7 @@ export class InvestigationsService {
 			}
 			if (facts?.harness) updateData.harness = facts.harness;
 			if (facts?.model) updateData.model = facts.model;
+			if (facts?.effort) updateData.effort = facts.effort;
 			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
 			if (facts?.workspace) updateData.workspace = facts.workspace;
 			if (facts?.agentMode) updateData.agentMode = facts.agentMode;

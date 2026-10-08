@@ -9,12 +9,13 @@ import {
 	type IncidentAction,
 	type IncidentStatus,
 	type IncidentWithRelations,
+	isIncidentOpen,
 	REFIRE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal, Plus } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { formatClock } from "@/lib/format-time";
 import { shortAge } from "@/lib/incident-board";
+import { MergeDialog } from "./MergeDialog";
 
 export interface IncidentStateBandProps {
 	incident: IncidentWithRelations;
@@ -64,9 +66,13 @@ export function IncidentStateBand({
 		close: onClose,
 		reopen: onReopen,
 	};
-	const primary = BAND_ACTIONS.find((a) =>
-		canIncidentAction(a, incident.status),
-	);
+	const merged = incident.mergedInto;
+	// A merged incident is worked on its target: no Reopen, no new run (#673 w37).
+	const primary = merged
+		? undefined
+		: BAND_ACTIONS.find((a) => canIncidentAction(a, incident.status));
+	const canMerge = !incident.mergedIntoId && isIncidentOpen(incident.status);
+	const [mergeOpen, setMergeOpen] = useState(false);
 	const resolved = incident.status === "closed";
 	const refired = incident.refiredAs;
 	const service = incident.service;
@@ -120,12 +126,23 @@ export function IncidentStateBand({
 				</Link>
 			)}
 			<div className="ml-auto flex shrink-0 items-center gap-2.5">
-				<span
-					className="text-body text-text-2 max-md:hidden"
-					data-testid="band-status"
-				>
-					{status}
-				</span>
+				{merged ? (
+					<Link
+						to="/incidents/$id"
+						params={{ id: merged.id }}
+						className="text-body text-text-2 hover:text-text-1 max-md:hidden"
+						data-testid="band-merged"
+					>
+						Merged into INC-{merged.number}
+					</Link>
+				) : (
+					<span
+						className="text-body text-text-2 max-md:hidden"
+						data-testid="band-status"
+					>
+						{status}
+					</span>
+				)}
 				<span className="text-meta text-text-3 tabular-nums max-md:hidden">
 					{shortAge(incident.triggeredAt, now)}
 				</span>
@@ -151,13 +168,30 @@ export function IncidentStateBand({
 						</Button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" className="w-[200px]">
-						<DropdownMenuItem
-							onClick={onNewRun}
-							data-testid="band-menu-new-run"
-						>
-							<Plus className="size-3.5" />
-							New run
-						</DropdownMenuItem>
+						{!merged && (
+							<DropdownMenuItem
+								onClick={onNewRun}
+								data-testid="band-menu-new-run"
+							>
+								<Plus className="size-3.5" />
+								New run
+							</DropdownMenuItem>
+						)}
+						{canMerge && (
+							<DropdownMenuItem
+								onClick={() => setMergeOpen(true)}
+								data-testid="band-menu-merge"
+							>
+								Merge into…
+							</DropdownMenuItem>
+						)}
+						{merged && (
+							<DropdownMenuItem asChild data-testid="band-menu-merged">
+								<Link to="/incidents/$id" params={{ id: merged.id }}>
+									Merged into INC-{merged.number}
+								</Link>
+							</DropdownMenuItem>
+						)}
 						{(resolved || refired) && <DropdownMenuSeparator />}
 						{resolved && (
 							<DropdownMenuItem
@@ -178,6 +212,13 @@ export function IncidentStateBand({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
+			{canMerge && (
+				<MergeDialog
+					open={mergeOpen}
+					onOpenChange={setMergeOpen}
+					incident={incident}
+				/>
+			)}
 		</div>
 	);
 }

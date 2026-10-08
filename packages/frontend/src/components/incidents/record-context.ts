@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { HarnessId } from "@prismalens/config/harness";
 import type {
 	IncidentWithRelations,
 	TimelineEntryWithRelations,
@@ -15,11 +16,25 @@ export type RunRef = NonNullable<
 /** `?investigation=new`: the draft of a run not sent yet (#673). */
 export const DRAFT = "new";
 
+/**
+ * The draft's chips (#673 w52): what this run asks for, never written to Settings.
+ * A field left unset reads Settings; `model: ""` and `effort: null` ask for the agent's own.
+ */
+export interface DraftChoice {
+	harness?: HarnessId;
+	model?: string;
+	effort?: string | null;
+	mode?: string;
+}
+
 export interface RunStart {
 	text?: string;
 	/** The agent's own mode id; the agent's default when absent (#673 w21). */
 	agentMode?: string;
 	attachments?: string[];
+	harness?: HarnessId;
+	model?: string;
+	effort?: string | null;
 }
 
 /** What every layer under an incident shares: the incident, its runs, the selected run and the draft. */
@@ -31,11 +46,11 @@ export interface IncidentRecord {
 	/** The draft is selected rather than a run. */
 	draft: boolean;
 	selectRun: (id: string) => void;
-	/** Opens Conversation on the draft; `agentMode` prefills its mode chip. */
-	newRun: (prefill?: { agentMode?: string }) => void;
-	/** The draft's mode and text, kept per incident while the page lives. */
-	draftMode: string | undefined;
-	setDraftMode: (mode: string | undefined) => void;
+	/** Opens Conversation on the draft; `prefill` replaces its chips. */
+	newRun: (prefill?: DraftChoice) => void;
+	/** The draft's chips and text, kept per incident while the page lives. */
+	draftChoice: DraftChoice;
+	setDraftChoice: (choice: DraftChoice) => void;
 	draftText: string;
 	setDraftText: (text: string) => void;
 	run: InvestigationRun;

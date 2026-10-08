@@ -3156,6 +3156,17 @@
                         }
                       ]
                     },
+                    "mergedIntoId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -3584,6 +3595,17 @@
                             ]
                           },
                           "priorIncidentId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mergedIntoId": {
                             "anyOf": [
                               {
                                 "type": "string",
@@ -4276,6 +4298,31 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "mergedInto": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "number": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "number"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -4763,6 +4810,17 @@
                       ]
                     },
                     "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mergedIntoId": {
                       "anyOf": [
                         {
                           "type": "string",
@@ -5455,6 +5513,31 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "mergedInto": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "number"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -5859,6 +5942,17 @@
                         }
                       ]
                     },
+                    "mergedIntoId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -5932,6 +6026,40 @@
                   "agentMode": {
                     "type": "string",
                     "maxLength": 64
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "attachments": {
                     "type": "array",
@@ -6016,7 +6144,8 @@
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
                                 "no-harness",
-                                "model-unsupported"
+                                "model-unsupported",
+                                "env-pinned-other"
                               ],
                               "type": "string"
                             },
@@ -6113,6 +6242,40 @@
                   "agentMode": {
                     "type": "string",
                     "maxLength": 64
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "attachments": {
                     "type": "array",
@@ -6272,7 +6435,8 @@
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
                                 "no-harness",
-                                "model-unsupported"
+                                "model-unsupported",
+                                "env-pinned-other"
                               ],
                               "type": "string"
                             },
@@ -6769,6 +6933,17 @@
                         }
                       ]
                     },
+                    "mergedIntoId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -7115,6 +7290,377 @@
                       ]
                     },
                     "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mergedIntoId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "number",
+                    "title",
+                    "description",
+                    "severity",
+                    "status",
+                    "priority",
+                    "serviceId",
+                    "assignedToId",
+                    "correlationReason",
+                    "tags",
+                    "customerImpact",
+                    "actualCause",
+                    "actualCauseCategory",
+                    "affectedSystems",
+                    "triggeredAt",
+                    "acknowledgedAt",
+                    "resolvedAt",
+                    "alertCount",
+                    "timeToAcknowledge",
+                    "timeToResolve",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/merge": {
+      "post": {
+        "operationId": "incidents.merge",
+        "summary": "Merge incident into another open incident",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "targetId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "number": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "severity": {
+                      "enum": [
+                        "critical",
+                        "high",
+                        "medium",
+                        "low",
+                        "info"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "triggered",
+                        "investigating",
+                        "identified",
+                        "monitoring",
+                        "resolved",
+                        "closed"
+                      ],
+                      "type": "string"
+                    },
+                    "priority": {
+                      "enum": [
+                        "p1",
+                        "p2",
+                        "p3",
+                        "p4",
+                        "p5"
+                      ],
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correlationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tags": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "customerImpact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCause": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actualCauseCategory": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "code",
+                            "config",
+                            "infrastructure",
+                            "external",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "affectedSystems": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeredAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resolvedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alertCount": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "timeToAcknowledge": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToResolve": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopenReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flap",
+                            "operator"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeToClose": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priorIncidentId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mergedIntoId": {
                       "anyOf": [
                         {
                           "type": "string",
@@ -7897,6 +8443,16 @@
                       ]
                     },
                     "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -8861,6 +9417,16 @@
                             ]
                           },
                           "model": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effort": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -9853,6 +10419,16 @@
                         }
                       ]
                     },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -10794,6 +11370,16 @@
                           ]
                         },
                         "model": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "effort": {
                           "anyOf": [
                             {
                               "type": "string"
@@ -11810,6 +12396,16 @@
                       ]
                     },
                     "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -13757,6 +14353,16 @@
                         }
                       ]
                     },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -15282,6 +15888,16 @@
                       ]
                     },
                     "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -26475,6 +27091,40 @@
                                   },
                                   "images": {
                                     "type": "boolean"
+                                  },
+                                  "sandbox": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {
+                                          "type": "object",
+                                          "properties": {
+                                            "state": {
+                                              "enum": [
+                                                "enforced",
+                                                "none",
+                                                "unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "reason": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "reason"
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
                                   }
                                 },
                                 "required": [
@@ -27120,6 +27770,39 @@
                     },
                     "images": {
                       "type": "boolean"
+                    },
+                    "sandbox": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "state": {
+                                "enum": [
+                                  "enforced",
+                                  "none",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "reason"
+                            ]
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [

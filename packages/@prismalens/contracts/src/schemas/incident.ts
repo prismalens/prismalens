@@ -19,7 +19,11 @@ import {
 	RootCauseCategorySchema,
 	SeveritySchema,
 } from "./common.js";
-import { AttachmentIdsSchema, AttachmentRefSchema } from "./investigation.js";
+import {
+	AttachmentIdsSchema,
+	AttachmentRefSchema,
+	RunChoiceSchema,
+} from "./investigation.js";
 import { ServiceSchema } from "./service.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
@@ -59,6 +63,8 @@ export const IncidentSchema = z.object({
 	timeToClose: z.number().int().nullable().optional(),
 	/** The ended incident whose alert fired again as this one (R1a d5). */
 	priorIncidentId: z.string().uuid().nullable().optional(),
+	/** The incident this one's alerts were merged into; it ended then (#673 w37). */
+	mergedIntoId: z.string().uuid().nullable().optional(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
 });
@@ -82,6 +88,13 @@ export const CloseIncidentSchema = z.object({
 	actualCauseCategory: RootCauseCategorySchema.optional(),
 });
 export type CloseIncidentInput = z.infer<typeof CloseIncidentSchema>;
+
+/** Every alert on `id` moves to `targetId`, and `id` ends (#673 w37). */
+export const MergeIncidentSchema = z.object({
+	id: z.string().uuid(),
+	targetId: z.string().uuid(),
+});
+export type MergeIncidentInput = z.infer<typeof MergeIncidentSchema>;
 
 export const UpdateIncidentSchema = z.object({
 	title: z.string().optional(),
@@ -170,6 +183,11 @@ export const IncidentWithRelationsSchema = IncidentSchema.extend({
 		})
 		.nullable()
 		.optional(),
+	/** The incident `mergedIntoId` names. */
+	mergedInto: z
+		.object({ id: z.string().uuid(), number: z.number().int() })
+		.nullable()
+		.optional(),
 });
 
 // =============================================================================
@@ -220,6 +238,7 @@ export const InvestigateIncidentSchema = z.object({
 	brief: z.string().trim().max(4000).optional(),
 	/** The agent's own mode id (#673 w21); the agent's default when absent. */
 	agentMode: z.string().max(64).optional(),
+	...RunChoiceSchema.shape,
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
 });
@@ -228,6 +247,7 @@ export const InvestigateIncidentSchema = z.object({
 export const ChatIncidentSchema = z.object({
 	text: z.string().trim().min(1).max(4000),
 	agentMode: z.string().max(64).optional(),
+	...RunChoiceSchema.shape,
 	attachments: AttachmentIdsSchema.optional(),
 });
 

@@ -62,6 +62,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 			{ id: "high", name: "High", default: true },
 		],
 		images: true,
+		sandbox: null,
 	},
 	...over,
 });

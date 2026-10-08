@@ -26,6 +26,7 @@ import type {
 	FavouriteModel,
 	HarnessesResponse,
 	HarnessStatus,
+	RunChoice,
 } from "@prismalens/contracts/schemas";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
@@ -231,23 +232,38 @@ export class HarnessService implements OnApplicationBootstrap {
 	}
 
 	/**
-	 * Env pin first, then the persisted pin, then auto. A selection whose
-	 * harness cannot take the model stored for it is not runnable (#639 rec 4).
+	 * Env pin first, then the run's own agent, then the persisted pin, then auto.
+	 * A selection whose harness cannot take its model is not runnable (#639 rec 4).
 	 */
-	async resolveSelection(): Promise<HarnessSelection> {
+	async resolveSelection(
+		requested: Pick<RunChoice, "harness" | "model"> = {},
+	): Promise<HarnessSelection> {
 		const settings = await this.getSettings();
 		const env = process.env.PRISMALENS_HARNESS?.trim();
+		const asked = requested.harness;
 		const selection = env
 			? resolveHarnessSelection({ envHarness: env, pinSource: "env" })
-			: resolveHarnessSelection(
-					settings.harness === "auto"
-						? {}
-						: { envHarness: settings.harness, pinSource: "settings" },
-				);
+			: asked
+				? this.askedSelection(asked)
+				: resolveHarnessSelection(
+						settings.harness === "auto"
+							? {}
+							: { envHarness: settings.harness, pinSource: "settings" },
+					);
+		if (env && asked && selection.runnable && selection.harness !== asked)
+			return {
+				runnable: false,
+				failure: "env-pinned-other",
+				reason: `PRISMALENS_HARNESS="${env}" decides which agent runs on this machine; unset it to run ${HARNESS_REGISTRY[asked].label}.`,
+				harness: asked,
+				pinnedBy: "env",
+			};
 		if (!selection.runnable) return selection;
 		const reason = refuseModel(
 			selection.harness,
-			settings.models?.[selection.harness],
+			requested.model !== undefined
+				? (requested.model ?? undefined)
+				: settings.models?.[selection.harness],
 		);
 		if (!reason) return selection;
 		return {
@@ -257,6 +273,20 @@ export class HarnessService implements OnApplicationBootstrap {
 			harness: selection.harness,
 			...(selection.pinnedBy ? { pinnedBy: selection.pinnedBy } : {}),
 		};
+	}
+
+	/** The agent a run's own chip named: on PATH, or refused in the run's words. */
+	private askedSelection(id: HarnessId): HarnessSelection {
+		const row = HARNESS_REGISTRY[id];
+		const found = resolveHarnessSelection({ envHarness: id });
+		return found.runnable
+			? { runnable: true, harness: id, auto: false }
+			: {
+					runnable: false,
+					failure: found.failure,
+					reason: `${row.label} is not on this machine. Install: ${row.install}`,
+					harness: id,
+				};
 	}
 
 	async getStatus(): Promise<HarnessesResponse> {

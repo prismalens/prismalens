@@ -223,6 +223,7 @@ function actionFor(d: Dragging, to: BoardColumn): DropAction {
 		live: !!run && isWorkflowLive(run.status),
 		canResolve: canIncidentAction("close", d.incident.status),
 		canReopen: canIncidentAction("reopen", d.incident.status),
+		mergedInto: d.incident.mergedInto?.number ?? null,
 	});
 }
 

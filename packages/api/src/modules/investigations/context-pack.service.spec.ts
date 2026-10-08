@@ -225,9 +225,80 @@ describe("ContextPackService", () => {
 
 		expect(mockPrisma.incident.findMany).toHaveBeenCalledWith(
 			expect.objectContaining({
-				where: { id: { not: "inc-1" }, status: { in: ["resolved", "closed"] } },
+				where: {
+					id: { not: "inc-1" },
+					OR: [
+						{ status: { in: ["resolved", "closed"] }, mergedIntoId: null },
+						{ mergedIntoId: "inc-1" },
+					],
+				},
 			}),
 		);
+	});
+
+	it("leads with an incident merged into this one, carrying its run's conclusion (#673 w37)", async () => {
+		mockPrisma.incident.findMany.mockResolvedValueOnce([
+			{
+				id: "inc-b",
+				number: 9,
+				title: "orders 500s",
+				serviceId: "svc-orders",
+				mergedIntoId: "inc-1",
+				actualCause: null,
+				createdAt: new Date("2026-09-19T12:01:00Z"),
+				alerts: [],
+				investigations: [{ rootCause: null, summary: "orders pool exhausted" }],
+			},
+		]);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.priorIncidents).toEqual([
+			{
+				reference: "INC-9",
+				title: "orders 500s",
+				rootCause: "orders pool exhausted",
+				matchedOn: ["merged into this incident"],
+			},
+		]);
+	});
+
+	it("matches a past incident on any of this incident's alerts' services, not only its own (#673 w37)", async () => {
+		mockPrisma.incident.findUnique.mockResolvedValueOnce({
+			id: "inc-1",
+			serviceId: "svc-pay",
+			alerts: [
+				{
+					serviceId: "svc-orders",
+					title: "orders slow",
+					labels: null,
+					triggeredAt: new Date("2026-09-19T12:00:00Z"),
+				},
+			],
+		});
+		mockPrisma.service.findMany.mockResolvedValue([
+			{ id: "svc-pay", name: "payments-api" },
+			{ id: "svc-orders", name: "orders" },
+		]);
+		mockPrisma.incident.findMany.mockResolvedValueOnce([
+			{
+				id: "inc-o",
+				number: 3,
+				title: "orders outage",
+				serviceId: null,
+				actualCause: "bad index",
+				createdAt: new Date("2026-09-01T00:00:00Z"),
+				alerts: [{ title: "x", labels: null, serviceId: "svc-orders" }],
+				investigations: [],
+			},
+		]);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.priorIncidents[0]).toMatchObject({
+			reference: "INC-3",
+			matchedOn: ["service: orders"],
+		});
 	});
 
 	it("caps prior incidents at 5, ranked by shared-label count then recency", async () => {
@@ -290,7 +361,9 @@ describe("ContextPackService", () => {
 
 	it("caps matchedOn elements at 80 characters when service name is 200 characters", async () => {
 		const longServiceName = "a".repeat(200);
-		mockPrisma.service.findUnique.mockResolvedValueOnce({ name: longServiceName });
+		mockPrisma.service.findMany.mockResolvedValue([
+			{ id: "svc-pay", name: longServiceName },
+		]);
 
 		const pack = await service.assemble("inc-1");
 

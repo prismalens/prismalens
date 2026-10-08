@@ -3,7 +3,6 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import {
-	type HarnessSetting,
 	type HarnessStatus,
 	isRunStateLive,
 	RUN_STATE_LABEL,
@@ -18,7 +17,10 @@ import {
 	unreadyReason,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { useIncidentRecord } from "@/components/incidents/record-context";
+import {
+	type DraftChoice,
+	useIncidentRecord,
+} from "@/components/incidents/record-context";
 import {
 	modelSource,
 	runEffort,
@@ -29,7 +31,6 @@ import {
 } from "@/components/incidents/run-facts";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
-import { useUpdateHarnessSettings } from "@/lib/api/hooks";
 import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
 import { uploadAttachment } from "@/lib/attachments";
 import { composerMode } from "@/lib/composer-keys";
@@ -56,7 +57,6 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 	const { toast } = useToast();
 	const choice = useAgentChoice();
 	const [message, setMessage] = useState("");
-	const update = useUpdateHarnessSettings();
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
@@ -70,48 +70,46 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 				},
 	);
 
+	// A draft reads its own chips, then Settings, per field; Settings is never written here (#673 w52).
+	const own = record.draftChoice;
 	const runHarness = choice.harnesses.find((h) => h.id === inv?.harness);
-	const harness = draft ? choice.effective : runHarness;
-	const model = draft ? choice.model : (inv?.model ?? "");
+	const harness = draft
+		? (choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective)
+		: runHarness;
+	const hid = harness?.id as HarnessId;
+	const model = draft
+		? (own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "")
+		: (inv?.model ?? "");
 	const effort = draft
-		? (choice.efforts[harness?.id as HarnessId] ?? null)
-		: runEffort(inv, run.events);
+		? own.effort !== undefined
+			? own.effort
+			: (choice.efforts[hid] ?? null)
+		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
 	const agentMode = draft
-		? (record.draftMode ?? defaultModeOf(harness, choice.agentModes))
+		? (own.mode ?? defaultModeOf(harness, choice.agentModes))
 		: (inv?.agentMode ?? "agent-default");
 
 	const choose = (c: Choice) => {
-		if (draft) {
-			if (c.kind === "mode") return record.setDraftMode(c.mode);
-			if (c.kind === "model") {
-				// Mode ids are per agent: a pick made for another agent is dropped (#798).
-				if (c.harness.id !== harness?.id) record.setDraftMode(undefined);
-				return update.mutate({
-					harness: c.harness.id as HarnessSetting,
-					models: { [c.harness.id]: c.model || null },
-				});
-			}
-			if (harness) update.mutate({ efforts: { [harness.id]: c.effort } });
-			return;
-		}
-		// The draft is this run with one change: the run's agent, model and effort become the next run's.
-		const h = c.kind === "model" ? c.harness : runHarness;
-		if (h)
-			update.mutate({
-				harness: h.id as HarnessSetting,
-				models: { [h.id]: (c.kind === "model" ? c.model : model) || null },
-				...(c.kind === "effort" || effort
-					? { efforts: { [h.id]: c.kind === "effort" ? c.effort : effort } }
-					: {}),
-			});
-		record.newRun({
-			agentMode:
-				c.kind === "mode"
-					? c.mode
-					: c.kind === "model" && h?.id !== runHarness?.id
-						? undefined
-						: agentMode,
-		});
+		const now: DraftChoice = hid
+			? { harness: hid, model, effort, mode: agentMode }
+			: {};
+		// Mode ids and effort levels are per agent: another agent starts from its Settings (#798).
+		const next: DraftChoice =
+			c.kind === "model"
+				? c.harness.id === hid
+					? { ...now, model: c.model }
+					: { harness: c.harness.id as HarnessId, model: c.model }
+				: c.kind === "effort"
+					? { ...now, effort: c.effort }
+					: { ...now, mode: c.mode };
+		// On a run, the draft is this run with one change.
+		if (draft) record.setDraftChoice(next);
+		else record.newRun(next);
+	};
+	const sent = {
+		...(own.harness ? { harness: own.harness } : {}),
+		...(own.model !== undefined ? { model: own.model } : {}),
+		...(own.effort !== undefined ? { effort: own.effort } : {}),
 	};
 
 	const unready = draft && harness ? unreadyReason(harness) : null;
@@ -122,7 +120,11 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 			? `Run #${liveNumber} is working; message it or stop it`
 			: unready
 				? `${unready}. Check it in Settings, Agent.`
-				: record.investigateBlocked;
+				: own.harness
+					? harness?.installed
+						? undefined
+						: `${harness?.label ?? own.harness} is not on this machine.`
+					: record.investigateBlocked;
 	const blocked = draft && !!blockedReason;
 
 	const chips = (
@@ -152,7 +154,6 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
-	const talksTo = draft ? choice.effective : runHarness;
 
 	return (
 		<div className="shrink-0 pb-3" data-testid="docked-composer">
@@ -164,10 +165,10 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 				autoFocus={draft}
 				enterInvestigates={incident.alertCount > 0}
 				agent={{
-					label: talksTo?.label ?? who.agent,
+					label: harness?.label ?? who.agent,
 					images:
-						talksTo?.checked?.outcome === "answers-acp"
-							? talksTo.checked.images
+						harness?.checked?.outcome === "answers-acp"
+							? harness.checked.images
 							: null,
 				}}
 				waiting={run.waiting}
@@ -190,6 +191,7 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 					await record.investigate({
 						text: text || undefined,
 						agentMode,
+						...sent,
 						attachments: attachments.map((a) => a.id),
 					});
 				}}
@@ -198,6 +200,7 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 					await record.chat({
 						text,
 						agentMode,
+						...sent,
 						attachments: attachments.map((a) => a.id),
 					});
 				}}

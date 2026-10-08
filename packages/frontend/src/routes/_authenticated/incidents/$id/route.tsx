@@ -19,6 +19,7 @@ import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import {
 	DRAFT,
+	type DraftChoice,
 	type IncidentRecord,
 	IncidentRecordContext,
 	type RunStart,
@@ -76,10 +77,10 @@ function IncidentLayout() {
 
 	const [startedId, setStartedId] = useState<string | null>(null);
 	const [drafts, setDrafts] = useState<
-		Record<string, { mode?: string; text: string }>
+		Record<string, { choice?: DraftChoice; text: string }>
 	>({});
 	const draftOf = drafts[id] ?? { text: "" };
-	const setDraft = (patch: Partial<{ mode?: string; text: string }>) =>
+	const setDraft = (patch: Partial<{ choice?: DraftChoice; text: string }>) =>
 		setDrafts((all) => ({
 			...all,
 			[id]: { ...(all[id] ?? { text: "" }), ...patch },
@@ -103,7 +104,7 @@ function IncidentLayout() {
 	const onStarted = (runId: string | undefined) => {
 		invalidateIncident();
 		queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
-		setDraft({ text: "", mode: undefined });
+		setDraft({ text: "", choice: undefined });
 		if (!runId) return;
 		setStartedId(runId);
 		navigate({
@@ -171,6 +172,9 @@ function IncidentLayout() {
 		) ?? null;
 	const startInput = (start: RunStart) => ({
 		...(start.agentMode ? { agentMode: start.agentMode } : {}),
+		...(start.harness ? { harness: start.harness } : {}),
+		...(start.model !== undefined ? { model: start.model || null } : {}),
+		...(start.effort !== undefined ? { effort: start.effort } : {}),
 		...(start.attachments?.length ? { attachments: start.attachments } : {}),
 	});
 
@@ -188,15 +192,15 @@ function IncidentLayout() {
 					replace: true,
 				}),
 			newRun: (prefill) => {
-				if (prefill?.agentMode) setDraft({ mode: prefill.agentMode });
+				if (prefill) setDraft({ choice: prefill });
 				navigate({
 					to: "/incidents/$id/conversation",
 					params: { id },
 					search: { investigation: DRAFT },
 				});
 			},
-			draftMode: draftOf.mode,
-			setDraftMode: (mode) => setDraft({ mode }),
+			draftChoice: draftOf.choice ?? {},
+			setDraftChoice: (choice) => setDraft({ choice }),
 			draftText: draftOf.text,
 			setDraftText: (text) => setDraft({ text }),
 			run,
@@ -239,7 +243,7 @@ function IncidentLayout() {
 		runs,
 		investigationId,
 		draft,
-		draftOf.mode,
+		draftOf.choice,
 		draftOf.text,
 		run,
 		liveRun,

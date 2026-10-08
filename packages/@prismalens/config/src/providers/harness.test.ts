@@ -9,6 +9,7 @@ import {
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	modeFidelity,
+	runsInSandbox,
 	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
@@ -266,10 +267,17 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(agentModeEnv("claude-code", "default")).toEqual({});
 	});
 
-	it("calls only Codex's read-only sandbox enforced", () => {
-		expect(modeFidelity("codex", "read-only")).toBe("enforced");
-		expect(modeFidelity("codex", "agent-full-access")).toBe("cooperative");
-		expect(modeFidelity("opencode", "plan")).toBe("cooperative");
-		expect(modeFidelity("claude-code", null)).toBe("cooperative");
+	it("runs only Codex's sandboxed modes in its sandbox, never full access", () => {
+		for (const mode of ["read-only", "workspace-write", "agent"]) expect(runsInSandbox("codex", mode)).toBe(true);
+		expect(runsInSandbox("codex", "agent-full-access")).toBe(false);
+		expect(runsInSandbox("claude-code", "plan")).toBe(false);
+		expect(runsInSandbox("opencode", null)).toBe(false);
+	});
+
+	it("calls a mode enforced only when its sandbox check says so (#673 w51)", () => {
+		expect(modeFidelity({ state: "enforced", reason: "refused" })).toBe("enforced");
+		expect(modeFidelity({ state: "unknown", reason: "timed out" })).toBe("cooperative");
+		expect(modeFidelity({ state: "none", reason: "no sandbox" })).toBe("cooperative");
+		expect(modeFidelity(undefined)).toBe("cooperative");
 	});
 });

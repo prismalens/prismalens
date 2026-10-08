@@ -519,6 +519,70 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
+	describe("a run's own agent, model and effort (#673 w52)", () => {
+		const make = (ready: { ready: boolean; reason?: string }) => {
+			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-4") };
+			const investigationsService = {
+				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-4" }, created: true }),
+			};
+			const harnessService = {
+				resolveSelection: vi.fn(async (asked: { harness?: string }) => ({
+					runnable: true,
+					harness: asked.harness ?? "opencode",
+					auto: false,
+				})),
+				ensureReady: vi.fn().mockResolvedValue(ready),
+			};
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+				investigationsService as unknown as InvestigationsService,
+				dispatchService as unknown as DispatchService,
+				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
+				harnessService as unknown as HarnessService,
+				{} as never,
+			);
+			const handlers = getHandlers(controller) as unknown as Record<
+				"investigate" | "chat",
+				(a: { input: Record<string, unknown> }) => Promise<unknown>
+			>;
+			return { dispatchService, investigationsService, harnessService, handlers };
+		};
+
+		it("gates on the agent the request names, with that agent's reason", async () => {
+			const t = make({ ready: false, reason: "Codex: sign in needed" });
+			await expect(
+				t.handlers.investigate({ input: { id: mockIncident.id, harness: "codex", model: null } }),
+			).rejects.toMatchObject({
+				code: "PRECONDITION_FAILED",
+				message: "Codex: sign in needed",
+				data: { harness: "codex", failure: "not-ready" },
+			});
+			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({ harness: "codex", model: null });
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("codex");
+			expect(t.investigationsService.startOrGet).not.toHaveBeenCalled();
+		});
+
+		it("gates on Settings' agent when the request names none", async () => {
+			const t = make({ ready: true });
+			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi" } });
+			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({});
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("opencode");
+			expect(t.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.not.objectContaining({ harness: expect.anything() }),
+			);
+		});
+
+		it("carries the request's choice on the job, investigate and chat alike", async () => {
+			const t = make({ ready: true });
+			const choice = { harness: "claude-code", model: "opus[1m]", effort: null };
+			await t.handlers.investigate({ input: { id: mockIncident.id, ...choice } });
+			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi", ...choice } });
+			for (const call of t.dispatchService.addInvestigationJob.mock.calls)
+				expect(call[0]).toMatchObject(choice);
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("claude-code");
+		});
+	});
+
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),
@@ -867,6 +931,83 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 		await reopen.call("update", { status: "investigating" });
 		expect(reopen.incidentsService.update).toHaveBeenCalledWith(id, {
 			status: "investigating",
+		});
+	});
+});
+
+describe("IncidentsController - merge (#673 w37)", () => {
+	const id = "123e4567-e89b-12d3-a456-426614174000";
+	const targetId = "223e4567-e89b-12d3-a456-426614174000";
+	const row = {
+		id,
+		number: 9,
+		title: "Orders 500s",
+		severity: "high",
+		priority: "p2",
+		status: "closed",
+		mergedIntoId: targetId,
+		triggeredAt: new Date("2026-10-08T07:00:00Z"),
+		createdAt: new Date("2026-10-08T07:00:00Z"),
+		updatedAt: new Date("2026-10-08T07:00:00Z"),
+		alertCount: 0,
+	};
+	function call(
+		name: string,
+		input: Record<string, unknown>,
+		merge?: unknown,
+	) {
+		const incidentsService = {
+			findById: vi.fn().mockResolvedValue(row),
+			update: vi.fn(),
+			merge: vi.fn().mockResolvedValue(merge),
+		};
+		const controller = new IncidentsController(
+			incidentsService as unknown as IncidentsService,
+			{} as InvestigationsService,
+			{} as DispatchService,
+			{} as IntegrationsService,
+			{} as HarnessService,
+			{} as never,
+		);
+		const procedures = controller.incidents() as unknown as Record<
+			string,
+			{ "~orpc": { handler: (a: { input: unknown }) => Promise<unknown> } }
+		>;
+		return {
+			incidentsService,
+			result: procedures[name]["~orpc"].handler({ input: { id, ...input } }),
+		};
+	}
+
+	it("returns the target after a merge", async () => {
+		const { result, incidentsService } = call(
+			"merge",
+			{ targetId },
+			{ ok: true, moved: 2, target: { ...row, id: targetId, number: 4, status: "triggered", mergedIntoId: null } },
+		);
+		await expect(result).resolves.toMatchObject({ id: targetId, number: 4 });
+		expect(incidentsService.merge).toHaveBeenCalledWith(id, targetId);
+	});
+
+	it.each([
+		["same-incident", "BAD_REQUEST"],
+		["target-missing", "NOT_FOUND"],
+		["target-not-open", "CONFLICT"],
+		["source-run-live", "CONFLICT"],
+	])("answers %s with %s and the reason", async (reason, code) => {
+		const { result } = call("merge", { targetId }, { ok: false, reason, message: "why" });
+		await expect(result).rejects.toMatchObject({ code, message: "why" });
+	});
+
+	it("refuses Reopen and a new run on a merged incident", async () => {
+		const reopen = call("update", { status: "investigating" });
+		await expect(reopen.result).rejects.toMatchObject({ code: "CONFLICT" });
+		expect(reopen.incidentsService.update).not.toHaveBeenCalled();
+		await expect(call("investigate", {}).result).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+		await expect(call("chat", { text: "hi" }).result).rejects.toMatchObject({
+			code: "CONFLICT",
 		});
 	});
 });

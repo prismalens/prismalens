@@ -25,6 +25,7 @@ export interface ReportMarkdownInput {
 		actualCause?: string | null;
 		actualCauseCategory?: string | null;
 		closedAt?: Date | null;
+		mergedInto?: { number: number } | null;
 	};
 	report: InvestigationReport;
 	completedAt: Date | null;
@@ -43,6 +44,9 @@ export function reportToMarkdown({
 	completedAt,
 }: ReportMarkdownInput): string {
 	const out: string[] = [`# INC-${incident.number}: ${incident.title}`, ""];
+	if (incident.mergedInto) {
+		out.push(`Merged into INC-${incident.mergedInto.number}.`, "");
+	}
 	if (completedAt) {
 		out.push(`Investigation completed ${completedAt.toISOString()}.`, "");
 	}

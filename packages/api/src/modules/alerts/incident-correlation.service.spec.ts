@@ -226,8 +226,30 @@ describe("IncidentCorrelationService", () => {
 			const result = await service.correlateAlert(billing);
 
 			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
-				.toMatchObject({ serviceId: "svc-billing" });
+				.toMatchObject({
+					OR: [
+						{ serviceId: "svc-billing" },
+						{ alerts: { some: { serviceId: "svc-billing" } } },
+					],
+				});
 			expect(result.isNewIncident).toBe(true);
+		});
+
+		// #673 w37: after a merge the target carries the source's service through
+		// its alerts, so a new episode of a moved alert lands on the target.
+		it("lands a new episode of a merged-in alert on the open target", async () => {
+			const refire = alertRow({ id: "alert-9", fingerprint: "fp-orders", serviceId: "svc-orders" });
+			mockPrismaService.alert.findFirst.mockResolvedValue({
+				...alertRow({ id: "alert-moved", fingerprint: "fp-orders", serviceId: "svc-orders", incidentId: "inc-books" }),
+				incident: { id: "inc-books", number: 4, status: "investigating", serviceId: "svc-books" },
+			});
+
+			const result = await service.correlateAlert(refire);
+
+			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident.OR)
+				.toContainEqual({ alerts: { some: { serviceId: "svc-orders" } } });
+			expect(mockIncidentsService.addAlert).toHaveBeenCalledWith("inc-books", "alert-9");
+			expect(result).toMatchObject({ incidentId: "inc-books", isNewIncident: false });
 		});
 
 		it("matches a serviceless alert only against a serviceless incident", async () => {
@@ -239,6 +261,8 @@ describe("IncidentCorrelationService", () => {
 
 			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
 				.toMatchObject({ serviceId: null });
+			expect(mockPrismaService.alert.findFirst.mock.calls[0][0].where.incident)
+				.not.toHaveProperty("OR");
 		});
 
 		it("opens a new incident for a different fingerprint even with an open incident already present", async () => {
@@ -304,7 +328,10 @@ describe("IncidentCorrelationService", () => {
 				expect.objectContaining({
 					where: expect.objectContaining({
 						dedupKey: "dedup-1",
-						incident: expect.objectContaining({ status: { in: ["resolved", "closed"] }, serviceId: null }),
+						incident: expect.objectContaining({
+							status: { in: ["resolved", "closed"] },
+							serviceId: null,
+						}),
 					}),
 				}),
 			);

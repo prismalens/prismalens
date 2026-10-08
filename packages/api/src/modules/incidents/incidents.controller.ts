@@ -18,6 +18,7 @@ import type {
 	IncidentWithRelations,
 	InvestigationJobData,
 	RootCauseCategory,
+	RunChoice,
 } from "@prismalens/contracts/schemas";
 import type {
 	Alert as PrismaAlert,
@@ -29,7 +30,7 @@ import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import type { CreateIncidentDto, UpdateIncidentDto } from "./dto/index.js";
-import { IncidentsService } from "./incidents.service.js";
+import { IncidentsService, type MergeRefusal } from "./incidents.service.js";
 
 /**
  * The action rules are the contracts package's (state-semantics); the UI greys
@@ -44,6 +45,39 @@ function refuseUnless(
 	throw new ORPCError("CONFLICT", {
 		message: `Cannot ${action} an incident that is ${status}; allowed from ${INCIDENT_ACTION_FROM[action].join(", ")}`,
 	});
+}
+
+/** A merged incident's work happens on its target (#673 w37). */
+function refuseIfMerged(incident: {
+	number: number;
+	mergedIntoId?: string | null;
+}): void {
+	if (!incident.mergedIntoId) return;
+	throw new ORPCError("CONFLICT", {
+		message: `INC-${incident.number} was merged; work it on the incident it was merged into`,
+	});
+}
+
+const MERGE_REFUSAL_CODE: Record<
+	MergeRefusal,
+	"BAD_REQUEST" | "NOT_FOUND" | "CONFLICT"
+> = {
+	"same-incident": "BAD_REQUEST",
+	"source-missing": "NOT_FOUND",
+	"target-missing": "NOT_FOUND",
+	"source-merged": "CONFLICT",
+	"source-ended": "CONFLICT",
+	"source-run-live": "CONFLICT",
+	"target-not-open": "CONFLICT",
+};
+
+/** The chips a request named; each field it left out falls back to Settings (#673 w52). */
+function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+	return {
+		...(harness ? { harness } : {}),
+		...(model !== undefined ? { model } : {}),
+		...(effort !== undefined ? { effort } : {}),
+	};
 }
 
 /** What a resolved (stored `closed`) incident still takes on PATCH (R1a d3). */
@@ -148,6 +182,8 @@ export class IncidentsController {
 							message: `A resolved incident takes only its cause, category, title and severity; got ${blocked.join(", ")}`,
 						});
 					}
+					if (updateData.status && updateData.status !== existing.status)
+						refuseIfMerged(existing);
 					if (
 						updateData.status &&
 						!canSetIncidentStatus(existing.status, updateData.status)
@@ -180,12 +216,14 @@ export class IncidentsController {
 					}
 
 					refuseUnless("investigate", incident.status);
+					refuseIfMerged(incident);
 					const attachments = input.attachments?.length
 						? await this.attachments.forJob(input.id, input.attachments)
 						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
-					await this.requireReadyHarness();
+					const choice = runChoice(input);
+					await this.requireReadyHarness(choice);
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
 					const { investigation, created } =
@@ -208,6 +246,7 @@ export class IncidentsController {
 					const jobId = await this.enqueueRun(incident, investigation.id, {
 						...(input.brief ? { brief: input.brief } : {}),
 						...(input.agentMode ? { agentMode: input.agentMode } : {}),
+						...choice,
 						...(attachments.length ? { attachments } : {}),
 					});
 
@@ -229,10 +268,12 @@ export class IncidentsController {
 					});
 				}
 				refuseUnless("investigate", incident.status);
+				refuseIfMerged(incident);
 				const attachments = input.attachments?.length
 					? await this.attachments.forJob(input.id, input.attachments)
 					: [];
-				await this.requireReadyHarness();
+				const choice = runChoice(input);
+				await this.requireReadyHarness(choice);
 				const { investigation, created } =
 					await this.investigationsService.startOrGet({
 						incidentId: input.id,
@@ -257,6 +298,7 @@ export class IncidentsController {
 				const jobId = await this.enqueueRun(incident, investigation.id, {
 					kind: "chat",
 					...(input.agentMode ? { agentMode: input.agentMode } : {}),
+					...choice,
 					chat: {
 						text: input.text,
 						...(attachments.length ? { attachments } : {}),
@@ -320,12 +362,26 @@ export class IncidentsController {
 				}
 				return this.serializeIncident(incident);
 			}),
+
+			// POST /incidents/:id/merge - Move its alerts to another open incident (#673 w37)
+			merge: implement(incidentsContract.merge).handler(async ({ input }) => {
+				const outcome = await this.incidentsService.merge(
+					input.id,
+					input.targetId,
+				);
+				if (!outcome.ok) {
+					throw new ORPCError(MERGE_REFUSAL_CODE[outcome.reason], {
+						message: outcome.message,
+					});
+				}
+				return this.serializeIncident(outcome.target);
+			}),
 		};
 	}
 
-	/** No run starts on an agent that is missing or not signed in (#520, #673 w9). */
-	private async requireReadyHarness(): Promise<void> {
-		const selection = await this.harnessService.resolveSelection();
+	/** No run starts on an agent that is missing or not signed in (#520, #673 w9); the run's own agent when it names one (w52). */
+	private async requireReadyHarness(requested: RunChoice = {}): Promise<void> {
+		const selection = await this.harnessService.resolveSelection(requested);
 		if (!selection.runnable) {
 			throw new ORPCError("PRECONDITION_FAILED", {
 				message: selection.reason,
@@ -404,6 +460,7 @@ export class IncidentsController {
 			closedAt: incident.closedAt?.toISOString() ?? null,
 			timeToClose: incident.timeToClose ?? null,
 			priorIncidentId: incident.priorIncidentId ?? null,
+			mergedIntoId: incident.mergedIntoId ?? null,
 
 			description: incident.description ?? null,
 			serviceId: incident.serviceId ?? null,
@@ -569,6 +626,10 @@ export class IncidentsController {
 						createdAt: iso(incident.refiredAs.createdAt),
 					}
 				: null;
+		}
+
+		if (incident.mergedInto !== undefined) {
+			serialized.mergedInto = incident.mergedInto;
 		}
 
 		if (incident.services) {

@@ -23,6 +23,8 @@ export interface DropInput {
 	live: boolean;
 	/** The incident's status admits the operator's Resolve (stored `close`). */
 	canResolve: boolean;
+	/** The incident it was merged into; a merged card takes no drop (#673 w37). */
+	mergedInto?: number | null;
 	/** The incident's status admits Reopen: it is Resolved (R1a d4). */
 	canReopen?: boolean;
 }
@@ -33,8 +35,11 @@ export function dropAction({
 	live,
 	canResolve,
 	canReopen = false,
+	mergedInto = null,
 }: DropInput): DropAction {
 	if (from === to) return { kind: "none" };
+	if (mergedInto !== null)
+		return { kind: "none", reason: `Merged into INC-${mergedInto}` };
 	if (to === "needs_you") {
 		return {
 			kind: "none",

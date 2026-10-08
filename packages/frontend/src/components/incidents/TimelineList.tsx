@@ -6,6 +6,7 @@ import {
 	runState,
 	type TimelineEntryWithRelations,
 } from "@prismalens/contracts";
+import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Hint } from "@/components/shared/Hint";
@@ -49,6 +50,7 @@ function EntryRow({
 	const by = who(entry);
 	// An entry with a reason says it in the summary view too (#673 w23).
 	const reasoned = typeof entry.metadata?.reason === "string";
+	const linked = entry.metadata?.mergedIntoId ?? entry.metadata?.mergedFromId;
 	return (
 		<li className={ROW} data-testid="timeline-row">
 			<Clock at={entry.occurredAt} />
@@ -59,7 +61,18 @@ function EntryRow({
 						note && full ? "whitespace-pre-wrap break-words" : "truncate",
 					)}
 				>
-					{entry.title}
+					{typeof linked === "string" ? (
+						<Link
+							to="/incidents/$id"
+							params={{ id: linked }}
+							className="hover:text-accent"
+							data-testid="timeline-merge-link"
+						>
+							{entry.title}
+						</Link>
+					) : (
+						entry.title
+					)}
 				</span>
 				{(full || reasoned) && entry.description && !note && (
 					<span className="block truncate text-meta text-text-3">

@@ -20,6 +20,14 @@ Feature: Agent and model picker
     Then the effort chip is disabled, reading "Effort"
     And every agent shows its own default permission mode, by the agent's name once checked
 
+  Scenario: A chip changes only this run, never Settings
+    Given OpenCode and Codex are checked and Settings names OpenCode
+    When on a new run's draft I pick Codex's "GPT-5.6" and "High" effort in the box
+    Then Settings still names OpenCode, with no model or effort for Codex
+    And the box still reads "GPT-5.6" and "High" after I open Alerts and come back
+    When I press "Investigate" in the box
+    Then the run asks for Codex, "gpt-5.6" and "high", and keeps them on the run
+
   Scenario: One model has one name, and a training tier says so
     Given OpenCode offers "Claude Sonnet 5.5" and "Muse Spark 1.3 (free)"
     When I choose "Claude Sonnet 5.5"

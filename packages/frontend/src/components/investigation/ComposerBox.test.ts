@@ -56,6 +56,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 		investigate: vi.fn(),
 		chat: vi.fn(),
 		newRun: vi.fn(),
+		draftChoice: {},
 		addNote: vi.fn(),
 	}),
 }));

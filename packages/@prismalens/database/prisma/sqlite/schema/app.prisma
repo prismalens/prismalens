@@ -211,6 +211,7 @@ model Incident {
   closedAt          DateTime? // the operator's Resolve; resolvedAt is when the alerts cleared
   timeToClose       Int? // Seconds, first alert to the operator's Resolve
   priorIncidentId   String? // the ended incident whose alert fired again as this one (R1a d5)
+  mergedIntoId      String? // the incident this one's alerts were merged into (#673 w37)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -227,6 +228,7 @@ model Incident {
   @@index([serviceId])
   @@index([triggeredAt])
   @@index([priorIncidentId])
+  @@index([mergedIntoId])
   @@map("incidents")
 }
 
@@ -269,6 +271,7 @@ model Investigation {
   harnessThreadId   String?   @unique // Harness checkpoint thread ID for resume/replay
   harness           String? // the harness the run started with (#743)
   model             String? // the model id it was asked for, if any (#743)
+  effort            String? // the effort it was asked for, if any (#673 w52)
   stopRequestedAt   DateTime? // the operator asked it to stop (#743)
   acpSessionId      String? // the harness's own session id, set only when it can be loaded again (#747)
   workspace         String? // JSON RunWorkspace (#747)

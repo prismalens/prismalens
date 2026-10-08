@@ -21,6 +21,7 @@ import {
 	InvestigateIncidentResponseSchema,
 	InvestigateIncidentSchema,
 	InvestigationRefusalSchema,
+	MergeIncidentSchema,
 	paginatedResponseSchema,
 	UpdateIncidentSchema,
 	UploadAttachmentSchema,
@@ -192,5 +193,19 @@ export const incidentsContract = {
 			tags: ["incidents"],
 		})
 		.input(CloseIncidentSchema)
+		.output(IncidentSchema),
+
+	/**
+	 * Merge an incident into another: its alerts move to the target and it ends (#673 w37)
+	 * POST /incidents/:id/merge
+	 */
+	merge: oc
+		.route({
+			method: "POST",
+			path: "/incidents/{id}/merge",
+			summary: "Merge incident into another open incident",
+			tags: ["incidents"],
+		})
+		.input(MergeIncidentSchema)
 		.output(IncidentSchema),
 };
