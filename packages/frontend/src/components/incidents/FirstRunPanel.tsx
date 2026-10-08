@@ -59,7 +59,11 @@ export function SetupLine() {
 	if (!p.loaded || p.done === 4) return null;
 	const [why, action] = !p.steps.agent
 		? [
-				"no coding agent on this machine, so no run can start.",
+				!p.agent
+					? "no coding agent on this machine, so no run can start."
+					: p.agent.checked
+						? `${p.agent.label} is not ready, so no run can start.`
+						: `${p.agent.label} has not been checked, so no run can start.`,
 				<Link key="a" to="/settings" search={{ tab: "harness" }}>
 					Set up an agent
 				</Link>,

@@ -435,7 +435,7 @@ Then(
 		for (const door of ["Incidents", "Alerts", "Services", "Settings"]) {
 			await expect(
 				strip.getByTestId(`strip-${door.toLowerCase()}`),
-			).toHaveAccessibleName(door);
+			).toHaveAccessibleName(new RegExp(`^${door}(, \\d+)?$`));
 		}
 		await expect(
 			page.getByTestId("page-header").getByTestId("create-incident-button"),

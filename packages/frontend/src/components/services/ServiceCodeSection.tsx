@@ -64,7 +64,10 @@ export function ServiceCodeSection({
 						>
 							<div className="min-w-0 flex-1">
 								<Hint label={where}>
-									<Mono className="block truncate text-left text-text-1 [direction:rtl]">
+									<Mono
+										tabIndex={0}
+										className="block truncate rounded-[2px] text-left text-text-1 [direction:rtl] focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
+									>
 										<bdi>{where}</bdi>
 									</Mono>
 								</Hint>

@@ -48,7 +48,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
-import { useInvestigationReadiness } from "@/lib/api/hooks";
+import { useHarnesses, useInvestigationReadiness } from "@/lib/api/hooks";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import {
 	investigationKeys,
@@ -813,6 +813,10 @@ function CardBody({
 	const headline = incidentHeadline(incident);
 	const lineage = incidentLineage(incident);
 	const run = latestRun(incident);
+	const { data: harnesses } = useHarnesses();
+	const agentName =
+		harnesses?.harnesses.find((h) => h.id === run?.harness)?.label ??
+		run?.harness;
 	const runs = incident.investigations ?? [];
 	// The list carries the newest five runs, so a number is known only below that.
 	const runNo = run && runs.length < 5 ? runs.length : null;
@@ -845,7 +849,13 @@ function CardBody({
 		>
 			<div className="flex min-w-0 items-center gap-2 text-meta text-text-3">
 				{run?.harness && (
-					<AgentMark id={run.harness} className="mr-0.5 size-3.5" />
+					<span
+						role="img"
+						aria-label={`Run by ${agentName}`}
+						className="inline-flex shrink-0"
+					>
+						<AgentMark id={run.harness} className="mr-0.5 size-3.5" />
+					</span>
 				)}
 				<span
 					role="img"

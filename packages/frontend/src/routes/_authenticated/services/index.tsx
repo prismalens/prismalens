@@ -744,12 +744,15 @@ function ServiceRow({
 	);
 }
 
-/** A path cut from the left, so its end shows; the tooltip holds all of it. */
+/**
+ * A path cut from the left, so its end shows; the tooltip holds all of it.
+ * The row link is the only focus stop, so focusing it unwraps the whole path.
+ */
 function LeftTruncated({ text, testId }: { text: string; testId?: string }) {
 	return (
 		<Hint label={text}>
 			<span
-				className="min-w-0 truncate text-left font-mono [direction:rtl]"
+				className="min-w-0 truncate text-left font-mono [direction:rtl] group-focus-visible/row:break-all group-focus-visible/row:whitespace-normal group-focus-visible/row:[direction:ltr]"
 				data-testid={testId}
 			>
 				<bdi>{text}</bdi>
