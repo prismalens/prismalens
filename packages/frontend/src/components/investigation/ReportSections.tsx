@@ -183,8 +183,8 @@ export function SummaryPool({
 	const { word, tone } = answerWord(report);
 	const top = report.hypotheses.find((h) => h.status !== "refuted");
 	const evidence = top?.evidence ?? [];
-	const against = evidence.filter((e) => e.direction !== "supports").length;
-	const forIt = evidence.length - against;
+	const against = evidence.filter((e) => e.direction === "contradicts").length;
+	const forIt = evidence.filter((e) => e.direction === "supports").length;
 	const repo = investigation.workspace?.repos[0];
 	const code = repo ? `in ${repo.name} at ${repo.head.slice(0, 7)}` : "";
 	const first = steps[0];

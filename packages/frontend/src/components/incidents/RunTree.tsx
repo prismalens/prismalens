@@ -3,14 +3,14 @@
 
 import type { RunState } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useRouterState, useSearch } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useNow } from "@/hooks/use-now";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 import { DRAFT } from "./record-context";
-import { elapsedWord, refState, runDot, runName } from "./run-facts";
+import { elapsedWord, openRun, refState, runDot, runName } from "./run-facts";
 
 export function RunDot({
 	state,
@@ -56,7 +56,11 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 	const now = useNow(1000);
 	const runs = data?.investigations ?? [];
 	const draft = search.investigation === DRAFT;
-	const selected = search.investigation ?? (draft ? null : runs[0]?.id);
+	const onReport = useRouterState({
+		select: (st) => st.location.pathname.endsWith("/report"),
+	});
+	const selected =
+		search.investigation ?? (draft ? null : openRun(runs, onReport)?.id);
 	const dot = "absolute top-[10px] left-4";
 	return (
 		<div className="grid gap-px pt-0.5 pb-1" data-testid="run-tree">
