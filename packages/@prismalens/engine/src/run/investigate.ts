@@ -52,6 +52,7 @@ import {
 	retryPrompt,
 	stampReport,
 } from "./report.js";
+import { checkSandbox } from "./sandbox-check.js";
 
 export interface RunInvestigationOptions {
 	runId: string;
@@ -88,6 +89,8 @@ export interface RunInvestigationOptions {
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	permission?: PermissionPolicy;
+	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
+	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
 	steer?: SteerPort;
 	/** The operator's brief: appended to the first prompt and recorded as its first message. */
@@ -219,7 +222,7 @@ export function promptParts(
 	return [{ type: "text", text: body }, ...images];
 }
 
-/** `mode` is the id the agent reported as current, else the one asked for (#673 w21). */
+/** `mode` is the id the agent reported as current, else the one asked for (#673 w21); `cooperative` until its sandbox is checked. */
 export function buildRunFidelity(
 	harness: HarnessId,
 	model: { id?: string; source?: ModelSource } | undefined,
@@ -228,7 +231,7 @@ export function buildRunFidelity(
 	return {
 		harness,
 		mode,
-		fidelity: modeFidelity(harness, mode),
+		fidelity: modeFidelity(undefined),
 		...(model?.id ? { model: model.id } : {}),
 		...(model?.source ? { modelSource: model.source } : {}),
 		mechanism: "agent",
@@ -410,10 +413,15 @@ export async function* runInvestigation(
 			return;
 		}
 		const ranMode = session.currentMode ?? agentMode;
+		const sandbox = await (opts.sandboxCheck ?? checkSandbox)(
+			opts.harness,
+			[ranMode],
+			{ env },
+		);
 		fidelity = {
 			...fidelity,
 			mode: ranMode,
-			fidelity: modeFidelity(opts.harness, ranMode),
+			fidelity: modeFidelity(sandbox[ranMode]),
 		};
 		const noNetwork = fidelity.fidelity === "enforced";
 		const modeName =

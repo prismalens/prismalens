@@ -5,7 +5,7 @@
  * Settings schemas: harness detection, investigation policy, danger zone, MCP.
  */
 
-import { HARNESS_IDS } from "@prismalens/config/harness";
+import { HARNESS_IDS, SANDBOX_STATES } from "@prismalens/config/harness";
 import { z } from "zod";
 
 // =============================================================================
@@ -32,6 +32,16 @@ export const AgentModeOptionSchema = z.object({
 	description: z.string().optional(),
 });
 export type AgentModeOption = z.infer<typeof AgentModeOptionSchema>;
+
+/** Whether the agent's own OS sandbox holds a mode on this machine, and what the check saw (#673 w51). */
+export const SandboxCheckSchema = z.object({
+	state: z.enum(SANDBOX_STATES),
+	reason: z.string(),
+});
+export type SandboxCheck = z.infer<typeof SandboxCheckSchema>;
+
+/** By mode id, `agent-default` included; null until a check ran. */
+const SandboxChecksSchema = z.record(z.string(), SandboxCheckSchema);
 
 /** One value of the agent's `thought_level` option, with its own name; `default` marks the agent's current one. */
 export const EffortLevelSchema = z.object({
@@ -121,6 +131,7 @@ export const HarnessStatusSchema = z.object({
 			/** The effort levels the agent offered, by name; null when it offered none. */
 			efforts: z.array(EffortLevelSchema).nullable().default(null),
 			images: z.boolean(),
+			sandbox: SandboxChecksSchema.nullable().default(null),
 		})
 		.nullable()
 		.optional(),
@@ -209,6 +220,7 @@ export const HarnessProbeResultSchema = z.object({
 	modes: z.array(AgentModeOptionSchema).nullable().optional(),
 	efforts: z.array(EffortLevelSchema).nullable().optional(),
 	images: z.boolean().optional(),
+	sandbox: SandboxChecksSchema.nullable().optional(),
 });
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
 

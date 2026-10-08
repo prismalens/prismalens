@@ -16,6 +16,7 @@ import {
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
+	sandboxSummary,
 } from "./doctor.js";
 
 const FAKE_HANDSHAKE = join(
@@ -149,7 +150,7 @@ describe("doctor — harness ACP handshake", () => {
 		expect(opencode).toEqual({
 			name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
 			pass: true,
-			detail: `answers ACP, fake 0; sign-in: ${HARNESS_REGISTRY.opencode.loginHint}`,
+			detail: `answers ACP, fake 0; sandbox: none (OpenCode has no sandbox); sign-in: ${HARNESS_REGISTRY.opencode.loginHint}`,
 			hard: false,
 		});
 	});
@@ -285,5 +286,21 @@ describe("doctor — WSL Windows install hint", () => {
 			(p) => p === "/mnt/c/Users/sumit/AppData/Roaming/npm/pl",
 		);
 		expect(check.detail).not.toContain("is the Windows install");
+	});
+});
+
+describe("sandboxSummary (#673 w51)", () => {
+	it("names modes only when their sandbox checks differ", () => {
+		expect(sandboxSummary(undefined)).toBe("");
+		expect(sandboxSummary({ plan: { state: "none", reason: "OpenCode has no sandbox" }, build: { state: "none", reason: "OpenCode has no sandbox" } })).toBe(
+			"; sandbox: none (OpenCode has no sandbox)",
+		);
+		expect(
+			sandboxSummary({
+				"read-only": { state: "enforced", reason: "refused" },
+				agent: { state: "enforced", reason: "refused" },
+				"agent-full-access": { state: "none", reason: "full access" },
+			}),
+		).toBe("; sandbox: enforced for read-only, agent (refused); none for agent-full-access (full access)");
 	});
 });

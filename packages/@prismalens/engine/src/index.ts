@@ -16,4 +16,5 @@ export * from "./run/investigate.js";
 export * from "./run/permission.js";
 export * from "./run/prompt.js";
 export * from "./run/report.js";
+export * from "./run/sandbox-check.js";
 export * from "./runner/acp-client.js";

@@ -42,8 +42,27 @@ describe("probeHarness", () => {
 			modes: null,
 			efforts: null,
 			images: false,
+			sandbox: { "agent-default": { state: "none", reason: "OpenCode has no sandbox" } },
 		});
 		expect(result.detail).not.toMatch(/ready/i);
+	});
+
+	it("checks the sandbox once per offered mode, with the run's env (#673 w51)", async () => {
+		const calls: { harness: string; modes: readonly string[]; env?: NodeJS.ProcessEnv }[] = [];
+		const result = await probeHarness("codex", {
+			descriptor: {
+				...descriptor("ok"),
+				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent-full-access" }),
+			},
+			sandbox: async (harness, modes, opts) => {
+				calls.push({ harness, modes, env: opts?.env });
+				return { "read-only": { state: "enforced", reason: "refused" } };
+			},
+		});
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ harness: "codex", modes: ["read-only", "agent-full-access"] });
+		expect(calls[0]?.env?.FAKE_ACP_MODE).toBe("ok");
+		expect(result.sandbox).toEqual({ "read-only": { state: "enforced", reason: "refused" } });
 	});
 
 	it("lists the agent's own modes and effort levels by name (#673 w21)", async () => {

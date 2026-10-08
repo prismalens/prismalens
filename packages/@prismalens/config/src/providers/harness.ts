@@ -39,6 +39,15 @@ export type HarnessSelectionFailure =
 
 export type PermissionFidelity = "enforced" | "cooperative" | "advisory";
 
+/** Does the agent's own OS sandbox hold a mode on this machine: shown by a local probe, absent, or not shown (#673 w51). */
+export const SANDBOX_STATES = ["enforced", "none", "unknown"] as const;
+export type SandboxState = (typeof SANDBOX_STATES)[number];
+export interface SandboxCheck {
+	state: SandboxState;
+	/** One line: what the check saw, or why it could not tell. */
+	reason: string;
+}
+
 /**
  * The reserved mode id that asks for no mode: `session/set_mode` is never
  * called and the run records what the agent reports as current (#673 w21).
@@ -97,7 +106,7 @@ export interface HarnessDescriptor {
 	modeMechanism: ModeMechanism;
 	/** For `env`: the variable the mode id is written to before spawn. */
 	modeEnvKey?: string;
-	/** Modes the agent enforces with an OS sandbox that has no network. */
+	/** Modes the agent runs under its OS sandbox with no network, per its source; a probe still decides `enforced` (#673 w51). */
 	sandboxedModes?: readonly string[];
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
 	tested?: { version: string; date: string };
@@ -226,11 +235,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
 		install:
 			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
-		// codex-acp 1.13.1 mode ids are read-only, agent and agent-full-access; read-only is its OS sandbox with no network.
+		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
 		defaultMode: "read-only",
 		modeMechanism: "env",
 		modeEnvKey: "INITIAL_AGENT_MODE",
-		sandboxedModes: ["read-only"],
+		sandboxedModes: ["read-only", "workspace-write", "agent"],
 		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "1.13.1", date: "2026-09-24" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
@@ -395,13 +404,20 @@ export function agentModeEnv(
 	return { [row.modeEnvKey]: mode };
 }
 
-/** `enforced` only where the agent's own OS sandbox holds the mode; every other mode is the agent's word. */
-export function modeFidelity(
+/** Whether the agent runs `mode` under its own OS sandbox at all; whether that sandbox works here is a probe's call. */
+export function runsInSandbox(
 	harnessId: HarnessId,
 	mode: string | null,
-): PermissionFidelity {
+): boolean {
 	const sandboxed = HARNESS_REGISTRY[harnessId].sandboxedModes ?? [];
-	return mode && sandboxed.includes(mode) ? "enforced" : "cooperative";
+	return !!mode && sandboxed.includes(mode);
+}
+
+/** `enforced` only where a local check saw the agent's sandbox hold the run's mode; every other mode is the agent's word. */
+export function modeFidelity(
+	sandbox: SandboxCheck | undefined,
+): PermissionFidelity {
+	return sandbox?.state === "enforced" ? "enforced" : "cooperative";
 }
 
 /**
