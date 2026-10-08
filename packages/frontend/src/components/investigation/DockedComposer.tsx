@@ -83,11 +83,14 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 	const choose = (c: Choice) => {
 		if (draft) {
 			if (c.kind === "mode") return record.setDraftMode(c.mode);
-			if (c.kind === "model")
+			if (c.kind === "model") {
+				// Mode ids are per agent: a pick made for another agent is dropped (#798).
+				if (c.harness.id !== harness?.id) record.setDraftMode(undefined);
 				return update.mutate({
 					harness: c.harness.id as HarnessSetting,
 					models: { [c.harness.id]: c.model || null },
 				});
+			}
 			if (harness) update.mutate({ efforts: { [harness.id]: c.effort } });
 			return;
 		}
