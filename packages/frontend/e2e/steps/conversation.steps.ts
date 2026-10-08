@@ -588,12 +588,15 @@ When("a run starts", async ({ page }) => {
 });
 
 Then(
-	"the report's header names {string} and the conversation shows the agent accepting it before its first words",
+	"the report's header names no agent or model, and the conversation shows the agent accepting {string} before its first words",
 	async ({ page }, model: string) => {
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(run?.status).toBe("completed");
 		await visit(page, `/incidents/${inc(page).id}/report`);
-		await expect(page.getByTestId("report-header")).toContainText(model);
+		const header = page.getByTestId("report-header");
+		await expect(header).toBeVisible();
+		await expect(header).not.toContainText(model);
+		await expect(header).not.toContainText("Ran on");
 		await visit(page, `/incidents/${inc(page).id}/conversation`);
 		const took = page.getByTestId("transcript-line").filter({
 			hasText: `The agent took model ${model.toLowerCase()} before the first prompt`,
