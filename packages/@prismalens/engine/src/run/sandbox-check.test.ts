@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,7 +14,7 @@ import {
 	readCodexProbe,
 } from "./sandbox-check.js";
 
-const tmp = (name: string) => mkdtempSync(join(tmpdir(), `pl-sbx-${name}-`));
+const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `pl-sbx-${name}-`)));
 const codex = () => ({ command: "/opt/codex", args: [], standIn: false });
 
 /** A fake `codex sandbox` run: it echoes the marker and writes the target unless the sandbox refuses. */
