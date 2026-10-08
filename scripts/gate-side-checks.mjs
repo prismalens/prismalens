@@ -953,7 +953,19 @@ process.on("SIGTERM", () => {
 });
 
 async function main() {
-	const only = opts.only?.split(",");
+	const only = opts.only
+		?.split(",")
+		.map((n) => n.trim())
+		.filter(Boolean);
+	if (only) {
+		const known = CHECKS.map(([name]) => name);
+		const unknown = only.filter((n) => !known.includes(n));
+		// A typo would otherwise skip every check and exit 0.
+		if (!only.length || unknown.length)
+			throw new Error(
+				`--only takes ${known.join(", ")}; got ${unknown.join(", ") || "nothing"}`,
+			);
+	}
 	const tarball = findOrPackTarball();
 	const prefix = join(root, "prefix");
 	log(`installing ${tarball}`);
