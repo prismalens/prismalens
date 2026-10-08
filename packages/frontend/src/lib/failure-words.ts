@@ -8,6 +8,8 @@ export interface FailureWords {
 	what: string;
 	/** What to do about it, when there is something to say. */
 	next?: string;
+	/** PrismaLens said it, not the agent, so it is never quoted as the agent's words. */
+	ours?: boolean;
 }
 
 const KNOWN: { test: RegExp; words: FailureWords }[] = [
@@ -44,6 +46,15 @@ const KNOWN: { test: RegExp; words: FailureWords }[] = [
 		words: {
 			what: "The agent's report could not be read.",
 			next: "Try again, or pick another model.",
+			ours: true,
+		},
+	},
+	{
+		test: /produced no evidence/i,
+		words: {
+			what: "The agent finished without running a single check, so there is no report.",
+			next: "Try again, or pick another model.",
+			ours: true,
 		},
 	},
 ];

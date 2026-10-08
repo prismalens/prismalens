@@ -202,17 +202,19 @@ function TranscriptRow({
 					)}
 				</Message>
 			);
-		case "end":
+		case "end": {
+			const failure =
+				item.tone === "failed" ? failureSentence(agent, item.error) : null;
 			return (
 				<div className={cn("space-y-1", ENTER)} data-testid="transcript-end">
 					<p className="flex flex-wrap items-baseline gap-x-2 text-body text-text-2">
-						{item.tone === "failed" ? (
+						{failure ? (
 							<span className="[overflow-wrap:anywhere]">
 								<StateWord tone="danger" className="text-body">
 									Run failed
 								</StateWord>
-								{item.at ? ` at ${formatClock(item.at)}` : ""}:{" "}
-								{failureSentence(agent, item.error).said}
+								{item.at ? ` at ${formatClock(item.at)}` : ""}: {failure.said}
+								{failure.detail && failure.next ? ` ${failure.next}` : ""}
 							</span>
 						) : (
 							<span className="[overflow-wrap:anywhere]">
@@ -226,8 +228,17 @@ function TranscriptRow({
 							</RecordLink>
 						)}
 					</p>
+					{failure?.detail && (
+						<p
+							className="text-meta text-text-3 [overflow-wrap:anywhere]"
+							data-testid="transcript-end-detail"
+						>
+							{failure.detail}
+						</p>
+					)}
 				</div>
 			);
+		}
 		case "empty":
 			return (
 				<p

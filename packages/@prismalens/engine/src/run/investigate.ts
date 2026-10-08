@@ -598,6 +598,14 @@ export async function* runInvestigation(
 			retries += 1;
 			text = "";
 			const retry = yield* turn([{ type: "text", text: retryPrompt(parsed) }]);
+			// A stop during the retry is a stop, never a report that did not validate (#673 w34).
+			if (
+				opts.signal?.aborted ||
+				("stop" in retry && retry.stop === "cancelled")
+			) {
+				yield adapter.error(CANCELLED_MESSAGE);
+				return;
+			}
 			if ("error" in retry) {
 				yield adapter.error(retry.error);
 				return;
