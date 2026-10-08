@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { HarnessStatus } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { CopyButton } from "@/components/shared/CopyButton";
@@ -31,10 +32,12 @@ export function useSetupProgress() {
 	const agent = harnesses?.harnesses.find(
 		(h) => h.id === harnesses.selection.harness && h.installed,
 	);
+	// Done only once the agent answered a check, not merely found (#673 w45).
+	const ready = agent?.checked?.outcome === "answers-acp";
 	const steps = {
 		webhook: delivered,
 		pull: pulling,
-		agent: !!setup?.steps.aiProvider || !!agent,
+		agent: ready,
 		code: !!setup?.steps.codeLocation,
 	};
 	return {
@@ -56,7 +59,11 @@ export function SetupLine() {
 	if (!p.loaded || p.done === 4) return null;
 	const [why, action] = !p.steps.agent
 		? [
-				"no coding agent on this machine, so no run can start.",
+				!p.agent
+					? "no coding agent on this machine, so no run can start."
+					: p.agent.checked
+						? `${p.agent.label} is not ready, so no run can start.`
+						: `${p.agent.label} has not been checked, so no run can start.`,
 				<Link key="a" to="/settings" search={{ tab: "harness" }}>
 					Set up an agent
 				</Link>,
@@ -107,7 +114,7 @@ function Step({
 }) {
 	return (
 		<li
-			className="flex items-start gap-3 py-3"
+			className="flex items-start gap-3 py-3 max-sm:flex-wrap"
 			data-testid={testId}
 			data-done={done ? "" : undefined}
 		>
@@ -118,10 +125,10 @@ function Step({
 				{n}
 			</span>
 			<div className="min-w-0 flex-1">
-				<p className="font-medium text-text-1">{title}</p>
-				<div className="mt-0.5 text-meta text-text-3">{children}</div>
+				<p className="font-semibold text-text-1">{title}</p>
+				<div className="mt-0.5 text-meta text-text-2">{children}</div>
 			</div>
-			<div className="flex shrink-0 flex-col items-stretch gap-1.5">
+			<div className="flex shrink-0 flex-col items-stretch gap-1.5 max-sm:ml-8 max-sm:basis-full max-sm:flex-row max-sm:items-center">
 				{done && (
 					<span
 						className="text-right text-body font-medium text-ok"
@@ -148,15 +155,15 @@ export function FirstRunPanel() {
 	const looked = p.harnesses.map((h) => h.label);
 	return (
 		<div
-			className="mx-auto w-full max-w-xl px-4 pt-8 pb-12 md:px-6"
+			className="mx-auto w-full max-w-[34rem] px-4 pt-12 pb-12"
 			data-testid="first-run"
 		>
 			<h2 className="text-display">Get the first alert in</h2>
-			<p className="mt-1.5 text-body text-text-2">
+			<p className="mt-1 text-body text-text-2">
 				PrismaLens hands each alert to your coding agent and keeps the run, the
 				evidence and the cause on the incident.
 			</p>
-			<ol className="pool mt-6 divide-y divide-hairline px-3.5 py-1">
+			<ol className="pool mt-5 divide-y divide-hairline px-4 py-1">
 				<Step
 					n={1}
 					done={p.steps.webhook}
@@ -169,14 +176,14 @@ export function FirstRunPanel() {
 								value={url}
 								label="Copy URL"
 								testId="first-run-copy-url"
-								className="w-full"
+								className="sm:w-full"
 							/>
 							{token && (
 								<CopyButton
 									value={token.token}
 									label="Copy token"
 									testId="first-run-copy-token"
-									className="w-full"
+									className="sm:w-full"
 								/>
 							)}
 						</>
@@ -225,10 +232,7 @@ export function FirstRunPanel() {
 					}
 				>
 					{p.agent ? (
-						<>
-							{p.agent.label} found on this machine. Whether it is signed in
-							shows on the first run. Change it under Settings, Agent.
-						</>
+						<AgentReadiness agent={p.agent} />
 					) : (
 						<>
 							PrismaLens looks for {looked.join(", ")} on PATH. Install one:
@@ -261,11 +265,42 @@ export function FirstRunPanel() {
 					a git URL; the run reads that code.
 				</Step>
 			</ol>
-			<p className="mt-8 text-body text-text-2">
-				No alert source yet? Use{" "}
-				<span className="font-medium text-text-1">New</span> in the header to
-				create an incident by hand and investigate it.
+			<p className="mt-5 text-body text-text-2">
+				No alert source yet?{" "}
+				<span className="font-medium text-text-1">+ New incident</span> in the
+				header creates one by hand and investigates it.
 			</p>
 		</div>
+	);
+}
+
+/** Step 3's line: the boot sweep's check in its tone, or that none ran yet. */
+function AgentReadiness({ agent }: { agent: HarnessStatus }) {
+	const checked = agent.checked;
+	if (checked?.outcome === "answers-acp")
+		return (
+			<>
+				<span className="text-ok">{agent.label} ready</span>, {checked.detail}.
+				Change it under Settings, Agent.
+			</>
+		);
+	if (checked)
+		return (
+			<>
+				<span
+					className={
+						checked.outcome === "sign-in-needed" ? "text-warn" : "text-danger"
+					}
+				>
+					{agent.label}: {checked.detail}
+				</span>
+				. Check it again under Settings, Agent.
+			</>
+		);
+	return (
+		<>
+			{agent.label} is on this machine and not checked yet. Check it under
+			Settings, Agent.
+		</>
 	);
 }

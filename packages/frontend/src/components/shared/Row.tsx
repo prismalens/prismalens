@@ -5,9 +5,9 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A row of a list or a settings pool (look ruling §2): `[lead] [label / one
- * meta line] [trailing]`, at least 44 px, a hairline between rows and no
- * other line. In a Pool for settings; bare in a reading column.
+ * A row of a settings pool, T3's rhythm (#673 w4): `[lead] [label / meta]
+ * [trailing]`, at least 64 px, label 13/600, meta 12 px in two lines at most
+ * inside 36rem, the control right and centred; a hairline between rows.
  */
 export function Row({
 	lead,
@@ -34,30 +34,32 @@ export function Row({
 	return (
 		<div
 			className={cn(
-				"min-w-0 border-t border-hairline py-2 first:border-t-0",
+				"flex min-h-16 min-w-0 flex-col justify-center border-t border-hairline py-3 first:border-t-0",
 				className,
 			)}
 			data-testid={testId}
 		>
 			<div
 				className={cn(
-					"flex min-h-7 min-w-0 items-center gap-3",
+					"flex min-w-0 items-center gap-4",
 					stackOnPhone && "max-sm:flex-col max-sm:items-stretch max-sm:gap-2",
 				)}
 			>
 				{lead && (
-					<span className="inline-flex w-4 shrink-0 justify-center">
+					<span className="inline-flex w-5 shrink-0 justify-center">
 						{lead}
 					</span>
 				)}
-				<div className="min-w-0 flex-1">
-					<div className="text-body text-text-1">{label}</div>
+				<div className="min-w-0 max-w-[36rem] flex-1">
+					<div className="text-heading text-text-1">{label}</div>
 					{meta && (
-						<div className="mt-px truncate text-meta text-text-3">{meta}</div>
+						<div className="mt-0.5 line-clamp-2 text-meta text-text-2">
+							{meta}
+						</div>
 					)}
 				</div>
 				{trailing && (
-					<div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
+					<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:shrink-0 sm:flex-nowrap sm:justify-end">
 						{trailing}
 					</div>
 				)}
@@ -67,13 +69,7 @@ export function Row({
 	);
 }
 
-/** A settings pool: one step above the canvas, radius 10, rows inside. */
+/** A settings pool: one step above the canvas, radius 10, rows inside 16 px. */
 export function Pool({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-	return (
-		<div
-			data-pool=""
-			className={cn("pool px-3.5 py-1", className)}
-			{...props}
-		/>
-	);
+	return <div data-pool="" className={cn("pool px-4", className)} {...props} />;
 }

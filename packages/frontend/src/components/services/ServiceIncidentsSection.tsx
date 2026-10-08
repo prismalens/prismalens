@@ -39,10 +39,10 @@ export function ServiceIncidentsSection({
 									params={{ id: i.id }}
 									className="block truncate text-body text-text-1 hover:underline"
 								>
-									<Mono className="mr-1.5 text-text-3">INC-{i.number}</Mono>
-									{i.title}
+									<Mono className="mr-2 text-text-3">INC-{i.number}</Mono>
+									<span className="font-semibold">{i.title}</span>
 								</Link>
-								<p className="text-meta text-text-3">
+								<p className="text-meta text-text-2">
 									{INCIDENT_STATUS_LABEL[i.status as IncidentStatus]},{" "}
 									{ago(i.triggeredAt, now)}
 								</p>

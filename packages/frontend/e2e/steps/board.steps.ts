@@ -104,7 +104,7 @@ Then(
 
 Then("no card shows a second dot or a severity word", async ({ page }) => {
 	for (const card of await page.getByTestId("board-card").all()) {
-		await expect(card.locator(".rounded-full.size-2")).toHaveCount(1);
+		await expect(card.getByTestId("card-dot")).toHaveCount(1);
 		await expect(
 			card.getByText(/^(Critical|High|Medium|Low|Info)$/),
 		).toHaveCount(0);
@@ -224,7 +224,7 @@ Then(
 		await expect(wrap).toContainText("To wrap up");
 		await expect(cardOf(wrap, cleared.title)).toBeVisible();
 		await expect(cardOf(wrap, triggered.title)).toHaveCount(0);
-		const heading = wrap.getByText("To wrap up", { exact: true });
+		const heading = wrap.getByText("To wrap up", { exact: true }).first();
 		expect(
 			await heading.evaluate((el) => getComputedStyle(el).fontWeight),
 		).toBe("400");
@@ -585,6 +585,26 @@ Then("a dialog asks {string}", async ({ page }, question: string) => {
 When("I confirm the reopen", async ({ page }) => {
 	await page.getByTestId("confirm-reopen-incident").click();
 });
+
+Then(
+	'INC-1 reads "Acknowledged", its card has left "Resolved", and no run started',
+	async ({ page }) => {
+		const made = inc(page);
+		const before = (await detail(page, made.id)).investigations?.length ?? 0;
+		await waitFor(
+			async () =>
+				(await detail(page, made.id)).status === "investigating"
+					? true
+					: undefined,
+			"the reopen",
+		);
+		await expect(cardOf(column(page, "Resolved"), made.title)).toHaveCount(0);
+		await expect(cardOf(page, made.title)).toBeVisible();
+		expect((await detail(page, made.id)).investigations?.length ?? 0).toBe(
+			before,
+		);
+	},
+);
 
 Then(
 	'a toast reads "No run started" and the card no longer reads "Reopening"',

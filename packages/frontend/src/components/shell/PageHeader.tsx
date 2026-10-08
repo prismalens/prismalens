@@ -9,16 +9,19 @@ import { NewIncidentButton } from "./NewIncident";
 
 /**
  * A list screen's top row (study-v2 §2.5 rule 2): the area's title, its
- * controls, and the one primary New at the right; Settings has none (look
+ * controls, and the one primary at the right; Settings has none (look
  * ruling §2). Records use a band instead.
  */
 export function PageHeader({
 	title,
 	children,
+	primary,
 	className,
 }: {
 	title: ReactNode;
 	children?: ReactNode;
+	/** The screen's one primary; `+ New incident` unless given (#673 w11). */
+	primary?: ReactNode;
 	className?: string;
 }) {
 	const { pathname } = useLocation();
@@ -33,7 +36,7 @@ export function PageHeader({
 			<h1 className="mr-1 text-title">{title}</h1>
 			{children}
 			<span className="flex-1" />
-			{!inSettings(pathname) && <NewIncidentButton className="max-md:hidden" />}
+			{!inSettings(pathname) && (primary ?? <NewIncidentButton />)}
 		</header>
 	);
 }

@@ -40,6 +40,7 @@ import {
 } from "@/lib/api/hooks/use-webhooks-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatClock, formatDate } from "@/lib/format-time";
+import { getErrorMessage } from "@/lib/get-error-message";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { Field } from "./Field";
 import { PULL_TEMPLATES } from "./SettingsFrame";
@@ -249,7 +250,33 @@ function SourceRow({ connection }: { connection: ConnectionWithIntegration }) {
 				variant="text"
 				size="sm"
 				disabled={test.isPending}
-				onClick={() => test.mutate({ id: connection.id })}
+				onClick={() =>
+					// Test says what it found, not only the row (#673 w16).
+					test.mutate(
+						{ id: connection.id },
+						{
+							onSuccess: (r) =>
+								toast(
+									r.success
+										? { title: "Reachable" }
+										: {
+												title: "Unreachable",
+												description: failureSentence(
+													r.error ?? "it did not answer",
+												),
+												variant: "destructive",
+											},
+								),
+							onError: (e) =>
+								toast({
+									title: "Test did not run",
+									description: getErrorMessage(e),
+									variant: "destructive",
+								}),
+						},
+					)
+				}
+				data-testid="source-test"
 			>
 				Test
 			</Button>

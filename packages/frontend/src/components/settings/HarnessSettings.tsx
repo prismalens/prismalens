@@ -32,6 +32,7 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -88,13 +89,14 @@ export function HarnessSettings() {
 						description={
 							selection?.runnable === false
 								? (selection.blockedReason ?? "Would not start right now.")
-								: "The same control sits in the box on an incident"
+								: "Used by the next run"
 						}
 						testId="harness-run-row"
 					>
 						<AgentModelPicker />
 					</SettingRow>
 					<PermissionModeRow />
+					<AutoRow />
 				</Pool>
 			</SettingGroup>
 
@@ -146,6 +148,32 @@ function PermissionModeRow() {
 	);
 }
 
+/** Auto: the next run takes the first agent on PATH instead of the one named above. */
+function AutoRow() {
+	const { setting, effective } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	const auto = setting === "auto";
+	return (
+		<SettingRow
+			label={<label htmlFor="harness-auto">Auto</label>}
+			description="Auto picks the first agent on PATH"
+			testId="harness-auto-row"
+		>
+			<Switch
+				id="harness-auto"
+				checked={auto}
+				disabled={update.isPending || (auto && !effective)}
+				onCheckedChange={(on) =>
+					update.mutate({
+						harness: on ? "auto" : ((effective?.id as HarnessId) ?? "auto"),
+					})
+				}
+				data-testid="harness-auto"
+			/>
+		</SettingRow>
+	);
+}
+
 /**
  * One agent on this machine, with its own check: a check on one row never
  * shows as pending on another (#673 w17). Shows the server's last check
@@ -184,41 +212,40 @@ function AgentRow({
 		<Row
 			key={harness.id}
 			testId={`harness-row-${harness.id}`}
-			lead={<AgentMark id={harness.id} />}
+			lead={<AgentMark id={harness.id} className="size-5" />}
 			label={
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
 					{harness.label}
-					{harness.installed ? (
-						harness.tested && (
-							<Hint
-								label={`Tested with ${harness.tested.version}`}
-								meta={harness.tested.date}
-							>
-								<span
-									className="font-mono text-meta text-text-3"
-									data-testid={`harness-tested-${harness.id}`}
-								>
-									{harness.tested.version}
-								</span>
-							</Hint>
-						)
-					) : harness.windowsOnlyPath ? (
-						<StateWord
-							tone="warn"
-							className="whitespace-normal"
-							data-testid={`harness-windows-only-${harness.id}`}
+					{harness.installed && harness.tested ? (
+						<Hint
+							label={`Tested with ${harness.tested.version}`}
+							meta={harness.tested.date}
 						>
-							Windows install at {harness.windowsOnlyPath}; can't run in WSL
-						</StateWord>
+							<span
+								className="font-mono text-meta font-normal text-text-3"
+								data-testid={`harness-tested-${harness.id}`}
+							>
+								{harness.tested.version}
+							</span>
+						</Hint>
 					) : (
-						<StateWord tone="quiet">not installed</StateWord>
+						!harness.installed &&
+						!harness.windowsOnlyPath && (
+							<span className="text-meta font-normal text-text-3">
+								not installed
+							</span>
+						)
 					)}
-					{inUse && <StateWord tone="ok">in use</StateWord>}
+					{inUse && (
+						<span className="text-meta font-medium text-ok">in use</span>
+					)}
 				</span>
 			}
 			meta={
 				harness.windowsOnlyPath ? (
-					<Mono>{harness.install}</Mono>
+					<span data-testid={`harness-windows-only-${harness.id}`}>
+						Windows install at {harness.windowsOnlyPath}; can't run in WSL
+					</span>
 				) : probe && !checking ? (
 					<StateWord
 						tone={PROBE_TONE[probe.outcome]}
@@ -239,7 +266,7 @@ function AgentRow({
 			trailing={
 				harness.installed && (
 					<Button
-						variant="text"
+						variant="secondary"
 						size="sm"
 						onClick={handleCheck}
 						disabled={checking}

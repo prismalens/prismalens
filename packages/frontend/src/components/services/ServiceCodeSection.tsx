@@ -3,6 +3,7 @@
 
 import type { ServiceWithRelations } from "@prismalens/contracts";
 import { useState } from "react";
+import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
@@ -62,8 +63,15 @@ export function ServiceCodeSection({
 							data-testid="service-code-row"
 						>
 							<div className="min-w-0 flex-1">
-								<Mono className="block break-all text-text-1">{where}</Mono>
-								<p className="text-meta text-text-3">{line}</p>
+								<Hint label={where}>
+									<Mono
+										tabIndex={0}
+										className="block truncate rounded-[2px] text-left text-text-1 [direction:rtl] focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
+									>
+										<bdi>{where}</bdi>
+									</Mono>
+								</Hint>
+								<p className="text-meta text-text-2">{line}</p>
 								{r.syncError && (
 									<p className="text-meta text-danger">{r.syncError}</p>
 								)}

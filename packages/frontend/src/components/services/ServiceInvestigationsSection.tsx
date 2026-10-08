@@ -59,11 +59,11 @@ export function ServiceInvestigationsSection({
 	const parsed = TriggerPolicySchema.safeParse(investigation.trigger);
 	const trigger = parsed.success ? parsed.data : DEFAULT_TRIGGER_POLICY;
 	return (
-		<RecordSection id="investigations" title="Investigations">
-			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+		<RecordSection id="investigations" title="Runs">
+			<div className="flex min-h-16 flex-col justify-center gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
 				<div className="min-w-0 flex-1">
-					<p className="text-body">{POLICY[trigger].label}</p>
-					<p className="text-meta text-text-3">{POLICY[trigger].line}</p>
+					<p className="font-semibold">{POLICY[trigger].label}</p>
+					<p className="text-meta text-text-2">{POLICY[trigger].line}</p>
 				</div>
 				<Select
 					value={trigger}

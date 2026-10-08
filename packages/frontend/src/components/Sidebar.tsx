@@ -5,7 +5,7 @@
  * The shell's left bar (study-v3 §2, study-v2 §2.5 rule 1): four doors, the
  * one you are in lit by a 2-px accent bar, and under them the list of that
  * area. Below 1280 it folds to a 56-px icon rail; on the phone the doors are
- * a labelled strip across the top. Settings swaps the whole bar for its
+ * strip of icons across the top. Settings swaps the whole bar for its
  * sections with Back above them. Hidden on pairing, where nothing leads away.
  */
 import { useQuery } from "@tanstack/react-query";
@@ -15,23 +15,20 @@ import {
 	Boxes,
 	ChevronLeft,
 	Inbox,
-	Plus,
 	SlidersHorizontal,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { IncidentListPane } from "@/components/incidents/IncidentListPane";
-import { kindWord } from "@/components/services/service-detail.utils";
-import { TelemetryConsent, useAbout } from "@/components/settings";
+import { tierWord } from "@/components/services/service-detail.utils";
+import { useAbout } from "@/components/settings";
 import {
 	type SettingsTab,
 	useSettingsSections,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
-import { useNewIncident } from "@/components/shell/NewIncident";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Button } from "@/components/ui/button";
 import { inSettings, useBack } from "@/hooks/use-back";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
 import { GO_SHORTCUTS } from "@/hooks/use-global-shortcuts";
@@ -172,7 +169,6 @@ function MainBar({
 			<div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pb-2 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>
-			{full && <TelemetryConsent variant="strip" />}
 			<div className="flex shrink-0 items-center px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
 				<ThemeToggle />
 			</div>
@@ -315,7 +311,7 @@ function ServiceList() {
 									on && "text-text-2",
 								)}
 							>
-								{kindWord(s.type)}
+								{tierWord(s.tier)}
 							</span>
 						</span>
 					</Link>
@@ -385,7 +381,9 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 									"bg-surface-2 font-medium text-text-1 before:absolute before:top-3 before:bottom-3 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
 							)}
 						>
-							<span className="truncate">{s.label}</span>
+							<span className="truncate font-medium text-text-1">
+								{s.label}
+							</span>
 							{s.line && (
 								<small className="truncate text-meta font-normal text-text-3">
 									{s.line}
@@ -424,53 +422,55 @@ function useEscape(handler: () => void, enabled: boolean) {
 }
 
 /**
- * The phone's doors: a strip across the top with a 10-px label under each, and
- * New. It stays on Settings; its Settings door returns a section to the list.
+ * The phone's doors: four icons across the top, the one you are in on
+ * `surface-2` with the accent bar; the page header below carries New (#673).
+ * It stays on Settings; its Settings door returns a section to the list.
  */
 function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
-	const newIncident = useNewIncident();
 	return (
-		<div
-			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-4 md:hidden"
+		<nav
+			className="sticky top-0 z-40 flex h-(--header-h) items-center gap-1 bg-canvas px-2 md:hidden"
+			aria-label="Areas"
 			data-testid="topbar"
 		>
-			<Link
-				to="/incidents"
-				aria-label="PrismaLens"
-				className="mr-auto flex items-center rounded-control"
-			>
-				<PrismaLensMark className="size-[22px]" />
-			</Link>
-			<nav className="flex items-center" aria-label="Areas">
-				{doors.map((door) => {
-					const on = isOn(pathname, door.to);
-					return (
-						<Link
-							key={door.to}
-							to={door.to}
-							aria-current={on ? "page" : undefined}
-							data-testid={`strip-${door.label.toLowerCase()}`}
-							className={cn(
-								"relative flex h-10 min-w-12 flex-col items-center justify-center gap-0.5 rounded-control px-1.5 text-[10px] leading-3 text-text-2 transition-colors duration-(--dur-instant)",
-								on &&
-									"font-medium text-text-1 after:absolute after:inset-x-2 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent",
-							)}
-						>
-							{door.icon}
-							<span>{door.label}</span>
-						</Link>
-					);
-				})}
-			</nav>
-			<Button
-				size="icon"
-				className="ml-1 size-8"
-				onClick={newIncident}
-				aria-label="New incident"
-				data-testid="strip-new"
-			>
-				<Plus className="size-4" />
-			</Button>
-		</div>
+			{doors.map((door) => {
+				const on = isOn(pathname, door.to);
+				return (
+					<Link
+						key={door.to}
+						to={door.to}
+						aria-current={on ? "page" : undefined}
+						aria-label={
+							door.count !== undefined
+								? `${door.label}, ${door.count}`
+								: door.label
+						}
+						data-testid={`strip-${door.label.toLowerCase()}`}
+						className={cn(
+							"relative flex h-8 items-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+							on &&
+								"bg-surface-2 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
+						)}
+					>
+						{door.icon}
+						{door.count !== undefined && (
+							<span
+								aria-hidden
+								className="text-meta text-text-3 tabular-nums"
+								data-testid={`strip-${door.label.toLowerCase()}-count`}
+							>
+								{door.count}
+							</span>
+						)}
+						{door.dot && (
+							<span
+								aria-hidden
+								className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent"
+							/>
+						)}
+					</Link>
+				);
+			})}
+		</nav>
 	);
 }

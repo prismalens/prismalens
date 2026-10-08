@@ -43,26 +43,19 @@ export function useNewIncident() {
 	return useContext(NewIncidentContext);
 }
 
-/** The header's New; on the phone the strip's + stands in for it. */
-export function NewIncidentButton({
-	className,
-	compact,
-}: {
-	className?: string;
-	compact?: boolean;
-}) {
+/** The header's primary on every list screen, the phone's included (#673 w11). */
+export function NewIncidentButton({ className }: { className?: string }) {
 	const open = useNewIncident();
 	return (
 		<Hint label="New incident" keys={[NEW_INCIDENT_KEY.toUpperCase()]}>
 			<Button
-				size={compact ? "icon" : "default"}
-				className={cn(!compact && "pl-2", className)}
+				size="sm"
+				className={cn("pl-2", className)}
 				onClick={open}
-				aria-label={compact ? "New incident" : undefined}
 				data-testid="create-incident-button"
 			>
 				<Plus />
-				{!compact && "New"}
+				New incident
 			</Button>
 		</Hint>
 	);

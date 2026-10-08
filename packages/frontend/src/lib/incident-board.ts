@@ -15,7 +15,7 @@ import {
 	runState,
 } from "@prismalens/contracts";
 import { failureWords } from "./failure-words";
-import { formatClock } from "./format-time";
+import { formatClock, formatElapsed } from "./format-time";
 import { attentionFor, attentionRank, isBackAgain } from "./incident-attention";
 import { STALE_AFTER_S } from "./investigation-events";
 
@@ -144,27 +144,93 @@ export function runWord(
 	};
 }
 
+/** A column's state colour, repeated in its head, its cards and the sidebar (#673 w14). */
+export const COLUMN_TONE: Record<
+	BoardColumn,
+	"warn" | "live" | "text-2" | "ok"
+> = {
+	needs_you: "warn",
+	working: "live",
+	concluded: "text-2",
+	resolved: "ok",
+};
+
+/** `danger` for firing or failed, `warn` for the rest of Needs you, else plain. */
+export type CardTone = "danger" | "warn" | "plain";
+
+export interface CardWord {
+	text: string;
+	tone: CardTone;
+	/** How long the state has held, or how long the run took: `54m`, `1m 02s`. */
+	since?: string;
+}
+
+function since(at: string | Date | null | undefined, now: number | null) {
+	return at ? shortAge(at, now) || undefined : undefined;
+}
+
 /** The card's state word (study-v3 §4): what is left to do, never the stored status. */
 export function cardWord(
 	incident: IncidentWithRelations,
-): { text: string; attention: boolean } | null {
+	now: number | null = null,
+): CardWord | null {
 	const why = attentionFor(incident);
-	if (why === "unacknowledged" && isBackAgain(incident))
-		return { text: "Back again", attention: true };
-	if (why)
+	if (why === "unacknowledged")
 		return {
-			text: INCIDENT_ATTENTION_LABEL[why],
-			attention: why !== "awaiting_close",
+			text: isBackAgain(incident)
+				? "Back again"
+				: INCIDENT_ATTENTION_LABEL[why],
+			tone: "danger",
 		};
+	if (why === "failed_run")
+		return { text: INCIDENT_ATTENTION_LABEL[why], tone: "danger" };
+	if (why === "awaiting_close")
+		return {
+			text: "Alerts cleared",
+			tone: "plain",
+			since: since(incident.resolvedAt, now),
+		};
+	if (why) return { text: INCIDENT_ATTENTION_LABEL[why], tone: "warn" };
 	const column = boardColumn(incident);
-	if (column === "concluded")
+	if (column === "resolved")
 		return {
-			text:
-				INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
-				incident.status,
-			attention: false,
+			text: "Resolved",
+			tone: "plain",
+			since: since(incident.closedAt, now),
 		};
-	return null;
+	if (column !== "concluded") return null;
+	const run = latestRun(incident);
+	const took =
+		run && (run.startedAt || run.completedAt)
+			? formatElapsed(
+					(new Date(run.completedAt ?? run.createdAt).getTime() -
+						new Date(run.startedAt ?? run.createdAt).getTime()) /
+						1000,
+				)
+			: undefined;
+	if (run?.status === "completed")
+		return { text: "Done", tone: "plain", since: took };
+	if (run?.status === "cancelled")
+		return { text: "Stopped by you", tone: "plain", since: took };
+	return {
+		text:
+			INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ??
+			incident.status,
+		tone: "plain",
+	};
+}
+
+/**
+ * Resolved cards older than a day fold into Settled under the columns, the
+ * board's twin of the sidebar's Settled group (#673 w14).
+ */
+export function isSettled(
+	incident: IncidentWithRelations,
+	now: number,
+): boolean {
+	if (boardColumn(incident) !== "resolved") return false;
+	const at = incident.closedAt ?? incident.updatedAt;
+	return !!at && now - new Date(at).getTime() > 86_400_000;
 }
 
 export interface Headline {

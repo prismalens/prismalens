@@ -29,6 +29,12 @@ describe("dropAction", () => {
 		).toEqual({ kind: "reopen-investigate" });
 	});
 
+	it("asks to reopen a Resolved card dropped on Concluded, with no run (#673 w42)", () => {
+		expect(
+			drop("resolved", "concluded", { canResolve: false, canReopen: true }),
+		).toEqual({ kind: "reopen" });
+	});
+
 	it("refuses a second run while one is live", () => {
 		expect(drop("needs_you", "working", { live: true }).kind).toBe("none");
 	});
@@ -59,7 +65,6 @@ describe("dropAction", () => {
 			["concluded", "needs_you", {}],
 			["working", "needs_you", {}],
 			["resolved", "needs_you", { canReopen: true }],
-			["resolved", "concluded", { canReopen: true }],
 			["needs_you", "concluded", {}],
 			["needs_you", "resolved", { canResolve: false }],
 		] as const) {

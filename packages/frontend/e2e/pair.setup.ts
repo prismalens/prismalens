@@ -48,6 +48,12 @@ for (const stack of stacks) {
 
 			await page.goto(`/pair#${token}`);
 			await page.waitForURL(/\/incidents/);
+			// The usage strip sits above the board and lands after it, moving every
+			// card under a drag; telemetry-consent.spec serves its own flags (#673 w45).
+			const seen = await page.request.put("/api/settings/telemetry", {
+				data: { noticed: true, dismissed: true },
+			});
+			expect(seen.ok(), await seen.text()).toBe(true);
 			await context.storageState({
 				path: join(stack.workspaceDir, "paired-state.json"),
 			});

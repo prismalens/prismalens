@@ -16,8 +16,8 @@ export interface RecordSectionProps extends HTMLAttributes<HTMLElement> {
 }
 
 /**
- * One section of the durable record. The heading is quiet on purpose: the record
- * reads as one document with named parts, not as a stack of cards.
+ * One section of a service page or list (#673 w4): a quiet 13/500 heading,
+ * then its content on a `surface-1` pool, the way Settings groups its rows.
  */
 export function RecordSection({
 	id,
@@ -35,21 +35,21 @@ export function RecordSection({
 			className={cn("mt-8 scroll-mt-24 first:mt-0", className)}
 			{...props}
 		>
-			<div className="mb-2 flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<div className="mb-3 flex min-h-5 flex-wrap items-center justify-between gap-x-3 gap-y-1">
 				<h2
 					id={`${id}-title`}
-					className="flex shrink-0 items-baseline gap-2 text-heading text-text-1"
+					className="flex shrink-0 items-baseline gap-2 text-body font-medium text-text-2"
 				>
 					{title}
 					{count !== undefined && (
-						<span className="text-body font-normal text-text-3 tabular-nums">
+						<span className="font-normal text-text-3 tabular-nums">
 							{count}
 						</span>
 					)}
 				</h2>
 				{actions && <div className="flex items-center gap-2">{actions}</div>}
 			</div>
-			{children}
+			<div className="pool px-4 py-1 [&>p]:py-3">{children}</div>
 		</section>
 	);
 }
