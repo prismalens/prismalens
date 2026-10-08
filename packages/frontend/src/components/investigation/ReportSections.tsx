@@ -96,6 +96,12 @@ interface ReportProps {
 	events: readonly CanonicalEvent[];
 }
 
+/** One full stop, never two: the agent's text often ends with its own (#673). */
+export function endSentence(text: string): string {
+	const t = text.trim();
+	return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
 /** The confidence word and its basis, then the conclusion in two lines with Show all. */
 export function Answer({ report }: { report: InvestigationReport }) {
 	const { word, tone, basis } = answerWord(report);
@@ -112,7 +118,9 @@ export function Answer({ report }: { report: InvestigationReport }) {
 		c?.service ? `Code in ${c.service}.` : null,
 		c?.changeRef ? `Introduced by \`${c.changeRef}\`.` : null,
 		c?.mechanism
-			? `${c.mechanism.charAt(0).toUpperCase()}${c.mechanism.slice(1)}.`
+			? endSentence(
+					`${c.mechanism.charAt(0).toUpperCase()}${c.mechanism.slice(1)}`,
+				)
 			: null,
 	]
 		.filter(Boolean)

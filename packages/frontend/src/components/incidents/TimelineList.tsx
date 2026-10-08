@@ -13,7 +13,7 @@ import { Hint } from "@/components/shared/Hint";
 import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
-import { formatClock } from "@/lib/format-time";
+import { formatClock, formatDateTime } from "@/lib/format-time";
 import { runStateTone } from "@/lib/state-tone";
 import type { TimelineItem } from "@/lib/timeline-groups";
 import { cn } from "@/lib/utils";
@@ -77,6 +77,8 @@ function EntryRow({
 				{(full || reasoned) && entry.description && !note && (
 					<span className="block truncate text-meta text-text-3">
 						{entry.description}
+						{typeof entry.metadata?.priorEndedAt === "string" &&
+							` at ${formatDateTime(entry.metadata.priorEndedAt)}`}
 					</span>
 				)}
 			</span>

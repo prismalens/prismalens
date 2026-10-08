@@ -148,10 +148,18 @@ export class IncidentsService {
 					type: TimelineEntryType.incident_created,
 					title: "Incident created",
 					description: prior
-						? `New incident: ${prior.alertName} fired again after INC-${prior.number} ${prior.status === "closed" ? "was resolved" : "had its alerts cleared"} ${(prior.endedAt ?? new Date()).toISOString()}`
+						? `New incident: ${prior.alertName} fired again after INC-${prior.number} ${prior.status === "closed" ? "was resolved" : "had its alerts cleared"}`
 						: `Incident INC-${incident.number} was created`,
 					source: TimelineSource.system,
-					...(prior ? { metadata: { priorIncidentId: prior.id } } : {}),
+					// The reader's clock formats the time; the text never carries an ISO string (#673).
+					...(prior
+						? {
+								metadata: {
+									priorIncidentId: prior.id,
+									priorEndedAt: (prior.endedAt ?? new Date()).toISOString(),
+								},
+							}
+						: {}),
 				});
 
 				return incident;

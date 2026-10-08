@@ -594,8 +594,11 @@ describe("IncidentsService", () => {
 					incidentId: "inc-11",
 					type: TimelineEntryType.incident_created,
 					description:
-						"New incident: BooklogrLibraryListSlow fired again after INC-10 was resolved 2026-10-01T14:22:00.000Z",
-					metadata: { priorIncidentId: "inc-10" },
+						"New incident: BooklogrLibraryListSlow fired again after INC-10 was resolved",
+					metadata: {
+						priorIncidentId: "inc-10",
+						priorEndedAt: "2026-10-01T14:22:00.000Z",
+					},
 				}),
 			);
 			// R1a d5: the card reads the prior from a column, not the timeline.
