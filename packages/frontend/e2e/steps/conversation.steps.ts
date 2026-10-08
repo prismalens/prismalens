@@ -898,7 +898,7 @@ Given("an answer to a question is running on it", async ({ page }) => {
 });
 
 Then(
-	'the Report tab shows the report and the Overview\'s report pool shows it, not "working"',
+	"the Report tab shows the report and the Overview's report pool shows it, the answer working under it",
 	async ({ page }) => {
 		await visit(page, `/incidents/${inc(page).id}/report`);
 		await expect(page.getByTestId("report-answer")).toBeVisible();
@@ -906,7 +906,8 @@ Then(
 		await visit(page, `/incidents/${inc(page).id}`);
 		const pool = page.getByTestId("overview-report");
 		await expect(pool).toBeVisible();
-		await expect(pool).not.toContainText("working");
+		await expect(pool).toContainText("Likely");
+		await expect(pool).toContainText(/Run #\d+ working on an answer/);
 		await expect(pool).not.toContainText("No report");
 	},
 );

@@ -80,7 +80,7 @@ Feature: The conversation and the box
     Scenario: The report stays open while an answer runs
       Given INC-1's run finished with a report
       And an answer to a question is running on it
-      Then the Report tab shows the report and the Overview's report pool shows it, not "working"
+      Then the Report tab shows the report and the Overview's report pool shows it, the answer working under it
 
     # T23 (#673 w59, OBJ-013)
     Scenario: Investigate again carries the box and the report into a new run
