@@ -44,7 +44,7 @@ describe("RunFidelitySchema", () => {
 	it("reads an access level stored since #778 as the nearest agent mode, and takes any agent mode id (#673 w21)", () => {
 		const base = { harness: "codex", fidelity: "cooperative", mechanism: "agent" };
 		expect(RunFidelitySchema.parse({ ...base, mode: "read-only-tools" }).mode).toBe("read-only");
-		expect(RunFidelitySchema.parse({ ...base, mode: "workspace-write" }).mode).toBe("full-access");
+		expect(RunFidelitySchema.parse({ ...base, mode: "workspace-write" }).mode).toBe("workspace-write");
 		expect(RunFidelitySchema.parse({ ...base, mode: "acceptEdits" }).mode).toBe("acceptEdits");
 	});
 });

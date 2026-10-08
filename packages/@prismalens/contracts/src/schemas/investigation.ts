@@ -91,10 +91,9 @@ export const NextStepSchema = z.object({
 	priority: RecommendationPrioritySchema.nullable().optional(),
 });
 
-/** Access levels stored before #673 w21, read as the nearest agent mode word. */
+/** Access levels stored before #673 w21; only the one with an exact agent mode word is renamed. */
 const LEGACY_ACCESS_MODE: Record<string, string> = {
 	"read-only-tools": "read-only",
-	"workspace-write": "full-access",
 };
 
 /**
