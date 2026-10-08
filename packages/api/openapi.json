@@ -26475,6 +26475,40 @@
                                   },
                                   "images": {
                                     "type": "boolean"
+                                  },
+                                  "sandbox": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {
+                                          "type": "object",
+                                          "properties": {
+                                            "state": {
+                                              "enum": [
+                                                "enforced",
+                                                "none",
+                                                "unknown"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "reason": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "state",
+                                            "reason"
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
                                   }
                                 },
                                 "required": [
@@ -27120,6 +27154,39 @@
                     },
                     "images": {
                       "type": "boolean"
+                    },
+                    "sandbox": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "state": {
+                                "enum": [
+                                  "enforced",
+                                  "none",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "reason"
+                            ]
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [

@@ -41,7 +41,11 @@ import {
 	resolveOnPath,
 	windowsInstallOnPath,
 } from "@prismalens/config/harness-selection";
-import { probeHarness, windowsSpawnPlan } from "@prismalens/engine";
+import {
+	probeHarness,
+	type SandboxChecks,
+	windowsSpawnPlan,
+} from "@prismalens/engine";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
@@ -257,11 +261,27 @@ export async function checkHarnessHandshake(
 		results.push({
 			name: `Harness ACP handshake: ${descriptor.label}`,
 			pass: probe.outcome === "answers-acp",
-			detail: `${probe.detail}; sign-in: ${descriptor.loginHint}`,
+			detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; sign-in: ${descriptor.loginHint}`,
 			hard: false,
 		});
 	}
 	return results;
+}
+
+/** "; sandbox: enforced for read-only, agent (why); none for agent-full-access (why)" — modes named only when they differ (#673 w51). */
+export function sandboxSummary(sandbox: SandboxChecks | undefined): string {
+	const groups = new Map<string, string[]>();
+	for (const [mode, check] of Object.entries(sandbox ?? {})) {
+		const key = `${check.state} (${check.reason})`;
+		groups.set(key, [...(groups.get(key) ?? []), mode]);
+	}
+	if (groups.size === 0) return "";
+	if (groups.size === 1) return `; sandbox: ${[...groups.keys()][0]}`;
+	const parts = [...groups].map(([key, modes]) => {
+		const [state, ...why] = key.split(" ");
+		return `${state} for ${modes.join(", ")} ${why.join(" ")}`;
+	});
+	return `; sandbox: ${parts.join("; ")}`;
 }
 
 /**

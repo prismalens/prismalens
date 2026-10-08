@@ -37,6 +37,7 @@ export class HarnessProbeService {
 			modes: result.modes ?? null,
 			efforts: result.efforts ?? null,
 			images: result.images === true,
+			sandbox: result.sandbox ?? null,
 		});
 		return {
 			id: result.id,
@@ -51,6 +52,7 @@ export class HarnessProbeService {
 						modes: result.modes ?? null,
 						efforts: result.efforts ?? null,
 						images: result.images === true,
+						sandbox: result.sandbox ?? null,
 					}
 				: {}),
 		};

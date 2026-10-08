@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	AGENT_DEFAULT_MODE,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
@@ -28,6 +29,7 @@ import {
 } from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
 import { allowAllPolicy } from "./permission.js";
+import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
 /** ACP's auth_required error code. */
@@ -54,6 +56,8 @@ export interface HarnessProbeResult {
 	modes?: AcpOfferedMode[] | null;
 	efforts?: { id: string; name: string; default: boolean }[] | null;
 	images?: boolean;
+	/** Per offered mode (or `agent-default`): does the agent's own sandbox hold it on this machine (#673 w51). */
+	sandbox?: SandboxChecks;
 }
 
 function effortLevels(
@@ -134,6 +138,7 @@ export async function probeHarness(
 			| "companionBinary"
 		>;
 		timeoutMs?: number;
+		sandbox?: typeof checkSandbox;
 	} = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
@@ -171,11 +176,12 @@ export async function probeHarness(
 		});
 		const opening = session.open();
 		opening.catch(() => {});
+		let answered: HarnessProbeResult;
 		try {
 			await Promise.race([opening, deadline]);
 			const agent = session.agent;
 			const detail = `answers ACP${agent.version ? `, ${agent.name ?? harness} ${agent.version}` : ""}`;
-			return {
+			answered = {
 				id: harness,
 				outcome: "answers-acp",
 				detail,
@@ -193,6 +199,11 @@ export async function probeHarness(
 			clearTimeout(timer);
 			await session.close();
 		}
+		const modeIds = answered.modes?.map((m) => m.id) ?? [AGENT_DEFAULT_MODE];
+		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {
+			env,
+		});
+		return { ...answered, sandbox };
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

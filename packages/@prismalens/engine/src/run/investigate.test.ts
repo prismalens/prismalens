@@ -605,12 +605,27 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(report.report.fidelity?.mode).toBe("build");
 	});
 
-	it("passes Codex its mode at spawn and calls only its read-only sandbox enforced", () => {
+	it("passes Codex its mode at spawn and calls nothing enforced before its sandbox is checked", () => {
 		expect(prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env.INITIAL_AGENT_MODE).toBe("read-only");
 		const full = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), agentMode: "agent-full-access" });
 		expect(full.env.INITIAL_AGENT_MODE).toBe("agent-full-access");
-		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "enforced", mechanism: "agent" });
-		expect(buildRunFidelity("codex", {}, "agent-full-access").fidelity).toBe("cooperative");
+		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "cooperative", mechanism: "agent" });
+	});
+
+	it("records enforced only when the run's sandbox check for its mode says so (#673 w51)", async () => {
+		const asked: string[][] = [];
+		const check = (state: "enforced" | "none" | "unknown") => async (_h: string, modes: readonly string[]) => {
+			asked.push([...modes]);
+			return Object.fromEntries(modes.map((m) => [m, { state, reason: "probe" }]));
+		};
+		const env = { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" };
+		for (const [state, want] of [["enforced", "enforced"], ["unknown", "cooperative"], ["none", "cooperative"]] as const) {
+			const { events } = await collect("ok", { harness: "codex", agentMode: undefined, env, sandboxCheck: check(state) });
+			const report = events.at(-1);
+			if (report?.kind !== "report") throw new Error("no report");
+			expect(report.report.fidelity).toMatchObject({ mode: "read-only", fidelity: want });
+		}
+		expect(asked).toEqual([["read-only"], ["read-only"], ["read-only"]]);
 	});
 
 	it("writes OpenCode's config with no permission block of PrismaLens's own", () => {
@@ -626,6 +641,7 @@ describe("the agent's own mode (#673 w21)", () => {
 			harness: "codex",
 			agentMode: undefined,
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" },
+			sandboxCheck: async () => ({ "read-only": { state: "enforced", reason: "refused" } }),
 		});
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");

@@ -25,6 +25,10 @@ export {
 	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
+	runsInSandbox,
+	SANDBOX_STATES,
+	type SandboxCheck,
+	type SandboxState,
 } from "./providers/harness.js";
 export {
 	annotateModel,
