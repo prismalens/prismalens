@@ -530,6 +530,7 @@ export class InvestigationsController {
 			error: investigation.error ?? null,
 			harness: investigation.harness ?? null,
 			model: investigation.model ?? null,
+			effort: investigation.effort ?? null,
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
 			acpSessionId: investigation.acpSessionId ?? null,
 			workspace: this.parseWorkspace(investigation.workspace),

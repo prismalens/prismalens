@@ -519,6 +519,70 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 	});
 
+	describe("a run's own agent, model and effort (#673 w52)", () => {
+		const make = (ready: { ready: boolean; reason?: string }) => {
+			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-4") };
+			const investigationsService = {
+				startOrGet: vi.fn().mockResolvedValue({ investigation: { id: "inv-4" }, created: true }),
+			};
+			const harnessService = {
+				resolveSelection: vi.fn(async (asked: { harness?: string }) => ({
+					runnable: true,
+					harness: asked.harness ?? "opencode",
+					auto: false,
+				})),
+				ensureReady: vi.fn().mockResolvedValue(ready),
+			};
+			const controller = new IncidentsController(
+				{ findById: vi.fn().mockResolvedValue(mockIncident) } as unknown as IncidentsService,
+				investigationsService as unknown as InvestigationsService,
+				dispatchService as unknown as DispatchService,
+				{ getIntegrationsForService: vi.fn().mockResolvedValue([]) } as unknown as IntegrationsService,
+				harnessService as unknown as HarnessService,
+				{} as never,
+			);
+			const handlers = getHandlers(controller) as unknown as Record<
+				"investigate" | "chat",
+				(a: { input: Record<string, unknown> }) => Promise<unknown>
+			>;
+			return { dispatchService, investigationsService, harnessService, handlers };
+		};
+
+		it("gates on the agent the request names, with that agent's reason", async () => {
+			const t = make({ ready: false, reason: "Codex: sign in needed" });
+			await expect(
+				t.handlers.investigate({ input: { id: mockIncident.id, harness: "codex", model: null } }),
+			).rejects.toMatchObject({
+				code: "PRECONDITION_FAILED",
+				message: "Codex: sign in needed",
+				data: { harness: "codex", failure: "not-ready" },
+			});
+			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({ harness: "codex", model: null });
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("codex");
+			expect(t.investigationsService.startOrGet).not.toHaveBeenCalled();
+		});
+
+		it("gates on Settings' agent when the request names none", async () => {
+			const t = make({ ready: true });
+			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi" } });
+			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({});
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("opencode");
+			expect(t.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.not.objectContaining({ harness: expect.anything() }),
+			);
+		});
+
+		it("carries the request's choice on the job, investigate and chat alike", async () => {
+			const t = make({ ready: true });
+			const choice = { harness: "claude-code", model: "opus[1m]", effort: null };
+			await t.handlers.investigate({ input: { id: mockIncident.id, ...choice } });
+			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi", ...choice } });
+			for (const call of t.dispatchService.addInvestigationJob.mock.calls)
+				expect(call[0]).toMatchObject(choice);
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("claude-code");
+		});
+	});
+
 	it("refuses with PRECONDITION_FAILED when no harness is on PATH: status UNCHANGED and no job enqueued", async () => {
 		const incidentsService = {
 			findById: vi.fn().mockResolvedValue(mockIncident),

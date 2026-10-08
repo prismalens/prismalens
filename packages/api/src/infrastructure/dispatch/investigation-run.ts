@@ -155,7 +155,11 @@ async function runJobInternal(
 			modelSource,
 			effort,
 			agentMode: settingsMode,
-		} = await ports.resolveHarness();
+		} = await ports.resolveHarness({
+			...(data.harness ? { harness: data.harness } : {}),
+			...(data.model !== undefined ? { model: data.model } : {}),
+			...(data.effort !== undefined ? { effort: data.effort } : {}),
+		});
 		if (!selection.runnable) throw new Error(selection.reason);
 		const agentMode = resolveAgentMode(
 			selection.harness,
@@ -212,6 +216,7 @@ async function runJobInternal(
 			runId,
 			harness: selection.harness,
 			...(model ? { model } : {}),
+			...(effort ? { effort } : {}),
 			workspace: JSON.stringify(toRunWorkspace(workspace)),
 			agentMode,
 			...(data.chat ? { chat: true } : {}),
@@ -448,6 +453,7 @@ async function runFollowUp(
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(inv.effort ? { effort: inv.effort } : {}),
 				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },

@@ -44,6 +44,8 @@ export interface PrismaInvestigationStoreParams {
 	runId: string;
 	harness?: string;
 	model?: string;
+	/** The effort it asked for, kept so a follow-up asks again (#673 w52). */
+	effort?: string;
 	/** JSON RunWorkspace, kept on the row so a follow-up can rebuild it (#747). */
 	workspace?: string;
 	/** The agent's own mode id the run asked for, kept so a follow-up runs in it (#673 w21). */
@@ -66,6 +68,7 @@ export function createPrismaInvestigationStore(
 		runId,
 		harness,
 		model,
+		effort,
 		workspace,
 		agentMode,
 		resume,
@@ -132,6 +135,7 @@ export function createPrismaInvestigationStore(
 				harnessThreadId: runId,
 				...(harness ? { harness } : {}),
 				...(model ? { model } : {}),
+				...(effort ? { effort } : {}),
 				...(workspace ? { workspace } : {}),
 				...(agentMode ? { agentMode } : {}),
 			});

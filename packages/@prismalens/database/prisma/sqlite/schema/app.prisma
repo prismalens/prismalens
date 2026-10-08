@@ -269,6 +269,7 @@ model Investigation {
   harnessThreadId   String?   @unique // Harness checkpoint thread ID for resume/replay
   harness           String? // the harness the run started with (#743)
   model             String? // the model id it was asked for, if any (#743)
+  effort            String? // the effort it was asked for, if any (#673 w52)
   stopRequestedAt   DateTime? // the operator asked it to stop (#743)
   acpSessionId      String? // the harness's own session id, set only when it can be loaded again (#747)
   workspace         String? // JSON RunWorkspace (#747)

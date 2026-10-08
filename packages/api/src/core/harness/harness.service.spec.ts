@@ -260,6 +260,61 @@ describe("HarnessService", () => {
 				failure: "no-harness",
 			});
 		});
+
+		it("takes the run's own agent over the persisted pin (#673 w52)", async () => {
+			process.env.PATH = pathWith("codex-acp", "opencode");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "opencode" }),
+			);
+			await expect(
+				service().resolveSelection({ harness: "codex" }),
+			).resolves.toEqual({ runnable: true, harness: "codex", auto: false });
+		});
+
+		it("refuses the run's own agent by name when it is not on PATH", async () => {
+			process.env.PATH = pathWith("opencode");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "opencode" }),
+			);
+			await expect(
+				service().resolveSelection({ harness: "codex" }),
+			).resolves.toMatchObject({
+				runnable: false,
+				failure: "pinned-harness-missing",
+				harness: "codex",
+				reason: expect.stringMatching(/^Codex is not on this machine/),
+			});
+		});
+
+		it("keeps PRISMALENS_HARNESS over a run asking for another agent", async () => {
+			process.env.PATH = pathWith("codex-acp", "opencode");
+			process.env.PRISMALENS_HARNESS = "opencode";
+			mockPrismaService.setting.findUnique.mockResolvedValue(null);
+			await expect(
+				service().resolveSelection({ harness: "codex" }),
+			).resolves.toMatchObject({
+				runnable: false,
+				failure: "env-pinned-other",
+				harness: "codex",
+				pinnedBy: "env",
+			});
+			await expect(
+				service().resolveSelection({ harness: "opencode" }),
+			).resolves.toMatchObject({ runnable: true, harness: "opencode" });
+		});
+
+		it("checks the run's own model, not the stored one", async () => {
+			process.env.PATH = pathWith("gemini");
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "gemini", models: { gemini: "synthetic/model-a" } }),
+			);
+			await expect(
+				service().resolveSelection({ model: null }),
+			).resolves.toMatchObject({ runnable: true, harness: "gemini" });
+			await expect(
+				service().resolveSelection({ harness: "gemini", model: "x/y" }),
+			).resolves.toMatchObject({ runnable: false, failure: "model-unsupported" });
+		});
 	});
 
 	describe("getStatus", () => {

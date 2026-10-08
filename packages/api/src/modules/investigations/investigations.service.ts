@@ -338,6 +338,7 @@ export class InvestigationsService {
 		facts?: {
 			harness?: string;
 			model?: string;
+			effort?: string;
 			acpSessionId?: string;
 			workspace?: string;
 			agentMode?: string;
@@ -368,6 +369,7 @@ export class InvestigationsService {
 			}
 			if (facts?.harness) updateData.harness = facts.harness;
 			if (facts?.model) updateData.model = facts.model;
+			if (facts?.effort) updateData.effort = facts.effort;
 			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
 			if (facts?.workspace) updateData.workspace = facts.workspace;
 			if (facts?.agentMode) updateData.agentMode = facts.agentMode;

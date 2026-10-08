@@ -31,6 +31,8 @@ export const HARNESS_SELECTION_FAILURES = [
 	"no-harness",
 	/** A model is set for a harness that has no way to take one (#639 rec 4). */
 	"model-unsupported",
+	/** A run asked for another agent than the one PRISMALENS_HARNESS pins (#673 w52). */
+	"env-pinned-other",
 ] as const;
 export type HarnessSelectionFailure =
 	(typeof HARNESS_SELECTION_FAILURES)[number];

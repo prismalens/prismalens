@@ -5933,6 +5933,40 @@
                     "type": "string",
                     "maxLength": 64
                   },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "attachments": {
                     "type": "array",
                     "maxItems": 5,
@@ -6016,7 +6050,8 @@
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
                                 "no-harness",
-                                "model-unsupported"
+                                "model-unsupported",
+                                "env-pinned-other"
                               ],
                               "type": "string"
                             },
@@ -6113,6 +6148,40 @@
                   "agentMode": {
                     "type": "string",
                     "maxLength": 64
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "attachments": {
                     "type": "array",
@@ -6272,7 +6341,8 @@
                                 "invalid-env-harness",
                                 "pinned-harness-missing",
                                 "no-harness",
-                                "model-unsupported"
+                                "model-unsupported",
+                                "env-pinned-other"
                               ],
                               "type": "string"
                             },
@@ -7906,6 +7976,16 @@
                         }
                       ]
                     },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -8861,6 +8941,16 @@
                             ]
                           },
                           "model": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effort": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -9853,6 +9943,16 @@
                         }
                       ]
                     },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -10794,6 +10894,16 @@
                           ]
                         },
                         "model": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "effort": {
                           "anyOf": [
                             {
                               "type": "string"
@@ -11810,6 +11920,16 @@
                       ]
                     },
                     "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -13757,6 +13877,16 @@
                         }
                       ]
                     },
+                    "effort": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -15282,6 +15412,16 @@
                       ]
                     },
                     "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effort": {
                       "anyOf": [
                         {
                           "type": "string"
