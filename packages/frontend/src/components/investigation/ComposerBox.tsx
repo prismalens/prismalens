@@ -16,6 +16,7 @@ import {
 	AgentModelChip,
 	AgentModelPicker,
 	EffortMenu,
+	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
@@ -120,7 +121,12 @@ export function ComposerBox({
 	const [drafts, setDrafts] = useState<Draft[]>([]);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
-	const [agentMode, setAgentMode] = useState<string | undefined>();
+	// Mode ids are per agent: a pick made for another agent is dropped (#798).
+	const { effective } = useAgentChoice();
+	const [picked, setPicked] = useState<{ harness?: string; mode?: string }>({});
+	const agentMode = picked.harness === effective?.id ? picked.mode : undefined;
+	const setAgentMode = (mode: string) =>
+		setPicked({ harness: effective?.id, mode });
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const shell = useRef<HTMLDivElement>(null);
