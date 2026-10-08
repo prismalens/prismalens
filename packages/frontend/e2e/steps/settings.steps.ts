@@ -17,6 +17,8 @@ import { ensureService, fireIncident, QUIET, visit } from "./product";
 interface World {
 	source?: string;
 	incident?: string;
+	/** The investigate request's body (#673 w52). */
+	sent?: Record<string, unknown>;
 }
 const worlds = new WeakMap<Page, World>();
 const w = (page: Page): World => {
@@ -681,6 +683,105 @@ Then(
 			).toHaveText(text);
 		}
 		await pickAgent(page, "auto");
+	},
+);
+
+// --- A chip changes only this run (#673 w52) ------------------------------------------
+
+async function harnessSettings(page: Page) {
+	const res = await page.request.get("/api/settings/harness");
+	expect(res.ok(), await res.text()).toBe(true);
+	return (await res.json()) as {
+		harness: string;
+		models?: Record<string, string>;
+		efforts?: Record<string, string>;
+	};
+}
+
+Given(
+	"OpenCode and Codex are checked and Settings names OpenCode",
+	async ({ page, agents }) => {
+		await pickerScene(page, agents);
+		await pickAgent(page, "opencode");
+	},
+);
+
+When(
+	/^on a new run's draft I pick Codex's "(.+)" and "(.+)" effort in the box$/,
+	async ({ page, alertmanager, deliverWebhook, unique }, model, level) => {
+		await openDraft(page, { alertmanager, deliverWebhook }, unique("ChipRun"));
+		w(page).incident = new URL(page.url()).pathname.split("/")[2];
+		await page.getByTestId("agent-picker").click();
+		await picker(page).getByTestId("rail-codex").click();
+		await picker(page)
+			.locator(`[data-testid=model-option][data-model="${model}"]`)
+			.click();
+		await expect(page.getByTestId("model-pill")).toHaveText(model);
+		await page.getByTestId("effort-chip").click();
+		await page.getByTestId("effort-option").filter({ hasText: level }).click();
+		await expect(page.getByTestId("effort-chip")).toContainText(level);
+	},
+);
+
+Then(
+	"Settings still names OpenCode, with no model or effort for Codex",
+	async ({ page }) => {
+		const s = await harnessSettings(page);
+		expect(s.harness).toBe("opencode");
+		expect(s.models?.codex).toBeUndefined();
+		expect(s.efforts?.codex).toBeUndefined();
+	},
+);
+
+Then(
+	/^the box still reads "(.+)" and "(.+)" after I open Alerts and come back$/,
+	async ({ page }, model, level) => {
+		await page.getByTestId("tab-alerts").click();
+		await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/alerts$/);
+		await page.goBack();
+		await expect(page.getByTestId("docked-composer")).toBeVisible();
+		await expect(page.getByTestId("model-pill")).toHaveText(model);
+		await expect(page.getByTestId("effort-chip")).toContainText(level);
+	},
+);
+
+When('I press "Investigate" in the box', async ({ page }) => {
+	const sent = page.waitForRequest(
+		(r) => r.method() === "POST" && /\/investigate$/.test(r.url()),
+	);
+	await page.getByTestId("composer-investigate").click();
+	w(page).sent = (await sent).postDataJSON() as Record<string, unknown>;
+});
+
+Then(
+	/^the run asks for Codex, "(.+)" and "(.+)", and keeps them on the run$/,
+	async ({ page }, model, effort) => {
+		expect(w(page).sent).toMatchObject({
+			harness: "codex",
+			model,
+			effort,
+		});
+		await expect
+			.poll(
+				async () => {
+					const res = await page.request.get(
+						`/api/incidents/${w(page).incident}`,
+					);
+					const runs = (
+						(await res.json()) as {
+							investigations?: { id: string }[];
+						}
+					).investigations;
+					if (!runs?.[0]) return null;
+					const inv = (await (
+						await page.request.get(`/api/investigations/${runs[0].id}`)
+					).json()) as { harness?: string; model?: string; effort?: string };
+					return { harness: inv.harness, model: inv.model, effort: inv.effort };
+				},
+				{ timeout: 30_000 },
+			)
+			.toEqual({ harness: "codex", model, effort });
+		expect((await harnessSettings(page)).harness).toBe("opencode");
 	},
 );
 

@@ -172,6 +172,79 @@ describe("resolveHarnessRunModel (#634, #639)", () => {
 	});
 });
 
+describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w52)", () => {
+	function withSettings(settings: Row) {
+		const harnessService = {
+			resolveSelection: vi.fn(async (asked: { harness?: string }) => ({
+				runnable: true,
+				harness: asked.harness ?? settings.harness,
+				auto: false,
+			})),
+			getSettings: vi.fn(async () => settings),
+		};
+		const service = new DispatchService(
+			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
+			fakeBus() as any,
+			{ attach: vi.fn() } as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			harnessService as any,
+			{} as any,
+			fakePrisma([]),
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+		);
+		return { service, harnessService };
+	}
+	const settings = {
+		harness: "opencode",
+		models: { opencode: "vendor/stored", codex: "gpt-stored" },
+		efforts: { opencode: "low", codex: "medium" },
+		agentModes: { codex: "read-only" },
+	};
+
+	it("reads Settings when the run names nothing (an alert's run)", async () => {
+		const { service, harnessService } = withSettings(settings);
+		await expect(service.resolveHarness()).resolves.toMatchObject({
+			selection: { harness: "opencode" },
+			model: "vendor/stored",
+			modelSource: "operator",
+			effort: "low",
+		});
+		expect(harnessService.resolveSelection).toHaveBeenCalledWith({});
+	});
+
+	it("prefers each field the run named, and falls back per field for the rest", async () => {
+		const { service, harnessService } = withSettings(settings);
+		await expect(
+			service.resolveHarness({ harness: "codex", effort: "high" }),
+		).resolves.toMatchObject({
+			selection: { harness: "codex" },
+			model: "gpt-stored",
+			effort: "high",
+			agentMode: "read-only",
+		});
+		expect(harnessService.resolveSelection).toHaveBeenCalledWith({
+			harness: "codex",
+			effort: "high",
+		});
+		await expect(
+			service.resolveHarness({ model: "vendor/asked" }),
+		).resolves.toMatchObject({ model: "vendor/asked", effort: "low" });
+	});
+
+	it("takes null as the agent's own default, not Settings'", async () => {
+		const { service } = withSettings(settings);
+		const r = await service.resolveHarness({ model: null, effort: null });
+		expect(r.model).toBeUndefined();
+		expect(r.effort).toBeUndefined();
+	});
+});
+
 describe("DispatchService.resumeInvestigation (#747)", () => {
 	function withInvestigation(row: Row, jobs: Row[] = []) {
 		const investigation = {

@@ -22,6 +22,7 @@ import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AccessMenu,
 	AgentModelPicker,
+	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { Hint } from "@/components/shared/Hint";
@@ -95,6 +96,7 @@ export function HarnessSettings() {
 					>
 						<AgentModelPicker />
 					</SettingRow>
+					<EffortRow />
 					<PermissionModeRow />
 					<AutoRow />
 				</Pool>
@@ -123,6 +125,30 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 		</div>
+	);
+}
+
+/** The effort and context window a run on the next agent starts with, saved per agent (#673 w52). */
+function EffortRow() {
+	const { effective, model, efforts } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	if (!effective) return null;
+	const id = effective.id as HarnessId;
+	return (
+		<SettingRow
+			label="Effort"
+			description={`For ${effective.label}; with the context window where it offers one`}
+			testId="harness-effort"
+		>
+			<EffortChip
+				harness={effective}
+				model={model}
+				effort={efforts[id] ?? null}
+				side="bottom"
+				onEffort={(effort) => update.mutate({ efforts: { [id]: effort } })}
+				onModel={(m) => update.mutate({ models: { [id]: m || null } })}
+			/>
+		</SettingRow>
 	);
 }
 

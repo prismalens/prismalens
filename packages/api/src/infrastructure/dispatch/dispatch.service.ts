@@ -17,6 +17,7 @@ import {
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
 import {
+	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
@@ -27,6 +28,7 @@ import type {
 	InvestigationJobData,
 	JobAttachment,
 	OperatorMessageMode,
+	RunChoice,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
@@ -154,6 +156,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							status: investigation.status,
 							harness: investigation.harness ?? null,
 							model: investigation.model ?? null,
+							effort: investigation.effort ?? null,
 							acpSessionId: investigation.acpSessionId ?? null,
 							workspace: investigation.workspace ?? null,
 						}
@@ -169,6 +172,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					{
 						harness: dto.harness,
 						model: dto.model,
+						effort: dto.effort,
 						acpSessionId: dto.acpSessionId,
 						workspace: dto.workspace,
 						agentMode: dto.agentMode,
@@ -211,25 +215,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);
 			},
-			resolveHarness: async () => {
-				const [selection, settings] = await Promise.all([
-					this.harnessService.resolveSelection(),
-					this.harnessService.getSettings(),
-				]);
-				if (!selection.runnable) return { selection };
-				const modelResult = resolveHarnessRunModel(
-					selection.harness,
-					settings.models?.[selection.harness],
-				);
-				const effort = settings.efforts?.[selection.harness];
-				const agentMode = settings.agentModes?.[selection.harness];
-				return {
-					selection,
-					...modelResult,
-					...(effort ? { effort } : {}),
-					...(agentMode ? { agentMode } : {}),
-				};
-			},
+			resolveHarness: (requested) => this.resolveHarness(requested),
 			incidentRepos: async (incidentId) => {
 				const service = {
 					select: {
@@ -321,6 +307,31 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		);
 	}
 
+	/**
+	 * The run's agent, model and effort: each the request's when it named one, else
+	 * Settings' for that agent (#673 w52). `null` asks for the agent's own default.
+	 */
+	async resolveHarness(
+		requested: RunChoice = {},
+	): ReturnType<RunPorts["resolveHarness"]> {
+		const [selection, settings] = await Promise.all([
+			this.harnessService.resolveSelection(requested),
+			this.harnessService.getSettings(),
+		]);
+		if (!selection.runnable) return { selection };
+		const h = selection.harness;
+		const pick = (asked: string | null | undefined, stored?: string) =>
+			asked === undefined ? stored : (asked ?? undefined);
+		const effort = pick(requested.effort, settings.efforts?.[h]);
+		const agentMode = settings.agentModes?.[h];
+		return {
+			selection,
+			...resolveHarnessRunModel(h, pick(requested.model, settings.models?.[h])),
+			...(effort ? { effort } : {}),
+			...(agentMode ? { agentMode } : {}),
+		};
+	}
+
 	/** Opt-in telemetry (#602): a run starting, and its one terminal state. */
 	private async reportStatus(id: string, status: string): Promise<void> {
 		if (status !== "running" && !isWorkflowTerminal(status)) return;
@@ -333,11 +344,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			.catch(() => null);
 
 		if (status === "running") {
-			const selection = await this.harnessService
-				.resolveSelection()
-				.catch(() => null);
+			// The run's own agent, which its chip may have changed from Settings' (#673 w52).
+			const ran = HARNESS_IDS.find((h) => h === investigation?.harness);
+			const selection = ran
+				? null
+				: await this.harnessService.resolveSelection().catch(() => null);
 			await this.telemetry.capture("investigation_started", {
-				harness: selection?.runnable ? selection.harness : null,
+				harness: ran ?? (selection?.runnable ? selection.harness : null),
 				trigger: triggerFor(investigation?.triggerType, investigation?.kind),
 			});
 			return;

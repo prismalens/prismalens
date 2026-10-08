@@ -33,6 +33,7 @@ export class InvestigationFactory {
 			harnessThreadId: null,
 			harness: null,
 			model: null,
+			effort: null,
 			stopRequestedAt: null,
 			acpSessionId: null,
 			workspace: null,

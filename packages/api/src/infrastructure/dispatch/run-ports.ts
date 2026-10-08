@@ -8,7 +8,7 @@ import type { HarnessSelection } from "@prismalens/config";
  */
 import type { ModelSource } from "@prismalens/config/harness";
 import type { CanonicalEvent, WorkflowStatus } from "@prismalens/contracts";
-import type { ContextPack } from "@prismalens/contracts/schemas";
+import type { ContextPack, RunChoice } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
 	RepoSource,
@@ -34,6 +34,8 @@ export interface RunPorts {
 		status: string;
 		harness: string | null;
 		model: string | null;
+		/** The effort the run asked for; a follow-up asks for it again (#673 w52). */
+		effort?: string | null;
 		acpSessionId: string | null;
 		/** JSON RunWorkspace. */
 		workspace: string | null;
@@ -47,6 +49,7 @@ export interface RunPorts {
 			startedAt?: Date;
 			harness?: string;
 			model?: string;
+			effort?: string;
 			acpSessionId?: string;
 			/** JSON RunWorkspace. */
 			workspace?: string;
@@ -77,8 +80,8 @@ export interface RunPorts {
 	clearEvents(id: string): Promise<void>;
 	writeResult(id: string, dto: InternalInvestigationResultDto): Promise<void>;
 	createTimelineEntry(dto: CreateTimelineEntryDto): Promise<void>;
-	/** Detect-and-report verdict plus the operator's model choice, if any. */
-	resolveHarness(): Promise<{
+	/** Detect-and-report verdict plus the model and effort: the run's own, else Settings', per field (#673 w52). */
+	resolveHarness(requested?: RunChoice): Promise<{
 		selection: HarnessSelection;
 		model?: string;
 		modelSource?: ModelSource;

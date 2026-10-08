@@ -4,6 +4,7 @@
 /**
  * Investigation, Agent Execution, and Tool Execution schemas
  */
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import {
 	DateStringSchema,
@@ -248,6 +249,8 @@ export const InvestigationSchema = z.object({
 	/** The harness and model the run started with; the report's fidelity says what actually ran (#743). */
 	harness: z.string().nullable().optional(),
 	model: z.string().nullable().optional(),
+	/** The effort the run asked for (#673 w52); null asked for the agent's own. */
+	effort: z.string().nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
@@ -460,6 +463,17 @@ export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
 export const AttachmentIdsSchema = z
 	.array(z.string().uuid())
 	.max(MAX_ATTACHMENTS_PER_MESSAGE);
+
+/**
+ * The box's chips for one run (#673 w52): each absent field falls back to Settings,
+ * and `null` asks for the agent's own default. The 1M window rides in `model` as `[1m]`.
+ */
+export const RunChoiceSchema = z.object({
+	harness: z.enum(HARNESS_IDS).optional(),
+	model: z.string().min(1).max(256).nullable().optional(),
+	effort: z.string().min(1).max(64).nullable().optional(),
+});
+export type RunChoice = z.infer<typeof RunChoiceSchema>;
 
 /** A file the operator attached, as the conversation shows it under its message. */
 export const AttachmentRefSchema = z.object({
@@ -845,6 +859,7 @@ export const InvestigationJobDataSchema = z.object({
 	brief: z.string().max(4000).optional(),
 	/** The agent's own mode id (#673 w21); the agent's row default when absent, a queued legacy job included. */
 	agentMode: z.string().max(64).optional(),
+	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),
 	/** `chat`: a conversation `chat.text` started; it ends with no report (#673). */

@@ -18,6 +18,7 @@ import type {
 	IncidentWithRelations,
 	InvestigationJobData,
 	RootCauseCategory,
+	RunChoice,
 } from "@prismalens/contracts/schemas";
 import type {
 	Alert as PrismaAlert,
@@ -69,6 +70,15 @@ const MERGE_REFUSAL_CODE: Record<
 	"source-run-live": "CONFLICT",
 	"target-not-open": "CONFLICT",
 };
+
+/** The chips a request named; each field it left out falls back to Settings (#673 w52). */
+function runChoice({ harness, model, effort }: RunChoice): RunChoice {
+	return {
+		...(harness ? { harness } : {}),
+		...(model !== undefined ? { model } : {}),
+		...(effort !== undefined ? { effort } : {}),
+	};
+}
 
 /** What a resolved (stored `closed`) incident still takes on PATCH (R1a d3). */
 const EDITABLE_AFTER_RESOLVE: ReadonlySet<string> = new Set([
@@ -212,7 +222,8 @@ export class IncidentsController {
 						: [];
 
 					// Refuse unrunnable investigations before modifying status (#520, ADR-0031).
-					await this.requireReadyHarness();
+					const choice = runChoice(input);
+					await this.requireReadyHarness(choice);
 
 					// A second click returns the running investigation instead of a second session on the user's quota (#637).
 					const { investigation, created } =
@@ -235,6 +246,7 @@ export class IncidentsController {
 					const jobId = await this.enqueueRun(incident, investigation.id, {
 						...(input.brief ? { brief: input.brief } : {}),
 						...(input.agentMode ? { agentMode: input.agentMode } : {}),
+						...choice,
 						...(attachments.length ? { attachments } : {}),
 					});
 
@@ -260,7 +272,8 @@ export class IncidentsController {
 				const attachments = input.attachments?.length
 					? await this.attachments.forJob(input.id, input.attachments)
 					: [];
-				await this.requireReadyHarness();
+				const choice = runChoice(input);
+				await this.requireReadyHarness(choice);
 				const { investigation, created } =
 					await this.investigationsService.startOrGet({
 						incidentId: input.id,
@@ -285,6 +298,7 @@ export class IncidentsController {
 				const jobId = await this.enqueueRun(incident, investigation.id, {
 					kind: "chat",
 					...(input.agentMode ? { agentMode: input.agentMode } : {}),
+					...choice,
 					chat: {
 						text: input.text,
 						...(attachments.length ? { attachments } : {}),
@@ -365,9 +379,9 @@ export class IncidentsController {
 		};
 	}
 
-	/** No run starts on an agent that is missing or not signed in (#520, #673 w9). */
-	private async requireReadyHarness(): Promise<void> {
-		const selection = await this.harnessService.resolveSelection();
+	/** No run starts on an agent that is missing or not signed in (#520, #673 w9); the run's own agent when it names one (w52). */
+	private async requireReadyHarness(requested: RunChoice = {}): Promise<void> {
+		const selection = await this.harnessService.resolveSelection(requested);
 		if (!selection.runnable) {
 			throw new ORPCError("PRECONDITION_FAILED", {
 				message: selection.reason,

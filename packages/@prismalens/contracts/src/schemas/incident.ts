@@ -19,7 +19,11 @@ import {
 	RootCauseCategorySchema,
 	SeveritySchema,
 } from "./common.js";
-import { AttachmentIdsSchema, AttachmentRefSchema } from "./investigation.js";
+import {
+	AttachmentIdsSchema,
+	AttachmentRefSchema,
+	RunChoiceSchema,
+} from "./investigation.js";
 import { ServiceSchema } from "./service.js";
 import { INVESTIGATION_KINDS } from "./state-semantics.js";
 
@@ -234,6 +238,7 @@ export const InvestigateIncidentSchema = z.object({
 	brief: z.string().trim().max(4000).optional(),
 	/** The agent's own mode id (#673 w21); the agent's default when absent. */
 	agentMode: z.string().max(64).optional(),
+	...RunChoiceSchema.shape,
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
 });
@@ -242,6 +247,7 @@ export const InvestigateIncidentSchema = z.object({
 export const ChatIncidentSchema = z.object({
 	text: z.string().trim().min(1).max(4000),
 	agentMode: z.string().max(64).optional(),
+	...RunChoiceSchema.shape,
 	attachments: AttachmentIdsSchema.optional(),
 });
 

@@ -561,6 +561,29 @@ describe("the agent's own mode (#673 w21)", () => {
 	});
 });
 
+describe("the run's own agent, model and effort (#673 w52)", () => {
+	it("asks the ports for the job's choice and keeps the effort on the row", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+			await io.store.create();
+			return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+		});
+		const ports = fakePorts();
+		const resolve = ports.resolveHarness;
+		ports.resolveHarness = vi.fn(async () => ({ ...(await resolve()), effort: "high" }));
+		await runInvestigationJob(
+			{ id: "job-choice", investigationId: "inv-choice", attempts: 1 },
+			{ investigationId: "inv-choice", incidentId: "inc-choice", harness: "opencode", model: null, effort: "high" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+		expect(ports.resolveHarness).toHaveBeenCalledWith({ harness: "opencode", model: null, effort: "high" });
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ effort?: string }];
+		expect(opts.effort).toBe("high");
+		expect(ports.updateStatus).toHaveBeenCalledWith("inv-choice", expect.objectContaining({ effort: "high" }));
+	});
+});
+
 /**
  * ADR 0004 §5 / #628: the harness child never gets `process.env` verbatim. The
  * only env `conductRun` receives is the resolved harness's own provider keys,
