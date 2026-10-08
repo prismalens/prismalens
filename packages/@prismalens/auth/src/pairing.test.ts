@@ -19,6 +19,7 @@ import {
 	prismaPairingStore,
 	redeemPairingLink,
 	STARTUP_LINK_LABEL,
+	onDevicePaired,
 } from "./pairing.js";
 
 interface StoredLink {
@@ -486,3 +487,99 @@ describe("authenticateDevice", () => {
 		expect(touchSpy).toHaveBeenCalledWith(redeemed.device.id, t2);
 	});
 });
+
+describe("onDevicePaired", () => {
+	it("listener receives { linkId, device } with the link's id after redeemPairingLink succeeds", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		const calls: Array<{ linkId: string; device: DeviceRecord }> = [];
+		const unsubscribe = onDevicePaired((event) => {
+			calls.push(event);
+		});
+
+		try {
+			const redeemed = await redeemPairingLink(store, {
+				token: link.token,
+				name: "Laptop",
+			});
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]).toEqual({
+				linkId: link.id,
+				device: redeemed.device,
+			});
+		} finally {
+			unsubscribe();
+		}
+	});
+
+	it("is not called when redemption fails (used link)", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		await redeemPairingLink(store, {
+			token: link.token,
+			name: "Laptop",
+		});
+
+		const calls: Array<{ linkId: string; device: DeviceRecord }> = [];
+		const unsubscribe = onDevicePaired((event) => {
+			calls.push(event);
+		});
+
+		try {
+			await expect(
+				redeemPairingLink(store, {
+					token: link.token,
+					name: "Laptop Again",
+				}),
+			).rejects.toThrow(PairingError);
+
+			expect(calls).toHaveLength(0);
+		} finally {
+			unsubscribe();
+		}
+	});
+
+	it("the returned unsubscribe stops further calls", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link1 = await createPairingLink(store);
+		const link2 = await createPairingLink(store);
+		const calls: Array<{ linkId: string; device: DeviceRecord }> = [];
+		const unsubscribe = onDevicePaired((event) => {
+			calls.push(event);
+		});
+
+		await redeemPairingLink(store, {
+			token: link1.token,
+			name: "Laptop 1",
+		});
+		expect(calls).toHaveLength(1);
+
+		unsubscribe();
+
+		await redeemPairingLink(store, {
+			token: link2.token,
+			name: "Laptop 2",
+		});
+		expect(calls).toHaveLength(1);
+	});
+
+	it("a listener that throws does not fail redeemPairingLink", async () => {
+		const { store } = createInMemoryPairingStore();
+		const link = await createPairingLink(store);
+		const unsubscribe = onDevicePaired(() => {
+			throw new Error("listener error");
+		});
+
+		try {
+			const redeemed = await redeemPairingLink(store, {
+				token: link.token,
+				name: "Laptop",
+			});
+			expect(redeemed.device.name).toBe("Laptop");
+		} finally {
+			unsubscribe();
+		}
+	});
+});
+

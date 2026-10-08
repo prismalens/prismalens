@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { createServer } from "node:net";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
 	networkBindWarning,
+	portFree,
+	portInUseLine,
 	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
 	resolveLogDir,
 	serviceHint,
 	TELEMETRY_NOTICE,
+	watchPairings,
 	WSL_POWERSHELL,
 	waitForReady,
 } from "./up-console.js";
@@ -288,3 +292,149 @@ describe("serviceHint", () => {
 		expect(serviceHint({ platform: "darwin", env: {}, serviceOwnsWorkspace: true })).toBeNull();
 	});
 });
+
+describe("watchPairings", () => {
+	it("the startup link redeemed -> report called once with \"Paired this machine's browser (<name>).\" and kind \"paired\"; advancing past expiresAt reports nothing more", () => {
+		vi.useFakeTimers();
+		try {
+			const link = {
+				id: "link-1",
+				expiresAt: new Date(Date.now() + 60_000),
+			};
+			let storedListener:
+				| ((event: { linkId: string; device: { name: string } }) => void)
+				| null = null;
+			const subscribe = (
+				listener: (event: { linkId: string; device: { name: string } }) => void,
+			) => {
+				storedListener = listener;
+			};
+			const report = vi.fn();
+
+			watchPairings(link, subscribe, report);
+
+			expect(storedListener).not.toBeNull();
+			storedListener!({
+				linkId: "link-1",
+				device: { name: "MacBook Pro" },
+			});
+
+			expect(report).toHaveBeenCalledTimes(1);
+			expect(report).toHaveBeenCalledWith(
+				"Paired this machine's browser (MacBook Pro).",
+				"paired",
+			);
+
+			vi.advanceTimersByTime(120_000);
+			expect(report).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("never redeemed -> after advancing to expiresAt, report called with the line starting \"The startup link expired unused.\" and kind \"expired\"", () => {
+		vi.useFakeTimers();
+		try {
+			const link = {
+				id: "link-1",
+				expiresAt: new Date(Date.now() + 60_000),
+			};
+			const subscribe = vi.fn();
+			const report = vi.fn();
+
+			watchPairings(link, subscribe, report);
+
+			expect(report).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(60_000);
+
+			expect(report).toHaveBeenCalledTimes(1);
+			expect(report).toHaveBeenCalledWith(
+				"The startup link expired unused. `pl pair --operator` prints another.",
+				"expired",
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("a redemption of a different link id -> \"A device paired: <name>.\" and the expiry line still fires later", () => {
+		vi.useFakeTimers();
+		try {
+			const link = {
+				id: "link-1",
+				expiresAt: new Date(Date.now() + 60_000),
+			};
+			let storedListener:
+				| ((event: { linkId: string; device: { name: string } }) => void)
+				| null = null;
+			const subscribe = (
+				listener: (event: { linkId: string; device: { name: string } }) => void,
+			) => {
+				storedListener = listener;
+			};
+			const report = vi.fn();
+
+			watchPairings(link, subscribe, report);
+
+			expect(storedListener).not.toBeNull();
+			storedListener!({
+				linkId: "link-other",
+				device: { name: "Pixel 9" },
+			});
+
+			expect(report).toHaveBeenCalledTimes(1);
+			expect(report).toHaveBeenCalledWith(
+				"A device paired: Pixel 9.",
+				"paired",
+			);
+
+			vi.advanceTimersByTime(60_000);
+
+			expect(report).toHaveBeenCalledTimes(2);
+			expect(report).toHaveBeenLastCalledWith(
+				"The startup link expired unused. `pl pair --operator` prints another.",
+				"expired",
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe("portFree", () => {
+	it("listen a node:net server on 127.0.0.1 port 0, read its port, expect portFree false; close it, expect true", async () => {
+		const server = createServer();
+		await new Promise<void>((resolve) => {
+			server.listen({ host: "127.0.0.1", port: 0 }, () => resolve());
+		});
+
+		const address = server.address();
+		if (!address || typeof address === "string") {
+			throw new Error("Unexpected address");
+		}
+		const port = address.port;
+
+		const freeWhileListening = await portFree("127.0.0.1", port);
+		expect(freeWhileListening).toBe(false);
+
+		await new Promise<void>((resolve, reject) => {
+			server.close((err) => (err ? reject(err) : resolve()));
+		});
+
+		const freeAfterClose = await portFree("127.0.0.1", port);
+		expect(freeAfterClose).toBe(true);
+	});
+});
+
+describe("portInUseLine", () => {
+	it("exact strings for true and false", () => {
+		expect(portInUseLine(3170, true)).toBe(
+			"Port 3170 is in use by another PrismaLens. Stop it, or start this one on another port with --port.",
+		);
+		expect(portInUseLine(3170, false)).toBe(
+			"Port 3170 is in use. Start on another port with --port.",
+		);
+	});
+});
+
