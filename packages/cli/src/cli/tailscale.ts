@@ -151,15 +151,12 @@ export function removeServe(target: string, run: Run = runTailscale): void {
 	if (result.status !== 0) throw failure(result, "serve off");
 }
 
-/** The port of a loopback proxy target, which `pl up --port` could serve instead. */
+/** The port of an http loopback target, which `pl up --port` could serve instead. */
 function localPort(target: string): string | null {
-	try {
-		const { hostname, port } = new URL(target);
-		const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(hostname);
-		return loopback && port ? port : null;
-	} catch {
-		return null;
-	}
+	// Read the port from the text: URL drops a default :80, and an https target can't be matched by --port.
+	const match =
+		/^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)(?:\/|$)/.exec(target);
+	return match?.[1] ?? null;
 }
 
 function sameTarget(a: string, b: string): boolean {

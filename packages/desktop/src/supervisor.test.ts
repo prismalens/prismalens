@@ -181,6 +181,7 @@ describe("supervisor", () => {
 			).toBe("Database migration failed: Migration 20260922194029_connection_user_optional is missing migration.sql");
 			expect(withoutLogFields('Bad value {"a": in the config')).toBe('Bad value {"a": in the config');
 			expect(withoutLogFields("plain line")).toBe("plain line");
+			expect(withoutLogFields('ERROR: Invalid config: {"host":"bad"}')).toBe('Invalid config: {"host":"bad"}');
 		});
 
 		it("is applied to a crashed backend's dialog", () => {

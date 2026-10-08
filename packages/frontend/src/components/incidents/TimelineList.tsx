@@ -75,10 +75,13 @@ function EntryRow({
 					)}
 				</span>
 				{(full || reasoned) && entry.description && !note && (
-					<span className="block truncate text-meta text-text-3">
-						{entry.description}
-						{typeof entry.metadata?.priorEndedAt === "string" &&
-							` at ${formatDateTime(entry.metadata.priorEndedAt)}`}
+					<span className="flex min-w-0 text-meta text-text-3">
+						<span className="truncate">{entry.description}</span>
+						{typeof entry.metadata?.priorEndedAt === "string" && (
+							<span className="shrink-0 whitespace-pre">
+								{` at ${formatDateTime(entry.metadata.priorEndedAt)}`}
+							</span>
+						)}
 					</span>
 				)}
 			</span>

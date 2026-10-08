@@ -156,7 +156,9 @@ export class IncidentsService {
 						? {
 								metadata: {
 									priorIncidentId: prior.id,
-									priorEndedAt: (prior.endedAt ?? new Date()).toISOString(),
+									...(prior.endedAt
+										? { priorEndedAt: prior.endedAt.toISOString() }
+										: {}),
 								},
 							}
 						: {}),

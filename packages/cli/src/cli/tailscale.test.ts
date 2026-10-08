@@ -76,6 +76,15 @@ describe("ensureServe", () => {
 		);
 	});
 
+	it("offers --port for an explicit :80 http target but not for an https one", () => {
+		const serving = (proxy: string) => {
+			const status = { Web: { "box.tail1.ts.net:443": { Handlers: { "/": { Proxy: proxy } } } } };
+			return fake({ "status --json": running, "serve status --json": ok(JSON.stringify(status)) });
+		};
+		expect(() => ensureServe("http://127.0.0.1:6473", serving("http://127.0.0.1:80"))).toThrow(/start on port 80 \(--port 80\)\.$/);
+		expect(() => ensureServe("http://127.0.0.1:6473", serving("https://localhost:8443"))).toThrow(/off` first\.$/);
+	});
+
 	it("explains a serve the user may not configure", () => {
 		const run = fake({
 			"status --json": running,
