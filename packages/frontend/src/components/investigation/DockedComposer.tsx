@@ -104,9 +104,18 @@ export function DockedComposer({
 	// What the next message asks for: a draft's own pick, else its default (#673 w59).
 	const thread = { draft, live, continuable: run.continuable };
 	const verbs = verbsFor(thread);
-	const [runVerb, setRunVerb] = useState<RunVerb>(
-		run.continuable ? "investigate" : "ask",
+	// A pick holds for the state it was made in: a run stopped while open offers Investigate.
+	const verbKey = `${inv?.id}:${run.continuable}`;
+	const [picked, setPicked] = useState<{ key: string; verb: RunVerb } | null>(
+		null,
 	);
+	const runVerb: RunVerb =
+		picked?.key === verbKey
+			? picked.verb
+			: run.continuable
+				? "investigate"
+				: "ask";
+	const setRunVerb = (v: RunVerb) => setPicked({ key: verbKey, verb: v });
 	const verb: RunVerb = draft
 		? (record.draftVerb ??
 			defaultVerb(thread, {

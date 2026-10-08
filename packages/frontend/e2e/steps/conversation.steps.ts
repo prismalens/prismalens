@@ -444,9 +444,12 @@ Given(
 );
 
 Then(
-	'the box reads "Continue this run" and no note explains it',
+	'the box reads "Say what to change, or just continue" and no note explains it',
 	async ({ page }) => {
-		await expect(box(page)).toHaveAttribute("placeholder", "Continue this run");
+		await expect(box(page)).toHaveAttribute(
+			"placeholder",
+			"Say what to change, or just continue",
+		);
 		// The placeholder names what the box does; explaining copy is gone (look ruling L43).
 		await expect(page.getByTestId("composer-note")).toHaveCount(0);
 	},
@@ -833,7 +836,7 @@ When("I press Stop on the laptop", async ({ page }) => {
 });
 
 Then(
-	'the phone\'s status line reads "Stopped by you" and its box reads "Continue this run"',
+	'the phone\'s status line reads "Stopped by you" and its box reads "Say what to change, or just continue"',
 	async ({ page }) => {
 		const phone = phoneOf(page);
 		await expect(phone.getByTestId("run-status-state")).toHaveText(
@@ -841,8 +844,203 @@ Then(
 		);
 		await expect(phone.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Continue this run",
+			"Say what to change, or just continue",
 		);
 		await phone.context().close();
+	},
+);
+
+// --- One thread, two verbs (#673 w59) -------------------------------------------------
+
+/** GET replies for the run and the incident, reshaped; the rest of the API stays real. */
+async function reshape(
+	page: Page,
+	path: string,
+	fix: (body: Record<string, unknown>) => Record<string, unknown>,
+) {
+	await page.route(
+		(url) => url.pathname === path,
+		async (route) => {
+			if (route.request().method() !== "GET") return route.continue();
+			try {
+				const res = await route.fetch();
+				await route.fulfill({
+					response: res,
+					json: fix((await res.json()) as Record<string, unknown>),
+				});
+			} catch (error) {
+				if (page.isClosed() || /disposed/i.test(String(error))) return;
+				throw error;
+			}
+		},
+	);
+}
+
+const mapRuns = (
+	body: Record<string, unknown>,
+	f: (r: Record<string, unknown>, i: number) => Record<string, unknown>,
+) => ({
+	...body,
+	investigations: (
+		(body.investigations as Record<string, unknown>[]) ?? []
+	).map(f),
+});
+
+Given("an answer to a question is running on it", async ({ page }) => {
+	const id = await runId(page);
+	const live = { status: "running", liveTurn: "answer", completedAt: null };
+	await reshape(page, `/api/investigations/${id}`, (b) => ({ ...b, ...live }));
+	await reshape(page, `/api/incidents/${inc(page).id}`, (b) =>
+		mapRuns(b, (r) => (r.id === id ? { ...r, ...live } : r)),
+	);
+});
+
+Then(
+	'the Report tab shows the report and the Overview\'s report pool shows it, not "working"',
+	async ({ page }) => {
+		await visit(page, `/incidents/${inc(page).id}/report`);
+		await expect(page.getByTestId("report-answer")).toBeVisible();
+		await expect(page.getByTestId("report-empty")).toHaveCount(0);
+		await visit(page, `/incidents/${inc(page).id}`);
+		const pool = page.getByTestId("overview-report");
+		await expect(pool).toBeVisible();
+		await expect(pool).not.toContainText("working");
+		await expect(pool).not.toContainText("No report");
+	},
+);
+
+When(
+	"I type {string} and attach {string}, then press {string}",
+	async ({ page }, text: string, file: string, link: string) => {
+		await box(page).fill(text);
+		await page.getByTestId("composer-file-input").setInputFiles({
+			name: file,
+			mimeType: "text/plain",
+			buffer: Buffer.from("14:02 deploy raised the pool wait\n"),
+		});
+		await expect(page.getByTestId("composer-file")).toContainText(file);
+		await page
+			.getByTestId("run-status")
+			.getByRole("button", { name: link })
+			.click();
+	},
+);
+
+Then(
+	"a draft opens holding {string}, the file {string} and the quote {string}",
+	async ({ page }, text: string, file: string, quote: string) => {
+		await expect(
+			page
+				.getByTestId("run-tree-draft")
+				.or(page.getByTestId("draft-heading"))
+				.first(),
+		).toBeVisible();
+		const value = await box(page).inputValue();
+		expect(value.startsWith(text)).toBe(true);
+		expect(value).toContain(quote);
+		await expect(page.getByTestId("composer-file")).toContainText(file);
+		await expect(page.getByTestId("verb-chip")).toHaveAttribute(
+			"data-verb",
+			"investigate",
+		);
+	},
+);
+
+Then("the report is unchanged", async ({ page }) => {
+	const res = await page.request.get(
+		`/api/investigations/${await runId(page)}`,
+	);
+	const now = JSON.stringify(
+		((await res.json()) as { report: unknown }).report,
+	);
+	expect(now).toBe(w(page).report);
+});
+
+Then(
+	'the status line reads "Stopped by you" and the verb chip offers {string} and {string}',
+	async ({ page }, first: string, second: string) => {
+		await expect(strip(page)).toHaveText(/^Stopped by you/);
+		const chip = page.getByTestId("verb-chip");
+		await expect(chip).toHaveAttribute("data-verb", "investigate");
+		await expect(page.getByTestId("composer-investigate")).toHaveText(first);
+		await chip.click();
+		await expect(page.getByTestId("verb-menu")).toContainText(first);
+		await expect(page.getByTestId("verb-menu")).toContainText(second);
+		await expect(page.getByTestId("verb-menu")).toContainText(
+			"Continues this run to its report.",
+		);
+		await page.getByTestId("verb-ask").click();
+		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		await expect(page.getByTestId("composer-send")).toBeVisible();
+	},
+);
+
+/** The run read as a chat in `state`; the API behind it stays real. */
+const chatState: WeakMap<Page, Record<string, unknown>> = new WeakMap();
+Given("the run is a chat that ended in an error", async ({ page }) => {
+	await page.getByTestId("composer-stop").click();
+	await expect(strip(page)).toHaveText(/^Stopped by you/);
+	const id = await runId(page);
+	chatState.set(page, {
+		kind: "chat",
+		status: "failed",
+		error: "the agent crashed",
+		liveTurn: null,
+	});
+	await reshape(page, `/api/investigations/${id}`, (b) => ({
+		...b,
+		...chatState.get(page),
+	}));
+	await openConversation(page);
+});
+
+When("the chat answers a message", async ({ page }) => {
+	chatState.set(page, {
+		kind: "chat",
+		status: "completed",
+		error: null,
+		liveTurn: null,
+		lastTurnOutcome: "answered",
+	});
+	await openConversation(page);
+});
+
+Then("the status line reads {string}", async ({ page }, word: string) => {
+	await expect(strip(page)).toHaveText(new RegExp(`^${word}`));
+});
+
+When("another run on INC-1 starts working", async ({ page }) => {
+	await expect(strip(page)).toHaveText(/^Stopped by you/);
+	const stopped = await runId(page);
+	await reshape(page, `/api/incidents/${inc(page).id}`, (b) => {
+		const runs = (b.investigations as Record<string, unknown>[]) ?? [];
+		const first = runs.find((r) => r.id === stopped) ?? {};
+		const other = {
+			...first,
+			id: "0b5e0000-0000-4000-8000-000000000002",
+			status: "running",
+			liveTurn: "report",
+			createdAt: new Date(Date.now() + 60_000).toISOString(),
+			completedAt: null,
+		};
+		return { ...b, investigations: [other, ...runs] };
+	});
+	await visit(
+		page,
+		`/incidents/${inc(page).id}/conversation?investigation=${stopped}`,
+	);
+});
+
+Then(
+	"the stopped run's box says {string} and sends nothing",
+	async ({ page }, words: string) => {
+		await expect(page.getByTestId("composer-blocked")).toContainText(words);
+		let sent = 0;
+		page.on("request", (r) => {
+			if (r.method() === "POST" && r.url().endsWith("/messages")) sent++;
+		});
+		await expect(box(page)).toBeDisabled();
+		await expect(page.getByTestId("composer-investigate")).toBeDisabled();
+		expect(sent).toBe(0);
 	},
 );

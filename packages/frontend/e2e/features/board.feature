@@ -69,3 +69,15 @@ Feature: Board
     When I drag its card to "Working"
     And I confirm the reopen
     Then a toast reads "No run started" and the card no longer reads "Reopening"
+
+  # T21 (#673 w59, OBJ-014, OBJ-008): Stop and Resolve act on the live thread, not the newest.
+  Scenario: Resolve stops whichever turn is live: a resumed older run
+    Given INC-1's live run sits under a newer finished run
+    When I drag its card to "Resolved" and confirm a cause
+    Then the Stop went to the live run, not the newest, and INC-1 is Resolved
+
+  Scenario: Resolve stops whichever turn is live: a live chat
+    Given INC-1's live run is a chat answering a question
+    Then INC-1's card stays out of "Working"
+    When I drag its card to "Resolved" and confirm a cause
+    Then the Stop went to the live run, not the newest, and INC-1 is Resolved

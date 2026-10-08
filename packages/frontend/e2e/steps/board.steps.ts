@@ -1567,3 +1567,115 @@ Then(
 		await page.keyboard.press("Escape");
 	},
 );
+
+// --- Resolve stops whichever turn is live (#673 w59, T21) ----------------------------
+
+type ListedRun = Record<string, unknown> & { id: string; createdAt: string };
+const liveIds = new WeakMap<Page, { live: string; cancels: string[] }>();
+
+/** The board's list, with INC-1's runs reshaped by `shape`; the real run stays the one Stop reaches. */
+async function reshapeRuns(
+	page: Page,
+	shape: (runs: ListedRun[]) => ListedRun[],
+) {
+	const made = inc(page);
+	const live = (await detail(page, made.id)).investigations?.[0];
+	if (!live) throw new Error("INC-1 has no run");
+	const seen = { live: live.id, cancels: [] as string[] };
+	liveIds.set(page, seen);
+	page.on("request", (r) => {
+		const m = /\/api\/investigations\/([^/]+)\/cancel$/.exec(
+			new URL(r.url()).pathname,
+		);
+		if (m && r.method() === "POST") seen.cancels.push(m[1] as string);
+	});
+	const fix = (node: unknown): unknown => {
+		if (Array.isArray(node)) return node.map(fix);
+		if (!node || typeof node !== "object") return node;
+		const o = node as Record<string, unknown>;
+		if (o.id === made.id && Array.isArray(o.investigations))
+			return { ...o, investigations: shape(o.investigations as ListedRun[]) };
+		return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fix(v)]));
+	};
+	await page.route(
+		(url) => url.pathname === "/api/incidents",
+		async (route) => {
+			if (route.request().method() !== "GET") return route.continue();
+			try {
+				const res = await route.fetch();
+				await route.fulfill({ response: res, json: fix(await res.json()) });
+			} catch (error) {
+				if (page.isClosed() || /disposed/i.test(String(error))) return;
+				throw error;
+			}
+		},
+	);
+}
+
+Given("INC-1's live run sits under a newer finished run", async ({ page }) => {
+	await reshapeRuns(page, (runs) => {
+		const [live, ...rest] = runs;
+		if (!live) return runs;
+		const newer: ListedRun = {
+			...live,
+			id: "0b5e0000-0000-4000-8000-000000000001",
+			status: "completed",
+			liveTurn: null,
+			stopRequestedAt: null,
+			rootCause: "an earlier run's cause",
+			hasReport: true,
+			createdAt: new Date(Date.now() + 60_000).toISOString(),
+			completedAt: new Date(Date.now() + 90_000).toISOString(),
+		};
+		return [newer, { ...live, liveTurn: "report" }, ...rest];
+	});
+});
+
+Given("INC-1's live run is a chat answering a question", async ({ page }) => {
+	await reshapeRuns(page, (runs) =>
+		runs.map((r, i) =>
+			i === 0 ? { ...r, kind: "chat", liveTurn: "answer" } : r,
+		),
+	);
+});
+
+Then('INC-1\'s card stays out of "Working"', async ({ page }) => {
+	await openBoard(page);
+	await expect(
+		cardOf(column(page, "Concluded"), inc(page).title),
+	).toBeVisible();
+	await expect(cardOf(column(page, "Working"), inc(page).title)).toHaveCount(0);
+});
+
+When('I drag its card to "Resolved" and confirm a cause', async ({ page }) => {
+	await openBoard(page);
+	await drag(page, cardOf(page, inc(page).title), column(page, "Resolved"));
+	const dialog = page.getByTestId("resolve-dialog");
+	await expect(dialog).toBeVisible();
+	await dialog
+		.getByTestId("resolve-cause")
+		.fill("the live turn was stopped first");
+	await dialog.getByTestId("confirm-resolve").click();
+});
+
+Then(
+	"the Stop went to the live run, not the newest, and INC-1 is Resolved",
+	async ({ page }) => {
+		const seen = liveIds.get(page);
+		if (!seen) throw new Error("the board was not reshaped");
+		await expect.poll(() => seen.cancels).toEqual([seen.live]);
+		await waitFor(
+			async () =>
+				(await detail(page, inc(page).id)).status === "closed"
+					? true
+					: undefined,
+			"INC-1 resolved",
+		);
+		await waitForRun(
+			page,
+			inc(page).id,
+			(r) => r.status === "cancelled",
+			"the live run stopped",
+		);
+	},
+);

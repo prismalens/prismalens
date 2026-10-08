@@ -20,6 +20,13 @@ Feature: Agent and model picker
     Then the effort chip is disabled, reading "Default"
     And every agent shows its own default permission mode, by the agent's name once checked
 
+  # #673 w59: the verb chip, first in a draft's footer, and its popover.
+  Scenario: The verb chip says what the next message asks for
+    When I pick Codex and open a new run's draft
+    Then the verb chip reads "Investigate" and its menu explains "Investigate" and "Ask" with "Enter does what the chip says."
+    When I pick "Ask" in the verb menu
+    Then the box's one send control is the arrow and its placeholder reads "Ask about this incident"
+
   Scenario: A chip changes only this run, never Settings
     Given OpenCode and Codex are checked and Settings names OpenCode
     When on a new run's draft I pick Codex's "GPT-5.6" and "High" effort in the box

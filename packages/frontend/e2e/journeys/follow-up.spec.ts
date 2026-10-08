@@ -98,6 +98,8 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			.poll(() => sent)
 			.toMatchObject({
 				text: "Why did the pool saturate at 14:02?",
+				// A report-bearing thread is Ask-only; the message says so (#673 w59).
+				kind: "chat",
 			});
 		// The refetch reads `running`, so the stream double opens.
 		await expect
