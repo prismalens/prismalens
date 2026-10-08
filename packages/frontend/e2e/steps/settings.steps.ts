@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
+import type { FakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { Given, Then, When } from "./fixtures";
 import { ensureService, fireIncident, QUIET, visit } from "./product";
 
@@ -495,20 +496,13 @@ When("I open the picker in Settings, Agent", async ({ page }) => {
 });
 
 Then(
-	"the left rail shows one tile per agent with deepagents dimmed",
+	"the left rail shows a Starred tile and one tile per installed agent, and none for deepagents",
 	async ({ page }) => {
-		for (const id of [
-			"opencode",
-			"claude-code",
-			"codex",
-			"gemini",
-			"deepagents",
-		])
+		await expect(picker(page).getByTestId("rail-starred")).toHaveCount(1);
+		for (const id of ["opencode", "claude-code", "codex"])
 			await expect(picker(page).getByTestId(`rail-${id}`)).toHaveCount(1);
-		await expect(picker(page).getByTestId("rail-deepagents")).toHaveAttribute(
-			"data-off",
-			"",
-		);
+		// An agent that is not installed has no tile (#673 w9).
+		await expect(picker(page).getByTestId("rail-deepagents")).toHaveCount(0);
 		for (const id of ["opencode", "claude-code", "codex"])
 			await expect(picker(page).getByTestId(`rail-${id}`)).not.toHaveAttribute(
 				"data-off",
@@ -518,22 +512,24 @@ Then(
 );
 
 Then(
-	'the list shows "Agent default" first, then my favourites, then models grouped by provider, each named once',
+	'the list shows "Agent default" first, then the models with their provider under each, no headings, each named once',
 	async ({ page }) => {
-		const list = picker(page).getByRole("listbox");
-		const first = list.locator("[data-testid=model-default], fieldset").first();
-		await expect(first).toHaveAttribute("data-testid", "model-default");
-		const groups = await list.locator("fieldset > legend").allInnerTexts();
-		const starred = groups.indexOf("Starred");
-		expect(starred === -1 || starred === 0).toBe(true);
-		expect(groups).toEqual(
-			expect.arrayContaining(["Anthropic", "OpenCode Zen"]),
+		const list = picker(page).getByRole("listbox", { name: "Models" });
+		await expect(list.getByRole("option").first()).toHaveAttribute(
+			"data-testid",
+			"model-default",
 		);
-		const names = await list
-			.locator(
-				"fieldset:not(:has(> legend:text-is('Starred'))) [data-testid=model-option]",
-			)
-			.evaluateAll((els) => els.map((e) => e.getAttribute("data-model")));
+		await expect(list.locator("[cmdk-group-heading], legend")).toHaveCount(0);
+		const rows = list.getByTestId("model-option");
+		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toContainText(
+			"Anthropic",
+		);
+		await expect(
+			rows.filter({ hasText: "Muse Spark 1.3 (free)" }),
+		).toBeVisible();
+		const names = await rows.evaluateAll((els) =>
+			els.map((e) => e.getAttribute("data-model")),
+		);
 		expect(new Set(names).size).toBe(names.length);
 	},
 );
@@ -564,47 +560,110 @@ When("I star {string}", async ({ page }, name: string) => {
 	).toHaveAttribute("aria-pressed", "true");
 });
 
-Then("it appears under Favourites on the next open", async ({ page }) => {
-	await page.keyboard.press("Escape");
-	await expect(picker(page)).toBeHidden();
-	await openPicker(page);
-	await picker(page).getByTestId("rail-opencode").click();
-	const starred = picker(page).locator("fieldset", {
-		has: page.locator("legend", { hasText: "Starred" }),
-	});
-	await expect(
-		starred.locator('[data-model="Claude Sonnet 5.5"]'),
-	).toBeVisible();
-});
+Then(
+	"it is listed under the Starred tile and first in OpenCode's list on the next open",
+	async ({ page }) => {
+		await page.keyboard.press("Escape");
+		await expect(picker(page)).toBeHidden();
+		await openPicker(page);
+		await picker(page).getByTestId("rail-opencode").click();
+		await expect(
+			picker(page).getByTestId("model-option").first(),
+		).toHaveAttribute("data-model", "Claude Sonnet 5.5");
+		await picker(page).getByTestId("rail-starred").click();
+		await expect(
+			picker(page).locator(
+				'[data-testid=model-option][data-model="Claude Sonnet 5.5"]',
+			),
+		).toBeVisible();
+	},
+);
 
-When("I pick Codex", async ({ page, agents }) => {
-	await pickerScene(page, agents);
-	await openPicker(page);
-	await picker(page).getByTestId("rail-codex").click();
-});
+/** A draft on a fresh quiet incident, where the box's chips read the next run. */
+async function openDraft(
+	page: Page,
+	fire: { alertmanager: FakeAlertmanager; deliverWebhook: () => Promise<void> },
+	name: string,
+) {
+	const made = await fireIncident(
+		page,
+		fire.alertmanager,
+		fire.deliverWebhook,
+		{
+			name,
+			service: QUIET,
+			quiet: true,
+		},
+	);
+	await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
+	await expect(page.getByTestId("docked-composer")).toBeVisible();
+}
+
+async function pickAgent(page: Page, harness: string) {
+	const res = await page.request.patch("/api/settings/harness", {
+		data: { harness },
+	});
+	expect(res.ok(), await res.text()).toBe(true);
+}
+
+When(
+	"I pick Codex and open a new run's draft",
+	async ({ page, agents, alertmanager, deliverWebhook, unique }) => {
+		await pickerScene(page, agents);
+		await pickAgent(page, "codex");
+		await openDraft(
+			page,
+			{ alertmanager, deliverWebhook },
+			unique("PickerCodex"),
+		);
+	},
+);
 
 Then(
-	/^an effort control appears reading Codex's default, and the model list Codex offers \("pending a check" until the admission probe has run\)$/,
+	/^the effort chip reads Codex's default "(.+)", and its menu tags it "Default"$/,
+	async ({ page }, level: string) => {
+		const effort = page.getByTestId("effort-chip");
+		await expect(effort).toContainText(level);
+		await effort.click();
+		const row = page.getByTestId("effort-option").filter({ hasText: level });
+		await expect(row).toContainText("Default");
+		await page.keyboard.press("Escape");
+	},
+);
+
+Then(
+	'the model chip\'s list is the one Codex offers, with no "Run a check to list models"',
 	async ({ page }) => {
-		const effort = picker(page).getByTestId("effort-chip");
-		await expect(effort).toContainText("medium");
-		await expect(effort).toContainText("Codex's default");
-		// The check read Codex's own model option, so its list replaces "pending a check".
+		await page.getByTestId("agent-picker").click();
+		// The check read Codex's own model option, so its list replaces the check line.
 		await expect(
 			picker(page).locator('[data-testid=model-option][data-model="GPT-5.6"]'),
 		).toBeVisible();
 		await expect(picker(page).getByTestId("model-pending")).toHaveCount(0);
+		await page.keyboard.press("Escape");
 	},
 );
 
-When("I pick Claude Code", async ({ page }) => {
-	await picker(page).getByTestId("rail-claude-code").click();
-});
+When(
+	"I pick Claude Code and open a new run's draft",
+	async ({ page, alertmanager, deliverWebhook, unique }) => {
+		await pickAgent(page, "claude-code");
+		await openDraft(
+			page,
+			{ alertmanager, deliverWebhook },
+			unique("PickerClaude"),
+		);
+	},
+);
 
-Then("the model list appears and no effort control", async ({ page }) => {
-	await expect(picker(page).getByTestId("model-option").first()).toBeVisible();
-	await expect(picker(page).getByTestId("effort-chip")).toHaveCount(0);
-});
+Then(
+	/^the effort chip is disabled, reading "(.+)"$/,
+	async ({ page }, word: string) => {
+		const effort = page.getByTestId("effort-chip");
+		await expect(effort).toBeDisabled();
+		await expect(effort).toHaveText(word);
+	},
+);
 
 Then(
 	"every agent shows its own default permission mode, by the agent's name once checked",
@@ -616,9 +675,13 @@ Then(
 			codex: /^(Ask for approval|read-only)$/,
 		};
 		for (const [id, text] of Object.entries(expected)) {
-			await picker(page).getByTestId(`rail-${id}`).click();
-			await expect(picker(page).getByTestId("access-chip")).toHaveText(text);
+			await pickAgent(page, id);
+			await page.goto("/settings?tab=harness");
+			await expect(
+				page.getByTestId("harness-permission-mode").getByTestId("access-chip"),
+			).toHaveText(text);
 		}
+		await pickAgent(page, "auto");
 	},
 );
 
@@ -652,7 +715,7 @@ Then(
 			quiet: true,
 		});
 		w(page).incident = made.id;
-		await page.goto(`/incidents/${made.id}`);
+		await page.goto(`/incidents/${made.id}/conversation`);
 		await expect(
 			page.getByTestId("docked-composer").getByTestId("model-pill"),
 		).toHaveText(name);
@@ -667,17 +730,19 @@ Then(
 		const muse = picker(page)
 			.locator('[data-testid=model-option][data-model="Muse Spark 1.3 (free)"]')
 			.first();
-		await expect(muse.getByTestId("model-training")).toHaveText(
-			"trains on your prompts",
-		);
+		await expect(muse).toContainText("trains on your prompts");
+		// Agent default's sub-line is the model OpenCode reports it serves, nothing more.
 		await expect(picker(page).getByTestId("model-default")).toContainText(
-			"Claude Sonnet 5.5, what OpenCode picks",
+			"Agent default",
+		);
+		await expect(picker(page).getByTestId("model-default")).not.toContainText(
+			"PrismaLens",
 		);
 	},
 );
 
 Then(
-	"every rail tile is a tab showing the agent's mark and no label, and the list opens with the agent's name",
+	"every rail tile is a tab showing the agent's mark and no label, and the search names the agent",
 	async ({ page, agents }) => {
 		// A tile opens only for an installed agent.
 		await pickerScene(page, agents);
@@ -699,52 +764,30 @@ Then(
 			expect(text === "" || /^[A-Z]{2}$/.test(text)).toBe(true);
 			await tile.click();
 			await expect(tile).toHaveAttribute("aria-selected", "true");
-			await expect(picker(page).getByTestId("picker-agent-name")).toHaveText(
-				name,
+			await expect(picker(page).getByTestId("picker-search")).toHaveAttribute(
+				"placeholder",
+				`Search ${name} models`,
 			);
 		}
 		// One tab stop: Down moves along the rail and shows that agent.
 		await picker(page).getByTestId("rail-opencode").click();
 		await page.keyboard.press("ArrowDown");
 		await expect(picker(page).getByTestId("rail-claude-code")).toBeFocused();
-		await expect(picker(page).getByTestId("picker-agent-name")).toHaveText(
-			"Claude Code",
+		await expect(picker(page).getByTestId("picker-search")).toHaveAttribute(
+			"placeholder",
+			"Search Claude Code models",
 		);
 		await page.keyboard.press("ArrowRight");
 		await expect(picker(page).getByTestId("picker-search")).toBeFocused();
-
-		// A stored agent that is off PATH holds the tab stop; Up from it reaches the last tile.
-		const { harnesses } = (await (
-			await page.request.get("/api/settings/harnesses")
-		).json()) as { harnesses: { id: string; installed: boolean }[] };
-		const off = harnesses.find((h) => !h.installed);
-		if (!off) return;
-		const stored = await page.request.patch("/api/settings/harness", {
-			data: { harness: off.id },
-		});
-		expect(stored.ok()).toBe(true);
-		try {
-			await page.keyboard.press("Escape");
-			await openPicker(page);
-			await picker(page).getByTestId(`rail-${off.id}`).focus();
-			await page.keyboard.press("ArrowUp");
-			await expect(
-				picker(page).locator("[role=tab]:not([data-off])").last(),
-			).toBeFocused();
-		} finally {
-			await page.request.patch("/api/settings/harness", {
-				data: { harness: "auto" },
-			});
-		}
 	},
 );
 
-Then("the panel measures 440 by 360 px on every agent", async ({ page }) => {
+Then("the panel measures 380 by 400 px on every agent", async ({ page }) => {
 	for (const id of ["starred", "opencode", "claude-code", "codex"]) {
 		await picker(page).getByTestId(`rail-${id}`).click();
 		const b = await picker(page).boundingBox();
 		expect([Math.round(b?.width ?? 0), Math.round(b?.height ?? 0)]).toEqual([
-			440, 360,
+			380, 400,
 		]);
 	}
 });

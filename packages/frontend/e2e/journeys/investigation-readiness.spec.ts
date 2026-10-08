@@ -150,7 +150,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await serveUnrunnableSelection(page);
 		const id = await createIncident(page, `Readiness probe ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(
 			page
 				.getByTestId("incident-state-band")
@@ -159,19 +159,19 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 
-		// The box on Overview: disabled, with the reason rendered under it.
+		// The draft's box: disabled, with the reason rendered under it.
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
-		await expect(
-			page.getByText(PROTOCOL_MISMATCH_REASON).first(),
-		).toBeVisible();
+		await expect(page.getByTestId("composer-blocked")).toContainText(
+			PROTOCOL_MISMATCH_REASON,
+		);
 
-		// On a tab without the box, the band's Investigate again is disabled,
-		// its hint the same reason.
+		// From a tab without the box, the band's New run lands on the same
+		// draft with the same reason (#673: the gate lives in the box).
 		await page.getByTestId("tab-alerts").click();
-		const headerBtn = page.getByTestId("band-menu-investigate");
-		await expect(headerBtn).toBeDisabled();
-		await headerBtn.locator("..").hover();
-		await expect(page.getByTestId("hint").last()).toHaveText(
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-new-run").click();
+		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await expect(page.getByTestId("composer-blocked")).toContainText(
 			PROTOCOL_MISMATCH_REASON,
 		);
 	});
@@ -181,10 +181,12 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const title = `Runnable probe ${Date.now()}`;
 		const id = await createIncident(page, title);
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(boxInvestigateButton(page)).toBeEnabled({ timeout: 15_000 });
 		await page.getByTestId("tab-alerts").click();
-		await expect(page.getByTestId("band-menu-investigate")).toBeEnabled();
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-new-run").click();
+		await expect(boxInvestigateButton(page)).toBeEnabled();
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -193,7 +195,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await failHarnesses(page);
 		const id = await createIncident(page, `Probe failure ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(boxInvestigateButton(page)).toBeDisabled({
 			timeout: 15_000,
 		});
@@ -209,7 +211,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await serveUnrunnableSelection(page);
 		const title = `Readiness evidence ${Date.now()}`;
 		const id = await createIncident(page, title);
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(
 			page
 				.getByTestId("incident-state-band")
@@ -224,21 +226,23 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
 		await settled(page);
 
-		// Empty — the incident has no run, so the Run card says so and the
-		// blocked box is the only way to start one.
+		// Empty — the incident has no run, so the Report pool says so and the
+		// blocked draft is the only way to start one.
 		await setTheme(page, "light");
+		await page.getByTestId("tab-overview").click();
 		await expect(page.getByTestId("overview-report")).toContainText(
-			"No investigation yet",
+			"No run yet. Start one with + New run.",
 			{
 				timeout: 15_000,
 			},
 		);
+		await page.getByTestId("tab-conversation").click();
 		await expect(boxInvestigateButton(page)).toBeDisabled();
 		await settled(page);
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
-		await page.goto(`/incidents/${id}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });

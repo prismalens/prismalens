@@ -114,7 +114,7 @@ function Shell({ pathname }: { pathname: string }) {
 	return (
 		<>
 			<aside
-				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 pt-(--titlebar-h) md:flex"
+				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-canvas pt-(--titlebar-h) md:flex"
 				data-testid="sidebar"
 			>
 				{settings ? (
@@ -293,10 +293,7 @@ function ServiceList() {
 	});
 	if (services.length === 0) return null;
 	return (
-		<div
-			className="mx-2 mt-2 rounded-surface bg-surface-2 p-1 shadow-raised"
-			data-testid="sidebar-services"
-		>
+		<div className="pool mx-2 mt-2.5 p-1.5" data-testid="sidebar-services">
 			<SideLane label="Services" count={services.length} />
 			{services.map((s) => {
 				const on = service?.params.id === s.id;

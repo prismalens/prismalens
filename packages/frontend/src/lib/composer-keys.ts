@@ -2,12 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The box's modes (#743 §6, R4.4): a brief for a new run, a message to the
- * live session, continuing a stopped run to its report, a follow-up that
- * reopens a finished session (#747), or a brief for a new run when nothing
- * can be reopened.
+ * The box's states (#673): a draft run, a live run, a stopped run that can
+ * continue to its report, an ended run whose session reopens, or an ended
+ * run whose agent kept no session.
  */
-export type ComposerMode = "brief" | "live" | "continue" | "resume" | "again";
+export type ComposerMode = "draft" | "live" | "continue" | "resume" | "ended";
 
 export type ComposerKeyAction =
 	| "investigate"
@@ -26,16 +25,15 @@ export interface ComposerKey {
 	isComposing?: boolean;
 }
 
-/** Modes whose text goes to the run's own session rather than briefing a new one. */
+/** Modes whose text goes to the run's own session. */
 export function talksToSession(mode: ComposerMode): boolean {
 	return mode === "live" || mode === "continue" || mode === "resume";
 }
 
 /**
- * What a key does in the box (decision 18, R4.4). Enter queues for the agent's
- * next pause, Ctrl/Cmd+Enter sends now; in the brief modes both start the run.
- * Esc stops a working agent (Claude Code's interrupt key) and otherwise lets
- * go of the box. Shift+Enter is a newline (null: the field's own behaviour).
+ * What a key does in the box. Enter queues for the agent's next pause and
+ * Ctrl/Cmd+Enter sends now; in a draft Enter starts the run. Esc stops a
+ * working agent, else lets go of the box. Shift+Enter is a newline.
  */
 export function composerKeyAction(
 	e: ComposerKey,
@@ -49,12 +47,12 @@ export function composerKeyAction(
 	return e.ctrlKey || e.metaKey ? "now" : "queue";
 }
 
-/** The box's mode from the selected run: none, live, stopped and reopenable, ended and reopenable, or ended. */
+/** The box's mode from the selected run; null is the draft. */
 export function composerMode(
 	run: { live: boolean; continuable?: boolean; resumable?: boolean } | null,
 ): ComposerMode {
-	if (!run) return "brief";
+	if (!run) return "draft";
 	if (run.live) return "live";
 	if (run.continuable) return "continue";
-	return run.resumable ? "resume" : "again";
+	return run.resumable ? "resume" : "ended";
 }

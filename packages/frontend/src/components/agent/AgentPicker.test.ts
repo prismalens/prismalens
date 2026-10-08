@@ -1,127 +1,135 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { HarnessStatus } from "@prismalens/contracts";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentModelPicker } from "./AgentPicker";
-
-let mockHarnessesData = {
-	harnesses: [
-		{
-			id: "opencode",
-			label: "OpenCode",
-			binary: "opencode",
-			installed: true,
-			tested: null,
-			install: "brew install opencode",
-			defaultModel: null,
-			modelVia: "config" as const,
-			loginHint: "",
-			models: { source: "catalogue" as const, asOf: "", entries: [] },
-		},
-		{
-			id: "codex",
-			label: "Codex",
-			binary: "codex",
-			installed: true,
-			tested: null,
-			install: "npm i -g @openai/codex",
-			defaultModel: null,
-			modelVia: "unsupported" as const,
-			loginHint: "",
-			models: { source: "catalogue" as const, asOf: "", entries: [] },
-		},
-	],
-	selection: {
-		harness: "codex",
-		runnable: true,
-		pinned: true,
-		pinnedBy: "settings",
-		blockedReason: null,
-	},
-};
-
-let mockSettingsData = {
-	harness: "codex",
-	models: {},
-};
+import { describe, expect, it, vi } from "vitest";
+import {
+	chipModel,
+	EffortChip,
+	effortLevels,
+	ModeChip,
+	unreadyReason,
+} from "./AgentPicker";
 
 vi.mock("@/components/ui/popover", () => ({
 	Popover: ({ children }: { children: React.ReactNode }) => children,
 	PopoverTrigger: ({ children }: { children: React.ReactNode }) => children,
 	PopoverContent: ({ children }: { children: React.ReactNode }) => children,
 }));
-
 vi.mock("@/components/shared/Hint", () => ({
-	Hint: ({ children }: { children: React.ReactNode }) => children,
+	Hint: ({ label, children }: { label: string; children: React.ReactNode }) =>
+		React.createElement("span", { "data-hint": label }, children),
 }));
-
 vi.mock("@/lib/api/hooks", () => ({
-	useHarnesses: () => ({
-		data: mockHarnessesData,
-		isLoading: false,
-		isError: false,
-	}),
-	useHarnessSettings: () => ({
-		data: mockSettingsData,
-		isLoading: false,
-	}),
+	useHarnesses: () => ({ data: { harnesses: [] }, isLoading: false }),
+	useHarnessSettings: () => ({ data: { agentModes: {} }, isLoading: false }),
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
+	useCheckHarness: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-describe("AgentModelPicker Auto line (f9)", () => {
-	beforeEach(() => {
-		mockSettingsData = {
-			harness: "codex",
-			models: {},
-		};
-		mockHarnessesData = {
-			harnesses: [
-				{
-					id: "opencode",
-					label: "OpenCode",
-					binary: "opencode",
-					installed: true,
-					tested: null,
-					install: "brew install opencode",
-					defaultModel: null,
-					modelVia: "config",
-					loginHint: "",
-					models: { source: "catalogue", asOf: "", entries: [] },
-				},
-				{
-					id: "codex",
-					label: "Codex",
-					binary: "codex",
-					installed: true,
-					tested: null,
-					install: "npm i -g @openai/codex",
-					defaultModel: null,
-					modelVia: "unsupported",
-					loginHint: "",
-					models: { source: "catalogue", asOf: "", entries: [] },
-				},
-			],
-			selection: {
-				harness: "codex",
-				runnable: true,
-				pinned: true,
-				pinnedBy: "settings",
-				blockedReason: null,
-			},
-		};
+const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
+	id: "claude-code",
+	label: "Claude Code",
+	binary: "claude",
+	installed: true,
+	tested: null,
+	install: "",
+	defaultModel: null,
+	defaultMode: "default",
+	modelVia: "acp",
+	loginHint: "",
+	envModel: null,
+	windowsOnlyPath: null,
+	models: {
+		source: "harness",
+		asOf: "",
+		entries: [{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null }],
+	},
+	checked: {
+		at: "",
+		outcome: "answers-acp",
+		detail: "answers ACP",
+		servedModel: "claude-sonnet-5-5",
+		effort: null,
+		modes: [
+			{ id: "default", name: "Manual", description: "Always ask before making changes" },
+			{ id: "bypassPermissions", name: "Bypass permissions", description: "Accepts all permissions" },
+		],
+		efforts: [
+			{ id: "default", name: "Default", default: false },
+			{ id: "high", name: "High", default: true },
+		],
+		images: true,
+	},
+	...over,
+});
+
+describe("the box's chips (#673)", () => {
+	it("names the resolved model on Agent default, never a bare Agent default", () => {
+		expect(chipModel(claude(), "")).toBe("Sonnet 5.5");
+		expect(chipModel(claude({ checked: null }), "")).toBe("Claude Code default");
 	});
 
-	it("shows the agent Auto would pick (first on PATH) on the Auto line, not the chosen one", () => {
-		// Codex chosen, OpenCode first on PATH -> Auto row reads "now OpenCode"
-		const html = renderToStaticMarkup(
-			React.createElement(AgentModelPicker, { defaultOpen: true }),
-		);
+	it("greys an installed agent whose check did not answer, with its reason", () => {
+		const codex = claude({
+			id: "codex",
+			label: "Codex",
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				outcome: "sign-in-needed",
+				detail: "sign in needed",
+			},
+		});
+		expect(unreadyReason(codex)).toBe("Codex: sign in needed");
+		expect(unreadyReason(claude())).toBeNull();
+	});
 
-		expect(html).toContain("now OpenCode");
-		expect(html).not.toContain("now Codex");
-		// Codex is pinned, so the line offers the way back to Auto.
-		expect(html).toContain("Use Auto");
+	it("reads the level and the window as two spans, and stays disabled with its reason without levels", () => {
+		const on = renderToStaticMarkup(
+			React.createElement(EffortChip, {
+				harness: claude(),
+				model: "claude-sonnet-5-5",
+				effort: null,
+				onEffort: () => {},
+				onModel: () => {},
+			}),
+		);
+		expect(on).toContain("<span>High</span>");
+		expect(on).toContain("200k");
+		expect(effortLevels(claude({ checked: null }))).toEqual([]);
+		const off = renderToStaticMarkup(
+			React.createElement(EffortChip, {
+				harness: claude({ checked: null }),
+				model: "gemma4:31b-cloud",
+				effort: null,
+				onEffort: () => {},
+				onModel: () => {},
+			}),
+		);
+		expect(off).toContain(
+			"gemma4:31b-cloud has no effort levels; the context window is fixed by the model",
+		);
+		expect(off).toContain("disabled");
+	});
+
+	it("lists the agent's own modes, its default first and tagged, with the yes clause where the agent asks", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(ModeChip, {
+				harness: claude(),
+				mode: "default",
+				onMode: () => {},
+			}),
+		);
+		expect(html.indexOf("Manual")).toBeLessThan(html.indexOf("Bypass permissions"));
+		expect(html).toContain("Your default");
+		expect(html).toContain(
+			"Always ask before making changes. PrismaLens answers yes and logs it.",
+		);
+		// claude-agent-acp still asks on bypass-immune safety checks, so bypass carries the clause too (#799).
+		expect(html).toContain(
+			"Accepts all permissions. PrismaLens answers yes and logs it.",
+		);
 	});
 });

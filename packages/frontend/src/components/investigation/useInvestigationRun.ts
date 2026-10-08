@@ -30,13 +30,6 @@ import {
 	unmatchedPending,
 } from "@/lib/investigation-events";
 
-export type LedgerStatus =
-	| "idle"
-	| "connecting"
-	| "streaming"
-	| "completed"
-	| "failed";
-
 /** The API answered 409: the run ended before the message reached it. */
 export function isConflict(error: unknown): boolean {
 	if (!error || typeof error !== "object") return false;
@@ -171,13 +164,6 @@ export function useInvestigationRun(investigationId: string | null) {
 				stopRequested,
 			})
 		: null;
-	const ledgerStatus: LedgerStatus = isActive
-		? stream.status === "error"
-			? "connecting"
-			: stream.status
-		: investigation && investigation.status !== "completed"
-			? "failed"
-			: "completed";
 
 	const lastEventAt = events[events.length - 1]?.ts ?? null;
 	const latestText = useMemo(
@@ -284,7 +270,6 @@ export function useInvestigationRun(investigationId: string | null) {
 		...followUpState(investigation),
 		failed,
 		streamFailed,
-		ledgerStatus,
 		jobProgress: statusData?.job?.progress ?? 0,
 		jobState: statusData?.job?.state ?? null,
 		stop,

@@ -12,36 +12,46 @@ export type RunRef = NonNullable<
 	IncidentWithRelations["investigations"]
 >[number];
 
-/**
- * What every layer under an incident shares (#743 §3c): the incident, the run
- * the band and strip follow, and the actions its cards and routes offer. Built
- * once by the incident's layout route so the strip survives route changes.
- */
+/** `?investigation=new`: the draft of a run not sent yet (#673). */
+export const DRAFT = "new";
+
+export interface RunStart {
+	text?: string;
+	/** The agent's own mode id; the agent's default when absent (#673 w21). */
+	agentMode?: string;
+	attachments?: string[];
+}
+
+/** What every layer under an incident shares: the incident, its runs, the selected run and the draft. */
 export interface IncidentRecord {
 	incident: IncidentWithRelations;
+	/** Newest first. */
 	runs: RunRef[];
 	investigationId: string | null;
+	/** The draft is selected rather than a run. */
+	draft: boolean;
 	selectRun: (id: string) => void;
+	/** Opens Conversation on the draft; `agentMode` prefills its mode chip. */
+	newRun: (prefill?: { agentMode?: string }) => void;
+	/** The draft's mode and text, kept per incident while the page lives. */
+	draftMode: string | undefined;
+	setDraftMode: (mode: string | undefined) => void;
+	draftText: string;
+	setDraftText: (text: string) => void;
 	run: InvestigationRun;
-	/** Investigate is admitted: the incident is open and no run is live. */
-	canInvestigate: boolean;
+	/** A run is working on this incident; the draft waits for it. */
+	liveRun: RunRef | null;
 	/** Why no agent can run right now, when none can. */
 	investigateBlocked?: string;
-	/** Starts a run; resolves once the API took it, rejects with its refusal. */
-	investigate: (start?: {
-		brief?: string;
-		/** The agent's own mode id; the agent's default when absent (#673 w21). */
-		agentMode?: string;
-		attachments?: string[];
-	}) => Promise<void>;
-	isInvestigating: boolean;
+	/** Gathers, then starts the agent; resolves once the API took it. */
+	investigate: (start?: RunStart) => Promise<void>;
+	/** Asks without gathering: a chat run (POST /incidents/{id}/chat). */
+	chat: (start: RunStart & { text: string }) => Promise<void>;
+	isStarting: boolean;
 	acknowledge: () => void;
 	resolve: () => void;
-	/** The operator's one step, Resolve (R1a): opens the dialog prefilled from the report. */
 	openClose: () => void;
-	/** Edit the recorded cause after Resolve (R1a d3). */
 	openEditCause: () => void;
-	/** Ask to reopen a resolved incident; it starts no run. */
 	openReopen: () => void;
 	addNote: (text: string, onDone?: () => void) => void;
 	isSavingNote: boolean;

@@ -49,9 +49,12 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(resolve).toHaveCount(0, { timeout: 15_000 });
 		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 		await expect(page.getByTestId("band-reopen")).toBeVisible();
-		// A resolved incident can still be investigated again (#743), from the
-		// box on Overview; its status stays Resolved.
+		// A resolved incident can still take a new run (#673, gate step 9): the
+		// band's menu opens the draft, and its status stays Resolved.
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-new-run").click();
 		await expect(page.getByTestId("composer-investigate")).toBeVisible();
+		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 	});
 
 	test("offers no Markdown export while the incident has no report", async ({

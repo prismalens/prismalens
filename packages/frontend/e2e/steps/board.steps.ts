@@ -861,19 +861,20 @@ Then(
 );
 
 When(
-	"I open an incident",
+	"I open an incident's Conversation",
 	async ({ page, alertmanager, deliverWebhook, unique }) => {
 		const made = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("NoAgent"),
 			service: QUIET,
 			quiet: true,
 		});
-		await visit(page, `/incidents/${made.id}`);
+		// The box lives on Conversation (#673); with no run it opens on the draft.
+		await visit(page, `/incidents/${made.id}/conversation`);
 	},
 );
 
 Then(
-	'the box reads "No coding agent on this machine" with the install line, and "Start investigation" is withheld',
+	'the box reads "No coding agent on this machine" with the install line, and "Investigate" is withheld',
 	async ({ page }) => {
 		const box = page.getByTestId("docked-composer");
 		await expect(box).toContainText("No coding agent on this machine");
@@ -1440,7 +1441,10 @@ Then(
 );
 
 When("I start a run from the box", async ({ page }) => {
-	await visit(page, `/incidents/${inc(page).id}`);
+	await visit(
+		page,
+		`/incidents/${inc(page).id}/conversation?investigation=new`,
+	);
 	await page
 		.getByTestId("composer-input")
 		.fill("fake-session:live check the pool");

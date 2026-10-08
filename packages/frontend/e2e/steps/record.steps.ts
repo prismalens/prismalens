@@ -215,7 +215,7 @@ Given(
 		await page.goto(
 			`/incidents/${made.id}/conversation?investigation=${investigationId}`,
 		);
-		await expect(page.getByTestId("run-strip-mark")).toBeVisible({
+		await expect(page.getByTestId("run-status-state")).toBeVisible({
 			timeout: 20_000,
 		});
 		await expect(page.getByTestId("transcript")).toContainText(
@@ -242,14 +242,13 @@ Then(
 );
 
 Then(
-	"the run's mark goes grey and its elapsed time stops",
+	"the status line's state goes grey and its elapsed time stops",
 	async ({ page }) => {
-		const strip = page.getByTestId("run-strip");
-		await expect(strip).toHaveAttribute("data-disconnected", "");
-		const mark = page.getByTestId("run-strip-mark");
-		await expect(mark).toHaveClass(/bg-text-3/);
-		const elapsed = page.getByTestId("run-strip-elapsed");
-		await expect(elapsed).toHaveText(/^Last seen \d\d:\d\d$/);
+		const line = page.getByTestId("run-status");
+		await expect(line).toHaveAttribute("data-disconnected", "");
+		const elapsed = page.getByTestId("run-status-state");
+		await expect(elapsed).not.toHaveClass(/text-live/);
+		await expect(elapsed).toHaveText(/, last seen \d\d:\d\d$/);
 		const before = await elapsed.textContent();
 		await page.waitForTimeout(2_500);
 		await expect(elapsed).toHaveText(before ?? "");
@@ -286,7 +285,7 @@ Then(
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			"Report ready",
 		);
-		await expect(page.getByTestId("run-strip")).not.toHaveAttribute(
+		await expect(page.getByTestId("run-status")).not.toHaveAttribute(
 			"data-disconnected",
 			"",
 		);
@@ -308,7 +307,7 @@ When("I open INC-1's Overview", async ({ page, unique }) => {
 });
 
 Then(
-	'I see a summary with a "Next" line, then "Report", "Alerts", "Timeline" with a note field, and one details line',
+	'I see a summary with a "Next" line, then "Report", "Alerts", "Timeline" and a note field, in one column with nothing beside it',
 	async ({ page }) => {
 		await expect(page.getByTestId("incident-next")).toContainText("Next:");
 		const order = [
@@ -323,17 +322,17 @@ Then(
 			expect(b.y, `${id} comes after the one before`).toBeGreaterThan(y);
 			y = b.y;
 		}
-		await expect(
-			page.getByTestId("overview-timeline").getByTestId("note-field"),
-		).toBeVisible();
-		// Facts once (look ruling L45): the rail pool from 1280, the band's own line on a phone.
-		const width = page.viewportSize()?.width ?? 1280;
-		await expect(page.getByTestId("facts-rail")).toBeVisible({
-			visible: width >= 1280,
-		});
-		await expect(page.getByTestId("band-facts")).toBeVisible({
-			visible: width < 768,
-		});
+		const note = await box(page.getByTestId("note-field"));
+		expect(note.y, "the note field comes after the Timeline").toBeGreaterThan(
+			y,
+		);
+		// One column (#673 w29): every pool starts at the same x, nothing beside them.
+		const left = (await box(page.getByTestId("overview-report"))).x;
+		for (const id of ["overview-alerts", "overview-timeline", "note-field"])
+			expect(Math.abs((await box(page.getByTestId(id))).x - left)).toBeLessThan(
+				2,
+			);
+		await expect(page.getByTestId("facts-rail")).toHaveCount(0);
 	},
 );
 
@@ -357,13 +356,14 @@ Then(
 	},
 );
 
-When('I press the "Report" heading', async ({ page }) => {
-	await page.getByTestId("overview-report-heading").click();
+// With no run the Report pool has no link yet (#673 w13); the Timeline pool always has one.
+When('I press "All events" on the Timeline pool', async ({ page }) => {
+	await page.getByTestId("overview-timeline-heading").click();
 });
 
-Then("I am on the Report tab", async ({ page }) => {
-	await expect(page).toHaveURL(/\/incidents\/[^/]+\/report/);
-	await expect(page.getByTestId("tab-report")).toHaveAttribute(
+Then("I am on the Timeline tab", async ({ page }) => {
+	await expect(page).toHaveURL(/\/incidents\/[^/]+\/timeline/);
+	await expect(page.getByTestId("tab-timeline")).toHaveAttribute(
 		"aria-current",
 		"page",
 	);
@@ -371,7 +371,7 @@ Then("I am on the Report tab", async ({ page }) => {
 
 Given("a run is working", async ({ page, unique }) => {
 	const made = await triggered(page, unique);
-	await page.goto(`/incidents/${made.id}`);
+	await page.goto(`/incidents/${made.id}/conversation?investigation=new`);
 	await page
 		.getByTestId("composer-input")
 		.fill(`fake-session:live ${made.title}`);
@@ -430,10 +430,10 @@ Then(
 		await expect(
 			page.getByTestId("report-headline").locator("code"),
 		).toHaveText("timeout");
-		// Nothing above the answer in the reading column at this width.
+		// Only the run's header sits above the answer.
 		const top = await box(answer);
-		const col = await box(page.getByTestId("report-route"));
-		expect(top.y - col.y).toBeLessThan(40);
+		const header = await box(page.getByTestId("report-header"));
+		expect(top.y - (header.y + header.height)).toBeLessThan(40);
 	},
 );
 
@@ -483,7 +483,7 @@ Then(
 );
 
 Then(
-	'below the fold: "Ruled out", "Grounded in" as a list of paths one per line, and a run line with "Conversation" and "Event log"',
+	'below the fold: "Ruled out" and "Grounded in" as a list of paths one per line, and no "Event log"',
 	async ({ page }) => {
 		const ruled = page.getByTestId("report-ruled-out");
 		await ruled.scrollIntoViewIfNeeded();
@@ -492,27 +492,18 @@ Then(
 		expect(await rows.count()).toBeGreaterThan(1);
 		for (const r of await rows.all())
 			expect((await box(r)).height).toBeLessThan(40);
-		// From 1280 the rail carries the run line; below it, the line under the report.
-		const line = shown(
-			page
-				.getByTestId("report-run-line")
-				.or(page.getByTestId("report-rail-links")),
-		);
-		await expect(
-			line.getByRole("link", { name: "Conversation" }),
-		).toBeVisible();
-		await expect(line.getByRole("link", { name: "Event log" })).toBeVisible();
+		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
 	},
 );
 
 Then(
-	'"Export Markdown" and "Post to GitHub" are at the top right',
+	'"Export" and "Post to GitHub" are at the top right of the report\'s header',
 	async ({ page }) => {
-		const headline = await box(page.getByTestId("report-headline"));
+		const header = await box(page.getByTestId("report-header"));
 		for (const id of ["export-report-markdown", "post-report-github"]) {
 			const b = await box(shown(page.getByTestId(id)));
-			expect(b.x, `${id} sits right of the answer`).toBeGreaterThan(
-				headline.x + headline.width - 10,
+			expect(b.x, `${id} sits in the header's right half`).toBeGreaterThan(
+				header.x + header.width / 2,
 			);
 			expect(b.y + b.height, `${id} is on the first screen`).toBeLessThan(
 				page.viewportSize()?.height ?? 720,
@@ -585,7 +576,7 @@ Given(
 );
 
 Then(
-	`I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and "Event log"`,
+	`I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and a link to the conversation`,
 	async ({ page }) => {
 		const empty = page.getByTestId("report-empty");
 		await expect(empty).toContainText("No report");
@@ -595,14 +586,16 @@ Then(
 		await expect(page.getByTestId("report-now")).toContainText(
 			/still firing since \d\d:\d\d/,
 		);
-		await expect(empty.getByRole("link", { name: "Event log" })).toBeVisible();
+		await expect(
+			empty.getByRole("link", { name: "Open the conversation" }),
+		).toBeVisible();
 	},
 );
 
-Then('the box offers "Investigate again"', async ({ page }) => {
-	await expect(page.getByTestId("composer-investigate")).toHaveText(
-		"Investigate again",
-	);
+Then('the band\'s menu offers "New run"', async ({ page }) => {
+	await page.getByTestId("band-more").click();
+	await expect(page.getByTestId("band-menu-new-run")).toHaveText("New run");
+	await page.keyboard.press("Escape");
 });
 
 Given(
@@ -637,16 +630,14 @@ Given(
 );
 
 Then(
-	'I read "No report" and when it was stopped, with "Conversation" and "Event log", and the box offers to continue where the agent can reopen its session',
+	'I read "No report" and when it was stopped, with a link to the conversation, and the box there offers to continue where the agent can reopen its session',
 	async ({ page }) => {
 		const empty = page.getByTestId("report-empty");
-		await expect(empty.getByRole("heading")).toHaveText(
-			/^No report\. You stopped the run at \d\d:\d\d after .+\.$/,
+		await expect(empty.getByRole("heading")).toHaveText("No report");
+		await expect(empty).toContainText(
+			/You stopped Run #\d+ at \d\d:\d\d after [^.]+\./,
 		);
-		await expect(
-			empty.getByRole("link", { name: "Conversation" }),
-		).toBeVisible();
-		await expect(empty.getByRole("link", { name: "Event log" })).toBeVisible();
+		await empty.getByRole("link", { name: "Open the conversation" }).click();
 		// A stopped run that can reopen its session continues to a report (R4.4).
 		await expect(
 			page.getByTestId("composer-box").locator("[data-mode]"),
@@ -654,7 +645,7 @@ Then(
 		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Continue the investigation",
+			"Continue this run",
 		);
 	},
 );
@@ -681,7 +672,7 @@ Then(
 		);
 		await expect(empty).toContainText("It ran 1 command before it stopped");
 		await expect(
-			empty.getByRole("link", { name: "Conversation" }).first(),
+			empty.getByRole("link", { name: "Open the conversation" }),
 		).toBeVisible();
 	},
 );
@@ -700,22 +691,20 @@ Given(
 );
 
 Then(
-	'without scrolling I see the confidence word, the cause, a line saying whether the alert still fires, and the first "Do now" step',
+	'without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert',
 	async ({ page }) => {
-		const boxTop = (await box(page.getByTestId("composer-box"))).y;
-		const ids = ["report-answer-word", "report-headline", "report-now"];
+		const fold = page.viewportSize()?.height ?? 844;
+		const ids = ["report-answer-word", "report-headline", "report-summary"];
 		for (const id of ids) {
 			const b = await box(page.getByTestId(id));
-			expect(b.y + b.height, `${id} is above the box`).toBeLessThanOrEqual(
-				boxTop,
+			expect(b.y + b.height, `${id} is above the fold`).toBeLessThanOrEqual(
+				fold,
 			);
 			expect(b.y, `${id} is on screen`).toBeGreaterThanOrEqual(0);
 		}
-		const first = await box(page.getByTestId("do-now-step").first());
-		expect(
-			first.y + first.height,
-			"the first step is above the box",
-		).toBeLessThanOrEqual(boxTop);
+		const summary = page.getByTestId("report-summary");
+		await expect(summary).toContainText("Do now");
+		await expect(summary).toContainText("Alert");
 		const scrolled = await page
 			.getByTestId("report-route")
 			.evaluate((el) => el.scrollTop);
@@ -724,31 +713,29 @@ Then(
 );
 
 Then(
-	'"Export" and "Post to GitHub" are not above the answer',
+	'"Export" and "Post to GitHub" sit in the report\'s header, beside the run',
 	async ({ page }) => {
+		const header = page.getByTestId("report-header");
+		for (const id of ["export-report-markdown", "post-report-github"])
+			await expect(header.getByTestId(id)).toBeVisible();
 		const answer = await box(page.getByTestId("report-answer"));
-		for (const id of ["export-report-markdown", "post-report-github"]) {
-			for (const b of await page.getByTestId(id).locator("visible=true").all())
-				expect((await box(b)).y, `${id} is below the answer`).toBeGreaterThan(
-					answer.y,
-				);
-		}
+		const h = await box(header);
+		expect(h.y + h.height).toBeLessThanOrEqual(answer.y + 1);
 	},
 );
 
 // Tagged: shell.steps' generic `I press {string}` would otherwise match it too.
 When(
-	'I press "Copy fix brief for your agent"',
+	'I press "Copy fix brief" in the report\'s menu',
 	{ tags: "@pr3" },
 	async ({ page, alertmanager, deliverWebhook, unique, context }) => {
 		await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 		await ensureCauseReport(page, { alertmanager, deliverWebhook, unique });
-		await shown(
-			page.getByRole("button", { name: "Copy fix brief for your agent" }),
-		).click();
-		await expect(shown(page.getByTestId("copy-fix-brief"))).toHaveText(
-			"Copied",
-		);
+		await page.getByTestId("report-more").click();
+		await page.getByTestId("copy-fix-brief").click();
+		await expect(
+			page.getByText("Fix brief copied", { exact: true }),
+		).toBeVisible();
 	},
 );
 

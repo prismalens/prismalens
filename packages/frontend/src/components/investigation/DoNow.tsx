@@ -67,7 +67,7 @@ export function useDoNow({
 		steps.unshift({
 			kind: "link",
 			key: "map-service",
-			title: `Map ${unmappedService.name} to its repository, then investigate again`,
+			title: `Map ${unmappedService.name} to its repository, then start a new run`,
 			serviceId: unmappedService.id,
 		});
 	return steps;
@@ -95,8 +95,12 @@ export function DoNow({
 	});
 	const done = steps.filter((s) => s.kind === "check" && s.done).length;
 	return (
-		<section className={cn("mt-8", className)} data-testid="do-now">
-			<h3 className="mb-1 flex items-baseline gap-2 text-heading">
+		<section
+			id="do-now"
+			className={cn("pool mb-3 scroll-mt-4 px-3.5 py-3", className)}
+			data-testid="do-now"
+		>
+			<h3 className="mb-2 flex items-baseline gap-2 text-heading">
 				Do now
 				<span
 					className="font-normal text-text-3 tabular-nums"
@@ -105,7 +109,7 @@ export function DoNow({
 					{done} of {steps.length} done
 				</span>
 			</h3>
-			<p className="mb-1.5 text-body text-text-3">
+			<p className="mb-1.5 text-meta text-text-2">
 				PrismaLens did not run these. Tick what you did; the next person sees
 				it.
 			</p>
@@ -125,7 +129,7 @@ export function DoNow({
 									className="mt-0.5 size-4 shrink-0 rounded-[4px] bg-track"
 								/>
 								<div className="min-w-0 flex-1 text-body">
-									<p>{s.title}</p>
+									<p className="font-medium">{s.title}</p>
 									<Link
 										to="/services/$id"
 										params={{ id: s.serviceId }}
@@ -158,7 +162,7 @@ export function DoNow({
 										s.done && "text-text-3",
 									)}
 								>
-									<span className={cn(s.done && "line-through")}>
+									<span className={cn("font-medium", s.done && "line-through")}>
 										<InlineCode text={s.title} />
 									</span>
 									{s.priority && !s.done && (

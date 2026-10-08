@@ -39,10 +39,8 @@ function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
 }
 
 /**
- * The conversation (#743, study-v3 §3.4) on AI Elements' Conversation,
- * Message and Tool: newest at the bottom, following the tail until the reader
- * scrolls up. The reading column and the facts rail sit inside the scroller,
- * on the record's grid, so the box below lines up with the column.
+ * The conversation (#743) on AI Elements' Conversation, Message and Tool, in
+ * the one column (#673); it fades over its last 28 px above the box.
  */
 export function Transcript({
 	items,
@@ -50,7 +48,7 @@ export function Transcript({
 	focus,
 	cwd,
 	agent,
-	rail,
+	lead,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -59,13 +57,32 @@ export function Transcript({
 	/** The run's workspace, shown as `repo/` (walk f16). */
 	cwd?: string | null;
 	agent: string;
-	rail?: React.ReactNode;
+	/** What the run started with, the transcript's first line (#673). */
+	lead?: string;
 }) {
 	return (
-		<Conversation className="h-full" data-testid="transcript-scroller">
-			<ConversationContent className="pt-6 pb-8">
+		<Conversation
+			className="h-full [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]"
+			data-testid="transcript-scroller"
+		>
+			{/* The library's both-edges gutter insets the phone column 15 px a side. */}
+			<ConversationContent
+				className="pt-4 pb-8"
+				scrollClassName="max-md:[scrollbar-gutter:auto]!"
+			>
 				<div className={RECORD_GRID}>
-					<div className="flex min-w-0 flex-col gap-4" data-testid="transcript">
+					<div
+						className="flex min-w-0 flex-col gap-3.5"
+						data-testid="transcript"
+					>
+						{lead && (
+							<p
+								className="text-meta text-text-2"
+								data-testid="transcript-gather"
+							>
+								{lead}
+							</p>
+						)}
 						{items.map((item) => (
 							<TranscriptRow
 								key={item.key}
@@ -77,15 +94,6 @@ export function Transcript({
 							/>
 						))}
 					</div>
-					{rail && (
-						<aside
-							className="hidden xl:block"
-							aria-label="Facts"
-							data-testid="facts-rail"
-						>
-							<div className="sticky top-0">{rail}</div>
-						</aside>
-					)}
 				</div>
 			</ConversationContent>
 			<ConversationScrollButton />
@@ -217,14 +225,6 @@ function TranscriptRow({
 								Read the report
 							</RecordLink>
 						)}
-						<RecordLink
-							incidentId={incidentId}
-							to="conversation"
-							search={{ ledger: "1" }}
-							testId="transcript-event-log"
-						>
-							Event log
-						</RecordLink>
 					</p>
 				</div>
 			);

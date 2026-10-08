@@ -16,10 +16,10 @@ import {
 import { settled } from "./settled";
 
 /**
- * #743 — the incident: a band and a run strip that never scroll, a reading
- * column with the facts rail beside it (study-v3 §3.3) and the box docked
- * under it, and the routes one level down (conversation, report, alerts,
- * timeline).
+ * #743, #673 — the incident: a band that never scrolls, one reading column
+ * with nothing beside it, the runs in the sidebar under the incident, the box
+ * docked under the Conversation, and the routes one level down
+ * (conversation, report, alerts, timeline).
  *
  * The demo seed's incident #1 (`INCIDENT_ID`) already carries a completed
  * investigation with a full report; the happy path reuses it. The seed writes
@@ -38,10 +38,10 @@ async function createIncident(page: Page, title: string): Promise<string> {
 	return incident.id;
 }
 
-test.describe("#743 — the incident page, its run strip and its routes", () => {
+test.describe("#743 — the incident page, its runs and its routes", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	test("cards, strip, report and conversation for a completed run", async ({
+	test("cards, runs, report and conversation for a completed run", async ({
 		page,
 	}) => {
 		const events = eventFactory("root");
@@ -66,11 +66,11 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		).toBeVisible();
 		await expect(band.getByTestId("band-status")).toBeVisible();
 
-		// The run strip speaks the run's words, not the incident's.
-		await expect(page.getByTestId("run-strip-state")).toHaveText("Done");
-		await expect(page.getByTestId("composer-stop")).toHaveCount(0);
+		// The runs are the incident's children in the sidebar; Overview has no box.
+		await expect(page.getByTestId("run-tree-row").first()).toBeVisible();
+		await expect(page.getByTestId("docked-composer")).toHaveCount(0);
 
-		// The sections, in the order an SRE asks; the facts in the rail.
+		// The sections, in the order an SRE asks, in one column.
 		const ids = [
 			"incident-summary",
 			"overview-report",
@@ -89,32 +89,26 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			);
 		}
 
-		// The rail reads the service's telemetry, never a fixed line (walk f15).
-		await expect(page.getByTestId("facts-rail")).toBeVisible();
-		await expect(page.getByTestId("fact-telemetry")).not.toContainText(
-			"Metrics not connected",
-		);
-
 		// A note goes to the timeline from the Timeline section's own field.
 		const note = `Design evidence note ${Date.now()}`;
 		await page.getByTestId("note-input").fill(note);
 		await page.getByTestId("note-input").press("Enter");
 		await expect(page.getByTestId("overview-timeline")).toContainText(note);
 
-		// The box docked at the bottom briefs the next run once this one ended.
-		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Investigate again",
-		);
+		// The next run starts from the band's menu, as a draft on Conversation.
+		await page.getByTestId("band-more").click();
+		await expect(page.getByTestId("band-menu-new-run")).toBeVisible();
+		await page.keyboard.press("Escape");
 
 		await settled(page);
 
-		// The Report heading opens the report, band and strip still pinned.
+		// The Report link opens the report, band and runs still in place.
 		await page.getByTestId("overview-report-heading").click();
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/report/);
 		await expect(page.getByTestId("report-route")).toBeVisible();
 		await expect(page.getByTestId("report-answer")).toBeVisible();
 		await expect(page.getByTestId("do-now")).toBeVisible();
-		await expect(page.getByTestId("run-strip")).toBeVisible();
+		await expect(page.getByTestId("run-tree")).toBeVisible();
 		await expect(page.getByTestId("record-tabs")).toBeVisible();
 
 		// The conversation: prose, the tool call folded to one line, the end.
@@ -126,14 +120,9 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		);
 		await expect(transcript.getByTestId("transcript-tools")).toBeVisible();
 
-		// The Event log is the row-per-event panel, reached from the rail.
-		await page
-			.getByTestId("facts-rail")
-			.getByRole("link", { name: "Event log" })
-			.click();
-		const panel = page.getByTestId("investigation-stream-panel");
-		await expect(panel.getByTestId("stream-event-row")).toHaveCount(3);
-		await page.getByTestId("event-log-back").click();
+		// The run's facts sit in the status line under the box; there is no Event log.
+		await expect(page.getByTestId("run-status-state")).toHaveText(/^Done/);
+		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
 
 		await settled(page);
 
@@ -150,13 +139,15 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("incident-state-band")).toBeVisible();
-		await expect(page.getByTestId("run-strip")).toBeVisible();
+		await expect(page.getByTestId("run-tree")).toBeVisible();
 
 		await page.getByTestId("tab-timeline").click();
 		await expect(page.getByTestId("timeline-route")).toBeVisible();
 		await expect(page.getByTestId("note-field")).toBeVisible();
 
-		await page.getByTestId("tab-conversation").click();
+		// The seeded run kept no session, so the box to focus is a new run's draft.
+		await page.getByTestId("band-more").click();
+		await page.getByTestId("band-menu-new-run").click();
 		await expect(page.getByTestId("conversation-route")).toBeVisible();
 
 		// In the box Esc only lets go of it; once it has, Esc is the chevron.
@@ -182,13 +173,16 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 
 		await page.goto(`/incidents/${id}`);
 		await expect(page.getByTestId("overview-report")).toContainText(
-			"No investigation yet",
+			"No run yet. Start one with + New run.",
 			{ timeout: 15_000 },
 		);
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-strip")).toHaveCount(0);
+		await expect(page.getByTestId("run-tree-row")).toHaveCount(0);
+		// With no run, Conversation opens on the draft.
+		await page.getByTestId("tab-conversation").click();
+		await expect(page.getByTestId("draft-heading")).toContainText("New run");
 		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Start investigation",
+			"Investigate",
 		);
 		await settled(page);
 	});
@@ -200,9 +194,10 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		});
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("run-strip-state")).toHaveText("Failed", {
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("overview-report")).toContainText(
+			"Run failed",
+			{ timeout: 15_000 },
+		);
 		await expect(page.getByTestId("overview-report")).toContainText(
 			"harness lost the tool socket",
 		);
@@ -213,8 +208,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			'Run failed: OpenCode answered "harness lost the tool socket".',
 		);
-		await page.getByTestId("transcript-event-log").click();
-		await expect(page.getByTestId("investigation-failed-state")).toBeVisible();
+		await expect(page.getByTestId("run-status-state")).toHaveText(/^Failed/);
 	});
 
 	test("a live run: Stop in the box ends it at once, then reads Stopping", async ({
@@ -242,23 +236,25 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		const state = page.getByTestId("run-strip-state");
-		await expect(state).toHaveText("Starting", { timeout: 15_000 });
-
-		const events = eventFactory("run");
-		await deliver(page, events.agentStep("", "Reading the gateway logs"));
-		await expect(state).toHaveText("Working");
+		await expect(page.getByTestId("overview-report")).toContainText(
+			/Run #\d+ working/,
+			{ timeout: 15_000 },
+		);
 		await expect(page.getByTestId("incident-summary")).toContainText(
 			"An investigation is working now",
 		);
-		await expect(page.getByTestId("overview-report")).toContainText(
-			"The report comes when the run finishes",
-		);
+		await page.getByTestId("overview-open-conversation").click();
+		const state = page.getByTestId("run-status-state");
+		await expect(state).toHaveText(/^Starting/, { timeout: 15_000 });
+
+		const events = eventFactory("run");
+		await deliver(page, events.agentStep("", "Reading the gateway logs"));
+		await expect(state).toHaveText(/^Working/);
 
 		// No confirm: a stop is the harness's own cancel (R4.4).
 		await page.getByTestId("composer-stop").click();
 		await expect.poll(() => cancelled).toBe(1);
-		await expect(state).toHaveText("Stopping");
+		await expect(state).toHaveText(/^Stopping/);
 		await expect(page.getByTestId("composer-stop")).toBeDisabled();
 		await expect(page.getByTestId("composer-stop")).toHaveText("Stopping");
 		await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -301,7 +297,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		await expect(page.getByTestId("conversation-route")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("run-strip-state")).toHaveText("Starting");
+		await expect(page.getByTestId("run-status-state")).toHaveText(/^Starting/);
 		await deliver(page, eventFactory("run").agentStep("", "Reading the logs"));
 		await expect(page.getByTestId("transcript-prose")).toHaveText(
 			"Reading the logs",
@@ -309,7 +305,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 
 		// Live mode: the agent is fixed for this run; Enter queues.
 		const input = page.getByTestId("composer-input");
-		await expect(page.getByTestId("agent-chip")).toBeVisible();
+		await expect(page.getByTestId("agent-picker")).toBeVisible();
 		await input.fill("Check the deploy at 13:58 first.");
 		await input.press("Enter");
 		await expect.poll(() => sent.length).toBe(1);
@@ -331,7 +327,7 @@ test.describe("#743 — the incident page, its run strip and its routes", () => 
 		expect(sent[1]).toMatchObject({ mode: "now" });
 		const undeliverable = page.getByTestId("composer-undeliverable");
 		await expect(undeliverable).toContainText(
-			"The investigation ended before your message reached it.",
+			"The run ended before your message reached it.",
 		);
 		await expect(
 			page.locator(

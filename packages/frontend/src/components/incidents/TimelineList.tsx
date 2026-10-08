@@ -107,7 +107,7 @@ function InvestigationRow({
 						/>
 					)}
 					<span className="shrink-0">
-						Investigation{item.number ? ` #${item.number}` : ""}
+						Run{item.number ? ` #${item.number}` : ""}
 					</span>
 					{reason && <span className="truncate text-text-2">{reason}</span>}
 					{item.noRepo && (
@@ -116,7 +116,7 @@ function InvestigationRow({
 						</span>
 					)}
 				</span>
-				{state ? (
+				{full && state ? (
 					<StateWord tone={runStateTone(state)} className="shrink-0">
 						{RUN_STATE_LABEL[state]}
 					</StateWord>

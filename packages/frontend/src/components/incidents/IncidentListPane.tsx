@@ -10,7 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Search, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { LaneHeader, useLaneFolded } from "@/components/shared/ServiceLanes";
@@ -43,6 +43,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
 import { IncidentFilters } from "./IncidentFilters";
+import { RunTree } from "./RunTree";
 
 export interface IncidentListPaneProps {
 	selectedId: string | null;
@@ -202,29 +203,35 @@ export function IncidentListPane({
 		const selected = incident.id === selectedId;
 		const [label, ...meta] = rowTitle(incident, now);
 		return (
-			<Hint
-				key={incident.id}
-				label={label ?? ""}
-				meta={meta.join(". ") || undefined}
-				side="right"
-			>
-				<Link
-					to="/incidents/$id"
-					params={{ id: incident.id }}
-					search={keep}
-					onMouseEnter={() => pointAt(index)}
-					aria-current={selected ? "page" : undefined}
-					data-testid="incident-row"
-					data-cursor={cursor === index ? "true" : undefined}
-					className={cn(
-						"group/row flex h-7 min-w-0 items-center gap-2.5 rounded-control px-2 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
-						cursor === index && "bg-surface-3 text-text-1",
-						selected && "bg-surface-4 text-text-1 hover:bg-surface-4",
-					)}
+			<Fragment key={incident.id}>
+				<Hint
+					label={label ?? ""}
+					meta={meta.join(". ") || undefined}
+					side="right"
 				>
-					<IncidentRowBody incident={incident} now={now} selected={selected} />
-				</Link>
-			</Hint>
+					<Link
+						to="/incidents/$id"
+						params={{ id: incident.id }}
+						search={keep}
+						onMouseEnter={() => pointAt(index)}
+						aria-current={selected ? "page" : undefined}
+						data-testid="incident-row"
+						data-cursor={cursor === index ? "true" : undefined}
+						className={cn(
+							"group/row relative flex h-7 min-w-0 items-center gap-2 rounded-control pr-2 pl-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+							cursor === index && "bg-surface-2 text-text-1",
+							selected && "bg-surface-3 text-text-1 hover:bg-surface-3",
+						)}
+					>
+						<IncidentRowBody
+							incident={incident}
+							now={now}
+							selected={selected}
+						/>
+					</Link>
+				</Hint>
+				{selected && sidebar && <RunTree incidentId={incident.id} />}
+			</Fragment>
 		);
 	};
 
@@ -347,7 +354,7 @@ export function IncidentListPane({
 					return groups.map((group) => (
 						<section
 							key={group.id}
-							className="mx-2 mt-2 rounded-surface bg-surface-2 p-1 shadow-raised"
+							className="pool mx-2 mt-2.5 p-1.5"
 							data-testid="sidebar-group"
 						>
 							<LaneHeader
@@ -356,7 +363,7 @@ export function IncidentListPane({
 								name={group.name}
 								count={group.items.length}
 								foldedByDefault={group.id === SETTLED_LANE}
-								className="h-6 px-2 pt-0 pb-0"
+								className="h-7 px-1.5 pt-0 pb-0"
 							/>
 							{!isFolded(group.id) &&
 								group.items.map((incident) => row(incident, index++))}
@@ -418,12 +425,14 @@ function IncidentRowBody({
 			<span
 				aria-hidden
 				data-glyph={glyph}
-				className={cn(
-					"h-3 w-[3px] shrink-0 rounded-full",
-					glyph === "live" && "bg-live",
-					glyph === "attention" && "bg-danger",
-					glyph === "open" && "bg-text-3",
-				)}
+				className="absolute top-2 left-0.5 h-3 w-[3px] rounded-full"
+				style={{
+					background:
+						// A working run shows on the bar even before anyone acknowledges.
+						glyph === "live" || word
+							? "var(--live)"
+							: `var(--sev-${incident.severity})`,
+				}}
 			/>
 			<span className="min-w-0 truncate">
 				{/* text-3 never sits on a hover or selected step: the id lifts to text-2. */}
@@ -435,15 +444,7 @@ function IncidentRowBody({
 				>
 					INC-{incident.number}
 				</Mono>
-				<span
-					className={cn(
-						glyph === "ended" &&
-							!selected &&
-							"text-text-3 group-hover/row:text-text-2",
-					)}
-				>
-					{incident.title}
-				</span>
+				<span className={cn(selected && "font-medium")}>{incident.title}</span>
 			</span>
 			<span className="sr-only">
 				{word && <span data-testid="incident-run-word">{word.text}</span>}

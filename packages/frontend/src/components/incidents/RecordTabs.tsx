@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { inIncident, useBack } from "@/hooks/use-back";
 import { useSlidingMark } from "@/hooks/use-sliding-mark";
 import { cn } from "@/lib/utils";
 import { RECORD_ROUTES, type RecordRoute } from "./RecordLayout";
+import { RunChip } from "./RunChip";
 
 const NAMES: Record<RecordRoute, string> = {
 	conversation: "Conversation",
@@ -27,23 +28,17 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /**
- * The incident's tabs (#743): Overview is the card page, the others are the
- * routes a card's link opens. With the band they form the record's s1 header
- * region; the active tab's underline is one mark that slides (look ruling §2).
- * Every tab exists whatever the run did. The run's state rides at the right
- * end of the row. Esc is the band's chevron (R4.4): back to where you came
- * from, unless the box, a field or a popover has it.
+ * The incident's tabs (#743): one sliding underline; below 1280 the run chip
+ * at the right end (#673). Esc is the band's chevron unless a field has it.
  */
 export function RecordTabs({
 	incidentId,
 	here,
 	counts,
-	status,
 }: {
 	incidentId: string;
 	here: RecordRoute | null;
 	counts: Partial<Record<RecordRoute, number>>;
-	status?: ReactNode;
 }) {
 	const leaf = useMemo(() => inIncident(incidentId), [incidentId]);
 	const back = useBack(leaf, "/incidents");
@@ -73,13 +68,13 @@ export function RecordTabs({
 
 	return (
 		<div
-			className="flex shrink-0 items-center gap-x-3 bg-surface-1 px-4"
+			className="flex shrink-0 flex-wrap items-center gap-x-3 px-5 md:h-9 max-md:pr-4 max-md:pl-4"
 			data-testid="record-tabs"
 		>
 			<nav
 				ref={ref}
 				aria-label="Incident"
-				className="relative flex min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] md:gap-[18px]"
+				className="relative flex h-9 min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] max-md:w-full md:gap-[18px]"
 			>
 				<Link
 					to="/incidents/$id"
@@ -122,9 +117,8 @@ export function RecordTabs({
 					/>
 				)}
 			</nav>
-			{status && (
-				<div className="ml-auto flex min-w-0 items-center">{status}</div>
-			)}
+			{/* On the phone the chip takes its own row, so every tab keeps its room. */}
+			<RunChip className="ml-auto max-md:mt-2 max-md:mb-1 max-md:ml-0 xl:hidden [[data-sidebar-folded]_&]:inline-flex" />
 		</div>
 	);
 }

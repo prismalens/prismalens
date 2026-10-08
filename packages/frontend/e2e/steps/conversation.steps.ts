@@ -95,7 +95,8 @@ async function openConversation(page: Page) {
 }
 
 const box = (page: Page) => page.getByTestId("composer-input");
-const strip = (page: Page) => page.getByTestId("run-strip-state");
+/** The run's state in the status line under the box (#673), elapsed after it. */
+const strip = (page: Page) => page.getByTestId("run-status-state");
 
 async function check(page: Page, id: string) {
 	const res = await page.request.post("/api/settings/harness/check", {
@@ -137,11 +138,11 @@ const PNG = {
 // --- Incident page -----------------------------------------------------------------
 
 When(
-	"I type {string} in the box and press {string}",
+	"I type {string} in the draft's box and press {string}",
 	async ({ page, unique }, text: string, button: string) => {
 		const made = await incidentByTitle(page, unique("BandAction"));
 		w(page).inc = { ...made, labels: {} };
-		await visit(page, `/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		// The script name rides in the brief so the run holds for the Then.
 		await box(page).fill(`${text} fake-session:live`);
 		await expect(page.getByTestId("composer-investigate")).toHaveText(button);
@@ -151,10 +152,13 @@ When(
 );
 
 Then(
-	'the run strip reads "Working" with the agent and model',
+	'the status line reads "Working" and the chips name the agent and model',
 	async ({ page }) => {
-		await expect(strip(page)).toHaveText("Working");
-		await expect(page.getByTestId("run-strip")).toContainText("OpenCode");
+		await expect(strip(page)).toHaveText(/^Working/);
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: OpenCode, /,
+		);
 	},
 );
 
@@ -318,7 +322,7 @@ Then(
 Then(
 	'the box shows "Stop" as a word while the agent works, and no key names anywhere on screen',
 	async ({ page }) => {
-		await expect(strip(page)).toHaveText("Working");
+		await expect(strip(page)).toHaveText(/^Working/);
 		await expect(page.getByTestId("composer-stop")).toHaveText("Stop");
 		await expect(page.locator("kbd:visible")).toHaveCount(0);
 		await expect(page.locator("body")).not.toContainText(
@@ -328,7 +332,7 @@ Then(
 );
 
 Given("the agent is working and the box has focus", async ({ page }) => {
-	await expect(strip(page)).toHaveText("Working");
+	await expect(strip(page)).toHaveText(/^Working/);
 	await box(page).focus();
 });
 
@@ -337,9 +341,9 @@ When("I press Escape", async ({ page }) => {
 });
 
 Then(
-	'the run strip reads "Stopped by you" and I am still on the Conversation',
+	'the status line reads "Stopped by you" and I am still on the Conversation',
 	async ({ page }) => {
-		await expect(strip(page)).toHaveText("Stopped by you");
+		await expect(strip(page)).toHaveText(/^Stopped by you/);
 		await expect(page).toHaveURL(/\/conversation/);
 	},
 );
@@ -368,12 +372,17 @@ When("the run ends", async ({ page, release }) => {
 	);
 });
 
-Then('the end line offers "Event log"', async ({ page }) => {
-	const end = page.getByTestId("transcript-end");
-	await expect(end).toContainText("Report ready");
-	await end.getByRole("link", { name: "Event log" }).click();
-	await expect(page.getByTestId("investigation-panel")).toBeVisible();
-});
+Then(
+	'the end line offers "Read the report" and no "Event log"',
+	async ({ page }) => {
+		const end = page.getByTestId("transcript-end");
+		await expect(end).toContainText("Report ready");
+		await expect(
+			end.getByRole("link", { name: "Read the report" }),
+		).toBeVisible();
+		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
+	},
+);
 
 // --- Stop then continue --------------------------------------------------------------
 
@@ -392,7 +401,10 @@ Given(
 			"the run's first tool call",
 		);
 		await openConversation(page);
-		await expect(page.getByTestId("run-strip")).toContainText("OpenCode");
+		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
+			"aria-label",
+			/^Agent and model: OpenCode, /,
+		);
 	},
 );
 
@@ -401,20 +413,19 @@ When('I press "Stop" in the box', async ({ page }) => {
 });
 
 Then(
-	'the run strip reads "Stopped by you" and the conversation ends with "Stopped by you at <time> after <elapsed>" with "Event log", and no "Failed"',
+	'the status line reads "Stopped by you" and the conversation ends with "Stopped by you at <time> after <elapsed>", and no "Failed"',
 	async ({ page }) => {
-		await expect(strip(page)).toHaveText("Stopped by you");
+		await expect(strip(page)).toHaveText(/^Stopped by you/);
 		const end = page.getByTestId("transcript-end");
 		await expect(end).toContainText(
 			/^Stopped by you at \d\d:\d\d after \d+[sm][^.]*\./,
 		);
-		await expect(end.getByRole("link", { name: "Event log" })).toBeVisible();
 		await expect(page.getByTestId("transcript")).not.toContainText("Failed");
 	},
 );
 
 Then("nothing counts down or waits", async ({ page }) => {
-	const elapsed = page.getByTestId("run-strip-elapsed");
+	const elapsed = strip(page);
 	const first = await elapsed.innerText();
 	await page.waitForTimeout(2_000);
 	await expect(elapsed).toHaveText(first);
@@ -428,31 +439,28 @@ Given(
 	"INC-1's run was stopped and OpenCode can reopen it",
 	async ({ page }) => {
 		await page.getByTestId("composer-stop").click();
-		await expect(strip(page)).toHaveText("Stopped by you");
+		await expect(strip(page)).toHaveText(/^Stopped by you/);
 	},
 );
 
 Then(
-	'the box reads "Continue the investigation" and no note explains it',
+	'the box reads "Continue this run" and no note explains it',
 	async ({ page }) => {
-		await expect(box(page)).toHaveAttribute(
-			"placeholder",
-			"Continue the investigation",
-		);
+		await expect(box(page)).toHaveAttribute("placeholder", "Continue this run");
 		// The placeholder names what the box does; explaining copy is gone (look ruling L43).
 		await expect(page.getByTestId("composer-note")).toHaveCount(0);
 	},
 );
 
 Then(
-	'the strip reads "Working" and the agent\'s next message answers with what it had already found',
+	"the run is working again and the agent's next message answers with what it had already found",
 	async ({ page }) => {
 		await expect(
 			page
 				.getByTestId("transcript-prose")
 				.filter({ hasText: "the index drop is still the only change" }),
 		).toBeVisible();
-		// The continued run is the run again, so the strip went live before its report.
+		// The continued run is the run again, so it went live before its report.
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(["running", "completed"]).toContain(run?.status);
 	},
@@ -542,18 +550,13 @@ Given(
 );
 
 Then(
-	'the box reads "Brief a new investigation" with "Investigate again" and a note saying deepagents cannot reopen a finished session',
+	'the box reads "This run can\'t continue. Start a new run." with "New run", and no field to type into',
 	async ({ page }) => {
-		await expect(box(page)).toHaveAttribute(
-			"placeholder",
-			"Brief a new investigation",
+		await expect(page.getByTestId("composer-no-session")).toContainText(
+			"This run can't continue. Start a new run.",
 		);
-		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Investigate again",
-		);
-		await expect(page.getByTestId("composer-note")).toContainText(
-			"deepagents can't reopen a finished session",
-		);
+		await expect(page.getByTestId("composer-new-run")).toHaveText("New run");
+		await expect(box(page)).toHaveCount(0);
 	},
 );
 
@@ -571,7 +574,10 @@ Given(
 );
 
 When("a run starts", async ({ page }) => {
-	await visit(page, `/incidents/${inc(page).id}`);
+	await visit(
+		page,
+		`/incidents/${inc(page).id}/conversation?investigation=new`,
+	);
 	await page.getByTestId("composer-investigate").click();
 	await waitForRun(
 		page,
@@ -582,20 +588,21 @@ When("a run starts", async ({ page }) => {
 });
 
 Then(
-	"the report's run line names {string} and the event log shows the agent accepting it before the first prompt",
+	"the report's header names {string} and the conversation shows the agent accepting it before its first words",
 	async ({ page }, model: string) => {
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(run?.status).toBe("completed");
 		await visit(page, `/incidents/${inc(page).id}/report`);
-		await expect(page.getByTestId("report-route")).toContainText(model);
-		await visit(page, `/incidents/${inc(page).id}/conversation?ledger=1`);
-		const panel = page.getByTestId("investigation-stream-panel");
-		await expect(panel).toContainText(
-			`The agent took model ${model.toLowerCase()} before the first prompt`,
-		);
+		await expect(page.getByTestId("report-header")).toContainText(model);
+		await visit(page, `/incidents/${inc(page).id}/conversation`);
+		const took = page.getByTestId("transcript-line").filter({
+			hasText: `The agent took model ${model.toLowerCase()} before the first prompt`,
+		});
+		await expect(took).toBeVisible();
 		// It is the first thing the run did: before any of the agent's own words.
-		const first = panel.getByTestId("stream-event-row").first();
-		await expect(first).toContainText("The agent took model");
+		const prose = page.getByTestId("transcript-prose").first();
+		const [a, b] = [await took.boundingBox(), await prose.boundingBox()];
+		expect(a?.y ?? 0).toBeLessThan(b?.y ?? 0);
 	},
 );
 
@@ -616,10 +623,10 @@ Given("the agent will not take the model", async ({ page }) => {
 });
 
 Then(
-	"the run does not start and the box says which models it offered",
+	"the run does not start and its end line says which models it offered",
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}`);
-		await expect(page.getByTestId("composer-note")).toHaveText(
+		await visit(page, `/incidents/${inc(page).id}/conversation`);
+		await expect(page.getByTestId("transcript-end")).toContainText(
 			"Codex would not switch to gpt-9; it offered gpt-5.6",
 		);
 		const res = await page.request.get(
@@ -637,7 +644,7 @@ When(
 		await pick(page, "claude-code");
 		const made = await incidentByTitle(page, unique("BandAction"));
 		w(page).inc = { ...made, labels: {} };
-		await visit(page, `/incidents/${made.id}`);
+		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		await box(page).fill("The panel at 14:02");
 		await pasteFile(page, PNG);
 	},
@@ -682,7 +689,7 @@ When(
 		expect(fresh.ok(), await fresh.text()).toBe(true);
 		const { id } = (await fresh.json()) as { id: string };
 		w(page).inc = { ...made, id, labels: {} };
-		await visit(page, `/incidents/${id}`);
+		await visit(page, `/incidents/${id}/conversation`);
 		await pasteFile(page, PNG);
 	},
 );
@@ -823,15 +830,15 @@ When("I press Stop on the laptop", async ({ page }) => {
 });
 
 Then(
-	'the phone\'s strip reads "Stopped by you" and its box reads "Continue the investigation"',
+	'the phone\'s status line reads "Stopped by you" and its box reads "Continue this run"',
 	async ({ page }) => {
 		const phone = phoneOf(page);
-		await expect(phone.getByTestId("run-strip-state")).toHaveText(
-			"Stopped by you",
+		await expect(phone.getByTestId("run-status-state")).toHaveText(
+			/^Stopped by you/,
 		);
 		await expect(phone.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Continue the investigation",
+			"Continue this run",
 		);
 		await phone.context().close();
 	},

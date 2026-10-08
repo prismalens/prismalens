@@ -14,21 +14,30 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@/components/agent/AgentPicker", () => ({
-	AccessMenu: () => null,
-	AgentModelChip: () => null,
-	AgentModelPicker: () => null,
-	EffortMenu: () => null,
-	useAgentChoice: () => ({ harnesses: [], effective: undefined }),
+	ModelChip: () => null,
+	EffortChip: () => null,
+	ModeChip: () => null,
+	defaultModeOf: () => "agent-default",
+	modelName: (_h: unknown, id: string) => id,
+	unreadyReason: () => null,
+	useAgentChoice: () => ({
+		harnesses: [],
+		effective: undefined,
+		model: "",
+		efforts: {},
+		agentModes: {},
+	}),
 }));
-vi.mock("@/components/incidents/RunStrip", () => ({
-	useRunAgentModel: () => ({ agent: "OpenCode", model: "m" }),
+vi.mock("@/lib/api/hooks", () => ({
+	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => ({
 		run: {
 			state: "working",
-			investigation: { harness: "opencode", agentMode: "plan", agentModeName: "Plan" },
+			events: [],
+			investigation: { id: "inv-1", harness: "opencode", agentMode: "plan", agentModeName: "Plan" },
 			sendMessage: record.sendMessage,
 			stop: vi.fn(),
 			waiting: 0,
@@ -39,12 +48,24 @@ vi.mock("@/components/incidents/record-context", () => ({
 			clearUndeliverable: vi.fn(),
 		},
 		investigationId: "inv-1",
-		incident: { id: "inc-1" },
-		canInvestigate: true,
-		isInvestigating: false,
+		draft: false,
+		runs: [],
+		liveRun: null,
+		incident: { id: "inc-1", alertCount: 1 },
+		isStarting: false,
 		investigate: vi.fn(),
+		chat: vi.fn(),
+		newRun: vi.fn(),
 		addNote: vi.fn(),
 	}),
+}));
+vi.mock("@/components/incidents/run-facts", () => ({
+	useRunAgentModel: () => ({ agent: "OpenCode", model: "m" }),
+	runEffort: () => null,
+	runNumber: () => 1,
+	runElapsed: () => 0,
+	runTimed: () => false,
+	modelSource: () => "the agent's own",
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -91,7 +112,12 @@ describe("ComposerBox image previews (R4.3)", () => {
 			root.render(
 				createElement(ComposerBox, {
 					mode: "live",
+					chips: null,
+					text: "",
+					setText: () => {},
+					enterInvestigates: true,
 					onInvestigate: () => {},
+					onAsk: () => {},
 					onMessage: () => {},
 					agent: { label: "OpenCode", images: true },
 				}),
@@ -123,7 +149,7 @@ describe("DockedComposer messages (#743)", () => {
 				}),
 		);
 		await act(async () => {
-			root.render(createElement(DockedComposer));
+			root.render(createElement(DockedComposer, {}));
 		});
 		await type("why the pool?");
 		await act(async () => {
