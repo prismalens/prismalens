@@ -24,7 +24,12 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { type ModeIcon, modeIcon, modeLine } from "@/lib/agent-modes";
+import {
+	type ModeIcon,
+	modeIcon,
+	modeLine,
+	sandboxLine,
+} from "@/lib/agent-modes";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -768,7 +773,8 @@ export function ModeChip({
 				},
 			];
 	const name = modeName(harness, mode);
-	const Icon = MODE_ICON[modeIcon(mode)];
+	const sandbox = harness?.checked?.sandbox;
+	const Icon = MODE_ICON[modeIcon(mode, sandbox?.[mode])];
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -793,8 +799,9 @@ export function ModeChip({
 			>
 				<div role="listbox" aria-label="Permission mode">
 					{rows.map((m) => {
-						const RowIcon = MODE_ICON[modeIcon(m.id)];
+						const RowIcon = MODE_ICON[modeIcon(m.id, sandbox?.[m.id])];
 						const line = modeLine(m.id, m.description);
+						const guard = sandboxLine(sandbox?.[m.id]);
 						return (
 							<button
 								key={m.id}
@@ -828,6 +835,13 @@ export function ModeChip({
 										{line}
 									</span>
 								)}
+								<span
+									className="col-start-2 col-end-4 truncate text-meta text-text-3"
+									title={sandbox?.[m.id]?.reason}
+									data-testid="access-sandbox"
+								>
+									{guard}
+								</span>
 							</button>
 						);
 					})}
