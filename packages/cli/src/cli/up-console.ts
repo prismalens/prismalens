@@ -9,7 +9,11 @@
 
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { isOnPath } from "@prismalens/config";
+import {
+	isOnPath,
+	resolveOnPath,
+	windowsInstallOnPath,
+} from "@prismalens/config";
 
 const DEFAULT_LOG_DIR = "logs";
 
@@ -153,6 +157,24 @@ export const TELEMETRY_NOTICE =
 
 export interface BrowserCommandOptions {
 	isOnPath?: (bin: string, pathEnv?: string) => boolean;
+	/** Where `bin` resolves on PATH, Windows mounts included; null when absent. */
+	which?: (bin: string, env: NodeJS.ProcessEnv) => string | null;
+}
+
+/** WSL's default automount, for when `appendWindowsPath=false` keeps it off PATH (#673 w3). */
+export const WSL_POWERSHELL =
+	"/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+/** Printed when the opener could not start or failed; the printed link still works. */
+export const NO_BROWSER_LINE =
+	"Couldn't open a browser on this machine. Open the link above.";
+
+function whichAnywhere(bin: string, env: NodeJS.ProcessEnv): string | null {
+	const path = env.PATH ?? "";
+	return (
+		resolveOnPath(bin, path, { env }) ??
+		windowsInstallOnPath(bin, path, { env })
+	);
 }
 
 /**
@@ -178,10 +200,12 @@ export function browserCommand(
 			return { file: "wslview", args: [url] };
 		}
 		// Interop re-quotes argv, so cmd.exe saw literal quotes and `&` split the
-		// URL; a single-quoted PowerShell literal survives both (#673).
+		// URL; a single-quoted PowerShell literal survives both, and Start-Process
+		// keeps the #token (checked with a page that reports location.hash, #673 w3).
 		const literal = `'${url.replaceAll("'", "''")}'`;
+		const which = opts.which ?? whichAnywhere;
 		return {
-			file: "powershell.exe",
+			file: which("powershell.exe", env) ?? WSL_POWERSHELL,
 			args: [
 				"-NoProfile",
 				"-NonInteractive",

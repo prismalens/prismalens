@@ -14,6 +14,7 @@ import {
 	resolveLogDir,
 	serviceHint,
 	TELEMETRY_NOTICE,
+	WSL_POWERSHELL,
 	waitForReady,
 } from "./up-console.js";
 
@@ -235,10 +236,10 @@ describe("browserCommand", () => {
 				"linux",
 				{ WSL_DISTRO_NAME: "Ubuntu", DISPLAY: ":0" },
 				pairingUrl,
-				{ isOnPath: () => false },
+				{ isOnPath: () => false, which: () => "/mnt/c/ps/powershell.exe" },
 			),
 		).toEqual({
-			file: "powershell.exe",
+			file: "/mnt/c/ps/powershell.exe",
 			args: [
 				"-NoProfile",
 				"-NonInteractive",
@@ -246,6 +247,15 @@ describe("browserCommand", () => {
 				`Start-Process '${pairingUrl}'`,
 			],
 		});
+	});
+
+	it("falls back to System32's PowerShell when Windows is off PATH (appendWindowsPath=false)", () => {
+		expect(
+			browserCommand("linux", { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin" }, url, {
+				isOnPath: () => false,
+				which: () => null,
+			})?.file,
+		).toBe(WSL_POWERSHELL);
 	});
 
 	it("doubles a single quote so the URL stays one PowerShell literal", () => {

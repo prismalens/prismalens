@@ -31,6 +31,7 @@ import {
 	browserCommand,
 	displayUrl,
 	healthUrl,
+	NO_BROWSER_LINE,
 	networkBindWarning,
 	readTelemetryState,
 	resolveBind,
@@ -309,6 +310,15 @@ async function printStartupLink(
 		stdio: "ignore",
 		windowsVerbatimArguments: process.platform === "win32",
 	});
-	child.on("error", () => {});
+	let reported = false;
+	const report = () => {
+		if (reported) return;
+		reported = true;
+		consola.info(NO_BROWSER_LINE);
+	};
+	child.on("error", report);
+	child.on("exit", (code) => {
+		if (code !== 0) report();
+	});
 	child.unref();
 }
