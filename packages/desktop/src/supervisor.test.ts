@@ -9,12 +9,14 @@ import {
 	pairOperatorSpawn,
 	appendTail,
 	backendUrl,
+	nextFreePort,
 	planLaunch,
 	portFree,
 	portTakenDialog,
 	resetWorkspaceSpawn,
 	serviceStartCommands,
 	stopDialog,
+	withoutLogFields,
 } from "./supervisor.js";
 
 describe("supervisor", () => {
@@ -146,12 +148,44 @@ describe("supervisor", () => {
 	});
 
 	describe("portTakenDialog", () => {
-		it("names the port and what holds it", () => {
-			const other = portTakenDialog({ port: 6473, holderInstanceId: null, instanceFile: "/w/instance.json" });
+		it("names the port and what holds it, never an instance id (#673 w50)", () => {
+			const other = portTakenDialog({ port: 6473, byPrismaLens: false, freePort: null, instanceFile: "/w/instance.json" });
 			expect(other.message).toBe("Port 6473 is in use by another program");
 			expect(other.detail).toContain("/w/instance.json");
-			const pl = portTakenDialog({ port: 6473, holderInstanceId: "abc", instanceFile: "/w/instance.json" });
-			expect(pl.message).toContain("another PrismaLens workspace (instance abc)");
+			expect(other.buttons).toEqual(["Quit"]);
+			const pl = portTakenDialog({ port: 6473, byPrismaLens: true, freePort: 6474, instanceFile: "/w/instance.json" });
+			expect(pl.message).toBe("Port 6473 is in use by another PrismaLens");
+			expect(pl.detail).not.toMatch(/instance [0-9a-f]{8}/);
+		});
+
+		it("offers to start on a free port this time (#673 w50)", () => {
+			const d = portTakenDialog({ port: 6473, byPrismaLens: true, freePort: 6474, instanceFile: "/w/instance.json" });
+			expect(d.buttons).toEqual(["Start on port 6474", "Quit"]);
+			expect(d.freePort).toBe(6474);
+		});
+	});
+
+	describe("nextFreePort", () => {
+		it("takes the first free port after the taken one, or null", async () => {
+			expect(await nextFreePort(6473, async (p) => p === 6475)).toBe(6475);
+			expect(await nextFreePort(6473, async () => false, 3)).toBeNull();
+		});
+	});
+
+	describe("withoutLogFields", () => {
+		it("drops the level word and the record's JSON tail, keeping braces in the sentence", () => {
+			expect(
+				withoutLogFields(
+					'ERROR: Database migration failed: Migration 20260922194029_connection_user_optional is missing migration.sql {"service":{"name":"prismalens-api"},"context":"Bootstrap"}',
+				),
+			).toBe("Database migration failed: Migration 20260922194029_connection_user_optional is missing migration.sql");
+			expect(withoutLogFields('Bad value {"a": in the config')).toBe('Bad value {"a": in the config');
+			expect(withoutLogFields("plain line")).toBe("plain line");
+		});
+
+		it("is applied to a crashed backend's dialog", () => {
+			const d = stopDialog({ owned: true, code: 1, stderrTail: ['ERROR: boom {"context":"Bootstrap"}'] });
+			expect(d.detail).toBe("boom");
 		});
 	});
 

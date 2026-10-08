@@ -152,6 +152,11 @@ describe("parseProbe and planWslLaunch", () => {
 			detail: "Use it from this app, or stop it in WSL and relaunch to run a Windows copy here.",
 			buttons: ["Use the PrismaLens in WSL", "Quit"],
 		});
+		// With a free port the app can also run its own copy (#673 w50).
+		expect(portTakenByWslDialog({ port: 6473, distro: "Ubuntu", freePort: 6474 })).toMatchObject({
+			buttons: ["Use the PrismaLens in WSL", "Start here on port 6474", "Quit"],
+			freePort: 6474,
+		});
 		expect(portTakenByWslDialog({ port: 6473, distro: null }).message).toBe(
 			"Port 6473 is used by the PrismaLens running in WSL (the default distro)",
 		);

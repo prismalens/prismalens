@@ -98,6 +98,8 @@ export interface StopDialog {
 	message: string;
 	detail: string;
 	buttons: string[];
+	/** A free port the "Start on port" button starts this workspace on (#673 w50). */
+	freePort?: number;
 }
 
 const NEWER_DATABASE = /written by a newer PrismaLens/i;
@@ -126,7 +128,7 @@ export function stopDialog(input: {
 			buttons: ["Download update", "Quit"],
 		};
 	}
-	const tail = input.stderrTail.join("\n").trim();
+	const tail = input.stderrTail.map(withoutLogFields).join("\n").trim();
 	return {
 		kind: "crashed",
 		message: `PrismaLens stopped (exit code ${input.code ?? "none"})`,
@@ -143,22 +145,62 @@ export const OLDER_BACKEND_DIALOG: StopDialog = {
 	buttons: ["Quit"],
 };
 
-/** The workspace's port is held by something that is not this workspace's backend. */
+/**
+ * The workspace's port is held by something that is not this workspace's
+ * backend: start on a free port this time, or quit. Never a raw instance id.
+ */
 export function portTakenDialog(input: {
 	port: number;
-	/** Another PrismaLens instance's id, when the holder answered `/api/instance`. */
-	holderInstanceId: string | null;
+	/** Whether the holder answered `/api/instance`, i.e. is another PrismaLens. */
+	byPrismaLens: boolean;
+	freePort: number | null;
 	instanceFile: string;
 }): StopDialog {
-	const holder = input.holderInstanceId
-		? `another PrismaLens workspace (instance ${input.holderInstanceId})`
-		: "another program";
+	const holder = input.byPrismaLens ? "another PrismaLens" : "another program";
+	const forGood = `To move this workspace for good, change "port" in ${input.instanceFile}.`;
 	return {
 		kind: "port-taken",
 		message: `Port ${input.port} is in use by ${holder}`,
-		detail: `This workspace serves on port ${input.port}. Stop what is listening there, or change "port" in ${input.instanceFile}.`,
-		buttons: ["Quit"],
+		detail: input.freePort
+			? `Start this workspace on port ${input.freePort} this time, or stop what is listening on ${input.port} and relaunch. ${forGood}`
+			: `Stop what is listening on ${input.port} and relaunch. ${forGood}`,
+		buttons: input.freePort
+			? [`Start on port ${input.freePort}`, "Quit"]
+			: ["Quit"],
+		...(input.freePort ? { freePort: input.freePort } : {}),
 	};
+}
+
+/** The first free loopback port after `from`, or null after `tries` ports. */
+export async function nextFreePort(
+	from: number,
+	isFree: (port: number) => Promise<boolean> = portFree,
+	tries = 20,
+): Promise<number | null> {
+	for (let port = from + 1; port <= Math.min(from + tries, 65535); port++) {
+		if (await isFree(port)) return port;
+	}
+	return null;
+}
+
+const LOG_LEVEL = /^(ERROR|WARN|FATAL|INFO):\s+/;
+
+/**
+ * A logger line ends with its record's fields as JSON, after its level word;
+ * a dialog shows only the sentence (#673 w50).
+ */
+export function withoutLogFields(line: string): string {
+	const text = line.replace(LOG_LEVEL, "");
+	const open = ' {"';
+	for (let at = text.indexOf(open); at >= 0; at = text.indexOf(open, at + 1)) {
+		try {
+			JSON.parse(text.slice(at + 1));
+			return text.slice(0, at).trimEnd();
+		} catch {
+			// A brace inside the message, not the record's tail.
+		}
+	}
+	return text;
 }
 
 /** Keep the last `max` stderr lines across chunk boundaries. */
