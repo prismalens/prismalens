@@ -311,7 +311,10 @@ export class InvestigationsService {
 		const { count } = await this.prisma.investigation.updateMany({
 			where: {
 				id,
-				...(status === "cancelled" ? {} : { NOT: { status: "cancelled" } }),
+				// A Stop only ends a live row: a stale one never relabels a finished run (#804 OBJ-025).
+				...(status === "cancelled"
+					? { status: { in: [...LIVE_WORKFLOW_STATUSES] } }
+					: { NOT: { status: "cancelled" } }),
 				...(ending && status !== "cancelled" ? { stopRequestedAt: null } : {}),
 			},
 			data: ending
@@ -416,7 +419,11 @@ export class InvestigationsService {
 	/** Record that the operator asked a running run to stop (#743). */
 	async markStopRequested(id: string): Promise<void> {
 		await this.prisma.investigation.updateMany({
-			where: { id, stopRequestedAt: null },
+			where: {
+				id,
+				stopRequestedAt: null,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
 			data: { stopRequestedAt: new Date() },
 		});
 	}
@@ -512,6 +519,7 @@ export class InvestigationsService {
 		description = "The investigation was cancelled before it started.",
 	): Promise<Investigation | null> {
 		const updated = await this.updateStatus(id, "cancelled");
+		if (!updated) return null;
 		await this.timelineService.create({
 			incidentId,
 			type: TimelineEntryType.investigation_completed,

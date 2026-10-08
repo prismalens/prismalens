@@ -450,6 +450,41 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 	});
 });
 
+describe("a stale Stop never relabels a finished run (#804 OBJ-025)", () => {
+	it("Cancel read the run live, the report landed, then Cancel's fallback ran: completed stands, no Stop lingers", async () => {
+		const inc = await incident();
+		const completedAt = new Date("2026-10-08T17:02:00.000Z");
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		// The run finishes between Cancel's live read and its writes.
+		await prisma.investigation.update({
+			where: { id: row.id },
+			data: { status: "completed", report: "{}", summary: "s", completedAt, liveTurn: null },
+		});
+		timeline.create.mockClear();
+
+		// What the controller's fallback does next, with no receiver for the publish.
+		await investigations.markStopRequested(row.id);
+		const cancelled = await investigations.cancelPending(row.id, inc.id, "no run held it");
+
+		expect(cancelled).toBeNull();
+		expect(await read(row.id)).toMatchObject({ status: "completed", completedAt, stopRequestedAt: null, report: "{}" });
+		expect(timeline.create).not.toHaveBeenCalled();
+	});
+
+	it("a pending follow-up that ended meanwhile is not put back, and nothing is said in the conversation", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const completedAt = new Date("2026-10-08T17:40:00.000Z");
+		const row = await thread(inc.id, { status: "completed", report: "{}", completedAt, lastTurnOutcome: "answered" });
+		await job(row.id, inc.id, { resume: { text: "why?", mode: "queue", restore: restoreDone } }, "cancelled");
+
+		await service.restoreFollowUp(row.id, "Stopped before the follow-up started.", "stopped");
+
+		expect(await read(row.id)).toMatchObject({ status: "completed", completedAt, lastTurnOutcome: "answered" });
+		expect(await prisma.investigationEvent.count({ where: { investigationId: row.id } })).toBe(0);
+	});
+});
+
 describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 	it("a failed status write after Stop: false back, no delivery, no telemetry, the row stays live", async () => {
 		const { ports, deliver, telemetry } = realDispatch();
@@ -532,7 +567,7 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 		});
 	});
 
-	it("a running job whose row recorded a Stop ends cancelled, never failed", async () => {
+	it("a running job whose row recorded a Stop ends cancelled, row and job alike (T6 after a restart, #804 OBJ-027)", async () => {
 		const inc = await incident();
 		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
 		await job(row.id, inc.id, {}, "running");
@@ -545,7 +580,19 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 			stopRequestedAt: null,
 			liveTurn: null,
 		});
-		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("failed");
+		// What GET /investigations/:id/status serves as `job.state`.
+		expect(await realDispatch().service.getJobStatus(row.id)).toMatchObject({ status: "cancelled" });
+	});
+
+	it("a follow-up whose Stop was recorded before the restart: standing put back, job cancelled (#804 OBJ-027)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "completed", lastTurnOutcome: "stopped", stopRequestedAt: null });
+		expect(await realDispatch().service.getJobStatus(row.id)).toMatchObject({ status: "cancelled" });
 	});
 
 	it("a running first run without a Stop ends failed with the restart reason", async () => {

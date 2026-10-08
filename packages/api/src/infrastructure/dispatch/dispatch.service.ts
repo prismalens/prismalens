@@ -532,15 +532,26 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				FOLLOW_UP_RESTART_REASON,
 				stopped ? "stopped" : "error",
 			);
-			return;
+		} else {
+			const chat = row.kind === "chat";
+			await this.investigationsService.updateStatusInternal(
+				row.id,
+				stopped ? "cancelled" : "failed",
+				undefined,
+				stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
+			);
 		}
-		const chat = row.kind === "chat";
-		await this.investigationsService.updateStatusInternal(
-			row.id,
-			stopped ? "cancelled" : "failed",
-			undefined,
-			stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
-		);
+		// The job follows the row: a stop is a cancelled job, not the restart's failure (#804 OBJ-027).
+		if (stopped && job && job.status !== "cancelled")
+			await this.prisma.job.updateMany({
+				where: { investigationId: row.id },
+				data: {
+					status: "cancelled",
+					claimedBy: null,
+					finishedAt: new Date(),
+					lastError: "Stopped before PrismaLens restarted",
+				},
+			});
 	}
 
 	/**
@@ -719,17 +730,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		if (!resume) return false;
 		const seq =
 			(await this.investigationsService.lastEventSeq(investigationId)) + 1;
-		try {
-			await this.investigationsService.appendEvents(
-				investigationId,
-				followUpNotDelivered(investigationId, seq, resume, reason),
-			);
-		} catch (e) {
-			this.logger.warn(
-				`Could not record the ended follow-up in the conversation: ${(e as Error).message}`,
-			);
-		}
-		await this.investigationsService.settleFollowUp(
+		// Only a live row is put back; one that already ended keeps its end (#804 OBJ-025).
+		const applied = await this.investigationsService.settleFollowUp(
 			investigationId,
 			{
 				status: resume.restore.status,
@@ -741,6 +743,17 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 			{ stopped: true },
 		);
+		if (!applied) return true;
+		try {
+			await this.investigationsService.appendEvents(
+				investigationId,
+				followUpNotDelivered(investigationId, seq, resume, reason),
+			);
+		} catch (e) {
+			this.logger.warn(
+				`Could not record the ended follow-up in the conversation: ${(e as Error).message}`,
+			);
+		}
 		return true;
 	}
 

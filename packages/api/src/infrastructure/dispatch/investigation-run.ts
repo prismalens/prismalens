@@ -385,10 +385,10 @@ async function runFollowUp(
 	const id = data.investigationId;
 	const runDir = runDirFor(id);
 	let kind: ThreadKind = "investigation";
-	// The row went live under the agent; before that every end puts the standing back (X1).
-	let ran = false;
 	let report: InvestigationReport | null = null;
 	let storeRefused: () => boolean = () => false;
+	// The prompt reached the agent; before that every end puts the standing back (X1, #804 OBJ-026).
+	let delivered: () => boolean = () => false;
 	let end: { outcome: TurnOutcome; sentence: string | null };
 	let seqStart = 0;
 	try {
@@ -454,13 +454,8 @@ async function runFollowUp(
 			...(kind === "chat" ? { chat: true } : {}),
 		});
 		storeRefused = base.refused;
-		const store = {
-			...base,
-			create: async () => {
-				await base.create();
-				ran = true;
-			},
-		};
+		delivered = base.delivered;
+		const store = base;
 		const modelSource = followUpModelSource(harness, inv.model);
 		const outcome = await conductRun(
 			{
@@ -531,6 +526,7 @@ async function runFollowUp(
 	}
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
+	const ran = delivered();
 	const runEnds = continuing && ran;
 	const settle = async (
 		outcome: TurnOutcome,
@@ -542,23 +538,29 @@ async function runFollowUp(
 			outcome,
 			sentence,
 		);
-		try {
-			const applied = await ports.settleFollowUp(id, to.row, {
-				stopped: outcome === "stopped",
-			});
-			if (applied && to.timeline)
-				await ports.createTimelineEntry({
+		// A write that threw is not applied (#804 OBJ-024): one retry, then the run owns the end.
+		let applied = false;
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				applied = await ports.settleFollowUp(id, to.row, {
+					stopped: outcome === "stopped",
+				});
+				break;
+			} catch (e) {
+				logger.error("Failed to settle the follow-up", e);
+			}
+		}
+		if (applied && to.timeline)
+			await ports
+				.createTimelineEntry({
 					incidentId: data.incidentId,
 					type: "investigation_completed",
 					...to.timeline,
 					source: "ai_worker",
 					metadata: { investigationId: id },
-				});
-			return applied;
-		} catch (e) {
-			logger.error("Failed to settle the follow-up", e);
-			return true;
-		}
+				})
+				.catch((e) => logger.warn("Failed to record the follow-up's end", e));
+		return applied;
 	};
 	let refused: boolean;
 	if (!runEnds) refused = !(await settle(end.outcome, end.sentence));
@@ -566,7 +568,7 @@ async function runFollowUp(
 		refused = !(await persistCancelled(data, ports, kind, "stopped").catch(
 			(e) => {
 				logger.error("Failed to persist cancelled status", e);
-				return true;
+				return false;
 			},
 		));
 	else refused = storeRefused();
@@ -688,8 +690,9 @@ async function ownTheEnd(
 	try {
 		row = await ports.findInvestigation(data.investigationId);
 	} catch (e) {
+		// Unconfirmed is not success: boot reconciliation settles the row (#804 OBJ-024).
 		logger.warn("Could not read the run's row back after its end", e);
-		return null;
+		return failureResult(data, "the run's end could not be saved");
 	}
 	if (!row || !isWorkflowLive(row.status)) return null;
 	if (row.stopRequestedAt) {

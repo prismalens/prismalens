@@ -202,6 +202,19 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		});
 	});
 
+	it("a Stop whose run finished meanwhile answers with the finished run, never a stale live one (#804 OBJ-025)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-7", "running"))
+			.mockResolvedValueOnce({ ...investigation("inv-7", "completed"), report: JSON.stringify({ summary: "s" }) });
+		mockDispatchService.requestCancel.mockResolvedValue(0);
+		mockDispatchService.restoreFollowUp.mockResolvedValueOnce(false);
+		mockInvestigationsService.cancelPending.mockResolvedValueOnce(null);
+
+		const result = await cancelHandler()({ input: { id: "inv-7" } });
+
+		expect(result).toMatchObject({ status: "completed", hasReport: true });
+	});
+
 	it("an orphaned follow-up (no run holds it) puts the standing back as a stop, not cancelled (#673 w59)", async () => {
 		mockInvestigationsService.findById
 			.mockResolvedValueOnce(investigation("inv-6", "running"))

@@ -245,7 +245,12 @@ export class InvestigationsController {
 								input.id,
 								investigation.incidentId,
 							);
-							return this.serializeInvestigation(cancelled ?? investigation);
+							// Refused: the row ended on its own meanwhile; say what it is now (#804 OBJ-025).
+							return this.serializeInvestigation(
+								cancelled ??
+									(await this.investigationsService.findById(input.id)) ??
+									investigation,
+							);
 						}
 						// Lost the race — a dispatcher claimed the job. Fall through to publish
 						// so the run that holds it owns the terminal write.
@@ -279,7 +284,12 @@ export class InvestigationsController {
 							investigation.incidentId,
 							"The investigation was cancelled; no run held it.",
 						);
-						return this.serializeInvestigation(cancelled ?? investigation);
+						// Refused: the row ended on its own meanwhile; say what it is now (#804 OBJ-025).
+						return this.serializeInvestigation(
+							cancelled ??
+								(await this.investigationsService.findById(input.id)) ??
+								investigation,
+						);
 					}
 					// The run heard the cancel; return the still-running investigation
 					// unchanged — the terminal "cancelled" state arrives from the run + the

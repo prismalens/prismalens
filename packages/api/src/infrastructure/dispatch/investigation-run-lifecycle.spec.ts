@@ -525,7 +525,13 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 		kind: "investigation" | "chat",
 		restore: (typeof R)[keyof typeof R],
 		outcome: Outcome,
-		opts: { continuing?: boolean; neverRan?: boolean; ports?: Partial<RunPorts> } = {},
+		opts: {
+			continuing?: boolean;
+			neverRan?: boolean;
+			/** The real X1 boundary: the row went live, then session/load failed before any prompt. */
+			loadFails?: boolean;
+			ports?: Partial<RunPorts>;
+		} = {},
 	) {
 		const ports = makePorts({
 			findInvestigation: vi.fn(async () => ({
@@ -542,7 +548,15 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 		mocks.conductRun.mockImplementation(
 			async (_o, run: { store: { create(): Promise<void>; append(e: unknown): Promise<void>; finish(r: unknown): Promise<void>; fail(e: string): Promise<void> } }) => {
 				if (opts.neverRan) throw new Error("the agent would not start");
+				// conductRun's order: create() before the session opens (conductor.ts).
 				await run.store.create();
+				if (opts.loadFails) {
+					await run.store.append({ kind: "error", seq: 42, message: "session/load failed: no such session" });
+					await run.store.fail("session/load failed: no such session");
+					return { runId: "inv-1", report: null, error: "session/load failed: no such session", failureKind: "error" };
+				}
+				// The engine marks the message delivered just before it prompts.
+				await run.store.append({ kind: "operator_message", seq: 42, text: "why?", mode: "queue", delivered: true });
 				await run.store.append({ kind: "agent_step", seq: 50, text: "…" });
 				if (outcome === "stopped") return { runId: "inv-1", report: null, error: "investigation cancelled", failureKind: "cancelled" };
 				if (outcome === "error") {
@@ -626,6 +640,24 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 	});
 
 	it.each([
+		["an investigation Ask", "investigation", false],
+		["a continue", "investigation", true],
+		["a chat's Ask", "chat", false],
+	] as const)(
+		"X1 at the real boundary: %s whose session/load fails after the row went live puts the standing back (#804 OBJ-026)",
+		async (_name, kind, continuing) => {
+			const { ports, result } = await followUp(kind, R.cancelled, "error", { continuing, loadFails: true });
+
+			expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
+				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: "error" }, { stopped: false }],
+			]);
+			expect(ports.updateStatus).not.toHaveBeenCalled();
+			expect(ports.writeResult).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ success: false, error: "session/load failed: no such session" });
+		},
+	);
+
+	it.each([
 		["an Ask", false],
 		["a continue", true],
 	])("X1: %s whose agent never ran puts the standing back, error, and says so in the conversation", async (_name, continuing) => {
@@ -637,6 +669,61 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 		const [, said] = vi.mocked(ports.appendEvents).mock.calls.at(-1) as [string, CanonicalEvent[]];
 		expect(said.map((e) => e.kind)).toEqual(["operator_message", "error"]);
 		expect(ports.updateStatus).not.toHaveBeenCalled();
+	});
+
+	it("a settlement that throws once is retried, and the job outcome is the answer's (#804 OBJ-024)", async () => {
+		let calls = 0;
+		const settleFollowUp = vi.fn(async () => {
+			if (calls++ === 0) throw new Error("SQLITE_BUSY");
+			return true;
+		});
+		const { ports, result } = await followUp("investigation", R.completed, "answered", { ports: { settleFollowUp } });
+
+		expect(settleFollowUp).toHaveBeenCalledTimes(2);
+		expect(result.success).toBe(true);
+		// Applied on the retry: never read back, never re-ended.
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(1);
+	});
+
+	it("a settlement that keeps throwing is never success: the run owns the end and the job fails (#804 OBJ-024)", async () => {
+		const settleFollowUp = vi.fn(async (_id: string, _end: { lastTurnOutcome: string }, _o: { stopped: boolean }): Promise<boolean> => {
+			throw new Error("SQLITE_BUSY");
+		});
+		const { ports, result } = await followUp("investigation", R.completed, "answered", { ports: { settleFollowUp } });
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/^terminal write rejected/);
+		// The answer's settlement twice, then the run's own end (error) twice.
+		expect(settleFollowUp.mock.calls.map(([, end]) => end.lastTurnOutcome)).toEqual([
+			"answered",
+			"answered",
+			"error",
+			"error",
+		]);
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(2);
+	});
+
+	it("a row that cannot be read back after a refused end is not success (#804 OBJ-024)", async () => {
+		let reads = 0;
+		const { result } = await followUp("investigation", R.completed, "answered", {
+			ports: {
+				settleFollowUp: vi.fn(async () => false),
+				findInvestigation: vi.fn(async () => {
+					if (reads++ > 0) throw new Error("database is locked");
+					return {
+						id: "inv-1",
+						status: "running",
+						kind: "investigation",
+						harness: "opencode",
+						model: null,
+						acpSessionId: "ses_abc",
+						workspace: JSON.stringify({ layout: "unmapped", cwd: join(tmp, "runs", "inv-1", "unmapped"), repos: [] }),
+					};
+				}),
+			},
+		});
+
+		expect(result.success).toBe(false);
 	});
 
 	it("a follow-up end refused because Stop was asked for is settled as stopped instead", async () => {

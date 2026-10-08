@@ -77,6 +77,8 @@ export function payloadTurn(
 export type PrismaInvestigationStore = InvestigationStore & {
 	/** True once finish or fail wrote an end the row refused (Stop asked for, cancelled). */
 	refused(): boolean;
+	/** A follow-up's message reached the agent: the engine marks it delivered just before the prompt. */
+	delivered(): boolean;
 };
 
 export function createPrismaInvestigationStore(
@@ -95,6 +97,7 @@ export function createPrismaInvestigationStore(
 	}: PrismaInvestigationStoreParams,
 ): PrismaInvestigationStore {
 	let refused = false;
+	let delivered = false;
 	let buffer: CanonicalEvent[] = [];
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	// Flushes are chained so a terminal flush awaits any in-flight one — the report
@@ -138,6 +141,7 @@ export function createPrismaInvestigationStore(
 
 	return {
 		refused: () => refused,
+		delivered: () => delivered,
 
 		async create() {
 			const turn = payloadTurn({ chat, resume });
@@ -177,6 +181,8 @@ export function createPrismaInvestigationStore(
 		},
 
 		async append(event: CanonicalEvent) {
+			if (event.kind === "operator_message" && event.delivered)
+				delivered = true;
 			buffer.push(event);
 			if (buffer.length >= BATCH_SIZE) {
 				await flush();
@@ -200,7 +206,8 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume && !resume.continuing) return;
+			// A follow-up that never reached its agent is put back by the run (X1, #804 OBJ-026).
+			if (resume && !(resume.continuing && delivered)) return;
 			// A chat ends its turn with no report; the row completes all the same (#673).
 			if (!report) {
 				refused = !(await ports.writeResult(investigationId, {
@@ -244,7 +251,7 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume && !resume.continuing) return;
+			if (resume && !(resume.continuing && delivered)) return;
 			const applied = await ports.updateStatus(investigationId, {
 				status: "failed",
 				error,
