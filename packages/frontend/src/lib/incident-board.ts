@@ -2,12 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	effectiveLiveTurn,
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
 	type IncidentWithRelations,
 	isIncidentOpen,
 	isWorkflowLive,
+	liveRun,
 	latestRun as newestRun,
 	REFIRE_LABEL,
 	RUN_STATE_LABEL,
@@ -30,9 +32,21 @@ export const BOARD_COLUMNS: { id: BoardColumn; label: string }[] = [
 
 type LatestRun = NonNullable<IncidentWithRelations["investigations"]>[number];
 
-/** The newest run of any kind: a live chat is Working too (#673). */
+/** The newest run of any kind (#673). */
 export function latestRun(incident: IncidentWithRelations): LatestRun | null {
 	return newestRun(incident);
+}
+
+let warnedTwoLive = false;
+/** The thread a live turn runs on, newest or not (#673 w59): what Stop and Resolve act on. */
+export function liveThread(incident: IncidentWithRelations): LatestRun | null {
+	return liveRun(incident, () => {
+		if (warnedTwoLive) return;
+		warnedTwoLive = true;
+		console.warn(
+			`INC-${incident.number} has two live runs; the newest is shown`,
+		);
+	});
 }
 
 /**
@@ -43,8 +57,9 @@ export function latestRun(incident: IncidentWithRelations): LatestRun | null {
  */
 export function boardColumn(incident: IncidentWithRelations): BoardColumn {
 	if (attentionFor(incident) !== null) return "needs_you";
-	const run = latestRun(incident);
-	if (run && isWorkflowLive(run.status)) return "working";
+	// Working promises a report: an answer turn keeps the card where it is (#673 w59, OBJ-022).
+	const live = liveThread(incident);
+	if (live && effectiveLiveTurn(live) === "report") return "working";
 	if (!isIncidentOpen(incident.status)) return "resolved";
 	return "concluded";
 }
@@ -118,9 +133,10 @@ export function runWord(
 	incident: IncidentWithRelations,
 	now: number | null,
 ): RunWord | null {
-	const run = latestRun(incident);
-	if (!run || !isWorkflowLive(run.status)) return null;
+	const run = liveThread(incident);
+	if (!run) return null;
 	const state = listRunState(run);
+	const answering = effectiveLiveTurn(run) === "answer";
 	const at = now ?? new Date(run.createdAt).getTime();
 	const elapsed = (at - new Date(run.createdAt).getTime()) / 1000;
 	const quiet =
@@ -129,8 +145,11 @@ export function runWord(
 			: 0;
 	const quietFor = quiet > STALE_AFTER_S ? Math.floor(quiet / 60) : null;
 	const word = RUN_STATE_LABEL[state];
-	const step =
-		state === "working" && run.latestText ? firstClause(run.latestText) : word;
+	const step = answering
+		? "Answering"
+		: state === "working" && run.latestText
+			? firstClause(run.latestText)
+			: word;
 	const minutes = Math.max(0, Math.floor(elapsed / 60));
 	return {
 		state,

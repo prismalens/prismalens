@@ -52,6 +52,7 @@ export function Transcript({
 	cwd,
 	agent,
 	lead,
+	onRecheck,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -62,6 +63,8 @@ export function Transcript({
 	agent: string;
 	/** What the run started with, the transcript's first line (#673). */
 	lead?: string;
+	/** `Investigate again` under a report: + New run prefilled (#673 w59). */
+	onRecheck?: () => void;
 }) {
 	return (
 		<Conversation
@@ -94,6 +97,7 @@ export function Transcript({
 								focus={focus}
 								cwd={cwd}
 								agent={agent}
+								onRecheck={onRecheck}
 							/>
 						))}
 					</div>
@@ -110,12 +114,14 @@ function TranscriptRow({
 	focus,
 	cwd,
 	agent,
+	onRecheck,
 }: {
 	item: TranscriptItem;
 	incidentId: string;
 	focus?: string;
 	cwd?: string | null;
 	agent: string;
+	onRecheck?: () => void;
 }) {
 	switch (item.kind) {
 		case "prose":
@@ -225,10 +231,26 @@ function TranscriptRow({
 								{item.detail ? ` ${item.detail}` : ""}.
 							</span>
 						)}
+						{item.hint && (
+							<span className="text-text-2" data-testid="transcript-end-hint">
+								{item.hint}
+							</span>
+						)}
 						{item.report && (
 							<RecordLink incidentId={incidentId} to="report">
 								Read the report
 							</RecordLink>
+						)}
+						{item.recheck && onRecheck && (
+							<button
+								type="button"
+								onClick={onRecheck}
+								title="Opens + New run with this report and anything typed here"
+								className="text-accent hover:underline"
+								data-testid="investigate-again"
+							>
+								Investigate again
+							</button>
 						)}
 					</p>
 					{failure?.detail && (

@@ -3,6 +3,7 @@
 
 import {
 	type CanonicalEvent,
+	type FollowUpKind,
 	isWorkflowLive,
 	isWorkflowTerminal,
 	type RunState,
@@ -198,7 +199,12 @@ export function useInvestigationRun(investigationId: string | null) {
 		async (
 			text: string,
 			mode: "queue" | "now",
-			opts?: { branchId?: string; attachments?: AttachmentView[] },
+			opts?: {
+				branchId?: string;
+				attachments?: AttachmentView[];
+				/** What the message asks for; a live row refuses a mismatch (#673 w59). */
+				kind?: FollowUpKind;
+			},
 		): Promise<void> => {
 			const attachments = opts?.attachments ?? [];
 			const local: PendingMessage = {
@@ -217,6 +223,7 @@ export function useInvestigationRun(investigationId: string | null) {
 					text,
 					mode,
 					branchId: opts?.branchId,
+					...(opts?.kind ? { kind: opts.kind } : {}),
 					...(attachments.length
 						? { attachments: attachments.map((a) => a.id) }
 						: {}),

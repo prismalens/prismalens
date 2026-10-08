@@ -164,7 +164,7 @@ function ReportPool({ latest }: { latest: InvestigationRun }) {
 		);
 	else if (!inv || !latest.state)
 		body = <p className="text-body text-text-2">Loading the run.</p>;
-	else if (live)
+	else if (live && !report)
 		body = (
 			<p className="flex items-center gap-2 text-body">
 				<span aria-hidden className="h-3 w-[3px] rounded-full bg-live" />
@@ -193,7 +193,7 @@ function ReportPool({ latest }: { latest: InvestigationRun }) {
 				{failureSentence(who.agent, inv.error).said}
 			</p>
 		);
-	else if (latest.state === "done" && report) {
+	else if (report) {
 		const { word, tone } = answerWord(report);
 		const supported = report.hypotheses.filter(
 			(h) => h.status === "supported" || h.status === "confirmed",

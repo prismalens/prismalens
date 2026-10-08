@@ -257,6 +257,8 @@ export const InvestigationSchema = z.object({
 	effort: z.string().nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
+	/** Who started the thread: `manual`, an alert trigger, or `re_trigger` on a refire (#673 w59). */
+	triggerType: z.string().nullable().optional(),
 	/** What the live turn owes (#673 w59); null when nothing runs, or a legacy claim. */
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	/** How the last follow-up ended; null until one has (#673 w59). */

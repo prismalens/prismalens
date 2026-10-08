@@ -13,6 +13,7 @@
 import type { CanonicalEvent, StreamToolResult } from "@prismalens/contracts";
 import { InvestigationReportSchema } from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
+import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
 export type EventIcon =
 	| "activity"
@@ -337,6 +338,10 @@ export interface PendingMessage {
 export interface TranscriptRun {
 	status: string;
 	live: boolean;
+	/** A thread's kind and what it can do next decide its end line (#673 w59). */
+	kind?: string | null;
+	hasReport?: boolean;
+	continuable?: boolean;
 	stopRequested?: boolean;
 	error?: string | null;
 	startedAt?: string | null;
@@ -381,6 +386,10 @@ export type TranscriptItem =
 			detail?: string;
 			report?: boolean;
 			path?: string;
+			/** What the box can do next, under the line (run-end-line.ts). */
+			hint?: string | null;
+			/** A finished report offers `Investigate again` (#673 w59). */
+			recheck?: boolean;
 	  }
 	| { kind: "empty"; key: string; text: string };
 
@@ -493,6 +502,7 @@ export function deriveTranscript(
 	let lastTs: string | null = null;
 	let sawAgent = false;
 	let sawError = false;
+	let sawReport = false;
 	const operators: {
 		item: Extract<TranscriptItem, { kind: "operator" }>;
 		brief: boolean;
@@ -642,6 +652,16 @@ export function deriveTranscript(
 				// A stop ends the run with an error event; it reads once, as the stop (walk f26).
 				if (run?.status === "cancelled") break;
 				sawError = true;
+				// A message's own end on a thread whose standing it does not change (#673 w59).
+				if (sawReport || run?.kind === "chat" || isStopMessage(event.message)) {
+					items.push({
+						kind: "end",
+						key,
+						tone: "stale",
+						text: messageEndLine(event.message, event.ts),
+					});
+					break;
+				}
 				items.push({
 					kind: "end",
 					key,
@@ -654,12 +674,14 @@ export function deriveTranscript(
 				break;
 			case "report":
 				closeGroup();
+				sawReport = true;
 				items.push({
 					kind: "end",
 					key,
 					tone: "done",
 					text: "Report ready",
 					report: true,
+					recheck: run?.kind !== "chat",
 				});
 				break;
 		}
@@ -712,6 +734,7 @@ export function deriveTranscript(
 			tone: "stale",
 			text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
 			detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
+			hint: run && endHint(run),
 		});
 	} else if (run?.status === "failed" && !sawError) {
 		items.push({
@@ -722,7 +745,12 @@ export function deriveTranscript(
 			error: run.error,
 			at: run.completedAt ?? lastTs,
 			path: transcriptPath(run.id),
+			hint: endHint(run),
 		});
+	} else if (run?.status === "failed") {
+		const last = items.findLast((i) => i.kind === "end");
+		if (last?.kind === "end" && last.tone === "failed")
+			last.hint = endHint(run);
 	}
 
 	if (items.length === 0) {

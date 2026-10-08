@@ -129,6 +129,55 @@ describe("boardColumn (R1a d6)", () => {
 	});
 });
 
+describe("boardColumn reads the live turn (#673 w59, T20, OBJ-022)", () => {
+	const thread = (id: string, kind: string, status: string, liveTurn: string | null, at: string) => ({
+		id,
+		kind,
+		status,
+		liveTurn,
+		rootCause: null,
+		createdAt: at,
+		completedAt: null,
+	});
+	const withRuns = (...runs: ReturnType<typeof thread>[]) =>
+		({ status: "investigating", actualCause: null, investigations: runs }) as unknown as IncidentWithRelations;
+
+	it("an Ask on a completed investigation is an answer turn, not Working; its card says Answering", () => {
+		const ask = withRuns(thread("a", "investigation", "running", "answer", "2026-10-08T10:00:00Z"));
+		expect(boardColumn(ask)).toBe("concluded");
+		expect(runWord(ask, Date.parse("2026-10-08T10:00:41Z"))?.text).toBe("Answering 0:41");
+	});
+
+	it("a continue owes a report and is Working", () => {
+		expect(boardColumn(withRuns(thread("c", "investigation", "pending", "report", "2026-10-08T10:00:00Z")))).toBe(
+			"working",
+		);
+	});
+
+	it("a live chat keeps the card in its column", () => {
+		const chat = withRuns(
+			thread("chat", "chat", "running", "answer", "2026-10-08T11:00:00Z"),
+			thread("inv", "investigation", "completed", null, "2026-10-08T10:00:00Z"),
+		);
+		expect(boardColumn(chat)).toBe("concluded");
+	});
+
+	it("a null liveTurn falls back by kind: an investigation is Working, a chat is not", () => {
+		expect(boardColumn(withRuns(thread("i", "investigation", "running", null, "2026-10-08T10:00:00Z")))).toBe(
+			"working",
+		);
+		expect(boardColumn(withRuns(thread("c", "chat", "running", null, "2026-10-08T10:00:00Z")))).toBe("concluded");
+	});
+
+	it("a resumed older run is found though a newer one has ended", () => {
+		const resumed = withRuns(
+			thread("new", "investigation", "completed", null, "2026-10-08T12:00:00Z"),
+			thread("old", "investigation", "running", "report", "2026-10-08T09:00:00Z"),
+		);
+		expect(boardColumn(resumed)).toBe("working");
+	});
+});
+
 describe("orderNeedsYou (study-v3 §3.1)", () => {
 	it("lists firing first, then a failed run, then a reopen, then Alerts cleared", () => {
 		const cleared = incident("resolved", undefined, { number: 1 });

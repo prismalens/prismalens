@@ -3,17 +3,20 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import {
+	type FollowUpKind,
 	type HarnessStatus,
 	isRunStateLive,
-	RUN_STATE_LABEL,
+	LIVE_TURN_LABEL,
+	runStateLabel,
+	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
-import { useState } from "react";
+import { GitCommitHorizontal } from "lucide-react";
+import { type MutableRefObject, useState } from "react";
 import {
 	defaultModeOf,
 	EffortChip,
 	ModeChip,
 	ModelChip,
-	modelName,
 	unreadyReason,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
@@ -22,7 +25,6 @@ import {
 	useIncidentRecord,
 } from "@/components/incidents/record-context";
 import {
-	modelSource,
 	runEffort,
 	runElapsed,
 	runNumber,
@@ -37,8 +39,15 @@ import { composerMode } from "@/lib/composer-keys";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { pinnedTo } from "@/lib/investigation-events";
+import {
+	defaultVerb,
+	followUpKind,
+	type RunVerb,
+	verbCopy,
+	verbsFor,
+} from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
-import { ComposerBox } from "./ComposerBox";
+import { ComposerBox, type ComposerSend } from "./ComposerBox";
 
 /** What a chip choice changes: one of the three, the rest stay. */
 type Choice =
@@ -46,12 +55,38 @@ type Choice =
 	| { kind: "effort"; effort: string }
 	| { kind: "mode"; mode: string };
 
+/** The box's placeholder, by what the next message asks for (#673 w59, DESIGN §4). */
+function placeholderFor(
+	draft: boolean,
+	live: boolean,
+	continuable: boolean,
+	chat: boolean,
+	verb: RunVerb,
+): string {
+	if (draft)
+		return verb === "investigate"
+			? "Brief the agent (optional)"
+			: "Ask about this incident";
+	if (live) return "Message the agent";
+	if (continuable) return "Say what to change, or just continue";
+	return chat ? "Continue this chat" : "Ask about this run";
+}
+
 /**
  * The box under the transcript (#673): a draft starts a run, a live run takes
  * messages, a finished one continues. On a run the chips read that run, and
  * changing one opens a draft prefilled with the run plus the change.
  */
-export function DockedComposer({ branchId }: { branchId?: string }) {
+export function DockedComposer({
+	branchId,
+	boxRef,
+	onRecheck,
+}: {
+	branchId?: string;
+	/** What is in the box now, for `Investigate again` (#673 w59). */
+	boxRef?: MutableRefObject<ComposerSend | null>;
+	onRecheck?: () => void;
+}) {
 	const record = useIncidentRecord();
 	const { run, incident, runs, draft } = record;
 	const { toast } = useToast();
@@ -63,12 +98,30 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 	const mode = composerMode(
 		draft || !inv
 			? null
-			: {
-					live,
-					continuable: run.continuable,
-					resumable: run.resumable && run.state !== "failed",
-				},
+			: { live, continuable: run.continuable, resumable: run.resumable },
 	);
+
+	// What the next message asks for: a draft's own pick, else its default (#673 w59).
+	const thread = { draft, live, continuable: run.continuable };
+	const verbs = verbsFor(thread);
+	const [runVerb, setRunVerb] = useState<RunVerb>(
+		run.continuable ? "investigate" : "ask",
+	);
+	const verb: RunVerb = draft
+		? (record.draftVerb ??
+			defaultVerb(thread, {
+				alertCount: incident.alertCount,
+				reported: runs.some((r) => r.hasReport),
+			}))
+		: verbs.length
+			? runVerb
+			: "ask";
+	const liveKind: FollowUpKind | undefined =
+		inv?.liveTurn === "report"
+			? "continue"
+			: inv?.liveTurn === "answer"
+				? "chat"
+				: undefined;
 
 	// A draft reads its own chips, then Settings, per field; Settings is never written here (#673 w52).
 	const own = record.draftChoice;
@@ -104,7 +157,7 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 					: { ...now, mode: c.mode };
 		// On a run, the draft is this run with one change.
 		if (draft) record.setDraftChoice(next);
-		else record.newRun(next);
+		else record.newRun({ choice: next });
 	};
 	const sent = {
 		...(own.harness ? { harness: own.harness } : {}),
@@ -113,19 +166,23 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 	};
 
 	const unready = draft && harness ? unreadyReason(harness) : null;
-	const liveNumber = record.liveRun ? runNumber(runs, record.liveRun.id) : null;
-	const blockedReason = !draft
-		? undefined
-		: liveNumber
-			? `Run #${liveNumber} is working; message it or stop it`
-			: unready
-				? `${unready}. Check it in Settings, Agent.`
-				: own.harness
-					? harness?.installed
-						? undefined
-						: `${harness?.label ?? own.harness} is not on this machine.`
-					: record.investigateBlocked;
-	const blocked = draft && !!blockedReason;
+	const otherLive =
+		record.liveRun && record.liveRun.id !== inv?.id ? record.liveRun : null;
+	const liveNumber = otherLive ? runNumber(runs, otherLive.id) : null;
+	// One live thread per incident: a draft and an ended thread both wait for it (OBJ-007).
+	const blockedReason =
+		!draft && (live || !liveNumber)
+			? undefined
+			: liveNumber
+				? `Run #${liveNumber} is working; message it or stop it`
+				: unready
+					? `${unready}. Check it in Settings, Agent.`
+					: own.harness
+						? harness?.installed
+							? undefined
+							: `${harness?.label ?? own.harness} is not on this machine.`
+						: record.investigateBlocked;
+	const blocked = !!blockedReason;
 
 	const chips = (
 		<>
@@ -160,10 +217,22 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 			<ComposerBox
 				mode={mode}
 				chips={chips}
+				verbs={verbs}
+				verb={verb}
+				onVerb={draft ? record.setDraftVerb : setRunVerb}
+				verbCopy={verbCopy(thread)}
+				placeholder={placeholderFor(
+					draft,
+					live,
+					run.continuable,
+					inv?.kind === "chat",
+					verb,
+				)}
+				initialFiles={draft ? record.draftFiles : undefined}
+				boxRef={boxRef}
 				text={draft ? record.draftText : message}
 				setText={draft ? record.setDraftText : setMessage}
 				autoFocus={draft}
-				enterInvestigates={incident.alertCount > 0}
 				agent={{
 					label: harness?.label ?? who.agent,
 					images:
@@ -206,32 +275,59 @@ export function DockedComposer({ branchId }: { branchId?: string }) {
 				}}
 				onMessage={async ({ text, files }, send) => {
 					const attachments = await upload(files);
-					await run.sendMessage(text, send, { branchId, attachments });
+					// Every message says what it asks for; a live one, the turn it joins (#673 w59).
+					const kind = live ? liveKind : followUpKind(verb);
+					await run.sendMessage(text, send, {
+						branchId,
+						attachments,
+						...(kind ? { kind } : {}),
+					});
 				}}
 				undeliverable={run.undeliverable}
 				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
-				status={draft ? null : <RunStatusLine />}
+				status={draft ? null : <RunStatusLine onRecheck={onRecheck} />}
 			/>
 		</div>
 	);
 }
 
-/** The run's own facts under the box (#673): which run, its state, its code, where its model came from. */
-function RunStatusLine() {
+/** Who started a thread, from its trigger (#673 w59). */
+export function originWord(triggerType: string | null | undefined): string {
+	if (triggerType === "re_trigger") return "Started by the alert, reopened";
+	if (triggerType && triggerType !== "manual") return "Started by the alert";
+	return "Started by you";
+}
+
+/**
+ * The thread's own facts under the box (#673, w59): which thread, who started
+ * it, its state or live turn, how its last message ended, its code.
+ */
+function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 	const { run, runs, incident } = useIncidentRecord();
-	const { harnesses } = useAgentChoice();
 	const now = useNow(1000);
 	const stream = useStreamStatus();
 	const inv = run.investigation;
 	if (!inv || !run.state) return null;
 	const live = isRunStateLive(run.state);
+	const chat = inv.kind === "chat";
 	// With the stream lost the clock stops at when the run was last heard from.
 	const lostAt = live && now !== null ? reconnectAsOf(stream, now) : null;
 	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
-	const state = RUN_STATE_LABEL[run.state];
+	const state =
+		run.state === "working"
+			? inv.liveTurn
+				? LIVE_TURN_LABEL[inv.liveTurn]
+				: "Working"
+			: runStateLabel(inv.kind, run.state);
 	const sha = pinnedTo(inv.workspace);
 	const service = incident.service?.displayName || incident.service?.name;
-	const harness = harnesses.find((h) => h.id === inv.harness);
+	const lastMessage =
+		!live &&
+		!chat &&
+		inv.hasReport &&
+		(inv.lastTurnOutcome === "stopped" || inv.lastTurnOutcome === "error")
+			? `Last message: ${TURN_OUTCOME_LABEL[inv.lastTurnOutcome]}`
+			: null;
 	return (
 		<div
 			className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-0.5 text-meta text-text-3"
@@ -239,11 +335,16 @@ function RunStatusLine() {
 			data-disconnected={lostAt !== null ? "" : undefined}
 		>
 			<span className="inline-flex items-center gap-1.5 text-text-2">
-				Run #{runNumber(runs, inv.id)}
-				<span className="text-[11px] text-text-3">
-					{inv.kind === "chat" ? "Chat" : "Investigation"}
-				</span>
+				{chat ? (
+					"Chat"
+				) : (
+					<>
+						Run #{runNumber(runs, inv.id)}
+						<span className="text-[11px] text-text-3">Investigation</span>
+					</>
+				)}
 			</span>
+			<span data-testid="run-status-origin">{originWord(inv.triggerType)}</span>
 			<span
 				className={cn(
 					"tabular-nums",
@@ -258,14 +359,29 @@ function RunStatusLine() {
 						? `${state}${took ? ` ${took}` : ""}`
 						: `${state}${took ? ` after ${took}` : ""}`}
 			</span>
+			{lastMessage && (
+				<span data-testid="run-status-last-message">{lastMessage}</span>
+			)}
 			{sha && (
-				<span>
-					{service ? `${service} at ` : "Code at "}
+				<span
+					className="inline-flex items-center gap-1"
+					title={service ? `${service}, commit ${sha}` : `Commit ${sha}`}
+				>
+					<GitCommitHorizontal className="size-3" aria-hidden />
 					<span className="font-mono">{sha}</span>
 				</span>
 			)}
-			<span>{modelSource(inv, (id) => modelName(harness, id) ?? id)}</span>
-			<span>A different agent, model or mode starts a new run</span>
+			{!live && !chat && inv.hasReport && onRecheck && (
+				<button
+					type="button"
+					onClick={onRecheck}
+					className="text-accent hover:underline"
+					title="Opens + New run with this report and anything typed here"
+					data-testid="run-status-recheck"
+				>
+					Investigate again
+				</button>
+			)}
 		</div>
 	);
 }

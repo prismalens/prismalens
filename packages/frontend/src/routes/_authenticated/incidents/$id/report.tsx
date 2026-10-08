@@ -57,8 +57,8 @@ function ReportRoute() {
 	const { run } = useIncidentRecord();
 	const inv = run.investigation;
 	const report = inv?.report ?? null;
-	if (run.state === "done" && inv && report)
-		return <ReportPage investigation={inv} report={report} />;
+	// Presence, not state: an answer running on the thread keeps its report open (#673 w59).
+	if (inv && report) return <ReportPage investigation={inv} report={report} />;
 	return <NoReportPage />;
 }
 

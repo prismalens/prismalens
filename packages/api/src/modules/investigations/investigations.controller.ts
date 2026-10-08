@@ -563,6 +563,7 @@ export class InvestigationsController {
 			model: investigation.model ?? null,
 			effort: investigation.effort ?? null,
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
+			triggerType: investigation.triggerType ?? null,
 			liveTurn: (investigation.liveTurn as LiveTurn | null) ?? null,
 			lastTurnOutcome:
 				(investigation.lastTurnOutcome as TurnOutcome | null) ?? null,

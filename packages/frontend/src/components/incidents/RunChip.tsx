@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
-import { RunDot } from "./RunTree";
+import { KindIcon, RunDot } from "./RunTree";
 import { useIncidentRecord } from "./record-context";
 import { elapsedWord, refState, runName, runNumber } from "./run-facts";
 
@@ -52,6 +52,7 @@ export function RunChip({ className }: { className?: string }) {
 						data-testid="run-chip-item"
 					>
 						<RunDot state={refState(r)} />
+						<KindIcon kind={r.kind} />
 						<span className="min-w-0 flex-1 truncate">{runName(runs, r)}</span>
 						<span className="shrink-0 text-meta text-text-3">
 							{elapsedWord(r, now)}
