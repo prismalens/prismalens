@@ -3,7 +3,7 @@
  * each tab is one 52rem column with nothing beside it (#673 w29). The run
  * the tabs show is the one in the URL, else the one just started, else the newest.
  */
-import { isWorkflowLive, latestRun } from "@prismalens/contracts";
+import { isWorkflowLive } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -23,6 +23,7 @@ import {
 	IncidentRecordContext,
 	type RunStart,
 } from "@/components/incidents/record-context";
+import { openRun } from "@/components/incidents/run-facts";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -88,11 +89,7 @@ function IncidentLayout() {
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
 	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
-	// Report opens on the newest run with a report; with none, on the newest run, so its failure shows.
-	const newest =
-		(here === "report"
-			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
-			: null) ?? latestRun({ investigations: runs });
+	const newest = openRun(runs, here === "report");
 	const draft =
 		search.investigation === DRAFT ||
 		(here === "conversation" && !search.investigation && runs.length === 0);

@@ -356,6 +356,7 @@ export function ComposerBox({
 								>
 									<span className="inline-flex">
 										<Button
+											type="button"
 											variant="primary"
 											className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-2 disabled:opacity-100"
 											disabled={blocked || busy}

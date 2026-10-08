@@ -444,6 +444,11 @@ export function ModelChip({
 											e.stopPropagation();
 											star(r.harness, r.model);
 										}}
+										onClick={(e) => {
+											// cmdk selects the row on click; the star must not.
+											e.preventDefault();
+											e.stopPropagation();
+										}}
 										onKeyDown={(e) => {
 											// cmdk takes Enter for the row; a focused star keeps it.
 											if (e.key !== "Enter" && e.key !== " ") return;
@@ -640,9 +645,14 @@ export function EffortChip({
 		);
 	}
 	const win = windowOf(model);
-	const base = model.endsWith(WINDOW_ALIAS)
-		? model.slice(0, -WINDOW_ALIAS.length)
-		: model;
+	// Agent default has no id to alias, so 1M takes the id the agent serves.
+	const base =
+		(model.endsWith(WINDOW_ALIAS)
+			? model.slice(0, -WINDOW_ALIAS.length)
+			: model) ||
+		harness.envModel?.model ||
+		harness.checked?.servedModel ||
+		"";
 	const item =
 		"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body font-medium transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3";
 	const tag = (
@@ -691,11 +701,12 @@ export function EffortChip({
 					<button
 						key={w}
 						type="button"
-						disabled={!windowed}
+						disabled={!windowed || (w === "1M" && !base)}
 						className={cn(
 							item,
 							windowed && w === win && "bg-surface-3",
-							!windowed && "cursor-default text-text-3 hover:bg-transparent",
+							(!windowed || (w === "1M" && !base)) &&
+								"cursor-default text-text-3 hover:bg-transparent",
 						)}
 						onClick={() => {
 							setOpen(false);

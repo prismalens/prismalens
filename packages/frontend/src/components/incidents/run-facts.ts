@@ -4,6 +4,7 @@
 import {
 	type InvestigationWithRelations,
 	isWorkflowLive,
+	latestRun,
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
@@ -136,4 +137,15 @@ export function runEffort(
 		(e) => e.kind === "session_config" && e.option === "effort" && e.accepted,
 	);
 	return set?.value ?? null;
+}
+
+/** The run a record opens on with no run in the URL: on Report the newest with a report, else the newest. */
+export function openRun<
+	R extends { createdAt: string | Date; hasReport?: boolean },
+>(runs: readonly R[], onReport: boolean): R | null {
+	return (
+		(onReport
+			? latestRun({ investigations: runs.filter((r) => r.hasReport) })
+			: null) ?? latestRun({ investigations: runs })
+	);
 }
