@@ -126,8 +126,9 @@ export function ensureServe(
 	const existing = currentServeTarget(hostname, run);
 	if (existing && sameTarget(existing, target)) return { url, created: false };
 	if (existing) {
+		const port = localPort(existing);
 		throw new TailscaleError(
-			`${url} already serves ${existing}. Remove it with \`tailscale serve --https=443 off\` first, or pick that one.`,
+			`${url} already serves ${existing}. Remove it with \`tailscale serve --https=443 off\` first${port ? `, or start on port ${port} (--port ${port})` : ""}.`,
 		);
 	}
 	const result = run(["serve", "--bg", "--https=443", target]);
@@ -148,6 +149,17 @@ export function removeServe(target: string, run: Run = runTailscale): void {
 	if (!existing || !sameTarget(existing, target)) return;
 	const result = run(["serve", "--https=443", "off"]);
 	if (result.status !== 0) throw failure(result, "serve off");
+}
+
+/** The port of a loopback proxy target, which `pl up --port` could serve instead. */
+function localPort(target: string): string | null {
+	try {
+		const { hostname, port } = new URL(target);
+		const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(hostname);
+		return loopback && port ? port : null;
+	} catch {
+		return null;
+	}
 }
 
 function sameTarget(a: string, b: string): boolean {

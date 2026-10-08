@@ -88,8 +88,19 @@ function getOrCreateSecret(envName: SecretEnvVar, length = 32): string {
 		throw err;
 	}
 
-	process.stderr.write(`[prismalens] Generated ${envName} → ${defaultPath}\n`);
+	secretNotice(envName, defaultPath);
 	return secret;
+}
+
+export type SecretNotice = (envName: SecretEnvVar, path: string) => void;
+
+let secretNotice: SecretNotice = (envName, path) => {
+	process.stderr.write(`[prismalens] Generated ${envName} → ${path}\n`);
+};
+
+/** `pl up` prints the line in its own console style (#673 w55). */
+export function setSecretNotice(notice: SecretNotice): void {
+	secretNotice = notice;
 }
 
 /**

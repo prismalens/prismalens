@@ -31,6 +31,12 @@ import {
 	getOrCreateEncryptionKey,
 	getOrCreateWebhookSecret,
 } from "./utils/encryption-key.js";
+
+export {
+	type SecretNotice,
+	setSecretNotice,
+} from "./utils/encryption-key.js";
+
 import { FILE_SUFFIX, SecretEnvVars } from "./utils/secrets.js";
 
 // Re-export env readers and all env schemas

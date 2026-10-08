@@ -20,6 +20,7 @@ import { pathToFileURL } from "node:url";
 import { defineCommand } from "citty";
 import consola from "consola";
 import { cliVersion } from "../version.js";
+import { lockBase, probeInstance } from "./instance-check.js";
 import {
 	ensureServe,
 	serveTarget,
@@ -33,6 +34,8 @@ import {
 	healthUrl,
 	NO_BROWSER_LINE,
 	networkBindWarning,
+	portFree,
+	portInUseLine,
 	readTelemetryState,
 	resolveBind,
 	resolveConsoleMode,
@@ -40,6 +43,7 @@ import {
 	serviceHint,
 	TELEMETRY_NOTICE,
 	waitForReady,
+	watchPairings,
 } from "./up-console.js";
 import { updateNotice } from "./update-notice.js";
 import { completePendingRestore } from "./upgrade-trial.js";
@@ -190,6 +194,26 @@ export default defineCommand({
 			resolvePort(process.env, workspaceDir),
 		);
 		const url = displayUrl(bind);
+		const { readWorkspaceLock, setSecretNotice } = await import(
+			"@prismalens/config"
+		);
+		// A held workspace is the API's to refuse, naming its holder.
+		if (
+			!readWorkspaceLock(workspaceDir) &&
+			!(await portFree(bind.host, bind.port))
+		) {
+			const holder = await probeInstance(lockBase(bind), "");
+			consola.error(
+				portInUseLine(
+					bind.port,
+					holder.kind === "different-instance" && holder.instanceId !== null,
+				),
+			);
+			process.exit(1);
+		}
+		setSecretNotice((name, path) =>
+			consola.info(`Generated ${name} → ${path}`),
+		);
 		let tailnetUrl: string | null = null;
 		if (args["tailscale-serve"]) {
 			if (bind.protocol === "https") {
@@ -292,14 +316,16 @@ async function printStartupLink(
 	origin: string,
 	open: boolean,
 ): Promise<void> {
-	const { buildPairingUrl, createStartupLinkInWorkspace } = await import(
-		"@prismalens/auth"
-	);
+	const { buildPairingUrl, createStartupLinkInWorkspace, onDevicePaired } =
+		await import("@prismalens/auth");
 	const link = await createStartupLinkInWorkspace(workspaceDir);
 	const startupUrl = buildPairingUrl(origin, link.token);
 	consola.info(`Open: ${startupUrl}`);
 	consola.info(
 		"It works once, for 15 minutes; treat it as a password. `pl pair --operator` prints another.",
+	);
+	watchPairings(link, onDevicePaired, (line, kind) =>
+		kind === "paired" ? consola.success(line) : consola.info(line),
 	);
 	const command = open
 		? browserCommand(process.platform, process.env, startupUrl)

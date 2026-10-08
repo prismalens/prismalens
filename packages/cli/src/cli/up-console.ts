@@ -7,7 +7,7 @@
  * URL once /health answers, and errors (#600).
  */
 
-import { isIP } from "node:net";
+import { createServer, isIP } from "node:net";
 import { join } from "node:path";
 import {
 	isOnPath,
@@ -218,6 +218,65 @@ export function browserCommand(
 		return { file: "xdg-open", args: [url] };
 	}
 	return null;
+}
+
+type PairedListener = (event: {
+	linkId: string;
+	device: { name: string };
+}) => void;
+
+/**
+ * A line when a device pairs, and one when the startup link lapses unused,
+ * so `pl up` is not silent after printing the link (#673 w55).
+ */
+export function watchPairings(
+	link: { id: string; expiresAt: Date },
+	subscribe: (listener: PairedListener) => unknown,
+	report: (line: string, kind: "paired" | "expired") => void,
+	now: () => number = Date.now,
+): void {
+	let used = false;
+	const expiry = setTimeout(
+		() => {
+			if (!used) {
+				report(
+					"The startup link expired unused. `pl pair --operator` prints another.",
+					"expired",
+				);
+			}
+		},
+		Math.max(0, link.expiresAt.getTime() - now()),
+	);
+	expiry.unref();
+	subscribe(({ linkId, device }) => {
+		if (linkId !== link.id) {
+			report(`A device paired: ${device.name}.`, "paired");
+			return;
+		}
+		used = true;
+		clearTimeout(expiry);
+		report(`Paired this machine's browser (${device.name}).`, "paired");
+	});
+}
+
+/** Whether `host:port` can be bound right now; false only for EADDRINUSE. */
+export function portFree(host: string, port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const server = createServer();
+		server.once("error", (error: NodeJS.ErrnoException) =>
+			resolve(error.code !== "EADDRINUSE"),
+		);
+		server.listen({ host, port, exclusive: true }, () =>
+			server.close(() => resolve(true)),
+		);
+	});
+}
+
+/** The one line for a taken port, in place of the API's two logger records (#673 w55). */
+export function portInUseLine(port: number, byPrismaLens: boolean): string {
+	return byPrismaLens
+		? `Port ${port} is in use by another PrismaLens. Stop it, or start this one on another port with --port.`
+		: `Port ${port} is in use. Start on another port with --port.`;
 }
 
 /** The `pl service install` pointer, for a foreground `pl up` on a platform that has a service. */

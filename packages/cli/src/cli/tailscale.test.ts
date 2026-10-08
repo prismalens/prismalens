@@ -71,7 +71,9 @@ describe("ensureServe", () => {
 	it("refuses to replace a mapping to something else", () => {
 		const status = { Web: { "box.tail1.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3000" } } } } };
 		const run = fake({ "status --json": running, "serve status --json": ok(JSON.stringify(status)) });
-		expect(() => ensureServe("http://127.0.0.1:6473", run)).toThrow(/already serves/);
+		expect(() => ensureServe("http://127.0.0.1:6473", run)).toThrow(
+			"https://box.tail1.ts.net already serves http://127.0.0.1:3000. Remove it with `tailscale serve --https=443 off` first, or start on port 3000 (--port 3000).",
+		);
 	});
 
 	it("explains a serve the user may not configure", () => {
@@ -137,7 +139,7 @@ describe("non-proxy root handler", () => {
 				JSON.stringify({ Web: { "box.tail1.ts.net:443": { Handlers: { "/": { Text: "hi" } } } } }),
 			),
 		});
-		expect(() => ensureServe("http://127.0.0.1:1", run)).toThrow(/already serves a non-proxy/);
+		expect(() => ensureServe("http://127.0.0.1:1", run)).toThrow(/already serves a non-proxy.* off` first\.$/);
 		expect(run.calls.some((c) => c.includes("--bg"))).toBe(false);
 	});
 });
