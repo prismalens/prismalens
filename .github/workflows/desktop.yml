@@ -60,6 +60,10 @@ jobs:
       - name: Build the unpacked app
         run: pnpm --filter @prismalens/desktop dist
 
+      # Extract All must survive it: a file budget everywhere, MAX_PATH under a 100-char folder on Windows (#673 w53).
+      - name: Check the app's file count and path lengths
+        run: node packages/desktop/scripts/check-release-paths.mjs ${{ runner.os == 'Windows' && '--paths' || '' }}
+
       - name: Launch it and assert the window rendered (xvfb on Linux)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then

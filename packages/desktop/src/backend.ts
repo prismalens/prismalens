@@ -11,25 +11,19 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { BackendSpawn } from "./supervisor.js";
 
-/** Where the packed `prismalens` package lives: beside the app in production, or wherever the env points in development. */
+/**
+ * Where the packed `prismalens` package lives: the asar beside the app in
+ * production (Electron-as-Node reads inside it), or wherever the env points in
+ * development.
+ */
 export function resolveBackendMain(input: {
 	resourcesPath: string;
 	env: NodeJS.ProcessEnv;
 }): string {
 	const dir =
 		input.env.PRISMALENS_DESKTOP_BACKEND ??
-		join(input.resourcesPath, "prismalens");
-	const main = input.env.PRISMALENS_DESKTOP_BACKEND
-		? join(dir, "dist", "bin", "prismalens.js")
-		: join(
-				dir,
-				"lib",
-				"node_modules",
-				"prismalens",
-				"dist",
-				"bin",
-				"prismalens.js",
-			);
+		join(input.resourcesPath, "prismalens.asar", "prismalens");
+	const main = join(dir, "dist", "bin", "prismalens.js");
 	if (!existsSync(main)) {
 		throw new Error(
 			`No packed prismalens at ${dir}. Run \`pnpm --filter @prismalens/desktop stage:backend\`, or set PRISMALENS_DESKTOP_BACKEND to a packed package.`,

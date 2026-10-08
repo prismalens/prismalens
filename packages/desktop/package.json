@@ -22,6 +22,7 @@
 		"electron-window-state": "5.0.3"
 	},
 	"devDependencies": {
+		"@electron/asar": "3.4.1",
 		"@types/node": "catalog:",
 		"concurrently": "^10.0.5",
 		"electron": "44.5.1",
@@ -43,8 +44,12 @@
 		],
 		"extraResources": [
 			{
-				"from": "resources/prismalens",
-				"to": "prismalens"
+				"from": "resources/prismalens.asar",
+				"to": "prismalens.asar"
+			},
+			{
+				"from": "resources/prismalens.asar.unpacked",
+				"to": "prismalens.asar.unpacked"
 			}
 		],
 		"asar": true,
