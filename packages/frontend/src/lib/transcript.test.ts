@@ -415,6 +415,10 @@ describe("fileVerb", () => {
 		expect(fileVerb("`Edit` x")).toBe("edit");
 		expect(fileVerb("Read /b.ts")).toBe("read");
 		expect(fileVerb("grep TTL")).toBe("read");
+		expect(fileVerb("editor_view /x")).toBe("read");
+		expect(fileVerb("created_files")).toBe("read");
+		expect(fileVerb("str_replace_editor")).toBe("edit");
+		expect(fileVerb("write_file /x")).toBe("write");
 	});
 });
 

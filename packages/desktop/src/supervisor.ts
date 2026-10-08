@@ -194,8 +194,14 @@ export function withoutLogFields(line: string): string {
 	const open = ' {"';
 	for (let at = text.indexOf(open); at >= 0; at = text.indexOf(open, at + 1)) {
 		try {
-			JSON.parse(text.slice(at + 1));
-			return text.slice(0, at).trimEnd();
+			const record: unknown = JSON.parse(text.slice(at + 1));
+			// Only the logger's record (service/context); JSON inside a message stays.
+			if (
+				record &&
+				typeof record === "object" &&
+				("service" in record || "context" in record)
+			)
+				return text.slice(0, at).trimEnd();
 		} catch {
 			// A brace inside the message, not the record's tail.
 		}

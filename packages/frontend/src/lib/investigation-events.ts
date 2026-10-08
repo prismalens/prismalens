@@ -411,8 +411,8 @@ interface OpenGroup {
 export type FileVerb = "read" | "write" | "edit" | "delete" | "move";
 
 const FILE_VERBS: [RegExp, FileVerb][] = [
-	[/^(write|create)/i, "write"],
-	[/^(edit|multiedit|str_replace|replace|patch)/i, "edit"],
+	[/^(write|create)(?![a-z])/i, "write"],
+	[/^(edit|multiedit|str_replace|replace|patch)(?![a-z])/i, "edit"],
 	[/^(delete|remove|rm)\b/i, "delete"],
 	[/^(move|rename|mv)\b/i, "move"],
 ];
