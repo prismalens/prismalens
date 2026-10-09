@@ -47,7 +47,12 @@ import {
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import { denyAllPolicy, type PermissionPolicy } from "./permission.js";
-import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
+import {
+	buildChatPrompt,
+	buildInvestigationPrompt,
+	type NewerRun,
+	newerRunNote,
+} from "./prompt.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -126,6 +131,8 @@ export interface RunInvestigationOptions {
 		attachments?: JobAttachment[];
 		/** The stopped run already ran a tool, so its report has evidence behind it. */
 		sawEvidence?: boolean;
+		/** A newer run on the incident saw other commits; the prompt says so (#673 w27). */
+		newer?: NewerRun;
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -518,7 +525,7 @@ export async function* runInvestigation(
 
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
-			const { text: line, mode, heads, attachments } = opts.resume;
+			const { text: line, mode, heads, attachments, newer } = opts.resume;
 			yield adapter.operatorMessage(
 				line,
 				mode,
@@ -526,7 +533,12 @@ export async function* runInvestigation(
 				heads,
 				refsOf(attachments),
 			);
-			outcome = yield* turn(promptParts(line, attachments));
+			outcome = yield* turn(
+				promptParts(
+					newer ? `${line}\n\n${newerRunNote(newer)}` : line,
+					attachments,
+				),
+			);
 		} else if (opts.kind === "chat") {
 			const message = opts.brief?.trim() ?? "";
 			yield adapter.operatorMessage(

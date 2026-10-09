@@ -420,6 +420,13 @@ async function runFollowUp(
 		if (!resolveOnPath(row.binary))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
+		const newer = await ports.newerRun(id).catch(() => null);
+		const moved = newer?.heads.some(
+			(h) => recorded.repos.find((r) => r.name === h.name)?.head !== h.head,
+		)
+			? newer
+			: null;
 		const workspace = await rebuildWorkspace(
 			recorded,
 			id,
@@ -507,6 +514,7 @@ async function runFollowUp(
 					...(resume.attachments?.length
 						? { attachments: resume.attachments }
 						: {}),
+					...(moved ? { newer: moved } : {}),
 				},
 				seqStart,
 			},

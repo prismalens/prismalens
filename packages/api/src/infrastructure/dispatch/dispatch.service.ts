@@ -37,6 +37,7 @@ import {
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -248,6 +249,36 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					where: { id },
 					data: { awaitingApprovalAt: since },
 				});
+			},
+			newerRun: async (id) => {
+				const self = await this.prisma.investigation.findUnique({
+					where: { id },
+					select: { incidentId: true, createdAt: true },
+				});
+				if (!self) return null;
+				const newer = await this.prisma.investigation.findFirst({
+					where: {
+						incidentId: self.incidentId,
+						createdAt: { gt: self.createdAt },
+						workspace: { not: null },
+					},
+					orderBy: { createdAt: "desc" },
+					select: { createdAt: true, workspace: true },
+				});
+				const ws = newer?.workspace
+					? RunWorkspaceSchema.safeParse(JSON.parse(newer.workspace))
+					: null;
+				if (!newer || !ws?.success || ws.data.repos.length === 0) return null;
+				const number = await this.prisma.investigation.count({
+					where: {
+						incidentId: self.incidentId,
+						createdAt: { lte: newer.createdAt },
+					},
+				});
+				return {
+					number,
+					heads: ws.data.repos.map((r) => ({ name: r.name, head: r.head })),
+				};
 			},
 			lastEventSeq: (id) => this.investigationsService.lastEventSeq(id),
 			appendEvents: async (id, events) => {
