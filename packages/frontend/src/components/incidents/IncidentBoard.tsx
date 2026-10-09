@@ -83,6 +83,7 @@ import {
 	orderNeedsYou,
 	runWord,
 	shortAge,
+	workingEmptyText,
 } from "@/lib/incident-board";
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
@@ -507,6 +508,11 @@ export function IncidentBoard({
 						}
 						action={dragging ? actionFor(dragging, column.id) : null}
 						dragging={dragging?.from === column.id}
+						empty={
+							column.id === "working"
+								? workingEmptyText(incidents)
+								: EMPTY[column.id]
+						}
 					>
 						{column.id === "needs_you" ? (
 							<>
@@ -703,9 +709,8 @@ const HEAD_TONE: Record<(typeof COLUMN_TONE)[BoardColumn], string> = {
 	ok: "text-ok",
 };
 
-const EMPTY: Record<BoardColumn, string> = {
+const EMPTY: Record<Exclude<BoardColumn, "working">, string> = {
 	needs_you: "Nothing needs you.",
-	working: "No run is working.",
 	concluded: "Nothing concluded in this window.",
 	resolved: "Nothing resolved in this window.",
 };
@@ -721,6 +726,7 @@ function DropColumn({
 	mark,
 	action,
 	dragging,
+	empty,
 	children,
 }: {
 	column: { id: BoardColumn; label: string };
@@ -730,6 +736,8 @@ function DropColumn({
 	action: DropAction | null;
 	/** The dragged card came from here. */
 	dragging: boolean;
+	/** The lane's line when it holds no card. */
+	empty: string;
 	children: ReactNode;
 }) {
 	const { setNodeRef, isOver } = useDroppable({ id: column.id });
@@ -779,7 +787,7 @@ function DropColumn({
 						className="px-1.5 pt-1 pb-2 text-meta text-text-3"
 						data-testid="board-lane-empty"
 					>
-						{EMPTY[column.id]}
+						{empty}
 					</li>
 				)}
 				{children}

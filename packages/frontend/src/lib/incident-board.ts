@@ -49,6 +49,15 @@ export function liveThread(incident: IncidentWithRelations): LatestRun | null {
 	});
 }
 
+/** Working's empty line names live runs whose cards wait in Needs you, the runs its live bar counts (#673 walk 4). */
+export function workingEmptyText(incidents: IncidentWithRelations[]): string {
+	const n = incidents.filter(
+		(i) => !!liveThread(i) && boardColumn(i) === "needs_you",
+	).length;
+	if (n === 0) return "No run is working.";
+	return `${n} ${n === 1 ? "run" : "runs"} working, in Needs you`;
+}
+
 /**
  * Which board column an incident sits in (R1a d6): what wants a human first,
  * even while its run is live, then a live run, then Resolved for the
