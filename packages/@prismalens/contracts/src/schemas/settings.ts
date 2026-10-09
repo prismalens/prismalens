@@ -154,6 +154,7 @@ export type HarnessSelectionStatus = z.infer<
 const ModelIdSchema = z.string().min(1).max(200);
 const EffortValueSchema = z.string().min(1).max(64);
 const AgentModeIdSchema = z.string().min(1).max(64);
+const CustomModelsSchema = z.array(ModelIdSchema).max(50);
 
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
@@ -170,6 +171,10 @@ export const HarnessSettingsSchema = z.object({
 	/** The agent's own mode id per harness; a harness without one uses its row default (#673 w21). */
 	agentModes: z
 		.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema)
+		.optional(),
+	/** Model ids the operator added per agent, shown in the picker beside the agent's own list (#673 w57). */
+	customModels: z
+		.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema)
 		.optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
@@ -190,6 +195,10 @@ export const UpdateHarnessSettingsSchema = z
 		/** Merges per harness; `null` goes back to the row default. */
 		agentModes: z
 			.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema.nullable())
+			.optional(),
+		/** Replaces that agent's list; `null` clears it. */
+		customModels: z
+			.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema.nullable())
 			.optional(),
 	})
 	.strict();

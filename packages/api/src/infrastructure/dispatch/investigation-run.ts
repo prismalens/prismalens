@@ -161,6 +161,7 @@ async function runJobInternal(
 			modelSource,
 			effort,
 			agentMode: settingsMode,
+			modelThroughEnv,
 		} = await ports.resolveHarness({
 			...(data.harness ? { harness: data.harness } : {}),
 			...(data.model !== undefined ? { model: data.model } : {}),
@@ -241,6 +242,7 @@ async function runJobInternal(
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(modelThroughEnv ? { modelThroughEnv } : {}),
 				...(effort ? { effort } : {}),
 				agentMode,
 				...(attachments?.length ? { attachments } : {}),
@@ -462,6 +464,13 @@ async function runFollowUp(
 		delivered = base.delivered;
 		const store = base;
 		const modelSource = followUpModelSource(harness, inv.model);
+		// The session keeps its model; an added one still goes in through the env at spawn (#673 w57).
+		const modelThroughEnv =
+			modelSource === "operator" &&
+			!!(await ports
+				.resolveHarness({ harness, model: inv.model })
+				.then((r) => r.modelThroughEnv)
+				.catch(() => false));
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -471,6 +480,7 @@ async function runFollowUp(
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(modelThroughEnv ? { modelThroughEnv } : {}),
 				...(inv.effort ? { effort: inv.effort } : {}),
 				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),

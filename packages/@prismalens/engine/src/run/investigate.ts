@@ -79,6 +79,8 @@ export interface RunInvestigationOptions {
 	model?: string;
 	/** Where `model` came from; recorded in the run's fidelity. */
 	modelSource?: ModelSource;
+	/** `model` is set in the row's `envModelKey` at spawn instead of over ACP: one the operator added (#673 w57). */
+	modelThroughEnv?: boolean;
 	/** A value of the harness's `thought_level` option; set before every prompt (R4.2). */
 	effort?: string;
 	/** Files that go with the brief (R4.3). */
@@ -251,7 +253,14 @@ export function buildRunFidelity(
  */
 export type PrepareRunEnvOptions = Pick<
 	RunInvestigationOptions,
-	"harness" | "descriptor" | "cwd" | "runDir" | "model" | "env" | "agentMode"
+	| "harness"
+	| "descriptor"
+	| "cwd"
+	| "runDir"
+	| "model"
+	| "env"
+	| "agentMode"
+	| "modelThroughEnv"
 >;
 
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
@@ -282,11 +291,15 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		writeFileSync(path, content);
 	}
 	const mode = resolveAgentMode(opts.harness, opts.agentMode);
+	const envModelKey = HARNESS_REGISTRY[opts.harness]?.envModelKey;
 	return {
 		env: {
 			...(opts.env ?? {}),
 			...descriptor.acpEnv(runEnv),
 			...agentModeEnv(opts.harness, mode),
+			...(opts.modelThroughEnv && opts.model && envModelKey
+				? { [envModelKey]: opts.model }
+				: {}),
 		},
 		runEnv,
 	};
@@ -448,7 +461,10 @@ export async function* runInvestigation(
 		// A chosen model goes over the session's own option and must come back as asked,
 		// a reopened session included (R4.2); an env-named one the harness read itself (walk f18).
 		const chosenModel =
-			opts.model && modelVia === "acp" && opts.modelSource !== "env"
+			opts.model &&
+			modelVia === "acp" &&
+			opts.modelSource !== "env" &&
+			!opts.modelThroughEnv
 				? opts.model
 				: null;
 		if (chosenModel) {
