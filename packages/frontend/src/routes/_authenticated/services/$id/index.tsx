@@ -233,6 +233,12 @@ function ServicePage() {
 				onOpenChange={setDeleting}
 				serviceId={service.id}
 				serviceName={service.displayName || service.name}
+				upstream={(topology?.upstream ?? []).map(
+					(e) => e.service.displayName || e.service.name,
+				)}
+				downstream={(topology?.downstream ?? []).map(
+					(e) => e.service.displayName || e.service.name,
+				)}
 				onSuccess={() => navigate({ to: "/services" })}
 			/>
 			<DestructiveConfirm
