@@ -181,12 +181,15 @@ export function ConversationRoute() {
 				)}
 				data-testid="composer-dock"
 			>
-				<DockedComposer
-					key={draft ? "draft" : (investigation?.id ?? "none")}
-					branchId={openBranch ?? undefined}
-					boxRef={box}
-					onRecheck={onRecheck}
-				/>
+				{/* Not while the run loads: the key turns from "none" to its id and the remount drops typed text (#807). */}
+				{(draft || !run.isLoading) && (
+					<DockedComposer
+						key={draft ? "draft" : (investigation?.id ?? "none")}
+						branchId={openBranch ?? undefined}
+						boxRef={box}
+						onRecheck={onRecheck}
+					/>
+				)}
 			</div>
 		</div>
 	);
