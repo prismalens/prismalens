@@ -60,6 +60,7 @@ export function useAgentChoice() {
 		favourites: settingsQuery.data?.favourites ?? [],
 		efforts: settingsQuery.data?.efforts ?? {},
 		agentModes: settingsQuery.data?.agentModes ?? {},
+		customModels: settingsQuery.data?.customModels ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};
@@ -95,6 +96,13 @@ export function modelName(
 /** The model the agent picks for itself, when its check or the env says. */
 function resolvedModel(h: HarnessStatus): string | null {
 	return modelName(h, h.envModel?.model || h.checked?.servedModel || null);
+}
+
+/** The default row's line: the model the agent picks, and where the env named it (#673 w57). */
+export function defaultModelLine(h: HarnessStatus): string | undefined {
+	const model = resolvedModel(h);
+	if (!model) return undefined;
+	return h.envModel ? `${model}, from your environment` : model;
 }
 
 /** The agent and model the next run starts with, each named once. */
@@ -211,7 +219,8 @@ export function ModelChip({
 	side?: "top" | "bottom";
 	className?: string;
 }) {
-	const { harnesses, favourites, models, isLoading } = useAgentChoice();
+	const { harnesses, favourites, models, customModels, isLoading } =
+		useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	const check = useCheckHarness();
 	const [open, setOpen] = useState(false);
@@ -249,9 +258,16 @@ export function ModelChip({
 					Number(isStarred(favourites, a.harness.id, a.model)) ||
 				order.indexOf(a.provider) - order.indexOf(b.provider),
 		);
+		const listedIds = new Set(agent.models.entries.map((m) => m.id));
+		// Ids the operator added in Settings, Agent; the agent's own list may not hold them (#673 w57).
+		const added = (customModels[agent.id as HarnessId] ?? [])
+			.filter((id) => !listedIds.has(id))
+			.map((id) => ({ ...row(agent, id, "c"), provider: "Added by you" }));
 		const stored = models[agent.id as HarnessId];
 		const unknown =
-			stored && !agent.models.entries.some((m) => m.id === stored)
+			stored &&
+			!listedIds.has(stored) &&
+			!customModels[agent.id as HarnessId]?.includes(stored)
 				? [
 						{
 							...row(agent, stored, "u"),
@@ -259,7 +275,7 @@ export function ModelChip({
 						},
 					]
 				: [];
-		rows = [...unknown, ...listed];
+		rows = [...unknown, ...added, ...listed];
 	}
 
 	const chosen = (h: HarnessStatus, id: string) =>
@@ -406,10 +422,7 @@ export function ModelChip({
 									data-testid="model-default"
 									data-checked={chosen(agent, "") ? "" : undefined}
 								>
-									<RowText
-										name="Agent default"
-										sub={resolvedModel(agent) ?? undefined}
-									/>
+									<RowText name="Agent default" sub={defaultModelLine(agent)} />
 									{chosen(agent, "") && <Tick />}
 									<span className="w-6 shrink-0" />
 								</ModelSelectorItem>
