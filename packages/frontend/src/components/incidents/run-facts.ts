@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type CanonicalEvent,
 	type InvestigationWithRelations,
 	isWorkflowLive,
 	latestRun,
@@ -62,6 +63,24 @@ export function runElapsed(run: Timed, now: number | null): number {
 		(isWorkflowLive(run.status) ? null : (run.updatedAt ?? null));
 	const end = ended ? new Date(ended).getTime() : (now ?? start);
 	return Math.max(0, Math.round((end - start) / 1000));
+}
+
+/**
+ * Seconds the live turn has taken: a resumed run counts from its follow-up's
+ * first message, not from the run's start hours ago (#673 walk 4, QA-02).
+ */
+export function turnElapsed(
+	run: Timed,
+	events: ReadonlyArray<CanonicalEvent>,
+	now: number | null,
+): number {
+	if (!isWorkflowLive(run.status) || now === null) return runElapsed(run, now);
+	for (let i = events.length - 1; i >= 0; i--) {
+		const e = events[i];
+		if (e?.kind === "operator_message" && e.resumed)
+			return Math.max(0, Math.round((now - new Date(e.ts).getTime()) / 1000));
+	}
+	return runElapsed(run, now);
 }
 
 /** Whether a run kept any timing; a seeded run has neither start nor end. */

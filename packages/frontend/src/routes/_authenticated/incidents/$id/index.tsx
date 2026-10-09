@@ -20,9 +20,9 @@ import {
 } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import {
-	runElapsed,
 	runNumber,
 	runTimed,
+	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
 import { TimelineList } from "@/components/incidents/TimelineList";
@@ -152,7 +152,10 @@ function ReportPool({ latest }: { latest: InvestigationRun }) {
 	const who = useRunAgentModel(inv);
 	const report = inv?.report ?? null;
 	const n = inv ? runNumber(runs, inv.id) : 0;
-	const took = inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : "";
+	const took =
+		inv && runTimed(inv)
+			? formatElapsed(turnElapsed(inv, latest.events, now))
+			: "";
 	const live = !!latest.state && isRunStateLive(latest.state);
 	const earlierReport = runs.some((r) => r.hasReport && r.id !== inv?.id);
 	let body: React.ReactNode;
