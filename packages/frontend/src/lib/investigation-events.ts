@@ -636,6 +636,26 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				closeGroup();
+				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
+				if (event.resumed && !sawEnd) {
+					sawEnd = true;
+					if (run?.status === "cancelled") {
+						standingAt = items.length;
+						items.push(stoppedLine(run, null));
+					} else if (run?.status === "failed") {
+						standingAt = items.length;
+						sawError = true;
+						items.push({
+							kind: "end",
+							key: "failed",
+							tone: "failed",
+							text: `Failed: ${run.error ?? "no error was recorded"}`,
+							error: run.error,
+							at: run.completedAt ?? null,
+							path: transcriptPath(run.id),
+						});
+					}
+				}
 				if (event.resumed)
 					items.push({
 						kind: "divider",

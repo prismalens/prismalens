@@ -479,6 +479,22 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 		expect(items.at(-1)?.kind).toBe("end");
 	});
 
+	// The follow-up's own first message marks it, so a dropped Stop event changes nothing (#804 OBJ-028).
+	const ask = (s: number): CanonicalEvent =>
+		({ ...operator(s, "What did you find?"), resumed: [] }) as CanonicalEvent;
+	it.each([
+		["present", [failure(610, "the agent crashed")], "The agent stopped: the agent crashed"],
+		["dropped", [], "The agent stopped on your last message"],
+	] as const)("with the Stop's own event dropped and the Ask's error %s, the standing precedes the Ask and its end follows it", (_case, tail, last) => {
+		const items = deriveTranscript([step(0, "Working."), ask(600), ...tail], T0, { run: stopped });
+		const order = items.map((i) => (i.kind === "end" ? i.text : i.kind));
+		const standing = order.findIndex((t) => /^Stopped by you at /.test(t));
+		expect(standing).toBeGreaterThan(-1);
+		expect(standing).toBeLessThan(order.indexOf("operator"));
+		expect(order.at(-1)).toBe(last);
+		expect(endTexts(items)).toHaveLength(2);
+	});
+
 	it("an answered Ask adds no end line", () => {
 		const items = deriveTranscript(
 			[step(0, "Working."), stop(28), operator(600, "What did you find?"), step(610, "The pool.")],
