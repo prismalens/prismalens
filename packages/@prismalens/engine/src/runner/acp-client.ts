@@ -39,7 +39,13 @@ import {
 export type AcpStreamItem =
 	| { kind: "update"; update: AcpUpdate }
 	/** The agent asked; the turn waits until a `permission` item answers `askId`. */
-	| { kind: "permission_asked"; askId: string; request: PermissionRequest }
+	| {
+			kind: "permission_asked";
+			askId: string;
+			request: PermissionRequest;
+			/** The ask's window, when the run's wall clock shortened it (#673 w21). */
+			window?: { timeoutMs: number; clamped: boolean };
+	  }
 	| {
 			kind: "permission";
 			askId: string;
@@ -150,6 +156,8 @@ export interface AcpSessionConfig {
 	onStderr?: (chunk: string) => void;
 	/** A value unknown to the ACP SDK, once per session per value. */
 	onDrift?: (drift: AcpDrift) => void;
+	/** Each ask's window, read when it arrives; the policy's own timeout when absent (#673 w21). */
+	askWindow?: () => { timeoutMs: number; clamped: boolean };
 	/** Reopen this session with `session/load` instead of starting one (#747). */
 	resume?: { sessionId: string };
 }
@@ -875,12 +883,21 @@ export class AcpSession {
 			const askId = newAskId();
 			const controller = new AbortController();
 			this.asks.add(controller);
-			this.push({ kind: "permission_asked", askId, request });
+			const window = this.config.askWindow?.();
+			this.push({
+				kind: "permission_asked",
+				askId,
+				request,
+				...(window ? { window } : {}),
+			});
 			Promise.resolve()
 				.then(() =>
 					this.config.permission(request, {
 						askId,
 						signal: controller.signal,
+						...(window
+							? { timeoutMs: window.timeoutMs, clamped: window.clamped }
+							: {}),
 					}),
 				)
 				.catch(

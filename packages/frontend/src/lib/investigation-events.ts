@@ -368,6 +368,8 @@ export type TranscriptItem =
 			detail: string | null;
 			at: string;
 			expiresAt: string;
+			/** The run's time limit cut the ask's window short (#673 w21). */
+			clamped: boolean;
 			state: AskState;
 	  }
 	| { kind: "line"; key: string; text: string }
@@ -721,6 +723,7 @@ export function deriveTranscript(
 					detail: event.detail,
 					at: event.ts,
 					expiresAt: event.expiresAt,
+					clamped: event.clamped === true,
 					state: "waiting",
 				};
 				asks.set(event.askId, item);

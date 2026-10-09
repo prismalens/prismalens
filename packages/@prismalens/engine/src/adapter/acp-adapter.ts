@@ -181,6 +181,7 @@ export class AcpAdapter {
 			  }
 			| undefined,
 		expiresAt: Date,
+		clamped = false,
 	): CanonicalEvent {
 		const meta = toolCall?.toolCallId
 			? this.toolMeta.get(toolCall.toolCallId)
@@ -197,6 +198,7 @@ export class AcpAdapter {
 			detail: askDetail(input, toolCall?.locations),
 			toolKind: toolCall?.kind ?? meta?.kind ?? null,
 			expiresAt: expiresAt.toISOString(),
+			...(clamped ? { clamped } : {}),
 		};
 	}
 

@@ -46,7 +46,11 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
-import { denyAllPolicy, type PermissionPolicy } from "./permission.js";
+import {
+	askWindow,
+	denyAllPolicy,
+	type PermissionPolicy,
+} from "./permission.js";
 import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
@@ -340,6 +344,8 @@ export async function* runInvestigation(
 		}
 	};
 
+	// The launcher's wall clock starts at spawn, in open().
+	let spawnedAt = Date.now();
 	const session = new AcpSession({
 		command: descriptor.binary,
 		args: descriptor.acpArgs(runEnv),
@@ -347,6 +353,13 @@ export async function* runInvestigation(
 		env,
 		limits: opts.limits,
 		permission: opts.permission ?? denyAllPolicy,
+		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
+		askWindow: () =>
+			askWindow(
+				opts.askTimeoutMs ?? ASK_TIMEOUT_MS,
+				opts.limits?.wallClockMs,
+				Date.now() - spawnedAt,
+			),
 		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -385,10 +398,15 @@ export async function* runInvestigation(
 			} else if (item.kind === "permission_asked") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
+				const window = item.window ?? {
+					timeoutMs: opts.askTimeoutMs ?? ASK_TIMEOUT_MS,
+					clamped: false,
+				};
 				yield adapter.permissionAsk(
 					item.askId,
 					item.request.toolCall,
-					new Date(Date.now() + (opts.askTimeoutMs ?? ASK_TIMEOUT_MS)),
+					new Date(Date.now() + window.timeoutMs),
+					window.clamped,
 				);
 			} else if (item.kind === "permission") {
 				wire(
@@ -429,6 +447,7 @@ export async function* runInvestigation(
 		descriptor.modelVia ?? HARNESS_REGISTRY[opts.harness]?.modelVia;
 
 	try {
+		spawnedAt = Date.now();
 		await session.open();
 		if (session.sessionId) {
 			opts.onSession?.({

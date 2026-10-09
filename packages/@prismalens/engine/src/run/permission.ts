@@ -43,6 +43,29 @@ export type PermissionDecision =
 export interface AskContext {
 	askId: string;
 	signal: AbortSignal;
+	/** This ask's window; the policy's own timeout when absent. 0 denies at once. */
+	timeoutMs?: number;
+	/** The run's wall clock cut the window short. */
+	clamped?: boolean;
+}
+
+/** Kept between an ask's lapse and the launcher's kill, so the denial reaches the agent first. */
+export const ASK_KILL_MARGIN_MS = 60_000;
+
+/**
+ * An ask's window (#673 w21): the full timeout, unless the run's wall clock
+ * ends sooner; then what is left before the kill, less the margin.
+ */
+export function askWindow(
+	askMs: number,
+	wallClockMs: number | undefined,
+	elapsedMs: number,
+): { timeoutMs: number; clamped: boolean } {
+	if (wallClockMs === undefined) return { timeoutMs: askMs, clamped: false };
+	const left = wallClockMs - elapsedMs - ASK_KILL_MARGIN_MS;
+	return left < askMs
+		? { timeoutMs: Math.max(0, left), clamped: true }
+		: { timeoutMs: askMs, clamped: false };
 }
 
 export type PermissionPolicy = (
@@ -124,6 +147,9 @@ export function createAskChannel(
 
 	const policy: PermissionPolicy = (req, ctx) => {
 		if (closed) return deny(req, "stopped", "the run ended");
+		const windowMs = ctx.timeoutMs ?? timeoutMs;
+		if (windowMs <= 0)
+			return deny(req, "timed_out", "the run's time limit was reached");
 		return new Promise<PermissionDecision>((resolve) => {
 			const askedAt = now();
 			const settle = (d: PermissionDecision) => {
@@ -141,16 +167,18 @@ export function createAskChannel(
 						deny(
 							req,
 							"timed_out",
-							`no answer in ${Math.round(timeoutMs / 60_000)} minutes`,
+							ctx.clamped
+								? "no answer before the run's time limit"
+								: `no answer in ${Math.round(windowMs / 60_000)} minutes`,
 						),
 					),
-				timeoutMs,
+				windowMs,
 			);
 			timer.unref?.();
 			waiting.set(ctx.askId, {
 				askId: ctx.askId,
 				askedAt,
-				expiresAt: new Date(askedAt.getTime() + timeoutMs),
+				expiresAt: new Date(askedAt.getTime() + windowMs),
 				req,
 				settle,
 			});

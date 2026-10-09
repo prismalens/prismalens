@@ -634,6 +634,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		detail: z.string().nullable(),
 		toolKind: z.string().nullable(),
 		expiresAt: z.string().datetime(),
+		/** The run's wall clock ends before ASK_TIMEOUT_MS would: the ask lapses sooner (#673 w21). */
+		clamped: z.boolean().optional(),
 	}),
 	z.object({
 		kind: z.literal("permission_answer"),

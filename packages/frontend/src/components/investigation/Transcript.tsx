@@ -364,7 +364,9 @@ function AskCard({
 					<span className="text-meta text-text-3">
 						{answer.isError
 							? "That ask is no longer waiting."
-							: `Denied at ${formatClock(item.expiresAt)} if no one answers`}
+							: item.clamped
+								? `The run's time limit is near, so this ask expires at ${formatClock(item.expiresAt)}`
+								: `Denied at ${formatClock(item.expiresAt)} if no one answers`}
 					</span>
 				</div>
 			) : (
@@ -375,7 +377,9 @@ function AskCard({
 					)}
 					data-testid="transcript-ask-end"
 				>
-					{ASK_END[state]}
+					{state === "timed_out" && item.clamped
+						? "Denied: the run's time limit was reached"
+						: ASK_END[state]}
 				</p>
 			)}
 		</Message>
