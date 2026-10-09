@@ -12,6 +12,7 @@ const drop = (
 		live?: boolean;
 		canResolve?: boolean;
 		canReopen?: boolean;
+		canAcknowledge?: boolean;
 		mergedInto?: number;
 	} = {},
 ) =>
@@ -21,13 +22,26 @@ const drop = (
 		live: opts.live ?? false,
 		canResolve: opts.canResolve ?? true,
 		canReopen: opts.canReopen ?? false,
+		canAcknowledge: opts.canAcknowledge ?? false,
 		mergedInto: opts.mergedInto ?? null,
 	});
 
 describe("dropAction", () => {
 	it("starts a run on whatever open card lands in Working, with no form", () => {
-		expect(drop("needs_you", "working")).toEqual({ kind: "investigate" });
-		expect(drop("concluded", "working")).toEqual({ kind: "investigate" });
+		expect(drop("needs_you", "working")).toEqual({
+			kind: "investigate",
+			acknowledge: false,
+		});
+		expect(drop("concluded", "working")).toEqual({
+			kind: "investigate",
+			acknowledge: false,
+		});
+	});
+
+	it("acknowledges and starts a run when Triggered card dropped on Working", () => {
+		expect(
+			drop("needs_you", "working", { canAcknowledge: true }),
+		).toEqual({ kind: "investigate", acknowledge: true });
 	});
 
 	it("asks to reopen a Resolved card dropped on Working (R1a d4)", () => {
@@ -42,13 +56,42 @@ describe("dropAction", () => {
 		).toEqual({ kind: "reopen" });
 	});
 
-	it("refuses a second run while one is live", () => {
-		expect(drop("needs_you", "working", { live: true }).kind).toBe("none");
+	it("reopens a Resolved card dropped on Concluded even if live", () => {
+		expect(
+			drop("resolved", "concluded", {
+				canResolve: false,
+				canReopen: true,
+				live: true,
+			}),
+		).toEqual({ kind: "reopen" });
 	});
 
-	it("stops a run dropped from Working on Concluded", () => {
+	it("acknowledges a live card dropped on Working if canAcknowledge", () => {
+		expect(drop("needs_you", "working", { live: true, canAcknowledge: true })).toEqual({
+			kind: "acknowledge",
+		});
+	});
+
+	it("refuses a second run while one is live without canAcknowledge", () => {
+		expect(drop("needs_you", "working", { live: true })).toEqual({
+			kind: "none",
+			reason: "Its run is already working",
+		});
+	});
+
+	it("stops a live run dropped on Concluded from any column", () => {
 		expect(drop("working", "concluded", { live: true })).toEqual({
 			kind: "stop",
+		});
+		expect(drop("needs_you", "concluded", { live: true })).toEqual({
+			kind: "stop",
+		});
+	});
+
+	it("refuses a non-live card dropped from needs_you to Concluded", () => {
+		expect(drop("needs_you", "concluded")).toEqual({
+			kind: "none",
+			reason: "Concluded follows from a finished investigation",
 		});
 	});
 
@@ -93,7 +136,13 @@ describe("dropAction", () => {
 
 describe("dropWord", () => {
 	it("says what dropping on each kind of action would do (#673 walk 4)", () => {
-		expect(dropWord({ kind: "investigate" })).toBe("drop to start a run");
+		expect(dropWord({ kind: "investigate", acknowledge: false })).toBe(
+			"drop to start a run",
+		);
+		expect(dropWord({ kind: "investigate", acknowledge: true })).toBe(
+			"drop to acknowledge it and start a run",
+		);
+		expect(dropWord({ kind: "acknowledge" })).toBe("drop to acknowledge it");
 		expect(dropWord({ kind: "reopen-investigate" })).toBe(
 			"drop to reopen it and start a run",
 		);

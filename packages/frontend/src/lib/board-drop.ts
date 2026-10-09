@@ -9,7 +9,8 @@ import type { BoardColumn } from "./incident-board";
  * control on the card or the incident page.
  */
 export type DropAction =
-	| { kind: "investigate" }
+	| { kind: "investigate"; acknowledge: boolean }
+	| { kind: "acknowledge" }
 	| { kind: "reopen-investigate" }
 	| { kind: "reopen" }
 	| { kind: "stop" }
@@ -27,6 +28,8 @@ export interface DropInput {
 	mergedInto?: number | null;
 	/** The incident's status admits Reopen: it is Resolved (R1a d4). */
 	canReopen?: boolean;
+	/** The incident's status admits Acknowledge: it is Triggered. */
+	canAcknowledge?: boolean;
 }
 
 export function dropAction({
@@ -35,6 +38,7 @@ export function dropAction({
 	live,
 	canResolve,
 	canReopen = false,
+	canAcknowledge = false,
 	mergedInto = null,
 }: DropInput): DropAction {
 	if (from === to) return { kind: "none" };
@@ -47,9 +51,15 @@ export function dropAction({
 		};
 	}
 	if (to === "working") {
-		if (live) return { kind: "none", reason: "Its run is already working" };
+		// A drop on Working is "I'm on it": it acknowledges too, or the card stays in Needs you (#673 walk 4).
+		if (live)
+			return canAcknowledge
+				? { kind: "acknowledge" }
+				: { kind: "none", reason: "Its run is already working" };
 		// A Resolved incident goes back to work only by Reopen, asked first.
-		return canReopen ? { kind: "reopen-investigate" } : { kind: "investigate" };
+		return canReopen
+			? { kind: "reopen-investigate" }
+			: { kind: "investigate", acknowledge: canAcknowledge };
 	}
 	if (to === "concluded") {
 		if (from === "working" && live) return { kind: "stop" };
@@ -69,7 +79,11 @@ export function dropAction({
 export function dropWord(action: DropAction): string {
 	switch (action.kind) {
 		case "investigate":
-			return "drop to start a run";
+			return action.acknowledge
+				? "drop to acknowledge it and start a run"
+				: "drop to start a run";
+		case "acknowledge":
+			return "drop to acknowledge it";
 		case "reopen-investigate":
 			return "drop to reopen it and start a run";
 		case "reopen":

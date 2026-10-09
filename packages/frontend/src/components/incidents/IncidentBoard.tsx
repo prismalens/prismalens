@@ -250,6 +250,7 @@ function actionFor(d: Dragging, to: BoardColumn): DropAction {
 		live: !!liveThread(d.incident),
 		canResolve: canIncidentAction("close", d.incident.status),
 		canReopen: canIncidentAction("reopen", d.incident.status),
+		canAcknowledge: canIncidentAction("acknowledge", d.incident.status),
 		mergedInto: d.incident.mergedInto?.number ?? null,
 	});
 }
@@ -381,12 +382,12 @@ export function IncidentBoard({
 			},
 		);
 	};
-	const acknowledge = (incident: IncidentWithRelations) => {
+	const acknowledge = (incident: IncidentWithRelations, then?: () => void) => {
 		setBusy((b) => ({ ...b, [incident.id]: "Acknowledging" }));
 		update.mutate(
 			{ id: incident.id, status: "investigating" },
 			{
-				onSuccess: settle(incident.id),
+				onSuccess: then ?? settle(incident.id),
 				onError: fail(incident.id, "Not acknowledged"),
 			},
 		);
@@ -420,7 +421,11 @@ export function IncidentBoard({
 		if (!d || !e.over) return;
 		const action = actionFor(d, e.over.id as BoardColumn);
 		if (action.kind === "none") return;
-		if (action.kind === "investigate") return startRun(d.incident);
+		if (action.kind === "investigate")
+			return action.acknowledge
+				? acknowledge(d.incident, () => startRun(d.incident))
+				: startRun(d.incident);
+		if (action.kind === "acknowledge") return acknowledge(d.incident);
 		setPrompt(
 			action.kind === "resolve"
 				? {
