@@ -45,6 +45,7 @@ import {
 	readsAllowed,
 	redactNonce,
 } from "./admission-checks.js";
+import { startReportBreakingProxy } from "./report-breaking-proxy.js";
 
 const [harnessArg, cloneDir] = process.argv.slice(2);
 if (!harnessArg || !cloneDir) {
@@ -317,21 +318,22 @@ const r6 = await (async (): Promise<string> => {
 console.log(`R6 user model: ${r6}`);
 
 /**
- * R7 (#673 w59, DESIGN §3.5): a session whose run ended Failed with no report
- * still reopens with session/load and answers, so `Investigate` can continue
- * it. Two first runs: the agent erroring mid-turn (its output capped), and a
- * turn that ended on text that is no report, the state a failed report parse
- * leaves the session in. Data, not a gate; a fail narrows `continuable`.
+ * R7 (#673 w59, #804 OBJ-029, DESIGN §3.5): a session whose report failed to
+ * validate reopens with session/load through the installed adapter and still
+ * holds the run. The first run is a real investigation turn; a model will not
+ * fail its report on request, so its text goes through report-breaking-proxy
+ * and the report's own retries fail too. A gate: a fail or an inconclusive
+ * run exits nonzero. Only an agent that takes ANTHROPIC_BASE_URL can be put
+ * behind the proxy; any other is skipped, and says why.
  */
-async function reopensAfter(
-	label: string,
-	firstRun: Partial<Parameters<typeof runInvestigation>[0]>,
-	ended: (events: CanonicalEvent[]) => boolean,
-	ask: { text: string; expect: string } = {
-		text: "Reply with the alert name from our conversation and nothing else.",
-		expect: context.alerts[0]?.alertname ?? "",
-	},
-): Promise<string> {
+async function reopensAfterFailedReport(): Promise<string> {
+	if (!HARNESS_REGISTRY[harness].resume)
+		return "skipped (this agent cannot reopen a session)";
+	if (harness !== "claude-code")
+		return `skipped (${harness} does not take ANTHROPIC_BASE_URL, so its report cannot be broken in transit)`;
+	const upstream =
+		process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+	const proxy = await startReportBreakingProxy(upstream);
 	const dir = mkdtempSync(join(tmpdir(), "pl-r7-"));
 	let opened: { sessionId: string; loadSession: boolean } | null = null;
 	const common = {
@@ -340,7 +342,6 @@ async function reopensAfter(
 		harness,
 		cwd: cloneDir,
 		runDir: dir,
-		env: process.env,
 		...(process.env.PRISMALENS_HARNESS_MODEL
 			? { model: process.env.PRISMALENS_HARNESS_MODEL }
 			: {}),
@@ -351,83 +352,59 @@ async function reopensAfter(
 		const first: CanonicalEvent[] = [];
 		for await (const ev of runInvestigation({
 			...common,
-			...firstRun,
+			env: { ...process.env, ANTHROPIC_BASE_URL: proxy.url },
 			onSession: (s) => {
 				opened = s;
 			},
+			promptSuffix:
+				"ADMISSION STEP, required: run `ls` once with the shell tool before you answer.",
 		}))
 			first.push(ev);
-		if (!ended(first)) {
-			const last = first
-				.filter((e) => e.kind === "error" || e.kind === "report")
-				.at(-1);
-			return `${label}: inconclusive (the first run ended ${last?.kind === "error" ? `"${last.message}"` : (last?.kind ?? "with nothing")})`;
-		}
+		const last = first
+			.filter((e) => e.kind === "error" || e.kind === "report")
+			.at(-1);
+		if (
+			last?.kind !== "error" ||
+			!last.message.startsWith("report did not validate")
+		)
+			return `inconclusive (the first run did not end on a failed report: ${last?.kind === "error" ? last.message : (last?.kind ?? "no end")})`;
 		const session = opened as {
 			sessionId: string;
 			loadSession: boolean;
 		} | null;
 		if (!session?.loadSession)
-			return `${label}: fail (harness does not advertise loadSession)`;
+			return "fail (harness does not advertise loadSession)";
+		// Reopened straight to the endpoint, as a continued run is.
 		const followUp: CanonicalEvent[] = [];
 		for await (const ev of runInvestigation({
 			...common,
+			env: process.env,
 			resume: {
 				sessionId: session.sessionId,
-				text: ask.text,
+				text: "Reply with the alert name from our conversation and nothing else.",
 				mode: "queue",
 				heads: [],
 			},
 		}))
 			followUp.push(ev);
 		const error = followUp.find((e) => e.kind === "error");
-		if (error?.kind === "error") return `${label}: fail (${error.message})`;
+		if (error?.kind === "error") return `fail (${error.message})`;
 		const reply = followUp
 			.map((e) => (e.kind === "agent_step" ? e.text : ""))
 			.join("");
-		return reply.includes(ask.expect)
-			? `${label}: pass (session/load answered with ${ask.expect})`
-			: `${label}: fail (reply did not say ${ask.expect}: ${JSON.stringify(reply.slice(0, 120))})`;
+		const alert = context.alerts[0]?.alertname ?? "";
+		return reply.includes(alert)
+			? `pass (${last.message.slice(0, 60)}…; session/load answered with ${alert})`
+			: `fail (reply did not name the alert: ${JSON.stringify(reply.slice(0, 120))})`;
 	} finally {
+		await proxy.close();
 		rmSync(dir, { recursive: true, force: true });
 	}
 }
-const failedWith = (prefix?: string) => (events: CanonicalEvent[]) =>
-	!events.some((e) => e.kind === "report") &&
-	events.some(
-		(e) => e.kind === "error" && (!prefix || e.message.startsWith(prefix)),
-	);
-const r7 = !HARNESS_REGISTRY[harness].resume
-	? ["skipped (no resume)"]
-	: [
-			await reopensAfter(
-				"after an agent error",
-				{ env: { ...process.env, CLAUDE_CODE_MAX_OUTPUT_TOKENS: "64" } },
-				failedWith(),
-			).catch(
-				(e: unknown) =>
-					`after an agent error: fail (${e instanceof Error ? e.message : String(e)})`,
-			),
-			await reopensAfter(
-				"after a turn with no report",
-				{
-					kind: "chat",
-					brief:
-						"Run `ls` once with the shell tool, then reply with the single word BANANA.",
-				},
-				(events) =>
-					events.some((e) => e.kind === "branch_done") &&
-					!events.some((e) => e.kind === "report" || e.kind === "error"),
-				{
-					text: "Reply with the single word you replied with before, and nothing else.",
-					expect: "BANANA",
-				},
-			).catch(
-				(e: unknown) =>
-					`after a turn with no report: fail (${e instanceof Error ? e.message : String(e)})`,
-			),
-		];
-for (const line of r7) console.log(`R7 resume ${line}`);
+const r7 = await reopensAfterFailedReport().catch(
+	(e: unknown) => `fail (${e instanceof Error ? e.message : String(e)})`,
+);
+console.log(`R7 resume after a failed report: ${r7}`);
 if (pass && installedVersion) {
 	const today = new Date().toISOString().slice(0, 10);
 	console.log(`tested: { version: "${installedVersion}", date: "${today}" },`);
@@ -436,4 +413,5 @@ if (pass && installedVersion) {
 		"no tested record: the harness reported no version in initialize",
 	);
 }
-process.exit(pass && !r6.startsWith("fail") ? 0 : 1);
+const r7Ok = r7.startsWith("pass") || r7.startsWith("skipped");
+process.exit(pass && !r6.startsWith("fail") && r7Ok ? 0 : 1);
