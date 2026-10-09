@@ -55,6 +55,16 @@ console.log(
 const problems = [];
 if (files.length > maxFiles)
 	problems.push(`${files.length} files is over the budget of ${maxFiles}`);
+// Only this platform's native prebuilds ship (#673 walk 4).
+const own = [`${process.platform}-${process.arch}`];
+if (process.platform === "linux") own.push(`linuxmusl-${process.arch}`);
+for (const f of files) {
+	const parts = f.split("\\");
+	const at = parts.indexOf("prebuilds");
+	const name = at >= 0 ? parts[at + 1] : undefined;
+	if (name && !own.some((t) => name === t || name.startsWith(`${t}.`)))
+		problems.push(`a prebuild for another platform ships: ${f}`);
+}
 if (values.paths) {
 	const over = files.filter((f) => prefix + 1 + f.length > MAX_PATH);
 	for (const f of over)

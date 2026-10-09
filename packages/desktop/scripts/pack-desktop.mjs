@@ -92,10 +92,15 @@ console.log(
 
 /**
  * Drop what no running server reads: source maps, type declarations and
- * TypeScript sources, Markdown, and each package's own tests, docs and
- * examples. Licence files stay.
+ * TypeScript sources, Markdown, each package's own tests, docs and examples,
+ * and native prebuilds for other platforms. Licence files stay.
  */
 function prune(nodeModules) {
+	// npm installs every platform's prebuild; the app runs on the one building it (#673 walk 4).
+	const own = [`${process.platform}-${process.arch}`];
+	if (process.platform === "linux") own.push(`linuxmusl-${process.arch}`);
+	const foreign = (name) =>
+		!own.some((t) => name === t || name.startsWith(`${t}.`));
 	const FILES = /\.(map|ts|mts|cts|md|markdown)$/i;
 	const DIRS = new Set([
 		"test",
@@ -122,6 +127,13 @@ function prune(nodeModules) {
 			const path = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				if (entry.name === "node_modules") pruneModules(path);
+				else if (root && entry.name === "prebuilds") {
+					for (const name of readdirSync(path).filter(foreign)) {
+						const p = join(path, name);
+						count += statSync(p).isDirectory() ? countFiles(p) : 1;
+						rmSync(p, { recursive: true, force: true });
+					}
+				}
 				// Only a package's own top-level dirs: a nested `docs` can be code.
 				else if (root && DIRS.has(entry.name)) {
 					count += countFiles(path);
