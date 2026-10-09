@@ -61,8 +61,8 @@
 
 /* Safari ignores scrollbar-color; Chromium uses the standard pair above and skips these. */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -70,8 +70,6 @@
 ::-webkit-scrollbar-thumb {
   background-color: var(--surface-4);
   border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-3);
