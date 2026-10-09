@@ -6,6 +6,7 @@ import {
 	httpUrlOrNull,
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
+	isAlertFiring,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +38,7 @@ import {
 } from "@/hooks/use-back";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
+import { alertDotColor } from "@/lib/alert-groups";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { orpc } from "@/lib/api/orpc-client";
@@ -178,9 +180,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 				<>
 					<span
 						role="img"
-						aria-label={SEVERITY_LABEL[alert.severity]}
+						aria-label={`${SEVERITY_LABEL[alert.severity]}, ${isAlertFiring(alert.status) ? "firing" : "cleared"}`}
 						className="size-2 shrink-0 rounded-full"
-						style={{ background: `var(--sev-${alert.severity})` }}
+						style={{
+							background: alertDotColor(
+								alert.severity,
+								isAlertFiring(alert.status),
+							),
+						}}
 					/>
 					<h1 className="min-w-0 truncate text-title">{alert.title}</h1>
 					<span className="flex-1" />

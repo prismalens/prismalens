@@ -35,7 +35,7 @@ import { InlineCode } from "@/components/shared/InlineCode";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { alertGroups } from "@/lib/alert-groups";
+import { alertDotColor, alertGroups } from "@/lib/alert-groups";
 import { answerWord } from "@/lib/answer-word";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
@@ -333,10 +333,7 @@ function AlertsPool() {
 								role="img"
 								aria-label={`${SEVERITY_LABEL[g.severity]}, ${g.firing > 0 ? "firing" : "cleared"}`}
 								className="mt-1.5 size-2 shrink-0 rounded-full"
-								style={{
-									background:
-										g.firing > 0 ? `var(--sev-${g.severity})` : "var(--text-3)",
-								}}
+								style={{ background: alertDotColor(g.severity, g.firing > 0) }}
 							/>
 							<div className="min-w-0 flex-1">
 								<p className="truncate text-body">{g.name}</p>

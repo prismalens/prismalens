@@ -3,7 +3,7 @@
 
 import type { AlertWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { alertDetail, alertGroups, alertName } from "./alert-groups";
+import { alertDetail, alertDotColor, alertGroups, alertName } from "./alert-groups";
 
 function alert(
 	title: string,
@@ -66,5 +66,10 @@ describe("alertGroups", () => {
 			firstAt: "2026-09-30T09:00:00Z",
 			lastAt: "2026-09-30T11:00:00Z",
 		});
+	});
+
+	it("returns severity colour while firing, quiet once cleared", () => {
+		expect(alertDotColor("critical", true)).toBe("var(--sev-critical)");
+		expect(alertDotColor("critical", false)).toBe("var(--text-3)");
 	});
 });
