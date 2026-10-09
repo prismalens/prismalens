@@ -408,6 +408,18 @@ function AgentRow({
 					<Mono>{harness.install}</Mono>
 				)
 			}
+			below={
+				harness.id === "opencode" ? (
+					// opencode.ai/docs/permissions: OpenCode's own rules decide what it asks (#673 w21).
+					<p
+						className="text-meta text-text-3 [&_code]:bg-transparent! [&_code]:p-0!"
+						data-testid="harness-opencode-asks"
+					>
+						OpenCode asks where your opencode.json says <code>ask</code>; by
+						default that is files outside the workspace only.
+					</p>
+				) : undefined
+			}
 			trailing={
 				harness.installed && (
 					<Button
