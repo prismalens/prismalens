@@ -140,3 +140,27 @@ Feature: The conversation and the box
       Then the laptop shows the message as "You" within 2 seconds
       When I press Stop on the laptop
       Then the phone's status line reads "Stopped by you" and its box reads "Say what to change, or just continue"
+
+  Rule: Ask
+    PrismaLens never approves an ask itself: the run waits.
+
+    Background:
+      Given a paired browser at 1440 px
+      And INC-1 has a run started on "ask"
+
+    Scenario: An ask waits for you: Approve
+      Then the band shows "Waiting for your approval"
+      And the card names "Write /tmp/pl-ask-probe.txt"
+      When I click "Approve"
+      Then the card reads "You approved it"
+      And the band text goes away
+      And the run ends with "Report ready"
+
+    Scenario: An ask waits for you: Deny
+      Then the band shows "Waiting for your approval"
+      And the card names "Write /tmp/pl-ask-probe.txt"
+      When I click "Deny"
+      Then the card reads "You denied it"
+      And the band text goes away
+      And the run ends with "Report ready"
+

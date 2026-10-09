@@ -1069,3 +1069,99 @@ Then(
 		expect(sent).toBe(0);
 	},
 );
+
+// --- Asks (#673 w21) -----------------------------------------------------------------
+
+Given(
+	/^(?:INC-1 has a run started on|INC-1 has a run in progress on) "(.+)"$/,
+	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
+		const s = session.replace(/^fake-session:/, "");
+		await runOn(
+			page,
+			{ alertmanager, deliverWebhook, unique },
+			"BooklogrAskProbe",
+			s,
+		);
+		await openConversation(page);
+		await expect(page.getByTestId("transcript-ask")).toBeVisible();
+	},
+);
+
+Given(
+	"a paired browser at {int} px and INC-1 has a run started on {string}",
+	async (
+		{ page, alertmanager, deliverWebhook, unique },
+		width: number,
+		session: string,
+	) => {
+		await page.setViewportSize({ width, height: 900 });
+		const s = session.replace(/^fake-session:/, "");
+		await runOn(
+			page,
+			{ alertmanager, deliverWebhook, unique },
+			"BooklogrAskProbe",
+			s,
+		);
+		await openConversation(page);
+		await expect(page.getByTestId("transcript-ask")).toBeVisible();
+	},
+);
+
+Then(
+	/^(?:the band shows|the band reads) "Waiting for your approval"$/,
+	async ({ page }) => {
+		const band = page.getByTestId("band-awaiting-approval");
+		await expect(band).toBeVisible();
+		await expect(band).toHaveText("Waiting for your approval");
+	},
+);
+
+Then(
+	/^(?:the )?(?:ask )?card names "(.+)"$/,
+	async ({ page }, name: string) => {
+		const card = page.getByTestId("transcript-ask");
+		await expect(card).toBeVisible();
+		await expect(card).toHaveAttribute("data-state", "waiting");
+		await expect(card).toContainText(name);
+	},
+);
+
+When(
+	/^(?:I click|clicking) "(Approve|Deny)"(?: on the ask card)?$/,
+	async ({ page }, action: string) => {
+		const testId = action === "Approve" ? "ask-approve" : "ask-deny";
+		await page.getByTestId(testId).click();
+	},
+);
+
+Then(
+	/^(?:the )?(?:ask )?card reads "(You approved it|You denied it)"$/,
+	async ({ page }, text: string) => {
+		const card = page.getByTestId("transcript-ask");
+		const expectedState = text === "You approved it" ? "approved" : "denied";
+		await expect(card).toHaveAttribute("data-state", expectedState);
+		await expect(page.getByTestId("transcript-ask-end")).toHaveText(text);
+	},
+);
+
+Then(
+	/^(?:the band text goes away|the band no longer shows "Waiting for your approval")$/,
+	async ({ page }) => {
+		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
+	},
+);
+
+Then(
+	/^(?:the run ends with|the end line offers) "Report ready"$/,
+	async ({ page }) => {
+		await waitForRun(
+			page,
+			inc(page).id,
+			(r) => r.status === "completed",
+			"the run's report",
+		);
+		const end = page.getByTestId("transcript-end");
+		await expect(end).toBeVisible();
+		await expect(end).toContainText("Report ready");
+	},
+);
