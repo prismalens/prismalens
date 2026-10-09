@@ -20,6 +20,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	isPlanMode,
 	refuseModel,
 } from "@prismalens/config/harness";
 import type {
@@ -83,6 +84,14 @@ function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 		)
 			out[id as HarnessId] = model.trim();
 	}
+	return out;
+}
+
+/** A stored plan mode is dropped, so the run takes the agent's default ask mode (#673 w21). */
+function cleanModes(raw: unknown): Partial<Record<HarnessId, string>> {
+	const out = cleanModels(raw);
+	for (const id of Object.keys(out) as HarnessId[])
+		if (isPlanMode(id, out[id] ?? null)) delete out[id];
 	return out;
 }
 
@@ -189,7 +198,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			const models = cleanModels(parsed.models);
 			const efforts = cleanModels(parsed.efforts);
 			const favourites = cleanFavourites(parsed.favourites);
-			const agentModes = cleanModels(parsed.agentModes);
+			const agentModes = cleanModes(parsed.agentModes);
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
@@ -207,7 +216,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
-		const agentModes = cleanModels({
+		const agentModes = cleanModes({
 			...current.agentModes,
 			...patch.agentModes,
 		});

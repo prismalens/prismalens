@@ -24,7 +24,9 @@ import {
 	type EventBus,
 	type MessageState,
 	type RelayMessage,
+	type RunAskRequest,
 	type RunMessageRequest,
+	runAskTopic,
 	runCancelTopic,
 	runEventsTopic,
 	runMessageTopic,
@@ -56,6 +58,8 @@ export interface RunningJob {
 		attachments?: JobAttachment[],
 		kind?: FollowUpKind,
 	): MessageState;
+	/** The operator's answer to one of the agent's asks (#673 w21); null when it no longer waits. */
+	answer?(askId: string, approve: boolean): "approved" | "denied" | null;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -185,6 +189,10 @@ export class Dispatcher {
 					running.message?.(m.text, m.mode, m.attachments, m.kind) ?? null,
 				),
 		);
+		const askSub = this.bus.subscribe<RunAskRequest>(
+			runAskTopic(job.investigationId),
+			(a) => a.reply(running.answer?.(a.askId, a.approve) ?? null),
+		);
 
 		void running.done
 			.then(async (outcome) => {
@@ -203,6 +211,7 @@ export class Dispatcher {
 			.finally(() => {
 				cancelSub.unsubscribe();
 				messageSub.unsubscribe();
+				askSub.unsubscribe();
 				this.inFlight.delete(job.id);
 				// A freed slot is worth claiming into immediately rather than waiting for
 				// the next enqueue — but not from inside this callback's stack.

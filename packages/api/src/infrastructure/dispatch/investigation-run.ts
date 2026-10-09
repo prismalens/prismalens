@@ -47,6 +47,7 @@ import type {
 import {
 	conductRun,
 	type InvestigationSink,
+	type PermissionPolicy,
 	type ResolvedConnector,
 	type SteerPort,
 	telemetryEndpointsFrom,
@@ -82,6 +83,8 @@ export interface JobIo {
 	streamDone(): void | Promise<void>;
 	signal: AbortSignal;
 	steer?: SteerPort;
+	/** Answers the agent's asks; the operator's Approve or Deny (#673 w21). */
+	permission?: PermissionPolicy;
 }
 
 export interface JobContext {
@@ -255,6 +258,7 @@ async function runJobInternal(
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
+				...(io.permission ? { permission: io.permission } : {}),
 				...(brief ? { brief } : {}),
 				onSession: (s) => keepSession(ports, runId, harness, s),
 			},
@@ -481,6 +485,7 @@ async function runFollowUp(
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
+				...(io.permission ? { permission: io.permission } : {}),
 				resume: {
 					sessionId: inv.acpSessionId,
 					text: resume.text,

@@ -292,6 +292,7 @@ model Investigation {
   // A thread's turns (#673 w59): what the live turn owes, how the last message ended
   liveTurn        String? // report | answer; null when nothing runs
   lastTurnOutcome String? // answered | stopped | error; null until a follow-up ends
+  awaitingApprovalAt DateTime? // the agent waits on the operator's Approve or Deny (#673 w21)
 
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   recommendations Recommendation[]

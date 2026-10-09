@@ -295,6 +295,23 @@ export class InvestigationsController {
 			// The run holder answers on the bus; a pending run may not be held yet, so
 			// retry like cancel before refusing. On a finished run it is a follow-up
 			// in the same agent session (#747).
+			// POST /investigations/:id/asks/:askId - The operator's Approve or Deny (#673 w21).
+			answerAsk: implement(investigationsContract.answerAsk).handler(
+				async ({ input }) => {
+					const outcome = this.dispatchService.answerAsk(
+						input.id,
+						input.askId,
+						input.decision === "approve",
+					);
+					if (!outcome)
+						throw new ORPCError("CONFLICT", {
+							message:
+								"This ask is no longer waiting: it was answered, timed out, or the run ended.",
+						});
+					return { outcome };
+				},
+			),
+
 			message: implement(investigationsContract.message).handler(
 				async ({ input }) => {
 					const investigation = await this.investigationsService.findById(
@@ -598,6 +615,8 @@ export class InvestigationsController {
 			model: investigation.model ?? null,
 			effort: investigation.effort ?? null,
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
+			awaitingApprovalAt:
+				investigation.awaitingApprovalAt?.toISOString() ?? null,
 			triggerType: investigation.triggerType ?? null,
 			liveTurn: (investigation.liveTurn as LiveTurn | null) ?? null,
 			lastTurnOutcome:
@@ -617,6 +636,7 @@ export class InvestigationsController {
 
 		return {
 			...base,
+			incidentNumber: investigation.incident.number,
 			recommendations: investigation.recommendations
 				? investigation.recommendations.map((r: Recommendation) => ({
 						id: r.id,
