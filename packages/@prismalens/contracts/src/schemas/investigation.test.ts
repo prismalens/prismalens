@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { ChatIncidentSchema, InvestigateIncidentSchema } from "./incident.js";
 import {
+	AnswerAskSchema,
 	CanonicalEventSchema,
 	CulpritSchema,
 	InvestigationContextSchema,
@@ -517,3 +518,55 @@ describe("a run's own chips (#673 w52)", () => {
 		);
 	});
 });
+
+describe("permission_ask and permission_answer events (#673 w21)", () => {
+	const runId = "11111111-1111-4111-8111-111111111111";
+	const askId = "22222222-2222-4222-8222-222222222222";
+	const base = {
+		runId,
+		branchId: "run",
+		path: [],
+		seq: 8,
+		ts: "2026-10-09T10:00:00.000Z",
+	};
+
+	it("parses permission_ask and permission_answer canonical events", () => {
+		const ask = {
+			...base,
+			kind: "permission_ask" as const,
+			askId,
+			title: "Run command",
+			detail: "rm -rf /tmp/build",
+			toolKind: "bash",
+			expiresAt: "2026-10-09T10:10:00.000Z",
+		};
+		expect(CanonicalEventSchema.parse(ask)).toEqual(ask);
+
+		const answer = {
+			...base,
+			kind: "permission_answer" as const,
+			askId,
+			outcome: "approved" as const,
+		};
+		expect(CanonicalEventSchema.parse(answer)).toEqual(answer);
+	});
+
+	it("parses permission_ask with nullable detail and toolKind", () => {
+		const ask = {
+			...base,
+			kind: "permission_ask" as const,
+			askId,
+			title: "Proceed",
+			detail: null,
+			toolKind: null,
+			expiresAt: "2026-10-09T10:10:00.000Z",
+		};
+		expect(CanonicalEventSchema.parse(ask)).toEqual(ask);
+	});
+
+	it("parses AnswerAskSchema input", () => {
+		const input = { askId, decision: "approve" as const };
+		expect(AnswerAskSchema.parse(input)).toEqual(input);
+	});
+});
+

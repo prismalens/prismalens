@@ -3,9 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	type Ask,
 	type FinishedInvestigation,
 	type InvestigationStatus,
 	type InvestigationSummary,
+	askNotificationText,
+	askSnapshot,
+	newlyAsking,
 	newlyFinished,
 	notificationText,
 	runningCount,
@@ -252,6 +256,118 @@ describe("notifications", () => {
 				title: "Investigation failed",
 				body: "",
 			});
+		});
+	});
+
+	describe("newlyAsking (#673 w21)", () => {
+		it("announces a waiting run on the first poll-like case (empty previous)", () => {
+			const previous = new Map<string, string>();
+			const current: InvestigationSummary[] = [
+				{
+					id: "inv-1",
+					summary: null,
+					status: "running",
+					incidentId: "inc-100",
+					incidentNumber: 7,
+					awaitingApprovalAt: "2026-10-09T10:00:00Z",
+				},
+			];
+			expect(newlyAsking(previous, current)).toEqual([
+				{
+					id: "inv-1",
+					incidentId: "inc-100",
+					incidentNumber: 7,
+					since: "2026-10-09T10:00:00Z",
+				},
+			]);
+		});
+
+		it("does not announce the same awaitingApprovalAt again", () => {
+			const previous = new Map<string, string>([
+				["inv-1", "2026-10-09T10:00:00Z"],
+			]);
+			const current: InvestigationSummary[] = [
+				{
+					id: "inv-1",
+					summary: null,
+					status: "running",
+					awaitingApprovalAt: "2026-10-09T10:00:00Z",
+				},
+			];
+			expect(newlyAsking(previous, current)).toEqual([]);
+		});
+
+		it("announces a new awaitingApprovalAt on the same run", () => {
+			const previous = new Map<string, string>([
+				["inv-1", "2026-10-09T10:00:00Z"],
+			]);
+			const current: InvestigationSummary[] = [
+				{
+					id: "inv-1",
+					summary: null,
+					status: "running",
+					awaitingApprovalAt: "2026-10-09T10:05:00Z",
+				},
+			];
+			expect(newlyAsking(previous, current)).toEqual([
+				{
+					id: "inv-1",
+					incidentId: undefined,
+					incidentNumber: undefined,
+					since: "2026-10-09T10:05:00Z",
+				},
+			]);
+		});
+	});
+
+	describe("askNotificationText (#673 w21)", () => {
+		it("formats title with INC-n when incidentNumber is present", () => {
+			const ask: Ask = {
+				id: "inv-1",
+				incidentNumber: 7,
+				since: "2026-10-09T10:00:00Z",
+			};
+			expect(askNotificationText(ask).title).toBe(
+				"INC-7 is waiting for your approval",
+			);
+		});
+
+		it("formats title with 'A run' without a number", () => {
+			const ask: Ask = {
+				id: "inv-1",
+				since: "2026-10-09T10:00:00Z",
+			};
+			expect(askNotificationText(ask).title).toBe(
+				"A run is waiting for your approval",
+			);
+		});
+	});
+
+	describe("askSnapshot (#673 w21)", () => {
+		it("keeps only waiting runs", () => {
+			const current: InvestigationSummary[] = [
+				{
+					id: "inv-1",
+					summary: null,
+					status: "running",
+					awaitingApprovalAt: "2026-10-09T10:00:00Z",
+				},
+				{
+					id: "inv-2",
+					summary: null,
+					status: "running",
+					awaitingApprovalAt: null,
+				},
+				{
+					id: "inv-3",
+					summary: null,
+					status: "pending",
+				},
+			];
+			const result = askSnapshot(current);
+			expect(result).toBeInstanceOf(Map);
+			expect(result.size).toBe(1);
+			expect(result.get("inv-1")).toBe("2026-10-09T10:00:00Z");
 		});
 	});
 });
