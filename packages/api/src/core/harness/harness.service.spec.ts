@@ -100,6 +100,19 @@ describe("HarnessService", () => {
 				harness: "auto",
 			});
 		});
+
+		it("a stored {agentModes: {'claude-code':'plan', codex:'agent'}} reads back without claude-code", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					agentModes: { "claude-code": "plan", codex: "agent" },
+				}),
+			);
+			await expect(service().getSettings()).resolves.toEqual({
+				harness: "auto",
+				agentModes: { codex: "agent" },
+			});
+		});
 	});
 
 	describe("updateSettings", () => {
@@ -140,6 +153,18 @@ describe("HarnessService", () => {
 			await expect(
 				service().updateSettings({ agentModes: { "claude-code": "acceptEdits", opencode: null } }),
 			).resolves.toEqual({ harness: "auto", agentModes: { codex: "agent", "claude-code": "acceptEdits" } });
+		});
+
+		it("updateSettings with agentModes {opencode:'plan'} stores none for opencode", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", agentModes: {} }),
+			);
+			const result = await service().updateSettings({
+				agentModes: { opencode: "plan" },
+			});
+			expect(result.agentModes).toBeUndefined();
+			const call = mockPrismaService.setting.upsert.mock.calls[0][0];
+			expect(JSON.parse(call.create.value).agentModes).toBeUndefined();
 		});
 
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {

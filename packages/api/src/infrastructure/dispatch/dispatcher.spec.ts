@@ -20,9 +20,10 @@ import {
 import {
 	InProcessEventBus,
 	type RelayMessage,
+	runAskTopic,
 	runCancelTopic,
-	runMessageTopic,
 	runEventsTopic,
+	runMessageTopic,
 } from "./event-bus.js";
 import type { ClaimedJob, JobFields, JobStore } from "./job-store.js";
 
@@ -91,6 +92,7 @@ function controllableRunner() {
 	const killed: string[] = [];
 	const sinks = new Map<string, RunSink>();
 	const messages: string[] = [];
+	const asks: Array<{ askId: string; approve: boolean }> = [];
 
 	const runner: JobRunner = (j, sink) => {
 		started.push(j);
@@ -107,6 +109,10 @@ function controllableRunner() {
 				messages.push(`${mode}:${text}`);
 				return mode === "now" ? "sent" : "queued";
 			},
+			answer: (askId, approve) => {
+				asks.push({ askId, approve });
+				return approve ? "approved" : "denied";
+			},
 			kill: () => {
 				killed.push(j.id);
 				sink.onStreamDone();
@@ -115,7 +121,7 @@ function controllableRunner() {
 		};
 	};
 
-	return { runner, started, finish, cancelled, killed, sinks, messages };
+	return { runner, started, finish, cancelled, killed, sinks, messages, asks };
 }
 
 const OPTS = { concurrency: 2 };
@@ -278,6 +284,37 @@ describe("Dispatcher", () => {
 			await vi.waitFor(() => expect(store.completed).toHaveLength(1));
 
 			expect(bus.publish(runCancelTopic("inv-1"), { kind: "cancel" })).toBe(0);
+			await dispatcher.stop();
+		});
+
+		it("an ask published on runAskTopic reaches running.answer and the reply carries its return; after the job settles nobody is subscribed", async () => {
+			const { runner, finish, asks } = controllableRunner();
+			store.pending = [job(1)];
+			const dispatcher = new Dispatcher(store, bus, runner, OPTS);
+
+			await dispatcher.tick();
+			const replies: Array<string | null> = [];
+			const receivers = bus.publish(runAskTopic("inv-1"), {
+				askId: "ask-1",
+				approve: true,
+				reply: (o: string | null) => replies.push(o),
+			});
+
+			expect(receivers).toBe(1);
+			expect(asks).toEqual([{ askId: "ask-1", approve: true }]);
+			expect(replies).toEqual(["approved"]);
+
+			finish.get("job-1")?.({ outcome: "succeeded" });
+			await vi.waitFor(() => expect(store.completed).toHaveLength(1));
+
+			expect(bus.subscriberCount(runAskTopic("inv-1"))).toBe(0);
+			expect(
+				bus.publish(runAskTopic("inv-1"), {
+					askId: "ask-2",
+					approve: true,
+					reply: () => {},
+				}),
+			).toBe(0);
 			await dispatcher.stop();
 		});
 	});

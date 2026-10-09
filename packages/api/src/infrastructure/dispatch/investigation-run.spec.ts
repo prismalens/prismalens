@@ -55,6 +55,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
+		markAwaitingApproval: vi.fn(async () => {}),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
@@ -559,7 +560,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		};
 		expect(await modeOf({ agentMode: "build" }, "plan")).toBe("build");
 		expect(await modeOf({}, "build")).toBe("build");
-		expect(await modeOf({})).toBe("plan");
+		expect(await modeOf({})).toBe("build");
 	});
 });
 

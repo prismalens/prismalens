@@ -33,7 +33,9 @@ function sink(): RunSink {
 	return { onEvent: vi.fn(), onStreamDone: vi.fn(), onProgress: vi.fn() };
 }
 
-const ports = {} as RunPorts;
+const ports = {
+	markAwaitingApproval: vi.fn(async () => {}),
+} as unknown as RunPorts;
 
 describe("createInProcessRunner", () => {
 	it("throws synchronously on an unparseable payload, before any run starts", () => {
@@ -150,4 +152,111 @@ describe("createInProcessRunner", () => {
 			running.kill();
 		},
 	);
+
+	it("answer() reaches the channel, markAwaitingApproval is called with a Date then null, and unknown id returns null", async () => {
+		const runInvestigationJob = (await import("./investigation-run.js")).default;
+		let decisionPromise: Promise<unknown>;
+		vi.mocked(runInvestigationJob).mockImplementation(async (_job, _data, io) => {
+			decisionPromise = Promise.resolve(
+				io.permission!(
+					{ options: [{ optionId: "opt-1", kind: "allow_once" }] },
+					{ askId: "ask-1", signal: io.signal },
+				),
+			);
+			await decisionPromise;
+			return {
+				success: true,
+				investigationId: "inv-1",
+				incidentId: "inc-1",
+				findings: {},
+				recommendations: [],
+			};
+		});
+
+		const markAwaitingApproval = vi.fn(async () => {});
+		const runner = createInProcessRunner({
+			markAwaitingApproval,
+		} as unknown as RunPorts);
+		const running = runner(
+			job({ investigationId: "inv-1", incidentId: "inc-1" }),
+			sink(),
+		);
+
+		await vi.waitFor(() => {
+			expect(markAwaitingApproval).toHaveBeenCalledWith(
+				"inv-1",
+				expect.any(Date),
+			);
+		});
+
+		expect(running.answer?.("unknown-ask", true)).toBeNull();
+
+		const answerResult = running.answer?.("ask-1", true);
+		expect(answerResult).toBe("approved");
+
+		const decision = await decisionPromise!;
+		expect(decision).toMatchObject({
+			outcome: "approved",
+			allow: true,
+			optionId: "opt-1",
+		});
+
+		await vi.waitFor(() => {
+			expect(markAwaitingApproval).toHaveBeenLastCalledWith("inv-1", null);
+		});
+
+		const outcome = await running.done;
+		expect(outcome).toEqual({ outcome: "succeeded" });
+	});
+
+	it("when the job ends the waiting ask resolves stopped", async () => {
+		const runInvestigationJob = (await import("./investigation-run.js")).default;
+		let decisionPromise: Promise<unknown>;
+		let resolveRun!: () => void;
+		vi.mocked(runInvestigationJob).mockImplementation(async (_job, _data, io) => {
+			decisionPromise = Promise.resolve(
+				io.permission!(
+					{ options: [{ optionId: "opt-1", kind: "allow_once" }] },
+					{ askId: "ask-1", signal: io.signal },
+				),
+			);
+			await new Promise<void>((resolve) => {
+				resolveRun = resolve;
+			});
+			return {
+				success: true,
+				investigationId: "inv-1",
+				incidentId: "inc-1",
+				findings: {},
+				recommendations: [],
+			};
+		});
+
+		const markAwaitingApproval = vi.fn(async () => {});
+		const runner = createInProcessRunner({
+			markAwaitingApproval,
+		} as unknown as RunPorts);
+		const running = runner(
+			job({ investigationId: "inv-1", incidentId: "inc-1" }),
+			sink(),
+		);
+
+		await vi.waitFor(() => {
+			expect(markAwaitingApproval).toHaveBeenCalledWith(
+				"inv-1",
+				expect.any(Date),
+			);
+		});
+
+		resolveRun();
+		const outcome = await running.done;
+		expect(outcome).toEqual({ outcome: "succeeded" });
+
+		const decision = await decisionPromise!;
+		expect(decision).toMatchObject({ outcome: "stopped", allow: false });
+
+		await vi.waitFor(() => {
+			expect(markAwaitingApproval).toHaveBeenLastCalledWith("inv-1", null);
+		});
+	});
 });

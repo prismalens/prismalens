@@ -100,7 +100,7 @@ beforeAll(async () => {
 	const shipped = resolveMigrationsDir();
 	const before = mkdtempSync(join(env.root, "before-"));
 	for (const name of readdirSync(shipped)) {
-		if (name.endsWith("_investigation_turns") || !existsSync(join(shipped, name, "migration.sql"))) continue;
+		if (name >= "20261008200000_investigation_turns" || !existsSync(join(shipped, name, "migration.sql"))) continue;
 		cpSync(join(shipped, name), join(before, name), { recursive: true });
 	}
 	await runMigrations({ migrationsDir: before, log: () => {} });
@@ -711,6 +711,114 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 
 		expect(await read(newer.id)).toMatchObject({ status: "pending" });
 		expect(await read(older.id)).toMatchObject({ status: "completed", lastTurnOutcome: "error", liveTurn: null });
+	});
+});
+
+describe("denyAsksLeftWaiting and answerAsk (#673 w21)", () => {
+	it("denyAsksLeftWaiting at onModuleInit appends exactly one restarted answer per unanswered ask (an answered one gets none), clears awaitingApprovalAt, and runs before failRunning", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, {
+			status: "running",
+			liveTurn: "report",
+			awaitingApprovalAt: new Date("2026-10-09T10:00:00Z"),
+		});
+		await job(row.id, inc.id, {}, "running");
+
+		const answeredAskId = "11111111-1111-4111-8111-111111111111";
+		const unansweredAskId = "22222222-2222-4222-8222-222222222222";
+		const now = new Date().toISOString();
+
+		await investigations.appendEvents(row.id, [
+			{
+				kind: "permission_ask",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				ts: now,
+				askId: answeredAskId,
+				title: "run command",
+				detail: "npm test",
+				toolKind: "bash",
+				expiresAt: now,
+			},
+			{
+				kind: "permission_answer",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				ts: now,
+				askId: answeredAskId,
+				outcome: "approved",
+			},
+			{
+				kind: "permission_ask",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				ts: now,
+				askId: unansweredAskId,
+				title: "run command",
+				detail: "npm build",
+				toolKind: "bash",
+				expiresAt: now,
+			},
+		]);
+
+		const callOrder: string[] = [];
+		let awaitingApprovalAtWhenFailRunningCalled: Date | null = new Date();
+
+		const originalFailRunning = service["store"].failRunning.bind(service["store"]);
+		vi.spyOn(service["store"], "failRunning").mockImplementation(async (reason) => {
+			callOrder.push("failRunning");
+			const r = await prisma.investigation.findUnique({
+				where: { id: row.id },
+				select: { awaitingApprovalAt: true },
+			});
+			awaitingApprovalAtWhenFailRunningCalled = r?.awaitingApprovalAt ?? null;
+			return originalFailRunning(reason);
+		});
+
+		const originalDeny = (service as unknown as { denyAsksLeftWaiting: () => Promise<void> })["denyAsksLeftWaiting"].bind(service);
+		vi.spyOn(service as unknown as { denyAsksLeftWaiting: () => Promise<void> }, "denyAsksLeftWaiting").mockImplementation(async () => {
+			callOrder.push("denyAsksLeftWaiting");
+			return originalDeny();
+		});
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect(callOrder).toEqual(["denyAsksLeftWaiting", "failRunning"]);
+		expect(awaitingApprovalAtWhenFailRunningCalled).toBeNull();
+
+		const updatedRow = await read(row.id);
+		expect(updatedRow.awaitingApprovalAt).toBeNull();
+
+		const events = await prisma.investigationEvent.findMany({
+			where: { investigationId: row.id },
+			orderBy: { seq: "asc" },
+		});
+		const parsedEvents = events.map((e) => JSON.parse(e.event));
+		const answers = parsedEvents.filter((e: { kind: string }) => e.kind === "permission_answer");
+
+		expect(answers).toHaveLength(2);
+		expect(answers[0]).toMatchObject({
+			askId: answeredAskId,
+			outcome: "approved",
+		});
+		expect(answers[1]).toMatchObject({
+			askId: unansweredAskId,
+			outcome: "restarted",
+			branchId: "main",
+		});
+	});
+
+	it("answerAsk returns null with no receiver", () => {
+		const { service } = realDispatch();
+		expect(service.answerAsk("inv-unknown", "ask-1", true)).toBeNull();
 	});
 });
 
