@@ -91,6 +91,47 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(r2.report.fidelity?.servedModel).toBeUndefined();
 	});
 
+	it("with modelThroughEnv does not send session/set_config_option for the model and ends in report (#673 w57)", async () => {
+		const { events, runDir } = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			modelThroughEnv: true,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODELS: "served/model,asked/model",
+				FAKE_SERVED_MODEL: "served/model",
+			},
+		});
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(events.at(-2)?.kind).toBe("branch_done");
+		expect(
+			events.find((e) => e.kind === "session_config" && e.option === "model"),
+		).toBeUndefined();
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).not.toContain("session/set_config_option");
+
+		const without = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			modelThroughEnv: false,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODELS: "served/model,asked/model",
+				FAKE_SERVED_MODEL: "served/model",
+			},
+		});
+		expect(
+			without.events.find(
+				(e) => e.kind === "session_config" && e.option === "model",
+			),
+		).toMatchObject({ option: "model", value: "asked/model", accepted: true });
+		const withoutWire = readFileSync(join(without.runDir, "transcript.jsonl"), "utf8");
+		expect(withoutWire).toContain("session/set_config_option");
+	});
+
 	it("refuses to run when the harness will not switch to the chosen model, before any prompt (R4.2)", async () => {
 		const { events, runDir } = await collect("ok", {
 			model: "asked/model",
@@ -534,6 +575,40 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
 	});
 
+	it("a resumed run with resume.newer includes the note in outbound prompt but not in operator_message (#673 w27)", async () => {
+		const { events, runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: {
+				sessionId: "ses_old",
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [{ name: "repo", head: "1a2b3c4d5e6f" }],
+				newer: {
+					number: 4,
+					heads: [{ name: "repo", head: "5d6e7f8a9b0c" }],
+				},
+			},
+		});
+		const opMsg = events.find((e) => e.kind === "operator_message");
+		if (opMsg?.kind !== "operator_message") throw new Error("no operator_message");
+		expect(opMsg.text).toBe("Why the pool?");
+		expect(opMsg.text).not.toContain("Run #4");
+		expect(opMsg.text).not.toContain("5d6e7f8");
+
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const promptOut = wire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => e.m)
+			.find((m) => m.includes("session/prompt"));
+		expect(promptOut).toBeDefined();
+		expect(promptOut).toContain("Why the pool?");
+		expect(promptOut).toContain("Run #4");
+		expect(promptOut).toContain("5d6e7f8");
+	});
+
 	it("continuing a stopped run answers the operator and ends in a report (R4.4)", async () => {
 		const { events } = await collect("continue", {
 			env: { ...process.env, FAKE_ACP_MODE: "continue", FAKE_LOAD_SESSION: "1" },
@@ -726,6 +801,38 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 	it("passes no executable when none is on PATH", () => {
 		const env = envFor(tmp("empty-path"));
 		expect(env.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
+	});
+
+	it("overrides the host env model var only when modelThroughEnv is set (#673 w57)", () => {
+		const withThroughEnv = prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			model: "my-gw-model",
+			modelThroughEnv: true,
+			env: { ANTHROPIC_MODEL: "other" },
+		});
+		expect(withThroughEnv.env.ANTHROPIC_MODEL).toBe("my-gw-model");
+
+		const withoutThroughEnv = prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			model: "my-gw-model",
+			modelThroughEnv: false,
+			env: { ANTHROPIC_MODEL: "other" },
+		});
+		expect(withoutThroughEnv.env.ANTHROPIC_MODEL).toBe("other");
+
+		const codex = prepareRunEnv({
+			harness: "codex",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			model: "my-gw-model",
+			modelThroughEnv: true,
+		});
+		expect(codex.env.ANTHROPIC_MODEL).toBeUndefined();
+		expect(Object.values(codex.env)).not.toContain("my-gw-model");
 	});
 });
 
