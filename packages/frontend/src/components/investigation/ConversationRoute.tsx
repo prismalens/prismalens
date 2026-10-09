@@ -166,6 +166,7 @@ export function ConversationRoute() {
 					<Transcript
 						items={items}
 						incidentId={incident.id}
+						runId={investigation.id}
 						focus={search.call}
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
