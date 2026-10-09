@@ -504,3 +504,122 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 		expect(endTexts(items)).toHaveLength(1);
 	});
 });
+
+describe("Send now carries the queued message (#673 walk 4)", () => {
+	it("carries an immediately preceding delivered queued message into mode now (#673 walk 4)", () => {
+		// A and B both become mode now and then answered once the agent answers.
+		const items = deriveTranscript(
+			[
+				operator(0, "Investigate cache issue"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", true),
+				operator(2, "Message B", "now", true),
+				step(3, "Answering both messages."),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "now",
+			state: "answered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "answered",
+		});
+	});
+
+	it("does not carry a queued message if agent prose intervenes (#673 walk 4)", () => {
+		// Agent prose between A and B leaves A in mode queue.
+		const items = deriveTranscript(
+			[
+				operator(0, "Investigate cache issue"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", true),
+				step(3, "Intermediate prose."),
+				operator(4, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "queue",
+			state: "answered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+
+	it("does not carry over the run brief when send now arrives directly after it (#673 walk 4)", () => {
+		// The brief keeps state started and mode queue because it is not delivered.
+		const items = deriveTranscript(
+			[
+				operator(0, "Initial brief", "queue", true),
+				operator(1, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(2);
+		expect(ops[0]).toMatchObject({
+			text: "Initial brief",
+			mode: "queue",
+			state: "started",
+		});
+		expect(ops[1]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+
+	it("does not carry an undelivered queued message preceding send now (#673 walk 4)", () => {
+		// Message A with delivered false keeps mode queue and state not_delivered.
+		const items = deriveTranscript(
+			[
+				operator(0, "Initial brief"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", false),
+				operator(3, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "queue",
+			state: "not_delivered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+});
+

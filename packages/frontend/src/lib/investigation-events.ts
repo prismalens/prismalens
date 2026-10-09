@@ -669,6 +669,13 @@ export function deriveTranscript(
 									? "sent_now"
 									: "delivered",
 				};
+				// Send now takes the messages queued just before it in the same turn, so they went now too (#673 walk 4).
+				if (item.state === "sent_now")
+					for (let i = items.length - 1; i >= 0; i--) {
+						const prev = items[i];
+						if (prev?.kind !== "operator" || prev.state !== "delivered") break;
+						prev.mode = "now";
+					}
 				operators.push({ item, brief });
 				if (sawEnd) lastFollowUpAt = items.length;
 				items.push(item);
