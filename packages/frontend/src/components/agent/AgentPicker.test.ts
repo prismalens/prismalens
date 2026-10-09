@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
 	chipModel,
+	defaultModelLine,
 	EffortChip,
 	effortLevels,
 	ModeChip,
@@ -134,3 +135,26 @@ describe("the box's chips (#673)", () => {
 		);
 	});
 });
+
+describe("defaultModelLine (#673 w57)", () => {
+	it("returns '<model>, from your environment' when envModel is set", () => {
+		expect(
+			defaultModelLine(
+				claude({
+					envModel: { key: "CLAUDE_MODEL", model: "claude-sonnet-5-5" },
+				}),
+			),
+		).toBe("Sonnet 5.5, from your environment");
+	});
+
+	it("returns the servedModel name when only servedModel is set", () => {
+		expect(defaultModelLine(claude({ envModel: null }))).toBe("Sonnet 5.5");
+	});
+
+	it("returns undefined when neither envModel nor servedModel is set", () => {
+		expect(
+			defaultModelLine(claude({ envModel: null, checked: null })),
+		).toBeUndefined();
+	});
+});
+
