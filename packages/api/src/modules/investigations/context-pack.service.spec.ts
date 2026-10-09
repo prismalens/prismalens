@@ -206,6 +206,66 @@ describe("ContextPackService", () => {
 		]);
 	});
 
+	it("returns dependent neighbours first then dependencies, and queries OR for both directions", async () => {
+		mockPrisma.serviceDependency.findMany.mockResolvedValueOnce([
+			{
+				dependentId: "svc-pay",
+				dependencyId: "svc-pg",
+				criticality: "optional",
+				dependency: { id: "svc-pg", name: "postgres" },
+			},
+			{
+				dependentId: "svc-checkout",
+				dependencyId: "svc-pay",
+				criticality: null,
+				dependent: { id: "svc-checkout", name: "checkout" },
+			},
+		]);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.neighbors).toEqual([
+			{ name: "checkout", relation: "dependent", criticality: null },
+			{ name: "postgres", relation: "dependency", criticality: "optional" },
+		]);
+		expect(mockPrisma.serviceDependency.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: {
+					OR: [
+						{ dependencyId: { in: ["svc-pay"] } },
+						{ dependentId: { in: ["svc-pay"] } },
+					],
+				},
+				take: 40,
+			}),
+		);
+	});
+
+	it("yields exactly 20 neighbours when 25 dependent edges and 5 dependency edges exist, all dependent", async () => {
+		const dependents = Array.from({ length: 25 }, (_, i) => ({
+			dependentId: `svc-caller-${i}`,
+			dependencyId: "svc-pay",
+			criticality: "required",
+			dependent: { id: `svc-caller-${i}`, name: `caller-${i}` },
+		}));
+		const dependencies = Array.from({ length: 5 }, (_, i) => ({
+			dependentId: "svc-pay",
+			dependencyId: `svc-dep-${i}`,
+			criticality: "optional",
+			dependency: { id: `svc-dep-${i}`, name: `dep-${i}` },
+		}));
+
+		mockPrisma.serviceDependency.findMany.mockResolvedValueOnce([
+			...dependents,
+			...dependencies,
+		]);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.neighbors).toHaveLength(20);
+		expect(pack?.neighbors.every((n) => n.relation === "dependent")).toBe(true);
+	});
+
 	it("ranks prior incidents by shared labels and caps at 5, dropping the unrelated one", async () => {
 		const pack = await service.assemble("inc-1");
 

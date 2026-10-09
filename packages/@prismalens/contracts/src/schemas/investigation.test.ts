@@ -265,6 +265,31 @@ describe("InvestigationContextSchema.contextPack (ADR-0016 §5)", () => {
 			}),
 		).toThrow();
 	});
+
+	it("parses a neighbour with relation 'dependency' and fails with 'sibling'", () => {
+		const valid = InvestigationContextSchema.parse({
+			alerts: [ALERT],
+			telemetry: TELEMETRY,
+			contextPack: pack({
+				neighbors: [
+					{ name: "postgres", relation: "dependency", criticality: null },
+				],
+			}),
+		});
+		expect(valid.contextPack?.neighbors[0].relation).toBe("dependency");
+
+		expect(() =>
+			InvestigationContextSchema.parse({
+				alerts: [ALERT],
+				telemetry: TELEMETRY,
+				contextPack: pack({
+					neighbors: [
+						{ name: "postgres", relation: "sibling", criticality: null },
+					],
+				}),
+			}),
+		).toThrow();
+	});
 });
 
 describe("InvestigationReportSchema — origin + flaggedContent (#207)", () => {
