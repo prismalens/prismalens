@@ -19,6 +19,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
+	runnableModes,
 } from "@prismalens/config/harness";
 import {
 	type AcpOfferedEffort,
@@ -28,7 +29,7 @@ import {
 	AcpSession,
 } from "../runner/acp-client.js";
 import { prepareRunEnv } from "./investigate.js";
-import { allowAllPolicy } from "./permission.js";
+import { denyAllPolicy } from "./permission.js";
 import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
@@ -160,9 +161,8 @@ export async function probeHarness(
 			args: descriptor.acpArgs(runEnv),
 			cwd,
 			env,
-			// Never exercised: open() sends no prompt turn, so no permission
-			// request can arrive. AcpSessionConfig has no optional form of it.
-			permission: allowAllPolicy,
+			// open() sends no prompt turn, so no ask can arrive; nobody could answer one.
+			permission: denyAllPolicy,
 			sessionMeta: descriptor.sessionMeta?.(),
 			initTimeoutMs: timeoutMs,
 		});
@@ -189,7 +189,7 @@ export async function probeHarness(
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,
-				modes: session.offeredModes.length ? session.offeredModes : null,
+				modes: runnableModes(harness, session.offeredModes),
 				efforts: effortLevels(session.effort),
 				images: session.takesImages,
 			};

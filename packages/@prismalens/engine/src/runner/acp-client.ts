@@ -5,7 +5,8 @@
  * ACP session over stdio (Agent Client Protocol v1, JSON-RPC). One session per
  * investigation: `initialize` → `session/new` → one or more `session/prompt`
  * turns. Every `session/update` is yielded from the turn that caused it; every
- * `session/request_permission` is answered by the injected policy. The child is
+ * `session/request_permission` is yielded as an ask, and answered by the injected
+ * policy, which may wait on the operator (#673 w21). The child is
  * spawned as a child by the process launcher (ADR 0004 §5).
  */
 import { createInterface } from "node:readline";
@@ -20,6 +21,7 @@ import type {
 	ToolKind,
 } from "@agentclientprotocol/sdk";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
+import type { PermissionAskOutcome } from "@prismalens/contracts/schemas";
 import type { AcpUpdate } from "../adapter/acp-adapter.js";
 import { createProcessLauncher } from "../launch/process.js";
 import type {
@@ -27,14 +29,23 @@ import type {
 	HarnessLauncher,
 	RunLimits,
 } from "../launch/types.js";
-import type { PermissionPolicy, PermissionRequest } from "../run/permission.js";
+import {
+	newAskId,
+	type PermissionDecision,
+	type PermissionPolicy,
+	type PermissionRequest,
+} from "../run/permission.js";
 
 export type AcpStreamItem =
 	| { kind: "update"; update: AcpUpdate }
+	/** The agent asked; the turn waits until a `permission` item answers `askId`. */
+	| { kind: "permission_asked"; askId: string; request: PermissionRequest }
 	| {
 			kind: "permission";
+			askId: string;
 			request: PermissionRequest;
 			allowed: boolean;
+			outcome: PermissionAskOutcome;
 			why?: string;
 			warn?: string;
 	  }
@@ -421,6 +432,8 @@ export class AcpSession {
 	private exitMessage: string | null = null;
 	private readonly stderrChunks: string[] = [];
 	private readonly driftSeen = new Set<string>();
+	/** Asks the policy has not answered; a cancel or close aborts them. */
+	private readonly asks = new Set<AbortController>();
 	agent: AcpAgentInfo = {};
 	authMethods: AcpAuthMethod[] = [];
 	/** What `session/new` offered in its `model` config option; empty when nothing. */
@@ -696,6 +709,8 @@ export class AcpSession {
 	/** Cancel the in-flight turn; the harness answers with a done carrying stopReason "cancelled". */
 	cancel(): void {
 		if (!this.currentSessionId) return;
+		// ACP: a cancelled turn's waiting asks are answered `cancelled`.
+		for (const ask of this.asks) ask.abort();
 		this.send({
 			jsonrpc: "2.0",
 			method: "session/cancel",
@@ -706,6 +721,7 @@ export class AcpSession {
 	async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
+		for (const ask of this.asks) ask.abort();
 		for (const p of this.pending.values())
 			p.reject(new Error("ACP session closing"));
 		this.pending.clear();
@@ -856,25 +872,49 @@ export class AcpSession {
 				options: (params.options as PermissionRequest["options"]) ?? [],
 				toolCall: params.toolCall as PermissionRequest["toolCall"],
 			};
-			const decision = this.config.permission(request);
-			const optionId = decision.optionId;
-			this.send({
-				jsonrpc: "2.0",
-				id: msg.id,
-				result: optionId
-					? { outcome: { outcome: "selected", optionId } }
-					: { outcome: { outcome: "cancelled" } },
-			});
-			this.push({
-				kind: "permission",
-				request,
-				allowed: decision.allow,
-				...(decision.allow
-					? decision.warn
-						? { warn: decision.warn }
-						: {}
-					: { why: decision.why }),
-			});
+			const askId = newAskId();
+			const controller = new AbortController();
+			this.asks.add(controller);
+			this.push({ kind: "permission_asked", askId, request });
+			Promise.resolve()
+				.then(() =>
+					this.config.permission(request, {
+						askId,
+						signal: controller.signal,
+					}),
+				)
+				.catch(
+					(err: unknown): PermissionDecision => ({
+						allow: false,
+						why: err instanceof Error ? err.message : String(err),
+						outcome: "denied",
+					}),
+				)
+				.then((decision) => {
+					this.asks.delete(controller);
+					if (this.closed) return;
+					const optionId =
+						decision.outcome === "stopped" ? undefined : decision.optionId;
+					this.send({
+						jsonrpc: "2.0",
+						id: msg.id,
+						result: optionId
+							? { outcome: { outcome: "selected", optionId } }
+							: { outcome: { outcome: "cancelled" } },
+					});
+					this.push({
+						kind: "permission",
+						askId,
+						request,
+						allowed: decision.allow,
+						outcome: decision.outcome,
+						...(decision.allow
+							? decision.warn
+								? { warn: decision.warn }
+								: {}
+							: { why: decision.why }),
+					});
+				});
 			return;
 		}
 		if (method.startsWith("fs/")) {

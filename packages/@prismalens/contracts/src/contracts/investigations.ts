@@ -6,6 +6,8 @@
  */
 import { oc } from "@orpc/contract";
 import {
+	AnswerAskResultSchema,
+	AnswerAskSchema,
 	CreateInvestigationSchema,
 	GetInvestigationEventsSchema,
 	IdParamSchema,
@@ -129,6 +131,26 @@ export const investigationsContract = {
 			CONFLICT: {
 				message:
 					"The run ended, or has not started, before the message reached it",
+			},
+		}),
+
+	/**
+	 * Approve or deny the agent's permission ask on a live run (#673 w21)
+	 * POST /investigations/:id/asks/:askId
+	 */
+	answerAsk: oc
+		.route({
+			method: "POST",
+			path: "/investigations/{id}/asks/{askId}",
+			summary: "Answer the agent's permission ask",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(AnswerAskSchema))
+		.output(AnswerAskResultSchema)
+		.errors({
+			CONFLICT: {
+				message:
+					"The ask is no longer waiting: it was answered, timed out, or the run ended",
 			},
 		}),
 

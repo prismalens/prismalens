@@ -147,6 +147,8 @@ const InvestigationRefSchema = z.object({
 	stopRequestedAt: DateStringSchema.nullable().optional(),
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
+	/** Set while the run's agent waits on an Approve or Deny (#673 w21). */
+	awaitingApprovalAt: DateStringSchema.nullable().optional(),
 	/** Latest run only: when its last event landed, and its latest agent sentence while live. */
 	lastEventAt: DateStringSchema.nullable().optional(),
 	latestText: z.string().nullable().optional(),
@@ -226,6 +228,7 @@ export const IncidentStatsSchema = z.object({
 	byStatus: z.record(z.string(), z.number().int()),
 	bySeverity: z.record(z.string(), z.number().int()),
 	attention: z.object({
+		awaiting_approval: z.number().int(),
 		failed_run: z.number().int(),
 		unacknowledged: z.number().int(),
 		reopened: z.number().int(),

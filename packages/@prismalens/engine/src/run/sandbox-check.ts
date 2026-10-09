@@ -3,8 +3,9 @@
 
 /**
  * Does this machine run the agent in its own OS sandbox, per mode (#673 w51)?
- * PrismaLens answers every permission request yes, so only a sandbox the agent
- * itself enforces limits a run. `enforced` comes from a local probe, never a mode name.
+ * The agent's own mode decides what it asks, and every ask reaches the operator
+ * (#673 w21); only a sandbox the agent itself enforces holds without a person.
+ * `enforced` comes from a local probe, never a mode name.
  */
 import { spawn } from "node:child_process";
 import {
@@ -17,7 +18,7 @@ import {
 	rmSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
 	type HarnessId,
@@ -61,6 +62,8 @@ export interface SandboxCheckOptions {
 	locateCodex?: () => CodexCommand | null;
 	/** Claude Code's managed-settings directory; defaults to this platform's. */
 	claudeManagedDir?: string | null;
+	/** The user's Claude Code settings file; defaults to `$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json`. */
+	claudeUserSettings?: string | null;
 	platform?: NodeJS.Platform;
 }
 
@@ -215,19 +218,9 @@ const CLAUDE_MANAGED_DIR: Partial<Record<NodeJS.Platform, string>> = {
 	darwin: "/Library/Application Support/ClaudeCode",
 };
 
-/** `sandbox.enabled` from managed-settings.json, then managed-settings.d/*.json in name order; the last one set wins. */
-export function managedSandboxEnabled(dir: string | null): boolean {
-	if (!dir) return false;
-	const files = [join(dir, "managed-settings.json")];
-	try {
-		const dropIns = join(dir, "managed-settings.d");
-		for (const f of readdirSync(dropIns).sort())
-			if (f.endsWith(".json") && !f.startsWith("."))
-				files.push(join(dropIns, f));
-	} catch {
-		// No drop-in directory.
-	}
-	let enabled = false;
+/** `sandbox.enabled` as the last of `files` that sets it says; undefined when none does. */
+function sandboxSetting(files: readonly string[]): boolean | undefined {
+	let enabled: boolean | undefined;
 	for (const file of files) {
 		try {
 			const value = (
@@ -243,23 +236,55 @@ export function managedSandboxEnabled(dir: string | null): boolean {
 	return enabled;
 }
 
+/** `sandbox.enabled` from managed-settings.json, then managed-settings.d/*.json in name order; undefined when none sets it. */
+export function managedSandboxSetting(dir: string | null): boolean | undefined {
+	if (!dir) return undefined;
+	const files = [join(dir, "managed-settings.json")];
+	try {
+		const dropIns = join(dir, "managed-settings.d");
+		for (const f of readdirSync(dropIns).sort())
+			if (f.endsWith(".json") && !f.startsWith("."))
+				files.push(join(dropIns, f));
+	} catch {
+		// No drop-in directory.
+	}
+	return sandboxSetting(files);
+}
+
+/** The settings file Claude Code reads as the user's, for the run's env. */
+export function claudeUserSettingsPath(env: NodeJS.ProcessEnv = {}): string {
+	const dir =
+		env.CLAUDE_CONFIG_DIR ??
+		process.env.CLAUDE_CONFIG_DIR ??
+		join(env.HOME ?? homedir(), ".claude");
+	return join(dir, "settings.json");
+}
+
 function claudeCodeSandbox(opts: SandboxCheckOptions): SandboxCheck {
 	const dir =
 		opts.claudeManagedDir !== undefined
 			? opts.claudeManagedDir
 			: (CLAUDE_MANAGED_DIR[opts.platform ?? process.platform] ?? null);
-	// The run passes settingSources: [], so only endpoint-managed policy can turn it on (Agent SDK docs, settingSources).
-	return managedSandboxEnabled(dir)
-		? {
-				state: "unknown",
-				reason:
-					"Managed settings turn Claude Code's sandbox on; PrismaLens has not checked it starts here",
-			}
-		: {
-				state: "none",
-				reason:
-					"PrismaLens starts Claude Code without your settings files, so its sandbox is off",
-			};
+	const userFile =
+		opts.claudeUserSettings !== undefined
+			? opts.claudeUserSettings
+			: claudeUserSettingsPath(opts.env);
+	// The run loads settingSources ["user"]; managed settings win over it (Agent SDK docs, settingSources).
+	const managed = managedSandboxSetting(dir);
+	const user = userFile ? sandboxSetting([userFile]) : undefined;
+	const on = managed ?? user ?? false;
+	if (on)
+		return {
+			state: "unknown",
+			reason: `${managed !== undefined ? "Managed settings turn" : "Your settings turn"} Claude Code's sandbox on; PrismaLens has not checked it starts here`,
+		};
+	return {
+		state: "none",
+		reason:
+			managed === false
+				? "Managed settings turn Claude Code's sandbox off"
+				: "Claude Code's sandbox is off in your settings",
+	};
 }
 
 const NO_SANDBOX: Partial<Record<HarnessId, SandboxCheck>> = {

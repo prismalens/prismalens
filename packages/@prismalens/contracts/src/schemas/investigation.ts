@@ -274,6 +274,10 @@ export const InvestigationSchema = z.object({
 	continuable: z.boolean().optional(),
 	/** That mode's name as the agent's last readiness check listed it; the id when it listed none. */
 	agentModeName: z.string().nullable().optional(),
+	/** Set while the agent waits on the operator's Approve or Deny (#673 w21). */
+	awaitingApprovalAt: DateStringSchema.nullable().optional(),
+	/** The incident's number, on list rows: a notification names `INC-n`. */
+	incidentNumber: z.number().int().optional(),
 	/** Record identity origin stamp (ADR-0026). Optional, defaults to "local". */
 	origin: z.string().optional().default("local"),
 	/** Persisted schema version (ADR-0026). Optional, defaults to 1. */
@@ -521,6 +525,34 @@ export type SendInvestigationMessageResult = z.infer<
 	typeof SendInvestigationMessageResultSchema
 >;
 
+/**
+ * How an agent's permission ask ended (#673 w21): the operator answered, nobody
+ * did within {@link ASK_TIMEOUT_MS}, the run stopped, or PrismaLens restarted.
+ */
+export const PERMISSION_ASK_OUTCOMES = [
+	"approved",
+	"denied",
+	"timed_out",
+	"stopped",
+	"restarted",
+] as const;
+export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
+
+/** An unanswered ask is denied after this long, so an unattended run still reaches its report (#673 w21). */
+export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Body of `POST /investigations/{id}/asks/{askId}`. */
+export const AnswerAskSchema = z.object({
+	askId: z.string().uuid(),
+	decision: z.enum(["approve", "deny"]),
+});
+export type AnswerAskInput = z.infer<typeof AnswerAskSchema>;
+
+export const AnswerAskResultSchema = z.object({
+	outcome: z.enum(["approved", "denied"]),
+});
+export type AnswerAskResult = z.infer<typeof AnswerAskResultSchema>;
+
 export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("agent_step"),
@@ -591,6 +623,23 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		option: z.enum(["model", "effort"]),
 		value: z.string(),
 		accepted: z.boolean(),
+	}),
+	z.object({
+		/** The agent asked before a tool call; the run waits on the operator (#673 w21). */
+		kind: z.literal("permission_ask"),
+		...StreamBaseShape,
+		askId: z.string().uuid(),
+		title: z.string(),
+		/** The command, or the path, the call names; null when it names neither. */
+		detail: z.string().nullable(),
+		toolKind: z.string().nullable(),
+		expiresAt: z.string().datetime(),
+	}),
+	z.object({
+		kind: z.literal("permission_answer"),
+		...StreamBaseShape,
+		askId: z.string().uuid(),
+		outcome: z.enum(PERMISSION_ASK_OUTCOMES),
 	}),
 	z.object({
 		kind: z.literal("report"),

@@ -54,6 +54,18 @@ export interface SandboxCheck {
  */
 export const AGENT_DEFAULT_MODE = "agent-default";
 
+/**
+ * The four access levels a run can ask for, after t3code's runtime modes
+ * (pingdotgg/t3code @454b94a): each row names its agent's own mode for each (#673 w21).
+ */
+export const ACCESS_TIERS = [
+	"supervised",
+	"auto-edits",
+	"auto",
+	"full-access",
+] as const;
+export type AccessTier = (typeof ACCESS_TIERS)[number];
+
 /** How a mode reaches the agent: ACP `session/set_mode` (or its `mode` option), an env var at spawn, or not at all. */
 export type ModeMechanism = "acp" | "env" | "none";
 
@@ -101,8 +113,12 @@ export interface HarnessDescriptor {
 	 * schema twice). Recorded per run with its source in `RunFidelity`.
 	 */
 	defaultModel?: string;
-	/** The agent's own permission mode a run asks for when the operator set none (#673 w21). */
+	/** The agent's own permission mode a run asks for when the operator set none: its supervised one (#673 w21). */
 	defaultMode: string;
+	/** The agent's own mode id for each access tier it has (#673 w21). */
+	modeTiers: Partial<Record<AccessTier, string>>;
+	/** Plan-style modes: never offered, never run; a stored one reads as `defaultMode` (#673 w21). */
+	planModes?: readonly string[];
 	modeMechanism: ModeMechanism;
 	/** For `env`: the variable the mode id is written to before spawn. */
 	modeEnvKey?: string;
@@ -148,7 +164,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"opencode.json": JSON.stringify(
 				{
 					$schema: "https://opencode.ai/config.json",
-					// Without it a refused tool ends the turn, so a plan-mode run rarely reaches its report (#639 finding 1).
+					// Without it a refused tool ends the turn, so a run with a denied ask rarely reaches its report (#639 finding 1).
 					experimental: { continue_loop_on_deny: true },
 					share: "disabled",
 				},
@@ -176,8 +192,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// OpenCode offers its agents as the ACP `mode` config option; `plan` denies edits only.
-		defaultMode: "plan",
+		// OpenCode offers its agents as the ACP `mode` config option; what `build` asks is the user's opencode.json.
+		defaultMode: "build",
+		modeTiers: { supervised: "build" },
+		planModes: ["plan"],
 		modeMechanism: "acp",
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "acp",
@@ -194,8 +212,11 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 		}),
-		// No project hooks, settings or .mcp.json from the snapshot (ADR 0004 §1; #639 R4).
-		sessionMeta: () => ({ claudeCode: { options: { settingSources: [] } } }),
+		// The user's own settings (allow/deny rules, sandbox, availableModels), never the
+		// snapshot's: `project` and `local` would read the repo's CLAUDE.md (ADR 0004 §1; #673 w21).
+		sessionMeta: () => ({
+			claudeCode: { options: { settingSources: ["user"] } },
+		}),
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		// The model keys too: a gateway serves its own model ids, not Anthropic's (walk f18).
@@ -212,8 +233,15 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		envModelKey: "ANTHROPIC_MODEL",
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
-		// `plan` is never the default: it rewrites the system prompt into planning (r4 R4.1).
+		// claude-agent-acp's modes; `plan` rewrites the system prompt into planning (r4 R4.1).
 		defaultMode: "default",
+		modeTiers: {
+			supervised: "default",
+			"auto-edits": "acceptEdits",
+			auto: "auto",
+			"full-access": "bypassPermissions",
+		},
+		planModes: ["plan"],
 		modeMechanism: "acp",
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
@@ -237,6 +265,13 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
 		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
 		defaultMode: "read-only",
+		// codex-acp 2.x; 1.13.x has no workspace-write, and its read-only writes inside the workspace.
+		modeTiers: {
+			supervised: "read-only",
+			"auto-edits": "workspace-write",
+			auto: "agent",
+			"full-access": "agent-full-access",
+		},
 		modeMechanism: "env",
 		modeEnvKey: "INITIAL_AGENT_MODE",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
@@ -260,7 +295,14 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
-		defaultMode: "plan",
+		// gemini-cli packages/core/src/policy/types.ts, ApprovalMode.
+		defaultMode: "default",
+		modeTiers: {
+			supervised: "default",
+			"auto-edits": "autoEdit",
+			"full-access": "yolo",
+		},
+		planModes: ["plan"],
 		modeMechanism: "acp",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
@@ -281,6 +323,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		// No modes over ACP (deepagents #4254).
 		defaultMode: AGENT_DEFAULT_MODE,
+		modeTiers: {},
 		modeMechanism: "none",
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },
@@ -385,12 +428,29 @@ export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
 ) as Record<HarnessId, string>;
 
-/** The mode a run asks for: the operator's per-agent setting, else the row's default. */
+/** A plan-style mode, which no run starts in (#673 w21). */
+export function isPlanMode(harnessId: HarnessId, mode: string | null): boolean {
+	return !!mode && !!HARNESS_REGISTRY[harnessId].planModes?.includes(mode);
+}
+
+/** The modes a run may start in: every one the agent offered but a plan mode; null when none is left (#673 w21). */
+export function runnableModes<M extends { id: string }>(
+	harnessId: HarnessId,
+	modes: readonly M[] | null | undefined,
+): M[] | null {
+	const left = (modes ?? []).filter((m) => !isPlanMode(harnessId, m.id));
+	return left.length ? left : null;
+}
+
+/** The operator's per-agent setting, else the row's default; a stored plan mode reads as the default (#673 w21). */
 export function resolveAgentMode(
 	harnessId: HarnessId,
 	setting?: string | null,
 ): string {
-	return setting?.trim() || HARNESS_REGISTRY[harnessId].defaultMode;
+	const asked = setting?.trim();
+	return asked && !isPlanMode(harnessId, asked)
+		? asked
+		: HARNESS_REGISTRY[harnessId].defaultMode;
 }
 
 /** Env a row with `modeMechanism: "env"` takes the mode through; empty otherwise. */
