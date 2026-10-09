@@ -43,11 +43,12 @@ export function loadSession(nameOrPath) {
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
 
-/** The modes a run asks for by default (#673 w21): Claude Code's `default`, OpenCode's `plan`. */
+/** The modes a run asks for by default (#673 w21): Claude Code's `default`, OpenCode's `build`; `plan` is offered and never run. */
 const DEFAULT_MODES = {
 	currentModeId: "default",
 	availableModes: [
 		{ id: "default", name: "Manual" },
+		{ id: "build", name: "Build" },
 		{ id: "plan", name: "Plan" },
 	],
 };
@@ -243,7 +244,8 @@ function run() {
 			rawInput: t.rawInput,
 		});
 		let allowed = t.fail === undefined;
-		if (allowed && t.ask !== false) {
+		// Reads run unasked, as a supervised mode runs them; `ask: true` is a call the agent asks about (#673 w21).
+		if (allowed && t.ask === true) {
 			const answer = await askPermission({
 				sessionId,
 				toolCall: {
