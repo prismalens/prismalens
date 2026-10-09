@@ -17,6 +17,8 @@ export interface SummaryInput {
 	/** The latest investigation ran with no repository. */
 	noRepo: boolean;
 	attention: IncidentAttention | null;
+	/** Resolved, closed or merged: nothing is left to do on it. */
+	ended?: boolean;
 	/** What a live run is doing right now, for the summary's run sentence. */
 	step?: string | null;
 }
@@ -93,8 +95,9 @@ export function incidentSummary(i: SummaryInput): {
 	if (i.noRepo)
 		lines.push("No repository is linked, so the agent read no code.");
 
-	const next: NextStep =
-		i.attention === "unacknowledged"
+	const next: NextStep = i.ended
+		? null
+		: i.attention === "unacknowledged"
 			? {
 					kind: "acknowledge",
 					text: "Acknowledge it so others know it is taken.",

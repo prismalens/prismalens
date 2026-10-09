@@ -4,6 +4,7 @@
  */
 
 import {
+	isIncidentEnded,
 	isRunStateLive,
 	latestRun,
 	ROOT_CAUSE_CATEGORY_LABEL,
@@ -91,6 +92,7 @@ function Summary({ latest }: { latest: InvestigationRun }) {
 		),
 		noRepo,
 		attention: attentionFor(incident),
+		ended: isIncidentEnded(incident.status),
 		step,
 	});
 	const lineage = incidentLineage(incident);
