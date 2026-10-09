@@ -53,7 +53,7 @@
 		"schemas"
 	],
 	"engines": {
-		"node": ">=22"
+		"node": ">=24"
 	},
 	"sideEffects": false,
 	"files": [
