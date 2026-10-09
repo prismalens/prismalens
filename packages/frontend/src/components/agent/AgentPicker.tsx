@@ -356,7 +356,7 @@ export function ModelChip({
 				side={side}
 				align="start"
 				sideOffset={6}
-				className="grid h-[400px] w-[min(440px,calc(100vw-32px))] grid-cols-[44px_minmax(0,1fr)] overflow-hidden rounded-surface p-0"
+				className="grid h-[400px] w-[min(380px,calc(100vw-32px))] grid-cols-[44px_minmax(0,1fr)] overflow-hidden rounded-surface p-0"
 				data-testid="agent-picker-list"
 				aria-label="Agent and model"
 				onOpenAutoFocus={(e) => {
