@@ -91,11 +91,11 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(r2.report.fidelity?.servedModel).toBeUndefined();
 	});
 
-	it("with modelThroughEnv does not send session/set_config_option for the model and ends in report (#673 w57)", async () => {
+	it("with customModel sends session/set_config_option for the model and ends in report (#673 w57)", async () => {
 		const { events, runDir } = await collect("ok", {
 			model: "asked/model",
 			modelSource: "operator",
-			modelThroughEnv: true,
+			customModel: true,
 			env: {
 				...process.env,
 				FAKE_ACP_MODE: "ok",
@@ -108,28 +108,9 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.at(-2)?.kind).toBe("branch_done");
 		expect(
 			events.find((e) => e.kind === "session_config" && e.option === "model"),
-		).toBeUndefined();
-		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
-		expect(wire).not.toContain("session/set_config_option");
-
-		const without = await collect("ok", {
-			model: "asked/model",
-			modelSource: "operator",
-			modelThroughEnv: false,
-			env: {
-				...process.env,
-				FAKE_ACP_MODE: "ok",
-				FAKE_MODELS: "served/model,asked/model",
-				FAKE_SERVED_MODEL: "served/model",
-			},
-		});
-		expect(
-			without.events.find(
-				(e) => e.kind === "session_config" && e.option === "model",
-			),
 		).toMatchObject({ option: "model", value: "asked/model", accepted: true });
-		const withoutWire = readFileSync(join(without.runDir, "transcript.jsonl"), "utf8");
-		expect(withoutWire).toContain("session/set_config_option");
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).toContain("session/set_config_option");
 	});
 
 	it("refuses to run when the harness will not switch to the chosen model, before any prompt (R4.2)", async () => {
@@ -780,6 +761,30 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(finished).toBe(1);
 		expect(stored.at(-1)?.kind).toBe("report");
 	});
+
+	it("a late ask clamps the window and expires timed_out before the kill margin, then the run goes on (#673 w21)", async () => {
+		const channel = createAskChannel();
+		const spawn = Date.now();
+		const { events } = await collect("ok", {
+			limits: { wallClockMs: 61_500 },
+			permission: channel.policy,
+		});
+		const ask = events.find((e) => e.kind === "permission_ask");
+		if (ask?.kind !== "permission_ask") throw new Error("no permission_ask");
+		expect(ask.clamped).toBe(true);
+		const expiresMs = new Date(ask.expiresAt).getTime();
+		expect(expiresMs).toBeLessThanOrEqual(spawn + 1500 + 2000);
+
+		const answer = events.find(
+			(e) => e.kind === "permission_answer" && e.askId === ask.askId,
+		);
+		if (answer?.kind !== "permission_answer")
+			throw new Error("no permission_answer");
+		expect(answer.outcome).toBe("timed_out");
+
+		const report = events.at(-1);
+		expect(report?.kind).toBe("report");
+	}, 10_000);
 });
 
 /**
@@ -824,34 +829,37 @@ describe("prepareRunEnv and claude-code (#650)", () => {
 		expect(env.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
 	});
 
-	it("overrides the host env model var only when modelThroughEnv is set (#673 w57)", () => {
-		const withThroughEnv = prepareRunEnv({
+	it("sets customModelEnvKey and leaves host env model var alone when customModel is set (#673 w57)", () => {
+		const withCustom = prepareRunEnv({
 			harness: "claude-code",
 			cwd: tmp("clone"),
 			runDir: tmp("run"),
 			model: "my-gw-model",
-			modelThroughEnv: true,
+			customModel: true,
 			env: { ANTHROPIC_MODEL: "other" },
 		});
-		expect(withThroughEnv.env.ANTHROPIC_MODEL).toBe("my-gw-model");
+		expect(withCustom.env.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("my-gw-model");
+		expect(withCustom.env.ANTHROPIC_MODEL).toBe("other");
 
-		const withoutThroughEnv = prepareRunEnv({
+		const withoutCustom = prepareRunEnv({
 			harness: "claude-code",
 			cwd: tmp("clone"),
 			runDir: tmp("run"),
 			model: "my-gw-model",
-			modelThroughEnv: false,
+			customModel: false,
 			env: { ANTHROPIC_MODEL: "other" },
 		});
-		expect(withoutThroughEnv.env.ANTHROPIC_MODEL).toBe("other");
+		expect(withoutCustom.env.ANTHROPIC_CUSTOM_MODEL_OPTION).toBeUndefined();
+		expect(withoutCustom.env.ANTHROPIC_MODEL).toBe("other");
 
 		const codex = prepareRunEnv({
 			harness: "codex",
 			cwd: tmp("clone"),
 			runDir: tmp("run"),
 			model: "my-gw-model",
-			modelThroughEnv: true,
+			customModel: true,
 		});
+		expect(codex.env.ANTHROPIC_CUSTOM_MODEL_OPTION).toBeUndefined();
 		expect(codex.env.ANTHROPIC_MODEL).toBeUndefined();
 		expect(Object.values(codex.env)).not.toContain("my-gw-model");
 	});

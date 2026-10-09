@@ -41,7 +41,7 @@ const { InvestigationsService } = await import(
 const {
 	DispatchService,
 	FollowUpRefused,
-	customModelThroughEnv,
+	isCustomModel,
 	resolveHarnessRunModel,
 } = await import("./dispatch.service.js");
 const { PrismaJobStore } = await import("./job-store.js");
@@ -243,11 +243,10 @@ describe("resolveHarnessRunModel (#634, #639)", () => {
 	});
 });
 
-describe("customModelThroughEnv truth table (#673 w57)", () => {
+describe("isCustomModel truth table (#673 w57)", () => {
 	it("claude-code custom operator -> true", () => {
 		expect(
-			customModelThroughEnv(
-				"claude-code",
+			isCustomModel(
 				{ model: "gw-1", modelSource: "operator" },
 				["gw-1"],
 			),
@@ -256,8 +255,7 @@ describe("customModelThroughEnv truth table (#673 w57)", () => {
 
 	it("same id not in list -> false", () => {
 		expect(
-			customModelThroughEnv(
-				"claude-code",
+			isCustomModel(
 				{ model: "gw-1", modelSource: "operator" },
 				["other-model"],
 			),
@@ -266,22 +264,20 @@ describe("customModelThroughEnv truth table (#673 w57)", () => {
 
 	it("modelSource 'env' -> false", () => {
 		expect(
-			customModelThroughEnv(
-				"claude-code",
+			isCustomModel(
 				{ model: "gw-1", modelSource: "env" },
 				["gw-1"],
 			),
 		).toBe(false);
 	});
 
-	it("codex with the id in its list -> false", () => {
+	it("codex with the id in its list is now true", () => {
 		expect(
-			customModelThroughEnv(
-				"codex",
+			isCustomModel(
 				{ model: "gw-1", modelSource: "operator" },
 				["gw-1"],
 			),
-		).toBe(false);
+		).toBe(true);
 	});
 });
 
@@ -357,7 +353,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		expect(r.effort).toBeUndefined();
 	});
 
-	it("returns modelThroughEnv true for custom operator model in customModels list (#673 w57)", async () => {
+	it("returns customModel true for custom operator model in customModels list (#673 w57)", async () => {
 		const { service } = withSettings({
 			models: { "claude-code": "gw-1" },
 			customModels: { "claude-code": ["gw-1"] },
@@ -367,7 +363,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		).resolves.toMatchObject({
 			model: "gw-1",
 			modelSource: "operator",
-			modelThroughEnv: true,
+			customModel: true,
 		});
 	});
 });

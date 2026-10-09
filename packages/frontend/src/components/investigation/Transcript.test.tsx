@@ -5,6 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatClock } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import { Transcript } from "./Transcript";
 
@@ -54,6 +55,7 @@ describe("Transcript AskCard", () => {
 		detail: "/tmp/test",
 		at: "2026-10-09T10:00:00Z",
 		expiresAt: "2026-10-09T10:10:00Z",
+		clamped: false,
 		state: "waiting",
 	};
 
@@ -142,5 +144,89 @@ describe("Transcript AskCard", () => {
 		);
 		expect(endLine).not.toBeNull();
 		expect(endLine?.textContent).toBe("Not answered before the run ended");
+	});
+
+	it("shows unclamped waiting text with expiry clock", async () => {
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[askItem]}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+		expect(container.textContent).toContain(
+			`Denied at ${formatClock(askItem.expiresAt)} if no one answers`,
+		);
+	});
+
+	it("shows clamped waiting text when the run time limit is near", async () => {
+		const clampedWaiting: TranscriptItem = {
+			...askItem,
+			clamped: true,
+		};
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[clampedWaiting]}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+		expect(container.textContent).toContain(
+			`The run's time limit is near, so this ask expires at ${formatClock(askItem.expiresAt)}`,
+		);
+	});
+
+	it("shows unclamped timed_out text when no one answered in time", async () => {
+		const unclampedTimedOut: TranscriptItem = {
+			...askItem,
+			state: "timed_out",
+			clamped: false,
+		};
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[unclampedTimedOut]}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+		const endLine = container.querySelector(
+			'[data-testid="transcript-ask-end"]',
+		);
+		expect(endLine?.textContent).toBe(
+			"No one answered in 10 minutes, so it was denied",
+		);
+	});
+
+	it("shows clamped timed_out text when the run's time limit was reached", async () => {
+		const clampedTimedOut: TranscriptItem = {
+			...askItem,
+			state: "timed_out",
+			clamped: true,
+		};
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[clampedTimedOut]}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+		const endLine = container.querySelector(
+			'[data-testid="transcript-ask-end"]',
+		);
+		expect(endLine?.textContent).toBe(
+			"Denied: the run's time limit was reached",
+		);
 	});
 });

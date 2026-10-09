@@ -44,6 +44,22 @@ const mockHarnesses: HarnessStatus[] = [
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
+	{
+		id: "opencode",
+		label: "OpenCode",
+		binary: "opencode",
+		installed: false,
+		tested: null,
+		install: "npm i -g opencode",
+		defaultModel: null,
+		defaultMode: "default",
+		modelVia: "acp",
+		loginHint: "",
+		envModel: null,
+		windowsOnlyPath: null,
+		models: { source: "harness", asOf: "", entries: [] },
+		checked: null,
+	},
 ];
 
 vi.mock("@/lib/api/hooks", () => ({
@@ -283,5 +299,33 @@ describe("HarnessSettings custom models (#673 w57)", () => {
 		expect(mutateAsyncSpy).toHaveBeenCalledWith({
 			customModels: { "claude-code": [] },
 		});
+	});
+});
+
+describe("HarnessSettings agent rows (#673 w21)", () => {
+	it("the OpenCode row shows harness-opencode-asks with its rule, claude-code row does not", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+
+		const opencodeRow = container.querySelector(
+			'[data-testid="harness-row-opencode"]',
+		);
+		expect(opencodeRow).not.toBeNull();
+		const opencodeAsks = opencodeRow?.querySelector(
+			'[data-testid="harness-opencode-asks"]',
+		);
+		expect(opencodeAsks).not.toBeNull();
+		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+			"OpenCode asks where your opencode.json says ask; by default that is files outside the workspace only.",
+		);
+
+		const claudeRow = container.querySelector(
+			'[data-testid="harness-row-claude-code"]',
+		);
+		expect(claudeRow).not.toBeNull();
+		expect(
+			claudeRow?.querySelector('[data-testid="harness-opencode-asks"]'),
+		).toBeNull();
 	});
 });

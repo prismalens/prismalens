@@ -3,10 +3,41 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	askWindow,
 	createAskChannel,
 	denyAllPolicy,
 	type PermissionRequest,
 } from "./permission.js";
+
+describe("askWindow", () => {
+	it("no wall clock: unclamped with full ask timeout", () => {
+		expect(askWindow(600_000, undefined, 50_000)).toEqual({
+			timeoutMs: 600_000,
+			clamped: false,
+		});
+	});
+
+	it("plenty left: unclamped when wall - elapsed - 60s >= askMs", () => {
+		expect(askWindow(600_000, 1_200_000, 60_000)).toEqual({
+			timeoutMs: 600_000,
+			clamped: false,
+		});
+	});
+
+	it("5 min left -> 4 min clamped", () => {
+		expect(askWindow(600_000, 400_000, 100_000)).toEqual({
+			timeoutMs: 240_000,
+			clamped: true,
+		});
+	});
+
+	it("30 s left -> 0 clamped", () => {
+		expect(askWindow(600_000, 130_000, 100_000)).toEqual({
+			timeoutMs: 0,
+			clamped: true,
+		});
+	});
+});
 
 describe("denyAllPolicy", () => {
 	it("picks reject_once when offered", () => {
@@ -211,5 +242,48 @@ describe("createAskChannel", () => {
 			why: "the agent offered no allow option",
 			outcome: "denied",
 		});
+	});
+
+	it("ctx.timeoutMs 0 denies at once with outcome timed_out and the run time-limit why", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const ac = new AbortController();
+		const decision = await channel.policy(
+			{ options: [{ optionId: "r1", kind: "reject_once" }] },
+			{ askId: "ask1", signal: ac.signal, timeoutMs: 0 },
+		);
+		expect(decision).toEqual({
+			allow: false,
+			optionId: "r1",
+			why: "the run's time limit was reached",
+			outcome: "timed_out",
+		});
+		expect(channel.pending()).toHaveLength(0);
+	});
+
+	it("ctx {timeoutMs: 1000, clamped: true} under fake timers lapses at 1 s with the time-limit why", async () => {
+		vi.useFakeTimers();
+		const askedAt = new Date("2026-10-09T10:00:00.000Z");
+		const channel = createAskChannel({ now: () => askedAt });
+		const ac = new AbortController();
+		const p = channel.policy(
+			{ options: [{ optionId: "r1", kind: "reject_once" }] },
+			{ askId: "ask1", signal: ac.signal, timeoutMs: 1000, clamped: true },
+		);
+		expect(channel.pending()).toEqual([
+			{
+				askId: "ask1",
+				askedAt,
+				expiresAt: new Date(askedAt.getTime() + 1000),
+			},
+		]);
+		vi.advanceTimersByTime(1000);
+		const decision = await p;
+		expect(decision).toEqual({
+			allow: false,
+			optionId: "r1",
+			why: "no answer before the run's time limit",
+			outcome: "timed_out",
+		});
+		expect(channel.pending()).toHaveLength(0);
 	});
 });
