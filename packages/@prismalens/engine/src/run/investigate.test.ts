@@ -360,14 +360,17 @@ describe("runInvestigation over a fake ACP harness", () => {
 		const stop = new AbortController();
 		const events: CanonicalEvent[] = [];
 		const o = opts("ok", {
-			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_REPORT_THEN_WAIT_CANCEL: "1" },
+			env: { ...process.env, FAKE_ACP_MODE: "ok" },
 			signal: stop.signal,
 		});
+		const sent = join(o.runDir, "report-sent");
+		o.env = { ...o.env, FAKE_REPORT_THEN_WAIT_CANCEL: sent };
 		let tools = 0;
 		for await (const ev of runInvestigation(o)) {
 			events.push(ev);
-			// Both tool calls are in; the report text lands next and the turn waits, so Stop finds it there.
-			if (ev.kind === "tool_result" && ++tools === 2) setTimeout(() => stop.abort(), 400);
+			// Both tool calls are in; Stop lands once the fixture says the report text is sent.
+			if (ev.kind === "tool_result" && ++tools === 2)
+				void vi.waitFor(() => expect(existsSync(sent)).toBe(true)).then(() => stop.abort());
 		}
 		expect(readFileSync(join(o.runDir, "transcript.jsonl"), "utf8")).toContain("connection pool exhausted");
 		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });

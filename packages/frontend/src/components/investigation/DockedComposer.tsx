@@ -238,6 +238,7 @@ export function DockedComposer({
 					verb,
 				)}
 				initialFiles={draft ? record.draftFiles : undefined}
+				onFilesChange={draft ? record.setDraftFiles : undefined}
 				boxRef={boxRef}
 				text={draft ? record.draftText : message}
 				setText={draft ? record.setDraftText : setMessage}

@@ -19,6 +19,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
+import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -288,6 +289,7 @@ async function turn(sessionId, promptText) {
 	}
 	// FAKE_REPORT_THEN_WAIT_CANCEL: a valid report is already in the turn when Stop lands,
 	// and the agent still ends the turn as end_turn (#673 w59).
+	// The value is a file written once the report is sent, so the test stops after it.
 	if (process.env.FAKE_REPORT_THEN_WAIT_CANCEL) {
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
@@ -296,6 +298,7 @@ async function turn(sessionId, promptText) {
 				text: `Done.\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\`\n`,
 			},
 		});
+		writeFileSync(process.env.FAKE_REPORT_THEN_WAIT_CANCEL, "sent");
 		await cancelled();
 		return { stopReason: "end_turn" };
 	}

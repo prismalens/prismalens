@@ -390,6 +390,7 @@ async function runFollowUp(
 	// The prompt reached the agent; before that every end puts the standing back (X1, #804 OBJ-026).
 	let delivered: () => boolean = () => false;
 	let end: { outcome: TurnOutcome; sentence: string | null };
+	let threw = false;
 	let seqStart = 0;
 	try {
 		seqStart = (await ports.lastEventSeq(id)) + 1;
@@ -510,6 +511,7 @@ async function runFollowUp(
 					? { outcome: "error", sentence: outcome.error }
 					: { outcome: "answered", sentence: null };
 	} catch (error: unknown) {
+		threw = true;
 		const message = io.signal.aborted
 			? "investigation cancelled"
 			: error instanceof Error
@@ -571,7 +573,8 @@ async function runFollowUp(
 				return false;
 			},
 		));
-	else refused = storeRefused();
+	// A throw may skip the store's terminal write; ownTheEnd leaves a row already ended alone.
+	else refused = threw || storeRefused();
 	const owned = refused
 		? await ownTheEnd(data, ports, {
 				stop: () =>

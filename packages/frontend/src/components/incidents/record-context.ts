@@ -67,6 +67,7 @@ export interface IncidentRecord {
 	setDraftVerb: (verb: RunVerb) => void;
 	/** Files carried into the draft; the box takes them once, on mount. */
 	draftFiles: File[];
+	setDraftFiles: (files: File[]) => void;
 	run: InvestigationRun;
 	/** A run is working on this incident; the draft waits for it. */
 	liveRun: RunRef | null;

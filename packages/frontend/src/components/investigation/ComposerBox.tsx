@@ -64,6 +64,8 @@ export interface ComposerBoxProps {
 	placeholder: string;
 	/** Files a prefilled draft starts with (`Investigate again`). */
 	initialFiles?: File[];
+	/** Told each change to the files, so a remount starts from them, not the prefill. */
+	onFilesChange?: (files: File[]) => void;
 	/** Kept current with what is in the box, for `Investigate again`. */
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** Live or resumable: Enter queues for the next pause, Send now interrupts. */
@@ -117,6 +119,7 @@ export function ComposerBox({
 	verbCopy,
 	placeholder,
 	initialFiles,
+	onFilesChange,
 	boxRef,
 	onMessage,
 	onStop,
@@ -152,6 +155,11 @@ export function ComposerBox({
 	useEffect(() => {
 		if (boxRef) boxRef.current = { text, files: drafts.map((d) => d.file) };
 	}, [boxRef, text, drafts]);
+	const filesChanged = useRef(onFilesChange);
+	filesChanged.current = onFilesChange;
+	useEffect(() => {
+		filesChanged.current?.(drafts.map((d) => d.file));
+	}, [drafts]);
 	useEffect(() => () => release(shown.current), []);
 	useEffect(() => {
 		if (autoFocus) ref.current?.focus();

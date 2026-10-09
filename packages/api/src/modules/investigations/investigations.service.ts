@@ -550,14 +550,14 @@ export class InvestigationsService {
 			if (!investigation) return null;
 			const chat = investigation.kind === "chat";
 
-			// One statement checks and writes (#673 w59): cancelled is sticky, a
+			// One statement checks and writes (#673 w59): only a live row takes it, a
 			// stop asked for wins, and a thread's report is written once.
 			const applied = await this.prisma.$transaction(async (tx) => {
 				// 1. Update investigation with results
 				const { count } = await tx.investigation.updateMany({
 					where: {
 						id,
-						NOT: { status: "cancelled" },
+						status: { in: [...LIVE_WORKFLOW_STATUSES] },
 						stopRequestedAt: null,
 						...(dto.report ? { report: null } : {}),
 					},
@@ -636,7 +636,7 @@ export class InvestigationsService {
 			});
 			if (!applied) {
 				this.logger.warn(
-					`Result write for investigation ${id} skipped (cancelled, stop asked for, or report already written)`,
+					`Result write for investigation ${id} skipped (row not live, stop asked for, or report already written)`,
 				);
 				return null;
 			}

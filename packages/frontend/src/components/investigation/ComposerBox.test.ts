@@ -65,6 +65,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 		newRun: vi.fn(),
 		draftChoice: {},
 		draftFiles: [],
+		setDraftFiles: () => {},
 		setDraftVerb: vi.fn(),
 		addNote: vi.fn(),
 		...record.extra,
@@ -210,6 +211,17 @@ describe("the box: one send control, the verb chip where both verbs act (#673 w5
 		const asks = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "ask" });
 		await enter();
 		expect(asks.ask).toHaveBeenCalledTimes(1);
+	});
+
+	it("a removed prefill file is reported back, so a remount does not bring it back", async () => {
+		const onFilesChange = vi.fn();
+		const a = new File(["a"], "a.log");
+		const b = new File(["b"], "b.log");
+		await render({ initialFiles: [a, b], onFilesChange });
+		await act(async () => {
+			(container.querySelector('[aria-label="Remove a.log"]') as HTMLButtonElement).click();
+		});
+		expect(onFilesChange.mock.calls.at(-1)).toEqual([[b]]);
 	});
 
 	it("a thread blocked by another live one sends nothing", async () => {

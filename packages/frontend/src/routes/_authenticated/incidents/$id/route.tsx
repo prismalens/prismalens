@@ -217,6 +217,7 @@ function IncidentLayout() {
 			draftVerb: draftOf.verb,
 			setDraftVerb: (verb) => setDraft({ verb }),
 			draftFiles: draftOf.files ?? [],
+			setDraftFiles: (files) => setDraft({ files }),
 			run,
 			liveRun,
 			investigateBlocked: agentReady ? undefined : blockedReason,

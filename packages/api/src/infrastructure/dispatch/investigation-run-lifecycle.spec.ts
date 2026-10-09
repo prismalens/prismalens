@@ -530,6 +530,8 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 			neverRan?: boolean;
 			/** The real X1 boundary: the row went live, then session/load failed before any prompt. */
 			loadFails?: boolean;
+			/** The agent heard the message, then the run threw before any terminal write. */
+			throwsAfterDelivery?: boolean;
 			ports?: Partial<RunPorts>;
 		} = {},
 	) {
@@ -558,6 +560,7 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 				// The engine marks the message delivered just before it prompts.
 				await run.store.append({ kind: "operator_message", seq: 42, text: "why?", mode: "queue", delivered: true });
 				await run.store.append({ kind: "agent_step", seq: 50, text: "…" });
+				if (opts.throwsAfterDelivery) throw new Error("the stream broke");
 				if (outcome === "stopped") return { runId: "inv-1", report: null, error: "investigation cancelled", failureKind: "cancelled" };
 				if (outcome === "error") {
 					await run.store.fail("the agent crashed");
@@ -636,6 +639,18 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 			{ status: "failed", error: "the agent crashed", lastTurnOutcome: "error" },
 		]);
 		expect(titles(ports)).toEqual(["Investigation failed"]);
+		expect(ports.settleFollowUp).not.toHaveBeenCalled();
+	});
+
+	it("a continue that throws after its agent heard it never leaves the row live: the run ends it failed", async () => {
+		const { ports, result } = await followUp("investigation", R.cancelled, "error", {
+			continuing: true,
+			throwsAfterDelivery: true,
+		});
+
+		expect(result.success).toBe(false);
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(ports.updateStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "failed" });
 		expect(ports.settleFollowUp).not.toHaveBeenCalled();
 	});
 

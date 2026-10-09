@@ -540,6 +540,19 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 		expect((await read(row.id)).report).toBeNull();
 	});
 
+	it("a result write on an ended row: false back, the row and its timeline untouched", async () => {
+		const { ports, deliver } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", error: "boom" });
+
+		const applied = await ports.writeResult(row.id, { status: "completed", incidentId: inc.id, summary: "late" });
+
+		expect(applied).toBe(false);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(await prisma.timelineEntry.count({ where: { incidentId: inc.id } })).toBe(0);
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: "boom" });
+	});
+
 	it("an applied write ends the live columns and delivers once", async () => {
 		const { ports, deliver } = realDispatch();
 		const inc = await incident();

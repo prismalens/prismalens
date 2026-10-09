@@ -59,12 +59,22 @@ export async function startReportBreakingProxy(
 			const chunks: Buffer[] = [];
 			for await (const c of req) chunks.push(c as Buffer);
 			const headers = new Headers();
+			const skip = new Set([
+				"host",
+				"content-length",
+				"accept-encoding",
+				"connection",
+				"keep-alive",
+				"transfer-encoding",
+				"upgrade",
+				"te",
+				"trailer",
+				"proxy-connection",
+			]);
+			for (const n of String(req.headers.connection ?? "").split(","))
+				if (n.trim()) skip.add(n.trim().toLowerCase());
 			for (const [k, v] of Object.entries(req.headers)) {
-				if (
-					v === undefined ||
-					["host", "content-length", "accept-encoding"].includes(k)
-				)
-					continue;
+				if (v === undefined || skip.has(k)) continue;
 				headers.set(k, Array.isArray(v) ? v.join(", ") : v);
 			}
 			headers.set("accept-encoding", "identity");
