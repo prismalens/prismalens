@@ -27,6 +27,9 @@ interface World {
 	inc?: Made;
 	other?: Page;
 	lastSeen?: string;
+	timelineCount?: number;
+	navigations?: number;
+	trackingNavigations?: boolean;
 }
 const worlds = new WeakMap<Page, World>();
 const w = (page: Page): World => {
@@ -368,6 +371,55 @@ Then("I am on the Timeline tab", async ({ page }) => {
 		"page",
 	);
 });
+
+When("I read the Timeline tab's count", async ({ page }) => {
+	await expect(
+		page
+			.getByTestId("overview-timeline")
+			.locator("p, [data-testid=timeline-list]"),
+	).toBeVisible();
+	const tab = page.getByTestId("tab-timeline");
+	await expect(tab).toBeVisible();
+	const count = tab.locator("span");
+	await expect(count).toBeVisible();
+	const text = await count.textContent();
+	w(page).timelineCount = Number.parseInt(text?.trim() ?? "0", 10);
+	if (!w(page).trackingNavigations) {
+		w(page).trackingNavigations = true;
+		w(page).navigations = 0;
+		page.on("framenavigated", (f) => {
+			if (f === page.mainFrame()) {
+				w(page).navigations = (w(page).navigations ?? 0) + 1;
+			}
+		});
+	}
+});
+
+When("I press Acknowledge", async ({ page }) => {
+	await page.getByTestId("band-acknowledge").click();
+});
+
+Then(
+	/^the Timeline count is higher and the list shows an "Acknowledged" entry(?:,)? without (?:a )?reload or navigation$/,
+	async ({ page }) => {
+		const before = w(page).timelineCount ?? 0;
+		const tab = page.getByTestId("tab-timeline");
+		await expect
+			.poll(async () => {
+				const text = await tab.locator("span").textContent();
+				return Number.parseInt(text?.trim() ?? "0", 10);
+			})
+			.toBeGreaterThan(before);
+		const overviewTimeline = page.getByTestId("overview-timeline");
+		await expect(
+			overviewTimeline
+				.getByTestId("timeline-row")
+				.filter({ hasText: "Acknowledged" }),
+		).toBeVisible();
+		expect(w(page).navigations).toBe(0);
+		expect(new URL(page.url()).pathname).toBe(`/incidents/${inc(page).id}`);
+	},
+);
 
 Given("a run is working", async ({ page, unique }) => {
 	const made = await triggered(page, unique);
