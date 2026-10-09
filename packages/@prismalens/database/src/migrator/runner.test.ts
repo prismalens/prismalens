@@ -233,7 +233,7 @@ describe("investigation_turns (#673 w59)", () => {
 		const shipped = resolveMigrationsDir();
 		const before = mkdtempSync(join(scratch, "before-"));
 		for (const name of readdirSync(shipped)) {
-			if (name === TURNS || !existsSync(join(shipped, name, "migration.sql")))
+			if (name >= TURNS || !existsSync(join(shipped, name, "migration.sql")))
 				continue;
 			cpSync(join(shipped, name), join(before, name), { recursive: true });
 		}
