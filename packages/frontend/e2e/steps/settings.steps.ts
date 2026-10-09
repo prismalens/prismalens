@@ -922,3 +922,42 @@ Then(
 		);
 	},
 );
+
+// --- The verb chip (#673 w59) ---------------------------------------------------------
+
+Then(
+	"the verb chip reads {string} and its menu explains {string} and {string} with {string}",
+	async ({ page }, verb: string, a: string, b: string, foot: string) => {
+		const chip = page.getByTestId("verb-chip");
+		await expect(chip).toHaveText(verb);
+		await expect(
+			page.getByTestId("composer-chips").locator("button").first(),
+		).toHaveAttribute("data-testid", "verb-chip");
+		await chip.click();
+		const menu = page.getByTestId("verb-menu");
+		await expect(menu.getByTestId("verb-investigate")).toContainText(a);
+		await expect(menu.getByTestId("verb-investigate")).toContainText(
+			"Ends with a report.",
+		);
+		await expect(menu.getByTestId("verb-ask")).toContainText(b);
+		await expect(menu.getByTestId("verb-ask")).toContainText("No report.");
+		await expect(menu).toContainText(foot);
+	},
+);
+
+When("I pick {string} in the verb menu", async ({ page }, verb: string) => {
+	await page.getByTestId(`verb-${verb.toLowerCase()}`).click();
+	await expect(page.getByTestId("verb-menu")).toBeHidden();
+});
+
+Then(
+	"the box's one send control is the arrow and its placeholder reads {string}",
+	async ({ page }, placeholder: string) => {
+		await expect(page.getByTestId("composer-ask")).toBeVisible();
+		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		await expect(page.getByTestId("composer-input")).toHaveAttribute(
+			"placeholder",
+			placeholder,
+		);
+	},
+);

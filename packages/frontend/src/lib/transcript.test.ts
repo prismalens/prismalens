@@ -430,3 +430,77 @@ describe("unfence", () => {
 	});
 });
 
+
+describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
+	const stop = (s: number): CanonicalEvent =>
+		({ kind: "error", ...base(s), message: "investigation cancelled" }) as CanonicalEvent;
+	const failure = (s: number, message: string): CanonicalEvent =>
+		({ kind: "error", ...base(s), message }) as CanonicalEvent;
+	const stopped = {
+		status: "cancelled",
+		live: false,
+		kind: "investigation",
+		startedAt: at(0),
+		completedAt: at(28),
+		continuable: true,
+		lastTurnOutcome: "error",
+	};
+	const endTexts = (items: TranscriptItem[]) =>
+		items.flatMap((i) => (i.kind === "end" ? [i.text] : []));
+
+	it("shows the Ask's own error under it, after the original Stop where it happened", () => {
+		const items = deriveTranscript(
+			[step(0, "Working."), stop(28), operator(600, "What did you find?"), failure(610, "the agent crashed")],
+			T0,
+			{ run: stopped },
+		);
+		const texts = endTexts(items);
+		expect(texts).toHaveLength(2);
+		expect(texts[0]).toMatch(/^Stopped by you at \d\d:\d\d$/);
+		expect(texts[1]).toBe("The agent stopped: the agent crashed");
+		// The Stop sits before the question, the error after it.
+		const order = items.map((i) => (i.kind === "end" ? i.text : i.kind));
+		expect(order.indexOf("operator")).toBeGreaterThan(order.indexOf(texts[0] as string));
+		expect(order.at(-1)).toBe("The agent stopped: the agent crashed");
+		expect(items.at(-1)).toMatchObject({
+			hint: "Investigate to finish the report, or ask about what it found.",
+		});
+	});
+
+	it("with the Ask's terminal event dropped, still says the last message ended in an error", () => {
+		const items = deriveTranscript(
+			[step(0, "Working."), stop(28), operator(600, "What did you find?")],
+			T0,
+			{ run: stopped },
+		);
+		const texts = endTexts(items);
+		expect(texts[0]).toMatch(/^Stopped by you at /);
+		expect(texts.at(-1)).toBe("The agent stopped on your last message");
+		expect(items.at(-1)?.kind).toBe("end");
+	});
+
+	// The follow-up's own first message marks it, so a dropped Stop event changes nothing (#804 OBJ-028).
+	const ask = (s: number): CanonicalEvent =>
+		({ ...operator(s, "What did you find?"), resumed: [] }) as CanonicalEvent;
+	it.each([
+		["present", [failure(610, "the agent crashed")], "The agent stopped: the agent crashed"],
+		["dropped", [], "The agent stopped on your last message"],
+	] as const)("with the Stop's own event dropped and the Ask's error %s, the standing precedes the Ask and its end follows it", (_case, tail, last) => {
+		const items = deriveTranscript([step(0, "Working."), ask(600), ...tail], T0, { run: stopped });
+		const order = items.map((i) => (i.kind === "end" ? i.text : i.kind));
+		const standing = order.findIndex((t) => /^Stopped by you at /.test(t));
+		expect(standing).toBeGreaterThan(-1);
+		expect(standing).toBeLessThan(order.indexOf("operator"));
+		expect(order.at(-1)).toBe(last);
+		expect(endTexts(items)).toHaveLength(2);
+	});
+
+	it("an answered Ask adds no end line", () => {
+		const items = deriveTranscript(
+			[step(0, "Working."), stop(28), operator(600, "What did you find?"), step(610, "The pool.")],
+			T0,
+			{ run: { ...stopped, lastTurnOutcome: "answered" } },
+		);
+		expect(endTexts(items)).toHaveLength(1);
+	});
+});

@@ -11,6 +11,7 @@ import {
 	isWorkflowLive,
 	LIVE_WORKFLOW_STATUSES,
 	latestRun,
+	liveRun,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
@@ -60,6 +61,8 @@ export type IncidentWithRelations = Incident & {
 		harness?: string | null;
 		model?: string | null;
 		stopRequestedAt?: Date | null;
+		liveTurn?: string | null;
+		lastTurnOutcome?: string | null;
 		lastEventAt?: Date | null;
 		latestText?: string | null;
 		evidenceCount?: number | null;
@@ -205,6 +208,8 @@ export class IncidentsService {
 						harness: true,
 						model: true,
 						stopRequestedAt: true,
+						liveTurn: true,
+						lastTurnOutcome: true,
 						kind: true,
 						agentMode: true,
 						title: true,
@@ -292,6 +297,8 @@ export class IncidentsService {
 							harness: true,
 							model: true,
 							stopRequestedAt: true,
+							liveTurn: true,
+							lastTurnOutcome: true,
 							kind: true,
 							agentMode: true,
 							title: true,
@@ -441,9 +448,15 @@ export class IncidentsService {
 	private async withLatestRun(
 		incidents: IncidentWithRelations[],
 	): Promise<IncidentWithRelations[]> {
-		const latest = incidents.flatMap(
-			(i) => i.investigations?.slice(0, 1) ?? [],
-		);
+		// The newest run, and an older one an answer has made live (#673 w59).
+		const latest = incidents.flatMap((i) => {
+			const [newest] = i.investigations ?? [];
+			const live = liveRun(i);
+			return [
+				...(newest ? [newest] : []),
+				...(live && live !== newest ? [live] : []),
+			];
+		});
 		if (latest.length === 0) return incidents;
 		const live = latest
 			.filter((r) => isWorkflowLive(r.status))
@@ -484,24 +497,22 @@ export class IncidentsService {
 		const evidence = new Map<string, number | null>();
 		for (const r of reports) evidence.set(r.id, topEvidenceCount(r.report));
 		return incidents.map((incident): IncidentWithRelations => {
-			const [run, ...rest] = incident.investigations ?? [];
-			if (!run) return incident;
+			const runs = incident.investigations ?? [];
+			if (runs.length === 0) return incident;
+			const live = liveRun(incident);
 			return {
 				...incident,
-				investigations: [
-					{
-						...run,
-						lastEventAt: lastAt.get(run.id) ?? null,
-						latestText: text.get(run.id) ?? null,
-						evidenceCount: evidence.get(run.id) ?? null,
-					},
-					...rest,
-				].map((r) => ({
+				investigations: runs.map((r, i) => ({
 					...r,
-					hasReport:
-						r.kind !== "chat" &&
-						r.status === "completed" &&
-						typeof r.summary === "string",
+					...(i === 0 || r === live
+						? {
+								lastEventAt: lastAt.get(r.id) ?? null,
+								latestText: text.get(r.id) ?? null,
+								evidenceCount: evidence.get(r.id) ?? null,
+							}
+						: {}),
+					// Presence, not state: an answer running on a reported thread keeps it (#673 w59).
+					hasReport: r.kind !== "chat" && typeof r.summary === "string",
 				})),
 			};
 		});

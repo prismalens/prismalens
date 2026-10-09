@@ -28,7 +28,10 @@ import type { RunFidelity } from "./investigation.js";
 import type {
 	IncidentAction,
 	IncidentAttention,
+	InvestigationKind,
+	LiveTurn,
 	RunState,
+	TurnOutcome,
 } from "./state-semantics.js";
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
@@ -184,6 +187,33 @@ export const RUN_STATE_LABEL: Record<RunState, string> = {
 	stopped: "Stopped by you",
 	failed: "Failed",
 	done: "Done",
+};
+
+/** A chat ends without a report: Ended, and Error for a failure (#673 w59). */
+const CHAT_STATE_LABEL: Record<RunState, string> = {
+	...RUN_STATE_LABEL,
+	failed: "Error",
+	done: "Ended",
+};
+
+export function runStateLabel(
+	kind: InvestigationKind | string | null | undefined,
+	state: RunState,
+): string {
+	return (kind === "chat" ? CHAT_STATE_LABEL : RUN_STATE_LABEL)[state];
+}
+
+/** The status line's word for a live turn; a null turn reads plain Working. */
+export const LIVE_TURN_LABEL: Record<LiveTurn, string> = {
+	report: "Working toward a report",
+	answer: "Working on an answer",
+};
+
+/** `Last message: …` on an investigation whose follow-up did not answer. */
+export const TURN_OUTCOME_LABEL: Record<TurnOutcome, string> = {
+	answered: "answered",
+	stopped: "stopped by you",
+	error: "error",
 };
 
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {

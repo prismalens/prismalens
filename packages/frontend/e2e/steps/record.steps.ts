@@ -642,10 +642,15 @@ Then(
 		await expect(
 			page.getByTestId("composer-box").locator("[data-mode]"),
 		).toHaveAttribute("data-mode", "continue");
-		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		// Both verbs act here; the chip reads Investigate, the one control continues (#673 w59).
+		await expect(page.getByTestId("verb-chip")).toHaveAttribute(
+			"data-verb",
+			"investigate",
+		);
+		await expect(page.getByTestId("composer-ask")).toHaveCount(0);
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Continue this run",
+			"Say what to change, or just continue",
 		);
 	},
 );

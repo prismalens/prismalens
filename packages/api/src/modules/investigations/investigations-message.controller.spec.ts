@@ -24,6 +24,14 @@ import { join } from "node:path";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
+	// The real rule, with the run numbered 3 (#673 w59).
+	liveKindRefusal: vi.fn((inv: never, kind: "chat" | "continue") =>
+		InvestigationsService.prototype.liveKindRefusal.call(
+			{ runNumber: async () => 3 } as never,
+			inv,
+			kind,
+		),
+	),
 };
 
 const mockDispatchService = {
@@ -86,7 +94,7 @@ describe("InvestigationsController.message (#743)", () => {
 
 		const result = await messageHandler()({ input: { id: "inv-1", text: "check the TTL", mode: "queue" } });
 
-		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", []);
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", [], undefined);
 		expect(result).toEqual({ state: "queued" });
 	});
 
@@ -188,6 +196,33 @@ describe("InvestigationsController.message (#743)", () => {
 			expect(mockDispatchService.resumeInvestigation).not.toHaveBeenCalled();
 		});
 
+		it("continue on a cancelled chat, explicit or omitted, is refused; omitted means Ask on a chat (T16)", async () => {
+			const chat = { ...finished("opencode"), kind: "chat", status: "cancelled" };
+			mockInvestigationsService.findById.mockResolvedValue(chat);
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+
+			await messageHandler()({ input: { id: "inv-1", text: "and then?", mode: "queue" } });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "and then?", "queue", "chat", []);
+
+			mockDispatchService.resumeInvestigation.mockRejectedValue(
+				new FollowUpRefused("A chat has no report to continue to. Ask, or start a new run to investigate."),
+			);
+			await expect(
+				messageHandler()({ input: { id: "inv-1", text: "go on", mode: "queue", kind: "continue" } }),
+			).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("A chat has no report") });
+		});
+
+		it("omitted kind continues a failed reportless investigation, and Asks on a completed one (T16)", async () => {
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), status: "failed", error: "boom" });
+			await messageHandler()({ input: { id: "inv-1", text: "try again", mode: "queue" } });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "try again", "queue", "continue", []);
+
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), report: "{}" });
+			await messageHandler()({ input: { id: "inv-1", text: "why?", mode: "queue" } });
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "why?", "queue", "chat", []);
+		});
+
 		it("refuses a second follow-up while the first holds the run", async () => {
 			mockInvestigationsService.findById.mockResolvedValue(finished("opencode"));
 			mockDispatchService.resumeInvestigation.mockResolvedValue(false);
@@ -196,6 +231,73 @@ describe("InvestigationsController.message (#743)", () => {
 				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
 			).rejects.toMatchObject({ code: "CONFLICT", message: "A follow-up is already running." });
 		});
+	});
+});
+
+describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
+	let controller: InvestigationsController;
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		const module: TestingModule = await Test.createTestingModule({
+			controllers: [InvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: mockInvestigationsService },
+				{ provide: DispatchService, useValue: mockDispatchService },
+				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
+				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
+				{ provide: HarnessService, useValue: {} },
+			],
+		})
+			.overrideGuard(MutationThrottleGuard)
+			.useValue({ canActivate: () => true })
+			.compile();
+		controller = module.get(InvestigationsController);
+	});
+	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
+	const send = (input: { id: string; text: string; mode: "queue"; kind?: "chat" | "continue" }): Promise<any> =>
+		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
+		(controller.investigations() as Record<string, any>).message["~orpc"].handler({ input });
+	const live = (liveTurn: string | null, kind = "investigation") => ({
+		...investigation("inv-1", "running"),
+		kind,
+		liveTurn,
+	});
+
+	it.each([
+		["continue on an answer turn", live("answer"), "continue", "Run #3 is working on an answer; wait or stop it"],
+		["chat on a report turn", live("report"), "chat", "Run #3 is working toward a report; wait or stop it"],
+		["an explicit kind while the turn is not yet known", live(null, "chat"), "chat", "Run #3 is starting; wait"],
+	] as const)("refuses %s with CONFLICT", async (_name, row, kind, message) => {
+		mockInvestigationsService.findById.mockResolvedValue(row);
+
+		await expect(send({ id: "inv-1", text: "hi", mode: "queue", kind })).rejects.toMatchObject({ code: "CONFLICT", message });
+		expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("a retry that lands on a newer Ask turn is refused there, not delivered (#804 OBJ-032)", async () => {
+		// The report turn's steer channel closed; during the retry delay it finished and an Ask was admitted.
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(live("report"))
+			.mockResolvedValueOnce(live("answer"));
+		mockDispatchService.sendMessage.mockReturnValueOnce(null).mockReturnValueOnce("conflict");
+
+		await expect(send({ id: "inv-1", text: "finish the report", mode: "queue", kind: "continue" })).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "Run #3 is working on an answer; wait or stop it",
+		});
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
+		for (const call of mockDispatchService.sendMessage.mock.calls) expect(call[4]).toBe("continue");
+	});
+
+	it("a matching kind, or no kind at all, steers the live turn", async () => {
+		mockDispatchService.sendMessage.mockReturnValue("queued");
+		mockInvestigationsService.findById.mockResolvedValue(live("answer"));
+		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue", kind: "chat" })).resolves.toEqual({ state: "queued" });
+
+		mockInvestigationsService.findById.mockResolvedValue(live(null));
+		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue" })).resolves.toEqual({ state: "queued" });
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
 	});
 });
 

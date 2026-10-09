@@ -75,9 +75,10 @@ export function runNumber(runs: RunRef[], id: string): number {
 	return at < 0 ? runs.length + 1 : runs.length - at;
 }
 
-/** A run's name in the sidebar and the chip menu: its title, else `Run #N`. */
+/** A thread's name (#673 w59): an investigation is always `Run #N`, a chat its first message. */
 export function runName(runs: RunRef[], run: RunRef): string {
-	return run.title?.trim() || `Run #${runNumber(runs, run.id)}`;
+	const title = run.kind === "chat" ? run.title?.trim() : null;
+	return title || `Run #${runNumber(runs, run.id)}`;
 }
 
 export function refState(run: RunRef): RunState {

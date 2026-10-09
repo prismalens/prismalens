@@ -289,6 +289,10 @@ model Investigation {
   agentMode String? // the agent's own ACP mode id asked for; agent-default: none asked
   title     String? // investigation: the brief's first line; chat: the message's first 120 chars
 
+  // A thread's turns (#673 w59): what the live turn owes, how the last message ended
+  liveTurn        String? // report | answer; null when nothing runs
+  lastTurnOutcome String? // answered | stopped | error; null until a follow-up ends
+
   incident        Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   recommendations Recommendation[]
   events          InvestigationEvent[]

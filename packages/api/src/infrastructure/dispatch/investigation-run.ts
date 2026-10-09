@@ -29,10 +29,13 @@ import {
 	type InvestigationJobData,
 	InvestigationJobDataSchema,
 	type InvestigationReport,
+	isWorkflowLive,
 	type RunWorkspace,
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
+	type TurnOutcome,
 	toFiringAlert,
+	type WorkflowStatus,
 } from "@prismalens/contracts";
 import type {
 	ContextPack,
@@ -222,6 +225,7 @@ async function runJobInternal(
 			...(data.chat ? { chat: true } : {}),
 		});
 		const harness = selection.harness;
+		const kind: ThreadKind = data.chat ? "chat" : "investigation";
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
@@ -261,12 +265,19 @@ async function runJobInternal(
 		if (outcome.failureKind === "cancelled") {
 			logger.info(`Job ${job.id} cancelled`);
 			try {
-				await persistCancelled(data, ports);
+				await persistCancelled(data, ports, kind);
 			} catch (e) {
 				logger.error("Failed to persist cancelled status", e);
 			}
 			return cancelledResult(data);
 		}
+		const owned = store.refused()
+			? await ownTheEnd(data, ports, {
+					stop: () => persistCancelled(data, ports, kind),
+					reject: (why) => persistRejected(data, ports, kind, why),
+				})
+			: null;
+		if (owned) return owned;
 		if (data.chat && !outcome.error) {
 			logger.info(`Job ${job.id} chat ended`);
 			return chatResult(data);
@@ -285,7 +296,11 @@ async function runJobInternal(
 		if (io.signal.aborted && parsed.success) {
 			logger.info(`Job ${job.id} cancelled before the harness started`);
 			try {
-				await persistCancelled(parsed.data, ports);
+				await persistCancelled(
+					parsed.data,
+					ports,
+					parsed.data.chat ? "chat" : "investigation",
+				);
 			} catch (e) {
 				logger.error("Failed to persist cancelled status", e);
 			}
@@ -297,15 +312,28 @@ async function runJobInternal(
 		const incidentId = unvalidated?.incidentId;
 		if (investigationId) {
 			try {
-				await ports.updateStatus(investigationId, {
+				const applied = await ports.updateStatus(investigationId, {
 					status: "failed",
 					error: errorMessage,
 				});
-				if (incidentId) {
+				// Stop was asked for: the run can only end cancelled (#673 w59).
+				if (!applied && parsed.success) {
+					const owned = await ownTheEnd(parsed.data, ports, {
+						stop: () =>
+							persistCancelled(
+								parsed.data,
+								ports,
+								parsed.data.chat ? "chat" : "investigation",
+							),
+						reject: async () => {},
+					});
+					if (owned?.errorType === "cancelled") return owned;
+				}
+				if (applied && incidentId) {
 					await ports.createTimelineEntry({
 						incidentId,
 						type: "investigation_completed",
-						title: "Investigation failed",
+						title: unvalidated?.chat ? "Chat error" : "Investigation failed",
 						description: errorMessage,
 						source: "ai_worker",
 						metadata: { investigationId, error: errorMessage },
@@ -341,11 +369,10 @@ function keepSession(
 
 /**
  * A message on a finished run: the same harness session loaded again in the
- * first run's workspace, rebuilt at the same path and commits (#747). Chat
- * only: the report, the incident and deliveries never change, and the row's
- * status, completedAt and error are put back when it ends. A `continue` on a
- * stopped run is the run again (R4.4): it ends completed with a report,
- * cancelled, or failed, and is put back only if the agent never ran.
+ * first run's workspace, rebuilt at the same path and commits (#747). An Ask
+ * never touches the report, the incident or deliveries; how it ends is
+ * settled by {@link followUpEnd}. A `continue` on a reportless investigation
+ * is the run again (R4.4): its store writes the end as a run's would.
  */
 async function runFollowUp(
 	rawPayload: InvestigationJobData,
@@ -357,27 +384,18 @@ async function runFollowUp(
 	const continuing = resume.kind === "continue";
 	const id = data.investigationId;
 	const runDir = runDirFor(id);
-	// A continued run that reached its agent owns its own end state.
-	let restored = false;
-	const restore = async (): Promise<void> => {
-		if (restored) return;
-		restored = true;
-		try {
-			await ports.followUpStatus(id, {
-				status: resume.restore.status,
-				completedAt: resume.restore.completedAt
-					? new Date(resume.restore.completedAt)
-					: null,
-				error: resume.restore.error,
-			});
-		} catch (e) {
-			logger.error("Failed to put the investigation back after a follow-up", e);
-		}
-	};
+	let kind: ThreadKind = "investigation";
+	let report: InvestigationReport | null = null;
+	let storeRefused: () => boolean = () => false;
+	// The prompt reached the agent; before that every end puts the standing back (X1, #804 OBJ-026).
+	let delivered: () => boolean = () => false;
+	let end: { outcome: TurnOutcome; sentence: string | null };
+	let threw = false;
 	let seqStart = 0;
 	try {
 		seqStart = (await ports.lastEventSeq(id)) + 1;
 		const inv = await ports.findInvestigation(id);
+		if (inv?.kind === "chat") kind = "chat";
 		const harness = HARNESS_IDS.find((h) => h === inv?.harness);
 		const blocked = !inv
 			? "the investigation is gone"
@@ -434,15 +452,11 @@ async function runFollowUp(
 			incidentId: data.incidentId,
 			runId: id,
 			resume: { note: workspace.note, continuing },
+			...(kind === "chat" ? { chat: true } : {}),
 		});
-		// The row is the continued run's once it went live; a failure before that puts it back.
-		const store = {
-			...base,
-			create: async () => {
-				await base.create();
-				if (continuing) restored = true;
-			},
-		};
+		storeRefused = base.refused;
+		delivered = base.delivered;
+		const store = base;
 		const modelSource = followUpModelSource(harness, inv.model);
 		const outcome = await conductRun(
 			{
@@ -488,22 +502,16 @@ async function runFollowUp(
 				store,
 			},
 		);
-		await restore();
 		await io.streamDone();
-		if (outcome.failureKind === "cancelled") {
-			if (continuing) await persistCancelled(data, ports);
-			return cancelledResult(data);
-		}
-		if (outcome.error) return failureResult(data, outcome.error);
-		if (outcome.report) return successResult(data, outcome.report);
-		return {
-			success: true,
-			investigationId: id,
-			incidentId: data.incidentId,
-			findings: {},
-			recommendations: [],
-		};
+		report = outcome.report;
+		end =
+			outcome.failureKind === "cancelled"
+				? { outcome: "stopped", sentence: null }
+				: outcome.error
+					? { outcome: "error", sentence: outcome.error }
+					: { outcome: "answered", sentence: null };
 	} catch (error: unknown) {
+		threw = true;
 		const message = io.signal.aborted
 			? "investigation cancelled"
 			: error instanceof Error
@@ -511,14 +519,194 @@ async function runFollowUp(
 				: String(error);
 		logger.error(`Follow-up failed: ${message}`, error);
 		await sayInConversation(id, seqStart, resume, message, io, ports);
-		await restore();
-		return io.signal.aborted
-			? cancelledResult(data)
-			: failureResult(data, message);
+		end = {
+			outcome: io.signal.aborted ? "stopped" : "error",
+			sentence: message,
+		};
 	} finally {
-		await restore();
 		clearRunWorkspace(runDir);
 	}
+
+	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
+	const ran = delivered();
+	const runEnds = continuing && ran;
+	const settle = async (
+		outcome: TurnOutcome,
+		sentence: string | null,
+	): Promise<boolean> => {
+		const to = followUpEnd(
+			ran ? kind : null,
+			resume.restore,
+			outcome,
+			sentence,
+		);
+		// A write that threw is not applied (#804 OBJ-024): one retry, then the run owns the end.
+		let applied = false;
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				applied = await ports.settleFollowUp(id, to.row, {
+					stopped: outcome === "stopped",
+				});
+				break;
+			} catch (e) {
+				logger.error("Failed to settle the follow-up", e);
+			}
+		}
+		if (applied && to.timeline)
+			await ports
+				.createTimelineEntry({
+					incidentId: data.incidentId,
+					type: "investigation_completed",
+					...to.timeline,
+					source: "ai_worker",
+					metadata: { investigationId: id },
+				})
+				.catch((e) => logger.warn("Failed to record the follow-up's end", e));
+		return applied;
+	};
+	let refused: boolean;
+	if (!runEnds) refused = !(await settle(end.outcome, end.sentence));
+	else if (end.outcome === "stopped")
+		refused = !(await persistCancelled(data, ports, kind, "stopped").catch(
+			(e) => {
+				logger.error("Failed to persist cancelled status", e);
+				return false;
+			},
+		));
+	// A throw may skip the store's terminal write; ownTheEnd leaves a row already ended alone.
+	else refused = threw || storeRefused();
+	const owned = refused
+		? await ownTheEnd(data, ports, {
+				stop: () =>
+					runEnds
+						? persistCancelled(data, ports, kind, "stopped")
+						: settle("stopped", null),
+				reject: (why) =>
+					runEnds
+						? persistRejected(data, ports, kind, why, "error")
+						: settle("error", why),
+			})
+		: null;
+	if (owned) return owned;
+	if (end.outcome === "stopped") return cancelledResult(data);
+	if (end.outcome === "error")
+		return failureResult(data, end.sentence ?? "the follow-up failed");
+	if (report) return successResult(data, report);
+	return chatResult(data);
+}
+
+export type ThreadKind = "investigation" | "chat";
+
+/**
+ * How a follow-up that is not a `continue` ends the row: the settlement
+ * table, DESIGN §3.3 (#673 w59). An investigation keeps its standing (I1-I5);
+ * a chat's standing is its latest outcome (C1-C3); a follow-up whose agent
+ * never ran (`kind` null) puts the standing back (X1).
+ */
+export function followUpEnd(
+	kind: ThreadKind | null,
+	restore: NonNullable<InvestigationJobData["resume"]>["restore"],
+	outcome: TurnOutcome,
+	sentence: string | null,
+	now: Date = new Date(),
+): {
+	row: {
+		status: WorkflowStatus;
+		completedAt: Date | null;
+		error: string | null;
+		lastTurnOutcome: TurnOutcome;
+	};
+	timeline: { title: string; description: string } | null;
+} {
+	const kept = {
+		status: restore.status,
+		completedAt: restore.completedAt ? new Date(restore.completedAt) : null,
+		error: restore.error,
+		lastTurnOutcome: outcome,
+	};
+	if (kind === null) return { row: kept, timeline: null };
+	const said = sentence ?? "The agent stopped without saying why.";
+	if (kind === "investigation") {
+		if (outcome === "answered") return { row: kept, timeline: null };
+		return {
+			row: kept,
+			timeline:
+				outcome === "stopped"
+					? {
+							title: "Investigation stopped",
+							description: "You stopped the follow-up; the run is unchanged.",
+						}
+					: { title: "Investigation error", description: said },
+		};
+	}
+	if (outcome === "answered")
+		return {
+			row: {
+				status: "completed",
+				completedAt: now,
+				error: null,
+				lastTurnOutcome: outcome,
+			},
+			timeline: {
+				title: "Chat ended",
+				description: "The agent answered; the conversation holds it.",
+			},
+		};
+	if (outcome === "stopped")
+		return {
+			row: {
+				status: "cancelled",
+				completedAt: now,
+				error: "Chat stopped",
+				lastTurnOutcome: outcome,
+			},
+			timeline: {
+				title: "Chat stopped",
+				description: "You stopped the agent before it answered.",
+			},
+		};
+	return {
+		row: {
+			status: "failed",
+			completedAt: now,
+			error: said,
+			lastTurnOutcome: outcome,
+		},
+		timeline: { title: "Chat error", description: said },
+	};
+}
+
+/**
+ * The run owns its row's end (#673 w59, OBJ-010). Once its terminal write is
+ * done the run reads the row again; one still live had that write refused,
+ * and is ended here: cancelled when Stop was asked for, else failed.
+ */
+async function ownTheEnd(
+	data: InvestigationJobData,
+	ports: RunPorts,
+	end: {
+		stop: () => Promise<unknown>;
+		reject: (why: string) => Promise<unknown>;
+	},
+): Promise<InvestigationResult | null> {
+	let row: Awaited<ReturnType<RunPorts["findInvestigation"]>>;
+	try {
+		row = await ports.findInvestigation(data.investigationId);
+	} catch (e) {
+		// Unconfirmed is not success: boot reconciliation settles the row (#804 OBJ-024).
+		logger.warn("Could not read the run's row back after its end", e);
+		return failureResult(data, "the run's end could not be saved");
+	}
+	if (!row || !isWorkflowLive(row.status)) return null;
+	if (row.stopRequestedAt) {
+		await end
+			.stop()
+			.catch((e) => logger.error("Failed to end the run as stopped", e));
+		return cancelledResult(data);
+	}
+	const why = "terminal write rejected: the row did not take the run's end";
+	await end.reject(why).catch((e) => logger.error("Failed to end the run", e));
+	return failureResult(data, why);
 }
 
 /**
@@ -902,21 +1090,54 @@ async function recordWorkspace(
 	}
 }
 
+/** A stop ends the row cancelled, in the thread's own words (#673 w59). */
 async function persistCancelled(
 	data: InvestigationJobData,
 	ports: RunPorts,
-): Promise<void> {
-	await ports.updateStatus(data.investigationId, {
+	kind: ThreadKind,
+	lastTurnOutcome?: TurnOutcome,
+): Promise<boolean> {
+	const chat = kind === "chat";
+	const applied = await ports.updateStatus(data.investigationId, {
 		status: "cancelled",
-		error: "Investigation cancelled",
+		error: chat ? "Chat stopped" : "Investigation cancelled",
+		...(lastTurnOutcome ? { lastTurnOutcome } : {}),
 	});
+	if (!applied) return false;
 	await ports.createTimelineEntry({
 		incidentId: data.incidentId,
 		type: "investigation_completed",
-		title: "Investigation stopped",
-		description: "The investigation was cancelled before it completed.",
+		title: chat ? "Chat stopped" : "Investigation stopped",
+		description: chat
+			? "You stopped the agent before it answered."
+			: "The investigation was cancelled before it completed.",
 		source: "ai_worker",
 		metadata: { investigationId: data.investigationId },
+	});
+	return true;
+}
+
+/** A run whose end the row refused, with no Stop asked for, ends failed (#673 w59). */
+async function persistRejected(
+	data: InvestigationJobData,
+	ports: RunPorts,
+	kind: ThreadKind,
+	why: string,
+	lastTurnOutcome?: TurnOutcome,
+): Promise<void> {
+	const applied = await ports.updateStatus(data.investigationId, {
+		status: "failed",
+		error: why,
+		...(lastTurnOutcome ? { lastTurnOutcome } : {}),
+	});
+	if (!applied) return;
+	await ports.createTimelineEntry({
+		incidentId: data.incidentId,
+		type: "investigation_completed",
+		title: kind === "chat" ? "Chat error" : "Investigation failed",
+		description: why,
+		source: "ai_worker",
+		metadata: { investigationId: data.investigationId, error: why },
 	});
 }
 

@@ -25,6 +25,7 @@
 import type {
 	CanonicalEvent,
 	InvestigationReport,
+	LiveTurn,
 } from "@prismalens/contracts";
 import type { InvestigationStore } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
@@ -52,13 +53,33 @@ export interface PrismaInvestigationStoreParams {
 	agentMode?: string;
 	/**
 	 * A follow-up (#747): the row only goes live, the timeline says resumed with
-	 * this note, and nothing is written at the end; the job puts the row back.
+	 * this note, and nothing is written at the end; the run settles the row.
 	 * `continuing` (R4.4): the end is written as a run's would be.
 	 */
 	resume?: { note: string; continuing?: boolean };
-	/** A chat run (#673): its timeline says Chat, and it finishes with no report. */
+	/** A chat (#673): its timeline says Chat, and its first turn finishes with no report. */
 	chat?: boolean;
 }
+
+/**
+ * What a claimed job owes, read from its payload (#673 w59, OBJ-021): a
+ * chat or an Ask answers, a first investigation or a `continue` reports.
+ */
+export function payloadTurn(
+	params: Pick<PrismaInvestigationStoreParams, "chat" | "resume">,
+): LiveTurn {
+	if (params.chat) return "answer";
+	if (params.resume) return params.resume.continuing ? "report" : "answer";
+	return "report";
+}
+
+/** The store, plus whether its terminal write was refused (#673 w59). */
+export type PrismaInvestigationStore = InvestigationStore & {
+	/** True once finish or fail wrote an end the row refused (Stop asked for, cancelled). */
+	refused(): boolean;
+	/** A follow-up's message reached the agent: the engine marks it delivered just before the prompt. */
+	delivered(): boolean;
+};
 
 export function createPrismaInvestigationStore(
 	ports: RunPorts,
@@ -74,7 +95,9 @@ export function createPrismaInvestigationStore(
 		resume,
 		chat,
 	}: PrismaInvestigationStoreParams,
-): InvestigationStore {
+): PrismaInvestigationStore {
+	let refused = false;
+	let delivered = false;
 	let buffer: CanonicalEvent[] = [];
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	// Flushes are chained so a terminal flush awaits any in-flight one — the report
@@ -117,13 +140,18 @@ export function createPrismaInvestigationStore(
 	};
 
 	return {
+		refused: () => refused,
+		delivered: () => delivered,
+
 		async create() {
+			const turn = payloadTurn({ chat, resume });
 			if (resume) {
 				await ports.followUpStatus(investigationId, { status: "running" });
+				await ports.initLiveTurn(investigationId, turn);
 				await ports.createTimelineEntry({
 					incidentId,
 					type: "investigation_started",
-					title: "Investigation resumed",
+					title: chat ? "Chat resumed" : "Investigation resumed",
 					description: resume.note,
 					source: "ai_worker",
 					metadata: { investigationId },
@@ -139,6 +167,7 @@ export function createPrismaInvestigationStore(
 				...(workspace ? { workspace } : {}),
 				...(agentMode ? { agentMode } : {}),
 			});
+			await ports.initLiveTurn(investigationId, turn);
 			await ports.createTimelineEntry({
 				incidentId,
 				type: "investigation_started",
@@ -152,6 +181,8 @@ export function createPrismaInvestigationStore(
 		},
 
 		async append(event: CanonicalEvent) {
+			if (event.kind === "operator_message" && event.delivered)
+				delivered = true;
 			buffer.push(event);
 			if (buffer.length >= BATCH_SIZE) {
 				await flush();
@@ -175,18 +206,20 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume && !resume.continuing) return;
+			// A follow-up that never reached its agent is put back by the run (X1, #804 OBJ-026).
+			if (resume && !(resume.continuing && delivered)) return;
 			// A chat ends its turn with no report; the row completes all the same (#673).
 			if (!report) {
-				await ports.writeResult(investigationId, {
+				refused = !(await ports.writeResult(investigationId, {
 					status: "completed",
 					incidentId,
-				});
+				}));
 				return;
 			}
-			await ports.writeResult(investigationId, {
+			refused = !(await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,
+				...(resume?.continuing ? { lastTurnOutcome: "answered" as const } : {}),
 				summary: report.summary,
 				rootCause: report.rootCause ?? undefined,
 				rootCauseCategory: report.rootCauseCategory ?? undefined,
@@ -198,7 +231,7 @@ export function createPrismaInvestigationStore(
 					category: "investigation",
 					actionable: true,
 				})),
-			});
+			}));
 		},
 
 		async flush() {
@@ -218,15 +251,19 @@ export function createPrismaInvestigationStore(
 					`Durable event record for investigation ${investigationId} dropped ${dropped} event(s) total`,
 				);
 			}
-			if (resume && !resume.continuing) return;
-			await ports.updateStatus(investigationId, {
+			if (resume && !(resume.continuing && delivered)) return;
+			const applied = await ports.updateStatus(investigationId, {
 				status: "failed",
 				error,
+				...(resume?.continuing ? { lastTurnOutcome: "error" as const } : {}),
 			});
+			// A refused write (Stop asked for) leaves the end to the run (#673 w59).
+			refused = !applied;
+			if (!applied) return;
 			await ports.createTimelineEntry({
 				incidentId,
 				type: "investigation_completed",
-				title: "Investigation failed",
+				title: chat ? "Chat error" : "Investigation failed",
 				description: error,
 				source: "ai_worker",
 				metadata: { investigationId, error },

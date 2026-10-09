@@ -116,4 +116,38 @@ describe("createInProcessRunner", () => {
 		running.cancel();
 		expect(sawSignal?.aborted).toBe(true);
 	});
+
+	it.each([
+		["a first investigation", {}, "chat", "continue"],
+		["a chat", { kind: "chat", chat: { text: "why?" } }, "continue", "chat"],
+		["an Ask", { resume: { text: "why?", mode: "queue", restore: { status: "completed", completedAt: null, error: null } } }, "continue", "chat"],
+		[
+			"a continue",
+			{ resume: { text: "go on", mode: "queue", kind: "continue", restore: { status: "cancelled", completedAt: null, error: null } } },
+			"chat",
+			"continue",
+		],
+	] as const)(
+		"the turn that receives a message checks its kind: %s (#804 OBJ-032)",
+		async (_name, extra, wrong, right) => {
+			const runInvestigationJob = (await import("./investigation-run.js")).default;
+			const heard: string[] = [];
+			vi.mocked(runInvestigationJob).mockImplementation(async (_job, _data, io) => {
+				// Hold the turn open with its steer channel listening.
+				for (;;) {
+					const line = io.steer?.next();
+					if (line) heard.push(line.text);
+					await new Promise((r) => setTimeout(r, 5));
+				}
+			});
+			const runner = createInProcessRunner(ports);
+			const running = runner(job({ investigationId: "inv-1", incidentId: "inc-1", ...extra }), sink());
+
+			expect(running.message?.("stale page", "queue", [], wrong)).toBe("conflict");
+			expect(running.message?.("also the TTL", "queue", [], right)).toBe("queued");
+			expect(running.message?.("no kind", "queue", [])).toBe("queued");
+			await vi.waitFor(() => expect(heard).toEqual(["also the TTL", "no kind"]));
+			running.kill();
+		},
+	);
 });

@@ -173,8 +173,8 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await click("pick-mode");
 		const newRun = h.record.newRun as ReturnType<typeof vi.fn>;
 		expect(newRun.mock.calls.map((c) => c[0])).toEqual([
-			{ harness: "opencode", model: "vendor/run", effort: "high", mode: "plan" },
-			{ harness: "opencode", model: "vendor/run", effort: "medium", mode: "build" },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", mode: "plan" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", mode: "build" } },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
 	});

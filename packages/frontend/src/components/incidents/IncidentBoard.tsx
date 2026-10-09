@@ -72,6 +72,7 @@ import {
 	isSettled,
 	isWrapUp,
 	latestRun,
+	liveThread,
 	orderNeedsYou,
 	runWord,
 	shortAge,
@@ -216,11 +217,10 @@ type Prompt = { incident: IncidentWithRelations } & (
 );
 
 function actionFor(d: Dragging, to: BoardColumn): DropAction {
-	const run = latestRun(d.incident);
 	return dropAction({
 		from: d.from,
 		to,
-		live: !!run && isWorkflowLive(run.status),
+		live: !!liveThread(d.incident),
 		canResolve: canIncidentAction("close", d.incident.status),
 		canReopen: canIncidentAction("reopen", d.incident.status),
 		mergedInto: d.incident.mergedInto?.number ?? null,
@@ -326,7 +326,8 @@ export function IncidentBoard({
 		);
 	};
 	const stopRun = (incident: IncidentWithRelations, then?: () => void) => {
-		const run = latestRun(incident);
+		// Whichever turn is live, a resumed older run or a chat (#673 w59, OBJ-014).
+		const run = liveThread(incident);
 		// A refetch can drop the run between the drop and the confirm; never leave the card busy.
 		if (!run) {
 			if (then) then();
@@ -402,10 +403,7 @@ export function IncidentBoard({
 	const settled = columns.resolved.filter((i) => isSettled(i, at));
 	const resolved = columns.resolved.filter((i) => !isSettled(i, at));
 	// Any live run lights Working's head, one sitting in Needs you included (ruling m15).
-	const liveMark = incidents.some((i) => {
-		const run = latestRun(i);
-		return !!run && isWorkflowLive(run.status);
-	});
+	const liveMark = incidents.some((i) => !!liveThread(i));
 
 	return (
 		<DndContext

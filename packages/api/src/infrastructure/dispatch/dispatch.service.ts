@@ -29,11 +29,13 @@ import type {
 	JobAttachment,
 	OperatorMessageMode,
 	RunChoice,
+	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
+	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -57,6 +59,7 @@ import { Dispatcher } from "./dispatcher.js";
 import {
 	EVENT_BUS,
 	type EventBus,
+	type MessageState,
 	type RunMessageRequest,
 	runCancelTopic,
 	runMessageTopic,
@@ -100,8 +103,18 @@ const PRIORITY_ORDER: Record<string, number> = {
 
 /** The reason recorded on every job a restart abandoned mid-flight. */
 const RESTART_REASON = "API restarted while the run was in flight";
+const UNQUEUED_REASON = "PrismaLens restarted before the run was queued";
 const FOLLOW_UP_RESTART_REASON =
 	"PrismaLens stopped before the follow-up finished. The report is unchanged.";
+
+/** The job payload's follow-up, or undefined for a first run or a payload that does not parse. */
+function jobResume(payload: string): InvestigationJobData["resume"] {
+	try {
+		return InvestigationJobDataSchema.parse(JSON.parse(payload)).resume;
+	} catch {
+		return undefined;
+	}
+}
 
 /**
  * The model a run asks for and where it came from. A harness that cannot take
@@ -159,11 +172,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							effort: investigation.effort ?? null,
 							acpSessionId: investigation.acpSessionId ?? null,
 							workspace: investigation.workspace ?? null,
+							kind: investigation.kind,
+							stopRequestedAt: investigation.stopRequestedAt ?? null,
 						}
 					: null;
 			},
 			updateStatus: async (id, dto) => {
-				await this.investigationsService.updateStatusInternal(
+				const written = await this.investigationsService.updateStatusInternal(
 					id,
 					dto.status,
 					dto.startedAt,
@@ -176,11 +191,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						acpSessionId: dto.acpSessionId,
 						workspace: dto.workspace,
 						agentMode: dto.agentMode,
+						lastTurnOutcome: dto.lastTurnOutcome,
 					},
 				);
+				// A refused write delivers nothing and counts nothing (#673 w59).
+				if (!written) return false;
 				if (dto.status === "failed") void this.reportDelivery.deliver(id);
 				await this.reportStatus(id, dto.status);
+				return true;
 			},
+			initLiveTurn: (id, turn) =>
+				this.investigationsService.initLiveTurn(id, turn),
+			settleFollowUp: (id, end, opts) =>
+				this.investigationsService.settleFollowUp(id, end, opts),
 			followUpStatus: async (id, state) => {
 				await this.prisma.investigation.update({
 					where: { id },
@@ -207,10 +230,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.investigationsService.clearEvents(id);
 			},
 			writeResult: async (id, dto: InternalInvestigationResultDto) => {
-				await this.investigationsService.writeResultWithRelations(id, dto);
+				const written =
+					await this.investigationsService.writeResultWithRelations(id, dto);
+				if (!written) return false;
 				// Off the run's path: a slow or failing Slack never delays or fails it.
 				void this.reportDelivery.deliver(id);
 				await this.reportStatus(id, dto.status);
+				return true;
 			},
 			createTimelineEntry: async (dto: CreateTimelineEntryDto) => {
 				await this.timelineService.create(dto);
@@ -366,32 +392,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 
 	async onModuleInit(): Promise<void> {
 		// An API restart abandons whatever was `running` — there is no reclaim any
-		// more (0005 §2: one process). Fail those rows and their investigations
-		// before the loop starts, so nothing sits stuck "running" forever.
+		// more (0005 §2: one process). Fail those jobs, then settle every live row
+		// against its job before the loop starts, so nothing sits live forever.
 		const ids = await this.store.failRunning(RESTART_REASON);
-		for (const id of ids) {
-			const restored = await this.restoreFollowUp(
-				id,
-				FOLLOW_UP_RESTART_REASON,
-			).catch((e) => {
-				this.logger.warn(
-					`Could not restore follow-up ${id}: ${(e as Error).message}`,
-				);
-				return false;
-			});
-			if (restored) continue;
-			await this.investigationsService.updateStatusInternal(
-				id,
-				"failed",
-				undefined,
-				RESTART_REASON,
-			);
-		}
 		if (ids.length > 0) {
 			this.logger.warn(
 				`Failed ${ids.length} investigation(s) left running by a previous process: ${ids.join(", ")}`,
 			);
 		}
+		await this.reconcileLiveRows(new Set(ids)).catch((e) =>
+			this.logger.warn(
+				`Could not reconcile live runs at boot: ${(e as Error).message}`,
+			),
+		);
 		try {
 			const swept = sweepRunWorkspaces();
 			if (swept > 0)
@@ -446,9 +459,152 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	}
 
 	/**
-	 * Reopen a finished run for one follow-up message (#747). The compare-and-set
-	 * admits one of two racing sends; the job puts status, completedAt and error
-	 * back when the follow-up ends. Returns false when a follow-up already holds it.
+	 * Boot reconciliation (#673 w59, DESIGN §3.4): every row left live is
+	 * settled against its job. A pending job stays to be claimed; anything
+	 * else ends the row, and a recorded Stop always ends it as a stop.
+	 */
+	private async reconcileLiveRows(wasRunning: Set<string>): Promise<void> {
+		await this.settleJobsOfEndedRows(wasRunning);
+		const rows = await this.prisma.investigation.findMany({
+			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+			select: {
+				id: true,
+				incidentId: true,
+				kind: true,
+				stopRequestedAt: true,
+				createdAt: true,
+			},
+			orderBy: { createdAt: "asc" },
+		});
+		const waiting: typeof rows = [];
+		for (const row of rows) {
+			const job = await this.prisma.job.findUnique({
+				where: { investigationId: row.id },
+				select: { status: true, payload: true },
+			});
+			if (job?.status === "pending") {
+				waiting.push(row);
+				continue;
+			}
+			const stopped =
+				!!row.stopRequestedAt ||
+				(!wasRunning.has(row.id) && job?.status === "cancelled");
+			await this.endAtBoot(row, job, stopped).catch((e) =>
+				this.logger.warn(
+					`Could not settle run ${row.id} at boot: ${(e as Error).message}`,
+				),
+			);
+		}
+		// Old data can hold two live rows on one incident: the newest keeps its claim.
+		const byIncident = new Map<string, typeof rows>();
+		for (const row of waiting)
+			byIncident.set(row.incidentId, [
+				...(byIncident.get(row.incidentId) ?? []),
+				row,
+			]);
+		for (const [incidentId, live] of byIncident) {
+			if (live.length < 2) continue;
+			this.logger.warn(
+				`Incident ${incidentId} had ${live.length} live runs; keeping the newest`,
+			);
+			for (const row of live.slice(0, -1)) {
+				await this.cancelPendingJob(row.id);
+				const job = await this.prisma.job.findUnique({
+					where: { investigationId: row.id },
+					select: { status: true, payload: true },
+				});
+				await this.endAtBoot(row, job, false, RESTART_REASON).catch((e) =>
+					this.logger.warn(
+						`Could not settle run ${row.id} at boot: ${(e as Error).message}`,
+					),
+				);
+			}
+		}
+	}
+
+	/**
+	 * A run that wrote its row's end and died before its job did: the job
+	 * failRunning just failed takes the row's outcome (#804 OBJ-027).
+	 */
+	private async settleJobsOfEndedRows(wasRunning: Set<string>): Promise<void> {
+		if (wasRunning.size === 0) return;
+		const ended = await this.prisma.investigation.findMany({
+			where: {
+				id: { in: [...wasRunning] },
+				status: { notIn: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			select: { id: true, status: true, lastTurnOutcome: true },
+		});
+		for (const row of ended) {
+			const job = await this.prisma.job.findUnique({
+				where: { investigationId: row.id },
+				select: { payload: true },
+			});
+			const followUp = !!job && !!jobResume(job.payload);
+			const outcome = followUp
+				? row.lastTurnOutcome === "stopped"
+					? "cancelled"
+					: row.lastTurnOutcome === "answered"
+						? "succeeded"
+						: "failed"
+				: row.status === "cancelled"
+					? "cancelled"
+					: row.status === "completed"
+						? "succeeded"
+						: "failed";
+			if (outcome === "failed") continue;
+			await this.prisma.job.updateMany({
+				where: { investigationId: row.id, status: "failed" },
+				data: {
+					status: outcome,
+					lastError:
+						outcome === "cancelled"
+							? "Stopped before PrismaLens restarted"
+							: null,
+				},
+			});
+		}
+	}
+
+	private async endAtBoot(
+		row: { id: string; kind: string },
+		job: { status: string; payload: string } | null,
+		stopped: boolean,
+		reason = job ? RESTART_REASON : UNQUEUED_REASON,
+	): Promise<void> {
+		if (job && jobResume(job.payload)) {
+			await this.restoreFollowUp(
+				row.id,
+				FOLLOW_UP_RESTART_REASON,
+				stopped ? "stopped" : "error",
+			);
+		} else {
+			const chat = row.kind === "chat";
+			await this.investigationsService.updateStatusInternal(
+				row.id,
+				stopped ? "cancelled" : "failed",
+				undefined,
+				stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
+			);
+		}
+		// The job follows the row: a stop is a cancelled job, not the restart's failure (#804 OBJ-027).
+		if (stopped && job && job.status !== "cancelled")
+			await this.prisma.job.updateMany({
+				where: { investigationId: row.id },
+				data: {
+					status: "cancelled",
+					claimedBy: null,
+					finishedAt: new Date(),
+					lastError: "Stopped before PrismaLens restarted",
+				},
+			});
+	}
+
+	/**
+	 * Reopen a finished run for one follow-up message (#747). The live check,
+	 * the compare-and-set and the job rearm are one transaction (#673 w59): two
+	 * racing sends admit one, and a refused rearm leaves the row as it was.
+	 * Returns false when a follow-up already holds it.
 	 */
 	async resumeInvestigation(
 		id: string,
@@ -465,11 +621,25 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				completedAt: true,
 				error: true,
 				agentMode: true,
+				kind: true,
+				report: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
-		if (kind === "continue" && row.status !== "cancelled")
-			throw new FollowUpRefused("Only a stopped run can be continued.");
+		if (kind === "continue") {
+			if (row.kind === "chat")
+				throw new FollowUpRefused(
+					"A chat has no report to continue to. Ask, or start a new run to investigate.",
+				);
+			if (row.report !== null)
+				throw new FollowUpRefused(
+					"This run has its report. Investigate again starts a new run.",
+				);
+			if (row.status !== "cancelled" && row.status !== "failed")
+				throw new FollowUpRefused(
+					"Only a stopped or failed run can be continued.",
+				);
+		}
 		// The run keeps the mode it ran in: the row's, else what its first job asked for.
 		const first = row.agentMode
 			? null
@@ -487,22 +657,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					event: { contains: '"kind":"tool_result"' },
 				},
 			})) > 0;
-		const { count } = await this.prisma.investigation.updateMany({
-			where: { id, status: row.status },
-			data: {
-				status: "pending",
-				completedAt: null,
-				error: null,
-				stopRequestedAt: null,
-			},
-		});
-		if (count === 0) return false;
 		const restore = {
 			status: row.status as WorkflowStatus,
 			completedAt: row.completedAt?.toISOString() ?? null,
 			error: row.error,
 		};
-		const jobId = await this.addInvestigationJob({
+		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
 			...(agentMode ? { agentMode } : {}),
@@ -510,21 +670,55 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				text,
 				mode,
 				restore,
-				...(kind === "continue" ? { kind, sawEvidence } : {}),
+				// Explicit on every follow-up so its intent never depends on a default.
+				kind,
+				...(kind === "continue" ? { sawEvidence } : {}),
 				...(attachments.length ? { attachments } : {}),
 			},
-		});
-		if (jobId === null) {
-			await this.prisma.investigation.update({
-				where: { id },
+		};
+		const admitted = await this.prisma.$transaction(async (tx) => {
+			const other = await tx.investigation.findFirst({
+				where: {
+					incidentId: row.incidentId,
+					id: { not: id },
+					status: { in: [...LIVE_WORKFLOW_STATUSES] },
+				},
+				orderBy: { createdAt: "desc" },
+				select: { createdAt: true },
+			});
+			if (other) {
+				const n = await tx.investigation.count({
+					where: {
+						incidentId: row.incidentId,
+						createdAt: { lte: other.createdAt },
+					},
+				});
+				throw new FollowUpRefused(
+					`Run #${n} is working; message it or stop it.`,
+				);
+			}
+			const { count } = await tx.investigation.updateMany({
+				where: { id, status: row.status },
 				data: {
-					status: restore.status,
-					completedAt: row.completedAt,
-					error: row.error,
+					status: "pending",
+					completedAt: null,
+					error: null,
+					stopRequestedAt: null,
+					liveTurn: kind === "continue" ? "report" : "answer",
 				},
 			});
-			throw new Error("The follow-up could not be queued.");
-		}
+			if (count === 0) return false;
+			await new PrismaJobStore(tx.job as unknown as JobDelegate).enqueue({
+				investigationId: id,
+				incidentId: row.incidentId,
+				payload: JSON.stringify(data),
+				priority: PRIORITY_ORDER.normal ?? 3,
+			});
+			return true;
+		});
+		if (!admitted) return false;
+		this.streamRelay.attach(id);
+		void this.dispatcher.tick();
 		return true;
 	}
 
@@ -541,12 +735,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		text: string,
 		mode: "queue" | "now",
 		attachments: JobAttachment[] = [],
-	): "queued" | "sent" | null {
-		let state: "queued" | "sent" | null = null;
+		kind?: FollowUpKind,
+	): MessageState {
+		let state: MessageState = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
 			text,
 			mode,
 			attachments,
+			...(kind ? { kind } : {}),
 			reply: (s) => {
 				state = s;
 			},
@@ -572,23 +768,32 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	async restoreFollowUp(
 		investigationId: string,
 		reason: string,
+		outcome: Extract<TurnOutcome, "stopped" | "error">,
 	): Promise<boolean> {
 		const job = await this.prisma.job.findUnique({
 			where: { investigationId },
 			select: { payload: true },
 		});
-		let resume: InvestigationJobData["resume"];
-		try {
-			resume = job
-				? InvestigationJobDataSchema.parse(JSON.parse(job.payload)).resume
-				: undefined;
-		} catch {
-			return false;
-		}
+		const resume = job ? jobResume(job.payload) : undefined;
 		if (!resume) return false;
-		const seq =
-			(await this.investigationsService.lastEventSeq(investigationId)) + 1;
+		// Only a live row is put back; one that already ended keeps its end (#804 OBJ-025).
+		const applied = await this.investigationsService.settleFollowUp(
+			investigationId,
+			{
+				status: resume.restore.status,
+				completedAt: resume.restore.completedAt
+					? new Date(resume.restore.completedAt)
+					: null,
+				error: resume.restore.error,
+				lastTurnOutcome: outcome,
+			},
+			{ stopped: true },
+		);
+		if (!applied) return true;
+		// The conversation line is best-effort; the standing is written first (#804 OBJ-031).
 		try {
+			const seq =
+				(await this.investigationsService.lastEventSeq(investigationId)) + 1;
 			await this.investigationsService.appendEvents(
 				investigationId,
 				followUpNotDelivered(investigationId, seq, resume, reason),
@@ -598,17 +803,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not record the ended follow-up in the conversation: ${(e as Error).message}`,
 			);
 		}
-		await this.prisma.investigation.update({
-			where: { id: investigationId },
-			data: {
-				status: resume.restore.status,
-				completedAt: resume.restore.completedAt
-					? new Date(resume.restore.completedAt)
-					: null,
-				error: resume.restore.error,
-				stopRequestedAt: null,
-			},
-		});
 		return true;
 	}
 

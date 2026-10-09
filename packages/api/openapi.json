@@ -4139,6 +4139,35 @@
                                     }
                                   ]
                                 },
+                                "liveTurn": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "report",
+                                        "answer"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "lastTurnOutcome": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "answered",
+                                        "stopped",
+                                        "error"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "lastEventAt": {
                                   "anyOf": [
                                     {
@@ -5348,6 +5377,35 @@
                               {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "liveTurn": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "report",
+                                  "answer"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastTurnOutcome": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "answered",
+                                  "stopped",
+                                  "error"
+                                ],
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -8473,6 +8531,45 @@
                         }
                       ]
                     },
+                    "triggerType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveTurn": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "report",
+                            "answer"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTurnOutcome": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "answered",
+                            "stopped",
+                            "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -9441,6 +9538,45 @@
                               {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggerType": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "liveTurn": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "report",
+                                  "answer"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastTurnOutcome": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "answered",
+                                  "stopped",
+                                  "error"
+                                ],
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -10440,6 +10576,45 @@
                         }
                       ]
                     },
+                    "triggerType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveTurn": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "report",
+                            "answer"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTurnOutcome": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "answered",
+                            "stopped",
+                            "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -11394,6 +11569,45 @@
                             {
                               "type": "string",
                               "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "triggerType": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "liveTurn": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "report",
+                                "answer"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTurnOutcome": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "answered",
+                                "stopped",
+                                "error"
+                              ],
+                              "type": "string"
                             },
                             {
                               "type": "null"
@@ -12420,6 +12634,45 @@
                         {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggerType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveTurn": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "report",
+                            "answer"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTurnOutcome": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "answered",
+                            "stopped",
+                            "error"
+                          ],
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -14374,6 +14627,45 @@
                         }
                       ]
                     },
+                    "triggerType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveTurn": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "report",
+                            "answer"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTurnOutcome": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "answered",
+                            "stopped",
+                            "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -15912,6 +16204,45 @@
                         {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggerType": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "liveTurn": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "report",
+                            "answer"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTurnOutcome": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "answered",
+                            "stopped",
+                            "error"
+                          ],
+                          "type": "string"
                         },
                         {
                           "type": "null"

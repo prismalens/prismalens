@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -222,6 +223,49 @@ describe("runMigrations — fresh database", () => {
 		expect(rows.find((r) => r.migration_name === SHIPPED_INIT)?.checksum).toBe(
 			SHIPPED_INIT_CHECKSUM,
 		);
+	});
+});
+
+describe("investigation_turns (#673 w59)", () => {
+	const TURNS = "20261008200000_investigation_turns";
+
+	it("the migration adds two nullable columns and an existing row reads null", async () => {
+		const shipped = resolveMigrationsDir();
+		const before = mkdtempSync(join(scratch, "before-"));
+		for (const name of readdirSync(shipped)) {
+			if (name === TURNS || !existsSync(join(shipped, name, "migration.sql")))
+				continue;
+			cpSync(join(shipped, name), join(before, name), { recursive: true });
+		}
+		const file = dbFile();
+		await runMigrations({ databaseFile: file, migrationsDir: before });
+
+		const seed = new Database(file);
+		seed.pragma("foreign_keys = OFF");
+		seed
+			.prepare(
+				`INSERT INTO "investigations" ("id", "incidentId", "status", "updatedAt") VALUES (?, ?, ?, ?)`,
+			)
+			.run("inv-old", "inc-old", "completed", Date.now());
+		seed.close();
+
+		const result = await runMigrations({ databaseFile: file, migrationsDir: shipped });
+		expect(result.applied).toContain(TURNS);
+
+		const db = new Database(file, { readonly: true });
+		const cols = db.prepare(`PRAGMA table_info("investigations")`).all() as {
+			name: string;
+			notnull: number;
+			dflt_value: unknown;
+		}[];
+		const row = db
+			.prepare(`SELECT "status", "liveTurn", "lastTurnOutcome" FROM "investigations"`)
+			.get();
+		db.close();
+		for (const name of ["liveTurn", "lastTurnOutcome"]) {
+			expect(cols.find((c) => c.name === name)).toMatchObject({ notnull: 0, dflt_value: null });
+		}
+		expect(row).toEqual({ status: "completed", liveTurn: null, lastTurnOutcome: null });
 	});
 });
 

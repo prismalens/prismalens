@@ -88,7 +88,10 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		await expect(report.getByTestId("report-empty")).toHaveCount(0);
 		const before = await report.innerText();
 
-		await page.goto(`/incidents/${INCIDENT_ID}/conversation`);
+		// The seeded run by id: an earlier journey can leave a newer run on this incident.
+		await page.goto(
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+		);
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		await input.fill("Why did the pool saturate at 14:02?");
@@ -98,6 +101,8 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			.poll(() => sent)
 			.toMatchObject({
 				text: "Why did the pool saturate at 14:02?",
+				// A report-bearing thread is Ask-only; the message says so (#673 w59).
+				kind: "chat",
 			});
 		// The refetch reads `running`, so the stream double opens.
 		await expect

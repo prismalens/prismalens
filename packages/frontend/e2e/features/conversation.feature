@@ -65,7 +65,7 @@ Feature: The conversation and the box
 
     Scenario: Continue a stopped run to a report
       Given INC-1's run was stopped and OpenCode can reopen it
-      Then the box reads "Continue this run" and no note explains it
+      Then the box reads "Say what to change, or just continue" and no note explains it
       When I type "Only look at the 14:02 deploy" and press Enter
       Then the run is working again and the agent's next message answers with what it had already found
       When the run finishes
@@ -73,8 +73,37 @@ Feature: The conversation and the box
 
     Scenario: A finished run takes follow-ups, the report stays
       Given INC-1's run finished with a report
-      When I send "Why the 14:02 deploy?" from the box reading "Continue this run"
+      When I send "Why the 14:02 deploy?" from the box reading "Ask about this run"
       Then the agent answers in the conversation and the report is unchanged
+
+    # T10 (#673 w59, OBJ-003): report presence gates the Report tab, not the run's state.
+    Scenario: The report stays open while an answer runs
+      Given INC-1's run finished with a report
+      And an answer to a question is running on it
+      Then the Report tab shows the report and the Overview's report pool shows it, the answer working under it
+
+    # T23 (#673 w59, OBJ-013)
+    Scenario: Investigate again carries the box and the report into a new run
+      Given INC-1's run finished with a report
+      When I type "Only the 14:02 deploy" and attach "notes.log", then press "Investigate again"
+      Then a draft opens holding "Only the 14:02 deploy", the file "notes.log" and the quote "Re-check Run #"
+      And the report is unchanged
+
+    # T24 (#673 w59, §3, OBJ-003, OBJ-007)
+    Scenario: A stopped reportless run reads Stopped by you and offers both verbs
+      When I press "Stop" in the box
+      Then the status line reads "Stopped by you" and the verb chip offers "Investigate" and "Ask"
+
+    Scenario: A chat in Error reads Ended after it answers
+      Given the run is a chat that ended in an error
+      Then the status line reads "Error"
+      When the chat answers a message
+      Then the status line reads "Ended"
+
+    Scenario: A message to an older thread is refused while another works
+      When I press "Stop" in the box
+      And another run on INC-1 starts working
+      Then the stopped run's box says "is working; message it or stop it" and sends nothing
 
     Scenario: An agent that cannot continue says so
       Given the run was on deepagents and was stopped
@@ -110,4 +139,4 @@ Feature: The conversation and the box
       When I send "Check the deploy diff" from the phone
       Then the laptop shows the message as "You" within 2 seconds
       When I press Stop on the laptop
-      Then the phone's status line reads "Stopped by you" and its box reads "Continue this run"
+      Then the phone's status line reads "Stopped by you" and its box reads "Say what to change, or just continue"

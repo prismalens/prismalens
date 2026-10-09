@@ -173,10 +173,15 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		expect(result.status).toBe("cancelled");
 	});
 
-	it("pending follow-up: cancelling it puts the finished run back instead of cancelling it (#752)", async () => {
+	it("Stop on an unclaimed follow-up: restoreFollowUp(..., stopped), standing kept, lastTurnOutcome stopped, liveTurn null (#673 w59, T7)", async () => {
 		mockInvestigationsService.findById
 			.mockResolvedValueOnce(investigation("inv-5", "pending"))
-			.mockResolvedValueOnce(investigation("inv-5", "completed"));
+			.mockResolvedValueOnce({
+				...investigation("inv-5", "completed"),
+				report: JSON.stringify({ summary: "pool exhausted" }),
+				lastTurnOutcome: "stopped",
+				liveTurn: null,
+			});
 		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
 		mockDispatchService.restoreFollowUp.mockResolvedValueOnce(true);
 
@@ -185,9 +190,71 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		expect(mockDispatchService.restoreFollowUp).toHaveBeenCalledWith(
 			"inv-5",
 			expect.stringContaining("before the follow-up started"),
+			"stopped",
 		);
 		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
-		expect(result.status).toBe("completed");
+		expect(mockInvestigationsService.markStopRequested).not.toHaveBeenCalled();
+		expect(result).toMatchObject({
+			status: "completed",
+			hasReport: true,
+			lastTurnOutcome: "stopped",
+			liveTurn: null,
+		});
+	});
+
+	it("a restore that throws once is retried, never turned into a plain cancel (#804 OBJ-031)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-8", "pending"))
+			.mockResolvedValueOnce({ ...investigation("inv-8", "completed"), lastTurnOutcome: "stopped" });
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
+		mockDispatchService.restoreFollowUp
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"))
+			.mockResolvedValueOnce(true);
+
+		const result = await cancelHandler()({ input: { id: "inv-8" } });
+
+		expect(mockDispatchService.restoreFollowUp).toHaveBeenCalledTimes(2);
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ status: "completed", lastTurnOutcome: "stopped" });
+	});
+
+	it("a restore that keeps throwing leaves the row for boot, never cancelled (#804 OBJ-031)", async () => {
+		mockInvestigationsService.findById.mockResolvedValueOnce(investigation("inv-9", "pending"));
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
+		mockDispatchService.restoreFollowUp
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"))
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+		await expect(cancelHandler()({ input: { id: "inv-9" } })).rejects.toThrow("SQLITE_BUSY");
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+	});
+
+	it("a Stop whose run finished meanwhile answers with the finished run, never a stale live one (#804 OBJ-025)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-7", "running"))
+			.mockResolvedValueOnce({ ...investigation("inv-7", "completed"), report: JSON.stringify({ summary: "s" }) });
+		mockDispatchService.requestCancel.mockResolvedValue(0);
+		mockDispatchService.restoreFollowUp.mockResolvedValueOnce(false);
+		mockInvestigationsService.cancelPending.mockResolvedValueOnce(null);
+
+		const result = await cancelHandler()({ input: { id: "inv-7" } });
+
+		expect(result).toMatchObject({ status: "completed", hasReport: true });
+	});
+
+	it("an orphaned follow-up (no run holds it) puts the standing back as a stop, not cancelled (#673 w59)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-6", "running"))
+			.mockResolvedValueOnce({ ...investigation("inv-6", "completed"), lastTurnOutcome: "stopped" });
+		mockDispatchService.requestCancel.mockResolvedValue(0);
+		mockDispatchService.restoreFollowUp.mockResolvedValueOnce(true);
+
+		const result = await cancelHandler()({ input: { id: "inv-6" } });
+
+		expect(mockDispatchService.cancelOrphanedRun).toHaveBeenCalledWith("inv-6");
+		expect(mockDispatchService.restoreFollowUp).toHaveBeenCalledWith("inv-6", expect.any(String), "stopped");
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ status: "completed", lastTurnOutcome: "stopped" });
 	});
 
 	it("pending run but a dispatcher won the race: row cancel fails → falls through to publish", async () => {

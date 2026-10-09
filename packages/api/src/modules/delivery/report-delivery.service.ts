@@ -132,7 +132,8 @@ export class ReportDeliveryService {
 					incident: { select: { id: true, number: true, title: true } },
 				},
 			});
-			if (!investigation?.incident) return;
+			// A chat owes no report, so it never posts (#673 w59, OBJ-018).
+			if (!investigation?.incident || investigation.kind === "chat") return;
 			const run: DeliverableRun = {
 				status: investigation.status,
 				incident: investigation.incident,

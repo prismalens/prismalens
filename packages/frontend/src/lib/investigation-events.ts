@@ -13,6 +13,7 @@
 import type { CanonicalEvent, StreamToolResult } from "@prismalens/contracts";
 import { InvestigationReportSchema } from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
+import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
 export type EventIcon =
 	| "activity"
@@ -337,6 +338,12 @@ export interface PendingMessage {
 export interface TranscriptRun {
 	status: string;
 	live: boolean;
+	/** A thread's kind and what it can do next decide its end line (#673 w59). */
+	kind?: string | null;
+	hasReport?: boolean;
+	continuable?: boolean;
+	/** How the last follow-up ended; read when its own events were dropped (#804 OBJ-028). */
+	lastTurnOutcome?: string | null;
 	stopRequested?: boolean;
 	error?: string | null;
 	startedAt?: string | null;
@@ -381,6 +388,10 @@ export type TranscriptItem =
 			detail?: string;
 			report?: boolean;
 			path?: string;
+			/** What the box can do next, under the line (run-end-line.ts). */
+			hint?: string | null;
+			/** A finished report offers `Investigate again` (#673 w59). */
+			recheck?: boolean;
 	  }
 	| { kind: "empty"; key: string; text: string };
 
@@ -477,6 +488,25 @@ function transcriptPath(runId?: string): string {
 	return `runs/${runId ?? "<id>"}/transcript.jsonl`;
 }
 
+/** A stopped run's standing line: when, and after how long (walk f26). */
+function stoppedLine(
+	run: TranscriptRun,
+	fallback: string | null,
+): Extract<TranscriptItem, { kind: "end" }> {
+	const at = run.completedAt ?? fallback;
+	const took =
+		run.startedAt && run.completedAt
+			? seconds(run.startedAt, new Date(run.completedAt).getTime())
+			: null;
+	return {
+		kind: "end",
+		key: "stopped",
+		tone: "stale",
+		text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
+		detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
+	};
+}
+
 /**
  * The conversation as chat (#743 §3c): the agent's prose, tool calls folded to
  * one line per group, `Thought for Ns` for gaps, operator blocks with their
@@ -493,6 +523,11 @@ export function deriveTranscript(
 	let lastTs: string | null = null;
 	let sawAgent = false;
 	let sawError = false;
+	let sawReport = false;
+	// The run's first end (report, stop, failure) is its standing; any later end is a follow-up's.
+	let sawEnd = false;
+	let standingAt = -1;
+	let lastFollowUpAt = -1;
 	const operators: {
 		item: Extract<TranscriptItem, { kind: "operator" }>;
 		brief: boolean;
@@ -601,6 +636,26 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				closeGroup();
+				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
+				if (event.resumed && !sawEnd) {
+					sawEnd = true;
+					if (run?.status === "cancelled") {
+						standingAt = items.length;
+						items.push(stoppedLine(run, null));
+					} else if (run?.status === "failed") {
+						standingAt = items.length;
+						sawError = true;
+						items.push({
+							kind: "end",
+							key: "failed",
+							tone: "failed",
+							text: `Failed: ${run.error ?? "no error was recorded"}`,
+							error: run.error,
+							at: run.completedAt ?? null,
+							path: transcriptPath(run.id),
+						});
+					}
+				}
 				if (event.resumed)
 					items.push({
 						kind: "divider",
@@ -627,6 +682,7 @@ export function deriveTranscript(
 									: "delivered",
 				};
 				operators.push({ item, brief });
+				if (sawEnd) lastFollowUpAt = items.length;
 				items.push(item);
 				break;
 			}
@@ -637,11 +693,33 @@ export function deriveTranscript(
 				closeGroup();
 				items.push({ kind: "line", key, text: sessionConfigLine(event) });
 				break;
-			case "error":
+			case "error": {
 				closeGroup();
-				// A stop ends the run with an error event; it reads once, as the stop (walk f26).
-				if (run?.status === "cancelled") break;
+				const first = !sawEnd;
+				sawEnd = true;
 				sawError = true;
+				// A stopped run's own stop reads once, where it happened, as the standing (walk f26).
+				if (first && run?.status === "cancelled") {
+					standingAt = items.length;
+					items.push(stoppedLine(run, event.ts));
+					break;
+				}
+				// A message's own end on a thread whose standing it does not change (#673 w59, #804 OBJ-028).
+				if (
+					!first ||
+					sawReport ||
+					run?.kind === "chat" ||
+					isStopMessage(event.message)
+				) {
+					items.push({
+						kind: "end",
+						key,
+						tone: "stale",
+						text: messageEndLine(event.message, event.ts),
+					});
+					break;
+				}
+				standingAt = items.length;
 				items.push({
 					kind: "end",
 					key,
@@ -652,14 +730,18 @@ export function deriveTranscript(
 					path: transcriptPath(run?.id),
 				});
 				break;
+			}
 			case "report":
 				closeGroup();
+				sawReport = true;
+				sawEnd = true;
 				items.push({
 					kind: "end",
 					key,
 					tone: "done",
 					text: "Report ready",
 					report: true,
+					recheck: run?.kind !== "chat",
 				});
 				break;
 		}
@@ -700,20 +782,11 @@ export function deriveTranscript(
 		return items;
 	}
 
-	if (run?.status === "cancelled") {
-		const at = run.completedAt ?? lastTs;
-		const took =
-			run.startedAt && run.completedAt
-				? seconds(run.startedAt, new Date(run.completedAt).getTime())
-				: null;
-		items.push({
-			kind: "end",
-			key: "stopped",
-			tone: "stale",
-			text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
-			detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
-		});
-	} else if (run?.status === "failed" && !sawError) {
+	if (run?.status === "cancelled" && standingAt < 0) {
+		standingAt = items.length;
+		items.push(stoppedLine(run, lastTs));
+	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {
+		standingAt = items.length;
 		items.push({
 			kind: "end",
 			key: "failed",
@@ -724,6 +797,26 @@ export function deriveTranscript(
 			path: transcriptPath(run.id),
 		});
 	}
+	// A follow-up whose own end was dropped still says how it ended (#804 OBJ-028).
+	const lastEnd = items.findLastIndex((i) => i.kind === "end");
+	if (
+		run &&
+		lastFollowUpAt > lastEnd &&
+		(run.lastTurnOutcome === "error" || run.lastTurnOutcome === "stopped")
+	)
+		items.push({
+			kind: "end",
+			key: "last-message",
+			tone: "stale",
+			text:
+				run.lastTurnOutcome === "stopped"
+					? "Stopped by you"
+					: "The agent stopped on your last message",
+		});
+	// What the box can do next sits under the last line, whichever it is.
+	const hint = run && endHint(run);
+	const tail = items.findLast((i) => i.kind === "end");
+	if (hint && tail?.kind === "end") tail.hint = hint;
 
 	if (items.length === 0) {
 		return [

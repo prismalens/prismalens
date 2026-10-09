@@ -6,6 +6,7 @@ import {
 	type ClipboardEvent,
 	type DragEvent,
 	type KeyboardEvent,
+	type MutableRefObject,
 	type ReactNode,
 	useEffect,
 	useRef,
@@ -20,6 +21,7 @@ import {
 	PromptInputTextarea,
 	PromptInputTools,
 } from "@/components/ai/prompt-input";
+import { VerbChip } from "@/components/ai/verb-chip";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { attachRefusal } from "@/lib/attachments";
@@ -29,6 +31,7 @@ import {
 	talksToSession,
 } from "@/lib/composer-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
+import type { RunVerb } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 
 interface Draft {
@@ -50,8 +53,21 @@ export interface ComposerBoxProps {
 	onInvestigate: (send: ComposerSend) => Promise<void> | void;
 	/** Draft: asks without gathering. */
 	onAsk: (send: ComposerSend) => Promise<void> | void;
-	/** Enter in a draft investigates (the incident has alerts) rather than asks. */
-	enterInvestigates: boolean;
+	/**
+	 * What the next message asks for (#673 w59): the chip shows only where
+	 * `verbs` holds both; Enter and the one send control do what it says.
+	 */
+	verbs: RunVerb[];
+	verb: RunVerb;
+	onVerb?: (verb: RunVerb) => void;
+	verbCopy?: Record<RunVerb, string>;
+	placeholder: string;
+	/** Files a prefilled draft starts with (`Investigate again`). */
+	initialFiles?: File[];
+	/** Told each change to the files, so a remount starts from them, not the prefill. */
+	onFilesChange?: (files: File[]) => void;
+	/** Kept current with what is in the box, for `Investigate again`. */
+	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** Live or resumable: Enter queues for the next pause, Send now interrupts. */
 	onMessage?: (
 		send: ComposerSend,
@@ -80,21 +96,31 @@ const release = (drafts: Draft[]) => {
 	for (const d of drafts) if (d.preview) URL.revokeObjectURL(d.preview);
 };
 
-const PLACEHOLDER: Record<ComposerMode, string> = {
-	draft: "Brief the agent, or just ask",
-	live: "Message the agent",
-	continue: "Continue this run",
-	resume: "Continue this run",
-	ended: "",
-};
+const draftOf = (file: File): Draft => ({
+	key: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+	file,
+	...(file.type.startsWith("image/")
+		? { preview: URL.createObjectURL(file) }
+		: {}),
+});
 
-/** The box (#673): the same three chips in every state but a run with no session. */
+/**
+ * The box (#673): three chips in every state but a run with no session, and a
+ * fourth, the verb, first where both verbs act on the thread (#673 w59).
+ */
 export function ComposerBox({
 	mode,
 	chips,
 	onInvestigate,
 	onAsk,
-	enterInvestigates,
+	verbs,
+	verb,
+	onVerb,
+	verbCopy,
+	placeholder,
+	initialFiles,
+	onFilesChange,
+	boxRef,
 	onMessage,
 	onStop,
 	stopping,
@@ -110,19 +136,30 @@ export function ComposerBox({
 	autoFocus,
 	status,
 }: ComposerBoxProps) {
-	const [drafts, setDrafts] = useState<Draft[]>([]);
+	const [drafts, setDrafts] = useState<Draft[]>(() =>
+		(initialFiles ?? []).map(draftOf),
+	);
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const talking = talksToSession(mode);
 	const live = mode === "live";
-	const blocked = mode === "draft" && !!blockedReason;
+	// A live thread is never blocked; a draft or an ended one waits for another that works.
+	const blocked = !live && !!blockedReason;
 	const hasText = !!text.trim();
 	const busy = sending || !!isPending;
 
 	const shown = useRef(drafts);
 	shown.current = drafts;
+	useEffect(() => {
+		if (boxRef) boxRef.current = { text, files: drafts.map((d) => d.file) };
+	}, [boxRef, text, drafts]);
+	const filesChanged = useRef(onFilesChange);
+	filesChanged.current = onFilesChange;
+	useEffect(() => {
+		filesChanged.current?.(drafts.map((d) => d.file));
+	}, [drafts]);
 	useEffect(() => () => release(shown.current), []);
 	useEffect(() => {
 		if (autoFocus) ref.current?.focus();
@@ -139,13 +176,7 @@ export function ComposerBox({
 				continue;
 			}
 			count++;
-			next.push({
-				key: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-				file,
-				...(file.type.startsWith("image/")
-					? { preview: URL.createObjectURL(file) }
-					: {}),
-			});
+			next.push(draftOf(file));
 		}
 		setRefusal(why);
 		if (next.length) setDrafts((d) => [...d, ...next]);
@@ -154,8 +185,7 @@ export function ComposerBox({
 	const submit = async (send: "investigate" | "ask" | "queue" | "now") => {
 		const value = text.trim();
 		const files = drafts.map((d) => d.file);
-		if (busy) return;
-		if (send === "investigate" && blocked) return;
+		if (busy || blocked) return;
 		if (send === "ask" && (blocked || !value)) return;
 		if ((send === "queue" || send === "now") && (!value || !onMessage)) return;
 		setSending(true);
@@ -193,8 +223,7 @@ export function ComposerBox({
 		e.stopPropagation();
 		if (action === "stop") onStop?.();
 		else if (action === "blur") ref.current?.blur();
-		else if (action === "investigate")
-			void submit(enterInvestigates ? "investigate" : "ask");
+		else if (action === "investigate") void submit(verb);
 		else void submit(action);
 	};
 
@@ -244,11 +273,7 @@ export function ComposerBox({
 		<div className="space-y-1.5" data-testid="composer-box">
 			<PromptInput
 				data-mode={mode}
-				onSubmit={() =>
-					void submit(
-						talking ? "queue" : enterInvestigates ? "investigate" : "ask",
-					)
-				}
+				onSubmit={() => void submit(talking ? "queue" : verb)}
 				onDragOver={(e) => e.preventDefault()}
 				onDrop={onDrop}
 			>
@@ -297,8 +322,8 @@ export function ComposerBox({
 						onKeyDown={onKeyDown}
 						onPaste={onPaste}
 						disabled={blocked}
-						placeholder={PLACEHOLDER[mode]}
-						aria-label={PLACEHOLDER[mode]}
+						placeholder={placeholder}
+						aria-label={placeholder}
 						data-testid="composer-input"
 					/>
 				</PromptInputBody>
@@ -308,6 +333,14 @@ export function ComposerBox({
 							className="max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
 							data-testid="composer-chips"
 						>
+							{verbs.length > 1 && onVerb && verbCopy && (
+								<VerbChip
+									verbs={verbs}
+									verb={verb}
+									copy={verbCopy}
+									onVerb={onVerb}
+								/>
+							)}
 							{chips}
 						</PromptInputTools>
 					</div>
@@ -347,42 +380,43 @@ export function ComposerBox({
 							}}
 							data-testid="composer-file-input"
 						/>
-						{mode === "draft" && (
-							<>
-								<Hint
-									label="Gathers the alert, code and telemetry, then starts the agent"
-									keys={enterInvestigates ? ["Enter"] : undefined}
-									side="top"
-								>
-									<span className="inline-flex">
-										<Button
-											type="button"
-											variant="primary"
-											className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-2 disabled:opacity-100"
-											disabled={blocked || busy}
-											onClick={() => void submit("investigate")}
-											data-testid="composer-investigate"
-										>
-											{busy ? "Starting" : "Investigate"}
-										</Button>
-									</span>
-								</Hint>
-								<Hint
-									label="Ask without gathering"
-									keys={enterInvestigates ? undefined : ["Enter"]}
-									side="top"
-								>
-									<span className="inline-flex">
-										<PromptInputSubmit
-											variant="secondary"
-											type="button"
-											disabled={blocked || busy || !hasText}
-											onClick={() => void submit("ask")}
-											data-testid="composer-ask"
-										/>
-									</span>
-								</Hint>
-							</>
+						{!live && verb === "investigate" && (
+							<Hint
+								label={
+									mode === "draft"
+										? "Gathers the alert, code and telemetry, then starts the agent"
+										: "Continues this run to its report"
+								}
+								keys={["Enter"]}
+								side="top"
+							>
+								<span className="inline-flex">
+									<Button
+										type="button"
+										variant="primary"
+										className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-2 disabled:opacity-100"
+										disabled={blocked || busy || (mode !== "draft" && !hasText)}
+										onClick={() =>
+											void submit(mode === "draft" ? "investigate" : "queue")
+										}
+										data-testid="composer-investigate"
+									>
+										{busy ? "Starting" : "Investigate"}
+									</Button>
+								</span>
+							</Hint>
+						)}
+						{mode === "draft" && verb === "ask" && (
+							<Hint label="Ask without gathering" keys={["Enter"]} side="top">
+								<span className="inline-flex">
+									<PromptInputSubmit
+										type="button"
+										disabled={blocked || busy || !hasText}
+										onClick={() => void submit("ask")}
+										data-testid="composer-ask"
+									/>
+								</span>
+							</Hint>
 						)}
 						{live && (
 							<Hint
@@ -401,17 +435,15 @@ export function ComposerBox({
 								</span>
 							</Hint>
 						)}
-						{talking && (
+						{talking && (live || verb === "ask") && (
 							<Hint
-								label={
-									live ? "Send when the agent pauses" : "Continue this run"
-								}
+								label={live ? "Send when the agent pauses" : "Ask"}
 								keys={["Enter"]}
 								side="top"
 							>
 								<span className="inline-flex">
 									<PromptInputSubmit
-										disabled={!hasText || busy}
+										disabled={!hasText || busy || blocked}
 										data-testid="composer-send"
 									/>
 								</span>

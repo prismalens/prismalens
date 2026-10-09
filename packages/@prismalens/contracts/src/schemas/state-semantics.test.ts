@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	AlertStatusSchema,
 	IncidentStatusSchema,
@@ -11,7 +11,10 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	continuableRun,
+	effectiveLiveTurn,
 	latestRun,
+	liveRun,
 	isAlertFiring,
 	ALERT_ACTION_FROM,
 	ALERT_STATUS_PHASE,
@@ -218,5 +221,66 @@ describe("latestRun (#673: runs as threads)", () => {
 			)?.id,
 		).toBe("legacy");
 		expect(latestRun({ investigations: [] }, { kind: "chat" })).toBeNull();
+	});
+});
+
+describe("liveRun picks the live row, not the newest (#673 w59, OBJ-014)", () => {
+	it("finds a resumed older row while newer ones have ended", () => {
+		const incident = {
+			investigations: [
+				{ id: "new-done", status: "completed", createdAt: "2026-10-08T12:00:00Z" },
+				{ id: "old-live", status: "running", createdAt: "2026-10-08T09:00:00Z" },
+			],
+		};
+		expect(latestRun(incident)?.id).toBe("new-done");
+		expect(liveRun(incident)?.id).toBe("old-live");
+	});
+
+	it("is null when nothing is live, pending included as live", () => {
+		expect(liveRun({ investigations: [{ id: "a", status: "failed", createdAt: "2026-10-08T09:00:00Z" }] })).toBeNull();
+		expect(liveRun({ investigations: [{ id: "p", status: "pending", createdAt: "2026-10-08T09:00:00Z" }] })?.id).toBe("p");
+		expect(liveRun({})).toBeNull();
+	});
+
+	it("two live rows from old data: the newest, and the caller hears of it once", () => {
+		const onMany = vi.fn();
+		const incident = {
+			investigations: [
+				{ id: "older", status: "running", createdAt: "2026-10-08T09:00:00Z" },
+				{ id: "newer", status: "pending", createdAt: "2026-10-08T10:00:00Z" },
+			],
+		};
+		expect(liveRun(incident, onMany)?.id).toBe("newer");
+		expect(onMany).toHaveBeenCalledTimes(1);
+		expect(onMany.mock.calls[0]?.[0]).toHaveLength(2);
+	});
+});
+
+describe("continuableRun: kind, status, session, report (#673 w59, OBJ-012)", () => {
+	const base = { kind: "investigation", status: "cancelled", hasReport: false, sessionKept: true };
+
+	it("admits a reportless stopped or failed investigation whose session was kept", () => {
+		expect(continuableRun(base)).toBe(true);
+		expect(continuableRun({ ...base, status: "failed" })).toBe(true);
+		expect(continuableRun({ ...base, kind: null })).toBe(true);
+	});
+
+	it.each([
+		["a chat", { kind: "chat" }],
+		["a completed run", { status: "completed" }],
+		["a live run", { status: "running" }],
+		["a run with a report", { hasReport: true }],
+		["a run with no session", { sessionKept: false }],
+	])("refuses %s", (_name, patch) => {
+		expect(continuableRun({ ...base, ...patch })).toBe(false);
+	});
+});
+
+describe("effectiveLiveTurn (#673 w59, OBJ-021)", () => {
+	it("reads the column, else the kind", () => {
+		expect(effectiveLiveTurn({ kind: "investigation", liveTurn: "answer" })).toBe("answer");
+		expect(effectiveLiveTurn({ kind: "chat", liveTurn: null })).toBe("answer");
+		expect(effectiveLiveTurn({ kind: "investigation", liveTurn: null })).toBe("report");
+		expect(effectiveLiveTurn({})).toBe("report");
 	});
 });

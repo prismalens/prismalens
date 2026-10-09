@@ -38,6 +38,7 @@ import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import type { RunVerb } from "@/lib/run-verb";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	validateSearch: (
@@ -76,11 +77,15 @@ function IncidentLayout() {
 	const createNote = useCreateTimelineEntry();
 
 	const [startedId, setStartedId] = useState<string | null>(null);
-	const [drafts, setDrafts] = useState<
-		Record<string, { choice?: DraftChoice; text: string }>
-	>({});
+	type DraftState = {
+		choice?: DraftChoice;
+		text: string;
+		verb?: RunVerb;
+		files?: File[];
+	};
+	const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
 	const draftOf = drafts[id] ?? { text: "" };
-	const setDraft = (patch: Partial<{ choice?: DraftChoice; text: string }>) =>
+	const setDraft = (patch: Partial<DraftState>) =>
 		setDrafts((all) => ({
 			...all,
 			[id]: { ...(all[id] ?? { text: "" }), ...patch },
@@ -104,7 +109,7 @@ function IncidentLayout() {
 	const onStarted = (runId: string | undefined) => {
 		invalidateIncident();
 		queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
-		setDraft({ text: "", choice: undefined });
+		setDraft({ text: "", choice: undefined, verb: undefined, files: [] });
 		if (!runId) return;
 		setStartedId(runId);
 		navigate({
@@ -192,7 +197,13 @@ function IncidentLayout() {
 					replace: true,
 				}),
 			newRun: (prefill) => {
-				if (prefill) setDraft({ choice: prefill });
+				if (prefill)
+					setDraft({
+						...(prefill.choice ? { choice: prefill.choice } : {}),
+						...(prefill.verb ? { verb: prefill.verb } : {}),
+						...(prefill.text !== undefined ? { text: prefill.text } : {}),
+						...(prefill.files ? { files: prefill.files } : {}),
+					});
 				navigate({
 					to: "/incidents/$id/conversation",
 					params: { id },
@@ -203,6 +214,10 @@ function IncidentLayout() {
 			setDraftChoice: (choice) => setDraft({ choice }),
 			draftText: draftOf.text,
 			setDraftText: (text) => setDraft({ text }),
+			draftVerb: draftOf.verb,
+			setDraftVerb: (verb) => setDraft({ verb }),
+			draftFiles: draftOf.files ?? [],
+			setDraftFiles: (files) => setDraft({ files }),
 			run,
 			liveRun,
 			investigateBlocked: agentReady ? undefined : blockedReason,
@@ -245,6 +260,8 @@ function IncidentLayout() {
 		draft,
 		draftOf.choice,
 		draftOf.text,
+		draftOf.verb,
+		draftOf.files,
 		run,
 		liveRun,
 		agentReady,

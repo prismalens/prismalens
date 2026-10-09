@@ -4,7 +4,7 @@
 import type { RunState } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState, useSearch } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { MessageSquare, Plus, Search } from "lucide-react";
 import { useNow } from "@/hooks/use-now";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
@@ -36,6 +36,18 @@ export function RunDot({
 				className,
 			)}
 			data-dot={draft ? "draft" : (tone ?? undefined)}
+		/>
+	);
+}
+
+/** A thread's kind (#673 w59): a search for an investigation, a bubble for a chat. */
+export function KindIcon({ kind }: { kind?: string | null }) {
+	const Icon = kind === "chat" ? MessageSquare : Search;
+	return (
+		<Icon
+			className="size-3 shrink-0 text-text-3"
+			aria-label={kind === "chat" ? "Chat" : "Investigation"}
+			data-kind={kind === "chat" ? "chat" : "investigation"}
 		/>
 	);
 }
@@ -89,8 +101,10 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 						)}
 						data-testid="run-tree-row"
 						data-run={r.id}
+						title={r.kind === "chat" ? undefined : (r.title ?? undefined)}
 					>
 						<RunDot state={refState(r)} className={dot} />
+						<KindIcon kind={r.kind} />
 						<span className="min-w-0 flex-1 truncate">{runName(runs, r)}</span>
 						<span className="shrink-0 text-text-3 tabular-nums">
 							{elapsedWord(r, now)}

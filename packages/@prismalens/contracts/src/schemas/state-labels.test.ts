@@ -6,12 +6,16 @@ import {
 	INCIDENT_ACTION_LABEL,
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
+	LIVE_TURN_LABEL,
 	PRIORITY_LABEL,
+	runStateLabel,
+	TURN_OUTCOME_LABEL,
 } from "./state-labels.js";
 import {
 	BAND_ACTIONS,
 	INCIDENT_ACTION_FROM,
 	INCIDENT_ACTION_WRITES,
+	type RunState,
 } from "./state-semantics.js";
 
 describe("incident words (R1a d1)", () => {
@@ -62,5 +66,35 @@ describe("incident words (R1a d1)", () => {
 		expect(INCIDENT_STATUS_LABEL[INCIDENT_ACTION_WRITES.resolve ?? "resolved"]).toBe(
 			"Alerts cleared",
 		);
+	});
+});
+
+describe("runStateLabel covers every kind × state (#673 w59)", () => {
+	const table: Record<RunState, [string, string]> = {
+		starting: ["Starting", "Starting"],
+		working: ["Working", "Working"],
+		stopping: ["Stopping", "Stopping"],
+		stopped: ["Stopped by you", "Stopped by you"],
+		failed: ["Failed", "Error"],
+		done: ["Done", "Ended"],
+	};
+
+	it.each(Object.entries(table))("%s reads %j", (state, [inv, chat]) => {
+		expect(runStateLabel("investigation", state as RunState)).toBe(inv);
+		expect(runStateLabel("chat", state as RunState)).toBe(chat);
+	});
+
+	it("reads a row without a kind as an investigation", () => {
+		expect(runStateLabel(undefined, "done")).toBe("Done");
+		expect(runStateLabel(null, "failed")).toBe("Failed");
+	});
+
+	it("names each live turn and each last-message outcome", () => {
+		expect(LIVE_TURN_LABEL).toEqual({
+			report: "Working toward a report",
+			answer: "Working on an answer",
+		});
+		expect(TURN_OUTCOME_LABEL.stopped).toBe("stopped by you");
+		expect(TURN_OUTCOME_LABEL.error).toBe("error");
 	});
 });

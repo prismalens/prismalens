@@ -356,6 +356,30 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.some((e) => e.kind === "error" && e.message.includes("did not validate"))).toBe(false);
 	});
 
+	it("engine: abort mid-turn ends with error investigation cancelled, no report event, no parse (#673 w59, T19)", async () => {
+		const stop = new AbortController();
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok" },
+			signal: stop.signal,
+		});
+		const sent = join(o.runDir, "report-sent");
+		o.env = { ...o.env, FAKE_REPORT_THEN_WAIT_CANCEL: sent };
+		let tools = 0;
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			// Both tool calls are in; Stop lands once the fixture says the report text is sent.
+			if (ev.kind === "tool_result" && ++tools === 2)
+				void vi.waitFor(() => expect(existsSync(sent)).toBe(true)).then(() => stop.abort());
+		}
+		expect(readFileSync(join(o.runDir, "transcript.jsonl"), "utf8")).toContain("connection pool exhausted");
+		expect(events.at(-1)).toMatchObject({ kind: "error", message: "investigation cancelled" });
+		expect(events.some((e) => e.kind === "report")).toBe(false);
+		expect(events.some((e) => e.kind === "branch_done")).toBe(false);
+		// No parse means no retry prompt either.
+		expect(readFileSync(join(o.runDir, "transcript.jsonl"), "utf8")).not.toContain("Your final message did not");
+	});
+
 	it("marks a message the stopped run never read as not delivered, and refuses later ones (#743)", async () => {
 		const stop = new AbortController();
 		const channel = createSteerChannel();

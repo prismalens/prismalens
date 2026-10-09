@@ -45,6 +45,8 @@ export class InvestigationFactory {
 			kind: "investigation",
 			agentMode: null,
 			title: null,
+			liveTurn: null,
+			lastTurnOutcome: null,
 			origin: "local",
 			schemaVersion: 1,
 			createdAt: faker.date.recent(),

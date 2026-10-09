@@ -6,15 +6,21 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerBox } from "./ComposerBox";
-import { DockedComposer } from "./DockedComposer";
+import { DockedComposer, lastMessageWord } from "./DockedComposer";
 
-const record = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+const record = vi.hoisted(() => ({
+	sendMessage: vi.fn(),
+	/** Per-test changes to the run and the record (#673 w59). */
+	run: {} as Record<string, unknown>,
+	extra: {} as Record<string, unknown>,
+}));
 
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
+	CHIP: "chip",
 	EffortChip: () => null,
 	ModeChip: () => null,
 	defaultModeOf: () => "agent-default",
@@ -37,7 +43,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 		run: {
 			state: "working",
 			events: [],
-			investigation: { id: "inv-1", harness: "opencode", agentMode: "plan", agentModeName: "Plan" },
+			investigation: { id: "inv-1", harness: "opencode", agentMode: "plan", agentModeName: "Plan", liveTurn: "report" },
 			sendMessage: record.sendMessage,
 			stop: vi.fn(),
 			waiting: 0,
@@ -46,6 +52,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 			resumable: false,
 			undeliverable: null,
 			clearUndeliverable: vi.fn(),
+			...record.run,
 		},
 		investigationId: "inv-1",
 		draft: false,
@@ -57,7 +64,11 @@ vi.mock("@/components/incidents/record-context", () => ({
 		chat: vi.fn(),
 		newRun: vi.fn(),
 		draftChoice: {},
+		draftFiles: [],
+		setDraftFiles: () => {},
+		setDraftVerb: vi.fn(),
 		addNote: vi.fn(),
+		...record.extra,
 	}),
 }));
 vi.mock("@/components/incidents/run-facts", () => ({
@@ -102,6 +113,8 @@ afterEach(async () => {
 	container.remove();
 	vi.restoreAllMocks();
 	record.sendMessage.mockReset();
+	record.run = {};
+	record.extra = {};
 });
 
 describe("ComposerBox image previews (R4.3)", () => {
@@ -116,7 +129,9 @@ describe("ComposerBox image previews (R4.3)", () => {
 					chips: null,
 					text: "",
 					setText: () => {},
-					enterInvestigates: true,
+					verbs: [],
+					verb: "ask",
+					placeholder: "Message the agent",
 					onInvestigate: () => {},
 					onAsk: () => {},
 					onMessage: () => {},
@@ -137,6 +152,99 @@ describe("ComposerBox image previews (R4.3)", () => {
 		await act(async () => root.unmount());
 		expect(revoke.mock.calls).toEqual([["blob:1"], ["blob:2"]]);
 		root = createRoot(container);
+	});
+});
+
+describe("the box: one send control, the verb chip where both verbs act (#673 w59, T22)", () => {
+	const copy = { investigate: "Gathers…", ask: "A question to the agent. No report." };
+	async function render(props: Record<string, unknown>) {
+		const calls = { investigate: vi.fn(), ask: vi.fn(), message: vi.fn() };
+		await act(async () => {
+			root.render(
+				createElement(ComposerBox, {
+					mode: "draft",
+					chips: null,
+					text: "why the pool?",
+					setText: () => {},
+					verbs: [],
+					verb: "ask",
+					verbCopy: copy,
+					onVerb: () => {},
+					placeholder: "p",
+					onInvestigate: calls.investigate,
+					onAsk: calls.ask,
+					onMessage: calls.message,
+					agent: { label: "OpenCode", images: true },
+					...props,
+				} as Parameters<typeof ComposerBox>[0]),
+			);
+		});
+		return calls;
+	}
+	const controls = () =>
+		["composer-investigate", "composer-ask", "composer-send"].filter((id) => q(id) !== null);
+	const enter = async () => {
+		await act(async () => {
+			q("composer-input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+		});
+	};
+
+	it.each([
+		["a draft set to Investigate", { mode: "draft", verbs: ["investigate", "ask"], verb: "investigate" }, ["composer-investigate"], true],
+		["a draft set to Ask", { mode: "draft", verbs: ["investigate", "ask"], verb: "ask" }, ["composer-ask"], true],
+		["a live thread", { mode: "live", verbs: [], verb: "ask" }, ["composer-send"], false],
+		["a stopped reportless run set to Investigate", { mode: "continue", verbs: ["investigate", "ask"], verb: "investigate" }, ["composer-investigate"], true],
+		["a stopped reportless run set to Ask", { mode: "continue", verbs: ["investigate", "ask"], verb: "ask" }, ["composer-send"], true],
+		["a finished investigation", { mode: "resume", verbs: [], verb: "ask" }, ["composer-send"], false],
+	])("%s: one send control, chip %s", async (_name, props, shown, chip) => {
+		await render(props);
+		expect(controls()).toEqual(shown);
+		expect(q("verb-chip") !== null).toBe(chip);
+	});
+
+	it("Enter follows the verb on a draft", async () => {
+		const investigates = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "investigate" });
+		await enter();
+		expect(investigates.investigate).toHaveBeenCalledTimes(1);
+		expect(investigates.ask).not.toHaveBeenCalled();
+
+		const asks = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "ask" });
+		await enter();
+		expect(asks.ask).toHaveBeenCalledTimes(1);
+	});
+
+	it("a removed prefill file is reported back, so a remount does not bring it back", async () => {
+		const onFilesChange = vi.fn();
+		const a = new File(["a"], "a.log");
+		const b = new File(["b"], "b.log");
+		await render({ initialFiles: [a, b], onFilesChange });
+		await act(async () => {
+			(container.querySelector('[aria-label="Remove a.log"]') as HTMLButtonElement).click();
+		});
+		expect(onFilesChange.mock.calls.at(-1)).toEqual([[b]]);
+	});
+
+	it("a thread blocked by another live one sends nothing", async () => {
+		const calls = await render({ mode: "resume", blockedReason: "Run #2 is working; message it or stop it" });
+		await enter();
+		expect(calls.message).not.toHaveBeenCalled();
+		expect(q("composer-blocked").textContent).toBe("Run #2 is working; message it or stop it");
+	});
+
+	it.each([
+		["a live report turn", { state: "working", investigation: { id: "inv-1", liveTurn: "report" } }, "continue"],
+		["a live answer turn", { state: "working", investigation: { id: "inv-1", liveTurn: "answer" } }, "chat"],
+		["a stopped reportless run on Investigate", { state: "stopped", continuable: true, resumable: true, investigation: { id: "inv-1" } }, "continue"],
+		["a finished investigation", { state: "done", resumable: true, investigation: { id: "inv-1", hasReport: true } }, "chat"],
+	])("every send carries kind: %s sends %s", async (_name, run, kind) => {
+		record.run = run;
+		record.sendMessage.mockResolvedValue(undefined);
+		await act(async () => {
+			root.render(createElement(DockedComposer, {}));
+		});
+		await type("go on");
+		await enter();
+		expect(record.sendMessage).toHaveBeenCalledWith("go on", "queue", expect.objectContaining({ kind }));
 	});
 });
 
@@ -163,5 +271,15 @@ describe("DockedComposer messages (#743)", () => {
 		await act(async () => fail(new Error("Internal server error")));
 		expect(q<HTMLTextAreaElement>("composer-input").value).toBe("why the pool?");
 		expect(q("composer-refusal").textContent).toBe("Internal server error");
+	});
+});
+
+describe("the status line's Last message (#804 OBJ-028)", () => {
+	it("says an Ask errored on a stopped run, and stays quiet when the standing already says it", () => {
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "error" })).toBe("Last message: error");
+		expect(lastMessageWord({ status: "completed", lastTurnOutcome: "stopped" })).toBe("Last message: stopped by you");
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "stopped" })).toBeNull();
+		expect(lastMessageWord({ status: "failed", lastTurnOutcome: "error" })).toBeNull();
+		expect(lastMessageWord({ status: "cancelled", lastTurnOutcome: "answered" })).toBeNull();
 	});
 });

@@ -53,13 +53,15 @@ function makePorts(
 ): RunPorts {
 	return {
 		findInvestigation: vi.fn(async () => null),
-		updateStatus: vi.fn(async () => {}),
+		updateStatus: vi.fn(async () => true),
 		appendEvents,
 		clearEvents: vi.fn(async () => {}),
 		followUpStatus: vi.fn(async () => {}),
+		initLiveTurn: vi.fn(async () => {}),
+		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
-		writeResult: vi.fn(async () => {}),
+		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
@@ -148,7 +150,7 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 
 	it("drains buffered events on finish BEFORE writing the result", async () => {
 		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {});
-		const writeResult = vi.fn(async () => {});
+		const writeResult = vi.fn(async () => true);
 		const { store } = makeStore(appendEvents, { writeResult });
 
 		await store.append(evt(1));
@@ -166,7 +168,7 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 
 	it("drains buffered events on fail BEFORE writing the failed status", async () => {
 		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {});
-		const updateStatus = vi.fn(async () => {});
+		const updateStatus = vi.fn(async () => true);
 		const createTimelineEntry = vi.fn(async () => {});
 		const { store } = makeStore(appendEvents, { updateStatus, createTimelineEntry });
 
@@ -228,7 +230,7 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 		const appendEvents = vi.fn(async () => {
 			throw new Error("network down");
 		});
-		const writeResult = vi.fn(async () => {});
+		const writeResult = vi.fn(async () => true);
 		const { store } = makeStore(appendEvents, { writeResult });
 
 		// A size-triggered flush whose append rejects must not throw out of append.
@@ -252,7 +254,7 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 
 describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () => {
 	it("create() writes running status and started timeline through RunPorts", async () => {
-		const updateStatus = vi.fn(async () => {});
+		const updateStatus = vi.fn(async () => true);
 		const createTimelineEntry = vi.fn(async () => {});
 		const { store } = makeStore(vi.fn(async () => {}), {
 			updateStatus,
@@ -276,7 +278,7 @@ describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () =>
 	});
 
 	it("fail() writes failed status and failure timeline through RunPorts", async () => {
-		const updateStatus = vi.fn(async () => {});
+		const updateStatus = vi.fn(async () => true);
 		const createTimelineEntry = vi.fn(async () => {});
 		const { store } = makeStore(vi.fn(async () => {}), {
 			updateStatus,
@@ -353,5 +355,42 @@ describe("createPrismaInvestigationStore — a chat run (#673)", () => {
 			INVESTIGATION_ID,
 			expect.objectContaining({ status: "failed" }),
 		);
+	});
+});
+
+describe("claim initialises liveTurn from each legacy payload form (#673 w59, T13, OBJ-021)", () => {
+	it.each([
+		["a chat", { chat: true }, "answer", "Chat started"],
+		["an Ask with no kind", { resume: { note: "n" } }, "answer", "Investigation resumed"],
+		["an Ask on a chat", { chat: true, resume: { note: "n" } }, "answer", "Chat resumed"],
+		["a continue", { resume: { note: "n", continuing: true } }, "report", "Investigation resumed"],
+		["a first investigation", {}, "report", "Agent started"],
+	] as const)("%s owes %s", async (_name, params, turn, title) => {
+		const ports = makePorts(vi.fn(async () => {}));
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			...params,
+		});
+
+		await store.create();
+
+		expect(ports.initLiveTurn).toHaveBeenCalledWith(INVESTIGATION_ID, turn);
+		expect(ports.createTimelineEntry).toHaveBeenCalledWith(expect.objectContaining({ title }));
+	});
+
+	it("a refused fail leaves the end to the run: no timeline entry, and refused() says so", async () => {
+		const ports = makePorts(vi.fn(async () => {}), { updateStatus: vi.fn(async () => false) });
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+		});
+
+		await store.fail("boom");
+
+		expect(store.refused()).toBe(true);
+		expect(ports.createTimelineEntry).not.toHaveBeenCalled();
 	});
 });

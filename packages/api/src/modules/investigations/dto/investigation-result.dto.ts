@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { InvestigationReport } from "@prismalens/contracts";
+import {
+	type InvestigationReport,
+	TURN_OUTCOMES,
+	type TurnOutcome,
+} from "@prismalens/contracts";
 import { Type } from "class-transformer";
 import {
 	IsArray,
 	IsEnum,
+	IsIn,
 	IsNotEmpty,
 	IsObject,
 	IsOptional,
@@ -64,6 +69,11 @@ export class InternalInvestigationResultDto {
 	@IsOptional()
 	@IsString()
 	error?: string;
+
+	/** A follow-up `continue` that reported: its message was answered (#673 w59). */
+	@IsOptional()
+	@IsIn(TURN_OUTCOMES)
+	lastTurnOutcome?: TurnOutcome;
 
 	/** Recommendations generated */
 	@IsOptional()

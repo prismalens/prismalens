@@ -14,6 +14,7 @@ import {
 	setTheme,
 } from "./live-stream-fixtures";
 import { settled } from "./settled";
+import { investigateButton } from "./verb";
 
 /**
  * #743, #673 — the incident: a band that never scrolls, one reading column
@@ -181,9 +182,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		// With no run, Conversation opens on the draft.
 		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("draft-heading")).toContainText("New run");
-		await expect(page.getByTestId("composer-investigate")).toHaveText(
-			"Investigate",
-		);
+		await expect(await investigateButton(page)).toHaveText("Investigate");
 		await settled(page);
 	});
 
@@ -236,10 +235,10 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("overview-report")).toContainText(
-			/Run #\d+ working/,
-			{ timeout: 15_000 },
-		);
+		// The seeded live run carries a report: the pool keeps it open (#673 w59).
+		await expect(page.getByTestId("overview-report")).toContainText("Likely", {
+			timeout: 15_000,
+		});
 		await expect(page.getByTestId("incident-summary")).toContainText(
 			"An investigation is working now",
 		);

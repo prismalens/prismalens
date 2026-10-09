@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { JobAttachment } from "@prismalens/contracts";
+import type { FollowUpKind, JobAttachment } from "@prismalens/contracts";
 
 /**
  * The dispatch loop (0005 §2): one process runs every investigation
@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	type EventBus,
+	type MessageState,
 	type RelayMessage,
 	type RunMessageRequest,
 	runCancelTopic,
@@ -53,7 +54,8 @@ export interface RunningJob {
 		text: string,
 		mode: "queue" | "now",
 		attachments?: JobAttachment[],
-	): "queued" | "sent" | null;
+		kind?: FollowUpKind,
+	): MessageState;
 }
 
 export type JobRunner = (job: ClaimedJob, sink: RunSink) => RunningJob;
@@ -178,7 +180,10 @@ export class Dispatcher {
 		);
 		const messageSub = this.bus.subscribe<RunMessageRequest>(
 			runMessageTopic(job.investigationId),
-			(m) => m.reply(running.message?.(m.text, m.mode, m.attachments) ?? null),
+			(m) =>
+				m.reply(
+					running.message?.(m.text, m.mode, m.attachments, m.kind) ?? null,
+				),
 		);
 
 		void running.done

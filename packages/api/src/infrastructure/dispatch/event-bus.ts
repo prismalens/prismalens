@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { JobAttachment } from "@prismalens/contracts";
+import type { FollowUpKind, JobAttachment } from "@prismalens/contracts";
 
 /**
  * EventBus — the dispatch-layer fan-out seam that replaced Redis pub/sub.
@@ -73,8 +73,13 @@ export interface RunMessageRequest {
 	mode: "queue" | "now";
 	/** Files that go with it, as the job reads them (R4.3). */
 	attachments?: JobAttachment[];
-	reply(state: "queued" | "sent" | null): void;
+	/** What the message asks for; the turn that receives it checks it (#804 OBJ-032). */
+	kind?: FollowUpKind;
+	reply(state: MessageState): void;
 }
+
+/** `conflict`: the receiving turn owes something else than the message asks for. */
+export type MessageState = "queued" | "sent" | "conflict" | null;
 
 /**
  * In-process EventBus over plain Sets of handlers.

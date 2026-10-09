@@ -8,6 +8,7 @@ import type {
 } from "@prismalens/contracts";
 import { createContext, useContext } from "react";
 import type { InvestigationRun } from "@/components/investigation/useInvestigationRun";
+import type { RunVerb } from "@/lib/run-verb";
 
 export type RunRef = NonNullable<
 	IncidentWithRelations["investigations"]
@@ -25,6 +26,14 @@ export interface DraftChoice {
 	model?: string;
 	effort?: string | null;
 	mode?: string;
+}
+
+/** What `+ New run` opens with: chips, a verb, text and files (#673 w59). */
+export interface NewRunPrefill {
+	choice?: DraftChoice;
+	verb?: RunVerb;
+	text?: string;
+	files?: File[];
 }
 
 export interface RunStart {
@@ -46,13 +55,19 @@ export interface IncidentRecord {
 	/** The draft is selected rather than a run. */
 	draft: boolean;
 	selectRun: (id: string) => void;
-	/** Opens Conversation on the draft; `prefill` replaces its chips. */
-	newRun: (prefill?: DraftChoice) => void;
-	/** The draft's chips and text, kept per incident while the page lives. */
+	/** Opens Conversation on the draft; what `prefill` names replaces the draft's own. */
+	newRun: (prefill?: NewRunPrefill) => void;
+	/** The draft's chips, text, verb and files, kept per incident while the page lives. */
 	draftChoice: DraftChoice;
 	setDraftChoice: (choice: DraftChoice) => void;
 	draftText: string;
 	setDraftText: (text: string) => void;
+	/** Unset until the operator picks one; the box then reads its default. */
+	draftVerb?: RunVerb;
+	setDraftVerb: (verb: RunVerb) => void;
+	/** Files carried into the draft; the box takes them once, on mount. */
+	draftFiles: File[];
+	setDraftFiles: (files: File[]) => void;
 	run: InvestigationRun;
 	/** A run is working on this incident; the draft waits for it. */
 	liveRun: RunRef | null;

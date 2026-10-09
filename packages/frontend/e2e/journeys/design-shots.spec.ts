@@ -94,6 +94,28 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 		(r) => r.status === "running",
 		"the live run",
 	);
+	// A reportless run stopped by the operator: both verbs act on it (#673 w59).
+	const stopped = await fireIncident(page, alertmanager, deliverWebhook, {
+		name: "BooklogrQueueLag",
+		service: LIVE,
+		severity: "warning",
+		session: "live",
+	});
+	const halt = await waitForRun(
+		page,
+		stopped.id,
+		(r) => r.status === "running",
+		"the run to stop",
+	);
+	expect(
+		(await page.request.post(`/api/investigations/${halt.id}/cancel`)).ok(),
+	).toBe(true);
+	await waitForRun(
+		page,
+		stopped.id,
+		(r) => r.status === "cancelled",
+		"the stopped run",
+	);
 
 	for (const size of SIZES) {
 		await page.setViewportSize({ width: size.width, height: size.height });
@@ -115,7 +137,26 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 			await shot(page, `report-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
 			await expect(page.getByTestId("draft-heading")).toBeVisible();
-			await shot(page, `conversation-draft-${tag}`);
+			// This incident has a report, so the draft opens on Ask.
+			await expect(page.getByTestId("verb-chip")).toHaveAttribute(
+				"data-verb",
+				"ask",
+			);
+			await shot(page, `conversation-draft-ask-${tag}`);
+			await page.getByTestId("verb-chip").click();
+			await expect(page.getByTestId("verb-menu")).toBeVisible();
+			await shot(page, `picker-verbs-${tag}`);
+			await page.getByTestId("verb-investigate").click();
+			await expect(page.getByTestId("composer-investigate")).toBeVisible();
+			await shot(page, `conversation-draft-investigate-${tag}`);
+			await visit(page, `/incidents/${stopped.id}/conversation`);
+			await expect(page.getByTestId("verb-chip")).toHaveAttribute(
+				"data-verb",
+				"investigate",
+			);
+			await shot(page, `conversation-stopped-${tag}`);
+			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
+			await expect(page.getByTestId("draft-heading")).toBeVisible();
 			for (const [chip, menu, name] of [
 				["agent-picker", "agent-picker-list", "picker-models"],
 				["effort-chip", "effort-menu", "picker-effort"],

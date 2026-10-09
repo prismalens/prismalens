@@ -3,16 +3,18 @@
 
 import { isRunStateLive } from "@prismalens/contracts";
 import { useSearch } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTelemetryNames } from "@/components/incidents/IncidentFacts";
 import { RECORD_GRID } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
-import { useRunAgentModel } from "@/components/incidents/run-facts";
+import { runNumber, useRunAgentModel } from "@/components/incidents/run-facts";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
-import { alertsWord, gatherLine } from "@/lib/gather-line";
+import { gatherLine } from "@/lib/gather-line";
 import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
+import { recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
+import type { ComposerSend } from "./ComposerBox";
 import { DockedComposer } from "./DockedComposer";
 import { Transcript } from "./Transcript";
 
@@ -66,11 +68,39 @@ export function ConversationRoute() {
 							error: investigation.error,
 							startedAt: investigation.startedAt,
 							completedAt: investigation.completedAt,
+							kind: investigation.kind,
+							hasReport: !!investigation.report,
+							continuable: run.continuable,
+							lastTurnOutcome: investigation.lastTurnOutcome,
 						}
 					: undefined,
 			}),
-		[events, now, run.pending, run.stopRequested, investigation, live],
+		[
+			events,
+			now,
+			run.pending,
+			run.stopRequested,
+			run.continuable,
+			investigation,
+			live,
+		],
 	);
+	// `Investigate again`: + New run with what is in the box, then the report quoted (#673 w59, OBJ-013).
+	const box = useRef<ComposerSend | null>(null);
+	const report = investigation?.report;
+	const onRecheck =
+		investigation && report
+			? () =>
+					record.newRun({
+						verb: "investigate",
+						text: recheckBrief(
+							report,
+							runNumber(record.runs, investigation.id),
+							box.current?.text ?? "",
+						),
+						files: box.current?.files ?? [],
+					})
+			: undefined;
 	const who = useRunAgentModel(investigation);
 	const telemetry = useTelemetryNames(incident.service?.id);
 	// Only once the run has started: before that nothing has been gathered.
@@ -87,8 +117,13 @@ export function ConversationRoute() {
 
 	return (
 		<div
-			className="flex h-full min-h-0 flex-col"
+			className={cn(
+				"flex h-full min-h-0 flex-col",
+				// A draft's box sits centred in the column; the first send docks it (#673 w59).
+				draft && "justify-center pb-[12vh]",
+			)}
 			data-testid="conversation-route"
+			data-draft={draft ? "" : undefined}
 		>
 			{openBranch && (
 				<div
@@ -116,7 +151,7 @@ export function ConversationRoute() {
 					))}
 				</div>
 			)}
-			<div className="min-h-0 flex-1">
+			<div className={draft ? "shrink-0" : "min-h-0 flex-1"}>
 				{draft ? (
 					<DraftHeading />
 				) : run.isLoading ? (
@@ -135,35 +170,36 @@ export function ConversationRoute() {
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
 						lead={lead}
+						onRecheck={onRecheck}
 					/>
 				)}
 			</div>
-			<div className={RECORD_GRID}>
+			<div
+				className={cn(
+					RECORD_GRID,
+					"transition-transform duration-(--dur-base) motion-reduce:transition-none",
+				)}
+				data-testid="composer-dock"
+			>
 				<DockedComposer
 					key={draft ? "draft" : (investigation?.id ?? "none")}
 					branchId={openBranch ?? undefined}
+					boxRef={box}
+					onRecheck={onRecheck}
 				/>
 			</div>
 		</div>
 	);
 }
 
-/** A draft's head: what the run starts with, the facts its gather line will carry. */
+/**
+ * A draft's head, centred in the column above the box (#673 w59); the facts
+ * it starts with read once, as the transcript's first gather line.
+ */
 function DraftHeading() {
-	const { incident } = useIncidentRecord();
-	const telemetry = useTelemetryNames(incident.service?.id);
-	const service = incident.service?.displayName || incident.service?.name;
-	const parts = [
-		alertsWord(incident.alertCount),
-		service ? `${service}'s code` : "no repository",
-		...(telemetry ?? []),
-	];
 	return (
-		<div className={cn(RECORD_GRID, "pt-3")} data-testid="draft-heading">
+		<div className={cn(RECORD_GRID, "pb-3")} data-testid="draft-heading">
 			<h2 className="text-title">New run</h2>
-			<p className="mt-0.5 text-body text-text-2">
-				Starts with {parts.join(", ")}
-			</p>
 		</div>
 	);
 }

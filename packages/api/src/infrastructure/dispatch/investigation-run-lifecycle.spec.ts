@@ -9,11 +9,11 @@
  * {@link RunPorts} instead of fetch/oRPC mocks). Every other seam (engine /
  * logger) stays mocked — no network, no LLM, no dispatch loop.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { RunPorts } from "./run-ports.js";
 
@@ -66,13 +66,15 @@ function makeIo(signal: AbortSignal) {
 function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 	return {
 		findInvestigation: vi.fn(async () => ({ id: "inv-1", status: "running", harness: null, model: null, acpSessionId: null, workspace: null })),
-		updateStatus: vi.fn(async () => {}),
+		updateStatus: vi.fn(async () => true),
 		appendEvents: vi.fn(async (_id: string, _events: CanonicalEvent[]) => {}),
 		clearEvents: vi.fn(async () => {}),
 		followUpStatus: vi.fn(async () => {}),
+		initLiveTurn: vi.fn(async () => {}),
+		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
-		writeResult: vi.fn(async () => {}),
+		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
@@ -110,7 +112,7 @@ describe("run CANCEL path (ADR-0018)", () => {
 			},
 		);
 
-		const updateStatus = vi.fn(async () => {});
+		const updateStatus = vi.fn(async () => true);
 		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
 		const ports = makePorts({ updateStatus, createTimelineEntry });
 
@@ -204,7 +206,7 @@ describe("cancel during the snapshot (#605 edge 23)", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
 			const controller = new AbortController();
-			const updateStatus = vi.fn(async () => {});
+			const updateStatus = vi.fn(async () => true);
 			const ports = makePorts({
 				updateStatus,
 				incidentRepos: vi.fn(async () => [
@@ -397,4 +399,385 @@ describe("rerun fresh-record path (ADR-0018 B.4) — defensive today, no live pa
 		expect(clearEvents).not.toHaveBeenCalled();
 		expect(mocks.conductRun).toHaveBeenCalledTimes(1);
 	});
+});
+
+describe("the run owns its row's end (#673 w59, OBJ-010 b)", () => {
+	const report = {
+		summary: "pool exhausted",
+		rootCause: "pool too small",
+		rootCauseCategory: "config",
+		hypotheses: [],
+		ruledOut: [],
+		coverage: { queried: [], notQueried: [] },
+		nextSteps: [],
+	};
+
+	beforeEach(() => {
+		mocks.conductRun.mockReset();
+	});
+
+	it("Stop between parse and persist: the run re-reads the row, ends it cancelled, the job ends cancelled, no result or failure side effect (T6)", async () => {
+		// The report parsed; Stop landed before the result write, so the row refuses it.
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void>; finish(r: unknown): Promise<void> } }) => {
+			await run.store.create();
+			await run.store.finish(report);
+			return { runId: "inv-1", report, error: null, failureKind: "none" };
+		});
+		const updateStatus = vi.fn(async (_id: string, dto: { status: string }) => dto.status !== "failed");
+		const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
+		const ports = makePorts({
+			writeResult: vi.fn(async () => false),
+			updateStatus,
+			createTimelineEntry,
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "running",
+				harness: null,
+				model: null,
+				acpSessionId: null,
+				workspace: null,
+				stopRequestedAt: new Date(),
+			})),
+		});
+
+		const result = await runInvestigationJob(makeJob("inv-1"), makeData("inv-1", "inc-1"), makeIo(new AbortController().signal), ports);
+
+		expect(result).toMatchObject({ success: false, errorType: "cancelled" });
+		expect(updateStatus).toHaveBeenCalledWith("inv-1", { status: "cancelled", error: "Investigation cancelled" });
+		expect(updateStatus).not.toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed" }));
+		const titles = createTimelineEntry.mock.calls.map(([dto]) => dto.title);
+		expect(titles).toContain("Investigation stopped");
+		expect(titles).not.toContain("Investigation failed");
+		expect(titles).not.toContain("Investigation completed");
+		// After a restart the same row ends cancelled too: dispatch.service.spec.ts, T12 "a running job whose row recorded a Stop".
+	});
+
+	it("a result write refused with no Stop asked for ends the row failed with the reason, never succeeded", async () => {
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void>; finish(r: unknown): Promise<void> } }) => {
+			await run.store.create();
+			await run.store.finish(report);
+			return { runId: "inv-1", report, error: null, failureKind: "none" };
+		});
+		const updateStatus = vi.fn(async () => true);
+		const ports = makePorts({ writeResult: vi.fn(async () => false), updateStatus });
+
+		const result = await runInvestigationJob(makeJob("inv-1"), makeData("inv-1", "inc-1"), makeIo(new AbortController().signal), ports);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/^terminal write rejected/);
+		expect(updateStatus).toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed", error: result.error }));
+	});
+
+	it("an applied end is never read back: a follow-up admitted after it is left alone", async () => {
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void>; finish(r: unknown): Promise<void> } }) => {
+			await run.store.create();
+			await run.store.finish(report);
+			return { runId: "inv-1", report, error: null, failureKind: "none" };
+		});
+		const findInvestigation = vi.fn(async () => ({ id: "inv-1", status: "running", harness: null, model: null, acpSessionId: null, workspace: null }));
+		const ports = makePorts({ findInvestigation });
+
+		const result = await runInvestigationJob(makeJob("inv-1"), makeData("inv-1", "inc-1"), makeIo(new AbortController().signal), ports);
+
+		expect(result.success).toBe(true);
+		// Once before the run (sticky cancel), never after its applied end.
+		expect(findInvestigation).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
+	const HEAD = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
+	const NOW = new Date("2026-10-08T17:40:00.000Z");
+	const R = {
+		completed: { status: "completed" as const, completedAt: "2026-10-08T17:02:00.000Z", error: null },
+		cancelled: { status: "cancelled" as const, completedAt: "2026-10-08T17:04:00.000Z", error: "Investigation cancelled" },
+		failed: { status: "failed" as const, completedAt: "2026-10-08T17:04:00.000Z", error: "report did not validate" },
+	};
+	const report = {
+		summary: "pool exhausted",
+		rootCause: null,
+		rootCauseCategory: null,
+		hypotheses: [],
+		ruledOut: [],
+		coverage: { queried: [], notQueried: [] },
+		nextSteps: [{ title: "raise the pool", detail: "config.yml", priority: "high" }],
+	};
+	let tmp: string;
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-settle-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		const bin = join(tmp, "bin");
+		mkdirSync(bin);
+		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		vi.stubEnv("PATH", bin);
+		vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+		mocks.conductRun.mockReset();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	type Outcome = "answered" | "stopped" | "error";
+	/** One follow-up through the real run, its agent ending as `outcome`. */
+	async function followUp(
+		kind: "investigation" | "chat",
+		restore: (typeof R)[keyof typeof R],
+		outcome: Outcome,
+		opts: {
+			continuing?: boolean;
+			neverRan?: boolean;
+			/** The real X1 boundary: the row went live, then session/load failed before any prompt. */
+			loadFails?: boolean;
+			/** The agent heard the message, then the run threw before any terminal write. */
+			throwsAfterDelivery?: boolean;
+			ports?: Partial<RunPorts>;
+		} = {},
+	) {
+		const ports = makePorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "running",
+				kind,
+				harness: "opencode",
+				model: null,
+				acpSessionId: "ses_abc",
+				workspace: JSON.stringify({ layout: "unmapped", cwd: join(tmp, "runs", "inv-1", "unmapped"), repos: [] }),
+			})),
+			...opts.ports,
+		});
+		mocks.conductRun.mockImplementation(
+			async (_o, run: { store: { create(): Promise<void>; append(e: unknown): Promise<void>; finish(r: unknown): Promise<void>; fail(e: string): Promise<void> } }) => {
+				if (opts.neverRan) throw new Error("the agent would not start");
+				// conductRun's order: create() before the session opens (conductor.ts).
+				await run.store.create();
+				if (opts.loadFails) {
+					await run.store.append({ kind: "error", seq: 42, message: "session/load failed: no such session" });
+					await run.store.fail("session/load failed: no such session");
+					return { runId: "inv-1", report: null, error: "session/load failed: no such session", failureKind: "error" };
+				}
+				// The engine marks the message delivered just before it prompts.
+				await run.store.append({ kind: "operator_message", seq: 42, text: "why?", mode: "queue", delivered: true });
+				await run.store.append({ kind: "agent_step", seq: 50, text: "…" });
+				if (opts.throwsAfterDelivery) throw new Error("the stream broke");
+				if (outcome === "stopped") return { runId: "inv-1", report: null, error: "investigation cancelled", failureKind: "cancelled" };
+				if (outcome === "error") {
+					await run.store.fail("the agent crashed");
+					return { runId: "inv-1", report: null, error: "the agent crashed", failureKind: "error" };
+				}
+				if (opts.continuing) {
+					await run.store.finish(report);
+					return { runId: "inv-1", report, error: null, failureKind: "none" };
+				}
+				return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+			},
+		);
+		const data = {
+			investigationId: "inv-1",
+			incidentId: "inc-1",
+			resume: { text: "why?", mode: "queue" as const, restore, ...(opts.continuing ? { kind: "continue" as const } : {}) },
+		};
+		const result = await runInvestigationJob(makeJob("inv-1"), data, makeIo(new AbortController().signal), ports);
+		return { ports, result };
+	}
+	const kept = (r: (typeof R)[keyof typeof R]) => ({
+		status: r.status,
+		completedAt: r.completedAt ? new Date(r.completedAt) : null,
+		error: r.error,
+	});
+	const titles = (ports: RunPorts) =>
+		vi.mocked(ports.createTimelineEntry).mock.calls.map(([d]) => d.title).filter((t) => !/resumed/.test(t));
+
+	// Follow-ups that are not a `continue`: one settleFollowUp write each, exactly these columns.
+	it.each([
+		["I1", "investigation", R.completed, "answered", { ...kept(R.completed), lastTurnOutcome: "answered" }, []],
+		["I2", "investigation", R.completed, "stopped", { ...kept(R.completed), lastTurnOutcome: "stopped" }, ["Investigation stopped"]],
+		["I3", "investigation", R.completed, "error", { ...kept(R.completed), lastTurnOutcome: "error" }, ["Investigation error"]],
+		["I4", "investigation", R.cancelled, "answered", { ...kept(R.cancelled), lastTurnOutcome: "answered" }, []],
+		["I5 stopped", "investigation", R.failed, "stopped", { ...kept(R.failed), lastTurnOutcome: "stopped" }, ["Investigation stopped"]],
+		["I5 error", "investigation", R.cancelled, "error", { ...kept(R.cancelled), lastTurnOutcome: "error" }, ["Investigation error"]],
+		["C1", "chat", R.failed, "answered", { status: "completed", completedAt: NOW, error: null, lastTurnOutcome: "answered" }, ["Chat ended"]],
+		["C2", "chat", R.completed, "stopped", { status: "cancelled", completedAt: NOW, error: "Chat stopped", lastTurnOutcome: "stopped" }, ["Chat stopped"]],
+		["C3", "chat", R.completed, "error", { status: "failed", completedAt: NOW, error: "the agent crashed", lastTurnOutcome: "error" }, ["Chat error"]],
+	] as const)("%s: a %s follow-up ending %s writes exactly its row", async (_row, kind, restore, outcome, columns, entries) => {
+		const { ports } = await followUp(kind, restore, outcome);
+
+		expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([["inv-1", columns, { stopped: outcome === "stopped" }]]);
+		expect(ports.updateStatus).not.toHaveBeenCalled();
+		expect(ports.writeResult).not.toHaveBeenCalled();
+		expect(titles(ports)).toEqual(entries);
+	});
+
+	it("I6: a continue that reports writes the report once, completed now, answered", async () => {
+		const { ports, result } = await followUp("investigation", R.cancelled, "answered", { continuing: true });
+
+		expect(result.success).toBe(true);
+		expect(vi.mocked(ports.writeResult).mock.calls).toEqual([
+			["inv-1", expect.objectContaining({ status: "completed", lastTurnOutcome: "answered", report })],
+		]);
+		expect(ports.settleFollowUp).not.toHaveBeenCalled();
+	});
+
+	it("I7: a continue that is stopped ends cancelled, stopped", async () => {
+		const { ports, result } = await followUp("investigation", R.failed, "stopped", { continuing: true });
+
+		expect(result.errorType).toBe("cancelled");
+		expect(vi.mocked(ports.updateStatus).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{ status: "cancelled", error: "Investigation cancelled", lastTurnOutcome: "stopped" },
+		]);
+		expect(titles(ports)).toEqual(["Investigation stopped"]);
+		expect(ports.settleFollowUp).not.toHaveBeenCalled();
+	});
+
+	it("I8: a continue that errors ends failed with the sentence, error", async () => {
+		const { ports } = await followUp("investigation", R.cancelled, "error", { continuing: true });
+
+		expect(vi.mocked(ports.updateStatus).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{ status: "failed", error: "the agent crashed", lastTurnOutcome: "error" },
+		]);
+		expect(titles(ports)).toEqual(["Investigation failed"]);
+		expect(ports.settleFollowUp).not.toHaveBeenCalled();
+	});
+
+	it("a continue that throws after its agent heard it never leaves the row live: the run ends it failed", async () => {
+		const { ports, result } = await followUp("investigation", R.cancelled, "error", {
+			continuing: true,
+			throwsAfterDelivery: true,
+		});
+
+		expect(result.success).toBe(false);
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(ports.updateStatus).mock.calls.at(-1)?.[1]).toMatchObject({ status: "failed" });
+		expect(ports.settleFollowUp).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["an investigation Ask", "investigation", false],
+		["a continue", "investigation", true],
+		["a chat's Ask", "chat", false],
+	] as const)(
+		"X1 at the real boundary: %s whose session/load fails after the row went live puts the standing back (#804 OBJ-026)",
+		async (_name, kind, continuing) => {
+			const { ports, result } = await followUp(kind, R.cancelled, "error", { continuing, loadFails: true });
+
+			expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
+				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: "error" }, { stopped: false }],
+			]);
+			expect(ports.updateStatus).not.toHaveBeenCalled();
+			expect(ports.writeResult).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ success: false, error: "session/load failed: no such session" });
+		},
+	);
+
+	it.each([
+		["an Ask", false],
+		["a continue", true],
+	])("X1: %s whose agent never ran puts the standing back, error, and says so in the conversation", async (_name, continuing) => {
+		const { ports } = await followUp("investigation", R.cancelled, "error", { continuing, neverRan: true });
+
+		expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
+			["inv-1", { ...kept(R.cancelled), lastTurnOutcome: "error" }, { stopped: false }],
+		]);
+		const [, said] = vi.mocked(ports.appendEvents).mock.calls.at(-1) as [string, CanonicalEvent[]];
+		expect(said.map((e) => e.kind)).toEqual(["operator_message", "error"]);
+		expect(ports.updateStatus).not.toHaveBeenCalled();
+	});
+
+	it("a settlement that throws once is retried, and the job outcome is the answer's (#804 OBJ-024)", async () => {
+		let calls = 0;
+		const settleFollowUp = vi.fn(async () => {
+			if (calls++ === 0) throw new Error("SQLITE_BUSY");
+			return true;
+		});
+		const { ports, result } = await followUp("investigation", R.completed, "answered", { ports: { settleFollowUp } });
+
+		expect(settleFollowUp).toHaveBeenCalledTimes(2);
+		expect(result.success).toBe(true);
+		// Applied on the retry: never read back, never re-ended.
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(1);
+	});
+
+	it("a settlement that keeps throwing is never success: the run owns the end and the job fails (#804 OBJ-024)", async () => {
+		const settleFollowUp = vi.fn(async (_id: string, _end: { lastTurnOutcome: string }, _o: { stopped: boolean }): Promise<boolean> => {
+			throw new Error("SQLITE_BUSY");
+		});
+		const { ports, result } = await followUp("investigation", R.completed, "answered", { ports: { settleFollowUp } });
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/^terminal write rejected/);
+		// The answer's settlement twice, then the run's own end (error) twice.
+		expect(settleFollowUp.mock.calls.map(([, end]) => end.lastTurnOutcome)).toEqual([
+			"answered",
+			"answered",
+			"error",
+			"error",
+		]);
+		expect(vi.mocked(ports.findInvestigation)).toHaveBeenCalledTimes(2);
+	});
+
+	it("a row that cannot be read back after a refused end is not success (#804 OBJ-024)", async () => {
+		let reads = 0;
+		const { result } = await followUp("investigation", R.completed, "answered", {
+			ports: {
+				settleFollowUp: vi.fn(async () => false),
+				findInvestigation: vi.fn(async () => {
+					if (reads++ > 0) throw new Error("database is locked");
+					return {
+						id: "inv-1",
+						status: "running",
+						kind: "investigation",
+						harness: "opencode",
+						model: null,
+						acpSessionId: "ses_abc",
+						workspace: JSON.stringify({ layout: "unmapped", cwd: join(tmp, "runs", "inv-1", "unmapped"), repos: [] }),
+					};
+				}),
+			},
+		});
+
+		expect(result.success).toBe(false);
+	});
+
+	it("a follow-up end refused because Stop was asked for is settled as stopped instead", async () => {
+		const settleFollowUp = vi.fn(async (_id: string, _end: unknown, o: { stopped: boolean }) => o.stopped);
+		const { ports, result } = await followUp("investigation", R.completed, "answered", {
+			ports: {
+				settleFollowUp,
+				findInvestigation: vi.fn(async () => ({
+					id: "inv-1",
+					status: "running",
+					kind: "investigation",
+					harness: "opencode",
+					model: null,
+					acpSessionId: "ses_abc",
+					workspace: JSON.stringify({ layout: "unmapped", cwd: join(tmp, "runs", "inv-1", "unmapped"), repos: [] }),
+					stopRequestedAt: new Date(),
+				})),
+			},
+		});
+
+		expect(result.errorType).toBe("cancelled");
+		expect(settleFollowUp.mock.calls.map(([, end]) => (end as { lastTurnOutcome: string }).lastTurnOutcome)).toEqual([
+			"answered",
+			"stopped",
+		]);
+	});
+
+	// T9: an Ask never changes an investigation's standing, even with the terminal event batch dropped.
+	it.each(["answered", "stopped", "error"] as const)(
+		"Ask on a stopped reportless investigation ending %s: standing stays cancelled, lastTurnOutcome truthful, events dropped (T9)",
+		async (outcome) => {
+			const { ports } = await followUp("investigation", R.cancelled, outcome, {
+				ports: { appendEvents: vi.fn(async () => { throw new Error("database is locked"); }) },
+			});
+
+			expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
+				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: outcome }, { stopped: outcome === "stopped" }],
+			]);
+		},
+	);
+	// T9 restart: dispatch.service.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
 });

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, test } from "@playwright/test";
+import { investigateButton } from "./verb";
 
 /**
  * #606 — after the report. Two affordances the journey trace found missing:
@@ -53,7 +54,7 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		// band's menu opens the draft, and its status stays Resolved.
 		await page.getByTestId("band-more").click();
 		await page.getByTestId("band-menu-new-run").click();
-		await expect(page.getByTestId("composer-investigate")).toBeVisible();
+		await expect(await investigateButton(page)).toBeVisible();
 		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 	});
 

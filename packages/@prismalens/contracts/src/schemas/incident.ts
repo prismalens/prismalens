@@ -25,7 +25,11 @@ import {
 	RunChoiceSchema,
 } from "./investigation.js";
 import { ServiceSchema } from "./service.js";
-import { INVESTIGATION_KINDS } from "./state-semantics.js";
+import {
+	INVESTIGATION_KINDS,
+	LIVE_TURNS,
+	TURN_OUTCOMES,
+} from "./state-semantics.js";
 
 // =============================================================================
 // INCIDENT SCHEMAS
@@ -141,6 +145,8 @@ const InvestigationRefSchema = z.object({
 	harness: z.string().nullable().optional(),
 	model: z.string().nullable().optional(),
 	stopRequestedAt: DateStringSchema.nullable().optional(),
+	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
+	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
 	/** Latest run only: when its last event landed, and its latest agent sentence while live. */
 	lastEventAt: DateStringSchema.nullable().optional(),
 	latestText: z.string().nullable().optional(),

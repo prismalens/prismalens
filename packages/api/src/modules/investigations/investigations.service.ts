@@ -9,11 +9,20 @@ import {
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
-import type { CanonicalEvent, InvestigationKind } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	FollowUpKind,
+	InvestigationKind,
+	LiveTurn,
+	TurnOutcome,
+	WorkflowStatus,
+} from "@prismalens/contracts";
 import {
 	CanonicalEventSchema,
+	effectiveLiveTurn,
 	INVESTIGATION_REPORT_BRANCH,
 	isWorkflowTerminal,
+	LIVE_TURN_LABEL,
 	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
 import {
@@ -148,6 +157,7 @@ export class InvestigationsService {
 						...(dto.triggerType ? { triggerType: dto.triggerType } : {}),
 						...(dto.triggerReason ? { triggerReason: dto.triggerReason } : {}),
 						...(dto.kind ? { kind: dto.kind } : {}),
+						liveTurn: dto.kind === "chat" ? "answer" : "report",
 						...(dto.title ? { title: dto.title } : {}),
 						...(dto.agentMode ? { agentMode: dto.agentMode } : {}),
 					},
@@ -288,7 +298,8 @@ export class InvestigationsService {
 	/**
 	 * Apply a status write with the cancelled-is-sticky rule (CANCEL slice,
 	 * ADR-0018): a user's terminal "cancelled" is never overwritten by a late or
-	 * retried worker write. The guard rides in the UPDATE's WHERE so check-and-write
+	 * retried worker write, and once Stop was asked for a run can only end
+	 * cancelled (#673 w59). The guards ride in the UPDATE's WHERE so check-and-write
 	 * is one statement; a blocked (or missing-row) write returns null.
 	 */
 	private async applyStatusUpdate(
@@ -296,16 +307,23 @@ export class InvestigationsService {
 		status: string,
 		updateData: Record<string, unknown>,
 	): Promise<Investigation | null> {
+		const ending = isWorkflowTerminal(status);
 		const { count } = await this.prisma.investigation.updateMany({
 			where: {
 				id,
-				...(status === "cancelled" ? {} : { NOT: { status: "cancelled" } }),
+				// A Stop only ends a live row: a stale one never relabels a finished run (#804 OBJ-025).
+				...(status === "cancelled"
+					? { status: { in: [...LIVE_WORKFLOW_STATUSES] } }
+					: { NOT: { status: "cancelled" } }),
+				...(ending && status !== "cancelled" ? { stopRequestedAt: null } : {}),
 			},
-			data: updateData,
+			data: ending
+				? { ...updateData, liveTurn: null, stopRequestedAt: null }
+				: updateData,
 		});
 		if (count === 0) {
 			this.logger.warn(
-				`Status write "${status}" for investigation ${id} skipped (missing or already cancelled)`,
+				`Status write "${status}" for investigation ${id} skipped (missing, cancelled, or stop asked for)`,
 			);
 			return null;
 		}
@@ -356,6 +374,8 @@ export class InvestigationsService {
 			acpSessionId?: string;
 			workspace?: string;
 			agentMode?: string;
+			/** A follow-up `continue` ending: how its message ended (#673 w59). */
+			lastTurnOutcome?: TurnOutcome;
 		},
 	): Promise<Investigation | null> {
 		try {
@@ -387,6 +407,8 @@ export class InvestigationsService {
 			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
 			if (facts?.workspace) updateData.workspace = facts.workspace;
 			if (facts?.agentMode) updateData.agentMode = facts.agentMode;
+			if (facts?.lastTurnOutcome)
+				updateData.lastTurnOutcome = facts.lastTurnOutcome;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
@@ -397,9 +419,91 @@ export class InvestigationsService {
 	/** Record that the operator asked a running run to stop (#743). */
 	async markStopRequested(id: string): Promise<void> {
 		await this.prisma.investigation.updateMany({
-			where: { id, stopRequestedAt: null },
+			where: {
+				id,
+				stopRequestedAt: null,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
 			data: { stopRequestedAt: new Date() },
 		});
+	}
+
+	/** `Run #N` as the sidebar counts it: every thread on the incident, oldest first. */
+	async runNumber(
+		inv: Pick<Investigation, "incidentId" | "createdAt">,
+	): Promise<number> {
+		return this.prisma.investigation.count({
+			where: { incidentId: inv.incidentId, createdAt: { lte: inv.createdAt } },
+		});
+	}
+
+	/**
+	 * Why a message that names its verb cannot go to this live row, or null
+	 * (#673 w59, OBJ-004, OBJ-021): a stale page must be refused, never reread.
+	 */
+	async liveKindRefusal(
+		inv: Pick<Investigation, "incidentId" | "createdAt" | "kind" | "liveTurn">,
+		kind: FollowUpKind,
+	): Promise<string | null> {
+		const wants: LiveTurn = kind === "continue" ? "report" : "answer";
+		if (inv.liveTurn && effectiveLiveTurn(inv) === wants) return null;
+		const n = await this.runNumber(inv);
+		if (!inv.liveTurn) return `Run #${n} is starting; wait`;
+		const doing = LIVE_TURN_LABEL[effectiveLiveTurn(inv)].replace(
+			"Working",
+			"working",
+		);
+		return `Run #${n} is ${doing}; wait or stop it`;
+	}
+
+	/**
+	 * Write what a live row owes when its job was queued before the column
+	 * existed (#673 w59, OBJ-021). Never overwrites an admission's own write.
+	 */
+	async initLiveTurn(id: string, turn: LiveTurn): Promise<void> {
+		await this.prisma.investigation.updateMany({
+			where: {
+				id,
+				liveTurn: null,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			data: { liveTurn: turn },
+		});
+	}
+
+	/**
+	 * The end of a follow-up that is not a `continue` (#673 w59, DESIGN §3.3):
+	 * standing, `lastTurnOutcome` and the live columns in one statement, and
+	 * only on a live row. A non-stop end is refused once Stop was asked for.
+	 */
+	async settleFollowUp(
+		id: string,
+		end: {
+			status: WorkflowStatus;
+			completedAt: Date | null;
+			error: string | null;
+			lastTurnOutcome: TurnOutcome;
+		},
+		opts: { stopped: boolean },
+	): Promise<boolean> {
+		const { count } = await this.prisma.investigation.updateMany({
+			where: {
+				id,
+				status: { in: [...LIVE_WORKFLOW_STATUSES] },
+				...(opts.stopped ? {} : { stopRequestedAt: null }),
+			},
+			data: {
+				...end,
+				liveTurn: null,
+				stopRequestedAt: null,
+				updatedAt: new Date(),
+			},
+		});
+		if (count === 0)
+			this.logger.warn(
+				`Follow-up end "${end.lastTurnOutcome}" for investigation ${id} skipped (not live, or stop asked for)`,
+			);
+		return count === 1;
 	}
 
 	/**
@@ -415,10 +519,12 @@ export class InvestigationsService {
 		description = "The investigation was cancelled before it started.",
 	): Promise<Investigation | null> {
 		const updated = await this.updateStatus(id, "cancelled");
+		if (!updated) return null;
 		await this.timelineService.create({
 			incidentId,
 			type: TimelineEntryType.investigation_completed,
-			title: "Investigation stopped",
+			title:
+				updated?.kind === "chat" ? "Chat stopped" : "Investigation stopped",
 			description,
 			source: TimelineSource.system,
 			metadata: { investigationId: id },
@@ -444,20 +550,17 @@ export class InvestigationsService {
 			if (!investigation) return null;
 			const chat = investigation.kind === "chat";
 
-			// Cancelled is sticky (CANCEL slice): a late or retried worker must not
-			// overwrite the user's cancellation with a completed/failed result.
-			if (investigation.status === "cancelled") {
-				this.logger.warn(
-					`Result write for investigation ${id} skipped — already cancelled`,
-				);
-				return null;
-			}
-
-			// Use transaction for atomic writes
-			await this.prisma.$transaction(async (tx) => {
+			// One statement checks and writes (#673 w59): only a live row takes it, a
+			// stop asked for wins, and a thread's report is written once.
+			const applied = await this.prisma.$transaction(async (tx) => {
 				// 1. Update investigation with results
-				await tx.investigation.update({
-					where: { id },
+				const { count } = await tx.investigation.updateMany({
+					where: {
+						id,
+						status: { in: [...LIVE_WORKFLOW_STATUSES] },
+						stopRequestedAt: null,
+						...(dto.report ? { report: null } : {}),
+					},
 					data: {
 						summary: dto.summary,
 						rootCause: dto.rootCause,
@@ -467,8 +570,14 @@ export class InvestigationsService {
 						status: dto.status,
 						completedAt: new Date(),
 						updatedAt: new Date(),
+						liveTurn: null,
+						stopRequestedAt: null,
+						...(dto.lastTurnOutcome
+							? { lastTurnOutcome: dto.lastTurnOutcome }
+							: {}),
 					},
 				});
+				if (count === 0) return false;
 
 				// 2. Create recommendations
 				if (dto.recommendations && dto.recommendations.length > 0) {
@@ -491,7 +600,7 @@ export class InvestigationsService {
 				// 3. Create timeline entry for completion
 				const timelineTitle = chat
 					? dto.status === "failed"
-						? "Chat failed"
+						? "Chat error"
 						: "Chat ended"
 					: dto.status === "failed"
 						? "Investigation failed"
@@ -523,7 +632,14 @@ export class InvestigationsService {
 						}),
 					},
 				});
+				return true;
 			});
+			if (!applied) {
+				this.logger.warn(
+					`Result write for investigation ${id} skipped (row not live, stop asked for, or report already written)`,
+				);
+				return null;
+			}
 
 			this.logger.log(
 				`Wrote full result for investigation ${id} with ${dto.recommendations?.length ?? 0} recommendations`,

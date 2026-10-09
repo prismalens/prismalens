@@ -4,6 +4,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
 import { settled } from "./settled";
+import { investigateButton } from "./verb";
 
 /**
  * #521 — one readiness verdict for the investigation affordance.
@@ -138,7 +139,7 @@ async function setTheme(page: Page, theme: "light" | "dark"): Promise<void> {
  * by test id.
  */
 function boxInvestigateButton(page: Page) {
-	return page.getByTestId("composer-investigate");
+	return investigateButton(page);
 }
 
 test.describe("#521 — the investigation affordance follows the server's gate", () => {
@@ -160,7 +161,9 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		});
 
 		// The draft's box: disabled, with the reason rendered under it.
-		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
+		await expect(await boxInvestigateButton(page)).toBeDisabled({
+			timeout: 15_000,
+		});
 		await expect(page.getByTestId("composer-blocked")).toContainText(
 			PROTOCOL_MISMATCH_REASON,
 		);
@@ -170,7 +173,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await page.getByTestId("tab-alerts").click();
 		await page.getByTestId("band-more").click();
 		await page.getByTestId("band-menu-new-run").click();
-		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByTestId("composer-blocked")).toContainText(
 			PROTOCOL_MISMATCH_REASON,
 		);
@@ -182,11 +185,13 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, title);
 
 		await page.goto(`/incidents/${id}/conversation`);
-		await expect(boxInvestigateButton(page)).toBeEnabled({ timeout: 15_000 });
+		await expect(await boxInvestigateButton(page)).toBeEnabled({
+			timeout: 15_000,
+		});
 		await page.getByTestId("tab-alerts").click();
 		await page.getByTestId("band-more").click();
 		await page.getByTestId("band-menu-new-run").click();
-		await expect(boxInvestigateButton(page)).toBeEnabled();
+		await expect(await boxInvestigateButton(page)).toBeEnabled();
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -196,7 +201,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, `Probe failure ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}/conversation`);
-		await expect(boxInvestigateButton(page)).toBeDisabled({
+		await expect(await boxInvestigateButton(page)).toBeDisabled({
 			timeout: 15_000,
 		});
 		await expect(
@@ -218,12 +223,16 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 				.getByRole("heading", { name: new RegExp(title) }),
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
-		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
+		await expect(await boxInvestigateButton(page)).toBeDisabled({
+			timeout: 15_000,
+		});
 		await settled(page);
 
 		// Dark — the same surface, same verdict.
 		await setTheme(page, "dark");
-		await expect(boxInvestigateButton(page)).toBeDisabled({ timeout: 15_000 });
+		await expect(await boxInvestigateButton(page)).toBeDisabled({
+			timeout: 15_000,
+		});
 		await settled(page);
 
 		// Empty — the incident has no run, so the Report pool says so and the
@@ -237,7 +246,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			},
 		);
 		await page.getByTestId("tab-conversation").click();
-		await expect(boxInvestigateButton(page)).toBeDisabled();
+		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await settled(page);
 
 		// Error — the harness probe itself fails, so the gate stays shut and says so.
