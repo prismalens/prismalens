@@ -581,6 +581,8 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		resumed: z
 			.array(z.object({ name: z.string(), head: z.string() }))
 			.optional(),
+		/** With `resumed`: an Ask (`chat`) or on to the report (`continue`); absent before #673 walk 4. */
+		followUp: FollowUpKindSchema.optional(),
 		/** Files that went with the message (R4.3). */
 		attachments: z.array(AttachmentRefSchema).optional(),
 	}),

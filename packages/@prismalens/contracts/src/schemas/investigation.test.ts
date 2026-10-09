@@ -490,6 +490,13 @@ describe("follow-up on a finished run (#747)", () => {
 		const first = { ...message, resumed: [{ name: "api", head: "1a2b3c4" }] };
 		expect(CanonicalEventSchema.parse(first)).toEqual(first);
 	});
+
+	it("parses operator_message with valid followUp and rejects unknown followUp (#673 walk 4)", () => {
+		// Valid followUp values parse as expected, and followUp is optional
+		expect(CanonicalEventSchema.parse({ ...message, followUp: "chat" })).toMatchObject({ followUp: "chat" });
+		expect(CanonicalEventSchema.parse(message).followUp).toBeUndefined();
+		expect(() => CanonicalEventSchema.parse({ ...message, followUp: "other" })).toThrow();
+	});
 });
 
 describe("a run's own chips (#673 w52)", () => {

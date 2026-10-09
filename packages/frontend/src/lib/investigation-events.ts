@@ -276,6 +276,7 @@ export const STALE_AFTER_S = 90;
 export type OperatorState =
 	| "started"
 	| "resumed"
+	| "asked"
 	| "queued"
 	| "sent_now"
 	| "delivered"
@@ -286,6 +287,7 @@ export type OperatorState =
 export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
 	started: "Started the run",
 	resumed: "Continued the run",
+	asked: "Asked",
 	queued: "Queued",
 	sent_now: "Sent now",
 	delivered: "Delivered",
@@ -470,6 +472,15 @@ export function resumedLine(resumed: { name: string; head: string }[]): string {
 	return at
 		? `Resumed in the same session, code at ${at}`
 		: "Resumed in the same session";
+}
+
+/** A follow-up's first message: an Ask, or the run continued to its report (#673 walk 4). */
+function followUpState(
+	followUp: "chat" | "continue" | undefined,
+	kind: string | null | undefined,
+): OperatorState {
+	if (followUp === "chat" || (!followUp && kind === "chat")) return "asked";
+	return "resumed";
 }
 
 function transcriptPath(runId?: string): string {
@@ -662,7 +673,7 @@ export function deriveTranscript(
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
-							? "resumed"
+							? followUpState(event.followUp, run?.kind)
 							: brief
 								? "started"
 								: event.mode === "now"
