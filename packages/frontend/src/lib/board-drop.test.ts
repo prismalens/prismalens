@@ -2,7 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { dropAction } from "./board-drop";
+import { columnBeside, dropAction, dropWord } from "./board-drop";
+import type { BoardColumn } from "./incident-board";
 
 const drop = (
 	from: Parameters<typeof dropAction>[0]["from"],
@@ -89,3 +90,56 @@ describe("dropAction", () => {
 		}
 	});
 });
+
+describe("dropWord", () => {
+	it("says what dropping on each kind of action would do (#673 walk 4)", () => {
+		expect(dropWord({ kind: "investigate" })).toBe("drop to start a run");
+		expect(dropWord({ kind: "reopen-investigate" })).toBe(
+			"drop to reopen it and start a run",
+		);
+		expect(dropWord({ kind: "reopen" })).toBe("drop to reopen it");
+		expect(dropWord({ kind: "stop" })).toBe("drop to stop its run");
+		expect(dropWord({ kind: "resolve", stopFirst: false })).toBe(
+			"drop to resolve it",
+		);
+		expect(dropWord({ kind: "resolve", stopFirst: true })).toBe(
+			"drop to stop its run and resolve it",
+		);
+		expect(dropWord({ kind: "none", reason: "Its run is already working" })).toBe(
+			"Its run is already working",
+		);
+		expect(dropWord({ kind: "none" })).toBe("dropping here changes nothing");
+	});
+});
+
+describe("columnBeside", () => {
+	const order: readonly BoardColumn[] = [
+		"needs_you",
+		"working",
+		"concluded",
+		"resolved",
+	];
+
+	it("moves to the next column on ArrowRight and stops at the end (#673 walk 4)", () => {
+		expect(columnBeside("ArrowRight", "needs_you", order)).toBe("working");
+		expect(columnBeside("ArrowRight", "working", order)).toBe("concluded");
+		expect(columnBeside("ArrowRight", "concluded", order)).toBe("resolved");
+		expect(columnBeside("ArrowRight", "resolved", order)).toBeNull();
+	});
+
+	it("moves to the previous column on ArrowLeft and stops at the beginning (#673 walk 4)", () => {
+		expect(columnBeside("ArrowLeft", "resolved", order)).toBe("concluded");
+		expect(columnBeside("ArrowLeft", "concluded", order)).toBe("working");
+		expect(columnBeside("ArrowLeft", "working", order)).toBe("needs_you");
+		expect(columnBeside("ArrowLeft", "needs_you", order)).toBeNull();
+	});
+
+	it("returns null for any key other than ArrowRight and ArrowLeft (#673 walk 4)", () => {
+		expect(columnBeside("Space", "working", order)).toBeNull();
+		expect(columnBeside("Enter", "working", order)).toBeNull();
+		expect(columnBeside("Escape", "working", order)).toBeNull();
+		expect(columnBeside("ArrowUp", "working", order)).toBeNull();
+		expect(columnBeside("ArrowDown", "working", order)).toBeNull();
+	});
+});
+

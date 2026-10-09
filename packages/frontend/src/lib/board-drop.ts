@@ -64,3 +64,34 @@ export function dropAction({
 	if (!canResolve) return { kind: "none", reason: "Already resolved" };
 	return { kind: "resolve", stopFirst: live };
 }
+
+/** What a drop on a column would do, said while a card is carried there (#673 walk 4). */
+export function dropWord(action: DropAction): string {
+	switch (action.kind) {
+		case "investigate":
+			return "drop to start a run";
+		case "reopen-investigate":
+			return "drop to reopen it and start a run";
+		case "reopen":
+			return "drop to reopen it";
+		case "stop":
+			return "drop to stop its run";
+		case "resolve":
+			return action.stopFirst
+				? "drop to stop its run and resolve it"
+				: "drop to resolve it";
+		case "none":
+			return action.reason ?? "dropping here changes nothing";
+	}
+}
+
+/** The column Left or Right carries a card to, in board order; null at either end. */
+export function columnBeside(
+	key: string,
+	from: BoardColumn,
+	order: readonly BoardColumn[],
+): BoardColumn | null {
+	const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+	if (!step) return null;
+	return order[order.indexOf(from) + step] ?? null;
+}

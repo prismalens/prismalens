@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type Announcements,
 	DndContext,
 	type DragEndEvent,
 	DragOverlay,
 	type DragStartEvent,
+	type KeyboardCoordinateGetter,
 	KeyboardSensor,
 	PointerSensor,
 	TouchSensor,
@@ -56,7 +58,12 @@ import {
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useStreamStatus } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
-import { type DropAction, dropAction } from "@/lib/board-drop";
+import {
+	columnBeside,
+	type DropAction,
+	dropAction,
+	dropWord,
+} from "@/lib/board-drop";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import {
@@ -216,6 +223,25 @@ type Prompt = { incident: IncidentWithRelations } & (
 	| { kind: "resolve"; stopFirst: boolean }
 );
 
+const COLUMN_ORDER = BOARD_COLUMNS.map((c) => c.id);
+const columnLabel = (id: unknown) =>
+	BOARD_COLUMNS.find((c) => c.id === id)?.label ?? String(id);
+
+/** Left and Right carry a picked-up card a whole column, not 25 px (#673 walk 4). */
+const columnCoordinates: KeyboardCoordinateGetter = (
+	event,
+	{ context, currentCoordinates },
+) => {
+	if (event.code !== "ArrowLeft" && event.code !== "ArrowRight") return;
+	const from = context.over?.id as BoardColumn | undefined;
+	const to = from && columnBeside(event.code, from, COLUMN_ORDER);
+	const rect = to ? context.droppableRects.get(to) : undefined;
+	return rect ? { x: rect.left + 4, y: rect.top + 4 } : currentCoordinates;
+};
+
+const KEYBOARD_HELP =
+	"To move this card, press Space. Left and Right arrows carry it between columns, Space drops it, Escape puts it back.";
+
 function actionFor(d: Dragging, to: BoardColumn): DropAction {
 	return dropAction({
 		from: d.from,
@@ -274,8 +300,47 @@ export function IncidentBoard({
 				cancel: ["Escape"],
 				end: ["Space", "Enter"],
 			},
+			coordinateGetter: columnCoordinates,
 		}),
 	);
+	// The pickup line stays until the card leaves its own column.
+	const moved = useRef(false);
+	const carried = (id: unknown): Dragging | null => {
+		const incident = incidents.find((i) => i.id === id);
+		return incident ? { incident, from: boardColumn(incident) } : null;
+	};
+	const cardName = (d: Dragging) =>
+		`INC-${d.incident.number}, ${d.incident.title}`;
+	const announcements: Announcements = {
+		onDragStart: ({ active }) => {
+			moved.current = false;
+			const d = carried(active.id);
+			return d
+				? `Picked up ${cardName(d)}, in ${columnLabel(d.from)}. Left and Right arrows carry it between columns, Space drops it, Escape puts it back.`
+				: undefined;
+		},
+		onDragOver: ({ active, over }) => {
+			const d = carried(active.id);
+			if (!d || !over) return undefined;
+			if (over.id === d.from && !moved.current) return undefined;
+			moved.current = true;
+			const to = over.id as BoardColumn;
+			return `${columnLabel(to)}: ${dropWord(actionFor(d, to))}.`;
+		},
+		onDragEnd: ({ active, over }) => {
+			const d = carried(active.id);
+			if (!d) return undefined;
+			return over && over.id !== d.from
+				? `Dropped ${cardName(d)} on ${columnLabel(over.id)}.`
+				: `${cardName(d)} stays in ${columnLabel(d.from)}.`;
+		},
+		onDragCancel: ({ active }) => {
+			const d = carried(active.id);
+			return d
+				? `Put ${cardName(d)} back in ${columnLabel(d.from)}.`
+				: undefined;
+		},
+	};
 
 	const settle = (id: string) => async () => {
 		await queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
@@ -408,6 +473,10 @@ export function IncidentBoard({
 	return (
 		<DndContext
 			sensors={sensors}
+			accessibility={{
+				announcements,
+				screenReaderInstructions: { draggable: KEYBOARD_HELP },
+			}}
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
 			onDragCancel={() => {
@@ -744,7 +813,12 @@ function DraggableCard({
 		disabled: !!busy,
 	});
 	// The card's title stays the link screen readers follow; dnd-kit would make the li a button.
-	const { role: _role, tabIndex: _tab, ...dragAttributes } = attributes;
+	const {
+		role: _role,
+		tabIndex: _tab,
+		"aria-describedby": describedBy,
+		...dragAttributes
+	} = attributes;
 	return (
 		<li
 			ref={setNodeRef}
@@ -766,6 +840,7 @@ function DraggableCard({
 						params={{ id: incident.id }}
 						search={search}
 						className="outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:outline-2 focus-visible:after:outline-accent"
+						aria-describedby={describedBy}
 						onClickCapture={(e) => {
 							if (Date.now() - lastDragEnd < 300) e.preventDefault();
 						}}
