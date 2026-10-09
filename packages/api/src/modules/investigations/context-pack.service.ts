@@ -223,37 +223,33 @@ export class ContextPackService {
 
 	private async loadNeighbors(affected: string[]): Promise<NeighborService[]> {
 		if (affected.length === 0) return [];
-		const edges = await this.prisma.serviceDependency.findMany({
-			where: {
-				OR: [
-					{ dependencyId: { in: affected } },
-					{ dependentId: { in: affected } },
-				],
-			},
-			include: {
-				dependent: { select: { name: true } },
-				dependency: { select: { name: true } },
-			},
-			take: 40,
-		});
-		const affectedSet = new Set(affected);
+		const limit = 20;
 		const criticality = (e: { criticality: string }) =>
 			(e.criticality as NeighborService["criticality"]) ?? null;
-		const dependents: NeighborService[] = edges
-			.filter((e) => affectedSet.has(e.dependencyId))
-			.map((e) => ({
-				name: e.dependent.name,
-				relation: "dependent" as const,
-				criticality: criticality(e),
-			}));
-		const dependencies: NeighborService[] = edges
-			.filter((e) => affectedSet.has(e.dependentId))
-			.map((e) => ({
-				name: e.dependency.name,
-				relation: "dependency" as const,
-				criticality: criticality(e),
-			}));
-		return [...dependents, ...dependencies].slice(0, 20);
+		// Dependents lead, so they are fetched first and dependencies fill what is left (#805).
+		const dependentEdges = await this.prisma.serviceDependency.findMany({
+			where: { dependencyId: { in: affected } },
+			include: { dependent: { select: { name: true } } },
+			take: limit,
+		});
+		const dependents: NeighborService[] = dependentEdges.map((e) => ({
+			name: e.dependent.name,
+			relation: "dependent" as const,
+			criticality: criticality(e),
+		}));
+		const room = limit - dependents.length;
+		if (room <= 0) return dependents;
+		const dependencyEdges = await this.prisma.serviceDependency.findMany({
+			where: { dependentId: { in: affected } },
+			include: { dependency: { select: { name: true } } },
+			take: room,
+		});
+		const dependencies: NeighborService[] = dependencyEdges.map((e) => ({
+			name: e.dependency.name,
+			relation: "dependency" as const,
+			criticality: criticality(e),
+		}));
+		return [...dependents, ...dependencies];
 	}
 
 	private async loadPriorIncidents(

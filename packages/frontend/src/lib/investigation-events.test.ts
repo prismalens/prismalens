@@ -283,6 +283,12 @@ describe("a report cut off mid-block (#673 walk 4)", () => {
 		expect(agentStepMessage(text)).toBe(text);
 	});
 
+	it("agentStepMessage: an earlier closed summary block does not hide a later cut one (#805)", () => {
+		const text =
+			"```json\n{\n  \"summary\": \"draft one\"\n}\n```\n\nRevised:\n\n```json\n{\n  \"summary\": \"draft two\",\n  \"hypotheses\": [";
+		expect(agentStepMessage(text)).toBe("Report draft cut off");
+	});
+
 	it("agentStepMessage: a closed json block starting with summary that fails schema is returned unchanged (#673 walk 4)", () => {
 		const text = "```json\n{\n  \"summary\": \"just a summary with no other schema fields\"\n}\n```";
 		expect(agentStepMessage(text)).toBe(text);

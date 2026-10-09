@@ -92,7 +92,12 @@ function withoutProvider(name: string, provider: string): string {
 		: name;
 }
 
-const comparable = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** `Sonnet 4.5` and `sonnet-4-5` compare equal; `Nova 13` and `Nova 1.3` do not (#805). */
+const comparable = (s: string) =>
+	s
+		.toLowerCase()
+		.replace(/(\d)[.\-_ ](?=\d)/g, "$1.")
+		.replace(/[^a-z0-9.]/g, "");
 
 /**
  * A model by the name the agent's own list gives it, less the provider
@@ -110,10 +115,11 @@ export function modelName(
 	const exact = entries.find((m) => m.id === id);
 	if (exact) return named(exact);
 	const key = comparable(id);
-	const alike = entries.find(
+	const alike = entries.filter(
 		(m) => comparable(named(m)) === key || comparable(m.name ?? "") === key,
 	);
-	return alike ? named(alike) : id;
+	// Two models that read alike leave the id as the one unambiguous name.
+	return alike.length === 1 && alike[0] ? named(alike[0]) : id;
 }
 
 /** The model the agent picks for itself, when its check or the env says. */

@@ -4,6 +4,7 @@
 "use client";
 
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
+import { Button } from "@/components/ui/button";
 import { useDeleteService } from "@/lib/api/hooks";
 
 export interface DeleteServiceDialogProps {
@@ -15,6 +16,9 @@ export interface DeleteServiceDialogProps {
 	upstream?: string[];
 	/** Services that call this one. */
 	downstream?: string[];
+	/** Where the dependency links stand; a delete waits until they have loaded (#805). */
+	links?: "pending" | "error" | "success";
+	onRetryLinks?: () => void;
 	onSuccess?: () => void;
 }
 
@@ -53,6 +57,8 @@ export function DeleteServiceDialog({
 	serviceName,
 	upstream = [],
 	downstream = [],
+	links = "success",
+	onRetryLinks,
 	onSuccess,
 }: DeleteServiceDialogProps) {
 	const deleteService = useDeleteService();
@@ -74,12 +80,26 @@ export function DeleteServiceDialog({
 						This removes <strong>{serviceName}</strong> from the catalog.
 						Incidents that named it keep their record.
 					</p>
-					{impact && <p data-testid="delete-service-links">{impact}</p>}
+					{links === "error" ? (
+						<p data-testid="delete-service-links-error">
+							Couldn't load this service's dependency links. Any it has go with
+							it.{" "}
+							{onRetryLinks && (
+								<Button variant="text" size="sm" onClick={onRetryLinks}>
+									Retry
+								</Button>
+							)}
+						</p>
+					) : (
+						links === "success" &&
+						impact && <p data-testid="delete-service-links">{impact}</p>
+					)}
 				</>
 			}
 			confirmLabel="Delete"
 			onConfirm={handleDelete}
 			isPending={deleteService.isPending}
+			isLoading={links === "pending"}
 		/>
 	);
 }
