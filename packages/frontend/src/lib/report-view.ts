@@ -230,3 +230,34 @@ export function inReportOrder<T extends { title: string }>(
 	};
 	return [...items].sort((a, b) => rank(a.title) - rank(b.title));
 }
+
+/**
+ * The first alert as it stands now; a clear after the report says so, so the
+ * word and its line never disagree (#673 walk 4, QA-08).
+ */
+export function reportAlert(
+	alerts: {
+		title?: string | null;
+		alertName?: string | null;
+		status: string;
+		triggeredAt: string;
+		resolvedAt?: string | null;
+	}[],
+	at: string | Date | null,
+): { name: string; line: string; firing: boolean } | null {
+	const a = alerts[0];
+	if (!a) return null;
+	const written = at ? new Date(at).getTime() : Date.now();
+	const resolved = a.resolvedAt ? Date.parse(a.resolvedAt) : null;
+	const firing = resolved === null && isAlertFiring(a.status);
+	return {
+		name: a.alertName || a.title || "Alert",
+		line:
+			resolved !== null
+				? `cleared at ${formatClock(resolved)}${resolved > written ? ", after the report" : ""}`
+				: firing
+					? "still firing"
+					: "not firing",
+		firing,
+	};
+}
