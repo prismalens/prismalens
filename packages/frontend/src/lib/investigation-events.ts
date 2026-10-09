@@ -92,7 +92,9 @@ export function agentStepMessage(text: string): string {
 	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
 		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
 	}
-	const cut = /```json[ \t]*\r?\n(\s*\{\s*"summary"\s*:[\s\S]*)$/i.exec(text);
+	const cut = /```(?:json)?[ \t]*\r?\n(\s*\{\s*"summary"\s*:[\s\S]*)$/i.exec(
+		text,
+	);
 	if (cut?.[1] && !/^```[ \t]*$/m.test(cut[1])) return REPORT_CUT;
 	return text;
 }

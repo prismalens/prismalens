@@ -320,7 +320,9 @@ export function IncidentBoard({
 		onDragEnd: ({ active, over }) => {
 			const d = carried(active.id);
 			if (!d) return undefined;
-			return over && over.id !== d.from
+			return over &&
+				over.id !== d.from &&
+				actionFor(d, over.id as BoardColumn).kind !== "none"
 				? `Dropped ${cardName(d)} on ${columnLabel(over.id)}.`
 				: `${cardName(d)} stays in ${columnLabel(d.from)}.`;
 		},

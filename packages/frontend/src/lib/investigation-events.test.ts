@@ -272,6 +272,11 @@ describe("a report cut off mid-block (#673 walk 4)", () => {
 		expect(agentStepMessage(text)).toBe("Report draft cut off");
 	});
 
+	it("agentStepMessage: an unclosed bare fence starting with summary returns 'Report draft cut off' (#673 walk 4)", () => {
+		const text = "```\n{\n  \"summary\": \"The alert fired\",\n  \"hypotheses\": [";
+		expect(agentStepMessage(text)).toBe("Report draft cut off");
+	});
+
 	it("agentStepMessage: unclosed json block starting with another key is returned unchanged (#673 walk 4)", () => {
 		const text = "```json\n{\n  \"plan\": \"check the database\",\n  \"steps\": [";
 		expect(agentStepMessage(text)).toBe(text);
