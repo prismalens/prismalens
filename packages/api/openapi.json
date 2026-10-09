@@ -13618,6 +13618,9 @@
                               "expiresAt": {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              "clamped": {
+                                "type": "boolean"
                               }
                             },
                             "required": [
