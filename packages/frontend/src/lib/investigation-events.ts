@@ -35,6 +35,7 @@ export interface EventRow {
 }
 
 export const REPORT_DRAFTED = "Report drafted";
+export const REPORT_CUT = "Report draft cut off";
 
 /**
  * Is this block the report itself? The schema decides — not a guess at two of
@@ -55,8 +56,8 @@ export const REPORT_DRAFTED = "Report drafted";
  * it lives in `@prismalens/contracts`, which the browser bundle already
  * carries, while the engine is server-only.
  *
- * Only a COMPLETE object is recognised. See {@link agentStepMessage} for what
- * that means for a partial one.
+ * Only a COMPLETE object is recognised; see {@link agentStepMessage} for a
+ * block cut off mid-way.
  */
 function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
@@ -74,23 +75,8 @@ function isReportJson(body: string): boolean {
  * document; every other text shows as written. A fence closes only on its own
  * line, so a backtick run inside a JSON string does not end the block early.
  *
- * ## Partial text
- *
- * This never sees a half-written report through the live stream. Assistant text
- * arrives from ACP as incremental `agent_message_chunk` deltas, and
- * `AcpAdapter` is the one place they accumulate: it flushes them as the `text`
- * of a single `agent_step`, so a canonical event always carries a whole turn.
- * The panel appends those events and upserts rows by `(branchId, seq)` for
- * replay idempotency — it never grows one row's text in place. So there is no
- * window in which a row holds an incomplete object, and nothing flashes raw
- * JSON mid-stream.
- *
- * If a future harness did split a report across two steps, the fragment would
- * fail `JSON.parse` and be shown as written rather than swallowed. That is the
- * deliberate choice: an unparseable fragment is indistinguishable from prose
- * that happens to start with `{`, and hiding text we cannot identify is the
- * worse failure — it loses the agent's words with no way to get them back,
- * whereas showing a fragment is merely ugly for one row.
+ * A message sent mid-turn flushes the text so far, so a report can arrive cut
+ * off: an unclosed ```json block opening with `"summary"` reads as a line (#673 walk 4).
  */
 export function agentStepMessage(text: string): string {
 	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
@@ -106,6 +92,8 @@ export function agentStepMessage(text: string): string {
 	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
 		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
 	}
+	const cut = /```json[ \t]*\r?\n(\s*\{\s*"summary"\s*:[\s\S]*)$/i.exec(text);
+	if (cut?.[1] && !/^```[ \t]*$/m.test(cut[1])) return REPORT_CUT;
 	return text;
 }
 
@@ -594,9 +582,9 @@ export function deriveTranscript(
 			case "agent_step": {
 				sawAgent = true;
 				const text = agentStepMessage(event.text.trim());
-				if (text === REPORT_DRAFTED) {
+				if (text === REPORT_DRAFTED || text === REPORT_CUT) {
 					closeGroup();
-					items.push({ kind: "line", key, text: REPORT_DRAFTED });
+					items.push({ kind: "line", key, text });
 				} else if (text) {
 					closeGroup();
 					items.push({ kind: "prose", key, text, at: event.ts });
@@ -866,7 +854,7 @@ export function latestAgentText(events: CanonicalEvent[]): string | null {
 		const e = events[i];
 		if (e?.kind !== "agent_step") continue;
 		const text = agentStepMessage(e.text.trim());
-		if (text && text !== REPORT_DRAFTED) return text;
+		if (text && text !== REPORT_DRAFTED && text !== REPORT_CUT) return text;
 	}
 	return null;
 }
