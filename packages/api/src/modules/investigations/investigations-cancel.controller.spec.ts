@@ -202,6 +202,33 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		});
 	});
 
+	it("a restore that throws once is retried, never turned into a plain cancel (#804 OBJ-031)", async () => {
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(investigation("inv-8", "pending"))
+			.mockResolvedValueOnce({ ...investigation("inv-8", "completed"), lastTurnOutcome: "stopped" });
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
+		mockDispatchService.restoreFollowUp
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"))
+			.mockResolvedValueOnce(true);
+
+		const result = await cancelHandler()({ input: { id: "inv-8" } });
+
+		expect(mockDispatchService.restoreFollowUp).toHaveBeenCalledTimes(2);
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ status: "completed", lastTurnOutcome: "stopped" });
+	});
+
+	it("a restore that keeps throwing leaves the row for boot, never cancelled (#804 OBJ-031)", async () => {
+		mockInvestigationsService.findById.mockResolvedValueOnce(investigation("inv-9", "pending"));
+		mockDispatchService.cancelPendingJob.mockResolvedValue(true);
+		mockDispatchService.restoreFollowUp
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"))
+			.mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+		await expect(cancelHandler()({ input: { id: "inv-9" } })).rejects.toThrow("SQLITE_BUSY");
+		expect(mockInvestigationsService.cancelPending).not.toHaveBeenCalled();
+	});
+
 	it("a Stop whose run finished meanwhile answers with the finished run, never a stale live one (#804 OBJ-025)", async () => {
 		mockInvestigationsService.findById
 			.mockResolvedValueOnce(investigation("inv-7", "running"))

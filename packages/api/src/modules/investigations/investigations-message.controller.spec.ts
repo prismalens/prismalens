@@ -94,7 +94,7 @@ describe("InvestigationsController.message (#743)", () => {
 
 		const result = await messageHandler()({ input: { id: "inv-1", text: "check the TTL", mode: "queue" } });
 
-		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", []);
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", [], undefined);
 		expect(result).toEqual({ state: "queued" });
 	});
 
@@ -273,6 +273,21 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 
 		await expect(send({ id: "inv-1", text: "hi", mode: "queue", kind })).rejects.toMatchObject({ code: "CONFLICT", message });
 		expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("a retry that lands on a newer Ask turn is refused there, not delivered (#804 OBJ-032)", async () => {
+		// The report turn's steer channel closed; during the retry delay it finished and an Ask was admitted.
+		mockInvestigationsService.findById
+			.mockResolvedValueOnce(live("report"))
+			.mockResolvedValueOnce(live("answer"));
+		mockDispatchService.sendMessage.mockReturnValueOnce(null).mockReturnValueOnce("conflict");
+
+		await expect(send({ id: "inv-1", text: "finish the report", mode: "queue", kind: "continue" })).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "Run #3 is working on an answer; wait or stop it",
+		});
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
+		for (const call of mockDispatchService.sendMessage.mock.calls) expect(call[4]).toBe("continue");
 	});
 
 	it("a matching kind, or no kind at all, steers the live turn", async () => {

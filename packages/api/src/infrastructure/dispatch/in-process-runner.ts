@@ -16,6 +16,7 @@ import runInvestigationJob, {
 	type InvestigationResult,
 } from "./investigation-run.js";
 import type { ClaimedJob } from "./job-store.js";
+import { payloadTurn } from "./prisma-investigation-store.js";
 import type { RunPorts } from "./run-ports.js";
 
 export function createInProcessRunner(ports: RunPorts): JobRunner {
@@ -34,6 +35,20 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 
 		const controller = new AbortController();
 		const steer = createSteerChannel();
+		const owes =
+			payloadTurn({
+				chat: !!payload.chat,
+				...(payload.resume
+					? {
+							resume: {
+								note: "",
+								continuing: payload.resume.kind === "continue",
+							},
+						}
+					: {}),
+			}) === "report"
+				? "continue"
+				: "chat";
 
 		// Idempotent: the run calls `streamDone` on every path it completes through,
 		// but a thrown error or the sticky-cancel skip (returns without ever
@@ -82,7 +97,11 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			done,
 			cancel: () => controller.abort(),
 			kill: () => controller.abort(),
-			message: (text, mode, attachments) => steer.send(text, mode, attachments),
+			// The turn this job runs answers only what it owes (#804 OBJ-032).
+			message: (text, mode, attachments, kind) =>
+				kind && kind !== owes
+					? "conflict"
+					: steer.send(text, mode, attachments),
 		};
 	};
 }

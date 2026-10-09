@@ -59,6 +59,7 @@ import { Dispatcher } from "./dispatcher.js";
 import {
 	EVENT_BUS,
 	type EventBus,
+	type MessageState,
 	type RunMessageRequest,
 	runCancelTopic,
 	runMessageTopic,
@@ -463,6 +464,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * else ends the row, and a recorded Stop always ends it as a stop.
 	 */
 	private async reconcileLiveRows(wasRunning: Set<string>): Promise<void> {
+		await this.settleJobsOfEndedRows(wasRunning);
 		const rows = await this.prisma.investigation.findMany({
 			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
 			select: {
@@ -517,6 +519,50 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					),
 				);
 			}
+		}
+	}
+
+	/**
+	 * A run that wrote its row's end and died before its job did: the job
+	 * failRunning just failed takes the row's outcome (#804 OBJ-027).
+	 */
+	private async settleJobsOfEndedRows(wasRunning: Set<string>): Promise<void> {
+		if (wasRunning.size === 0) return;
+		const ended = await this.prisma.investigation.findMany({
+			where: {
+				id: { in: [...wasRunning] },
+				status: { notIn: [...LIVE_WORKFLOW_STATUSES] },
+			},
+			select: { id: true, status: true, lastTurnOutcome: true },
+		});
+		for (const row of ended) {
+			const job = await this.prisma.job.findUnique({
+				where: { investigationId: row.id },
+				select: { payload: true },
+			});
+			const followUp = !!job && !!jobResume(job.payload);
+			const outcome = followUp
+				? row.lastTurnOutcome === "stopped"
+					? "cancelled"
+					: row.lastTurnOutcome === "answered"
+						? "succeeded"
+						: "failed"
+				: row.status === "cancelled"
+					? "cancelled"
+					: row.status === "completed"
+						? "succeeded"
+						: "failed";
+			if (outcome === "failed") continue;
+			await this.prisma.job.updateMany({
+				where: { investigationId: row.id, status: "failed" },
+				data: {
+					status: outcome,
+					lastError:
+						outcome === "cancelled"
+							? "Stopped before PrismaLens restarted"
+							: null,
+				},
+			});
 		}
 	}
 
@@ -689,12 +735,14 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		text: string,
 		mode: "queue" | "now",
 		attachments: JobAttachment[] = [],
-	): "queued" | "sent" | null {
-		let state: "queued" | "sent" | null = null;
+		kind?: FollowUpKind,
+	): MessageState {
+		let state: MessageState = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
 			text,
 			mode,
 			attachments,
+			...(kind ? { kind } : {}),
 			reply: (s) => {
 				state = s;
 			},
@@ -728,8 +776,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		});
 		const resume = job ? jobResume(job.payload) : undefined;
 		if (!resume) return false;
-		const seq =
-			(await this.investigationsService.lastEventSeq(investigationId)) + 1;
 		// Only a live row is put back; one that already ended keeps its end (#804 OBJ-025).
 		const applied = await this.investigationsService.settleFollowUp(
 			investigationId,
@@ -744,7 +790,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			{ stopped: true },
 		);
 		if (!applied) return true;
+		// The conversation line is best-effort; the standing is written first (#804 OBJ-031).
 		try {
+			const seq =
+				(await this.investigationsService.lastEventSeq(investigationId)) + 1;
 			await this.investigationsService.appendEvents(
 				investigationId,
 				followUpNotDelivered(investigationId, seq, resume, reason),

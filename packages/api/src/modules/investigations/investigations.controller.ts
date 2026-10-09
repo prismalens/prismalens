@@ -226,15 +226,11 @@ export class InvestigationsController {
 							input.id,
 						);
 						if (cancelledJob) {
-							// A failed restore must not strand the run pending: fall through
-							// to the plain cancel below.
-							const restoredFollowUp = await this.dispatchService
-								.restoreFollowUp(
-									input.id,
-									"Stopped before the follow-up started. The report is unchanged.",
-									"stopped",
-								)
-								.catch(() => false);
+							// A follow-up is put back, never cancelled as a first run (#804 OBJ-031).
+							const restoredFollowUp = await this.restoreStoppedFollowUp(
+								input.id,
+								"Stopped before the follow-up started. The report is unchanged.",
+							);
 							if (restoredFollowUp) {
 								const restored = await this.investigationsService.findById(
 									input.id,
@@ -268,13 +264,10 @@ export class InvestigationsController {
 						// marks it failed instead of the cancellation the user asked for.
 						await this.dispatchService.cancelOrphanedRun(input.id);
 						// An orphaned follow-up puts its thread's standing back, as a stop (#673 w59).
-						const restored = await this.dispatchService
-							.restoreFollowUp(
-								input.id,
-								"Stopped; no run held the follow-up.",
-								"stopped",
-							)
-							.catch(() => false);
+						const restored = await this.restoreStoppedFollowUp(
+							input.id,
+							"Stopped; no run held the follow-up.",
+						);
 						if (restored) {
 							const after = await this.investigationsService.findById(input.id);
 							return this.serializeInvestigation(after ?? investigation);
@@ -357,11 +350,13 @@ export class InvestigationsController {
 						);
 						if (refusal) throw new ORPCError("CONFLICT", { message: refusal });
 					}
+					// The kind rides with every send, retries included: the turn that receives it checks it.
 					let state = this.dispatchService.sendMessage(
 						input.id,
 						input.text,
 						input.mode,
 						attachments,
+						input.kind,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -370,7 +365,21 @@ export class InvestigationsController {
 							input.text,
 							input.mode,
 							attachments,
+							input.kind,
 						);
+					}
+					if (state === "conflict") {
+						const now = await this.investigationsService.findById(input.id);
+						throw new ORPCError("CONFLICT", {
+							message:
+								(now && input.kind
+									? await this.investigationsService.liveKindRefusal(
+											now,
+											input.kind,
+										)
+									: null) ??
+								"The run is working on something else now; wait or stop it",
+						});
 					}
 					if (state === null) {
 						// A pending run has no holder until the dispatcher claims it.
@@ -520,6 +529,22 @@ export class InvestigationsController {
 	private parseWorkspace(raw: Investigation["workspace"]) {
 		const parsed = RunWorkspaceSchema.safeParse(safeParseJsonObject(raw));
 		return parsed.success ? parsed.data : null;
+	}
+
+	/**
+	 * Puts a stopped follow-up's standing back; false when the job was a first
+	 * run. It is retried once and never falls back to cancelling the row: a
+	 * row it cannot reach stays live for boot to settle (#804 OBJ-031).
+	 */
+	private async restoreStoppedFollowUp(
+		id: string,
+		reason: string,
+	): Promise<boolean> {
+		try {
+			return await this.dispatchService.restoreFollowUp(id, reason, "stopped");
+		} catch {
+			return this.dispatchService.restoreFollowUp(id, reason, "stopped");
+		}
 	}
 
 	/** Only a finished run can take a follow-up; a live one takes messages (#747). */

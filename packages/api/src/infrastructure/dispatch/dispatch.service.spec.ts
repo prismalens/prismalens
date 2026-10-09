@@ -471,6 +471,28 @@ describe("a stale Stop never relabels a finished run (#804 OBJ-025)", () => {
 		expect(timeline.create).not.toHaveBeenCalled();
 	});
 
+	it("Stop on an unclaimed Ask whose event read throws once: completed standing, original time and error, stopped, live columns cleared (#804 OBJ-031)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const completedAt = new Date(restoreDone.completedAt);
+		const row = await thread(inc.id, { status: "pending", liveTurn: "answer", report: "{}", summary: "s" });
+		await job(row.id, inc.id, { resume: { text: "why?", mode: "queue", restore: restoreDone } }, "cancelled");
+		const seq = vi.spyOn(investigations, "lastEventSeq").mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+		expect(await service.restoreFollowUp(row.id, "Stopped before the follow-up started.", "stopped")).toBe(true);
+
+		seq.mockRestore();
+		expect(await read(row.id)).toMatchObject({
+			status: "completed",
+			completedAt,
+			error: null,
+			lastTurnOutcome: "stopped",
+			liveTurn: null,
+			stopRequestedAt: null,
+			report: "{}",
+		});
+	});
+
 	it("a pending follow-up that ended meanwhile is not put back, and nothing is said in the conversation", async () => {
 		const { service } = realDispatch();
 		const inc = await incident();
@@ -583,6 +605,28 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 		// What GET /investigations/:id/status serves as `job.state`.
 		expect(await realDispatch().service.getJobStatus(row.id)).toMatchObject({ status: "cancelled" });
 	});
+
+	it.each([
+		["a first run settled cancelled", { status: "cancelled", error: "Investigation cancelled", completedAt: new Date() }, { resume: false }, "cancelled"],
+		["a first run settled completed", { status: "completed", report: "{}", completedAt: new Date() }, { resume: false }, "succeeded"],
+		["an Ask settled stopped", { status: "completed", report: "{}", lastTurnOutcome: "stopped" }, { resume: true }, "cancelled"],
+		["an Ask settled answered", { status: "completed", report: "{}", lastTurnOutcome: "answered" }, { resume: true }, "succeeded"],
+		["an Ask settled in error", { status: "completed", report: "{}", lastTurnOutcome: "error" }, { resume: true }, "failed"],
+	] as const)(
+		"%s, killed before its job completed: the job takes the row's outcome, no restart failure (#804 OBJ-027)",
+		async (_name, settled, payload, outcome) => {
+			const inc = await incident();
+			const row = await thread(inc.id, settled);
+			await job(row.id, inc.id, payload.resume ? { resume: ask } : {}, "running");
+
+			await boot();
+
+			expect(await read(row.id)).toMatchObject({ status: settled.status });
+			const status = await realDispatch().service.getJobStatus(row.id);
+			expect(status?.status).toBe(outcome);
+			if (outcome !== "failed") expect(status?.error).not.toBe(RESTART_REASON);
+		},
+	);
 
 	it("a follow-up whose Stop was recorded before the restart: standing put back, job cancelled (#804 OBJ-027)", async () => {
 		const inc = await incident();
