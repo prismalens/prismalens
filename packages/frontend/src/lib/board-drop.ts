@@ -62,9 +62,10 @@ export function dropAction({
 			: { kind: "investigate", acknowledge: canAcknowledge };
 	}
 	if (to === "concluded") {
-		if (from === "working" && live) return { kind: "stop" };
 		// A Resolved card back on Concluded is a plain Reopen, asked first (#673 w42).
 		if (from === "resolved" && canReopen) return { kind: "reopen" };
+		// Any live run stops, the one on a card waiting in Needs you too (#673 walk 4).
+		if (live) return { kind: "stop" };
 		return {
 			kind: "none",
 			reason: "Concluded follows from a finished investigation",

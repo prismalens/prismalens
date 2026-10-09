@@ -19,7 +19,6 @@ import {
 import {
 	canIncidentAction,
 	type IncidentWithRelations,
-	isWorkflowLive,
 	RUN_STATE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
@@ -37,17 +36,7 @@ import {
 import { AgentMark } from "@/components/agent/AgentMark";
 import { Mono } from "@/components/shared/Mono";
 import { WrapText } from "@/components/shared/WrapText";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useHarnesses, useInvestigationReadiness } from "@/lib/api/hooks";
@@ -218,7 +207,6 @@ interface Dragging {
 
 /** A drop or a card action waiting on the operator. */
 type Prompt = { incident: IncidentWithRelations } & (
-	| { kind: "stop" }
 	| { kind: "reopen-investigate" }
 	| { kind: "reopen" }
 	| { kind: "resolve"; stopFirst: boolean }
@@ -426,6 +414,11 @@ export function IncidentBoard({
 				? acknowledge(d.incident, () => startRun(d.incident))
 				: startRun(d.incident);
 		if (action.kind === "acknowledge") return acknowledge(d.incident);
+		// Stop asks nothing, like the box's Stop; the run ends "Stopped by you" (#673 walk 4).
+		if (action.kind === "stop") {
+			setBusy((b) => ({ ...b, [d.incident.id]: "Stopping" }));
+			return stopRun(d.incident);
+		}
 		setPrompt(
 			action.kind === "resolve"
 				? {
@@ -615,37 +608,6 @@ export function IncidentBoard({
 					}}
 				/>
 			)}
-			<AlertDialog
-				open={prompt?.kind === "stop"}
-				onOpenChange={(open) => !open && setPrompt(null)}
-			>
-				<AlertDialogContent data-testid="board-stop-dialog">
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Stop INC-{prompt?.incident.number}'s run?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							The agent stops at its current step. What it found so far stays in
-							the conversation.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Keep going</AlertDialogCancel>
-						<AlertDialogAction
-							className={buttonVariants({ variant: "danger-fill" })}
-							onClick={() => {
-								if (!prompt) return;
-								const { incident } = prompt;
-								setPrompt(null);
-								setBusy((b) => ({ ...b, [incident.id]: "Stopping" }));
-								stopRun(incident);
-							}}
-						>
-							Stop
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</DndContext>
 	);
 }
