@@ -28,7 +28,8 @@
 		"e2e:libs": "node scripts/e2e-libs.mjs",
 		"publint": "pnpm --filter prismalens exec publint --strict",
 		"pack": "node scripts/pack-cli.mjs",
-		"gate:side-checks": "node scripts/gate-side-checks.mjs"
+		"gate:side-checks": "node scripts/gate-side-checks.mjs",
+		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
