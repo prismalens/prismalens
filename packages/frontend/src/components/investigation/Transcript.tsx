@@ -391,6 +391,7 @@ function ToolGroup({
 								key={key}
 								command={commandText(source, cwd)}
 								running={!result}
+								unfinished={item.unfinished}
 								output={detail && shortPath(detail, cwd)}
 								refused={
 									result?.ok === false

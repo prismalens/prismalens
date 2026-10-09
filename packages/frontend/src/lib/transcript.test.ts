@@ -131,7 +131,7 @@ describe("deriveTranscript", () => {
 		expect(tools.rows.length).toBeGreaterThan(0);
 	});
 
-	it("starts a new group after prose, and counts a call with no result as running", () => {
+	it("starts a new group after prose, and marks an unanswered call unfinished when ended", () => {
 		const items = deriveTranscript(
 			[
 				step(1, "", [{ id: "a", name: "Read a.ts" }]),
@@ -144,7 +144,52 @@ describe("deriveTranscript", () => {
 		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
 		const second = items[2] as Extract<TranscriptItem, { kind: "tools" }>;
 		expect(second.running).toBe(1);
+		expect(second.unfinished).toBe(true);
+		expect(second.summary).toBe("1 not finished");
+	});
+
+	it("keeps an unanswered call running when the run is live", () => {
+		const live = { status: "running", live: true };
+		const items = deriveTranscript(
+			[
+				step(1, "", [{ id: "a", name: "Read a.ts" }]),
+				result(2, "a", "file"),
+				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
+			],
+			T0,
+			{ run: live },
+		);
+		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
+		const second = items[2] as Extract<TranscriptItem, { kind: "tools" }>;
+		expect(second.running).toBe(1);
+		expect(second.unfinished).toBeUndefined();
 		expect(second.summary).toBe("1 running");
+	});
+
+	it("marks an unanswered call unfinished before a resumed operator_message even while live", () => {
+		const live = { status: "running", live: true };
+		const resumedEvent: CanonicalEvent = {
+			...operator(4, "Check deploy again"),
+			resumed: [{ name: "api", head: "1a2b3c4" }],
+		} as CanonicalEvent;
+		const items = deriveTranscript(
+			[
+				step(1, "", [{ id: "a", name: "Read a.ts" }]),
+				result(2, "a", "file"),
+				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
+				resumedEvent,
+			],
+			T0,
+			{ run: live },
+		);
+		const tools = items.filter((i) => i.kind === "tools") as Extract<
+			TranscriptItem,
+			{ kind: "tools" }
+		>[];
+		const second = tools[1];
+		expect(second.running).toBe(1);
+		expect(second.unfinished).toBe(true);
+		expect(second.summary).toBe("1 not finished");
 	});
 
 	it("adds Thought for Ns before a step that followed a gap of 20s or more", () => {
@@ -406,6 +451,14 @@ describe("summarizeTools", () => {
 		expect(summarizeTools(results)).toBe(
 			"read 1 file, wrote 1 file, edited 1 file, deleted 1 file, moved 1 file",
 		);
+	});
+
+	it("formats unanswered calls as not finished when ended is true", () => {
+		const results = [
+			{ name: "read /tmp/b", toolCategory: "file" as const, toolCallId: "1", source: "1", ok: true, preview: "" },
+			null,
+		];
+		expect(summarizeTools(results, { ended: true })).toBe("read 1 file, 1 not finished");
 	});
 });
 

@@ -351,6 +351,8 @@ export type TranscriptItem =
 			summary: string;
 			failed: number;
 			running: number;
+			/** The turn ended with calls unanswered: they read "not finished", never "running". */
+			unfinished?: boolean;
 			rows: EventRow[];
 			/** The tool calls in the group, so a report's evidence link can open it. */
 			callIds: string[];
@@ -424,7 +426,10 @@ const FILE_PAST: Record<FileVerb, string> = {
 };
 
 /** `read 2 files, searched 1 pattern`: what a tool group did, by category. */
-export function summarizeTools(results: (StreamToolResult | null)[]): string {
+export function summarizeTools(
+	results: (StreamToolResult | null)[],
+	opts: { ended?: boolean } = {},
+): string {
 	const files = new Map<FileVerb, number>();
 	let search = 0;
 	let source = 0;
@@ -447,7 +452,8 @@ export function summarizeTools(results: (StreamToolResult | null)[]): string {
 	if (search) parts.push(`searched ${plural(search, "pattern", "patterns")}`);
 	if (source) parts.push(`queried ${plural(source, "source", "sources")}`);
 	if (other) parts.push(`ran ${plural(other, "command", "commands")}`);
-	if (running) parts.push(`${running} running`);
+	if (running)
+		parts.push(`${running} ${opts.ended ? "not finished" : "running"}`);
 	return parts.join(", ");
 }
 
@@ -532,6 +538,7 @@ export function deriveTranscript(
 		brief: boolean;
 	}[] = [];
 
+	const groups: OpenGroup[] = [];
 	const closeGroup = () => {
 		group = null;
 	};
@@ -549,6 +556,7 @@ export function deriveTranscript(
 		};
 		items.push(item);
 		group = { item, calls: new Map() };
+		groups.push(group);
 		return group;
 	};
 	const refresh = (g: OpenGroup) => {
@@ -557,7 +565,15 @@ export function deriveTranscript(
 		g.item.callIds = Array.from(g.calls.keys());
 		g.item.failed = results.filter((r) => r && !r.ok).length;
 		g.item.running = results.filter((r) => !r).length;
-		g.item.summary = summarizeTools(results);
+		g.item.summary = summarizeTools(results, { ended: g.item.unfinished });
+	};
+	// A stopped or resumed turn left its open calls behind; none of them still runs (#673 walk 4, QA-07).
+	const endOpenCalls = () => {
+		for (const g of groups)
+			if (g.item.running > 0 && !g.item.unfinished) {
+				g.item.unfinished = true;
+				refresh(g);
+			}
 	};
 	const answerPending = () => {
 		for (const o of operators) {
@@ -635,6 +651,7 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				closeGroup();
+				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
 				if (event.resumed && !sawEnd) {
 					sawEnd = true;
@@ -769,6 +786,7 @@ export function deriveTranscript(
 		});
 	}
 
+	if (run && !run.live) endOpenCalls();
 	if (run?.live) {
 		const last = items[items.length - 1];
 		const toolRunning = last?.kind === "tools" && last.running > 0;
