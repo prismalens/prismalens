@@ -48,6 +48,7 @@ import {
 import { useStreamStatus } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import {
+	acknowledgesFirst,
 	columnBeside,
 	type DropAction,
 	dropAction,
@@ -412,7 +413,7 @@ export function IncidentBoard({
 		const action = actionFor(d, e.over.id as BoardColumn);
 		if (action.kind === "none") return;
 		if (action.kind === "investigate")
-			return action.acknowledge
+			return acknowledgesFirst(action, isReady)
 				? acknowledge(d.incident, () => startRun(d.incident))
 				: startRun(d.incident);
 		if (action.kind === "acknowledge") return acknowledge(d.incident);

@@ -160,6 +160,26 @@ describe("modelName (#673)", () => {
 			...over,
 		});
 
+	it("keeps version points apart and names an ambiguous match by its id (#805)", () => {
+		const nova = (names: string[]) =>
+			opencode({
+				models: {
+					source: "harness",
+					asOf: "",
+					entries: names.map((name, i) => ({
+						id: `x/m${i}`,
+						name,
+						status: null,
+					})),
+				},
+			});
+		expect(modelName(nova(["Nova 1.3"]), "Nova 13")).toBe("Nova 13");
+		expect(modelName(nova(["Nova 1.3"]), "nova-1-3")).toBe("Nova 1.3");
+		expect(modelName(nova(["Nova 1.3", "nova-1.3"]), "Nova 1.3 ")).toBe(
+			"Nova 1.3 ",
+		);
+	});
+
 	it("resolves model names stripped of provider prefix, by id and by lenient match", () => {
 		const harness = opencode();
 		expect(modelName(harness, "opencode/muse-spark-1.3-free")).toBe(

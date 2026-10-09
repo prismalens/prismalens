@@ -92,10 +92,12 @@ export function agentStepMessage(text: string): string {
 	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
 		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
 	}
-	const cut = /```(?:json)?[ \t]*\r?\n(\s*\{\s*"summary"\s*:[\s\S]*)$/i.exec(
-		text,
-	);
-	if (cut?.[1] && !/^```[ \t]*$/m.test(cut[1])) return REPORT_CUT;
+	// Every opener is checked: an earlier closed block must not hide a later cut one (#805).
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
+		const rest = text.slice((open.index ?? 0) + open[0].length);
+		if (/^\s*\{\s*"summary"\s*:/.test(rest) && !/^```[ \t]*$/m.test(rest))
+			return REPORT_CUT;
+	}
 	return text;
 }
 

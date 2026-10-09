@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { columnBeside, dropAction, dropWord } from "./board-drop";
+import {
+	acknowledgesFirst,
+	columnBeside,
+	dropAction,
+	dropWord,
+} from "./board-drop";
 import type { BoardColumn } from "./incident-board";
 
 const drop = (
@@ -192,3 +197,16 @@ describe("columnBeside", () => {
 	});
 });
 
+
+describe("acknowledgesFirst (#805)", () => {
+	it("acknowledges a Triggered card only when a run can start", () => {
+		const action = { kind: "investigate", acknowledge: true } as const;
+		expect(acknowledgesFirst(action, true)).toBe(true);
+		expect(acknowledgesFirst(action, false)).toBe(false);
+	});
+
+	it("never acknowledges a card that needs none", () => {
+		const action = { kind: "investigate", acknowledge: false } as const;
+		expect(acknowledgesFirst(action, true)).toBe(false);
+	});
+});

@@ -76,6 +76,17 @@ export function dropAction({
 	return { kind: "resolve", stopFirst: live };
 }
 
+/**
+ * A drop on Working acknowledges only when a run can start; an unready agent
+ * leaves the card as it was and the run's refusal says why (#805).
+ */
+export function acknowledgesFirst(
+	action: Extract<DropAction, { kind: "investigate" }>,
+	ready: boolean,
+): boolean {
+	return action.acknowledge && ready;
+}
+
 /** What a drop on a column would do, said while a card is carried there (#673 walk 4). */
 export function dropWord(action: DropAction): string {
 	switch (action.kind) {
