@@ -8,7 +8,11 @@ import { useTelemetryNames } from "@/components/incidents/IncidentFacts";
 import { RECORD_GRID, RecordLink } from "@/components/incidents/RecordLayout";
 import type { RunRef } from "@/components/incidents/record-context";
 import { useIncidentRecord } from "@/components/incidents/record-context";
-import { runNumber, useRunAgentModel } from "@/components/incidents/run-facts";
+import {
+	newerRunOf,
+	runNumber,
+	useRunAgentModel,
+} from "@/components/incidents/run-facts";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
 import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
@@ -215,15 +219,7 @@ function NewerRunLine({
 	runs: RunRef[];
 	selected: string;
 }) {
-	const [newest] = runs;
-	const self = runs.find((r) => r.id === selected);
-	const newer =
-		newest &&
-		self &&
-		newest.id !== selected &&
-		newest.createdAt > self.createdAt
-			? newest
-			: null;
+	const newer = newerRunOf(runs, selected);
 	const { data } = useInvestigation(newer?.id ?? "");
 	const at = pinnedTo(data?.workspace);
 	if (!newer || !at) return null;

@@ -75,6 +75,18 @@ export function runNumber(runs: RunRef[], id: string): number {
 	return at < 0 ? runs.length + 1 : runs.length - at;
 }
 
+/** The incident's newest run when it started after `selected`, else null (#673 w27); `runs` are newest first. */
+export function newerRunOf(runs: RunRef[], selected: string): RunRef | null {
+	const [newest] = runs;
+	const self = runs.find((r) => r.id === selected);
+	return newest &&
+		self &&
+		newest.id !== selected &&
+		new Date(newest.createdAt) > new Date(self.createdAt)
+		? newest
+		: null;
+}
+
 /** A thread's name (#673 w59): an investigation is always `Run #N`, a chat its first message. */
 export function runName(runs: RunRef[], run: RunRef): string {
 	const title = run.kind === "chat" ? run.title?.trim() : null;
