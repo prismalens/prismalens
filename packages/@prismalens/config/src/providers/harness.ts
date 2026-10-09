@@ -136,6 +136,8 @@ export interface HarnessDescriptor {
 	loginHint: string;
 	/** The host env var naming the model the harness runs when PrismaLens sets none. */
 	envModelKey?: string;
+	/** The env var that adds one model id to the agent's own list, so its model option takes it (#673 w57). */
+	customModelEnvKey?: string;
 	/**
 	 * Provider API-key env vars this harness actually reads from the host
 	 * (ADR 0004 §5: allowlist, never `process.env`). Never a bare wildcard —
@@ -231,6 +233,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			"CLAUDE_CODE_SUBAGENT_MODEL",
 		],
 		envModelKey: "ANTHROPIC_MODEL",
+		// claude-agent-acp 0.81.1 takes an id outside its list only through this (#808 probe):
+		// _meta settings.availableModels empties the list and set_config_option answers Invalid value.
+		customModelEnvKey: "ANTHROPIC_CUSTOM_MODEL_OPTION",
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
 		// claude-agent-acp's modes; `plan` rewrites the system prompt into planning (r4 R4.1).

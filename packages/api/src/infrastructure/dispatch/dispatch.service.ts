@@ -137,20 +137,14 @@ export function resolveHarnessRunModel(
 	};
 }
 
-/**
- * An added model the agent's own list may not hold goes in through the row's
- * env key at spawn: claude-agent-acp refuses a set_config_option value outside
- * its list (0.81.1 setSessionConfigOption). #673 w57.
- */
-export function customModelThroughEnv(
-	harnessId: HarnessId,
+/** The run's model is one the operator added in Settings, Agent (#673 w57). */
+export function isCustomModel(
 	model: { model?: string; modelSource?: ModelSource },
 	custom: readonly string[] | undefined,
 ): boolean {
 	return (
 		model.modelSource === "operator" &&
 		!!model.model &&
-		!!HARNESS_REGISTRY[harnessId].envModelKey &&
 		!!custom?.includes(model.model)
 	);
 }
@@ -417,8 +411,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			...model,
 			...(effort ? { effort } : {}),
 			...(agentMode ? { agentMode } : {}),
-			...(customModelThroughEnv(h, model, settings.customModels?.[h])
-				? { modelThroughEnv: true }
+			...(isCustomModel(model, settings.customModels?.[h])
+				? { customModel: true }
 				: {}),
 		};
 	}

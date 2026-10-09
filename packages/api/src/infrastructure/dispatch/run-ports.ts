@@ -131,8 +131,8 @@ export interface RunPorts {
 		effort?: string;
 		/** The operator's mode for this harness (#673 w21); absent means the row's default. */
 		agentMode?: string;
-		/** The model is one the operator added and the agent takes it from its env at spawn (#673 w57). */
-		modelThroughEnv?: boolean;
+		/** The model is one the operator added in Settings, Agent (#673 w57). */
+		customModel?: boolean;
 	}>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**
