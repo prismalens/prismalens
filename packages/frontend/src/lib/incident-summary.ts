@@ -28,11 +28,12 @@ export type NextStep = {
 	text: string;
 } | null;
 
+/** Floored, with the same unit steps as the header's `shortAge`: "4h" there is "4 hours" here (#673 walk 4, QA-10). */
 function roughly(seconds: number): string {
-	const m = Math.round(seconds / 60);
+	const m = Math.floor(seconds / 60);
 	if (m < 60) return plural(Math.max(1, m), "minute");
-	const h = Math.round(m / 60);
-	return h < 48 ? plural(h, "hour") : plural(Math.round(h / 24), "day");
+	const h = Math.floor(m / 60);
+	return h < 24 ? plural(h, "hour") : plural(Math.floor(h / 24), "day");
 }
 
 function plural(n: number, one: string, many = `${one}s`) {
