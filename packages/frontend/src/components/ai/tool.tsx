@@ -63,11 +63,14 @@ export const ToolCall = ({
 	output,
 	refused,
 	running,
+	unfinished,
 }: {
 	command: string;
 	output?: string;
 	refused?: string;
 	running?: boolean;
+	/** No result came back before the turn ended. */
+	unfinished?: boolean;
 }) => (
 	<div className="min-w-0 py-1.5" data-testid="tool-call">
 		<span
@@ -81,7 +84,9 @@ export const ToolCall = ({
 				{refused}
 			</p>
 		) : running ? (
-			<p className="text-meta text-text-3">Running</p>
+			<p className="text-meta text-text-3">
+				{unfinished ? "Not finished" : "Running"}
+			</p>
 		) : (
 			output && (
 				<pre className="line-clamp-3 font-mono text-[11.5px] leading-4 whitespace-pre-wrap text-text-3 [overflow-wrap:anywhere]">

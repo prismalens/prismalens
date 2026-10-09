@@ -541,13 +541,14 @@ export async function* runInvestigation(
 
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
-			const { text: line, mode, heads, attachments, newer } = opts.resume;
+			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			yield adapter.operatorMessage(
 				line,
 				mode,
 				true,
 				heads,
 				refsOf(attachments),
+				kind ?? "chat",
 			);
 			outcome = yield* turn(
 				promptParts(

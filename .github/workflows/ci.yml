@@ -78,11 +78,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # engines.node is >=22 (work-005 decision 5) — prove it, and prove the
-      # suite is not ubuntu-only, before the first npm release.
+      # engines.node is >=24 everywhere, the floor `pl doctor` enforces (#673 s6);
+      # the matrix proves the suite is not ubuntu-only.
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: [22, 24]
+        node: [24]
     steps:
       - uses: actions/checkout@v7
 

@@ -45,8 +45,8 @@ export type ChangeFact = z.infer<typeof ChangeFactSchema>;
 /** A service one dependency-graph hop from the affected service. */
 export const NeighborServiceSchema = z.object({
 	name: z.string().min(1).max(120),
-	/** Always "dependent": the neighbour calls the affected service. Dependencies are out of scope. */
-	relation: z.literal("dependent"),
+	/** "dependent": the neighbour calls the affected service; "dependency": the affected service calls it. */
+	relation: z.enum(["dependent", "dependency"]),
 	/**
 	 * Edge criticality as recorded in the service graph, when set.
 	 *
@@ -93,7 +93,7 @@ export const ContextPackSchema = z.object({
 	}),
 	/** Changes in window, most recent first. */
 	changes: z.array(ChangeFactSchema).max(20),
-	/** One-hop dependency neighbourhood, dependents first. */
+	/** One-hop dependency neighbourhood in both directions, dependents first. */
 	neighbors: z.array(NeighborServiceSchema).max(20),
 	/** Prior incidents, most → least similar (array order IS the rank). */
 	priorIncidents: z.array(PriorIncidentFactSchema).max(5),

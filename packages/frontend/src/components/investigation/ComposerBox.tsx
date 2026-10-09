@@ -328,9 +328,10 @@ export function ComposerBox({
 					/>
 				</PromptInputBody>
 				<PromptInputFooter className="max-sm:flex-wrap">
-					<div className="relative flex min-w-0 flex-1 max-sm:basis-full max-sm:after:pointer-events-none max-sm:after:absolute max-sm:after:inset-y-0 max-sm:after:right-0 max-sm:after:w-4 max-sm:after:bg-[linear-gradient(90deg,transparent,var(--surface-1))]">
+					<div className="flex min-w-0 flex-1 max-sm:basis-full">
+						{/* Narrow, the chips wrap: a hidden-scrollbar row clipped the mode chip's label (#673 walk 4, QA-06). */}
 						<PromptInputTools
-							className="max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
+							className="flex-wrap gap-y-1"
 							data-testid="composer-chips"
 						>
 							{verbs.length > 1 && onVerb && verbCopy && (

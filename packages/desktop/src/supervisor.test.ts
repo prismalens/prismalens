@@ -10,14 +10,17 @@ import {
 	appendTail,
 	backendUrl,
 	nextFreePort,
+	OLDER_BACKEND_DIALOG,
 	planLaunch,
 	portFree,
 	portTakenDialog,
+	refusalIcon,
 	resetWorkspaceSpawn,
 	serviceStartCommands,
 	stopDialog,
 	withoutLogFields,
 } from "./supervisor.js";
+import { portTakenByWslDialog } from "./wsl.js";
 
 describe("supervisor", () => {
 	describe("resetWorkspaceSpawn", () => {
@@ -162,6 +165,27 @@ describe("supervisor", () => {
 			const d = portTakenDialog({ port: 6473, byPrismaLens: true, freePort: 6474, instanceFile: "/w/instance.json" });
 			expect(d.buttons).toEqual(["Start on port 6474", "Quit"]);
 			expect(d.freePort).toBe(6474);
+		});
+	});
+
+	describe("refusalIcon (#673 walk 4)", () => {
+		it("shows info for a port-taken dialog with an alternative free port (#673 walk 4)", () => {
+			const d = portTakenDialog({ port: 6473, byPrismaLens: true, freePort: 6474, instanceFile: "/w/instance.json" });
+			expect(refusalIcon(d)).toBe("info");
+		});
+
+		it("shows error for a port-taken dialog when no free port is available (#673 walk 4)", () => {
+			const d = portTakenDialog({ port: 6473, byPrismaLens: false, freePort: null, instanceFile: "/w/instance.json" });
+			expect(refusalIcon(d)).toBe("error");
+		});
+
+		it("shows error for an older backend refusal (#673 walk 4)", () => {
+			expect(refusalIcon(OLDER_BACKEND_DIALOG)).toBe("error");
+		});
+
+		it("shows info for a port-taken-wsl dialog (#673 walk 4)", () => {
+			const d = { kind: "port-taken-wsl" as const, ...portTakenByWslDialog({ port: 6473, distro: "Ubuntu", freePort: null }) };
+			expect(refusalIcon(d)).toBe("info");
 		});
 	});
 

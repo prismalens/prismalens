@@ -55,6 +55,24 @@
 
 * {
   border-color: var(--hairline);
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-4) transparent;
+}
+
+/* Safari ignores scrollbar-color; Chromium uses the standard pair above and skips these. */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--surface-4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-3);
 }
 
 body {

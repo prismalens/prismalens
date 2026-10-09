@@ -2,10 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type Announcements,
 	DndContext,
 	type DragEndEvent,
 	DragOverlay,
 	type DragStartEvent,
+	type KeyboardCoordinateGetter,
 	KeyboardSensor,
 	PointerSensor,
 	TouchSensor,
@@ -17,7 +19,6 @@ import {
 import {
 	canIncidentAction,
 	type IncidentWithRelations,
-	isWorkflowLive,
 	RUN_STATE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
@@ -35,17 +36,7 @@ import {
 import { AgentMark } from "@/components/agent/AgentMark";
 import { Mono } from "@/components/shared/Mono";
 import { WrapText } from "@/components/shared/WrapText";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { useHarnesses, useInvestigationReadiness } from "@/lib/api/hooks";
@@ -56,7 +47,12 @@ import {
 } from "@/lib/api/hooks/use-investigations-orpc";
 import { useStreamStatus } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
-import { type DropAction, dropAction } from "@/lib/board-drop";
+import {
+	columnBeside,
+	type DropAction,
+	dropAction,
+	dropWord,
+} from "@/lib/board-drop";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import {
@@ -76,6 +72,7 @@ import {
 	orderNeedsYou,
 	runWord,
 	shortAge,
+	workingEmptyText,
 } from "@/lib/incident-board";
 import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "@/routes/_authenticated/incidents/route";
@@ -210,11 +207,29 @@ interface Dragging {
 
 /** A drop or a card action waiting on the operator. */
 type Prompt = { incident: IncidentWithRelations } & (
-	| { kind: "stop" }
 	| { kind: "reopen-investigate" }
 	| { kind: "reopen" }
 	| { kind: "resolve"; stopFirst: boolean }
 );
+
+const COLUMN_ORDER = BOARD_COLUMNS.map((c) => c.id);
+const columnLabel = (id: unknown) =>
+	BOARD_COLUMNS.find((c) => c.id === id)?.label ?? String(id);
+
+/** Left and Right carry a picked-up card a whole column, not 25 px (#673 walk 4). */
+const columnCoordinates: KeyboardCoordinateGetter = (
+	event,
+	{ context, currentCoordinates },
+) => {
+	if (event.code !== "ArrowLeft" && event.code !== "ArrowRight") return;
+	const from = context.over?.id as BoardColumn | undefined;
+	const to = from && columnBeside(event.code, from, COLUMN_ORDER);
+	const rect = to ? context.droppableRects.get(to) : undefined;
+	return rect ? { x: rect.left + 4, y: rect.top + 4 } : currentCoordinates;
+};
+
+const KEYBOARD_HELP =
+	"To move this card, press Space. Left and Right arrows carry it between columns, Space drops it, Escape puts it back.";
 
 function actionFor(d: Dragging, to: BoardColumn): DropAction {
 	return dropAction({
@@ -223,6 +238,7 @@ function actionFor(d: Dragging, to: BoardColumn): DropAction {
 		live: !!liveThread(d.incident),
 		canResolve: canIncidentAction("close", d.incident.status),
 		canReopen: canIncidentAction("reopen", d.incident.status),
+		canAcknowledge: canIncidentAction("acknowledge", d.incident.status),
 		mergedInto: d.incident.mergedInto?.number ?? null,
 	});
 }
@@ -274,8 +290,49 @@ export function IncidentBoard({
 				cancel: ["Escape"],
 				end: ["Space", "Enter"],
 			},
+			coordinateGetter: columnCoordinates,
 		}),
 	);
+	// The pickup line stays until the card leaves its own column.
+	const moved = useRef(false);
+	const carried = (id: unknown): Dragging | null => {
+		const incident = incidents.find((i) => i.id === id);
+		return incident ? { incident, from: boardColumn(incident) } : null;
+	};
+	const cardName = (d: Dragging) =>
+		`INC-${d.incident.number}, ${d.incident.title}`;
+	const announcements: Announcements = {
+		onDragStart: ({ active }) => {
+			moved.current = false;
+			const d = carried(active.id);
+			return d
+				? `Picked up ${cardName(d)}, in ${columnLabel(d.from)}. Left and Right arrows carry it between columns, Space drops it, Escape puts it back.`
+				: undefined;
+		},
+		onDragOver: ({ active, over }) => {
+			const d = carried(active.id);
+			if (!d || !over) return undefined;
+			if (over.id === d.from && !moved.current) return undefined;
+			moved.current = true;
+			const to = over.id as BoardColumn;
+			return `${columnLabel(to)}: ${dropWord(actionFor(d, to))}.`;
+		},
+		onDragEnd: ({ active, over }) => {
+			const d = carried(active.id);
+			if (!d) return undefined;
+			return over &&
+				over.id !== d.from &&
+				actionFor(d, over.id as BoardColumn).kind !== "none"
+				? `Dropped ${cardName(d)} on ${columnLabel(over.id)}.`
+				: `${cardName(d)} stays in ${columnLabel(d.from)}.`;
+		},
+		onDragCancel: ({ active }) => {
+			const d = carried(active.id);
+			return d
+				? `Put ${cardName(d)} back in ${columnLabel(d.from)}.`
+				: undefined;
+		},
+	};
 
 	const settle = (id: string) => async () => {
 		await queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
@@ -315,12 +372,12 @@ export function IncidentBoard({
 			},
 		);
 	};
-	const acknowledge = (incident: IncidentWithRelations) => {
+	const acknowledge = (incident: IncidentWithRelations, then?: () => void) => {
 		setBusy((b) => ({ ...b, [incident.id]: "Acknowledging" }));
 		update.mutate(
 			{ id: incident.id, status: "investigating" },
 			{
-				onSuccess: settle(incident.id),
+				onSuccess: then ?? settle(incident.id),
 				onError: fail(incident.id, "Not acknowledged"),
 			},
 		);
@@ -354,7 +411,16 @@ export function IncidentBoard({
 		if (!d || !e.over) return;
 		const action = actionFor(d, e.over.id as BoardColumn);
 		if (action.kind === "none") return;
-		if (action.kind === "investigate") return startRun(d.incident);
+		if (action.kind === "investigate")
+			return action.acknowledge
+				? acknowledge(d.incident, () => startRun(d.incident))
+				: startRun(d.incident);
+		if (action.kind === "acknowledge") return acknowledge(d.incident);
+		// Stop asks nothing, like the box's Stop; the run ends "Stopped by you" (#673 walk 4).
+		if (action.kind === "stop") {
+			setBusy((b) => ({ ...b, [d.incident.id]: "Stopping" }));
+			return stopRun(d.incident);
+		}
 		setPrompt(
 			action.kind === "resolve"
 				? {
@@ -408,6 +474,10 @@ export function IncidentBoard({
 	return (
 		<DndContext
 			sensors={sensors}
+			accessibility={{
+				announcements,
+				screenReaderInstructions: { draggable: KEYBOARD_HELP },
+			}}
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
 			onDragCancel={() => {
@@ -438,6 +508,11 @@ export function IncidentBoard({
 						}
 						action={dragging ? actionFor(dragging, column.id) : null}
 						dragging={dragging?.from === column.id}
+						empty={
+							column.id === "working"
+								? workingEmptyText(incidents)
+								: EMPTY[column.id]
+						}
 					>
 						{column.id === "needs_you" ? (
 							<>
@@ -535,37 +610,6 @@ export function IncidentBoard({
 					}}
 				/>
 			)}
-			<AlertDialog
-				open={prompt?.kind === "stop"}
-				onOpenChange={(open) => !open && setPrompt(null)}
-			>
-				<AlertDialogContent data-testid="board-stop-dialog">
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Stop INC-{prompt?.incident.number}'s run?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							The agent stops at its current step. What it found so far stays in
-							the conversation.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Keep going</AlertDialogCancel>
-						<AlertDialogAction
-							className={buttonVariants({ variant: "danger-fill" })}
-							onClick={() => {
-								if (!prompt) return;
-								const { incident } = prompt;
-								setPrompt(null);
-								setBusy((b) => ({ ...b, [incident.id]: "Stopping" }));
-								stopRun(incident);
-							}}
-						>
-							Stop
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</DndContext>
 	);
 }
@@ -634,9 +678,8 @@ const HEAD_TONE: Record<(typeof COLUMN_TONE)[BoardColumn], string> = {
 	ok: "text-ok",
 };
 
-const EMPTY: Record<BoardColumn, string> = {
+const EMPTY: Record<Exclude<BoardColumn, "working">, string> = {
 	needs_you: "Nothing needs you.",
-	working: "No run is working.",
 	concluded: "Nothing concluded in this window.",
 	resolved: "Nothing resolved in this window.",
 };
@@ -652,6 +695,7 @@ function DropColumn({
 	mark,
 	action,
 	dragging,
+	empty,
 	children,
 }: {
 	column: { id: BoardColumn; label: string };
@@ -661,6 +705,8 @@ function DropColumn({
 	action: DropAction | null;
 	/** The dragged card came from here. */
 	dragging: boolean;
+	/** The lane's line when it holds no card. */
+	empty: string;
 	children: ReactNode;
 }) {
 	const { setNodeRef, isOver } = useDroppable({ id: column.id });
@@ -710,7 +756,7 @@ function DropColumn({
 						className="px-1.5 pt-1 pb-2 text-meta text-text-3"
 						data-testid="board-lane-empty"
 					>
-						{EMPTY[column.id]}
+						{empty}
 					</li>
 				)}
 				{children}
@@ -744,7 +790,12 @@ function DraggableCard({
 		disabled: !!busy,
 	});
 	// The card's title stays the link screen readers follow; dnd-kit would make the li a button.
-	const { role: _role, tabIndex: _tab, ...dragAttributes } = attributes;
+	const {
+		role: _role,
+		tabIndex: _tab,
+		"aria-describedby": describedBy,
+		...dragAttributes
+	} = attributes;
 	return (
 		<li
 			ref={setNodeRef}
@@ -766,6 +817,7 @@ function DraggableCard({
 						params={{ id: incident.id }}
 						search={search}
 						className="outline-none after:absolute after:inset-0 after:rounded-surface focus-visible:after:outline-2 focus-visible:after:outline-accent"
+						aria-describedby={describedBy}
 						onClickCapture={(e) => {
 							if (Date.now() - lastDragEnd < 300) e.preventDefault();
 						}}

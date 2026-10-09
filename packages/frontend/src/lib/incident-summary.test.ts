@@ -25,7 +25,7 @@ describe("incidentSummary", () => {
 			attention: "failed_run",
 		});
 		expect(s.lines).toEqual([
-			"2 of 3 alerts firing on Edge Gateway, the first 24 hours ago.",
+			"2 of 3 alerts firing on Edge Gateway, the first 1 day ago.",
 			"2 investigations in a row failed: the model provider was overloaded.",
 			"No repository is linked, so the agent read no code.",
 		]);
@@ -42,8 +42,23 @@ describe("incidentSummary", () => {
 			attention: null,
 		});
 		expect(s.lines[0]).toBe(
-			"1 of 1 alert firing on booklogr-api, the first 24 hours ago.",
+			"1 of 1 alert firing on booklogr-api, the first 1 day ago.",
 		);
+	});
+
+	it("floors hours at 4h59m as 4 hours", () => {
+		const fourHoursFiftyNineMinutesAgo = new Date(
+			now - (4 * 3600 + 59 * 60) * 1000,
+		).toISOString();
+		const s = incidentSummary({
+			now,
+			alerts: [alert("triggered", fourHoursFiftyNineMinutesAgo)],
+			services: ["api"],
+			runs: [],
+			noRepo: false,
+			attention: null,
+		});
+		expect(s.lines[0]).toBe("1 of 1 alert firing on api, the first 4 hours ago.");
 	});
 
 	it("puts acknowledging first", () => {
@@ -60,15 +75,19 @@ describe("incidentSummary", () => {
 	});
 
 	it("carries a concluded cause and suggests resolving", () => {
-		const s = incidentSummary({
+		const input = {
 			now,
 			alerts: [alert("resolved")],
 			services: [],
 			runs: [{ status: "completed", rootCause: "Pool capped at 10." }],
 			noRepo: false,
 			attention: null,
-		});
+		};
+		const s = incidentSummary(input);
 		expect(s.lines[1]).toBe("The last investigation concluded: Pool capped at 10.");
 		expect(s.next?.kind).toBe("resolve");
+
+		const endedSummary = incidentSummary({ ...input, ended: true });
+		expect(endedSummary.next).toBeNull();
 	});
 });

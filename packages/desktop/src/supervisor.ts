@@ -102,6 +102,11 @@ export interface StopDialog {
 	freePort?: number;
 }
 
+/** A refusal that offers a way on (Start on port N, Use the one in WSL) is not an error (#673 walk 4). */
+export function refusalIcon(d: StopDialog): "info" | "error" {
+	return d.buttons.length > 1 ? "info" : "error";
+}
+
 const NEWER_DATABASE = /written by a newer PrismaLens/i;
 
 /** The dialog for a backend that stopped: one this app owned, or one it attached to. */

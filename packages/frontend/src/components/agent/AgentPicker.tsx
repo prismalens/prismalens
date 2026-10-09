@@ -84,13 +84,36 @@ export function modeName(
 	return agent?.checked?.modes?.find((m) => m.id === id)?.name ?? id;
 }
 
-/** A model id by the name the agent's own list gives it, else the id as is. */
+/** `OpenCode Zen/Muse Spark 1.3 Free` is `Muse Spark 1.3 Free` under its provider's heading. */
+function withoutProvider(name: string, provider: string): string {
+	const prefix = `${provider}/`;
+	return name.toLowerCase().startsWith(prefix.toLowerCase())
+		? name.slice(prefix.length).trim() || name
+		: name;
+}
+
+const comparable = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * A model by the name the agent's own list gives it, less the provider
+ * prefix, else the id as is. A served model the agent names its own way
+ * (`Muse Spark 1.3 (free)`) takes the list's name too: one name everywhere (#673 f7).
+ */
 export function modelName(
 	harness: HarnessStatus | undefined,
 	id: string | null | undefined,
 ): string | null {
 	if (!id) return null;
-	return harness?.models.entries.find((m) => m.id === id)?.name ?? id;
+	const entries = harness?.models.entries ?? [];
+	const named = (m: { id: string; name?: string | null }) =>
+		withoutProvider(m.name ?? m.id, providerOf(harness?.id ?? "", m.id));
+	const exact = entries.find((m) => m.id === id);
+	if (exact) return named(exact);
+	const key = comparable(id);
+	const alike = entries.find(
+		(m) => comparable(named(m)) === key || comparable(m.name ?? "") === key,
+	);
+	return alike ? named(alike) : id;
 }
 
 /** The model the agent picks for itself, when its check or the env says. */
@@ -235,7 +258,7 @@ export function ModelChip({
 			key: `${key}:${h.id}:${id}`,
 			harness: h,
 			model: id,
-			name: m?.name ?? id,
+			name: modelName(h, id) ?? id,
 			provider: shown === "starred" ? h.label : providerOf(h.id, id),
 			// The agent still lists it but marks it on the way out (#639).
 			...(m?.status === "legacy" ? { legacy: true } : {}),
@@ -536,7 +559,8 @@ function RowText({
 }) {
 	return (
 		<span className="grid min-w-0 flex-1 gap-0.5">
-			<span className="truncate text-body font-semibold text-text-1">
+			{/* A long name wraps to a second line rather than cut (#673 f7). */}
+			<span className="line-clamp-2 text-body font-semibold [overflow-wrap:anywhere] text-text-1">
 				{name}
 			</span>
 			{sub && (

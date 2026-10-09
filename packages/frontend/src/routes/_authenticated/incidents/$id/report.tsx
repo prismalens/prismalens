@@ -3,10 +3,9 @@
  * answer, a summary pool and the sections on pools; Markdown is only the
  * export. A run with no report says so and names the runs that have one.
  */
-import {
-	type InvestigationReport,
-	type InvestigationWithRelations,
-	isAlertFiring,
+import type {
+	InvestigationReport,
+	InvestigationWithRelations,
 } from "@prismalens/contracts";
 import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
@@ -47,7 +46,13 @@ import { useToast } from "@/hooks/use-toast";
 import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock, formatElapsed } from "@/lib/format-time";
-import { fixBrief, nowLine, workDone, workSentence } from "@/lib/report-view";
+import {
+	fixBrief,
+	nowLine,
+	reportAlert,
+	workDone,
+	workSentence,
+} from "@/lib/report-view";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id/report")({
 	component: ReportRoute,
@@ -162,10 +167,7 @@ function ReportPage({
 				: { title: s.title, detail: s.detail, done: s.done },
 		),
 	});
-	const alert = alertAsWritten(
-		incident.alerts ?? [],
-		investigation.completedAt,
-	);
+	const alert = reportAlert(incident.alerts ?? [], investigation.completedAt);
 	const props = {
 		incidentId: incident.id,
 		investigation,
@@ -195,35 +197,6 @@ function ReportPage({
 			<Integrity report={report} />
 		</RecordPage>
 	);
-}
-
-/** The first alert as it stood when the report was written. */
-function alertAsWritten(
-	alerts: {
-		title?: string | null;
-		alertName?: string | null;
-		status: string;
-		triggeredAt: string;
-		resolvedAt?: string | null;
-	}[],
-	at: string | Date | null,
-): { name: string; line: string; firing: boolean } | null {
-	const a = alerts[0];
-	if (!a) return null;
-	const written = at ? new Date(at).getTime() : Date.now();
-	const resolved = a.resolvedAt ? Date.parse(a.resolvedAt) : null;
-	const firing =
-		resolved === null ? isAlertFiring(a.status) : resolved > written;
-	return {
-		name: a.alertName || a.title || "Alert",
-		line:
-			resolved !== null
-				? `cleared at ${formatClock(resolved)}`
-				: firing
-					? "still firing"
-					: "not firing",
-		firing,
-	};
 }
 
 const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);

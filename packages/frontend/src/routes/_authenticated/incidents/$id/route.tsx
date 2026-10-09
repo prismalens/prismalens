@@ -30,6 +30,7 @@ import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
+	timelineKeys,
 	useCreateTimelineEntry,
 	useInvestigationReadiness,
 	useTimeline,
@@ -104,8 +105,12 @@ function IncidentLayout() {
 		: (search.investigation ?? started ?? newest?.id ?? null);
 	const run = useInvestigationRun(investigationId);
 
+	// Acknowledge, Resolve and Reopen each write a Timeline entry (#673 walk 4).
 	const invalidateIncident = () =>
-		queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
+		Promise.all([
+			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+			queryClient.invalidateQueries({ queryKey: timelineKeys.all() }),
+		]);
 	const onStarted = (runId: string | undefined) => {
 		invalidateIncident();
 		queryClient.invalidateQueries({ queryKey: investigationKeys.all() });

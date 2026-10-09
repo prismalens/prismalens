@@ -11,6 +11,7 @@ import {
 	EffortChip,
 	effortLevels,
 	ModeChip,
+	modelName,
 	unreadyReason,
 } from "./AgentPicker";
 
@@ -158,3 +159,56 @@ describe("defaultModelLine (#673 w57)", () => {
 	});
 });
 
+describe("modelName (#673)", () => {
+	const opencode = (over: Partial<HarnessStatus> = {}): HarnessStatus =>
+		claude({
+			id: "opencode",
+			label: "OpenCode",
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [
+					{
+						id: "opencode/muse-spark-1.3-free",
+						name: "OpenCode Zen/Muse Spark 1.3 Free",
+						status: null,
+					},
+					{
+						id: "anthropic/claude-x",
+						name: "Anthropic/Claude X",
+						status: null,
+					},
+				],
+			},
+			...over,
+		});
+
+	it("resolves model names stripped of provider prefix, by id and by lenient match", () => {
+		const harness = opencode();
+		expect(modelName(harness, "opencode/muse-spark-1.3-free")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		expect(modelName(harness, "Muse Spark 1.3 (free)")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		expect(modelName(harness, "unknown-model-id")).toBe("unknown-model-id");
+		expect(modelName(harness, null)).toBeNull();
+		expect(chipModel(harness, "Muse Spark 1.3 (free)")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		const nonProvider = opencode({
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [
+					{
+						id: "opencode/foo",
+						name: "Zen/Foo",
+						status: null,
+					},
+				],
+			},
+		});
+		expect(modelName(nonProvider, "opencode/foo")).toBe("Zen/Foo");
+	});
+});

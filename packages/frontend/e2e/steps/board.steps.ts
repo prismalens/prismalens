@@ -560,6 +560,55 @@ Then(
 	},
 );
 
+When("I focus INC-1's card and press Space", async ({ page, hold }) => {
+	hold(inc(page).title);
+	await openBoard(page);
+	await cardOf(page, inc(page).title).getByTestId("board-card-link").focus();
+	await page.keyboard.press("Space");
+});
+
+Then("the board announces that INC-1 was picked up", async ({ page }) => {
+	const made = inc(page);
+	const liveRegion = page.locator('[id^="DndLiveRegion"]');
+	await expect(liveRegion).toContainText(
+		`Picked up INC-${made.number}, ${made.title}`,
+	);
+	await expect(liveRegion).toContainText(
+		"Left and Right arrows carry it between columns, Space drops it, Escape puts it back.",
+	);
+});
+
+When(
+	/^I press (ArrowLeft|ArrowRight|Space)$/,
+	async ({ page }, key: string) => {
+		await page.keyboard.press(key);
+	},
+);
+
+Then("the board announces {string}", async ({ page }, text: string) => {
+	await expect(page.locator('[id^="DndLiveRegion"]')).toHaveText(text);
+});
+
+Then(
+	"the board announcement starts with {string}",
+	async ({ page }, prefix: string) => {
+		const expected = prefix.replace("INC-1", `INC-${inc(page).number}`);
+		const live = page.locator('[id^="DndLiveRegion"]');
+		await expect(live).toContainText(expected);
+		const text = ((await live.textContent()) ?? "").trim();
+		expect(text.startsWith(expected)).toBe(true);
+	},
+);
+
+Then(
+	/^(?:the|INC-1's) card is still in (?:its column|"([^"]+)")$/,
+	async ({ page }, col?: string) => {
+		await expect(
+			cardOf(column(page, col ?? "Concluded"), inc(page).title),
+		).toBeVisible();
+	},
+);
+
 Given("INC-1 is Resolved", async ({ page }) => {
 	const made = inc(page);
 	const run = (await detail(page, made.id)).investigations?.[0];

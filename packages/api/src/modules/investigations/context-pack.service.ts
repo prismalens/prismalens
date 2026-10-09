@@ -224,15 +224,36 @@ export class ContextPackService {
 	private async loadNeighbors(affected: string[]): Promise<NeighborService[]> {
 		if (affected.length === 0) return [];
 		const edges = await this.prisma.serviceDependency.findMany({
-			where: { dependencyId: { in: affected } },
-			include: { dependent: true },
-			take: 20,
+			where: {
+				OR: [
+					{ dependencyId: { in: affected } },
+					{ dependentId: { in: affected } },
+				],
+			},
+			include: {
+				dependent: { select: { name: true } },
+				dependency: { select: { name: true } },
+			},
+			take: 40,
 		});
-		return edges.map((e) => ({
-			name: e.dependent.name,
-			relation: "dependent" as const,
-			criticality: (e.criticality as NeighborService["criticality"]) ?? null,
-		}));
+		const affectedSet = new Set(affected);
+		const criticality = (e: { criticality: string }) =>
+			(e.criticality as NeighborService["criticality"]) ?? null;
+		const dependents: NeighborService[] = edges
+			.filter((e) => affectedSet.has(e.dependencyId))
+			.map((e) => ({
+				name: e.dependent.name,
+				relation: "dependent" as const,
+				criticality: criticality(e),
+			}));
+		const dependencies: NeighborService[] = edges
+			.filter((e) => affectedSet.has(e.dependentId))
+			.map((e) => ({
+				name: e.dependency.name,
+				relation: "dependency" as const,
+				criticality: criticality(e),
+			}));
+		return [...dependents, ...dependencies].slice(0, 20);
 	}
 
 	private async loadPriorIncidents(

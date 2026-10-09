@@ -14,6 +14,7 @@ import {
 	orderNeedsYou,
 	rowGlyph,
 	runWord,
+	workingEmptyText,
 } from "./incident-board";
 
 function incident(
@@ -509,5 +510,22 @@ describe("merge (#673 w37)", () => {
 		expect(mergeSentence({ number: 9, alertCount: 1 }, live, "orders")).toBe(
 			"Its 1 alert moves to INC-4 and INC-9 ends as merged. Its runs stay here. INC-4's working run keeps its workspace; the next run also clones the orders repositories.",
 		);
+	});
+});
+
+describe("workingEmptyText (#673 walk 4)", () => {
+	it("names the live runs whose cards wait in Needs you, and says none only when nothing runs", () => {
+		const waiting = incident("triggered", { status: "running" });
+		expect(boardColumn(waiting)).toBe("needs_you");
+		expect(workingEmptyText([])).toBe("No run is working.");
+		expect(
+			workingEmptyText([incident("triggered"), incident("investigating", { status: "completed" })]),
+		).toBe("No run is working.");
+		expect(workingEmptyText([waiting, incident("triggered")])).toBe(
+			"1 run working, in Needs you",
+		);
+		expect(
+			workingEmptyText([waiting, incident("investigating", { status: "failed" }), incident("resolved", { status: "pending" })]),
+		).toBe("2 runs working, in Needs you");
 	});
 });

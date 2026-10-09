@@ -133,11 +133,15 @@ export function renderContextPack(pack: ContextPack): string {
 	if (pack.neighbors.length) {
 		lines.push(
 			"",
-			'  SERVICE NEIGHBOURHOOD (one hop — a "dependent" calls the affected service)',
+			"  SERVICE NEIGHBOURHOOD (one hop from the affected service)",
 		);
 		for (const n of pack.neighbors) {
+			const direction =
+				n.relation === "dependent"
+					? "calls this service"
+					: "this service calls it";
 			const crit = n.criticality ? `, criticality: ${s(n.criticality)}` : "";
-			lines.push(`    - ${s(n.name)} (${s(n.relation)}${crit})`);
+			lines.push(`    - ${s(n.name)} (${direction}${crit})`);
 		}
 	}
 	if (pack.priorIncidents.length) {

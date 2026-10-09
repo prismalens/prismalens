@@ -619,6 +619,27 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.at(-1)?.kind).toBe("report");
 	});
 
+	it("the first operator_message of a resume carries followUp chat when resume.kind is chat, continue when continue, and chat when kind is absent (#673 walk 4)", async () => {
+		// followUp reflects resume.kind, defaulting to chat when absent
+		const chat = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "chat message", mode: "queue", heads: [], kind: "chat" },
+		});
+		expect(chat.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+
+		const cont = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "continue message", mode: "queue", heads: [], kind: "continue" },
+		});
+		expect(cont.events[0]).toMatchObject({ kind: "operator_message", followUp: "continue" });
+
+		const absent = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "absent kind message", mode: "queue", heads: [] },
+		});
+		expect(absent.events[0]).toMatchObject({ kind: "operator_message", followUp: "chat" });
+	});
+
 	it("a reopened session switches to the run's chosen model before the operator's words reach it (R4.2)", async () => {
 		const { events, runDir } = await collect("continue", {
 			model: "asked/model",
