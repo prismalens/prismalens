@@ -56,6 +56,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
+		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
 		resolveHarness: vi.fn(async () => ({
@@ -960,6 +961,47 @@ describe("follow-up on a finished run (#747)", () => {
 
 		const [opts] = mocks.conductRun.mock.calls[0] as [{ model: string; modelSource: string }];
 		expect(opts).toMatchObject({ model: "opencode/some-model", modelSource: "operator" });
+	});
+
+	it("passes resume.newer to conductRun when newerRun returns a different head (#673 w27)", async () => {
+		const newer = { number: 2, heads: [{ name: "repo", head: "9f8e7d6c5b4a3210" }] };
+		const ports = followUpPorts({
+			newerRun: vi.fn(async () => newer),
+		});
+		mocks.conductRun.mockResolvedValue({ runId: "inv-1", report: null, error: null, failureKind: "none" });
+
+		await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ resume: { newer?: typeof newer } }];
+		expect(opts.resume.newer).toEqual(newer);
+	});
+
+	it("passes no newer to conductRun when newerRun returns the same head (#673 w27)", async () => {
+		const same = { number: 2, heads: [{ name: "repo", head: HEAD }] };
+		const ports = followUpPorts({
+			newerRun: vi.fn(async () => same),
+		});
+		mocks.conductRun.mockResolvedValue({ runId: "inv-1", report: null, error: null, failureKind: "none" });
+
+		await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ resume: { newer?: unknown } }];
+		expect(opts.resume.newer).toBeUndefined();
+	});
+
+	it("passes no newer and still runs when newerRun rejects (#673 w27)", async () => {
+		const ports = followUpPorts({
+			newerRun: vi.fn(async () => {
+				throw new Error("db failure");
+			}),
+		});
+		mocks.conductRun.mockResolvedValue({ runId: "inv-1", report: null, error: null, failureKind: "none" });
+
+		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(true);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ resume: { newer?: unknown } }];
+		expect(opts.resume.newer).toBeUndefined();
 	});
 
 	it("refuses a run whose agent kept no session, says so in the conversation, and puts the row back", async () => {

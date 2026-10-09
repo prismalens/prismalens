@@ -38,9 +38,12 @@ const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { InvestigationsService } = await import(
 	"../../modules/investigations/investigations.service.js"
 );
-const { DispatchService, FollowUpRefused, resolveHarnessRunModel } = await import(
-	"./dispatch.service.js"
-);
+const {
+	DispatchService,
+	FollowUpRefused,
+	customModelThroughEnv,
+	resolveHarnessRunModel,
+} = await import("./dispatch.service.js");
 const { PrismaJobStore } = await import("./job-store.js");
 const { createPrismaInvestigationStore } = await import(
 	"./prisma-investigation-store.js"
@@ -240,6 +243,48 @@ describe("resolveHarnessRunModel (#634, #639)", () => {
 	});
 });
 
+describe("customModelThroughEnv truth table (#673 w57)", () => {
+	it("claude-code custom operator -> true", () => {
+		expect(
+			customModelThroughEnv(
+				"claude-code",
+				{ model: "gw-1", modelSource: "operator" },
+				["gw-1"],
+			),
+		).toBe(true);
+	});
+
+	it("same id not in list -> false", () => {
+		expect(
+			customModelThroughEnv(
+				"claude-code",
+				{ model: "gw-1", modelSource: "operator" },
+				["other-model"],
+			),
+		).toBe(false);
+	});
+
+	it("modelSource 'env' -> false", () => {
+		expect(
+			customModelThroughEnv(
+				"claude-code",
+				{ model: "gw-1", modelSource: "env" },
+				["gw-1"],
+			),
+		).toBe(false);
+	});
+
+	it("codex with the id in its list -> false", () => {
+		expect(
+			customModelThroughEnv(
+				"codex",
+				{ model: "gw-1", modelSource: "operator" },
+				["gw-1"],
+			),
+		).toBe(false);
+	});
+});
+
 describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w52)", () => {
 	function withSettings(settings: Row) {
 		const harnessService = {
@@ -310,6 +355,20 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		const r = await service.resolveHarness({ model: null, effort: null });
 		expect(r.model).toBeUndefined();
 		expect(r.effort).toBeUndefined();
+	});
+
+	it("returns modelThroughEnv true for custom operator model in customModels list (#673 w57)", async () => {
+		const { service } = withSettings({
+			models: { "claude-code": "gw-1" },
+			customModels: { "claude-code": ["gw-1"] },
+		});
+		await expect(
+			service.resolveHarness({ harness: "claude-code" }),
+		).resolves.toMatchObject({
+			model: "gw-1",
+			modelSource: "operator",
+			modelThroughEnv: true,
+		});
 	});
 });
 
@@ -562,6 +621,45 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(await read(row.id)).toMatchObject({ status: "failed", liveTurn: null, stopRequestedAt: null });
+	});
+
+	it("newerRun: two runs on one incident, the newer with a workspace of one repo -> {number: 2, heads:[{name:'repo', head}]}; the newest run itself -> null (#673 w27)", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const head = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
+		const run1 = await thread(inc.id, {}, Date.now() - 10_000);
+		const run2 = await thread(
+			inc.id,
+			{
+				workspace: JSON.stringify({
+					layout: "single",
+					cwd: "/x/repo",
+					repos: [
+						{
+							name: "repo",
+							dir: "/x/repo",
+							sourceKind: "url",
+							url: "https://github.com/acme/repo",
+							subPath: null,
+							connectionId: null,
+							head,
+							branch: "main",
+							services: ["api"],
+						},
+					],
+				}),
+			},
+			Date.now(),
+		);
+
+		const newer = await ports.newerRun(run1.id);
+		expect(newer).toEqual({
+			number: 2,
+			heads: [{ name: "repo", head }],
+		});
+
+		const newest = await ports.newerRun(run2.id);
+		expect(newest).toBeNull();
 	});
 });
 

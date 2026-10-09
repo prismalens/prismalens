@@ -210,6 +210,70 @@ describe("HarnessService", () => {
 		});
 	});
 
+	describe("customModels per harness (#673 w57)", () => {
+		it("getSettings cleans customModels: trims, deduplicates, drops empty lists and unknown harness ids", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					customModels: {
+						"claude-code": ["  gw-1  ", "gw-1", "  gw-2  "],
+						opencode: ["   ", ""],
+						"unknown-agent": ["x-1"],
+					} as Record<string, string[]>,
+				}),
+			);
+
+			await expect(service().getSettings()).resolves.toEqual({
+				harness: "auto",
+				customModels: {
+					"claude-code": ["gw-1", "gw-2"],
+				},
+			});
+		});
+
+		it("updateSettings patch replaces that harness's list and null clears it", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					customModels: {
+						"claude-code": ["old-1"],
+						opencode: ["open-1"],
+					},
+				}),
+			);
+
+			const result = await service().updateSettings({
+				customModels: {
+					"claude-code": ["new-1", "new-2"],
+					opencode: null,
+				},
+			});
+
+			expect(result.customModels).toEqual({
+				"claude-code": ["new-1", "new-2"],
+			});
+		});
+
+		it("null clears the only customModels list leaving customModels unset", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					customModels: {
+						"claude-code": ["old-1"],
+					},
+				}),
+			);
+
+			const result = await service().updateSettings({
+				customModels: {
+					"claude-code": null,
+				},
+			});
+
+			expect(result.customModels).toBeUndefined();
+		});
+	});
+
 	describe("a model stored for a harness that cannot take one (#639 rec 4)", () => {
 		it("makes the selection not runnable, with the reason", async () => {
 			process.env.PATH = pathWith("gemini");
