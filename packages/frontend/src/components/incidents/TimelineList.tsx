@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	INCIDENT_STATUS_LABEL,
+	type IncidentStatus,
 	RUN_STATE_LABEL,
 	runState,
 	type TimelineEntryWithRelations,
@@ -23,6 +25,33 @@ function who(entry: TimelineEntryWithRelations): string | null {
 	const u = entry.user;
 	if (!u) return "Operator";
 	return [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email;
+}
+
+const statusWord = (s: unknown): string | null =>
+	typeof s === "string" && Object.hasOwn(INCIDENT_STATUS_LABEL, s)
+		? INCIDENT_STATUS_LABEL[s as IncidentStatus]
+		: null;
+
+/** A status entry names its states the way the band does, not by the stored enum (#673 walk 4). */
+export function entryDescription(
+	entry: TimelineEntryWithRelations,
+): string | null | undefined {
+	const { description, metadata } = entry;
+	const from = statusWord(metadata?.previousStatus);
+	const to = statusWord(metadata?.newStatus);
+	const raw = `Status changed from ${metadata?.previousStatus} to ${metadata?.newStatus}`;
+	if (!description?.startsWith(raw) || !from || !to) return description;
+	return `${from === to ? to : `From ${from} to ${to}`}${description.slice(raw.length)}`;
+}
+
+/** A bare "Status changed" names the state it reached: "Acknowledged", "Alerts cleared". */
+export function entryTitle(entry: TimelineEntryWithRelations): string {
+	const to = statusWord(entry.metadata?.newStatus);
+	return entry.type === "status_changed" &&
+		entry.title === "Status changed" &&
+		to
+		? to
+		: entry.title;
 }
 
 function Clock({ at }: { at: string }) {
@@ -71,12 +100,12 @@ function EntryRow({
 							{entry.title}
 						</Link>
 					) : (
-						entry.title
+						entryTitle(entry)
 					)}
 				</span>
 				{(full || reasoned) && entry.description && !note && (
 					<span className="flex min-w-0 text-meta text-text-3">
-						<span className="truncate">{entry.description}</span>
+						<span className="truncate">{entryDescription(entry)}</span>
 						{typeof entry.metadata?.priorEndedAt === "string" && (
 							<span className="shrink-0 whitespace-pre">
 								{` at ${formatDateTime(entry.metadata.priorEndedAt)}`}
