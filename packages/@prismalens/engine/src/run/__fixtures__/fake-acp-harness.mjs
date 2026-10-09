@@ -17,6 +17,7 @@
 // or "auth-required" (offers authMethods, then answers session/new with ACP's -32000).
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
+// FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 import { writeFileSync } from "node:fs";
@@ -403,10 +404,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			content: { type: "text", text: "REPLAYED" },
 		});
 		const options = configOptions();
+		const offeredModes = (process.env.FAKE_MODES ?? "")
+			.split(",")
+			.filter(Boolean)
+			.map((m) => {
+				const [id, name] = m.split("=");
+				return { id, name: name ?? id };
+			});
+		const modes = offeredModes.length
+			? { currentModeId: offeredModes[0].id, availableModes: offeredModes }
+			: undefined;
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
-			result: options.length ? { configOptions: options } : {},
+			result: {
+				...(options.length ? { configOptions: options } : {}),
+				...(modes ? { modes } : {}),
+			},
 		});
 	} else if (msg.method === "session/set_config_option") {
 		const { configId, value } = msg.params ?? {};

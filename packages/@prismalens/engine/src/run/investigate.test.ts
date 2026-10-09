@@ -17,6 +17,13 @@ import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
 import { buildRunFidelity, createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
+import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
+
+const autoApprovePolicy: PermissionPolicy = (req) => {
+	const allow = optionOf(req, "allow");
+	if (!allow) throw new Error("no allow option");
+	return { allow: true, optionId: allow.optionId, outcome: "approved" };
+};
 
 const FAKE = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "fake-acp-harness.mjs");
 
@@ -178,7 +185,9 @@ describe("runInvestigation over a fake ACP harness", () => {
 	});
 
 	it("runs in the clone, allows every request, validates the report first try, writes the transcript", async () => {
-		const { events, cwd, runDir } = await collect("ok");
+		const { events, cwd, runDir } = await collect("ok", {
+			permission: autoApprovePolicy,
+		});
 		const kinds = events.map((e) => e.kind);
 		expect(kinds).toContain("tool_result");
 		expect(kinds.at(-2)).toBe("branch_done");
@@ -204,6 +213,78 @@ describe("runInvestigation over a fake ACP harness", () => {
 			.filter((e) => e.permission !== undefined);
 		expect(decisions.map((d) => d.allowed)).toEqual([true, true]);
 		expect(existsSync(join(runDir, "config", "marker.json"))).toBe(true);
+	});
+
+	it("with NO policy every ask is denied (permission_answer outcome denied, harness gets the reject option)", async () => {
+		const { events, runDir } = await collect("ok");
+		const answers = events.filter((e) => e.kind === "permission_answer");
+		expect(answers.length).toBeGreaterThan(0);
+		for (const ans of answers) {
+			if (ans.kind === "permission_answer") {
+				expect(ans.outcome).toBe("denied");
+			}
+		}
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const responses = wire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => {
+				try {
+					return JSON.parse(e.m) as {
+						result?: { outcome?: { outcome?: string; optionId?: string } };
+					};
+				} catch {
+					return {};
+				}
+			})
+			.filter((e) => e.result?.outcome?.outcome === "selected");
+		expect(responses.length).toBeGreaterThan(0);
+		for (const resp of responses) {
+			expect(resp.result?.outcome?.optionId).toBe("reject");
+		}
+	});
+
+	it("the event stream contains permission_ask followed by permission_answer with the same askId", async () => {
+		const { events } = await collect("ok", { permission: autoApprovePolicy });
+		const asks = events.filter((e) => e.kind === "permission_ask");
+		const answers = events.filter((e) => e.kind === "permission_answer");
+		expect(asks.length).toBeGreaterThan(0);
+		expect(answers.length).toBe(asks.length);
+		for (const ask of asks) {
+			if (ask.kind !== "permission_ask") continue;
+			expect(typeof ask.title).toBe("string");
+			expect(ask.title.length).toBeGreaterThan(0);
+			expect(typeof ask.detail).toBe("string");
+			expect(ask.detail?.length).toBeGreaterThan(0);
+			expect(typeof ask.expiresAt).toBe("string");
+			const answer = answers.find(
+				(ans) => ans.kind === "permission_answer" && ans.askId === ask.askId,
+			);
+			expect(answer).toBeDefined();
+			expect(events.indexOf(ask)).toBeLessThan(events.indexOf(answer!));
+		}
+	});
+
+	it("a run whose policy never answers and is aborted yields permission_answer outcome stopped", async () => {
+		const stop = new AbortController();
+		const channel = createAskChannel();
+		const events: CanonicalEvent[] = [];
+		const o = opts("ok", {
+			permission: channel.policy,
+			signal: stop.signal,
+		});
+		for await (const ev of runInvestigation(o)) {
+			events.push(ev);
+			if (ev.kind === "permission_ask") {
+				stop.abort();
+			}
+		}
+		const stoppedAnswer = events.find(
+			(e) => e.kind === "permission_answer" && e.outcome === "stopped",
+		);
+		expect(stoppedAnswer).toBeDefined();
 	});
 
 	it("records a value the ACP SDK does not know in the transcript and hands the host a warning (#639)", async () => {
@@ -736,6 +817,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		const { events, runDir } = await collect("resume", {
 			harness: "claude-code",
 			agentMode: "default",
+			permission: autoApprovePolicy,
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_RESUME_CURL: "1" },
 			resume: { sessionId: "ses_old", text: "Is Prometheus up?", mode: "queue", heads: [] },
 		});
@@ -743,5 +825,22 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(curl).toMatchObject({ kind: "tool_result", result: { ok: true, preview: "up 1" } });
 		expect(wireOut(runDir).some((m) => m.includes("session/set_mode"))).toBe(false);
 		expect(events.at(-1)?.kind).toBe("branch_done");
+	});
+
+	it("a resumed run on FAKE_MODES where the current mode is plan calls set_mode to the run's mode", async () => {
+		const { runDir } = await collect("resume", {
+			harness: "opencode",
+			agentMode: "default",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				FAKE_LOAD_SESSION: "1",
+				FAKE_MODES: "plan=Plan,default=Manual",
+			},
+			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [] },
+		});
+		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
+		const setMode = sent.find((m) => m.method === "session/set_mode");
+		expect(setMode?.params?.modeId).toBe("default");
 	});
 });
