@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { FileText, Paperclip, Plus, Square, X } from "lucide-react";
+import { FileText, Paperclip, Plus, X } from "lucide-react";
 import {
 	type ClipboardEvent,
 	type DragEvent,
@@ -21,18 +21,15 @@ import {
 	PromptInputTextarea,
 	PromptInputTools,
 } from "@/components/ai/prompt-input";
-import { VerbChip } from "@/components/ai/verb-chip";
+import { ActionChip, type ComposerAction } from "@/components/run/ActionChip";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { attachRefusal } from "@/lib/attachments";
-import {
-	type ComposerMode,
-	composerKeyAction,
-	talksToSession,
-} from "@/lib/composer-keys";
+import { composerKeyAction } from "@/lib/composer-keys";
 import { getErrorMessage } from "@/lib/get-error-message";
-import type { RunVerb } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
+
+export type { ComposerAction } from "@/components/run/ActionChip";
 
 interface Draft {
 	key: string;
@@ -46,50 +43,42 @@ export interface ComposerSend {
 }
 
 export interface ComposerBoxProps {
-	mode: ComposerMode;
-	/** The three chips: agent and model, effort and window, permission mode. */
+	/** What Send can do; the first chip picks one (#811). */
+	actions: ComposerAction[];
+	action: string;
+	onAction: (id: string) => void;
+	/** Model, effort and access, after the action chip. */
 	chips: ReactNode;
-	/** Draft: gathers, then starts the agent. */
-	onInvestigate: (send: ComposerSend) => Promise<void> | void;
-	/** Draft: asks without gathering. */
-	onAsk: (send: ComposerSend) => Promise<void> | void;
-	/**
-	 * What the next message asks for (#673 w59): the chip shows only where
-	 * `verbs` holds both; Enter and the one send control do what it says.
-	 */
-	verbs: RunVerb[];
-	verb: RunVerb;
-	onVerb?: (verb: RunVerb) => void;
-	verbCopy?: Record<RunVerb, string>;
+	/** `now`: Ctrl+Enter on a live run, which interrupts the agent's step. */
+	onSend: (send: ComposerSend, now: boolean) => Promise<void> | void;
+	/** A live run: Enter waits for the agent's next pause, Esc stops it. */
+	live?: boolean;
+	onStop?: () => void;
+	stopping?: boolean;
+	/** The run kept no session: one way on instead of the box. */
+	ended?: { onNewRun: () => void };
 	placeholder: string;
-	/** Files a prefilled draft starts with (`Investigate again`). */
+	/** Files a prefilled draft starts with. */
 	initialFiles?: File[];
 	/** Told each change to the files, so a remount starts from them, not the prefill. */
 	onFilesChange?: (files: File[]) => void;
-	/** Kept current with what is in the box, for `Investigate again`. */
+	/** Kept current with what is in the box. */
 	boxRef?: MutableRefObject<ComposerSend | null>;
-	/** Live or resumable: Enter queues for the next pause, Send now interrupts. */
-	onMessage?: (
-		send: ComposerSend,
-		mode: "queue" | "now",
-	) => Promise<void> | void;
-	onStop?: () => void;
-	stopping?: boolean;
-	/** No session to continue: the one way on. */
-	onNewRun?: () => void;
-	/** The draft's text, kept by the page across tabs. */
 	text: string;
 	setText: (text: string) => void;
 	agent: { label: string; images: boolean | null };
+	/** Messages queued for the agent's next pause. */
 	waiting?: number;
 	isPending?: boolean;
-	/** Why a draft cannot start: chips and actions are withheld with it. */
+	/** Why nothing can be sent now: chips and Send are withheld with it. */
 	blockedReason?: string;
 	undeliverable?: string | null;
 	onSaveAsNote?: (text: string) => void;
 	autoFocus?: boolean;
-	/** The status line under the box. */
-	status?: ReactNode;
+	/** Lines above the box: where the result goes, a queued message. */
+	above?: ReactNode;
+	/** The new conversation's box floats in the middle of the page. */
+	floating?: boolean;
 }
 
 const release = (drafts: Draft[]) => {
@@ -105,26 +94,24 @@ const draftOf = (file: File): Draft => ({
 });
 
 /**
- * The box (#673): three chips in every state but a run with no session, and a
- * fourth, the verb, first where both verbs act on the thread (#673 w59).
+ * The box (#811): the text, then one chip row: what Send does, model,
+ * effort, access; attach and Send at the end. The overview's chat box is the
+ * same component with its own actions.
  */
 export function ComposerBox({
-	mode,
+	actions,
+	action,
+	onAction,
 	chips,
-	onInvestigate,
-	onAsk,
-	verbs,
-	verb,
-	onVerb,
-	verbCopy,
+	onSend,
+	live = false,
+	onStop,
+	stopping,
+	ended,
 	placeholder,
 	initialFiles,
 	onFilesChange,
 	boxRef,
-	onMessage,
-	onStop,
-	stopping,
-	onNewRun,
 	text,
 	setText,
 	agent,
@@ -134,7 +121,8 @@ export function ComposerBox({
 	undeliverable,
 	onSaveAsNote,
 	autoFocus,
-	status,
+	above,
+	floating,
 }: ComposerBoxProps) {
 	const [drafts, setDrafts] = useState<Draft[]>(() =>
 		(initialFiles ?? []).map(draftOf),
@@ -143,12 +131,11 @@ export function ComposerBox({
 	const [sending, setSending] = useState(false);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
-	const talking = talksToSession(mode);
-	const live = mode === "live";
-	// A live thread is never blocked; a draft or an ended one waits for another that works.
 	const blocked = !live && !!blockedReason;
+	const current = actions.find((a) => a.id === action) ?? actions[0];
 	const hasText = !!text.trim();
 	const busy = sending || !!isPending;
+	const canSend = !busy && !blocked && (hasText || !current?.needsText);
 
 	const shown = useRef(drafts);
 	shown.current = drafts;
@@ -182,17 +169,14 @@ export function ComposerBox({
 		if (next.length) setDrafts((d) => [...d, ...next]);
 	};
 
-	const submit = async (send: "investigate" | "ask" | "queue" | "now") => {
-		const value = text.trim();
-		const files = drafts.map((d) => d.file);
-		if (busy || blocked) return;
-		if (send === "ask" && (blocked || !value)) return;
-		if ((send === "queue" || send === "now") && (!value || !onMessage)) return;
+	const submit = async (now: boolean) => {
+		if (!canSend) return;
 		setSending(true);
 		try {
-			if (send === "investigate") await onInvestigate({ text: value, files });
-			else if (send === "ask") await onAsk({ text: value, files });
-			else await onMessage?.({ text: value, files }, send);
+			await onSend(
+				{ text: text.trim(), files: drafts.map((d) => d.file) },
+				now,
+			);
 			setText("");
 			release(drafts);
 			setDrafts([]);
@@ -206,7 +190,7 @@ export function ComposerBox({
 	};
 
 	const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-		const action = composerKeyAction(
+		const key = composerKeyAction(
 			{
 				key: e.key,
 				shiftKey: e.shiftKey,
@@ -215,16 +199,15 @@ export function ComposerBox({
 				altKey: e.altKey,
 				isComposing: e.nativeEvent.isComposing,
 			},
-			mode,
+			live ? "live" : "draft",
 			live && !stopping,
 		);
-		if (!action) return;
+		if (!key) return;
 		e.preventDefault();
 		e.stopPropagation();
-		if (action === "stop") onStop?.();
-		else if (action === "blur") ref.current?.blur();
-		else if (action === "investigate") void submit(verb);
-		else void submit(action);
+		if (key === "stop") onStop?.();
+		else if (key === "blur") ref.current?.blur();
+		else void submit(key === "now");
 	};
 
 	const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -239,26 +222,27 @@ export function ComposerBox({
 		add(Array.from(e.dataTransfer.files));
 	};
 
-	if (mode === "ended")
+	if (ended)
 		return (
-			<div className="space-y-1.5" data-testid="composer-box">
+			<div className="flex flex-col gap-1" data-testid="composer-box">
+				{above}
 				<div
-					className="flex items-center gap-3 rounded-pool bg-surface-1 px-3 py-2.5 text-body text-text-2"
+					className="flex items-center gap-3 rounded-[10px] bg-surface-2 px-3 py-2.5 text-text-2"
 					data-testid="composer-no-session"
 				>
 					<span className="min-w-0 flex-1">
-						This run can't continue. Start a new run.
+						This run kept no agent session, so it can't continue. Start a new
+						run.
 					</span>
 					<Button
 						variant="secondary"
-						onClick={onNewRun}
+						onClick={ended.onNewRun}
 						data-testid="composer-new-run"
 					>
 						<Plus />
 						New run
 					</Button>
 				</div>
-				{status}
 			</div>
 		);
 
@@ -270,10 +254,15 @@ export function ComposerBox({
 				: "Images: not checked yet. Text files only.";
 
 	return (
-		<div className="space-y-1.5" data-testid="composer-box">
+		<div className="flex flex-col gap-1" data-testid="composer-box">
+			{above}
 			<PromptInput
-				data-mode={mode}
-				onSubmit={() => void submit(talking ? "queue" : verb)}
+				data-live={live ? "" : undefined}
+				className={cn(
+					"rounded-[10px] bg-surface-2 [&>[data-slot=input-group]]:bg-transparent",
+					floating && "shadow-float",
+				)}
+				onSubmit={() => void submit(false)}
 				onDragOver={(e) => e.preventDefault()}
 				onDrop={onDrop}
 			>
@@ -324,28 +313,25 @@ export function ComposerBox({
 						disabled={blocked}
 						placeholder={placeholder}
 						aria-label={placeholder}
+						className="min-h-6"
 						data-testid="composer-input"
 					/>
 				</PromptInputBody>
-				<PromptInputFooter className="max-sm:flex-wrap">
-					<div className="flex min-w-0 flex-1 max-sm:basis-full">
-						{/* Narrow, the chips wrap: a hidden-scrollbar row clipped the mode chip's label (#673 walk 4, QA-06). */}
-						<PromptInputTools
-							className="flex-wrap gap-y-1"
-							data-testid="composer-chips"
-						>
-							{verbs.length > 1 && onVerb && verbCopy && (
-								<VerbChip
-									verbs={verbs}
-									verb={verb}
-									copy={verbCopy}
-									onVerb={onVerb}
-								/>
-							)}
-							{chips}
-						</PromptInputTools>
-					</div>
-					<div className="ml-auto flex shrink-0 items-center gap-1">
+				<PromptInputFooter className="-ml-1.5 max-sm:flex-wrap">
+					{/* Narrow, the chips wrap: a hidden-scrollbar row clipped a chip's label (#673 walk 4, QA-06). */}
+					<PromptInputTools
+						className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1"
+						data-testid="composer-chips"
+					>
+						<ActionChip
+							actions={actions}
+							value={current?.id ?? ""}
+							onChange={onAction}
+							disabled={blocked}
+						/>
+						{chips}
+					</PromptInputTools>
+					<div className="ml-auto flex shrink-0 items-center gap-0.5">
 						{live && waiting > 0 && (
 							<span
 								className="px-1 text-meta text-warn tabular-nums"
@@ -381,90 +367,20 @@ export function ComposerBox({
 							}}
 							data-testid="composer-file-input"
 						/>
-						{!live && verb === "investigate" && (
-							<Hint
-								label={
-									mode === "draft"
-										? "Gathers the alert, code and telemetry, then starts the agent"
-										: "Continues this run to its report"
-								}
-								keys={["Enter"]}
-								side="top"
-							>
-								<span className="inline-flex">
-									<Button
-										type="button"
-										variant="primary"
-										className="h-8 px-3 disabled:pointer-events-auto disabled:bg-surface-3 disabled:text-text-2 disabled:opacity-100"
-										disabled={blocked || busy || (mode !== "draft" && !hasText)}
-										onClick={() =>
-											void submit(mode === "draft" ? "investigate" : "queue")
-										}
-										data-testid="composer-investigate"
-									>
-										{busy ? "Starting" : "Investigate"}
-									</Button>
-								</span>
-							</Hint>
-						)}
-						{mode === "draft" && verb === "ask" && (
-							<Hint label="Ask without gathering" keys={["Enter"]} side="top">
-								<span className="inline-flex">
-									<PromptInputSubmit
-										type="button"
-										disabled={blocked || busy || !hasText}
-										onClick={() => void submit("ask")}
-										data-testid="composer-ask"
-									/>
-								</span>
-							</Hint>
-						)}
-						{live && (
-							<Hint
-								label="Interrupt and send"
-								keys={["Ctrl", "Enter"]}
-								side="top"
-							>
-								<span className="inline-flex">
-									<PromptInputButton
-										disabled={busy || !hasText}
-										onClick={() => void submit("now")}
-										data-testid="composer-send-now"
-									>
-										Send now
-									</PromptInputButton>
-								</span>
-							</Hint>
-						)}
-						{talking && (live || verb === "ask") && (
-							<Hint
-								label={live ? "Send when the agent pauses" : "Ask"}
-								keys={["Enter"]}
-								side="top"
-							>
-								<span className="inline-flex">
-									<PromptInputSubmit
-										disabled={!hasText || busy || blocked}
-										data-testid="composer-send"
-									/>
-								</span>
-							</Hint>
-						)}
-						{live && (
-							<Hint label="Stop the agent" keys={["Esc"]} side="top">
-								<span className="inline-flex">
-									<PromptInputButton
-										disabled={stopping}
-										onClick={() => onStop?.()}
-										className="gap-1.5 hover:text-danger"
-										data-testid="composer-stop"
-									>
-										<Square className="size-3.5 fill-current" />
-										{stopping ? "Stopping" : "Stop"}
-									</PromptInputButton>
-								</span>
-							</Hint>
-						)}
+						<Hint
+							label={current ? current.label : "Send"}
+							keys={["Enter"]}
+							side="top"
+						>
+							<span className="inline-flex">
+								<PromptInputSubmit
+									status={busy ? "submitted" : undefined}
+									disabled={!canSend}
+									aria-label={current ? current.label : "Send"}
+									data-testid="composer-send"
+								/>
+							</span>
+						</Hint>
 					</div>
 				</PromptInputFooter>
 			</PromptInput>
@@ -496,7 +412,6 @@ export function ComposerBox({
 					)}
 				</div>
 			)}
-			{status}
 		</div>
 	);
 }

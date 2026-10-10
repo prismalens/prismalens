@@ -121,10 +121,14 @@ export function runTimed(run: Timed): boolean {
 	return !!run.startedAt || !!run.completedAt || isWorkflowLive(run.status);
 }
 
-/** `Run #N`, counted from the incident's first run; `runs` is newest first. */
-export function runNumber(runs: RunRef[], id: string): number {
-	const at = runs.findIndex((r) => r.id === id);
-	return at < 0 ? runs.length + 1 : runs.length - at;
+/** N in `Run N`, counted among the incident's investigations, Asks not counted (#811); `runs` is newest first. */
+export function runNumber(
+	runs: Pick<RunRef, "id" | "kind">[],
+	id: string,
+): number {
+	const runsOnly = runs.filter((r) => r.kind !== "chat");
+	const at = runsOnly.findIndex((r) => r.id === id);
+	return at < 0 ? runsOnly.length + 1 : runsOnly.length - at;
 }
 
 /** The incident's newest run when it started after `selected`, else null (#673 w27); `runs` are newest first. */
@@ -139,10 +143,10 @@ export function newerRunOf(runs: RunRef[], selected: string): RunRef | null {
 		: null;
 }
 
-/** A thread's name (#673 w59): an investigation is always `Run #N`, a chat its first message. */
+/** A thread's name (#673 w59, #811): an investigation is always `Run N`, a chat its first message. */
 export function runName(runs: RunRef[], run: RunRef): string {
 	const title = run.kind === "chat" ? run.title?.trim() : null;
-	return title || `Run #${runNumber(runs, run.id)}`;
+	return title || `Run ${runNumber(runs, run.id)}`;
 }
 
 export function refState(run: RunRef): RunState {
