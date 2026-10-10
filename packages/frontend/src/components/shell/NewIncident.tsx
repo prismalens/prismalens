@@ -49,8 +49,8 @@ export function NewIncidentButton({ className }: { className?: string }) {
 	return (
 		<Hint label="New incident" keys={[NEW_INCIDENT_KEY.toUpperCase()]}>
 			<Button
-				size="sm"
-				className={cn("pl-2", className)}
+				variant="secondary"
+				className={cn("pl-2.5", className)}
 				onClick={open}
 				data-testid="create-incident-button"
 			>

@@ -1,22 +1,34 @@
 /**
- * The incidents landing (study-v3 §3.1, §3.6): the board, or Analytics with
- * `?view=analytics`. A workspace with no incidents shows only the first-run
- * steps. The text filter narrows the loaded window on the client.
+ * The incidents landing (#811): the inbox, All incidents with `?view=all`, or
+ * Analytics with `?view=analytics`. A workspace with no incidents shows only
+ * the first-run steps. The text filter narrows what is loaded, on the client.
  */
-import type { IncidentWithRelations } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AllIncidents } from "@/components/inbox/AllIncidents";
+import { InboxTiles } from "@/components/inbox/InboxTiles";
+import { groupNeeds, matches } from "@/components/inbox/inbox-model";
+import { NeedsYou } from "@/components/inbox/NeedsYou";
+import {
+	RecentlyResolved,
+	SetupCard,
+} from "@/components/inbox/RecentlyResolved";
+import {
+	useActiveIncidents,
+	useRecentlyResolved,
+} from "@/components/inbox/use-inbox-data";
 import { IncidentAnalytics } from "@/components/incidents/analytics/IncidentAnalytics";
-import { FirstRunPanel, SetupLine } from "@/components/incidents/FirstRunPanel";
-import { IncidentBoard } from "@/components/incidents/IncidentBoard";
-import { useIncidentWindow } from "@/components/incidents/IncidentListPane";
+import {
+	FirstRunPanel,
+	SetupLine,
+	useSetupProgress,
+} from "@/components/incidents/FirstRunPanel";
 import { TelemetryConsent } from "@/components/settings/TelemetrySettings";
 import { Segmented } from "@/components/shared/Segmented";
-import { Empty, Loading, Problem } from "@/components/shared/State";
+import { Empty, Problem } from "@/components/shared/State";
 import { PageHeader } from "@/components/shell/PageHeader";
-import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -24,24 +36,15 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
-import { cn } from "@/lib/utils";
 import type { IncidentsSearch } from "./route";
 
 export const Route = createFileRoute("/_authenticated/incidents/")({
 	component: IncidentsLanding,
 });
-
-function matches(incident: IncidentWithRelations, needle: string) {
-	return (
-		incident.title.toLowerCase().includes(needle) ||
-		`inc-${incident.number}`.includes(needle) ||
-		(incident.service?.name ?? "").toLowerCase().includes(needle) ||
-		(incident.service?.displayName ?? "").toLowerCase().includes(needle)
-	);
-}
 
 const DAY = 86_400_000;
 const WINDOWS = {
@@ -59,46 +62,31 @@ function windowOf(from: string | undefined): WindowKey {
 	return days <= 1 ? "1d" : days <= 7 ? "7d" : days <= 30 ? "30d" : "90d";
 }
 
+type View = "inbox" | "all" | "analytics";
+
 function IncidentsLanding() {
 	const navigate = useNavigate();
-	const { search, listInput } = useIncidentWindow();
-	const analytics = search.view === "analytics";
-	usePageTitle(analytics ? "Analytics, Incidents" : "Incidents");
+	const search = Route.useSearch() as IncidentsSearch;
+	const view: View = search.view ?? "inbox";
+	usePageTitle(
+		view === "analytics"
+			? "Analytics, Incidents"
+			: view === "all"
+				? "All incidents"
+				: "Incidents",
+	);
 	const [q, setQ] = useState("");
+	const now = useNow(30_000);
 	const workspace = useQuery({
 		...orpc.incidents.getStats.queryOptions({ input: {} }),
 		refetchInterval: useLiveRefreshInterval(),
 	});
-	const {
-		data: list,
-		isLoading,
-		error: listError,
-		refetch,
-	} = useQuery({
-		...orpc.incidents.list.queryOptions({ input: listInput }),
-		refetchInterval: useLiveRefreshInterval(),
-		enabled: !analytics,
-	});
-	const keep: IncidentsSearch = {
-		status: search.status,
-		severity: search.severity,
-		priority: search.priority,
-		open: search.open,
-		from: search.from,
-		to: search.to,
-	};
 	const setSearch = (patch: Partial<IncidentsSearch>) =>
 		navigate({
 			to: ".",
 			search: (prev) => ({ ...prev, ...patch }),
 			replace: true,
 		});
-
-	const incidents = useMemo(() => {
-		const all = list?.data ?? [];
-		const needle = q.trim().toLowerCase();
-		return needle ? all.filter((i) => matches(i, needle)) : all;
-	}, [list, q]);
 	const firstRun = workspace.data?.total === 0;
 	const windowKey = windowOf(search.from);
 	const setWindow = (key: WindowKey) => {
@@ -108,10 +96,9 @@ function IncidentsLanding() {
 			to: undefined,
 		});
 	};
-	const windows: WindowKey[] = analytics
-		? ["7d", "30d", "90d"]
-		: ["all", "1d", "7d", "30d"];
-	// The board's 24 hours or All time reads as Analytics' 30 days, label and figures alike.
+	const windows: WindowKey[] =
+		view === "analytics" ? ["7d", "30d", "90d"] : ["all", "1d", "7d", "30d"];
+	// All time on All incidents reads as Analytics' 30 days, label and figures alike.
 	const viewKey: WindowKey = windows.includes(windowKey)
 		? windowKey
 		: windows[1];
@@ -126,10 +113,10 @@ function IncidentsLanding() {
 					<>
 						<Segmented
 							label="View"
-							value={analytics ? "analytics" : "board"}
+							value={view}
 							onChange={(v) =>
 								setSearch({
-									view: v === "analytics" ? "analytics" : undefined,
+									view: v === "inbox" ? undefined : v,
 									...(v === "analytics" && !search.from
 										? {
 												from: new Date(Date.now() - 30 * DAY).toISOString(),
@@ -138,107 +125,143 @@ function IncidentsLanding() {
 								})
 							}
 							options={[
-								{ value: "board", label: "Board" },
+								{ value: "inbox", label: "Inbox" },
+								{ value: "all", label: "All incidents" },
 								{ value: "analytics", label: "Analytics" },
 							]}
 							testId="incidents-view"
 						/>
 						<div className="flex basis-full items-center gap-2 md:grow-[999] md:basis-auto md:justify-end">
-							<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-40 md:flex-none">
+							<label className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-2 px-2.5 md:w-40 md:flex-none">
 								<Search className="size-3.5 shrink-0 text-text-3" />
 								<input
+									type="search"
 									value={q}
 									onChange={(e) => setQ(e.target.value)}
 									placeholder="Filter"
 									aria-label="Filter incidents"
 									className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
-									data-testid="board-search"
+									data-testid="incidents-filter"
 								/>
 							</label>
-							<Select
-								value={viewKey}
-								onValueChange={(v) => setWindow(v as WindowKey)}
-							>
-								<SelectTrigger aria-label="Window" data-testid="board-window">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent align="end">
-									{windows.map((w) => (
-										<SelectItem key={w} value={w}>
-											{analytics
-												? `Last ${WINDOWS[w].label}`
-												: WINDOWS[w].label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							{view !== "inbox" && (
+								<Select
+									value={viewKey}
+									onValueChange={(v) => setWindow(v as WindowKey)}
+								>
+									<SelectTrigger aria-label="Window" data-testid="board-window">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent align="end">
+										{windows.map((w) => (
+											<SelectItem key={w} value={w}>
+												{view === "analytics"
+													? `Last ${WINDOWS[w].label}`
+													: WINDOWS[w].label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							)}
 						</div>
 					</>
 				)}
 			</PageHeader>
-			{!analytics && (
-				<div className="px-4 md:px-6">
+			{view === "inbox" && (
+				<div className="px-4">
 					<TelemetryConsent />
 				</div>
 			)}
-
-			<div
-				className={cn(
-					"min-h-0 flex-1 overflow-y-auto",
-					!firstRun && !analytics && "md:flex md:flex-col md:overflow-hidden",
-				)}
-			>
+			<div className="min-h-0 flex-1 overflow-y-auto">
 				{firstRun ? (
 					<FirstRunPanel />
-				) : analytics ? (
+				) : view === "analytics" ? (
 					<IncidentAnalytics
 						filter={q}
 						days={WINDOWS[viewKey].days}
 						onWiden={() => setWindow("90d")}
 					/>
-				) : (
-					<div className="flex flex-col px-4 pt-1 pb-6 md:min-h-0 md:flex-1 md:px-6 md:pb-4">
-						<SetupLine />
-						{/* A failed refetch keeps the last board; offline is ReconnectLine's (ruling §2). */}
-						{isLoading ? (
-							<Loading rows={6} />
-						) : listError && !list ? (
-							<Problem
-								text="The board did not load."
-								onRetry={() => void refetch()}
-							/>
-						) : (
-							<>
-								{incidents.length === 0 && (
-									<Empty
-										className="shrink-0 pt-0"
-										text="Nothing in this window."
-										testId="incidents-window-empty"
-										action={
-											<Button
-												variant="text"
-												size="sm"
-												onClick={() => {
-													setQ("");
-													setWindow("all");
-												}}
-											>
-												Show all time
-											</Button>
-										}
-									/>
-								)}
-								<IncidentBoard incidents={incidents} search={keep} />
-								{list?.pagination.hasMore && (
-									<p className="mt-3 shrink-0 text-meta text-text-3">
-										The 100 newest in this window
-									</p>
-								)}
-							</>
-						)}
+				) : view === "all" ? (
+					<div className="px-4 pt-3 pb-6">
+						<AllIncidents
+							search={search}
+							setSearch={setSearch}
+							filter={q.trim().toLowerCase()}
+							now={now ?? Date.now()}
+						/>
 					</div>
+				) : (
+					<Inbox filter={q.trim().toLowerCase()} now={now} />
 				)}
 			</div>
+		</div>
+	);
+}
+
+/** The inbox (spec §1): tiles, Needs you, Recently resolved. */
+function Inbox({ filter, now }: { filter: string; now: number | null }) {
+	const active = useActiveIncidents();
+	const recent = useRecentlyResolved();
+	const setup = useSetupProgress();
+	const loading = active.isLoading || !setup.loaded || now === null;
+	const groups = useMemo(
+		() => groupNeeds(active.incidents.filter((i) => matches(i, filter))),
+		[active.incidents, filter],
+	);
+	return (
+		<div
+			className="flex flex-col gap-5 px-4 pt-3 pb-6"
+			aria-busy={loading || undefined}
+			data-testid="inbox"
+		>
+			<InboxTiles
+				incidents={active.incidents}
+				now={now ?? 0}
+				agentReady={setup.steps.agent}
+				loading={loading}
+			/>
+			{loading ? (
+				<section className="flex flex-col gap-2" aria-label="Needs you">
+					<h2 className="text-title">Needs you</h2>
+					<div className="pool flex flex-col gap-2.5 px-4 py-3.5">
+						<div className="shimmer h-3.5 w-[30%] rounded-[4px]" />
+						{[0, 1, 2].map((i) => (
+							<div key={i} className="shimmer h-9 rounded-control" />
+						))}
+					</div>
+				</section>
+			) : active.error && active.incidents.length === 0 ? (
+				<Problem
+					text="The inbox did not load."
+					onRetry={() => active.refetch()}
+				/>
+			) : !setup.steps.agent ? (
+				<section className="flex flex-col gap-2" aria-label="Needs you">
+					<h2 className="text-title">Needs you</h2>
+					<SetupCard done={setup.done} />
+				</section>
+			) : (
+				<>
+					<SetupLine />
+					{groups.length > 0 ? (
+						<NeedsYou groups={groups} now={now ?? 0} />
+					) : (
+						<section className="flex flex-col gap-2" aria-label="Needs you">
+							<h2 className="text-title">Needs you</h2>
+							<Empty
+								text={filter ? "Nothing matches." : "Nothing needs you."}
+								testId="needs-empty"
+							/>
+						</section>
+					)}
+				</>
+			)}
+			{now !== null && (
+				<RecentlyResolved
+					rows={recent.rows.filter((i) => matches(i, filter))}
+					now={now}
+				/>
+			)}
 		</div>
 	);
 }

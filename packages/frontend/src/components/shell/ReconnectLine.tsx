@@ -29,7 +29,7 @@ export function ReconnectLine() {
 	return (
 		<div
 			role="status"
-			className="fixed inset-x-0 top-(--header-h) z-30 flex h-7 items-center gap-2 bg-surface-1 px-4 text-meta text-text-2 md:top-(--titlebar-h) md:left-(--sidebar-w) md:px-6"
+			className="fixed inset-x-0 top-(--header-h) z-30 flex h-7 items-center gap-2 bg-surface-1 px-4 text-meta text-text-2 md:top-0 md:left-(--sidebar-w) md:px-6"
 			data-testid="reconnect-line"
 		>
 			<span aria-hidden className="h-3 w-[3px] shrink-0 rounded-full bg-warn" />

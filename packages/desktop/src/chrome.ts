@@ -18,6 +18,8 @@ export const TITLEBAR_HEIGHT = 40;
 /** The frontend's `--background` per theme, as hex. */
 const BACKGROUND: Record<Theme, string> = { dark: "#09090b", light: "#fafafa" };
 const SYMBOL: Record<Theme, string> = { dark: "#fafafa", light: "#09090b" };
+/** The page header the controls sit on: the frontend's `--surface-1`, as hex (#811). */
+const STRIP: Record<Theme, string> = { dark: "#161618", light: "#eeeef0" };
 
 /** Same rule as the frontend's pre-paint script: anything but `light` is dark. */
 export function themeFromCookie(value: string | undefined): Theme {
@@ -34,7 +36,7 @@ export function backgroundColor(theme: Theme): string {
 
 export function titleBarOverlay(theme: Theme) {
 	return {
-		color: BACKGROUND[theme],
+		color: STRIP[theme],
 		symbolColor: SYMBOL[theme],
 		height: TITLEBAR_HEIGHT,
 	};
