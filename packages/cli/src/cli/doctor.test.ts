@@ -7,10 +7,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAppDataDir, secretFileName } from "@prismalens/config";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAnyHarnessOnPath,
 	checkAutoSelection,
+	checkGit,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
 	checkInstalls,
@@ -304,3 +305,66 @@ describe("sandboxSummary (#673 w51)", () => {
 		).toBe("; sandbox: enforced for read-only, agent (refused); none for agent-full-access (full access)");
 	});
 });
+
+describe("doctor — checkGit (#673, T19, T19b, T19c)", () => {
+	it("T19: helper lines and the '(for this shell)' label", () => {
+		const mockRun = vi.fn((args: string[]) => {
+			if (args.includes("--version")) {
+				return { status: 0, stdout: "git version 2.43.0\n" };
+			}
+			if (args.includes("--get-regexp")) {
+				return {
+					status: 0,
+					stdout: "credential.https://github.com.helper !/usr/bin/gh auth git-credential\ncredential.helper cache\n",
+				};
+			}
+			return { status: 0, stdout: "" };
+		});
+
+		const checks = checkGit(mockRun, null);
+		expect(checks).toHaveLength(1);
+		expect(checks[0].pass).toBe(true);
+		expect(checks[0].name).toBe("Git");
+		expect(checks[0].detail).toContain("git 2.43.0 (for this shell);");
+		expect(checks[0].detail).toContain("credential helpers:");
+		expect(checks[0].detail).toContain("github.com: !/usr/bin/gh auth git-credential");
+		expect(checks[0].detail).toContain("all hosts: cache");
+	});
+
+	it("T19b: git missing fails", () => {
+		const mockRun = vi.fn((args: string[]) => {
+			if (args.includes("--version")) {
+				return { status: 1, stdout: "", error: new Error("ENOENT") };
+			}
+			return { status: 1, stdout: "" };
+		});
+
+		const checks = checkGit(mockRun, null);
+		expect(checks).toHaveLength(1);
+		expect(checks[0].pass).toBe(false);
+		expect(checks[0].hard).toBe(true);
+		expect(checks[0].name).toBe("Git");
+		expect(checks[0].detail).toMatch(/git missing/);
+	});
+
+	it("T19c: service line when installedService() is set", () => {
+		const mockRun = vi.fn((args: string[]) => {
+			if (args.includes("--version")) {
+				return { status: 0, stdout: "git version 2.43.0\n" };
+			}
+			return { status: 1, stdout: "" };
+		});
+		const fakeService = { port: 6473, workspace: "/data" } as any;
+
+		const checks = checkGit(mockRun, fakeService);
+		expect(checks).toHaveLength(2);
+		expect(checks[0].name).toBe("Git");
+		expect(checks[0].detail).toContain("git 2.43.0 (for this shell); no credential helper");
+		expect(checks[1].name).toBe("Git in the background service");
+		expect(checks[1].pass).toBe(true);
+		expect(checks[1].detail).toContain(
+			"The background service runs with its own environment; helpers that need a desktop keyring or an SSH agent may not work there.",
+		);
+	});
+});
+

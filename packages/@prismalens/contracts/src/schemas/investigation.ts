@@ -18,6 +18,7 @@ import {
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
+import { RunCredentialSchema } from "./repository.js";
 import { AccessLevelSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
@@ -226,6 +227,8 @@ export const RunWorkspaceRepoSchema = z.object({
 	branch: z.string().nullable(),
 	/** Service names that link this repo. */
 	services: z.array(z.string()),
+	/** Which credential cloned it (#673); absent on a run from before. */
+	credential: RunCredentialSchema.optional(),
 });
 export type RunWorkspaceRepo = z.infer<typeof RunWorkspaceRepoSchema>;
 
@@ -308,27 +311,6 @@ export const InvestigationReportMarkdownSchema = z.object({
 	filename: z.string(),
 	markdown: z.string(),
 });
-
-export const GITHUB_ISSUE_OR_PR_URL =
-	/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(issues|pull)\/(\d+)$/;
-export const PostReportToGitHubSchema = z.object({
-	id: z.string().uuid(),
-	target: z
-		.string()
-		.trim()
-		.regex(
-			GITHUB_ISSUE_OR_PR_URL,
-			"Must be a https://github.com/<owner>/<repo>/issues/<n> or /pull/<n> URL",
-		),
-});
-export const PostReportToGitHubResultSchema = z.object({
-	commentUrl: z.string().url(),
-});
-
-export type PostReportToGitHubInput = z.infer<typeof PostReportToGitHubSchema>;
-export type PostReportToGitHubResult = z.infer<
-	typeof PostReportToGitHubResultSchema
->;
 
 export const CreateInvestigationSchema = z.object({
 	incidentId: z.string().uuid(),

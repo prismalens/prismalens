@@ -13,7 +13,11 @@ import type {
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
-import type { ContextPack, RunChoice } from "@prismalens/contracts/schemas";
+import type {
+	ContextPack,
+	RunChoice,
+	RunCredential,
+} from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
 	RepoSource,
@@ -97,6 +101,8 @@ export interface RunPorts {
 			status: WorkflowStatus;
 			completedAt?: Date | null;
 			error?: string | null;
+			/** JSON RunWorkspace the follow-up rebuilt, with the credentials it used. */
+			workspace?: string;
 		},
 	): Promise<void>;
 	/**
@@ -142,19 +148,28 @@ export interface RunPorts {
 	 * primary first. Not deduped. Empty means the run is unmapped.
 	 */
 	incidentRepos(incidentId: string): Promise<IncidentRepo[]>;
-	/** A git token for the connection that discovered the repo, when one exists. */
-	repoToken(connectionId: string): Promise<string | null>;
 	/** The connectors (telemetry) available to the run. Implemented by ConnectorResolverService. */
 	resolveConnectors(
 		serviceId: string | undefined,
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
-	/** A fresh clone of the source's committed HEAD, or of commit `at`, into `dest`. */
-	snapshot(
-		src: RepoSource,
+	/**
+	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
+	 * credential the resolver picks (#673); `credential` is the one that cloned it.
+	 */
+	snapshotWith(
+		ref: RepoRef,
 		dest: string,
 		signal?: AbortSignal,
 		at?: string,
-	): Promise<Snapshot>;
+	): Promise<{ snap: Snapshot; credential: RunCredential }>;
+}
+
+/** A repo as the run knows it; the pick is read from the row by URL. */
+export interface RepoRef {
+	sourceKind: RepoSource["kind"];
+	url: string;
+	connectionId: string | null;
+	defaultBranch?: string | null;
 }

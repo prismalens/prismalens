@@ -35,6 +35,7 @@ export type Capability = z.infer<typeof CapabilitySchema>;
 
 export const TemplateCategorySchema = z.enum([
 	"vcs",
+	"git",
 	"deployment",
 	"messaging",
 	"communication",

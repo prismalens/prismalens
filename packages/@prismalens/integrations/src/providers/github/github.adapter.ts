@@ -13,7 +13,7 @@ import type {
 	GitRepository,
 } from "@prismalens/config/integrations";
 import { providerHttpError } from "../../engine/provider-http-error.js";
-import type { GitProvider, GitProviderContext } from "../git.interface.js";
+import type { GitProvider } from "../git.interface.js";
 import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
 // GitHub API response types (snake_case)
@@ -97,30 +97,6 @@ async function paginateList<T>(
 	return results;
 }
 
-/**
- * Paginate the /installation/repositories endpoint which wraps results
- * in { total_count, repositories }.
- */
-async function paginateInstallationRepos(
-	request: AuthenticatedRequestFn,
-	initialPath: string,
-): Promise<GitHubRepo[]> {
-	const results: GitHubRepo[] = [];
-	let path: string | null = initialPath;
-
-	while (path) {
-		const response = await request("GET", path);
-		const data = await json<{
-			total_count: number;
-			repositories: GitHubRepo[];
-		}>(response);
-		results.push(...data.repositories);
-		path = getNextPagePath(response);
-	}
-
-	return results;
-}
-
 function mapRepo(repo: GitHubRepo): GitRepository {
 	return {
 		id: String(repo.id),
@@ -140,41 +116,10 @@ function mapRepo(repo: GitHubRepo): GitRepository {
 export class GitHubVcsSegment implements GitProvider {
 	readonly name = "github";
 
-	/**
-	 * Get organizations the authenticated user has access to.
-	 *
-	 * For GitHub App installations: derives orgs from repo owners
-	 * (installation tokens cannot call /user/orgs).
-	 *
-	 * For PAT/OAuth: calls /user/orgs directly.
-	 */
+	/** Organizations the authenticated user belongs to. */
 	async getOrganizations(
 		request: AuthenticatedRequestFn,
-		ctx?: GitProviderContext,
 	): Promise<GitOrganization[]> {
-		if (ctx?.authMode === "github_app") {
-			// Installation tokens cannot call /user/orgs — derive from repos
-			const repos = await paginateInstallationRepos(
-				request,
-				"/installation/repositories?per_page=100",
-			);
-			const ownerMap = new Map<
-				string,
-				{ id: number; login: string; avatar_url: string; type: string }
-			>();
-			for (const repo of repos) {
-				if (!ownerMap.has(repo.owner.login)) {
-					ownerMap.set(repo.owner.login, repo.owner);
-				}
-			}
-			return Array.from(ownerMap.values()).map((owner) => ({
-				id: String(owner.id),
-				name: owner.login,
-				displayName: owner.login,
-				avatarUrl: owner.avatar_url,
-			}));
-		}
-
 		const orgs = await paginateList<GitHubOrg>(
 			request,
 			"/user/orgs?per_page=100",
@@ -188,31 +133,11 @@ export class GitHubVcsSegment implements GitProvider {
 		}));
 	}
 
-	/**
-	 * Get repositories from an organization or user's repos.
-	 *
-	 * For GitHub App installations: uses /installation/repositories.
-	 * For PAT/OAuth: uses /orgs/{org}/repos or /user/repos.
-	 */
+	/** Repositories of an organization, or the user's own. */
 	async getRepositories(
 		request: AuthenticatedRequestFn,
 		org?: string,
-		ctx?: GitProviderContext,
 	): Promise<GitRepository[]> {
-		if (ctx?.authMode === "github_app") {
-			let repos = await paginateInstallationRepos(
-				request,
-				"/installation/repositories?per_page=100",
-			);
-			// Filter by org if specified
-			if (org) {
-				repos = repos.filter(
-					(r) => r.owner.login.toLowerCase() === org.toLowerCase(),
-				);
-			}
-			return repos.map(mapRepo);
-		}
-
 		const path = org
 			? `/orgs/${encodeURIComponent(org)}/repos?per_page=100&sort=updated&direction=desc`
 			: "/user/repos?per_page=100&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member";

@@ -70,8 +70,10 @@ function makePorts(
 		})),
 		getIncident: vi.fn(async () => null),
 		incidentRepos: vi.fn(async () => []),
-		repoToken: vi.fn(async () => null),
-		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		snapshotWith: vi.fn(async () => ({
+			snap: { path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const },
+			credential: { source: "none" as const, label: "public", via: "none" },
+		})),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
 		...overrides,

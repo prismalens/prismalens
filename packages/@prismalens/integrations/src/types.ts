@@ -11,12 +11,7 @@ import { z } from "zod";
 // AUTH MODE
 // =============================================================================
 
-export const AuthModeSchema = z.enum([
-	"api_key",
-	"basic",
-	"oauth2",
-	"github_app",
-]);
+export const AuthModeSchema = z.enum(["api_key", "basic", "oauth2"]);
 export type AuthMode = z.infer<typeof AuthModeSchema>;
 
 // =============================================================================
@@ -76,15 +71,6 @@ export interface OAuth2Config {
 }
 
 // =============================================================================
-// GITHUB APP CONFIG
-// =============================================================================
-
-export interface GitHubAppConfig {
-	defaultPermissions: Record<string, string>;
-	defaultEvents?: string[];
-}
-
-// =============================================================================
 // AUTH TEMPLATE
 // =============================================================================
 
@@ -98,12 +84,11 @@ export interface AuthTemplate {
 	docsUrl?: string;
 	setupDocsUrl?: string;
 	connectionFields?: TemplateField[];
-	/** Secrets for Integration setup (appId, privateKey, clientId, clientSecret) */
+	/** Secrets for Integration setup (clientId, clientSecret) */
 	integrationCredentialFields?: TemplateField[];
 	/** Secrets for Connection setup (apiKey, password, token) */
 	connectionCredentialFields?: TemplateField[];
 	oauth2?: OAuth2Config;
-	githubApp?: GitHubAppConfig;
 	authenticate: {
 		headers?: Record<string, string>;
 		query?: Record<string, string>;
@@ -121,6 +106,8 @@ export interface AuthTemplate {
 	};
 	/** No credentials: the connection's baseUrl is reached directly and `verify` runs against it (#633). */
 	urlOnly?: true;
+	/** A token git sends over HTTPS to clone; Test runs `git ls-remote` instead of `verify` (#673). */
+	gitHost?: true;
 	/** Permission requirements — single source of truth for capabilities, defaultPermissions, and scopes */
 	requiredPermissions?: PermissionRequirement[];
 	/** How connections are created for this template */
@@ -135,6 +122,8 @@ export interface AuthTemplate {
 	/** Display metadata */
 	display: {
 		authModeLabel: string;
+		/** False keeps a template working for saved rows but out of the Add menu. */
+		listed?: boolean;
 	};
 }
 

@@ -56,7 +56,9 @@ export function filterAvailableTemplates(
 	);
 	return templates.filter(
 		(t: AuthTemplateResponse) =>
-			t.connectionCreationMode === "form" && !existingTemplateIds.has(t.id),
+			t.connectionCreationMode === "form" &&
+			t.listed !== false &&
+			!existingTemplateIds.has(t.id),
 	);
 }
 
@@ -144,6 +146,18 @@ export function ConnectionFormDialog({
 					: selectedIntegration?.templateId),
 	);
 
+	// A field's default fills the form, so a git host token starts at github.com.
+	const templateId = selectedTemplate?.id;
+	useEffect(() => {
+		if (!open || mode !== "create" || !templateId) return;
+		const fields =
+			templates?.find((t) => t.id === templateId)?.connectionFields ?? [];
+		const defaults = Object.fromEntries(
+			fields.flatMap((f) => (f.default ? [[f.name, f.default]] : [])),
+		);
+		setConnectionFieldValues((prev) => ({ ...defaults, ...prev }));
+	}, [open, mode, templateId, templates]);
+
 	// Form-based auth templates without an existing integration
 	const availableTemplates = useMemo(
 		() => filterAvailableTemplates(templates, integrations),
@@ -218,24 +232,6 @@ export function ConnectionFormDialog({
 					throw new Error("No integration selected");
 				}
 
-				if (selectedTemplate?.connectionCreationMode === "oauth_redirect") {
-					handleOpenChange(false);
-					const res = await fetch(
-						`/api/integrations/oauth/${integrationId}/authorize`,
-						{
-							method: "POST",
-							credentials: "include",
-							headers: { "Content-Type": "application/json" },
-						},
-					);
-					if (!res.ok) {
-						throw new Error(`OAuth authorize failed: ${res.status}`);
-					}
-					const { redirectUrl } = await res.json();
-					window.location.href = redirectUrl;
-					return;
-				}
-
 				try {
 					await createConnection.mutateAsync({
 						integrationId,
@@ -262,36 +258,6 @@ export function ConnectionFormDialog({
 				);
 			}
 		} else if (mode === "edit" && connection) {
-			// For OAuth redirect, re-trigger the OAuth flow
-			if (selectedTemplate?.connectionCreationMode === "oauth_redirect") {
-				try {
-					const integrationId = connection.integrationId;
-					if (!integrationId) throw new Error("Integration not found");
-
-					handleOpenChange(false);
-					const res = await fetch(
-						`/api/integrations/oauth/${integrationId}/authorize`,
-						{
-							method: "POST",
-							credentials: "include",
-							headers: { "Content-Type": "application/json" },
-						},
-					);
-					if (!res.ok) {
-						throw new Error(`OAuth authorize failed: ${res.status}`);
-					}
-					const { redirectUrl } = await res.json();
-					window.location.href = redirectUrl;
-				} catch (err) {
-					setError(
-						err instanceof Error
-							? err
-							: new Error("Failed to re-authorize connection"),
-					);
-				}
-				return;
-			}
-
 			try {
 				const hasNewCredentials = Object.values(credentialValues).some(
 					(v) => v.trim() !== "",
@@ -322,20 +288,29 @@ export function ConnectionFormDialog({
 	const blankKeeps =
 		mode === "edit" ? "blank keeps the saved value" : undefined;
 	const oauth = selectedTemplate?.connectionCreationMode === "oauth_redirect";
+	const gitHost = selectedTemplate?.gitHost === true;
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>
-						{mode === "create" ? "Add connection" : "Edit connection"}
+						{gitHost
+							? mode === "create"
+								? "Add a git host token"
+								: "Edit token"
+							: mode === "create"
+								? "Add connection"
+								: "Edit connection"}
 					</DialogTitle>
 					<DialogDescription>
-						{mode === "create"
-							? "An account an integration reaches through."
-							: oauth
-								? "Sign in again with the provider."
-								: "New credentials replace the saved ones."}
+						{gitHost && mode === "create"
+							? "Runs clone with it when this machine's own git login can't reach the host."
+							: mode === "create"
+								? "An account an integration reaches through."
+								: oauth
+									? "Sign in again with the provider."
+									: "New credentials replace the saved ones."}
 					</DialogDescription>
 				</DialogHeader>
 

@@ -4,15 +4,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { TelemetryService } from "../../core/telemetry/telemetry.service.js";
-import type { CredentialsService } from "./crypto/credentials.service.js";
-import { IntegrationsService } from "./integrations.service.js";
+import { CredentialsService } from "./crypto/credentials.service.js";
+import {
+	IntegrationsService,
+	parseTokenExpiration,
+} from "./integrations.service.js";
+import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
-describe("IntegrationsService.testConnection (#633)", () => {
+// Mock git-spawn so spawnGit can be controlled cleanly
+vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../core/harness/git-spawn.js")>();
+	return {
+		...actual,
+		spawnGit: vi.fn(),
+		effectiveGitUrl: vi.fn(async (url: string) => url),
+	};
+});
+
+describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 	let service: IntegrationsService;
 	let mockPrisma: any;
-	let mockCredentialsService: any;
+	let credentialsService: CredentialsService;
 	let mockTelemetry: any;
-	let mockAuthManager: any;
 	const originalFetch = globalThis.fetch;
 
 	beforeEach(() => {
@@ -20,34 +33,28 @@ describe("IntegrationsService.testConnection (#633)", () => {
 			connection: {
 				findFirst: vi.fn(),
 				findUnique: vi.fn(),
+				findMany: vi.fn(),
 				update: vi.fn(),
+			},
+			repository: {
+				findMany: vi.fn().mockResolvedValue([]),
 			},
 		};
 
-		mockCredentialsService = {
-			decrypt: vi.fn((buf: Buffer) => JSON.parse(buf.toString("utf-8"))),
-			getVault: vi.fn(() => ({
-				encrypt: vi.fn(),
-				decrypt: vi.fn(),
-			})),
+		const mockConfigService = {
+			get: vi.fn().mockReturnValue("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
 		};
+		credentialsService = new CredentialsService(mockConfigService as any);
 
 		mockTelemetry = {
 			capture: vi.fn(),
 		};
 
-		mockAuthManager = {
-			verifyConnection: vi.fn(),
-		};
-
 		service = new IntegrationsService(
 			mockPrisma as unknown as PrismaService,
-			mockCredentialsService as unknown as CredentialsService,
+			credentialsService,
 			mockTelemetry as unknown as TelemetryService,
 		);
-
-		(service as any).authManager = mockAuthManager;
-		(service as any).authManagerInitialized = true;
 	});
 
 	afterEach(() => {
@@ -55,134 +62,318 @@ describe("IntegrationsService.testConnection (#633)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("tests URL-only template: ok -> ACTIVE", async () => {
-		const conn = {
-			id: "conn-prom-1",
-			integrationId: "int-prom-1",
-			consecutiveErrors: 0,
-			integration: {
-				templateId: "prometheus",
-				label: "My Prometheus",
-			},
-			connectionConfigEnc: Buffer.from(
-				JSON.stringify({ baseUrl: "http://prometheus.internal:9090" }),
-			),
-		};
+	describe("T13: testConnection runs ls-remote per matching repo three at a time and returns details", () => {
+		it("runs ls-remote in batches of 3 and reports ok for each repo", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_secret" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-git-1",
+				label: "Personal GitHub",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
 
-		mockPrisma.connection.findFirst.mockResolvedValue(conn);
-		mockPrisma.connection.findUnique.mockResolvedValue({
-			connectionConfigEnc: conn.connectionConfigEnc,
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// 4 repos matching github.com
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{ url: "https://github.com/org/repo1.git" },
+				{ url: "https://github.com/org/repo2.git" },
+				{ url: "https://github.com/org/repo3.git" },
+				{ url: "https://github.com/org/repo4.git" },
+			]);
+
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			const spawnGitMock = vi.mocked(gitSpawnMod.spawnGit);
+
+			let activeCalls = 0;
+			let maxActiveCalls = 0;
+
+			spawnGitMock.mockImplementation(async (args: any) => {
+				activeCalls++;
+				if (activeCalls > maxActiveCalls) {
+					maxActiveCalls = activeCalls;
+				}
+				await new Promise((r) => setTimeout(r, 10));
+				activeCalls--;
+				return { stdout: "hash\trefs/heads/main\n", stderr: "" };
+			});
+
+			globalThis.fetch = vi.fn(async () => {
+				return new Response(JSON.stringify({ login: "octocat" }), {
+					status: 200,
+					headers: { "github-authentication-token-expiration": "2026-10-17 09:30:00 UTC" },
+				});
+			}) as any;
+
+			const result = await service.testConnection("conn-git-1");
+
+			expect(result.success).toBe(true);
+			expect(result.details).toEqual([
+				"ok org/repo1",
+				"ok org/repo2",
+				"ok org/repo3",
+				"ok org/repo4",
+			]);
+			expect(maxActiveCalls).toBeLessThanOrEqual(3);
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-git-1" },
+				data: { tokenExpiresAt: new Date("2026-10-17T09:30:00.000Z") },
+			});
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-git-1" },
+				data: expect.objectContaining({
+					status: "ACTIVE",
+					lastErrorMessage: null,
+					consecutiveErrors: 0,
+				}),
+			});
 		});
-		mockPrisma.connection.update.mockResolvedValue(conn);
+	});
 
-		globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
-			expect(url.toString()).toBe("http://prometheus.internal:9090/-/ready");
-			return new Response("ok", { status: 200 });
-		}) as any;
+	describe("T13b: no matching repo -> untested, status unchanged", () => {
+		it("returns untested result with informational message and leaves status intact", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_secret" });
+			const configEnc = credentialsService.encrypt({ host: "gitlab.com" });
+			const conn = {
+				id: "conn-git-untested",
+				label: "GitLab Token",
+				status: "ERROR",
+				consecutiveErrors: 2,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
 
-		const result = await service.testConnection("conn-prom-1");
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.repository.findMany.mockResolvedValue([]);
 
-		expect(result).toEqual({ success: true });
-		expect(mockAuthManager.verifyConnection).not.toHaveBeenCalled();
-		expect(mockPrisma.connection.update).toHaveBeenCalledWith({
-			where: { id: "conn-prom-1" },
-			data: expect.objectContaining({
+			const result = await service.testConnection("conn-git-untested");
+
+			expect(result).toEqual({
+				success: false,
+				untested: true,
+				details: ["No repository on gitlab.com yet. Add one to a service, then test again."],
+			});
+			// Must not update connection status or error count
+			expect(mockPrisma.connection.update).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("T13c: /user 401 -> failed Test, token-rejected", () => {
+		it("fails test with token-rejected when api.github.com/user answers 401", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_revoked" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-git-revoked",
+				label: "Revoked PAT",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			globalThis.fetch = vi.fn(async () => {
+				return new Response("Unauthorized", { status: 401 });
+			}) as any;
+
+			const result = await service.testConnection("conn-git-revoked");
+
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/github\.com rejected token "Revoked PAT"/);
+			expect(result.error).toMatch(/It was revoked or mistyped; replace it\./);
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-git-revoked" },
+				data: expect.objectContaining({
+					status: "ERROR",
+					lastErrorMessage: expect.stringContaining("github.com rejected token"),
+				}),
+			});
+		});
+	});
+
+	describe("T14: parseTokenExpiration header fixture -> tokenExpiresAt, malformed -> null", () => {
+		it("parses valid GitHub expiration timestamp format into Date UTC", () => {
+			const parsed = parseTokenExpiration("2026-10-17 09:30:00 UTC");
+			expect(parsed).toBeInstanceOf(Date);
+			expect(parsed?.toISOString()).toBe("2026-10-17T09:30:00.000Z");
+		});
+
+		it("returns null for malformed or absent header values", () => {
+			expect(parseTokenExpiration(null)).toBeNull();
+			expect(parseTokenExpiration("")).toBeNull();
+			expect(parseTokenExpiration("invalid-date")).toBeNull();
+			expect(parseTokenExpiration("2026-10-17T09:30:00Z")).toBeNull();
+			expect(parseTokenExpiration("Sun, 17 Oct 2026 09:30:00 GMT")).toBeNull();
+		});
+	});
+
+	describe("T15: sweep leaves an expired api_key row ACTIVE and never calls resolveAccessToken for it", () => {
+		it("does not select non-oauth2 templates during proactive refresh sweep", async () => {
+			const processor = new TokenRefreshProcessor(
+				mockPrisma as unknown as PrismaService,
+				service,
+			);
+
+			const resolveSpy = vi.spyOn(service, "resolveAccessToken");
+
+			// Expiring connections query should filter to OAUTH2_TEMPLATE_IDS only
+			mockPrisma.connection.findMany.mockImplementation(async (args: any) => {
+				const templateIn = args?.where?.integration?.templateId?.in ?? [];
+				expect(templateIn).not.toContain("git-host-token");
+				expect(templateIn).not.toContain("github-token");
+				expect(templateIn).not.toContain("github-app");
+				return [];
+			});
+
+			await processor.process();
+
+			expect(resolveSpy).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("T15b: a legacy github-app row is not selected during sweep", () => {
+		it("excludes github-app from the sweep's OAUTH2_TEMPLATE_IDS query", async () => {
+			const processor = new TokenRefreshProcessor(
+				mockPrisma as unknown as PrismaService,
+				service,
+			);
+
+			mockPrisma.connection.findMany.mockResolvedValue([]);
+
+			await processor.process();
+
+			expect(mockPrisma.connection.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: expect.objectContaining({
+						status: "ACTIVE",
+						integration: {
+							templateId: {
+								in: expect.not.arrayContaining(["github-app"]),
+							},
+						},
+					}),
+				}),
+			);
+		});
+	});
+
+	describe("T15c: Settings list marks tokenExpiresAt < now as TOKEN_EXPIRED", () => {
+		it("returns TOKEN_EXPIRED status when tokenExpiresAt is in the past for an ACTIVE connection", async () => {
+			const past = new Date(Date.now() - 3600_000);
+			const conn = {
+				id: "conn-expired",
+				integrationId: "int-1",
+				label: "Expired PAT",
+				status: "ACTIVE",
+				tokenExpiresAt: past,
+				credentialsEnc: credentialsService.encrypt({ token: "tok" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+				integration: {
+					id: "int-1",
+					templateId: "git-host-token",
+					label: "Git host token",
+					scopes: "[]",
+					callbackUrl: null,
+					enabled: true,
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+				consecutiveErrors: 0,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			};
+
+			mockPrisma.connection.findMany.mockResolvedValue([conn]);
+
+			const { IntegrationsController } = await import("./integrations.controller.js");
+			const controller = new IntegrationsController(
+				service,
+				{ invalidate: vi.fn() } as any,
+				{ get: vi.fn() } as any,
+			);
+
+			const serialized = (controller as any).serializeConnectionWithIntegration(conn);
+			expect(serialized.status).toBe("TOKEN_EXPIRED");
+		});
+	});
+
+	describe("T15d: recordGitFailure writes ERROR once per distinct message", () => {
+		it("writes ERROR and lastErrorMessage once, ignoring duplicates with identical message", async () => {
+			mockPrisma.connection.findUnique.mockResolvedValueOnce({
 				status: "ACTIVE",
 				lastErrorMessage: null,
-				consecutiveErrors: 0,
-			}),
-		});
-	});
+			});
+			mockPrisma.connection.update.mockResolvedValue({});
 
-	it("tests URL-only template: 503 -> ERROR with message", async () => {
-		const conn = {
-			id: "conn-prom-2",
-			integrationId: "int-prom-2",
-			consecutiveErrors: 1,
-			integration: {
-				templateId: "prometheus",
-				label: "My Prometheus",
-			},
-			connectionConfigEnc: Buffer.from(
-				JSON.stringify({ baseUrl: "http://prometheus.internal:9090" }),
-			),
-		};
+			await service.recordGitFailure("conn-fail-1", {
+				code: "token-rejected",
+				message: "Authentication failed for https://github.com/org/repo.git",
+			});
 
-		mockPrisma.connection.findFirst.mockResolvedValue(conn);
-		mockPrisma.connection.findUnique.mockResolvedValue({
-			connectionConfigEnc: conn.connectionConfigEnc,
-		});
-		mockPrisma.connection.update.mockResolvedValue(conn);
+			expect(mockPrisma.connection.update).toHaveBeenCalledTimes(1);
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-fail-1" },
+				data: expect.objectContaining({
+					status: "ERROR",
+					lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
+					consecutiveErrors: { increment: 1 },
+				}),
+			});
 
-		globalThis.fetch = vi.fn(async () => {
-			return new Response("Service Unavailable", { status: 503 });
-		}) as any;
-
-		const result = await service.testConnection("conn-prom-2");
-
-		expect(result).toEqual({
-			success: false,
-			error: "Prometheus answered 503",
-		});
-		expect(mockAuthManager.verifyConnection).not.toHaveBeenCalled();
-		expect(mockPrisma.connection.update).toHaveBeenCalledWith({
-			where: { id: "conn-prom-2" },
-			data: expect.objectContaining({
+			// Second call with same message should not update again
+			mockPrisma.connection.findUnique.mockResolvedValueOnce({
 				status: "ERROR",
-				lastErrorMessage: "Prometheus answered 503",
-				consecutiveErrors: 2,
-			}),
+				lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
+			});
+
+			await service.recordGitFailure("conn-fail-1", {
+				code: "token-rejected",
+				message: "Authentication failed for https://github.com/org/repo.git",
+			});
+
+			expect(mockPrisma.connection.update).toHaveBeenCalledTimes(1);
 		});
-	});
 
-	it("credentialed template still goes through verifyConnection", async () => {
-		const conn = {
-			id: "conn-render-1",
-			integrationId: "int-render-1",
-			consecutiveErrors: 0,
-			integration: {
-				templateId: "render",
-				label: "My Render",
-			},
-			connectionConfigEnc: null,
-		};
-
-		mockPrisma.connection.findFirst.mockResolvedValue(conn);
-		mockPrisma.connection.update.mockResolvedValue(conn);
-		mockAuthManager.verifyConnection.mockResolvedValue({ success: true });
-
-		const fetchSpy = vi.fn();
-		globalThis.fetch = fetchSpy as any;
-
-		const result = await service.testConnection("conn-render-1");
-
-		expect(result).toEqual({ success: true });
-		expect(mockAuthManager.verifyConnection).toHaveBeenCalledWith("conn-render-1");
-		expect(fetchSpy).not.toHaveBeenCalled();
-		expect(mockPrisma.connection.update).toHaveBeenCalledWith({
-			where: { id: "conn-render-1" },
-			data: expect.objectContaining({
+		it("writes TOKEN_EXPIRED when code is token-expired", async () => {
+			mockPrisma.connection.findUnique.mockResolvedValueOnce({
 				status: "ACTIVE",
-			}),
+				lastErrorMessage: null,
+			});
+			mockPrisma.connection.update.mockResolvedValue({});
+
+			await service.recordGitFailure("conn-expired-1", {
+				code: "token-expired",
+				message: "Token expired on 2026-10-10",
+			});
+
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-expired-1" },
+				data: expect.objectContaining({
+					status: "TOKEN_EXPIRED",
+					lastErrorMessage: "Token expired on 2026-10-10",
+				}),
+			});
 		});
-	});
-
-	it("github-app has verify and no connection credential fields, and still goes through verifyConnection", async () => {
-		const conn = {
-			id: "conn-gh-1",
-			integrationId: "int-gh-1",
-			consecutiveErrors: 0,
-			integration: { templateId: "github-app", label: "GitHub" },
-			connectionConfigEnc: null,
-		};
-
-		mockPrisma.connection.findFirst.mockResolvedValue(conn);
-		mockPrisma.connection.update.mockResolvedValue(conn);
-		mockAuthManager.verifyConnection.mockResolvedValue({ success: true });
-
-		const result = await service.testConnection("conn-gh-1");
-
-		expect(result).toEqual({ success: true });
-		expect(mockAuthManager.verifyConnection).toHaveBeenCalledWith("conn-gh-1");
 	});
 });

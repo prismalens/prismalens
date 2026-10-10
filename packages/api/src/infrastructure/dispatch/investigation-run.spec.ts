@@ -15,7 +15,8 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
-import type { RunPorts } from "./run-ports.js";
+import type { Snapshot } from "../../core/harness/repo-source.service.js";
+import type { RepoRef, RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
@@ -37,6 +38,19 @@ vi.mock("@prismalens/logger", () => ({
 vi.mock("@prismalens/logger/standalone", () => ({
 	runWithWideEvent: (_name: string, fn: () => unknown) => fn(),
 }));
+
+
+const PUBLIC_CREDENTIAL = { source: "none" as const, label: "public", via: "none" };
+
+/** A `snapshotWith` double from what the clone returns; the credential is always public. */
+function cloneAs(
+	fn: (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => Promise<Snapshot>,
+) {
+	return vi.fn(async (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => ({
+		snap: await fn(ref, dest, signal, at),
+		credential: PUBLIC_CREDENTIAL,
+	}));
+}
 
 const {
 	resolveWorkspace,
@@ -65,8 +79,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		})),
 		getIncident: vi.fn(async () => ({ title: "Checkout 5xx" })),
 		incidentRepos: vi.fn(async () => []),
-		repoToken: vi.fn(async () => null),
-		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		snapshotWith: cloneAs(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
 		...overrides,
@@ -76,8 +89,8 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 /**
  * ADR 0004 §2: the harness runs in a fresh snapshot of prismalens's own repo,
  * never the user's checkout. No linked repo means an honest UNMAPPED run in an
- * empty scratch dir; a linked repo means `ports.snapshot` is called with the
- * repo's kind/source/defaultBranch/token and a dest under the run dir, and the
+ * empty scratch dir; a linked repo means `ports.snapshotWith` is called with the
+ * repo's sourceKind/url/connectionId/defaultBranch and a dest under the run dir, and the
  * cwd is the snapshot path plus the repo's subPath.
  */
 describe("resolveWorkspace (per-investigation harness cwd)", () => {
@@ -102,16 +115,15 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		}
 	});
 
-	it("a linked repo: snapshot gets kind/source/defaultBranch/token and a dest under the run dir, cwd is the snapshot path plus subPath, and the note names the commit", async () => {
+	it("a linked repo: snapshotWith gets sourceKind/url/connectionId/defaultBranch and a dest under the run dir, cwd is the snapshot path plus subPath, and the note names the commit", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const snapshot = vi.fn(async () => ({
+			const snapshot = cloneAs(async () => ({
 				path: "/app-data/repos/github.com/acme/api-gateway",
 				head: "abc123def456789",
 				branch: "main" as const,
 			}));
-			const repoToken = vi.fn(async () => "gh-token-123");
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					{
@@ -123,19 +135,17 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 						serviceName: "checkout",
 					},
 				]),
-				repoToken,
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			const ws = await resolveWorkspace(minimalData(), ports);
 
-			expect(repoToken).toHaveBeenCalledWith("conn-1");
 			expect(snapshot).toHaveBeenCalledWith(
 				{
-					kind: "url",
-					source: "https://github.com/acme/api-gateway",
+					sourceKind: "url",
+					url: "https://github.com/acme/api-gateway",
+					connectionId: "conn-1",
 					defaultBranch: "main",
-					token: "gh-token-123",
 				},
 				join(tmp, "runs", "inv-1", "repo"),
 				undefined,
@@ -155,7 +165,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			incidentRepos: vi.fn(async () => [
 				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
-			snapshot: vi.fn(async () => ({
+			snapshotWith: cloneAs(async () => ({
 				path: "/app-data/repos/github.com/acme/api-gateway",
 				head: "abc123def456789",
 				branch: "main" as const,
@@ -172,7 +182,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			incidentRepos: vi.fn(async () => [
 				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: "../../outside", connectionId: null, serviceName: "checkout" },
 			]),
-			snapshot: vi.fn(async () => ({
+			snapshotWith: cloneAs(async () => ({
 				path: "/app-data/runs/r1/repo",
 				head: "abc123def456789",
 				branch: "main" as const,
@@ -184,12 +194,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		);
 	});
 
-	it("a linked repo with no connectionId: repoToken is never called, snapshot gets a null token", async () => {
+	it("a linked repo with no connectionId: snapshotWith gets a null connectionId", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
-			const repoToken = vi.fn(async () => "should-not-be-called");
-			const snapshot = vi.fn(async () => ({
+			const snapshot = cloneAs(async () => ({
 				path: "/app-data/repos/github.com/acme/x",
 				head: "abc123def456789",
 				branch: null,
@@ -198,15 +207,13 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				incidentRepos: vi.fn(async () => [
 					{ sourceKind: "url" as const, url: "https://github.com/acme/x", defaultBranch: null, subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
-				repoToken,
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			await resolveWorkspace(minimalData(), ports);
 
-			expect(repoToken).not.toHaveBeenCalled();
 			expect(snapshot).toHaveBeenCalledWith(
-				{ kind: "url", source: "https://github.com/acme/x", defaultBranch: null, token: null },
+				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
 				join(tmp, "runs", "inv-1", "repo"),
 				undefined,
 			);
@@ -230,13 +237,13 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 		it("two services with different repos: repos/api and repos/worker, cwd is their parent, the note names both commits", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
-			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					repo("git@github.com:o/api.git", "checkout"),
 					repo("git@github.com:o/worker.git", "jobs", "svc/jobs"),
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			const ws = await resolveWorkspace(minimalData(), ports);
@@ -258,7 +265,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 		it("a secondary repo that cannot be copied is skipped and named in the note; the primary's failure still fails", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
-			const snapshot = vi.fn(async (_src: unknown, dest: string) => {
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => {
 				if (dest.endsWith("worker")) throw new Error("repository not found");
 				return at(dest);
 			});
@@ -267,7 +274,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					repo("git@github.com:o/api.git", "checkout"),
 					repo("git@github.com:o/worker.git", "jobs"),
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			const ws = await resolveWorkspace(minimalData(), ports);
@@ -284,20 +291,20 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					repo("git@github.com:o/worker.git", "checkout"),
 					repo("git@github.com:o/api.git", "jobs"),
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 			await expect(resolveWorkspace(minimalData(), primaryDown)).rejects.toThrow("repository not found");
 		});
 
 		it("one repository linked by two services is cloned once with both service names", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
-			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					repo("https://github.com/acme/primary", "checkout"),
 					repo("https://github.com/acme/primary", "cart", "sub"),
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			const ws = await resolveWorkspace(minimalData(), ports);
@@ -309,13 +316,13 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 
 		it("two repos with the same folder name: the second gets -2", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
-			const snapshot = vi.fn(async (_src: unknown, dest: string) => at(dest));
+			const snapshot = cloneAs(async (_src: unknown, dest: string) => at(dest));
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => [
 					repo("https://github.com/acme/api", "checkout"),
 					repo("https://github.com/other/api", "billing"),
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			const ws = await resolveWorkspace(minimalData(), ports);
@@ -332,7 +339,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					repo("git@github.com:o/api.git", "checkout"),
 					repo("git@github.com:o/worker.git", "jobs"),
 				]),
-				snapshot: vi.fn(async (_src: unknown, dest: string) => at(dest)),
+				snapshotWith: cloneAs(async (_src: unknown, dest: string) => at(dest)),
 			});
 			mocks.conductRun.mockReset();
 			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
@@ -348,14 +355,104 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			);
 
 			const [, dto] = updateStatus.mock.calls[0] as unknown as [string, { workspace?: string }];
-			expect(JSON.parse(dto.workspace ?? "null")).toMatchObject({ layout: "multi", repos: [{ name: "api" }, { name: "worker" }] });
+			const savedWs = JSON.parse(dto.workspace ?? "null");
+			expect(savedWs).toMatchObject({ layout: "multi", repos: [{ name: "api" }, { name: "worker" }] });
+			// T17: the workspace record carries credential per repo
+			for (const r of savedWs.repos) {
+				expect(r.credential).toEqual({
+					source: "none",
+					label: "public",
+					via: "none",
+				});
+			}
 			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
 			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+		});
+
+		it("T17b: a follow-up re-records the workspace with the credential the rebuild resolved", async () => {
+			const tmp = mkdtempSync(join(os.tmpdir(), "pl-followup-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+			const runDir = join(tmp, "runs", "inv-followup");
+			mkdirSync(runDir, { recursive: true });
+			// A follow-up refuses when the harness binary is missing; CI has no opencode.
+			const bin = join(tmp, "bin");
+			mkdirSync(bin);
+			writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+			vi.stubEnv("PATH", bin);
+			const resolvedCred = {
+				source: "connection" as const,
+				label: "token Updated",
+				via: "git-host-token",
+			};
+			const ports = fakePorts({
+				findInvestigation: vi.fn(async () => ({
+					id: "inv-followup",
+					status: "pending",
+					harness: "opencode",
+					model: "opencode/some-model",
+					acpSessionId: "ses_abc",
+					workspace: JSON.stringify({
+						layout: "single",
+						cwd: join(runDir, "repo"),
+						repos: [
+							{
+								name: "repo",
+								dir: join(runDir, "repo"),
+								sourceKind: "url",
+								url: "https://github.com/acme/api",
+								subPath: null,
+								connectionId: null,
+								head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+								branch: "main",
+								services: ["checkout"],
+								credential: { source: "none", label: "public", via: "none" },
+							},
+						],
+					}),
+				})),
+				lastEventSeq: vi.fn(async () => 10),
+				snapshotWith: vi.fn(async () => ({
+					snap: {
+						path: join(runDir, "repo"),
+						head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+						branch: "main",
+					},
+					credential: resolvedCred,
+				})),
+			});
+
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, ioRun: { store: { create(): Promise<void> } }) => {
+				await ioRun.store.create();
+				return { runId: "inv-followup", report: null, error: null, failureKind: "none" };
+			});
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-followup", attempts: 1 },
+				{
+					investigationId: "inv-followup",
+					incidentId: "inc-followup",
+					resume: {
+						text: "how about the rebuilt credential?",
+						mode: "queue",
+						restore: { status: "completed", completedAt: "2026-09-30T10:00:00.000Z", error: null },
+					},
+				},
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			// The follow-up rebuilds workspace with snapshotWith and passes updated workspace JSON to store
+			expect(ports.snapshotWith).toHaveBeenCalled();
+			expect(mocks.conductRun).toHaveBeenCalled();
+			const [, dto] = vi.mocked(ports.followUpStatus).mock.calls[0] as [string, { workspace?: string }];
+			expect(JSON.parse(dto.workspace ?? "null").repos[0].credential).toEqual(resolvedCred);
+			rmSync(tmp, { recursive: true, force: true });
 		});
 	});
 
 	it("a folder-source repo: snapshot gets kind 'folder' with the folder path as source, and the note says so", async () => {
-		const snapshot = vi.fn(async () => ({
+		const snapshot = cloneAs(async () => ({
 			path: "/app-data/runs/inv-1/repo",
 			head: "abc123def456789",
 			branch: null,
@@ -371,17 +468,17 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					serviceName: "checkout",
 				},
 			]),
-			snapshot,
+			snapshotWith: snapshot,
 		});
 
 		const ws = await resolveWorkspace(minimalData(), ports);
 
 		expect(snapshot).toHaveBeenCalledWith(
 			{
-				kind: "folder",
-				source: "/home/dev/checkouts/api-gateway",
+				sourceKind: "folder",
+				url: "/home/dev/checkouts/api-gateway",
+				connectionId: null,
 				defaultBranch: null,
-				token: null,
 			},
 			expect.any(String),
 			undefined,
@@ -873,7 +970,7 @@ describe("follow-up on a finished run (#747)", () => {
 				workspace: recorded(dir),
 			})),
 			lastEventSeq: vi.fn(async () => 41),
-			snapshot: vi.fn(async (_src: unknown, dest: string) => ({ path: dest, head: HEAD, branch: null })),
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => ({ path: dest, head: HEAD, branch: null })),
 			...overrides,
 		});
 	}
@@ -889,8 +986,8 @@ describe("follow-up on a finished run (#747)", () => {
 		const result = await runInvestigationJob({ id: "job-2", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(result.success).toBe(true);
-		expect(ports.snapshot).toHaveBeenCalledWith(
-			{ kind: "url", source: "https://github.com/acme/api", token: null },
+		expect(ports.snapshotWith).toHaveBeenCalledWith(
+			{ sourceKind: "url", url: "https://github.com/acme/api", connectionId: null },
 			join(tmp, "runs", "inv-1", "repo"),
 			expect.any(AbortSignal),
 			HEAD,
@@ -1054,12 +1151,12 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(result.success).toBe(false);
 		expect(result.error).toBe("deepagents can't reopen a finished session, so a new run starts from the report.");
 		expect(mocks.conductRun).not.toHaveBeenCalled();
-		expect(ports.snapshot).not.toHaveBeenCalled();
+		expect(ports.snapshotWith).not.toHaveBeenCalled();
 	});
 
 	it("a commit the source lost fails with git's own text, and no clone is left", async () => {
 		const ports = followUpPorts({
-			snapshot: vi.fn(async (_src: unknown, dest: string) => {
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => {
 				mkdirSync(dest, { recursive: true });
 				throw new Error(`fatal: reference is not a tree: ${HEAD}`);
 			}),

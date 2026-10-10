@@ -150,7 +150,11 @@ export function createPrismaInvestigationStore(
 		async create() {
 			const turn = payloadTurn({ chat, resume });
 			if (resume) {
-				await ports.followUpStatus(investigationId, { status: "running" });
+				// The rebuild's credentials replace the first run's on the row (#673).
+				await ports.followUpStatus(investigationId, {
+					status: "running",
+					...(workspace ? { workspace } : {}),
+				});
 				await ports.initLiveTurn(investigationId, turn);
 				await ports.createTimelineEntry({
 					incidentId,

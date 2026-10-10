@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ServiceWithRelations } from "@prismalens/contracts";
+import type {
+	GitCredentialDisplay,
+	Repository,
+	ServiceWithRelations,
+} from "@prismalens/contracts";
 import { useState } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
@@ -9,11 +13,87 @@ import { MutationError } from "@/components/shared/MutationError";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAddRepositorySource, useUnlinkRepository } from "@/lib/api/hooks";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
+	useAddRepositorySource,
+	useSetRepositoryCredential,
+	useUnlinkRepository,
+} from "@/lib/api/hooks";
+import { credentialLabel } from "@/lib/investigation-events";
+
+const AUTO = "auto";
+
+/** The saved token a repository is pinned to, from its metadata. */
+function pinOf(repo: Repository): string | null {
+	const pick = repo.metadata?.credentialConnectionId;
+	return typeof pick === "string" && pick ? pick : null;
+}
+
+/**
+ * Auto or one saved token for the row's host (#673): shown when two tokens match,
+ * or once a token is pinned, so the pin can be changed or set back to Auto.
+ */
+function CredentialPicker({
+	repo,
+	credential,
+}: {
+	repo: Repository;
+	credential: GitCredentialDisplay;
+}) {
+	const set = useSetRepositoryCredential();
+	const pin = pinOf(repo);
+	const candidates = credential.problem?.candidates ?? [];
+	const options =
+		pin && !candidates.some((c) => c.connectionId === pin)
+			? [
+					...candidates,
+					{
+						connectionId: pin,
+						label: credential.label.replace(/^token /, ""),
+						fingerprint: credential.fingerprint ?? "",
+					},
+				]
+			: candidates;
+	return (
+		<div className="mt-1 flex flex-wrap items-center gap-2">
+			<Select
+				value={pin ?? AUTO}
+				disabled={set.isPending}
+				onValueChange={(v) =>
+					set.mutate({ id: repo.id, connectionId: v === AUTO ? null : v })
+				}
+			>
+				<SelectTrigger
+					className="h-7 w-auto min-w-32"
+					aria-label="Which token this repository clones with"
+					data-testid="service-code-credential-picker"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value={AUTO}>Auto</SelectItem>
+					{options.map((c) => (
+						<SelectItem key={c.connectionId} value={c.connectionId}>
+							{c.fingerprint ? `${c.label}, fp ${c.fingerprint}` : c.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			<MutationError error={set.error} />
+		</div>
+	);
+}
 
 /**
  * Code the run reads (study-v3 §7): the folder or git URL a run copies, with
- * the branch and the commit it last read. Add takes either.
+ * the branch and the commit it last read, and which credential git uses for it
+ * (#673). Add takes either.
  */
 export function ServiceCodeSection({
 	service,
@@ -56,6 +136,11 @@ export function ServiceCodeSection({
 					]
 						.filter(Boolean)
 						.join(", ");
+					const credential = r.credential;
+					const picker =
+						r.sourceKind === "url" &&
+						credential &&
+						(credential.problem?.code === "ambiguous" || !!pinOf(r));
 					return (
 						<li
 							key={sr.id}
@@ -71,9 +156,33 @@ export function ServiceCodeSection({
 										<bdi>{where}</bdi>
 									</Mono>
 								</Hint>
-								<p className="text-meta text-text-2">{line}</p>
+								<p className="text-meta text-text-2">
+									{line}
+									{credential && (
+										<>
+											{", "}
+											<span
+												title={credential.via}
+												data-testid="service-code-credential"
+											>
+												Code: {credentialLabel(credential)}
+											</span>
+										</>
+									)}
+								</p>
+								{credential?.problem && (
+									<p
+										className="text-meta text-danger"
+										data-testid="service-code-credential-problem"
+									>
+										{credential.problem.message}
+									</p>
+								)}
 								{r.syncError && (
 									<p className="text-meta text-danger">{r.syncError}</p>
+								)}
+								{picker && credential && (
+									<CredentialPicker repo={r} credential={credential} />
 								)}
 							</div>
 							<Button

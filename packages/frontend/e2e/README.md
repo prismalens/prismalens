@@ -115,7 +115,7 @@ Verdicts: ✅ journey verified end-to-end · 🟦 read path verified, write path
 | J10 | Investigation view | `/investigations`, `/investigations/$id` | C6 | `alerts-investigations.spec.ts` | 🟦 1 of 3 tabs |
 | J11 | Storm — flood → one grouped investigation | (no dedicated route) | C7 | — | ⬜ |
 | J12 | Settings — AI provider, policy, connections, danger zone | `/settings?tab=…` | C2, C9 | `integrations-settings.spec.ts` | 🟦 1 of 5 tabs |
-| J13 | Integration configuration | `/settings/integrations/configure` | C2 | `integrations-settings.spec.ts` | 🟦 render only |
+| J13 | Git host tokens | `/settings?tab=integrations` | C2 | `integrations-settings.spec.ts` | 🟦 form only |
 | J14 | Team operations & RBAC | — | C12 | — | ◻️ |
 | J15 | Correlation & alert-mapping rule management | `/rules?tab=…` | C8 | `rules-management.spec.ts` | ✅ |
 | J16 | Approve → execute | — | C13 | — | ◻️ by design (ADR-0023) |
@@ -173,12 +173,12 @@ covered by the CLI's own packed-smoke and cross-os-smoke tiers, not by Playwrigh
 - **States**: loading; empty catalog; populated; unlinked-repository / unlinked-deployment counts
   surfaced as badges; discovery running; discovery empty; discovery error; per-suggestion
   accept / reject / ignore; bulk accept.
-- **Write paths** (nine): `services.create`, `services.update`, `services.delete`,
-  `repositories.batchCreate`, `serviceDiscovery.triggerDiscovery`,
+- **Write paths** (eight): `services.create`, `services.update`, `services.delete`,
+  `serviceDiscovery.triggerDiscovery`,
   `serviceDiscovery.acceptSuggestion`, `serviceDiscovery.rejectSuggestion`,
   `serviceDiscovery.ignoreSuggestion`, `serviceDiscovery.acceptBulkSuggestions`.
 - **Coverage**: `services-discovery.spec.ts` asserts five seeded service names render, and that
-  `/services/discovery` renders its heading. No write path is exercised — not one of the nine
+  `/services/discovery` renders its heading. No write path is exercised — not one of the eight
   mutations above is called by any test.
 
 ### J5 — Service detail
@@ -335,17 +335,15 @@ anything.
   the AI-provider tab, which is the one a fresh `pl up` install must complete before anything
   investigates.
 
-### J13 — Integration configuration
+### J13 — Git host tokens
 
-- **Entry point**: *Add integration* → provider-specific configuration.
-- **Route**: `/settings/integrations/configure`.
-- **Goal**: complete a GitHub App install or an OAuth org/repo selection and land a working
-  connection.
-- **States**: loading orgs; loading repos; **missing connection ID** (the error case); installation
-  selection; saving; save failure.
-- **Coverage**: the spec asserts that one of `Configure` / `Select installation` /
-  `Missing Connection ID` is visible — a regex that passes in the success *and* error states. It
-  proves the route renders something, not which state it rendered.
+- **Entry point**: Settings → Integrations → *Add a token*.
+- **Route**: `/settings?tab=integrations`.
+- **Goal**: save a token for one git host, see its host and fingerprint, and Test it against the
+  repositories on that host.
+- **States**: host normalised on save; Test with no repository on the host yet (neutral); Test
+  per repository; token refused; a removed GitHub App connection (Delete only).
+- **Coverage**: the spec asserts the form's host default, its hint and the required-token error.
 
 ### J14 — Team operations & RBAC — ◻️ no surface
 
@@ -534,7 +532,7 @@ reader unable to tell what was considered from what was missed, so the dispositi
 | J6 alerts | `alerts.acknowledge`, `alerts.resolve` | **Deferred to the growth rule.** Both are single-field status flips wired inline in the route, immediately visible in the same table, with no downstream state. A user notices instantly; nothing else breaks silently. |
 | J8 recommendations | `recommendations.update` (wired), `complete`/`dismiss` (hooks, no UI caller yet) | **Deferred to the growth rule.** Only one of the three is reachable from the UI today, and the tab is on C13's act-phase path (ADR-0023), so the surface is expected to change shape before a baseline spec would pay for itself. |
 | J8 investigate | `incidents.investigate` | **Deferred — but only because J11 covers it.** `storm-intake.spec.ts` drives an incident to an investigation, which is the same procedure from the same surface. A second assertion would be duplication. |
-| J13 integration config | `integrations.connectGitHubInstallation`, `updateConnectionConfig` | **Deferred — cannot be asserted in-process.** Both complete against live GitHub/OAuth; a stub deep enough to make the assertion meaningful would test the stub. J12's connection CRUD covers the persistence half that *is* local. |
+| J13 git host tokens | `integrations.createConnection`, `testConnection`, `repositories.setCredential` | **Baseline with the git credential work (#673).** A local `git http-backend` server stands in for the host, so Test and the clone run in-process. |
 
 Deferred does not mean uncovered forever — it means the per-PR growth rule picks them up the next
 time someone touches that surface, rather than the baseline paying for them now.

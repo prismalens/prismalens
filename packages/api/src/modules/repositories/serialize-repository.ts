@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Repository } from "@prismalens/contracts/schemas";
+import type {
+	GitCredentialDisplay,
+	Repository,
+} from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
 
-export function serializeRepository(repo: PrismaRepository): Repository {
+/** A row with the credential its next git call would use, worked out at read time (#673). */
+export async function serializeRepository(
+	repo: PrismaRepository,
+	credentialFor: (repo: PrismaRepository) => Promise<GitCredentialDisplay>,
+): Promise<Repository> {
 	return {
 		...repo,
 		createdAt: repo.createdAt.toISOString(),
@@ -14,5 +21,6 @@ export function serializeRepository(repo: PrismaRepository): Repository {
 			typeof repo.metadata === "string"
 				? (JSON.parse(repo.metadata) as Record<string, unknown>)
 				: (repo.metadata as Record<string, unknown> | null),
+		credential: await credentialFor(repo),
 	} as Repository;
 }

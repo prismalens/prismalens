@@ -21,22 +21,18 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(
 			page.getByRole("heading", { name: "Git hosts", level: 3 }),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByTestId("add-integration")).toHaveText(
-			"Add an integration",
-		);
+		await expect(page.getByTestId("add-integration")).toHaveText("Add a token");
 		// Each field's control is described by its hint, then by its error.
 		await page.getByTestId("add-integration").click();
-		const dialog = page.getByTestId("integration-form-dialog");
-		await dialog.getByTestId("template-github-app").click();
-		const appId = dialog.locator("#cred-appId");
-		await expect(appId).toHaveAccessibleDescription(
-			"Your GitHub App's ID (found in the App settings page)",
+		const dialog = page.getByRole("dialog", { name: "Add a git host token" });
+		const host = dialog.locator("#cred-host");
+		await expect(host).toHaveValue("github.com");
+		await expect(host).toHaveAccessibleDescription(
+			"github.com, gitlab.com, bitbucket.org, or your own git host, with :port if it has one",
 		);
-		const label = dialog.locator("#integration-label");
-		await label.fill("");
+		const token = dialog.locator("#cred-token");
 		await dialog.getByRole("button", { name: "Save" }).click();
-		await expect(label).toHaveAccessibleDescription("Give it a label.");
-		await expect(appId).toHaveAccessibleDescription("App ID is required");
+		await expect(token).toHaveAccessibleDescription("Token is required");
 		await page.keyboard.press("Escape");
 		await expect(dialog).toHaveCount(0);
 		await page.getByTestId("settings-nav-sources").click();
@@ -46,11 +42,5 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(page.getByTestId("webhook-url")).toContainText(
 			"/api/webhooks/prometheus",
 		);
-
-		// 2. Navigate to /settings/integrations/configure and assert configuration page/form renders
-		await page.goto("/settings/integrations/configure");
-		await expect(
-			page.getByText(/Configure|Select installation|Missing Connection ID/),
-		).toBeVisible({ timeout: 15_000 });
 	});
 });

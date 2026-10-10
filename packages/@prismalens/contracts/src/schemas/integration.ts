@@ -44,7 +44,7 @@ export const AuthTemplateResponseSchema = z.object({
 	name: z.string(),
 	version: z.string(),
 	category: z.string(),
-	authMode: z.enum(["api_key", "basic", "oauth2", "github_app"]),
+	authMode: z.enum(["api_key", "basic", "oauth2"]),
 	icon: z.string().optional(),
 	docsUrl: z.string().optional(),
 	setupDocsUrl: z.string().optional(),
@@ -56,6 +56,10 @@ export const AuthTemplateResponseSchema = z.object({
 	connectionCreationMode: z.enum(["form", "oauth_redirect"]),
 	postCreationAction: z.enum(["none", "oauth_redirect", "navigate"]),
 	postCreationNavigateTo: z.string().optional(),
+	/** A git host token: Test runs `git ls-remote` against matching repositories (#673). */
+	gitHost: z.boolean().optional(),
+	/** False keeps the template out of the Add menu; saved rows still work. */
+	listed: z.boolean().optional(),
 });
 
 // =============================================================================
@@ -118,6 +122,12 @@ export const ConnectionWithIntegrationSchema = ConnectionSchema.extend({
 	templateId: z.string().optional(),
 	templateName: z.string().optional(),
 	template: AuthTemplateResponseSchema.nullable().optional(),
+	/** Its template was removed (a 0.5.0 GitHub App row): it no longer works, only Delete applies. */
+	legacy: z.literal(true).optional(),
+	/** A git host token's host, `host[:port]` (#673). */
+	host: z.string().optional(),
+	/** `fp` of a git host token: an HMAC of host and token, never the token. */
+	fingerprint: z.string().optional(),
 });
 
 export const CreateConnectionSchema = z.object({
@@ -137,18 +147,14 @@ export const UpdateConnectionSchema = z.object({
 export const TestConnectionResponseSchema = z.object({
 	success: z.boolean(),
 	error: z.string().optional(),
+	/** A git host token: one line per repository tried, `ok owner/repo` or why not. */
+	details: z.array(z.string()).optional(),
+	/** Nothing could be tried yet; the status is left alone. */
+	untested: z.boolean().optional(),
 });
 export type TestConnectionResponse = z.infer<
 	typeof TestConnectionResponseSchema
 >;
-
-// =============================================================================
-// OAUTH SCHEMAS
-// =============================================================================
-
-export const OAuthStartResponseSchema = z.object({
-	redirectUrl: z.string().url(),
-});
 
 // =============================================================================
 // INTEGRATION QUERY SCHEMAS
@@ -169,15 +175,11 @@ export const IntegrationQuerySchema = z.object({
 export type {
 	Capability,
 	GitFileContent,
-	GitOrganization,
-	GitRepository,
 	PermissionRequirement,
 } from "@prismalens/config/integrations";
 export {
 	CapabilitySchema,
 	GitFileContentSchema,
-	GitOrganizationSchema,
-	GitRepositorySchema,
 	PermissionRequirementSchema,
 } from "@prismalens/config/integrations";
 
@@ -226,31 +228,6 @@ export const ServiceIntegrationWithStatusSchema = z.object({
 });
 
 // =============================================================================
-// GITHUB APP SCHEMAS
-// =============================================================================
-
-export const GitHubInstallationSchema = z.object({
-	id: z.number(),
-	account: z.object({
-		login: z.string(),
-		id: z.number(),
-		type: z.string(),
-		avatarUrl: z.string().optional(),
-	}),
-	appId: z.number(),
-	targetType: z.string(),
-	permissions: z.record(z.string(), z.string()),
-	events: z.array(z.string()),
-	repositorySelection: z.string(),
-});
-
-export const ConnectInstallationSchema = z.object({
-	installationId: z.string(),
-	organization: z.string().optional(),
-	permissionOverrides: z.record(z.string(), z.string()).optional(),
-});
-
-// =============================================================================
 // DELETION IMPACT SCHEMAS
 // =============================================================================
 
@@ -291,7 +268,6 @@ export type ConnectionWithIntegration = z.infer<
 >;
 export type CreateConnectionInput = z.infer<typeof CreateConnectionSchema>;
 export type UpdateConnectionInput = z.infer<typeof UpdateConnectionSchema>;
-export type OAuthStartResponse = z.infer<typeof OAuthStartResponseSchema>;
 export type IntegrationQuery = z.infer<typeof IntegrationQuerySchema>;
 
 // Git provider types — re-exported from @prismalens/config/integrations above
@@ -306,12 +282,6 @@ export type UpdateServiceIntegrationInput = z.infer<
 >;
 export type ServiceIntegrationWithStatus = z.infer<
 	typeof ServiceIntegrationWithStatusSchema
->;
-
-// GitHub App types
-export type GitHubInstallation = z.infer<typeof GitHubInstallationSchema>;
-export type ConnectInstallationInput = z.infer<
-	typeof ConnectInstallationSchema
 >;
 
 // Deletion impact types

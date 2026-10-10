@@ -17,8 +17,13 @@ import type {
 	Integration,
 	ServiceIntegration,
 } from "@prismalens/database";
-import { type AuthTemplate, getTemplate } from "@prismalens/integrations";
+import {
+	type AuthTemplate,
+	getTemplate,
+	isLegacyTemplateId,
+} from "@prismalens/integrations";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
+import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 
@@ -28,6 +33,7 @@ export class IntegrationsController {
 
 	constructor(
 		private readonly integrationsService: IntegrationsService,
+		private readonly gitCredentials: GitCredentialService,
 		private readonly moduleRef: ModuleRef,
 	) {}
 
@@ -122,6 +128,7 @@ export class IntegrationsController {
 						message: "Integration not found",
 					});
 				}
+				this.gitCredentials.invalidate();
 				this.logger.log(`Deleted integration: ${input.id}`);
 			}),
 
@@ -134,6 +141,7 @@ export class IntegrationsController {
 			).handler(async ({ input, context }) => {
 				const connection =
 					await this.integrationsService.createConnection(input);
+				this.gitCredentials.invalidate();
 				this.logger.log(`Created connection: ${connection.id}`);
 				// An alert that fired by webhook before this connection existed is
 				// listed now, so it can later resolve by absence (walk f17).
@@ -183,6 +191,7 @@ export class IntegrationsController {
 						message: "Connection not found",
 					});
 				}
+				this.gitCredentials.invalidate();
 				this.logger.log(`Updated connection: ${id}`);
 				return this.serializeConnection(connection);
 			}),
@@ -198,6 +207,7 @@ export class IntegrationsController {
 						message: "Connection not found",
 					});
 				}
+				this.gitCredentials.invalidate();
 				this.logger.log(`Deleted connection: ${input.id}`);
 			}),
 
@@ -206,7 +216,13 @@ export class IntegrationsController {
 					const result = await this.integrationsService.testConnection(
 						input.id,
 					);
-					return { success: result.success, error: result.error };
+					this.gitCredentials.invalidate();
+					return {
+						success: result.success,
+						...(result.error ? { error: result.error } : {}),
+						...(result.details ? { details: result.details } : {}),
+						...(result.untested ? { untested: true } : {}),
+					};
 				},
 			),
 
@@ -240,22 +256,6 @@ export class IntegrationsController {
 				return impact;
 			}),
 
-			// =========================================================================
-			// GIT PROVIDER ENDPOINTS
-			// =========================================================================
-
-			getGitOrganizations: implement(
-				integrationsContract.getGitOrganizations,
-			).handler(async ({ input, context }) => {
-				return this.integrationsService.getGitOrganizations(input.id);
-			}),
-
-			getGitRepositories: implement(
-				integrationsContract.getGitRepositories,
-			).handler(async ({ input, context }) => {
-				return this.integrationsService.getGitRepositories(input.id, input.org);
-			}),
-
 			updateConnectionConfig: implement(
 				integrationsContract.updateConnectionConfig,
 			).handler(async ({ input, context }) => {
@@ -265,47 +265,6 @@ export class IntegrationsController {
 						input.config,
 					);
 				this.logger.log(`Updated config for connection: ${input.id}`);
-				return this.serializeConnection(connection);
-			}),
-
-			// =========================================================================
-			// GITHUB APP ENDPOINTS
-			// =========================================================================
-
-			listGitHubInstallations: implement(
-				integrationsContract.listGitHubInstallations,
-			).handler(async ({ input, context }) => {
-				const installations =
-					await this.integrationsService.listGitHubInstallations(input.id);
-				return installations.map((inst) => ({
-					id: inst.id,
-					account: {
-						login: inst.account.login,
-						id: inst.account.id,
-						type: inst.account.type,
-						avatarUrl: inst.account.avatar_url,
-					},
-					appId: inst.app_id,
-					targetType: inst.target_type,
-					permissions: inst.permissions,
-					events: inst.events,
-					repositorySelection: inst.repository_selection,
-				}));
-			}),
-
-			connectGitHubInstallation: implement(
-				integrationsContract.connectGitHubInstallation,
-			).handler(async ({ input, context }) => {
-				const connection =
-					await this.integrationsService.connectGitHubInstallation(
-						input.id,
-						input.installationId,
-						input.organization,
-						input.permissionOverrides,
-					);
-				this.logger.log(
-					`Connected GitHub installation ${input.installationId} → connection ${connection.id}`,
-				);
 				return this.serializeConnection(connection);
 			}),
 
@@ -389,6 +348,8 @@ export class IntegrationsController {
 			connectionCreationMode: template.connectionCreation.mode,
 			postCreationAction: template.postIntegrationCreation.action,
 			postCreationNavigateTo: template.postIntegrationCreation.navigateTo,
+			...(template.gitHost ? { gitHost: true } : {}),
+			...(template.display.listed === false ? { listed: false } : {}),
 		};
 	}
 
@@ -430,22 +391,39 @@ export class IntegrationsController {
 	): ConnectionWithIntegrationResponse {
 		const serialized = this.serializeConnection(connection);
 		const { integration } = connection;
-		const template = getTemplate(integration.templateId);
+		const legacy = isLegacyTemplateId(integration.templateId);
+		const template = legacy ? undefined : getTemplate(integration.templateId);
 		// A URL-only source holds no secret: its URL and its network error are what
-		// Settings, Alert sources shows (study-v3 §7). Token errors stay redacted.
+		// Settings, Alert sources shows (study-v3 §7). A git host token's errors are
+		// git's scrubbed taxonomy messages (#673); other token errors stay redacted.
 		const urlOnly = template?.urlOnly === true;
+		const git = template?.gitHost
+			? this.integrationsService.gitHostInfo(connection)
+			: null;
+		const expired =
+			serialized.status === "ACTIVE" &&
+			!!connection.tokenExpiresAt &&
+			connection.tokenExpiresAt < new Date();
 
 		return {
 			...serialized,
+			...(expired ? { status: "TOKEN_EXPIRED" as const } : {}),
 			...(urlOnly
 				? {
 						baseUrl: this.integrationsService.baseUrlOf(connection),
 						lastErrorMessage: connection.lastErrorMessage ?? null,
 					}
 				: {}),
+			...(template?.gitHost
+				? { lastErrorMessage: connection.lastErrorMessage ?? null }
+				: {}),
+			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),
+			...(legacy ? { legacy: true as const } : {}),
 			integration: this.serializeIntegration(integration),
 			templateId: integration.templateId,
-			templateName: template?.name ?? integration.templateId,
+			templateName: legacy
+				? "GitHub App (removed in 0.5.1)"
+				: (template?.name ?? integration.templateId),
 			template: template ? this.serializeTemplate(template) : null,
 		};
 	}

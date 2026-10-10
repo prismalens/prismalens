@@ -36,7 +36,6 @@ export type {
 // ── Exact-templateId adapter registry ──
 
 const ADAPTER_REGISTRY: Record<string, new () => ProviderAdapter> = {
-	"github-app": GitHubAdapter,
 	"github-token": GitHubAdapter,
 	prometheus: PrometheusAdapter,
 	render: RenderAdapter,

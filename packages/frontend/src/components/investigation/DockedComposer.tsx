@@ -40,7 +40,7 @@ import { uploadAttachment } from "@/lib/attachments";
 import { composerMode } from "@/lib/composer-keys";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { pinnedTo } from "@/lib/investigation-events";
+import { pinnedTo, runCodeClause } from "@/lib/investigation-events";
 import {
 	defaultVerb,
 	followUpKind,
@@ -357,6 +357,7 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 				: "Working"
 			: runStateLabel(inv.kind, run.state);
 	const sha = pinnedTo(inv.workspace);
+	const code = runCodeClause(inv.workspace);
 	const service = incident.service?.displayName || incident.service?.name;
 	const lastMessage = !live && !chat ? lastMessageWord(inv) : null;
 	const access = runAccessLine(
@@ -401,7 +402,7 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 			{sha && (
 				<span
 					className="inline-flex items-center gap-1"
-					title={service ? `${service}, commit ${sha}` : `Commit ${sha}`}
+					title={`${service ? `${service}, commit ${sha}` : `Commit ${sha}`}${code ? `\n${code.title}` : ""}`}
 				>
 					<GitCommitHorizontal className="size-3" aria-hidden />
 					<span className="font-mono">{sha}</span>

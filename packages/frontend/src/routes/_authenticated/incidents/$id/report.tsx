@@ -21,7 +21,6 @@ import {
 } from "@/components/incidents/run-facts";
 import { DoNow, useDoNow } from "@/components/investigation/DoNow";
 import { ExportReportButton } from "@/components/investigation/ExportReportButton";
-import { PostToGitHubButton } from "@/components/investigation/PostToGitHubButton";
 import {
 	Answer,
 	Gaps,
@@ -90,9 +89,6 @@ function ReportHeader({
 						investigationId={investigation.id}
 						label="Export"
 					/>
-					{investigation.status === "completed" && (
-						<PostToGitHubButton investigationId={investigation.id} />
-					)}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button

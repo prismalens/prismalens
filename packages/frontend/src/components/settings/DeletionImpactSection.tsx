@@ -110,11 +110,12 @@ export function DeletionImpactSection({
 				<ImpactLine
 					icon={<FolderGit2 className="h-3 w-3" />}
 					count={impact.repositories.length}
-					singular="repository"
-					plural="repositories"
+					singular="repository keeps its URL and falls back to Auto"
+					plural="repositories keep their URL and fall back to Auto"
 					items={impact.repositories.map((r) => ({
 						id: r.id,
 						label: r.fullName,
+						badge: "falls back to Auto",
 					}))}
 				/>
 			)}

@@ -152,7 +152,7 @@ describe("ConnectorResolverService (#633)", () => {
 					label: "GitHub",
 					status: "ACTIVE",
 					integration: {
-						templateId: "github-app",
+						templateId: "github-token",
 					},
 				},
 			},
