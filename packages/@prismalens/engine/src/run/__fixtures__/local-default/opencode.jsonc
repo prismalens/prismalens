@@ -1,0 +1,4 @@
+{
+	// OpenCode JSONC configuration
+	"default_agent": "plan" // Mode is plan
+}
