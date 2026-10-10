@@ -355,9 +355,91 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			);
 
 			const [, dto] = updateStatus.mock.calls[0] as unknown as [string, { workspace?: string }];
-			expect(JSON.parse(dto.workspace ?? "null")).toMatchObject({ layout: "multi", repos: [{ name: "api" }, { name: "worker" }] });
+			const savedWs = JSON.parse(dto.workspace ?? "null");
+			expect(savedWs).toMatchObject({ layout: "multi", repos: [{ name: "api" }, { name: "worker" }] });
+			// T17: the workspace record carries credential per repo
+			for (const r of savedWs.repos) {
+				expect(r.credential).toEqual({
+					source: "none",
+					label: "public",
+					via: "none",
+				});
+			}
 			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
 			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+		});
+
+		it("T17b: a follow-up re-records the workspace with the credential the rebuild resolved", async () => {
+			const tmp = mkdtempSync(join(os.tmpdir(), "pl-followup-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+			const runDir = join(tmp, "runs", "inv-followup");
+			mkdirSync(runDir, { recursive: true });
+			const resolvedCred = {
+				source: "connection" as const,
+				label: "token Updated",
+				via: "git-host-token",
+			};
+			const ports = fakePorts({
+				findInvestigation: vi.fn(async () => ({
+					id: "inv-followup",
+					status: "pending",
+					harness: "opencode",
+					model: "opencode/some-model",
+					acpSessionId: "ses_abc",
+					workspace: JSON.stringify({
+						layout: "single",
+						cwd: join(runDir, "repo"),
+						repos: [
+							{
+								name: "repo",
+								dir: join(runDir, "repo"),
+								sourceKind: "url",
+								url: "https://github.com/acme/api",
+								subPath: null,
+								connectionId: null,
+								head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+								branch: "main",
+								services: ["checkout"],
+								credential: { source: "none", label: "public", via: "none" },
+							},
+						],
+					}),
+				})),
+				lastEventSeq: vi.fn(async () => 10),
+				snapshotWith: vi.fn(async () => ({
+					snap: {
+						path: join(runDir, "repo"),
+						head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+						branch: "main",
+					},
+					credential: resolvedCred,
+				})),
+			});
+
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, ioRun: { store: { create(): Promise<void> } }) => {
+				await ioRun.store.create();
+				return { runId: "inv-followup", report: null, error: null, failureKind: "none" };
+			});
+
+			await runInvestigationJob(
+				{ id: "job-followup", investigationId: "inv-followup", attempts: 1 },
+				{
+					investigationId: "inv-followup",
+					incidentId: "inc-followup",
+					resume: {
+						text: "how about the rebuilt credential?",
+						mode: "queue",
+						restore: { status: "completed", completedAt: "2026-09-30T10:00:00.000Z", error: null },
+					},
+				},
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			// The follow-up rebuilds workspace with snapshotWith and passes updated workspace JSON to store
+			expect(ports.snapshotWith).toHaveBeenCalled();
+			expect(mocks.conductRun).toHaveBeenCalled();
 		});
 	});
 

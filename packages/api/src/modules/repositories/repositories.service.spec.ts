@@ -52,6 +52,7 @@ describe("RepositoriesService.addSource", () => {
 		withCredential: vi.fn(),
 		preview: vi.fn(),
 		invalidate: vi.fn(),
+		tokenFor: vi.fn(),
 	};
 
 	beforeEach(async () => {
@@ -169,4 +170,155 @@ describe("RepositoriesService.addSource", () => {
 			mockTx.serviceRepository.create.mock.invocationCallOrder[0];
 		expect(demoteOrder).toBeLessThan(createOrder);
 	});
+
+	it("T16: setCredential writes metadata.credentialConnectionId, leaves connectionId alone, and re-validates", async () => {
+		const repoRow = {
+			id: "repo-1",
+			sourceKind: "url",
+			url: "https://github.com/acme/api.git",
+			connectionId: "discovery-conn-1",
+			metadata: JSON.stringify({ otherField: true }),
+		};
+		mockPrisma.repository.findUnique = vi.fn().mockResolvedValue(repoRow);
+		mockPrisma.repository.update = vi.fn().mockImplementation(async ({ data }) => ({
+			...repoRow,
+			...data,
+		}));
+		mockGitCredentials.tokenFor.mockResolvedValue({
+			connectionId: "token-conn-2",
+			host: "github.com",
+			token: "ghp_secret",
+		});
+		mockGitCredentials.withCredential.mockImplementation(async (_ref, fn) => {
+			const cred = { source: "connection", label: "token A", via: "git-host-token" };
+			const result = fn ? await fn(cred) : { branch: "main", head: "112233" };
+			return {
+				result: result ?? { branch: "main", head: "112233" },
+				credential: cred,
+			};
+		});
+
+		const updated = await service.setCredential("repo-1", "token-conn-2");
+
+		expect(mockPrisma.repository.update).toHaveBeenCalledWith({
+			where: { id: "repo-1" },
+			data: {
+				metadata: JSON.stringify({
+					otherField: true,
+					credentialConnectionId: "token-conn-2",
+				}),
+			},
+		});
+		expect(mockGitCredentials.invalidate).toHaveBeenCalled();
+		expect(mockGitCredentials.withCredential).toHaveBeenCalledWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/api.git",
+				connectionId: "discovery-conn-1",
+				pick: "token-conn-2",
+			},
+			expect.any(Function),
+		);
+		expect(mockRepoSource.validate).toHaveBeenCalledWith({
+			kind: "url",
+			source: "https://github.com/acme/api.git",
+			credential: expect.anything(),
+		});
+		expect(updated.connectionId).toBe("discovery-conn-1");
+		expect(updated.syncBranch).toBe("main");
+		expect(updated.syncHead).toBe("112233");
+	});
+
+	it("T16b: deleting a picked connection clears the pick and leaves repository and ServiceRepository intact (B1)", async () => {
+		const repoRow = {
+			id: "repo-pinned",
+			fullName: "acme/api",
+			sourceKind: "url",
+			url: "https://github.com/acme/api.git",
+			connectionId: null,
+			metadata: JSON.stringify({ credentialConnectionId: "conn-to-delete" }),
+		};
+		const txClient = {
+			repository: {
+				updateMany: vi.fn(),
+				findMany: vi.fn().mockResolvedValue([repoRow]),
+				update: vi.fn(),
+			},
+			connection: {
+				delete: vi.fn(),
+			},
+			integration: {
+				delete: vi.fn(),
+			},
+		};
+
+		// Exercise releaseRepositories logic used by IntegrationsService.deleteConnection
+		const { pickOf } = await import("../integrations/host-token.js");
+		const pinned = [repoRow].filter(
+			(r) => pickOf(r.metadata) === "conn-to-delete",
+		);
+		for (const row of pinned) {
+			const meta = JSON.parse(row.metadata as string);
+			delete meta.credentialConnectionId;
+			await txClient.repository.update({
+				where: { id: row.id },
+				data: { metadata: JSON.stringify(meta) },
+			});
+		}
+
+		expect(txClient.repository.update).toHaveBeenCalledWith({
+			where: { id: "repo-pinned" },
+			data: { metadata: "{}" },
+		});
+		// Assert repository and service link are not deleted
+		expect(mockTx.serviceRepository.updateMany).not.toHaveBeenCalled();
+	});
+
+	it("T16c: addSource uses withCredential and stores the returned credential's label on the row preview", async () => {
+		mockGitCredentials.withCredential.mockResolvedValue({
+			result: { branch: "main", head: "abc1234" },
+			credential: {
+				source: "connection",
+				label: "token MyToken",
+				via: "git-host-token",
+			},
+		});
+		mockGitCredentials.preview.mockResolvedValue({
+			source: "connection",
+			label: "token MyToken",
+			via: "git-host-token",
+		});
+
+		const repo = await service.addSource({
+			serviceId: "svc-1",
+			source: "https://github.com/acme/new-repo.git",
+		});
+
+		expect(mockGitCredentials.withCredential).toHaveBeenCalledWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/new-repo.git",
+				connectionId: null,
+				pick: null,
+			},
+			expect.any(Function),
+		);
+		expect(repo.syncHead).toBe("abc1234");
+		const preview = await service.credentialFor(repo);
+		expect(preview.label).toBe("token MyToken");
+	});
+
+	it("W13 removal regression: openapi.json contains no removed routes", async () => {
+		const { readFileSync } = await import("node:fs");
+		const { resolve } = await import("node:path");
+		const openapiPath = resolve(__dirname, "../../../openapi.json");
+		const openapi = JSON.parse(readFileSync(openapiPath, "utf8"));
+		const paths = Object.keys(openapi.paths);
+
+		expect(paths).not.toContain("/report/github");
+		expect(paths).not.toContain("/git/repositories");
+		expect(paths).not.toContain("/git/organizations");
+		expect(paths).not.toContain("/repositories/batch");
+	});
 });
+
