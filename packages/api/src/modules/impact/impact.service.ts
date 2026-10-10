@@ -29,6 +29,7 @@ import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ChangeEventsService } from "../changes/change-events.service.js";
 import { ConnectorResolverService } from "../integrations/connector-resolver.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import { metricUnit } from "./metric-unit.js";
 import {
 	breaches,
 	expressionShape,
@@ -369,6 +370,7 @@ export class ImpactService {
 					source,
 					query: shape.series,
 					threshold: shape.threshold,
+					unit: metricUnit(shape.series),
 				};
 				const series = await target.metrics.rangeQuery(
 					target.request,

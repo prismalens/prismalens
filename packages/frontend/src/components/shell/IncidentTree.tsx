@@ -183,7 +183,12 @@ export function IncidentTree() {
 												className="flex min-w-0 flex-1 gap-1.5"
 												data-testid="tree-incident-link"
 											>
-												<Mono className="shrink-0 leading-5 text-text-3 group-hover/row:text-text-2">
+												<Mono
+													className={cn(
+														"shrink-0 leading-5 text-text-3 group-hover/row:text-text-2",
+														on && "text-text-2",
+													)}
+												>
 													INC-{incident.number}
 												</Mono>
 												<span dir="auto" className="min-w-0 truncate">
@@ -300,7 +305,12 @@ function RunList({
 						<span dir="auto" className="min-w-0 flex-1 truncate">
 							{label}
 						</span>
-						<span className="shrink-0 text-text-3 tabular-nums">
+						<span
+							className={cn(
+								"shrink-0 tabular-nums",
+								on ? "text-text-2" : "text-text-3",
+							)}
+						>
 							{live ? "now" : shortAge(r.createdAt, now)}
 						</span>
 					</Link>

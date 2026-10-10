@@ -4129,6 +4129,25 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "unit": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "s",
+                                    "bytes",
+                                    "ratio",
+                                    "percent",
+                                    "count",
+                                    "bytes/s",
+                                    "count/s"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [

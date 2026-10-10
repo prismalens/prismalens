@@ -36,6 +36,18 @@ export const ExpressionStateSchema = z.enum([
 ]);
 export type ExpressionState = z.infer<typeof ExpressionStateSchema>;
 
+/** The charted value's unit, from the metric names' Prometheus suffixes; `/s` after rate(). */
+export const MetricUnitSchema = z.enum([
+	"s",
+	"bytes",
+	"ratio",
+	"percent",
+	"count",
+	"bytes/s",
+	"count/s",
+]);
+export type MetricUnit = z.infer<typeof MetricUnitSchema>;
+
 export const ImpactSeriesSchema = z.object({
 	labels: z.record(z.string(), z.string()),
 	/** [unix seconds, value]; null where Prometheus answered NaN or Inf. */
@@ -73,6 +85,8 @@ export const ImpactChartSchema = z.object({
 			source: z.enum(["alert", "alert_current_rule", "service"]),
 			query: z.string(),
 			threshold: ThresholdSchema.nullable(),
+			/** Null when the names do not settle one. */
+			unit: MetricUnitSchema.nullable().optional(),
 		})
 		.nullable(),
 	scope: z.object({

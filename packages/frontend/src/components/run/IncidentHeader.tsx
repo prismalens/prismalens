@@ -6,29 +6,49 @@ import {
 	type IncidentWithRelations,
 	isIncidentOpen,
 	SEVERITY_LABEL,
+	type Severity,
 } from "@prismalens/contracts";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
-import { Button } from "@/components/ui/button";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
+import { incidentKeys, timelineKeys } from "@/lib/api/hooks";
 import { orpc } from "@/lib/api/orpc-client";
 import { download } from "@/lib/download";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { cn } from "@/lib/utils";
 import { firingWord } from "./run-labels";
+import { StatusUpdateDialog } from "./StatusUpdateDialog";
+
+const SEVERITIES = Object.keys(SEVERITY_LABEL) as Severity[];
 
 /** The 132 px the Windows window controls draw over (#811); nothing interactive under them. */
 export function WindowControlsSpace() {
@@ -70,15 +90,30 @@ export function IncidentHeader({
 	usePageTitle(`INC-${incident.number} ${incident.title} / ${view}`);
 	const now = useNow(30_000);
 	const { toast } = useToast();
+	const queryClient = useQueryClient();
 	const [mergeOpen, setMergeOpen] = useState(false);
+	const [confirmOpen, setConfirmOpen] = useState(false);
+	const [updateOpen, setUpdateOpen] = useState(false);
 	const firing = firingWord(incident.alerts ?? [], now);
 	const service = incident.service;
 	const merged = incident.mergedInto;
 	const canMerge = !incident.mergedIntoId && isIncidentOpen(incident.status);
 	const resolvable = !merged && canIncidentAction("close", incident.status);
 	const reopenable = !merged && canIncidentAction("reopen", incident.status);
-	const hasMenu =
-		!!reportRunId || canMerge || !!merged || incident.status === "closed";
+	const severity = useMutation({
+		...orpc.incidents.update.mutationOptions(),
+		onSuccess: () =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
+				queryClient.invalidateQueries({ queryKey: timelineKeys.all() }),
+			]),
+		onError: (error) =>
+			toast({
+				title: "Severity not changed",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			}),
+	});
 	const exportReport = useMutation({
 		...orpc.investigations.exportMarkdown.mutationOptions(),
 		onSuccess: ({ filename, markdown }) => download(filename, markdown),
@@ -164,7 +199,7 @@ export function IncidentHeader({
 				<Button
 					variant="secondary"
 					className="h-7 shrink-0 bg-surface-2 hover:bg-surface-3"
-					onClick={onResolve}
+					onClick={() => (firing?.firing ? setConfirmOpen(true) : onResolve())}
 					data-testid="header-resolve"
 				>
 					Resolve
@@ -180,56 +215,119 @@ export function IncidentHeader({
 					Reopen
 				</Button>
 			)}
-			{hasMenu && (
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button
-							variant="secondary"
-							size="icon"
-							className="size-7 shrink-0 bg-surface-2 text-text-2 hover:bg-surface-3"
-							aria-label="More actions"
-							data-testid="header-more"
+			<DropdownMenu>
+				<DropdownMenuTrigger asChild>
+					<Button
+						variant="secondary"
+						size="icon"
+						className="size-7 shrink-0 bg-surface-2 text-text-2 hover:bg-surface-3"
+						aria-label="More actions"
+						data-testid="header-more"
+					>
+						<MoreHorizontal className="size-4" />
+					</Button>
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="w-60">
+					<DropdownMenuItem
+						onClick={() => setUpdateOpen(true)}
+						data-testid="header-status-update"
+					>
+						Write a status update
+					</DropdownMenuItem>
+					{!merged && (
+						<DropdownMenuSub>
+							<DropdownMenuSubTrigger data-testid="header-severity-menu">
+								Change severity
+							</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent>
+								<DropdownMenuRadioGroup
+									value={incident.severity}
+									onValueChange={(v) =>
+										v !== incident.severity &&
+										severity.mutate({
+											id: incident.id,
+											severity: v as Severity,
+										})
+									}
+								>
+									{SEVERITIES.map((s) => (
+										<DropdownMenuRadioItem
+											key={s}
+											value={s}
+											disabled={severity.isPending}
+											data-testid={`header-severity-${s}`}
+										>
+											{SEVERITY_LABEL[s]}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuSubContent>
+						</DropdownMenuSub>
+					)}
+					{canMerge && (
+						<DropdownMenuItem
+							onClick={() => setMergeOpen(true)}
+							data-testid="header-merge"
 						>
-							<MoreHorizontal className="size-4" />
-						</Button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-56">
-						{reportRunId && (
-							<DropdownMenuItem
-								disabled={exportReport.isPending}
-								onClick={() => exportReport.mutate({ id: reportRunId })}
-								data-testid="header-export"
-							>
-								Export report as Markdown
-							</DropdownMenuItem>
-						)}
-						{canMerge && (
-							<DropdownMenuItem
-								onClick={() => setMergeOpen(true)}
-								data-testid="header-merge"
-							>
-								Merge into another incident
-							</DropdownMenuItem>
-						)}
-						{merged && (
-							<DropdownMenuItem asChild>
-								<Link to="/incidents/$id" params={{ id: merged.id }}>
-									Merged into INC-{merged.number}
-								</Link>
-							</DropdownMenuItem>
-						)}
-						{incident.status === "closed" && (
-							<DropdownMenuItem
-								onClick={onEditCause}
-								data-testid="header-edit-cause"
-							>
-								Edit cause
-							</DropdownMenuItem>
-						)}
-					</DropdownMenuContent>
-				</DropdownMenu>
-			)}
+							Merge into another incident
+						</DropdownMenuItem>
+					)}
+					{reportRunId && (
+						<DropdownMenuItem
+							disabled={exportReport.isPending}
+							onClick={() => exportReport.mutate({ id: reportRunId })}
+							data-testid="header-export"
+						>
+							Export report as Markdown
+						</DropdownMenuItem>
+					)}
+					{merged && (
+						<DropdownMenuItem asChild>
+							<Link to="/incidents/$id" params={{ id: merged.id }}>
+								Merged into INC-{merged.number}
+							</Link>
+						</DropdownMenuItem>
+					)}
+					{incident.status === "closed" && (
+						<DropdownMenuItem
+							onClick={onEditCause}
+							data-testid="header-edit-cause"
+						>
+							Edit cause
+						</DropdownMenuItem>
+					)}
+				</DropdownMenuContent>
+			</DropdownMenu>
 			{controlsSpace && <WindowControlsSpace />}
+			<StatusUpdateDialog
+				open={updateOpen}
+				onOpenChange={setUpdateOpen}
+				incident={incident}
+				now={now}
+			/>
+			<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+				<AlertDialogContent data-testid="resolve-firing-confirm">
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Resolve while the alert is firing?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							{incident.title} is still firing. If it keeps firing after you
+							resolve, PrismaLens opens a new incident and links it to this one.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							className={buttonVariants({ variant: "danger-fill" })}
+							onClick={onResolve}
+							data-testid="resolve-anyway"
+						>
+							Resolve anyway
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 			{canMerge && (
 				<MergeDialog
 					open={mergeOpen}
