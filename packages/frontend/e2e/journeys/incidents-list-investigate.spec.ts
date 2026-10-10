@@ -100,12 +100,9 @@ async function createIncident(page: Page, title: string): Promise<string> {
 }
 
 /**
- * The band's New run opens the draft on Conversation (#673); the draft's
- * Investigate carries the gate, its reason under the box.
+ * The overview composer's Investigate button carries the gate, its reason under the box.
  */
-async function bandInvestigate(page: Page) {
-	await page.getByTestId("band-more").click({ timeout: 15_000 });
-	await page.getByTestId("band-menu-new-run").click();
+async function overviewInvestigate(page: Page) {
 	return investigateButton(page);
 }
 
@@ -123,35 +120,35 @@ async function expectRefusal(page: Page, reason: string) {
 }
 
 test.describe("#520 part B — incident record investigate gate", () => {
-	test("band investigate is disabled with visible reason when no harness or provider is usable", async ({
+	test("overview investigate is disabled with visible reason when no harness or provider is usable", async ({
 		page,
 	}) => {
 		await serveUnusableLlmAndHarnesses(page);
 		const id = await createIncident(page, `Gate disabled ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}/alerts`);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = await bandInvestigate(page);
+		const investigateBtn = await overviewInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeDisabled();
 		await expectReason(page, UNUSABLE_SELECTION_REASON);
 	});
 
-	test("band investigate is enabled when a harness or provider is usable", async ({
+	test("overview investigate is enabled when a harness or provider is usable", async ({
 		page,
 	}) => {
 		await serveRunnableLlmAndHarnesses(page);
 		const id = await createIncident(page, `Gate enabled ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}/alerts`);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = await bandInvestigate(page);
+		const investigateBtn = await overviewInvestigate(page);
 		await expect(investigateBtn).toBeVisible({ timeout: 15_000 });
 		await expect(investigateBtn).toBeEnabled();
 	});
@@ -186,12 +183,12 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			await route.fallback();
 		});
 
-		await page.goto(`/incidents/${id}/alerts`);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await page.goto(`/incidents/${id}`);
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		const investigateBtn = await bandInvestigate(page);
+		const investigateBtn = await overviewInvestigate(page);
 		await expect(investigateBtn).toBeEnabled();
 		await investigateBtn.click();
 
@@ -208,16 +205,16 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			page,
 			`Gate evidence default ${Date.now()}`,
 		);
-		await page.goto(`/incidents/${defaultId}/alerts`);
+		await page.goto(`/incidents/${defaultId}`);
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/light/);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-		const defaultBtn = await bandInvestigate(page);
+		const defaultBtn = await overviewInvestigate(page);
 		await expect(defaultBtn).toBeDisabled({ timeout: 15_000 });
 		await expectReason(page, UNUSABLE_SELECTION_REASON);
 
@@ -228,10 +225,10 @@ test.describe("#520 part B — incident record investigate gate", () => {
 		});
 		await page.reload();
 		await expect(page.locator("html")).toHaveClass(/dark/);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-		const darkBtn = await bandInvestigate(page);
+		const darkBtn = await overviewInvestigate(page);
 		await expect(darkBtn).toBeDisabled({ timeout: 15_000 });
 		await expectReason(page, UNUSABLE_SELECTION_REASON);
 
@@ -266,9 +263,9 @@ test.describe("#520 part B — incident record investigate gate", () => {
 			}
 			await route.fallback();
 		});
-		await page.goto(`/incidents/${errorId}/alerts`);
+		await page.goto(`/incidents/${errorId}`);
 		await expect(page.locator("html")).toHaveClass(/light/);
-		const errorBtn = await bandInvestigate(page);
+		const errorBtn = await overviewInvestigate(page);
 		await expect(errorBtn).toBeEnabled({ timeout: 15_000 });
 		await errorBtn.click();
 		await expectRefusal(page, refusalReason);

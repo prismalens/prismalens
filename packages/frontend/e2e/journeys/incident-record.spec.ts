@@ -55,65 +55,54 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await setTheme(page, "light");
 
-		const band = page.getByTestId("incident-state-band");
-		await expect(band).toBeVisible({ timeout: 15_000 });
-		await expect(band).toContainText("INC-1");
-		// The severity dot carries its label as `aria-label`/`title`, not text.
-		await expect(band.getByLabel("Critical")).toBeVisible();
+		const header = page.getByTestId("incident-header");
+		await expect(header).toBeVisible({ timeout: 15_000 });
+		await expect(header).toContainText("INC-1");
+		await expect(header.getByTestId("crumb-view")).toHaveText("Overview");
+		await expect(header.getByTestId("header-severity")).toHaveText("Critical");
 		await expect(
-			band.getByRole("heading", {
+			header.getByRole("link", {
 				name: "[demo] Storm: High 5xx error rate on API Gateway & Auth timeout",
 			}),
 		).toBeVisible();
-		await expect(band.getByTestId("band-status")).toBeVisible();
 
-		// The runs are the incident's children in the sidebar; Overview has no box.
-		await expect(page.getByTestId("run-tree-row").first()).toBeVisible();
-		await expect(page.getByTestId("docked-composer")).toHaveCount(0);
+		// Latest run strip under the header
+		const strip = page.getByTestId("latest-run-strip");
+		await expect(strip).toBeVisible();
+		await expect(page.getByTestId("latest-run-link")).toContainText(
+			"concluded",
+		);
+		await expect(page.getByTestId("latest-run-detail")).toContainText(
+			"Likely cause found",
+		);
 
-		// The sections, in the order an SRE asks, in one column.
-		const ids = [
-			"incident-summary",
-			"overview-report",
-			"overview-alerts",
-			"overview-timeline",
+		// The sections / cards on overview
+		const cardIds = [
+			"situation",
+			"impact-card",
+			"stop-impact-card",
+			"why-card",
+			"changes-card",
 		];
-		const ys: number[] = [];
-		for (const id of ids) {
-			const box = await page.getByTestId(id).boundingBox();
-			expect(box, `${id} has a bounding box`).not.toBeNull();
-			ys.push(box?.y ?? 0);
-		}
-		for (let i = 1; i < ys.length; i++) {
-			expect(ys[i], `${ids[i]} sits below ${ids[i - 1]}`).toBeGreaterThan(
-				ys[i - 1],
-			);
+		for (const id of cardIds) {
+			await expect(page.getByTestId(id)).toBeVisible();
 		}
 
-		// A note goes to the timeline from the Timeline section's own field.
+		// A note from the composer lands in changes-timeline
 		const note = `Design evidence note ${Date.now()}`;
-		await page.getByTestId("note-input").fill(note);
-		await page.getByTestId("note-input").press("Enter");
-		await expect(page.getByTestId("overview-timeline")).toContainText(note);
-
-		// The next run starts from the band's menu, as a draft on Conversation.
-		await page.getByTestId("band-more").click();
-		await expect(page.getByTestId("band-menu-new-run")).toBeVisible();
-		await page.keyboard.press("Escape");
+		await page.getByTestId("action-chip").click();
+		await page.getByTestId("action-note").click();
+		await page.getByTestId("composer-input").fill(note);
+		await page.getByTestId("composer-send").click();
+		await expect(page.getByTestId("changes-timeline")).toContainText(note);
 
 		await settled(page);
 
-		// The Report link opens the report, band and runs still in place.
-		await page.getByTestId("overview-report-heading").click();
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/report/);
-		await expect(page.getByTestId("report-route")).toBeVisible();
-		await expect(page.getByTestId("report-answer")).toBeVisible();
-		await expect(page.getByTestId("do-now")).toBeVisible();
-		await expect(page.getByTestId("run-tree")).toBeVisible();
-		await expect(page.getByTestId("record-tabs")).toBeVisible();
-
-		// The conversation: prose, the tool call folded to one line, the end.
-		await page.getByTestId("tab-conversation").click();
+		// The latest run link opens the conversation
+		await page.getByTestId("latest-run-link").click();
+		await expect(page).toHaveURL(
+			new RegExp(`/incidents/${INCIDENT_ID}/conversation\\?investigation=`),
+		);
 		await expect(page.getByTestId("run-page")).toBeVisible();
 		const transcript = page.getByTestId("transcript");
 		await expect(transcript.getByTestId("transcript-prose")).toHaveText(
@@ -132,59 +121,40 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("the incident tabs: every tab in place, and Esc is the chevron", async ({
+	test("the incident tabs: old routes redirect to overview, and chevron returns to inbox", async ({
 		page,
 	}) => {
 		await page.goto(`/incidents/${INCIDENT_ID}/alerts`);
-		await expect(page.getByTestId("alerts-route")).toBeVisible({
+		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("incident-state-band")).toBeVisible();
-		await expect(page.getByTestId("run-tree")).toBeVisible();
 
-		await page.getByTestId("tab-timeline").click();
-		await expect(page.getByTestId("timeline-route")).toBeVisible();
-		await expect(page.getByTestId("note-field")).toBeVisible();
+		await page.goto(`/incidents/${INCIDENT_ID}/timeline`);
+		await expect(page).toHaveURL(new RegExp(`/incidents/${INCIDENT_ID}$`));
+		await expect(page.getByTestId("incident-overview")).toBeVisible();
 
-		// The seeded run kept no session, so the box to focus is a new run's draft.
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-new-run").click();
-		await expect(page.getByTestId("run-page")).toBeVisible();
-
-		// In the box Esc only lets go of it; once it has, Esc is the chevron.
-		await page.getByTestId("composer-input").focus();
-		await page.keyboard.press("Escape");
-		await expect(page.getByTestId("run-page")).toBeVisible();
-		await expect(page.getByTestId("composer-input")).not.toBeFocused();
-		await page.keyboard.press("Escape");
-		await expect(page.getByTestId("incident-board")).toBeVisible();
-		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await page.getByRole("link", { name: "Back to the board" }).click();
-		await expect(page.getByTestId("incident-board")).toBeVisible();
+		// Back chevron in the header returns to the inbox
+		await page.getByTestId("incident-back").click();
+		await expect(page).toHaveURL(/\/incidents$/);
+		await expect(page.getByTestId("inbox")).toBeVisible();
 		await settled(page);
-	});
-
-	test("an old investigation link lands on the conversation", async ({
-		page,
-	}) => {
-		await page.goto(`/investigations/${INVESTIGATION_ID}`);
-		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/conversation/, {
-			timeout: 15_000,
-		});
 	});
 
 	test("empty — an incident with no run", async ({ page }) => {
 		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 
 		await page.goto(`/incidents/${id}`);
-		await expect(page.getByTestId("overview-report")).toContainText(
-			"No run yet. Start one with + New run.",
+		await expect(page.getByTestId("latest-run-strip")).toContainText(
+			"No run yet",
 			{ timeout: 15_000 },
 		);
+		await expect(page.getByTestId("why-none")).toBeVisible();
+		await expect(page.getByTestId("fix-none")).toBeVisible();
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-tree-row")).toHaveCount(0);
-		// With no run, Conversation opens on the draft.
-		await page.getByTestId("tab-conversation").click();
+
+		// Navigating to Conversation opens on the draft
+		await page.goto(`/incidents/${id}/conversation`);
 		await expect(page.getByTestId("crumb-view")).toHaveText("New conversation");
 		await expect(page.getByTestId("action-chip")).toHaveText("Ask");
 		await expect(await investigateButton(page)).toBeVisible();
@@ -195,20 +165,34 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
 			status: "failed",
 			error: "harness lost the tool socket",
+			hasReport: false,
 		});
+		await page.route(
+			(url) => url.pathname === `/api/incidents/${INCIDENT_ID}`,
+			async (route) => {
+				const res = await route.fetch();
+				const json = await res.json();
+				if (json.investigations?.[0]) {
+					json.investigations[0].status = "failed";
+					json.investigations[0].error = "harness lost the tool socket";
+					json.investigations[0].hasReport = false;
+				}
+				await route.fulfill({ json });
+			},
+		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		await expect(page.getByTestId("overview-report")).toContainText(
-			"Run failed",
+		await expect(page.getByTestId("latest-run-strip")).toContainText(
+			"harness lost the tool socket",
 			{ timeout: 15_000 },
 		);
-		await expect(page.getByTestId("overview-report")).toContainText(
-			"harness lost the tool socket",
-		);
+		await expect(page.getByTestId("why-failed")).toBeVisible();
 		await setTheme(page, "light");
 		await settled(page);
 
-		await page.getByTestId("tab-conversation").click();
+		await page.goto(
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+		);
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			'Run failed: OpenCode answered "harness lost the tool socket".',
 		);
@@ -220,6 +204,17 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 	}) => {
 		await installStreamDouble(page);
 		await serveAsRunning(page, INVESTIGATION_ID);
+		await page.route(
+			(url) => url.pathname === `/api/incidents/${INCIDENT_ID}`,
+			async (route) => {
+				const res = await route.fetch();
+				const json = await res.json();
+				if (json.investigations?.[0]) {
+					json.investigations[0].status = "running";
+				}
+				await route.fulfill({ json });
+			},
+		);
 		// The run heard the cancel: the API answers with the still-running row.
 		const seeded = await page.request.get(
 			`/api/investigations/${INVESTIGATION_ID}`,
@@ -240,14 +235,14 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		);
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
-		// The seeded live run carries a report: the pool keeps it open (#673 w59).
-		await expect(page.getByTestId("overview-report")).toContainText("Likely", {
-			timeout: 15_000,
-		});
-		await expect(page.getByTestId("incident-summary")).toContainText(
-			"An investigation is working now",
+		await expect(page.getByTestId("latest-run-strip")).toContainText(
+			"investigating",
+			{ timeout: 15_000 },
 		);
-		await page.getByTestId("overview-open-conversation").click();
+		await expect(page.getByTestId("why-live")).toBeVisible();
+
+		// Clicking Watch on why-live opens the conversation
+		await page.getByTestId("why-live").click();
 		const state = page.getByTestId("run-strip-label");
 		await expect(state).toHaveText(/starting$/, { timeout: 15_000 });
 

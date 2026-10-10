@@ -16,43 +16,41 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 			timeout: 15_000,
 		});
 
-		// 3. Open the culprit investigation's report (d0111111) and verify the
-		//    culprit fields. The report is a route under its incident (#743),
-		//    its answer first (study-v3 §3.2).
-		await page.goto(
-			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111",
-		);
-		await expect(page.getByTestId("report-answer")).toBeVisible({
+		// 3. Open the culprit investigation's overview (b0111111) and verify the
+		//    culprit fields in situation-facts and overview.
+		await page.goto("/incidents/b0111111-1111-4111-8111-111111111111");
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
 			page.getByText("auth-service", { exact: false }).first(),
 		).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByText("v2.4.1", { exact: true })).toBeVisible({
+		const facts = page.getByTestId("situation-facts");
+		await expect(facts.getByText("v2.4.1", { exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(
-			page.getByText("connection-pool exhaustion", { exact: false }).first(),
+			facts.getByText("connection-pool exhaustion", { exact: false }).first(),
 		).toBeVisible({ timeout: 15_000 });
 
-		// 4. Open no-culprit investigation (d0222222) and verify the stable
-		//    no-culprit state: report renders, but absence stays absence —
+		// 4. Open no-culprit incident (b0222222) and verify the stable
+		//    no-culprit state: overview renders, but absence stays absence —
 		//    no service, change ref, or mechanism is invented (culprit: null
-		//    in the seed, so AnalysisTab must render no Culprit section at all).
-		await page.goto(
-			"/incidents/b0222222-2222-4222-8222-222222222222/report?investigation=d0222222-2222-4222-8222-222222222222",
-		);
-		await expect(page.getByTestId("report-answer")).toBeVisible({
+		//    in the seed, so situation-facts renders no Change/Mechanism).
+		await page.goto("/incidents/b0222222-2222-4222-8222-222222222222");
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
-		// Scoped to the report: the list row's headline carries the same cause.
 		await expect(
 			page
-				.getByTestId("report-route")
+				.getByTestId("why-card")
 				.getByText(
 					"Upstream payment provider experiencing elevated processing latencies.",
 				),
 		).toBeVisible({ timeout: 15_000 });
+		const noCulpritFacts = page.getByTestId("situation-facts");
+		await expect(noCulpritFacts.getByText("Change")).toHaveCount(0);
+		await expect(noCulpritFacts.getByText("Mechanism")).toHaveCount(0);
 		await expect(page.getByText("Culprit", { exact: true })).not.toBeVisible();
 	});
 
@@ -278,9 +276,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 	test("design evidence: investigation detail page in default and dark themes", async ({
 		page,
 	}) => {
-		// An investigation's report is a route under its incident (#743).
-		const DETAIL_URL =
-			"/incidents/b0111111-1111-4111-8111-111111111111/report?investigation=d0111111-1111-4111-8111-111111111111";
+		const DETAIL_URL = "/incidents/b0111111-1111-4111-8111-111111111111";
 
 		const setTheme = async (theme: "light" | "dark") => {
 			await page.evaluate((value) => {
@@ -292,7 +288,7 @@ test.describe("D4 substitute — alerts triage & culprit rendering journey", () 
 
 		// Default/Light state: set theme to light
 		await page.goto(DETAIL_URL);
-		await expect(page.getByTestId("report-answer")).toBeVisible({
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 		await setTheme("light");

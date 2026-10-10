@@ -22,9 +22,6 @@ Feature: Shell and Back
     Then I am on the new incident's Overview
 
   Scenario: Back from an alert goes to where I came from
-    Given I am on INC-1's Alerts tab
-    When I open the alert and press the chevron at the left of its band
-    Then I am on INC-1's Alerts tab
     Given I open the same alert from the Alerts door
     When I press the chevron
     Then I am on the alert list

@@ -84,29 +84,20 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
 			timeout: 15_000,
 		});
-		await expect(
-			page
-				.getByTestId("incident-state-band")
-				.getByRole("heading", { name: title }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("crumb-incident")).toHaveText(title);
 
-		// 3. A hand-authored incident carries no alerts, and the UI says so
-		//    rather than implying a correlation that never happened.
-		await expect(page.getByTestId("overview-alerts")).toContainText(
-			"No alerts are correlated yet.",
-		);
-
-		// A note from the Timeline card's own field lands right under it.
-		const note = "Authored by hand from the timeline";
-		await page.getByTestId("note-input").fill(note);
-		await page.getByTestId("note-input").press("Enter");
-		await expect(page.getByTestId("overview-timeline")).toContainText(note);
+		// A note from the composer lands in changes-timeline
+		const note = "Authored by hand from the composer";
+		await page.getByTestId("action-chip").click();
+		await page.getByTestId("action-note").click();
+		await page.getByTestId("composer-input").fill(note);
+		await page.getByTestId("composer-send").click();
+		await expect(page.getByTestId("changes-timeline")).toContainText(note);
 
 		// 4. Start the investigation from the draft's box on Conversation, with a
 		//    brief: the investigate call must accept an incident with zero alerts.
-		await page.getByTestId("tab-conversation").click();
+		const incId = new URL(page.url()).pathname.split("/").pop();
+		await page.goto(`/incidents/${incId}/conversation?investigation=new`);
 		const investigate = page.waitForRequest(
 			(req) =>
 				/\/api\/incidents\/[^/]+\/investigate$/.test(req.url()) &&
@@ -166,7 +157,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		expect(created.ok()).toBeTruthy();
 		const incident: { id: string } = await created.json();
 
-		await page.goto(`/incidents/${incident.id}/conversation`);
+		await page.goto(`/incidents/${incident.id}/conversation?investigation=new`);
 		await page.evaluate(() => {
 			document.cookie = "prismalens-theme=light; path=/; max-age=31536000";
 		});
@@ -290,18 +281,19 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		expect(created.ok()).toBeTruthy();
 		const incident: { id: string } = await created.json();
 
-		await page.goto(`/incidents/${incident.id}/conversation`);
+		await page.goto(`/incidents/${incident.id}/conversation?investigation=new`);
 
 		// The draft is the one way to start a run (#673); it is blocked, and the
-		// gate's own words say why (#521). The band's New run leads to the same.
+		// gate's own words say why (#521). The overview composer is also blocked.
 		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByTestId("composer-blocked")).toContainText(
 			NO_HARNESS_REASON,
 		);
-		await page.getByTestId("tab-alerts").click();
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-new-run").click();
+		await page.goto(`/incidents/${incident.id}`);
 		await expect(await boxInvestigateButton(page)).toBeDisabled();
+		await expect(page.getByTestId("composer-blocked")).toContainText(
+			NO_HARNESS_REASON,
+		);
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {

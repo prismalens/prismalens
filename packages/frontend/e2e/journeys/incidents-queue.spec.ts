@@ -62,6 +62,10 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		const tree = page.getByTestId("incident-tree");
 		await expect(tree).toBeVisible({ timeout: 15_000 });
 
+		for (const more of await tree.getByTestId("tree-more").all()) {
+			if (await more.isVisible()) await more.click();
+		}
+
 		const triggeredRow = treeRow(page, triggeredId);
 		const failedRow = treeRow(page, failedRunId);
 		const resolvedRow = treeRow(page, resolvedId);

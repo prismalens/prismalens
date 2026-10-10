@@ -5,17 +5,17 @@ import { expect, test } from "@playwright/test";
 import { hideQueryDevtools } from "./live-stream-fixtures";
 
 /**
- * #752: in the desktop window an open incident's band is the title strip. The
- * preload bridge is faked, which is all `data-desktop` keys on; the drag regions
+ * #752, #811: in the desktop window an open incident's overview header is the title strip.
+ * The preload bridge is faked, which is all `data-desktop` keys on; the drag regions
  * are read as the computed `-webkit-app-region` Electron honours.
  */
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
-/** The Windows/Linux window-control overlay the band must stay clear of. */
-const CONTROLS_W = 138;
+/** The Windows/Linux window-control overlay the header must stay clear of (#811 WindowControlsSpace: 132px). */
+const CONTROLS_W = 132;
 
 // The desktop window's minWidth is 800 (packages/desktop/src/main.ts).
 for (const width of [800, 1024, 1440]) {
-	test(`the band fills the desktop title strip at ${width}px`, async ({
+	test(`the overview header fills the desktop title strip at ${width}px`, async ({
 		page,
 	}) => {
 		await hideQueryDevtools(page);
@@ -25,19 +25,17 @@ for (const width of [800, 1024, 1440]) {
 		await page.setViewportSize({ width, height: 800 });
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 
-		const band = page.getByTestId("incident-state-band");
-		await expect(band).toBeVisible({ timeout: 15_000 });
-		// The band is one row (#673), and on desktop that row is the strip.
-		const strip = band;
-		const box = await strip.boundingBox();
+		const header = page.getByTestId("incident-header");
+		await expect(header).toBeVisible({ timeout: 15_000 });
+		const box = await header.boundingBox();
 		expect(box?.y).toBe(0);
-		expect(box?.height).toBe(40);
+		expect(box?.height).toBe(44);
 
 		const region = (el: Element) =>
 			getComputedStyle(el).getPropertyValue("-webkit-app-region");
-		expect(await strip.evaluate(region)).toBe("drag");
+		expect(await header.evaluate(region)).toBe("drag");
 
-		const controls = band.locator("a, button");
+		const controls = header.locator("a, button");
 		const n = await controls.count();
 		expect(n).toBeGreaterThan(0);
 		for (let i = 0; i < n; i++) {
@@ -45,19 +43,27 @@ for (const width of [800, 1024, 1440]) {
 			if (!(await control.isVisible())) continue;
 			expect(await control.evaluate(region)).toBe("no-drag");
 			const c = await control.boundingBox();
-			// Nothing sits under the window controls on the band's first row.
+			// Nothing sits under the window controls on the header's first row.
 			if (c && c.y < 40)
 				expect(c.x + c.width).toBeLessThanOrEqual(width - CONTROLS_W);
 			// And what is painted there is the control itself, not the strip over it.
 			if (c) {
 				const hit = await page.evaluate(
-					([x, y]) =>
-						!!document
-							.elementFromPoint(x, y)
-							?.closest('[data-testid="incident-state-band"] :is(a, button)'),
+					([x, y]) => {
+						const el = document.elementFromPoint(x, y);
+						return {
+							matched: !!el?.closest(
+								'[data-testid="incident-header"] :is(a, button)',
+							),
+							elTag: el?.tagName,
+							elTestId: el?.getAttribute("data-testid"),
+							elHtml: el?.outerHTML?.slice(0, 100),
+						};
+					},
 					[c.x + c.width / 2, c.y + c.height / 2],
 				);
-				expect(hit).toBe(true);
+				console.log({ width, i, text: await control.textContent(), c, hit });
+				expect(hit.matched).toBe(true);
 			}
 		}
 	});

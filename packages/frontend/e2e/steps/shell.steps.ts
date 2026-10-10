@@ -240,7 +240,7 @@ When(
 
 Then("I am on the new incident's Overview", async ({ page }) => {
 	await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/);
-	await expect(page.getByTestId("incident-state-band")).toContainText(
+	await expect(page.getByTestId("crumb-incident")).toContainText(
 		world(page).incident?.title ?? "",
 	);
 });
@@ -270,7 +270,7 @@ Given("I am on INC-1's Alerts tab", async ({ page }) => {
 
 Given("I am on INC-1's Overview", async ({ page }) => {
 	await amOn(page, `/incidents/${world(page).incident?.id}`, () =>
-		expect(page.getByTestId("incident-state-band")).toBeVisible(),
+		expect(page.getByTestId("incident-overview")).toBeVisible(),
 	);
 });
 
@@ -491,11 +491,8 @@ Given(
 	},
 );
 
-Then("the incident opens on its Report tab", async ({ page }) => {
-	await expect(here(page).getByTestId("tab-report")).toHaveAttribute(
-		"aria-current",
-		"page",
-	);
+Then("the incident opens on its Overview", async ({ page }) => {
+	await expect(here(page).getByTestId("incident-overview")).toBeVisible();
 });
 
 When("I press the chevron at the left of the band", async ({ page }) => {

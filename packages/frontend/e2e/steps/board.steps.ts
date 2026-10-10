@@ -288,11 +288,15 @@ When(
 When("I resolve INC-1 with a cause", async ({ page }) => {
 	await openBoard(page);
 	await visit(page, `/incidents/${inc(page).id}`);
-	await page.getByTestId("band-resolve").click();
+	await page.getByTestId("header-resolve").click();
+	const confirm = page.getByTestId("resolve-firing-confirm");
+	if (await confirm.isVisible()) {
+		await page.getByTestId("resolve-anyway").click();
+	}
 	const dialog = page.getByTestId("resolve-dialog");
 	await dialog.getByTestId("resolve-cause").fill("the index d37d888 dropped");
 	await dialog.getByTestId("confirm-resolve").click();
-	await expect(page.getByTestId("band-status")).toHaveText("Resolved");
+	await expect(page.getByTestId("header-reopen")).toBeVisible();
 });
 
 When(
@@ -873,6 +877,23 @@ Given(
 );
 
 const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
+
+When("I view INC-1's Overview", async ({ page }) => {
+	await visit(page, `/incidents/${inc(page).id}`);
+	await expect(page.getByTestId("incident-overview")).toBeVisible();
+});
+
+Then(
+	"the header shows {string} and never {string}",
+	async ({ page }, action: string, never: string) => {
+		await expect(page.getByTestId("header-resolve")).toHaveText(action);
+		await expect(
+			page
+				.getByTestId("incident-header")
+				.getByRole("button", { name: never, exact: true }),
+		).toHaveCount(0);
+	},
+);
 
 When("I open INC-1 and each of its tabs in turn", async ({ $test }) => {
 	// The Thens load the record ten times; on a CI runner that sits at the default 30 s.
