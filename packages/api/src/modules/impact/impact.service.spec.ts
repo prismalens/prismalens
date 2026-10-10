@@ -173,7 +173,7 @@ describe("ImpactService", () => {
 			expect(chart).toMatchObject({
 				state: "ok",
 				expression: { state: "recovered", reason: null },
-				metric: { source: "alert", query: 'node_load1{job="node"}', threshold: { op: ">", value: 4 } },
+				metric: { source: "alert", query: 'node_load1{job="node"}', threshold: { op: ">", value: 4 }, unit: null },
 				scope: { state: "scoped", matched: 1 },
 				now: 5,
 				usual: 2,
@@ -246,7 +246,7 @@ describe("ImpactService", () => {
 			expect(chart).toMatchObject({
 				state: "ok",
 				expression: { state: "expression_unknown" },
-				metric: { source: "service", query: "sum(rate(http_requests_total[5m]))", threshold: null },
+				metric: { source: "service", query: "sum(rate(http_requests_total[5m]))", threshold: null, unit: "count/s" },
 				scope: { state: "unscoped" },
 			});
 		});
