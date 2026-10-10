@@ -251,6 +251,7 @@ function impact(incidentId: string, mode: ImpactMode) {
 						query:
 							"histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1",
 						threshold: mode === "service" ? null : { op: ">", value: 1 },
+						unit: "s",
 					},
 		scope: { state: "scoped", matched: 1 },
 		series: mode === "none" ? [] : [{ labels: {}, points }],

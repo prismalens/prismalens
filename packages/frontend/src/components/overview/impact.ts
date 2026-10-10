@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ImpactChart } from "@prismalens/contracts";
+import type { ImpactChart, MetricUnit } from "@prismalens/contracts";
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -44,8 +44,38 @@ export function yTicks(max: number): number[] {
 	return ticks;
 }
 
-/** A value as the chart and the strip print it: 2.4, 0.123, 12.5k. */
-export function formatValue(v: number): string {
+const BYTES = ["B", "kB", "MB", "GB", "TB"];
+
+function bytes(v: number): string {
+	let i = 0;
+	while (Math.abs(v) >= 1000 && i < BYTES.length - 1) {
+		v /= 1000;
+		i++;
+	}
+	return `${trim(v)} ${BYTES[i]}`;
+}
+
+/** A value as the chart prints it in the metric's unit: 2.4s, 120ms, 1.5 MB, 5%, 12/s; no unit: 2.4, 12.5k. */
+export function formatValue(v: number, unit?: MetricUnit | null): string {
+	switch (unit) {
+		case "s":
+			return v !== 0 && Math.abs(v) < 1 ? `${trim(v * 1000)}ms` : `${trim(v)}s`;
+		case "bytes":
+			return bytes(v);
+		case "bytes/s":
+			return `${bytes(v)}/s`;
+		case "ratio":
+			return `${trim(v * 100)}%`;
+		case "percent":
+			return `${trim(v)}%`;
+		case "count/s":
+			return `${plain(v)}/s`;
+		default:
+			return plain(v);
+	}
+}
+
+function plain(v: number): string {
 	const abs = Math.abs(v);
 	if (abs >= 1e6) return `${trim(v / 1e6)}M`;
 	if (abs >= 1e4) return `${trim(v / 1e3)}k`;

@@ -123,6 +123,7 @@ function Chart({ impact }: { impact: Charted }) {
 	const g = useMemo(() => chartGeometry(impact), [impact]);
 	const several = impact.series.length > 1;
 	const threshold = impact.metric.threshold;
+	const unit = impact.metric.unit;
 	const over =
 		threshold && impact.now !== null ? breaches(impact.now, threshold) : false;
 	const name =
@@ -153,7 +154,8 @@ function Chart({ impact }: { impact: Charted }) {
 									strokeDasharray="3 2"
 								/>
 							</svg>
-							Alert fires {opWord(threshold.op)} {formatValue(threshold.value)}
+							Alert fires {opWord(threshold.op)}{" "}
+							{formatValue(threshold.value, unit)}
 						</span>
 					)}
 					{g.deploys.map((d) => (
@@ -169,7 +171,7 @@ function Chart({ impact }: { impact: Charted }) {
 				<div className="flex min-h-[60px] flex-1 gap-1.5">
 					<div
 						aria-hidden
-						className="relative w-8 shrink-0 text-right text-[11px] leading-3 text-text-3"
+						className="relative w-10 shrink-0 text-right text-[11px] leading-3 text-text-3"
 					>
 						{g.ticks.map((t) => (
 							<span
@@ -177,7 +179,7 @@ function Chart({ impact }: { impact: Charted }) {
 								className="absolute right-0"
 								style={{ top: `calc(${(t.y / CHART_H) * 100}% - 6px)` }}
 							>
-								{formatValue(t.value)}
+								{formatValue(t.value, unit)}
 							</span>
 						))}
 					</div>
@@ -267,11 +269,11 @@ function Chart({ impact }: { impact: Charted }) {
 							)}
 							data-testid="impact-now"
 						>
-							{formatValue(impact.now)}
+							{formatValue(impact.now, unit)}
 						</dd>
 						{impact.usual !== null && (
 							<dd className="text-meta text-text-2">
-								Usually {formatValue(impact.usual)}
+								Usually {formatValue(impact.usual, unit)}
 							</dd>
 						)}
 					</div>
@@ -308,12 +310,14 @@ function breaches(v: number, t: { op: string; value: number }): boolean {
 }
 
 function chartLabel(impact: Charted, name: string): string {
+	const unit = impact.metric.unit;
 	const parts = [`${name} over the last 24 hours`];
-	if (impact.now !== null) parts.push(`now ${formatValue(impact.now)}`);
-	if (impact.usual !== null) parts.push(`usually ${formatValue(impact.usual)}`);
+	if (impact.now !== null) parts.push(`now ${formatValue(impact.now, unit)}`);
+	if (impact.usual !== null)
+		parts.push(`usually ${formatValue(impact.usual, unit)}`);
 	if (impact.metric.threshold)
 		parts.push(
-			`the alert fires at ${formatValue(impact.metric.threshold.value)}`,
+			`the alert fires at ${formatValue(impact.metric.threshold.value, unit)}`,
 		);
 	return parts.join(", ");
 }

@@ -142,6 +142,12 @@ function IncidentLayout() {
 		},
 		onError: failed("Not resolved"),
 	});
+	const cancelMutation = useMutation({
+		...orpc.investigations.cancel.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: investigationKeys.all() }),
+		onError: failed("Stop did not reach the investigation"),
+	});
 	const [editOpen, setEditOpen] = useState(false);
 	const editCause = useMutation({
 		...orpc.incidents.update.mutationOptions(),
@@ -316,8 +322,13 @@ function IncidentLayout() {
 					open={closeOpen}
 					onOpenChange={setCloseOpen}
 					incident={incident}
-					isPending={closeMutation.isPending}
-					onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
+					isPending={closeMutation.isPending || cancelMutation.isPending}
+					onConfirm={(cause) => {
+						const closeIt = () => closeMutation.mutate({ id, ...cause });
+						// Stop the live turn first, as the inbox does (#811, #673 w59).
+						if (!liveRun) return closeIt();
+						cancelMutation.mutate({ id: liveRun.id }, { onSuccess: closeIt });
+					}}
 				/>
 				<ResolveDialog
 					mode="edit"

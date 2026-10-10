@@ -40,6 +40,18 @@ describe("chart", () => {
 		expect(formatValue(0.1234)).toBe("0.123");
 	});
 
+	it("formats values in the metric's unit (#811)", () => {
+		expect(formatValue(2.4, "s")).toBe("2.4s");
+		expect(formatValue(0.25, "s")).toBe("250ms");
+		expect(formatValue(1_536_000, "bytes")).toBe("1.54 MB");
+		expect(formatValue(2048, "bytes/s")).toBe("2.05 kB/s");
+		expect(formatValue(0.05, "ratio")).toBe("5%");
+		expect(formatValue(37.5, "percent")).toBe("37.5%");
+		expect(formatValue(12, "count/s")).toBe("12/s");
+		expect(formatValue(12_500, "count")).toBe("12.5k");
+		expect(formatValue(2.4, null)).toBe("2.4");
+	});
+
 	it("draws the threshold inside the box, skips gaps and puts the deploy at its time", () => {
 		const g = chartGeometry({
 			window: { start: iso(NOW - 24 * H), end: iso(NOW) },
