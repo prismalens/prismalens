@@ -261,6 +261,22 @@ describe("AlertsService (BDD)", () => {
 			return alert;
 		}
 
+		it("replaces a made-up catch-up link with the alert's own expression, and only that (#811)", async () => {
+			const madeUp = `http://prom:9090/graph?g0.expr=${encodeURIComponent('ALERTS{alertname="HighErrorRate"}')}`;
+			const real = `http://prom:9090/graph?g0.expr=${encodeURIComponent("rate(errors[5m]) > 0.1")}`;
+			existing({ title: "HighErrorRate", status: AlertStatus.triggered, sourceUrl: madeUp });
+			await service.create({ ...refireDto, sourceUrl: real });
+			expect(mockPrismaService.alert.update).toHaveBeenLastCalledWith({
+				where: { id: "alert-existing" },
+				data: expect.objectContaining({ sourceUrl: real }),
+			});
+
+			existing({ title: "HighErrorRate", status: AlertStatus.triggered, sourceUrl: real });
+			await service.create({ ...refireDto, sourceUrl: madeUp });
+			const data = mockPrismaService.alert.update.mock.lastCall?.[0]?.data;
+			expect(data).not.toHaveProperty("sourceUrl");
+		});
+
 		it("R1: a refire inside the flap window reopens a resolved alert to triggered", async () => {
 			existing({
 				status: AlertStatus.resolved,

@@ -12,13 +12,14 @@ import {
 	type Evidence,
 	type InvestigationReport,
 	InvestigationReportSchema,
+	NextStepSchema,
 } from "@prismalens/contracts/schemas";
 import { z } from "zod";
 
 /** Host-stamped fields the model must not author. */
 export const ModelReportSchema = InvestigationReportSchema.omit({
 	fidelity: true,
-});
+}).extend({ nextSteps: z.array(NextStepSchema.omit({ id: true })) });
 export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 export function reportJsonSchema(): string {
