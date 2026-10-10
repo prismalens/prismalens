@@ -725,6 +725,24 @@ describe("repo-source.service", () => {
 			);
 		});
 
+		it("T11b: two credentials racing on a mirror not yet cloned run one after the other, both succeed (#810)", async () => {
+			const repoUrl = server.addRepo("cold-race-repo", { kind: "anonymous" });
+			const u = new URL(repoUrl);
+			const cred = (n: number) =>
+				new GitCredential(
+					{ source: "connection", label: `token ${n}`, via: "git-host-token", connectionId: `conn-${n}` },
+					`tok${n}`,
+					{ host: u.host },
+				);
+			const service = new RepoSourceService();
+			const [a, b] = await Promise.all([
+				service.validate({ kind: "url", source: repoUrl, credential: cred(1) }),
+				service.validate({ kind: "url", source: repoUrl, credential: cred(2) }),
+			]);
+			expect(a.head).toBe(server.headOf("cold-race-repo"));
+			expect(b.head).toBe(a.head);
+		});
+
 		it("T12: scrubbing removes an Authorization: Basic ... fragment and ://u:p@", () => {
 			const raw =
 				"error: Authorization: Basic dXNlcjpzZWNyZXQ= failed\nfatal: unable to access 'https://user:password@github.com/org/repo.git': 401";

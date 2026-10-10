@@ -24,10 +24,29 @@ export interface GitEnvInput {
 	wsl?: boolean;
 }
 
-const STRIP_EXACT = new Set([
-	"GIT_CURL_VERBOSE",
-	"GIT_CONFIG_COUNT",
+/** `git rev-parse --local-env-vars` plus GIT_NAMESPACE: a hook exports these and `cwd` does not override them (githooks(5)). */
+export const GIT_LOCAL_ENV_VARS = [
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_CONFIG",
 	"GIT_CONFIG_PARAMETERS",
+	"GIT_CONFIG_COUNT",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_IMPLICIT_WORK_TREE",
+	"GIT_GRAFT_FILE",
+	"GIT_INDEX_FILE",
+	"GIT_NO_REPLACE_OBJECTS",
+	"GIT_REPLACE_REF_BASE",
+	"GIT_PREFIX",
+	"GIT_SHALLOW_FILE",
+	"GIT_COMMON_DIR",
+	"GIT_NAMESPACE",
+] as const;
+
+const STRIP_EXACT = new Set<string>([
+	...GIT_LOCAL_ENV_VARS,
+	"GIT_CURL_VERBOSE",
 	"GIT_ASKPASS",
 	"SSH_ASKPASS",
 	"LANGUAGE",
