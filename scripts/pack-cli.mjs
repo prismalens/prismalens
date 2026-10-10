@@ -864,10 +864,8 @@ export function packCli() {
 			...VENDORED.map((name) => `node_modules/${name}`),
 		],
 		engines: {
-			// `packages/cli` alone declares node >=22, but `@prismalens/api` and
-			// `@prismalens/database` both declare >=24 and are now IN this tarball.
-			// One published package gets one floor, and a package that installs on
-			// Node 22 then crashes on `pl up` is worse than a higher floor.
+			// Every package in this tarball declares >=24 (#673 s6); the one
+			// published package states that floor itself, whatever cli's manifest says.
 			...cliPkg.manifest.engines,
 			node: ENGINES_NODE,
 		},

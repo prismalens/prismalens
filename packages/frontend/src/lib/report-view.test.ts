@@ -8,6 +8,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import { answerWord } from "./answer-word";
 import { refusalReason, refusalSentence } from "./refusal-sentence";
+import { formatClock } from "./format-time";
 import {
 	commandText,
 	evidenceLabel,
@@ -17,6 +18,7 @@ import {
 	harnessWords,
 	inReportOrder,
 	nowLine,
+	reportAlert,
 	shortPath,
 	workDone,
 } from "./report-view";
@@ -195,5 +197,59 @@ describe("inReportOrder", () => {
 			"Page the owner",
 			"Unlisted",
 		]);
+	});
+});
+
+describe("reportAlert", () => {
+	it("returns null when there are no alerts", () => {
+		expect(reportAlert([], "2026-10-03T14:30:00Z")).toBeNull();
+	});
+
+	it("returns firing true and 'still firing' when firing with no resolvedAt", () => {
+		const alert = {
+			alertName: "HighLatency",
+			status: "triggered",
+			triggeredAt: "2026-10-03T14:00:00Z",
+			resolvedAt: null,
+		};
+		expect(reportAlert([alert], "2026-10-03T14:30:00Z")).toEqual({
+			name: "HighLatency",
+			firing: true,
+			line: "still firing",
+		});
+	});
+
+	it("returns firing false and line 'cleared at <clock>' when resolvedAt is before writtenAt", () => {
+		const resolvedAt = "2026-10-03T14:20:00Z";
+		const writtenAt = "2026-10-03T14:30:00Z";
+		const alert = {
+			alertName: "HighLatency",
+			status: "resolved",
+			triggeredAt: "2026-10-03T14:00:00Z",
+			resolvedAt,
+		};
+		const expectedClock = formatClock(Date.parse(resolvedAt));
+		expect(reportAlert([alert], writtenAt)).toEqual({
+			name: "HighLatency",
+			firing: false,
+			line: `cleared at ${expectedClock}`,
+		});
+	});
+
+	it("returns firing false and line ending ', after the report' when resolvedAt is after writtenAt with status still firing", () => {
+		const writtenAt = "2026-10-03T14:20:00Z";
+		const resolvedAt = "2026-10-03T14:40:00Z";
+		const alert = {
+			alertName: "HighLatency",
+			status: "firing",
+			triggeredAt: "2026-10-03T14:00:00Z",
+			resolvedAt,
+		};
+		const expectedClock = formatClock(Date.parse(resolvedAt));
+		expect(reportAlert([alert], writtenAt)).toEqual({
+			name: "HighLatency",
+			firing: false,
+			line: `cleared at ${expectedClock}, after the report`,
+		});
 	});
 });

@@ -26,9 +26,9 @@ import {
 } from "@/components/incidents/record-context";
 import {
 	runEffort,
-	runElapsed,
 	runNumber,
 	runTimed,
+	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
 import { useNow } from "@/hooks/use-now";
@@ -338,7 +338,9 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 	const chat = inv.kind === "chat";
 	// With the stream lost the clock stops at when the run was last heard from.
 	const lostAt = live && now !== null ? reconnectAsOf(stream, now) : null;
-	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
+	const took = runTimed(inv)
+		? formatElapsed(turnElapsed(inv, run.events, now))
+		: null;
 	const state =
 		run.state === "working"
 			? inv.liveTurn

@@ -3,7 +3,12 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { deriveStreamView } from "./investigation-events";
+import {
+	agentStepMessage,
+	deriveStreamView,
+	deriveTranscript,
+	latestAgentText,
+} from "./investigation-events";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -195,13 +200,11 @@ describe("deriveStreamView", () => {
 	});
 
 	/**
-	 * Partial text does not reach this path — `AcpAdapter` accumulates the ACP
-	 * deltas and flushes one complete turn per `agent_step` — but if a harness
-	 * ever split a report, the fragment is SHOWN, not swallowed. An unparseable
-	 * fragment is indistinguishable from prose starting with `{`, and losing the
-	 * agent's words is the worse failure.
+	 * A bare fragment is SHOWN: it is indistinguishable from prose starting
+	 * with `{`. A message sent mid-turn does cut a report off, though, and an
+	 * unclosed ```json block opening with "summary" reads as one line (#673 walk 4).
 	 */
-	it("shows an incomplete report fragment rather than hiding it", () => {
+	it("shows a bare report fragment and names a cut-off fenced one", () => {
 		const whole = JSON.stringify(VALID_REPORT, null, 2);
 		const head = whole.slice(0, Math.floor(whole.length / 2));
 		const view = deriveStreamView([
@@ -210,7 +213,7 @@ describe("deriveStreamView", () => {
 		]);
 		expect(view.flatRows.map((row) => row.message)).toEqual([
 			head,
-			`\`\`\`json\n${head}`,
+			"Report draft cut off",
 		]);
 	});
 
@@ -255,3 +258,90 @@ describe("deriveStreamView", () => {
 		}
 	});
 });
+
+describe("a report cut off mid-block (#673 walk 4)", () => {
+	const walkShape =
+		"```json\n{\n  \"summary\": \"The 'CodexProbe' alert ...\",\n  \"coverage\": {\n    \"queried\": [\n      \"sum(rate(flask_http_request_total{job='booklogr-api',status=~'";
+
+	it("agentStepMessage: the walk shape returns 'Report draft cut off' (#673 walk 4)", () => {
+		expect(agentStepMessage(walkShape)).toBe("Report draft cut off");
+	});
+
+	it("agentStepMessage: prose line followed by an unclosed json block starting with summary returns 'Report draft cut off' (#673 walk 4)", () => {
+		const text = `Working on the report.\n\n\`\`\`json\n{\n  "summary": "The alert fired",\n  "hypotheses": [`;
+		expect(agentStepMessage(text)).toBe("Report draft cut off");
+	});
+
+	it("agentStepMessage: an unclosed bare fence starting with summary returns 'Report draft cut off' (#673 walk 4)", () => {
+		const text = "```\n{\n  \"summary\": \"The alert fired\",\n  \"hypotheses\": [";
+		expect(agentStepMessage(text)).toBe("Report draft cut off");
+	});
+
+	it("agentStepMessage: unclosed json block starting with another key is returned unchanged (#673 walk 4)", () => {
+		const text = "```json\n{\n  \"plan\": \"check the database\",\n  \"steps\": [";
+		expect(agentStepMessage(text)).toBe(text);
+	});
+
+	it("agentStepMessage: an earlier closed summary block does not hide a later cut one (#805)", () => {
+		const text =
+			"```json\n{\n  \"summary\": \"draft one\"\n}\n```\n\nRevised:\n\n```json\n{\n  \"summary\": \"draft two\",\n  \"hypotheses\": [";
+		expect(agentStepMessage(text)).toBe("Report draft cut off");
+	});
+
+	it("agentStepMessage: a closed json block starting with summary that fails schema is returned unchanged (#673 walk 4)", () => {
+		const text = "```json\n{\n  \"summary\": \"just a summary with no other schema fields\"\n}\n```";
+		expect(agentStepMessage(text)).toBe(text);
+	});
+
+	it("deriveTranscript: walk shape followed by operator messages gives a line item and no prose item containing json fence (#673 walk 4)", () => {
+		const events: CanonicalEvent[] = [
+			agentStep("main", 1, walkShape),
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				label: null,
+				ts: "2026-08-22T00:00:01Z",
+				text: "queued follow-up",
+				mode: "queue",
+				delivered: true,
+			},
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				label: null,
+				ts: "2026-08-22T00:00:02Z",
+				text: "immediate follow-up",
+				mode: "now",
+				delivered: true,
+			},
+		];
+		const items = deriveTranscript(events, Date.parse("2026-08-22T00:00:03Z"), {
+			run: { status: "completed", live: false },
+		});
+		expect(items).toContainEqual(
+			expect.objectContaining({
+				kind: "line",
+				text: "Report draft cut off",
+			}),
+		);
+		const proseWithJson = items.filter(
+			(i) => i.kind === "prose" && i.text.includes("```json"),
+		);
+		expect(proseWithJson).toHaveLength(0);
+	});
+
+	it("latestAgentText: skips a cut-off report step and returns the newest real prose (#673 walk 4)", () => {
+		const events: CanonicalEvent[] = [
+			agentStep("main", 1, "Checked the pool."),
+			agentStep("main", 2, walkShape),
+		];
+		expect(latestAgentText(events)).toBe("Checked the pool.");
+	});
+});
+

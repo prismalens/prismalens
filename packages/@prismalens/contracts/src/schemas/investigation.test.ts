@@ -265,6 +265,31 @@ describe("InvestigationContextSchema.contextPack (ADR-0016 §5)", () => {
 			}),
 		).toThrow();
 	});
+
+	it("parses a neighbour with relation 'dependency' and fails with 'sibling'", () => {
+		const valid = InvestigationContextSchema.parse({
+			alerts: [ALERT],
+			telemetry: TELEMETRY,
+			contextPack: pack({
+				neighbors: [
+					{ name: "postgres", relation: "dependency", criticality: null },
+				],
+			}),
+		});
+		expect(valid.contextPack?.neighbors[0].relation).toBe("dependency");
+
+		expect(() =>
+			InvestigationContextSchema.parse({
+				alerts: [ALERT],
+				telemetry: TELEMETRY,
+				contextPack: pack({
+					neighbors: [
+						{ name: "postgres", relation: "sibling", criticality: null },
+					],
+				}),
+			}),
+		).toThrow();
+	});
 });
 
 describe("InvestigationReportSchema — origin + flaggedContent (#207)", () => {
@@ -489,6 +514,13 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(CanonicalEventSchema.parse(message)).toEqual(message);
 		const first = { ...message, resumed: [{ name: "api", head: "1a2b3c4" }] };
 		expect(CanonicalEventSchema.parse(first)).toEqual(first);
+	});
+
+	it("parses operator_message with valid followUp and rejects unknown followUp (#673 walk 4)", () => {
+		// Valid followUp values parse as expected, and followUp is optional
+		expect(CanonicalEventSchema.parse({ ...message, followUp: "chat" })).toMatchObject({ followUp: "chat" });
+		expect(CanonicalEventSchema.parse(message).followUp).toBeUndefined();
+		expect(() => CanonicalEventSchema.parse({ ...message, followUp: "other" })).toThrow();
 	});
 });
 

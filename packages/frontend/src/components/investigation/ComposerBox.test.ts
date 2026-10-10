@@ -202,6 +202,13 @@ describe("the box: one send control, the verb chip where both verbs act (#673 w5
 		expect(q("verb-chip") !== null).toBe(chip);
 	});
 
+	it("wraps chips instead of horizontal scrolling (#673 walk 4, QA-06)", async () => {
+		await render({ mode: "draft" });
+		const chips = q("composer-chips");
+		expect(chips.classList.contains("flex-wrap")).toBe(true);
+		expect(chips.classList.contains("overflow-x-auto")).toBe(false);
+	});
+
 	it("Enter follows the verb on a draft", async () => {
 		const investigates = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "investigate" });
 		await enter();

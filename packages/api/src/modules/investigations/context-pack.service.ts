@@ -223,16 +223,33 @@ export class ContextPackService {
 
 	private async loadNeighbors(affected: string[]): Promise<NeighborService[]> {
 		if (affected.length === 0) return [];
-		const edges = await this.prisma.serviceDependency.findMany({
+		const limit = 20;
+		const criticality = (e: { criticality: string }) =>
+			(e.criticality as NeighborService["criticality"]) ?? null;
+		// Dependents lead, so they are fetched first and dependencies fill what is left (#805).
+		const dependentEdges = await this.prisma.serviceDependency.findMany({
 			where: { dependencyId: { in: affected } },
-			include: { dependent: true },
-			take: 20,
+			include: { dependent: { select: { name: true } } },
+			take: limit,
 		});
-		return edges.map((e) => ({
+		const dependents: NeighborService[] = dependentEdges.map((e) => ({
 			name: e.dependent.name,
 			relation: "dependent" as const,
-			criticality: (e.criticality as NeighborService["criticality"]) ?? null,
+			criticality: criticality(e),
 		}));
+		const room = limit - dependents.length;
+		if (room <= 0) return dependents;
+		const dependencyEdges = await this.prisma.serviceDependency.findMany({
+			where: { dependentId: { in: affected } },
+			include: { dependency: { select: { name: true } } },
+			take: room,
+		});
+		const dependencies: NeighborService[] = dependencyEdges.map((e) => ({
+			name: e.dependency.name,
+			relation: "dependency" as const,
+			criticality: criticality(e),
+		}));
+		return [...dependents, ...dependencies];
 	}
 
 	private async loadPriorIncidents(

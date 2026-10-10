@@ -35,6 +35,12 @@ Feature: The incident record and its report
       When I open the Overview
       Then the summary says a run is working and its current step, and the Report section reads "Run #1 working"
 
+    Scenario: The Timeline follows Acknowledge without a reload (#673 walk 4)
+      When I open INC-1's Overview
+      And I read the Timeline tab's count
+      When I press Acknowledge
+      Then the Timeline count is higher and the list shows an "Acknowledged" entry, without reload or navigation
+
   Rule: Report
     Four slots above the fold, four variants.
 

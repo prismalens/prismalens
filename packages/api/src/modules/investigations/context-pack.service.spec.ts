@@ -96,15 +96,42 @@ function makeMockPrisma() {
 			findUnique: vi.fn().mockResolvedValue({ name: "payments-api" }),
 		},
 		serviceDependency: {
-			findMany: vi.fn().mockResolvedValue([
+			findMany: vi.fn(edgeQuery([
 				{
 					dependentId: "svc-checkout",
 					dependencyId: "svc-pay",
 					criticality: "required",
 					dependent: { id: "svc-checkout", name: "checkout" },
 				},
-			]),
+			])),
 		},
+	};
+}
+
+type Edge = {
+	dependentId: string;
+	dependencyId: string;
+	criticality: string | null;
+	dependent?: { id: string; name: string };
+	dependency?: { id: string; name: string };
+};
+
+/** A serviceDependency.findMany over `edges` that honours one direction and `take`. */
+function edgeQuery(edges: Edge[]) {
+	return async (args?: {
+		where?: {
+			dependencyId?: { in: string[] };
+			dependentId?: { in: string[] };
+		};
+		take?: number;
+	}) => {
+		const w = args?.where;
+		const rows = edges.filter(
+			(e) =>
+				(!w?.dependencyId || w.dependencyId.in.includes(e.dependencyId)) &&
+				(!w?.dependentId || w.dependentId.in.includes(e.dependentId)),
+		);
+		return typeof args?.take === "number" ? rows.slice(0, args.take) : rows;
 	};
 }
 
@@ -203,6 +230,92 @@ describe("ContextPackService", () => {
 		const pack = await service.assemble("inc-1");
 		expect(pack?.neighbors).toEqual([
 			{ name: "checkout", relation: "dependent", criticality: "required" },
+		]);
+	});
+
+	it("returns dependent neighbours first then dependencies, one query per direction", async () => {
+		mockPrisma.serviceDependency.findMany.mockImplementation(
+			edgeQuery([
+				{
+					dependentId: "svc-pay",
+					dependencyId: "svc-pg",
+					criticality: "optional",
+					dependency: { id: "svc-pg", name: "postgres" },
+				},
+				{
+					dependentId: "svc-checkout",
+					dependencyId: "svc-pay",
+					criticality: null,
+					dependent: { id: "svc-checkout", name: "checkout" },
+				},
+			]),
+		);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.neighbors).toEqual([
+			{ name: "checkout", relation: "dependent", criticality: null },
+			{ name: "postgres", relation: "dependency", criticality: "optional" },
+		]);
+		expect(mockPrisma.serviceDependency.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { dependencyId: { in: ["svc-pay"] } },
+				take: 20,
+			}),
+		);
+		expect(mockPrisma.serviceDependency.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { dependentId: { in: ["svc-pay"] } },
+				take: 19,
+			}),
+		);
+	});
+
+	it("keeps 20 dependents when dependency edges come first in the table (#805)", async () => {
+		const dependencies = Array.from({ length: 40 }, (_, i) => ({
+			dependentId: "svc-pay",
+			dependencyId: `svc-dep-${i}`,
+			criticality: "optional",
+			dependency: { id: `svc-dep-${i}`, name: `dep-${i}` },
+		}));
+		const dependents = Array.from({ length: 25 }, (_, i) => ({
+			dependentId: `svc-caller-${i}`,
+			dependencyId: "svc-pay",
+			criticality: "required",
+			dependent: { id: `svc-caller-${i}`, name: `caller-${i}` },
+		}));
+		mockPrisma.serviceDependency.findMany.mockImplementation(
+			edgeQuery([...dependencies, ...dependents]),
+		);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.neighbors).toHaveLength(20);
+		expect(pack?.neighbors.every((n) => n.relation === "dependent")).toBe(true);
+	});
+
+	it("fills the slots dependents leave with dependencies", async () => {
+		const dependencies = Array.from({ length: 30 }, (_, i) => ({
+			dependentId: "svc-pay",
+			dependencyId: `svc-dep-${i}`,
+			criticality: "optional",
+			dependency: { id: `svc-dep-${i}`, name: `dep-${i}` },
+		}));
+		const dependents = Array.from({ length: 5 }, (_, i) => ({
+			dependentId: `svc-caller-${i}`,
+			dependencyId: "svc-pay",
+			criticality: "required",
+			dependent: { id: `svc-caller-${i}`, name: `caller-${i}` },
+		}));
+		mockPrisma.serviceDependency.findMany.mockImplementation(
+			edgeQuery([...dependencies, ...dependents]),
+		);
+
+		const pack = await service.assemble("inc-1");
+
+		expect(pack?.neighbors.map((n) => n.relation)).toEqual([
+			...Array(5).fill("dependent"),
+			...Array(15).fill("dependency"),
 		]);
 	});
 

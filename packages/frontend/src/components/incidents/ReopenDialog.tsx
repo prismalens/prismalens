@@ -14,7 +14,7 @@ import {
 
 /**
  * Reopen a Resolved incident, behind a confirm (R1a d4, d7). It goes back to
- * Acknowledged in Needs you; its cause stays as Previous cause. With
+ * Acknowledged in Needs you; its recorded cause is kept. With
  * `investigate`, the board's drop on Working, a run starts after.
  */
 export function ReopenDialog({
@@ -42,7 +42,8 @@ export function ReopenDialog({
 							: `Reopen INC-${incidentNumber}?`}
 					</AlertDialogTitle>
 					<AlertDialogDescription>
-						Its cause stays as Previous cause until you resolve it again.
+						INC-{incidentNumber} goes back to open. Its recorded cause is kept
+						until you resolve it again.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

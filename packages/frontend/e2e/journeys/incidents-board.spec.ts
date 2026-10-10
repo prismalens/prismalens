@@ -242,7 +242,7 @@ test.describe("#743 — the incidents board", () => {
 		const dialog = page.getByTestId("reopen-dialog");
 		await expect(dialog).toContainText("Reopen INC-");
 		await expect(dialog).toContainText(
-			"Its cause stays as Previous cause until you resolve it again.",
+			/INC-\d+ goes back to open\. Its recorded cause is kept until you resolve it again\./,
 		);
 		await dialog.getByTestId("confirm-reopen-incident").click();
 		await expect.poll(() => statusOf(bandId)).toBe("investigating");

@@ -182,10 +182,10 @@ export function AlertListPane({
 		const service = alert.service
 			? alert.service.displayName || alert.service.name
 			: "No service";
-		const ended = alert.status === "resolved" && alert.resolvedAt;
-		const when = ended
-			? `cleared ${dayOrClock(alert.resolvedAt ?? alert.triggeredAt)}`
-			: dayOrClock(alert.triggeredAt);
+		const when =
+			alert.status === "resolved" && alert.resolvedAt
+				? `cleared ${dayOrClock(alertSince(alert))}`
+				: dayOrClock(alertSince(alert));
 		return (
 			<Link
 				key={alert.id}
@@ -300,7 +300,7 @@ export function AlertListPane({
 }
 
 /** Today an alert reads its clock time; older, its date. */
-function dayOrClock(at: string): string {
+export function dayOrClock(at: string): string {
 	const d = new Date(at);
 	return d.toDateString() === new Date().toDateString()
 		? formatClock(d)
@@ -310,6 +310,17 @@ function dayOrClock(at: string): string {
 /** The open row stays in view when the record changes under it (L31). */
 function scrollIntoView(el: HTMLElement | null) {
 	el?.scrollIntoView({ block: "nearest" });
+}
+
+/** When an alert's state began: a cleared alert's clear time, else its fire time (#673 walk 4). */
+export function alertSince(alert: {
+	status: AlertStatus;
+	triggeredAt: string;
+	resolvedAt?: string | null;
+}): string {
+	return alert.status === "resolved" && alert.resolvedAt
+		? alert.resolvedAt
+		: alert.triggeredAt;
 }
 
 /** The word an alert's state reads (look ruling §1.3): Triggered is Firing. */

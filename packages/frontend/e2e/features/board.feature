@@ -63,6 +63,23 @@ Feature: Board
     When I confirm the reopen
     Then INC-1 reads "Acknowledged", its card has left "Resolved", and no run started
 
+  Scenario: Moving a card with the keyboard (#673 walk 4)
+    Given the agent is ready and INC-1 is in "Concluded"
+    When I focus INC-1's card and press Space
+    Then the board announces that INC-1 was picked up
+    When I press ArrowLeft
+    Then the board announces "Working: drop to start a run."
+    When I press Space
+    Then a run starts at once and the card shows its step, with no form under the card
+
+  Scenario: Cancelling a move with the keyboard puts the card back (#673 walk 4)
+    Given the agent is ready and INC-1 is in "Concluded"
+    When I focus INC-1's card and press Space
+    When I press ArrowRight
+    And I press Escape
+    Then the board announcement starts with "Put INC-1"
+    And the card is still in its column
+
   Scenario: Reopen and investigate with no agent frees the card
     Given INC-1 is Resolved with a cause
     And no coding agent is on PATH

@@ -13327,6 +13327,13 @@
                                   ]
                                 }
                               },
+                              "followUp": {
+                                "enum": [
+                                  "chat",
+                                  "continue"
+                                ],
+                                "type": "string"
+                              },
                               "attachments": {
                                 "type": "array",
                                 "items": {

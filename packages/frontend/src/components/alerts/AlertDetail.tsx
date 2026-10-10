@@ -6,13 +6,18 @@ import {
 	httpUrlOrNull,
 	INCIDENT_STATUS_LABEL,
 	type IncidentStatus,
+	isAlertFiring,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { alertWord } from "@/components/alerts/AlertListPane";
+import {
+	alertSince,
+	alertWord,
+	dayOrClock,
+} from "@/components/alerts/AlertListPane";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { Loading, Problem } from "@/components/shared/State";
@@ -33,10 +38,11 @@ import {
 } from "@/hooks/use-back";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
+import { alertDotColor } from "@/lib/alert-groups";
 import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
 import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { orpc } from "@/lib/api/orpc-client";
-import { formatClock, formatDateTime } from "@/lib/format-time";
+import { formatDateTime } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { alertStatusTone } from "@/lib/state-tone";
 
@@ -174,9 +180,14 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 				<>
 					<span
 						role="img"
-						aria-label={SEVERITY_LABEL[alert.severity]}
+						aria-label={`${SEVERITY_LABEL[alert.severity]}, ${isAlertFiring(alert.status) ? "firing" : "cleared"}`}
 						className="size-2 shrink-0 rounded-full"
-						style={{ background: `var(--sev-${alert.severity})` }}
+						style={{
+							background: alertDotColor(
+								alert.severity,
+								isAlertFiring(alert.status),
+							),
+						}}
 					/>
 					<h1 className="min-w-0 truncate text-title">{alert.title}</h1>
 					<span className="flex-1" />
@@ -188,7 +199,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 						{alertWord(alert.status)}
 					</StateWord>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums max-sm:hidden">
-						since {formatClock(alert.triggeredAt)}
+						since {dayOrClock(alertSince(alert))}
 					</span>
 					{alert.incident && (
 						<Button variant="secondary" asChild>
@@ -284,7 +295,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 							{alertWord(alert.status)}
 						</StateWord>
 						<span className="text-text-3">
-							since {formatClock(alert.triggeredAt)}
+							since {dayOrClock(alertSince(alert))}
 						</span>
 					</div>
 					{alert.description && (
@@ -381,6 +392,9 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 								{alert.occurrenceCount === 1
 									? `Fired once at ${formatDateTime(alert.triggeredAt)}`
 									: `${alert.occurrenceCount} occurrences, first ${formatDateTime(alert.triggeredAt)}, last ${formatDateTime(alert.lastOccurrence)}`}
+								{alert.status === "resolved" &&
+									alert.resolvedAt &&
+									`, cleared ${formatDateTime(alert.resolvedAt)}`}
 							</div>
 						</div>
 						<div className="mt-3">

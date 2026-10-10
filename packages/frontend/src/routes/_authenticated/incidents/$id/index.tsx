@@ -4,6 +4,7 @@
  */
 
 import {
+	isIncidentEnded,
 	isRunStateLive,
 	latestRun,
 	ROOT_CAUSE_CATEGORY_LABEL,
@@ -20,9 +21,9 @@ import {
 } from "@/components/incidents/RecordLayout";
 import { useIncidentRecord } from "@/components/incidents/record-context";
 import {
-	runElapsed,
 	runNumber,
 	runTimed,
+	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
 import { TimelineList } from "@/components/incidents/TimelineList";
@@ -34,7 +35,7 @@ import { InlineCode } from "@/components/shared/InlineCode";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { alertGroups } from "@/lib/alert-groups";
+import { alertDotColor, alertGroups } from "@/lib/alert-groups";
 import { answerWord } from "@/lib/answer-word";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
@@ -91,6 +92,7 @@ function Summary({ latest }: { latest: InvestigationRun }) {
 		),
 		noRepo,
 		attention: attentionFor(incident),
+		ended: isIncidentEnded(incident.status),
 		step,
 	});
 	const lineage = incidentLineage(incident);
@@ -152,7 +154,10 @@ function ReportPool({ latest }: { latest: InvestigationRun }) {
 	const who = useRunAgentModel(inv);
 	const report = inv?.report ?? null;
 	const n = inv ? runNumber(runs, inv.id) : 0;
-	const took = inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : "";
+	const took =
+		inv && runTimed(inv)
+			? formatElapsed(turnElapsed(inv, latest.events, now))
+			: "";
 	const live = !!latest.state && isRunStateLive(latest.state);
 	const earlierReport = runs.some((r) => r.hasReport && r.id !== inv?.id);
 	let body: React.ReactNode;
@@ -328,10 +333,7 @@ function AlertsPool() {
 								role="img"
 								aria-label={`${SEVERITY_LABEL[g.severity]}, ${g.firing > 0 ? "firing" : "cleared"}`}
 								className="mt-1.5 size-2 shrink-0 rounded-full"
-								style={{
-									background:
-										g.firing > 0 ? `var(--sev-${g.severity})` : "var(--text-3)",
-								}}
+								style={{ background: alertDotColor(g.severity, g.firing > 0) }}
 							/>
 							<div className="min-w-0 flex-1">
 								<p className="truncate text-body">{g.name}</p>

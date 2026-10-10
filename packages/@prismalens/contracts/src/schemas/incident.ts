@@ -85,10 +85,13 @@ export const CreateIncidentSchema = z.object({
 	affectedSystems: z.array(z.string()).optional(),
 });
 
+/** The longest cause a responder can record; the Resolve dialog counts against it. */
+export const ACTUAL_CAUSE_MAX = 2000;
+
 /** Closing records what actually happened, when the responder knows (#338). */
 export const CloseIncidentSchema = z.object({
 	id: z.string().uuid(),
-	actualCause: z.string().trim().max(2000).optional(),
+	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
 	actualCauseCategory: RootCauseCategorySchema.optional(),
 });
 export type CloseIncidentInput = z.infer<typeof CloseIncidentSchema>;
@@ -110,7 +113,7 @@ export const UpdateIncidentSchema = z.object({
 	customerImpact: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	/** Editable after Resolve (R1a d3); an empty string clears it. */
-	actualCause: z.string().trim().max(2000).optional(),
+	actualCause: z.string().trim().max(ACTUAL_CAUSE_MAX).optional(),
 	actualCauseCategory: RootCauseCategorySchema.nullable().optional(),
 });
 

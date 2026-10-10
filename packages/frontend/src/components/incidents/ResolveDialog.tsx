@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ACTUAL_CAUSE_MAX,
 	type CloseIncidentInput,
 	enumOptions,
 	type IncidentWithRelations,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
+import { cn } from "@/lib/utils";
 
 const CATEGORIES = enumOptions(
 	RootCauseCategorySchema,
@@ -90,6 +92,7 @@ export function ResolveDialog({
 		answer.category,
 	);
 	const causeId = useId();
+	const causeHintId = useId();
 	const categoryId = useId();
 
 	// Each open starts from the report again, never from a cancelled edit.
@@ -102,6 +105,8 @@ export function ResolveDialog({
 		}
 	}
 
+	const causeLength = cause.trim().length;
+	const tooLong = causeLength > ACTUAL_CAUSE_MAX;
 	const firing = editing
 		? 0
 		: (incident.alerts ?? []).filter((a) => isAlertFiring(a.status)).length;
@@ -142,13 +147,28 @@ export function ResolveDialog({
 										: "optional, you can edit it later"}
 							</span>
 						</label>
+						{/* No maxLength: it cuts a paste silently and never trims the report's own answer (#673 walk 4, QA-04). */}
 						<Textarea
 							id={causeId}
 							value={cause}
-							maxLength={2000}
 							onChange={(e) => setCause(e.target.value)}
+							aria-invalid={tooLong || undefined}
+							aria-describedby={causeHintId}
 							data-testid="resolve-cause"
 						/>
+						<p
+							id={causeHintId}
+							className={cn(
+								"text-meta tabular-nums",
+								tooLong ? "text-danger" : "text-text-3",
+							)}
+							data-testid="resolve-cause-count"
+							role={tooLong ? "alert" : undefined}
+						>
+							{tooLong
+								? `${causeLength.toLocaleString("en-US")} characters. Shorten the cause to ${ACTUAL_CAUSE_MAX.toLocaleString("en-US")} to save it.`
+								: `${causeLength.toLocaleString("en-US")} of ${ACTUAL_CAUSE_MAX.toLocaleString("en-US")} characters`}
+						</p>
 					</div>
 					<div className="space-y-1.5">
 						<label htmlFor={categoryId} className="block text-body">
@@ -183,7 +203,7 @@ export function ResolveDialog({
 					</Button>
 					<Button
 						variant="primary"
-						disabled={isPending}
+						disabled={isPending || tooLong}
 						onClick={() =>
 							onConfirm(
 								editing

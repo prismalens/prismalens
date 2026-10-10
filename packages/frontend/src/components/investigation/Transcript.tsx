@@ -35,7 +35,7 @@ const ENTER =
 /** The delivery word under "You" (decision 18): Enter waits for the agent's next pause. */
 function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
 	if (state === "not_delivered") return "Not delivered";
-	if (state === "started" || state === "resumed")
+	if (state === "started" || state === "resumed" || state === "asked")
 		return OPERATOR_STATE_LABEL[state];
 	if (state === "queued") return "Waits for the next pause";
 	return mode === "now" ? "Sent now" : "Delivered at the next pause";
@@ -391,6 +391,7 @@ function ToolGroup({
 								key={key}
 								command={commandText(source, cwd)}
 								running={!result}
+								unfinished={item.unfinished}
 								output={detail && shortPath(detail, cwd)}
 								refused={
 									result?.ok === false

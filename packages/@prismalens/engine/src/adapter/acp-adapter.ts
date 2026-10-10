@@ -34,6 +34,7 @@
 import type {
 	AttachmentRef,
 	CanonicalEvent,
+	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
 	ToolCategory,
@@ -146,6 +147,7 @@ export class AcpAdapter {
 		delivered: boolean,
 		resumed?: { name: string; head: string }[],
 		attachments?: AttachmentRef[],
+		followUp?: FollowUpKind,
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -154,6 +156,7 @@ export class AcpAdapter {
 			mode,
 			delivered,
 			...(resumed ? { resumed } : {}),
+			...(followUp ? { followUp } : {}),
 			...(attachments?.length ? { attachments } : {}),
 		};
 	}

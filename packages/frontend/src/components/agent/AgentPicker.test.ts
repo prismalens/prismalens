@@ -10,6 +10,7 @@ import {
 	EffortChip,
 	effortLevels,
 	ModeChip,
+	modelName,
 	unreadyReason,
 } from "./AgentPicker";
 
@@ -132,5 +133,79 @@ describe("the box's chips (#673)", () => {
 		expect(html).toContain(
 			"Accepts all permissions. PrismaLens answers yes and logs it.",
 		);
+	});
+});
+
+describe("modelName (#673)", () => {
+	const opencode = (over: Partial<HarnessStatus> = {}): HarnessStatus =>
+		claude({
+			id: "opencode",
+			label: "OpenCode",
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [
+					{
+						id: "opencode/muse-spark-1.3-free",
+						name: "OpenCode Zen/Muse Spark 1.3 Free",
+						status: null,
+					},
+					{
+						id: "anthropic/claude-x",
+						name: "Anthropic/Claude X",
+						status: null,
+					},
+				],
+			},
+			...over,
+		});
+
+	it("keeps version points apart and names an ambiguous match by its id (#805)", () => {
+		const nova = (names: string[]) =>
+			opencode({
+				models: {
+					source: "harness",
+					asOf: "",
+					entries: names.map((name, i) => ({
+						id: `x/m${i}`,
+						name,
+						status: null,
+					})),
+				},
+			});
+		expect(modelName(nova(["Nova 1.3"]), "Nova 13")).toBe("Nova 13");
+		expect(modelName(nova(["Nova 1.3"]), "nova-1-3")).toBe("Nova 1.3");
+		expect(modelName(nova(["Nova 1.3", "nova-1.3"]), "Nova 1.3 ")).toBe(
+			"Nova 1.3 ",
+		);
+	});
+
+	it("resolves model names stripped of provider prefix, by id and by lenient match", () => {
+		const harness = opencode();
+		expect(modelName(harness, "opencode/muse-spark-1.3-free")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		expect(modelName(harness, "Muse Spark 1.3 (free)")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		expect(modelName(harness, "unknown-model-id")).toBe("unknown-model-id");
+		expect(modelName(harness, null)).toBeNull();
+		expect(chipModel(harness, "Muse Spark 1.3 (free)")).toBe(
+			"Muse Spark 1.3 Free",
+		);
+		const nonProvider = opencode({
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [
+					{
+						id: "opencode/foo",
+						name: "Zen/Foo",
+						status: null,
+					},
+				],
+			},
+		});
+		expect(modelName(nonProvider, "opencode/foo")).toBe("Zen/Foo");
 	});
 });

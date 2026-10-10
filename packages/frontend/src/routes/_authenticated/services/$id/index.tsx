@@ -63,7 +63,11 @@ function ServicePage() {
 		error,
 		refetch,
 	} = useQuery(orpc.services.get.queryOptions({ input: { id } }));
-	const { data: topology } = useQuery({
+	const {
+		data: topology,
+		status: topologyStatus,
+		refetch: refetchTopology,
+	} = useQuery({
 		...orpc.services.getTopology.queryOptions({ input: { id } }),
 		enabled: !!service,
 	});
@@ -233,6 +237,14 @@ function ServicePage() {
 				onOpenChange={setDeleting}
 				serviceId={service.id}
 				serviceName={service.displayName || service.name}
+				upstream={(topology?.upstream ?? []).map(
+					(e) => e.service.displayName || e.service.name,
+				)}
+				downstream={(topology?.downstream ?? []).map(
+					(e) => e.service.displayName || e.service.name,
+				)}
+				links={topologyStatus}
+				onRetryLinks={() => void refetchTopology()}
 				onSuccess={() => navigate({ to: "/services" })}
 			/>
 			<DestructiveConfirm

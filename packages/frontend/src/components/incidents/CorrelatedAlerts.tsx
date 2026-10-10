@@ -12,7 +12,12 @@ import { Mono } from "@/components/shared/Mono";
 import { Empty } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { ago, useNow } from "@/hooks/use-now";
-import { type AlertGroup, alertDetail, alertGroups } from "@/lib/alert-groups";
+import {
+	type AlertGroup,
+	alertDetail,
+	alertDotColor,
+	alertGroups,
+} from "@/lib/alert-groups";
 import { formatClock } from "@/lib/format-time";
 import { alertStatusTone } from "@/lib/state-tone";
 
@@ -27,9 +32,9 @@ export function AlertGroupHead({ group }: { group: AlertGroup }) {
 		<div className="flex min-w-0 items-center gap-2 text-body">
 			<span
 				role="img"
-				aria-label={SEVERITY_LABEL[group.severity]}
+				aria-label={`${SEVERITY_LABEL[group.severity]}, ${group.firing > 0 ? "firing" : "cleared"}`}
 				className="size-2 shrink-0 rounded-full"
-				style={{ background: `var(--sev-${group.severity})` }}
+				style={{ background: alertDotColor(group.severity, group.firing > 0) }}
 			/>
 			<span className="min-w-0 truncate font-medium">{group.name}</span>
 			{group.alerts.length > 1 && (

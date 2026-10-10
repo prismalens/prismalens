@@ -35,6 +35,7 @@ export interface EventRow {
 }
 
 export const REPORT_DRAFTED = "Report drafted";
+export const REPORT_CUT = "Report draft cut off";
 
 /**
  * Is this block the report itself? The schema decides — not a guess at two of
@@ -55,8 +56,8 @@ export const REPORT_DRAFTED = "Report drafted";
  * it lives in `@prismalens/contracts`, which the browser bundle already
  * carries, while the engine is server-only.
  *
- * Only a COMPLETE object is recognised. See {@link agentStepMessage} for what
- * that means for a partial one.
+ * Only a COMPLETE object is recognised; see {@link agentStepMessage} for a
+ * block cut off mid-way.
  */
 function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
@@ -74,23 +75,8 @@ function isReportJson(body: string): boolean {
  * document; every other text shows as written. A fence closes only on its own
  * line, so a backtick run inside a JSON string does not end the block early.
  *
- * ## Partial text
- *
- * This never sees a half-written report through the live stream. Assistant text
- * arrives from ACP as incremental `agent_message_chunk` deltas, and
- * `AcpAdapter` is the one place they accumulate: it flushes them as the `text`
- * of a single `agent_step`, so a canonical event always carries a whole turn.
- * The panel appends those events and upserts rows by `(branchId, seq)` for
- * replay idempotency — it never grows one row's text in place. So there is no
- * window in which a row holds an incomplete object, and nothing flashes raw
- * JSON mid-stream.
- *
- * If a future harness did split a report across two steps, the fragment would
- * fail `JSON.parse` and be shown as written rather than swallowed. That is the
- * deliberate choice: an unparseable fragment is indistinguishable from prose
- * that happens to start with `{`, and hiding text we cannot identify is the
- * worse failure — it loses the agent's words with no way to get them back,
- * whereas showing a fragment is merely ugly for one row.
+ * A message sent mid-turn flushes the text so far, so a report can arrive cut
+ * off: an unclosed ```json block opening with `"summary"` reads as a line (#673 walk 4).
  */
 export function agentStepMessage(text: string): string {
 	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
@@ -105,6 +91,12 @@ export function agentStepMessage(text: string): string {
 	}
 	for (const line of Array.from(text.matchAll(/^[ \t]*\{/gm))) {
 		if (isReportJson(text.slice(line.index))) return REPORT_DRAFTED;
+	}
+	// Every opener is checked: an earlier closed block must not hide a later cut one (#805).
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
+		const rest = text.slice((open.index ?? 0) + open[0].length);
+		if (/^\s*\{\s*"summary"\s*:/.test(rest) && !/^```[ \t]*$/m.test(rest))
+			return REPORT_CUT;
 	}
 	return text;
 }
@@ -288,6 +280,7 @@ export const STALE_AFTER_S = 90;
 export type OperatorState =
 	| "started"
 	| "resumed"
+	| "asked"
 	| "queued"
 	| "sent_now"
 	| "delivered"
@@ -298,6 +291,7 @@ export type OperatorState =
 export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
 	started: "Started the run",
 	resumed: "Continued the run",
+	asked: "Asked",
 	queued: "Queued",
 	sent_now: "Sent now",
 	delivered: "Delivered",
@@ -361,6 +355,8 @@ export type TranscriptItem =
 			summary: string;
 			failed: number;
 			running: number;
+			/** The turn ended with calls unanswered: they read "not finished", never "running". */
+			unfinished?: boolean;
 			rows: EventRow[];
 			/** The tool calls in the group, so a report's evidence link can open it. */
 			callIds: string[];
@@ -434,7 +430,10 @@ const FILE_PAST: Record<FileVerb, string> = {
 };
 
 /** `read 2 files, searched 1 pattern`: what a tool group did, by category. */
-export function summarizeTools(results: (StreamToolResult | null)[]): string {
+export function summarizeTools(
+	results: (StreamToolResult | null)[],
+	opts: { ended?: boolean } = {},
+): string {
 	const files = new Map<FileVerb, number>();
 	let search = 0;
 	let source = 0;
@@ -457,7 +456,8 @@ export function summarizeTools(results: (StreamToolResult | null)[]): string {
 	if (search) parts.push(`searched ${plural(search, "pattern", "patterns")}`);
 	if (source) parts.push(`queried ${plural(source, "source", "sources")}`);
 	if (other) parts.push(`ran ${plural(other, "command", "commands")}`);
-	if (running) parts.push(`${running} running`);
+	if (running)
+		parts.push(`${running} ${opts.ended ? "not finished" : "running"}`);
 	return parts.join(", ");
 }
 
@@ -482,6 +482,15 @@ export function resumedLine(resumed: { name: string; head: string }[]): string {
 	return at
 		? `Resumed in the same session, code at ${at}`
 		: "Resumed in the same session";
+}
+
+/** A follow-up's first message: an Ask, or the run continued to its report (#673 walk 4). */
+function followUpState(
+	followUp: "chat" | "continue" | undefined,
+	kind: string | null | undefined,
+): OperatorState {
+	if (followUp === "chat" || (!followUp && kind === "chat")) return "asked";
+	return "resumed";
 }
 
 function transcriptPath(runId?: string): string {
@@ -533,6 +542,7 @@ export function deriveTranscript(
 		brief: boolean;
 	}[] = [];
 
+	const groups: OpenGroup[] = [];
 	const closeGroup = () => {
 		group = null;
 	};
@@ -550,6 +560,7 @@ export function deriveTranscript(
 		};
 		items.push(item);
 		group = { item, calls: new Map() };
+		groups.push(group);
 		return group;
 	};
 	const refresh = (g: OpenGroup) => {
@@ -558,7 +569,15 @@ export function deriveTranscript(
 		g.item.callIds = Array.from(g.calls.keys());
 		g.item.failed = results.filter((r) => r && !r.ok).length;
 		g.item.running = results.filter((r) => !r).length;
-		g.item.summary = summarizeTools(results);
+		g.item.summary = summarizeTools(results, { ended: g.item.unfinished });
+	};
+	// A stopped or resumed turn left its open calls behind; none of them still runs (#673 walk 4, QA-07).
+	const endOpenCalls = () => {
+		for (const g of groups)
+			if (g.item.running > 0 && !g.item.unfinished) {
+				g.item.unfinished = true;
+				refresh(g);
+			}
 	};
 	const answerPending = () => {
 		for (const o of operators) {
@@ -594,9 +613,9 @@ export function deriveTranscript(
 			case "agent_step": {
 				sawAgent = true;
 				const text = agentStepMessage(event.text.trim());
-				if (text === REPORT_DRAFTED) {
+				if (text === REPORT_DRAFTED || text === REPORT_CUT) {
 					closeGroup();
-					items.push({ kind: "line", key, text: REPORT_DRAFTED });
+					items.push({ kind: "line", key, text });
 				} else if (text) {
 					closeGroup();
 					items.push({ kind: "prose", key, text, at: event.ts });
@@ -636,6 +655,7 @@ export function deriveTranscript(
 			}
 			case "operator_message": {
 				closeGroup();
+				if (event.resumed) endOpenCalls();
 				// A follow-up's first message is the boundary, whether or not the end before it was kept (#804 OBJ-028).
 				if (event.resumed && !sawEnd) {
 					sawEnd = true;
@@ -674,13 +694,20 @@ export function deriveTranscript(
 					state: !event.delivered
 						? "not_delivered"
 						: event.resumed
-							? "resumed"
+							? followUpState(event.followUp, run?.kind)
 							: brief
 								? "started"
 								: event.mode === "now"
 									? "sent_now"
 									: "delivered",
 				};
+				// Send now takes the messages queued just before it in the same turn, so they went now too (#673 walk 4).
+				if (item.state === "sent_now")
+					for (let i = items.length - 1; i >= 0; i--) {
+						const prev = items[i];
+						if (prev?.kind !== "operator" || prev.state !== "delivered") break;
+						prev.mode = "now";
+					}
 				operators.push({ item, brief });
 				if (sawEnd) lastFollowUpAt = items.length;
 				items.push(item);
@@ -763,6 +790,7 @@ export function deriveTranscript(
 		});
 	}
 
+	if (run && !run.live) endOpenCalls();
 	if (run?.live) {
 		const last = items[items.length - 1];
 		const toolRunning = last?.kind === "tools" && last.running > 0;
@@ -866,7 +894,7 @@ export function latestAgentText(events: CanonicalEvent[]): string | null {
 		const e = events[i];
 		if (e?.kind !== "agent_step") continue;
 		const text = agentStepMessage(e.text.trim());
-		if (text && text !== REPORT_DRAFTED) return text;
+		if (text && text !== REPORT_DRAFTED && text !== REPORT_CUT) return text;
 	}
 	return null;
 }

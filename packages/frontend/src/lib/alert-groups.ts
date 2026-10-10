@@ -7,6 +7,11 @@ import {
 	type Severity,
 } from "@prismalens/contracts";
 
+/** An alert's dot: its severity colour while firing, quiet once cleared (#673 w24). */
+export function alertDotColor(severity: Severity, firing: boolean): string {
+	return firing ? `var(--sev-${severity})` : "var(--text-3)";
+}
+
 const RANK: Record<Severity, number> = {
 	critical: 0,
 	high: 1,

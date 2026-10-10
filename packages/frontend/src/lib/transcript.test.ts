@@ -131,7 +131,7 @@ describe("deriveTranscript", () => {
 		expect(tools.rows.length).toBeGreaterThan(0);
 	});
 
-	it("starts a new group after prose, and counts a call with no result as running", () => {
+	it("starts a new group after prose, and marks an unanswered call unfinished when ended", () => {
 		const items = deriveTranscript(
 			[
 				step(1, "", [{ id: "a", name: "Read a.ts" }]),
@@ -144,7 +144,52 @@ describe("deriveTranscript", () => {
 		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
 		const second = items[2] as Extract<TranscriptItem, { kind: "tools" }>;
 		expect(second.running).toBe(1);
+		expect(second.unfinished).toBe(true);
+		expect(second.summary).toBe("1 not finished");
+	});
+
+	it("keeps an unanswered call running when the run is live", () => {
+		const live = { status: "running", live: true };
+		const items = deriveTranscript(
+			[
+				step(1, "", [{ id: "a", name: "Read a.ts" }]),
+				result(2, "a", "file"),
+				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
+			],
+			T0,
+			{ run: live },
+		);
+		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
+		const second = items[2] as Extract<TranscriptItem, { kind: "tools" }>;
+		expect(second.running).toBe(1);
+		expect(second.unfinished).toBeUndefined();
 		expect(second.summary).toBe("1 running");
+	});
+
+	it("marks an unanswered call unfinished before a resumed operator_message even while live", () => {
+		const live = { status: "running", live: true };
+		const resumedEvent: CanonicalEvent = {
+			...operator(4, "Check deploy again"),
+			resumed: [{ name: "api", head: "1a2b3c4" }],
+		} as CanonicalEvent;
+		const items = deriveTranscript(
+			[
+				step(1, "", [{ id: "a", name: "Read a.ts" }]),
+				result(2, "a", "file"),
+				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
+				resumedEvent,
+			],
+			T0,
+			{ run: live },
+		);
+		const tools = items.filter((i) => i.kind === "tools") as Extract<
+			TranscriptItem,
+			{ kind: "tools" }
+		>[];
+		const second = tools[1];
+		expect(second.running).toBe(1);
+		expect(second.unfinished).toBe(true);
+		expect(second.summary).toBe("1 not finished");
 	});
 
 	it("adds Thought for Ns before a step that followed a gap of 20s or more", () => {
@@ -407,6 +452,14 @@ describe("summarizeTools", () => {
 			"read 1 file, wrote 1 file, edited 1 file, deleted 1 file, moved 1 file",
 		);
 	});
+
+	it("formats unanswered calls as not finished when ended is true", () => {
+		const results = [
+			{ name: "read /tmp/b", toolCategory: "file" as const, toolCallId: "1", source: "1", ok: true, preview: "" },
+			null,
+		];
+		expect(summarizeTools(results, { ended: true })).toBe("read 1 file, 1 not finished");
+	});
 });
 
 describe("fileVerb", () => {
@@ -504,3 +557,122 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 		expect(endTexts(items)).toHaveLength(1);
 	});
 });
+
+describe("Send now carries the queued message (#673 walk 4)", () => {
+	it("carries an immediately preceding delivered queued message into mode now (#673 walk 4)", () => {
+		// A and B both become mode now and then answered once the agent answers.
+		const items = deriveTranscript(
+			[
+				operator(0, "Investigate cache issue"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", true),
+				operator(2, "Message B", "now", true),
+				step(3, "Answering both messages."),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "now",
+			state: "answered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "answered",
+		});
+	});
+
+	it("does not carry a queued message if agent prose intervenes (#673 walk 4)", () => {
+		// Agent prose between A and B leaves A in mode queue.
+		const items = deriveTranscript(
+			[
+				operator(0, "Investigate cache issue"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", true),
+				step(3, "Intermediate prose."),
+				operator(4, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "queue",
+			state: "answered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+
+	it("does not carry over the run brief when send now arrives directly after it (#673 walk 4)", () => {
+		// The brief keeps state started and mode queue because it is not delivered.
+		const items = deriveTranscript(
+			[
+				operator(0, "Initial brief", "queue", true),
+				operator(1, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(2);
+		expect(ops[0]).toMatchObject({
+			text: "Initial brief",
+			mode: "queue",
+			state: "started",
+		});
+		expect(ops[1]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+
+	it("does not carry an undelivered queued message preceding send now (#673 walk 4)", () => {
+		// Message A with delivered false keeps mode queue and state not_delivered.
+		const items = deriveTranscript(
+			[
+				operator(0, "Initial brief"),
+				step(1, "Starting investigation."),
+				operator(2, "Message A", "queue", false),
+				operator(3, "Message B", "now", true),
+			],
+			T0,
+			{ run: ended },
+		);
+		const ops = items.filter((i) => i.kind === "operator") as Extract<
+			TranscriptItem,
+			{ kind: "operator" }
+		>[];
+		expect(ops).toHaveLength(3);
+		expect(ops[1]).toMatchObject({
+			text: "Message A",
+			mode: "queue",
+			state: "not_delivered",
+		});
+		expect(ops[2]).toMatchObject({
+			text: "Message B",
+			mode: "now",
+			state: "sent_now",
+		});
+	});
+});
+

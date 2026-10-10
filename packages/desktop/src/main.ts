@@ -80,6 +80,7 @@ import {
 	planLaunch,
 	portFree,
 	portTakenDialog,
+	refusalIcon,
 	resetWorkspaceSpawn,
 	type StopDialog,
 	serviceStartCommands,
@@ -591,7 +592,7 @@ async function refuse(error: unknown): Promise<void> {
 	if (d) {
 		const { response } = await dialog.showMessageBox({
 			title: TITLE,
-			type: "error",
+			type: refusalIcon(d),
 			message: d.message,
 			detail: d.detail,
 			buttons: d.buttons,
