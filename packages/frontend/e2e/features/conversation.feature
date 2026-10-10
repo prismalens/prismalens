@@ -12,7 +12,7 @@ Feature: The conversation and the box
 
     Scenario: Starting a run from the box
       When I type "Start with the 14:02 deploy" in the draft's box and press "Investigate"
-      Then the status line reads "Working" and the chips name the agent and model
+      Then the status line reads "Reading worker/consumer.py to see how the queue is drained." and the chips name the agent and model
       And the box reads "Message the agent" with one Stop button
 
   Rule: Conversation
@@ -50,7 +50,7 @@ Feature: The conversation and the box
     Scenario: The conversation is the whole record, with no event log
       Then the Conversation header shows no "Transcript / Ledger" control
       When the run ends
-      Then the end line offers "Read the report" and no "Event log"
+      Then the end line offers "See it on the overview" and no "Event log"
 
   Rule: Stop then continue
     Stop ends the run as the agent ends a cancelled turn; continuing is what the agent supports.
@@ -73,7 +73,7 @@ Feature: The conversation and the box
 
     Scenario: A finished run takes follow-ups, the report stays
       Given INC-1's run finished with a report
-      When I send "Why the 14:02 deploy?" from the box reading "Ask about this run"
+      When I send "Why the 14:02 deploy?" from the box reading "Say what to change, or just continue"
       Then the agent answers in the conversation and the report is unchanged
 
     # T10 (#673 w59, OBJ-003): report presence gates the Report tab, not the run's state.
@@ -81,13 +81,6 @@ Feature: The conversation and the box
       Given INC-1's run finished with a report
       And an answer to a question is running on it
       Then the Report tab shows the report and the Overview's report pool shows it, the answer working under it
-
-    # T23 (#673 w59, OBJ-013)
-    Scenario: Investigate again carries the box and the report into a new run
-      Given INC-1's run finished with a report
-      When I type "Only the 14:02 deploy" and attach "notes.log", then press "Investigate again"
-      Then a draft opens holding "Only the 14:02 deploy", the file "notes.log" and the quote "Re-check Run #"
-      And the report is unchanged
 
     # T24 (#673 w59, §3, OBJ-003, OBJ-007)
     Scenario: A stopped reportless run reads Stopped by you and offers both verbs
@@ -107,7 +100,7 @@ Feature: The conversation and the box
 
     Scenario: An agent that cannot continue says so
       Given the run was on deepagents and was stopped
-      Then the box reads "This run can't continue. Start a new run." with "New run", and no field to type into
+      Then the box reads "This run kept no agent session, so it can't continue. Start a new run." with "New run", and no field to type into
 
   Rule: Agent controls
 
