@@ -178,6 +178,11 @@ export class RepoSourceService {
 		return this.headOf(mirror, src.defaultBranch);
 	}
 
+	/** Where to read history: the folder itself, or the URL's mirror after a fetch. */
+	async gitDir(src: RepoSource): Promise<string> {
+		return src.kind === "folder" ? src.source : this.ensureMirror(src);
+	}
+
 	/** A folder may sit inside a repo; git clones only a top level, so the rest becomes the sub-path. */
 	async checkFolder(folder: string): Promise<FolderCheck> {
 		if (!existsSync(folder)) throw new Error(`No such folder: ${folder}`);
