@@ -39,7 +39,7 @@ describe("RepositoriesService.addSource", () => {
 
 	const mockPrisma = {
 		service: { findUnique: vi.fn() },
-		repository: { findFirst: vi.fn() },
+		repository: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
 		$transaction: vi.fn(),
 	};
 
@@ -179,8 +179,8 @@ describe("RepositoriesService.addSource", () => {
 			connectionId: "discovery-conn-1",
 			metadata: JSON.stringify({ otherField: true }),
 		};
-		mockPrisma.repository.findUnique = vi.fn().mockResolvedValue(repoRow);
-		mockPrisma.repository.update = vi.fn().mockImplementation(async ({ data }) => ({
+		mockPrisma.repository.findUnique.mockResolvedValue(repoRow);
+		mockPrisma.repository.update.mockImplementation(async ({ data }) => ({
 			...repoRow,
 			...data,
 		}));

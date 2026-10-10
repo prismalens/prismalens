@@ -19,6 +19,8 @@ const env = await vi.hoisted(async () => {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "pl-git-home-"));
 	process.env.PRISMALENS_WORKSPACE_DIR = path.join(root, "data");
 	process.env.HOME = home;
+	// A runner's system helper (macOS osxkeychain) can block the probe past the test timeout.
+	process.env.GIT_CONFIG_NOSYSTEM = "1";
 	return { root, home };
 });
 
