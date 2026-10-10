@@ -4,7 +4,7 @@
 /**
  * Investigation, Agent Execution, and Tool Execution schemas
  */
-import { HARNESS_IDS } from "@prismalens/config/harness";
+import { type AccessLevel, HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import {
 	DateStringSchema,
@@ -18,6 +18,8 @@ import {
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
+import { AccessLevelSchema, RunModeSchema } from "./settings.js";
+import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
 	LIVE_TURNS,
@@ -96,21 +98,21 @@ export const NextStepSchema = z.object({
 	priority: RecommendationPrioritySchema.nullable().optional(),
 });
 
-/** Access levels stored before #673 w21; only the one with an exact agent mode word is renamed. */
-const LEGACY_ACCESS_MODE: Record<string, string> = {
-	"read-only-tools": "read-only",
-};
-
 /**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
 export const RunFidelitySchema = z.object({
 	harness: z.string(),
-	/** The agent's own mode id the run ran in (#673 w21); records from #778 carry the old access level. */
-	mode: z.preprocess((v) => LEGACY_ACCESS_MODE[v as string] ?? v, z.string()),
+	/** The agent's own mode id it reported (#673 w21); records from #778 carry the old access level. */
+	mode: z.string(),
 	fidelity: z.enum(["enforced", "cooperative", "advisory"]),
 	mechanism: z.string(),
+	/** The level the run asked for, and the one the reported mode is (#673 w21 ruling 2026-10-10). */
+	access: AccessLevelSchema.optional(),
+	/** Absent in Plan where the plan mode takes the level's slot. */
+	ranAccess: AccessLevelSchema.optional(),
+	runMode: RunModeSchema.optional(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
@@ -125,6 +127,21 @@ export const RunFidelitySchema = z.object({
 	effort: z.string().optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
+
+/**
+ * The level a run ran at: the recorded one, else the asked one, else a #778
+ * level id (a row with no `agentMode` predates #808, whose ids are agent modes).
+ */
+export function fidelityAccess(
+	f: Pick<RunFidelity, "mode" | "access" | "ranAccess">,
+	agentMode: string | null | undefined,
+): AccessLevel | undefined {
+	return (
+		f.ranAccess ??
+		f.access ??
+		(agentMode == null ? LEGACY_ACCESS_LEVEL[f.mode] : undefined)
+	);
+}
 
 /** The run asked for one model and the harness reported another (#639). */
 export function modelSubstituted(f: RunFidelity): boolean {
@@ -230,8 +247,11 @@ export const InvestigationSchema = z.object({
 	status: WorkflowStatusSchema,
 	/** A run is a thread (#673): the alert workflow, or a chat a message started. */
 	kind: InvestigationKindSchema.optional().default("investigation"),
-	/** The agent's own mode id the run asked for; `agent-default` asked for none. */
+	/** The agent's own mode id PrismaLens set; null when it set none. */
 	agentMode: z.string().nullable().optional(),
+	/** The permission level and mode the run asked for (#673 w21); null on a run from before. */
+	accessLevel: AccessLevelSchema.nullable().optional(),
+	runMode: RunModeSchema.nullable().optional(),
 	/** Investigation: the brief's first line; chat: the message's first 120 characters. */
 	title: z.string().nullable().optional(),
 	/** The run left a report; a chat never does. */
@@ -527,7 +547,9 @@ export type SendInvestigationMessageResult = z.infer<
 
 /**
  * How an agent's permission ask ended (#673 w21): the operator answered, nobody
- * did within {@link ASK_TIMEOUT_MS}, the run stopped, or PrismaLens restarted.
+ * did within {@link ASK_TIMEOUT_MS}, the run stopped, or PrismaLens restarted;
+ * or the run's level answered it: `allowed`, or a request to leave Plan
+ * (`plan_kept`) or enter it (`mode_kept`) refused.
  */
 export const PERMISSION_ASK_OUTCOMES = [
 	"approved",
@@ -535,6 +557,9 @@ export const PERMISSION_ASK_OUTCOMES = [
 	"timed_out",
 	"stopped",
 	"restarted",
+	"allowed",
+	"plan_kept",
+	"mode_kept",
 ] as const;
 export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
 
@@ -644,6 +669,9 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		...StreamBaseShape,
 		askId: z.string().uuid(),
 		outcome: z.enum(PERMISSION_ASK_OUTCOMES),
+		/** On an ask the level answered, which never showed a card: what it was. */
+		title: z.string().optional(),
+		toolKind: z.string().nullable().optional(),
 	}),
 	z.object({
 		kind: z.literal("report"),
@@ -774,6 +802,8 @@ export const ServiceContextSchema = z.object({
 	repo: z.string().optional(),
 	/** Direct dependency names (blast-radius seed for a future reduce overlay). */
 	dependsOn: z.array(z.string()).optional(),
+	/** The operator's investigation notes for this service, fenced into the brief (#673). */
+	notes: z.string().optional(),
 });
 export type ServiceContext = z.infer<typeof ServiceContextSchema>;
 
@@ -920,8 +950,9 @@ export const InvestigationJobDataSchema = z.object({
 	alerts: z.array(FiringAlertSchema).optional(),
 	/** The operator's brief for the agent (#743). */
 	brief: z.string().max(4000).optional(),
-	/** The agent's own mode id (#673 w21); the agent's row default when absent, a queued legacy job included. */
-	agentMode: z.string().max(64).optional(),
+	/** The run's two axes (#673 w21); Settings, else the agent's own default, when absent. A resume without them keeps the session's mode. */
+	accessLevel: AccessLevelSchema.optional(),
+	runMode: RunModeSchema.optional(),
 	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),

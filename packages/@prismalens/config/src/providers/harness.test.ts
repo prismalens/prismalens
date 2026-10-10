@@ -3,17 +3,13 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	AGENT_DEFAULT_MODE,
-	agentModeEnv,
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	modeFidelity,
 	runsInSandbox,
-	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
-	runnableModes,
 } from "./harness.js";
 
 afterEach(() => {
@@ -165,10 +161,9 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 });
 
 describe("row data every reader needs (#634)", () => {
-	it("gives every row a non-empty loginHint and a default mode", () => {
+	it("gives every row a non-empty loginHint", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			expect(descriptor.loginHint.length, `${id} loginHint`).toBeGreaterThan(0);
-			expect(descriptor.defaultMode.length, `${id} defaultMode`).toBeGreaterThan(0);
 		}
 	});
 
@@ -251,71 +246,7 @@ describe("resumeBlockedReason (#747)", () => {
 	});
 });
 
-describe("the agent's own mode (#673 w21)", () => {
-	it("defaults each row to its own mode, and the operator's setting wins", () => {
-		expect(resolveAgentMode("claude-code")).toBe("default");
-		expect(resolveAgentMode("opencode")).toBe("build");
-		expect(resolveAgentMode("codex")).toBe("read-only");
-		expect(resolveAgentMode("gemini")).toBe("default");
-		expect(resolveAgentMode("deepagents")).toBe(AGENT_DEFAULT_MODE);
-		expect(resolveAgentMode("claude-code", "acceptEdits")).toBe("acceptEdits");
-		expect(resolveAgentMode("claude-code", " ")).toBe("default");
-	});
-
-	it("every row's defaultMode equals modeTiers.supervised when it has one", () => {
-		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
-			if (descriptor.modeTiers.supervised) {
-				expect(descriptor.defaultMode, `${id} defaultMode`).toBe(
-					descriptor.modeTiers.supervised,
-				);
-			}
-		}
-	});
-
-	it("maps access tiers for claude-code, codex, and gemini", () => {
-		expect(HARNESS_REGISTRY["claude-code"].modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "acceptEdits",
-			auto: "auto",
-			"full-access": "bypassPermissions",
-		});
-		expect(HARNESS_REGISTRY.codex.modeTiers).toEqual({
-			supervised: "read-only",
-			"auto-edits": "workspace-write",
-			auto: "agent",
-			"full-access": "agent-full-access",
-		});
-		expect(HARNESS_REGISTRY.gemini.modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "autoEdit",
-			"full-access": "yolo",
-		});
-	});
-
-	it("drops a plan mode to the row default, keeping non-plan modes", () => {
-		expect(resolveAgentMode("claude-code", "plan")).toBe("default");
-		expect(resolveAgentMode("opencode", "plan")).toBe("build");
-		expect(resolveAgentMode("gemini", "plan")).toBe("default");
-		expect(resolveAgentMode("codex", "read-only")).toBe("read-only");
-	});
-
-	it("runnableModes drops plan and returns null for [plan]", () => {
-		expect(
-			runnableModes("claude-code", [
-				{ id: "default" },
-				{ id: "plan" },
-			]),
-		).toEqual([{ id: "default" }]);
-		expect(runnableModes("claude-code", [{ id: "plan" }])).toBeNull();
-		expect(runnableModes("opencode", [{ id: "plan" }])).toBeNull();
-	});
-
-	it("passes Codex its mode through INITIAL_AGENT_MODE, and no other row an env", () => {
-		expect(agentModeEnv("codex", "agent-full-access")).toEqual({ INITIAL_AGENT_MODE: "agent-full-access" });
-		expect(agentModeEnv("codex", AGENT_DEFAULT_MODE)).toEqual({});
-		expect(agentModeEnv("claude-code", "default")).toEqual({});
-	});
-
+describe("sandbox and fidelity (#673 w51)", () => {
 	it("runs only Codex's sandboxed modes in its sandbox, never full access", () => {
 		for (const mode of ["read-only", "workspace-write", "agent"]) expect(runsInSandbox("codex", mode)).toBe(true);
 		expect(runsInSandbox("codex", "agent-full-access")).toBe(false);
