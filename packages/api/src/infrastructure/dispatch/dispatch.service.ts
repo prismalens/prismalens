@@ -33,7 +33,9 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	AccessLevelSchema,
 	CanonicalEventSchema,
+	effectiveAccess,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
@@ -84,18 +86,6 @@ export type { InvestigationJobData };
 
 /** A follow-up the run's state rules out; the controller answers CONFLICT with it. */
 export class FollowUpRefused extends Error {}
-
-/**
- * The agent mode a stored job payload names; undefined when it names none or
- * does not parse. A legacy `access` is dropped, so the run takes its row's default.
- */
-function jobAgentMode(payload: string): string | undefined {
-	try {
-		return InvestigationJobDataSchema.parse(JSON.parse(payload)).agentMode;
-	} catch {
-		return undefined;
-	}
-}
 
 /** Priority ordering for the claim. Lower claims first. NOT a fairness key. */
 const PRIORITY_ORDER: Record<string, number> = {
@@ -207,6 +197,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						acpSessionId: dto.acpSessionId,
 						workspace: dto.workspace,
 						agentMode: dto.agentMode,
+						accessLevel: dto.accessLevel,
 						lastTurnOutcome: dto.lastTurnOutcome,
 					},
 				);
@@ -401,7 +392,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const pick = (asked: string | null | undefined, stored?: string) =>
 			asked === undefined ? stored : (asked ?? undefined);
 		const effort = pick(requested.effort, settings.efforts?.[h]);
-		const agentMode = settings.agentModes?.[h];
+		const local = this.harnessService.localDefaultOf(h);
 		const model = resolveHarnessRunModel(
 			h,
 			pick(requested.model, settings.models?.[h]),
@@ -410,7 +401,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			selection,
 			...model,
 			...(effort ? { effort } : {}),
-			...(agentMode ? { agentMode } : {}),
+			accessLevel: effectiveAccess(settings, h, local.permission).level,
 			...(isCustomModel(model, settings.customModels?.[h])
 				? { customModel: true }
 				: {}),
@@ -736,7 +727,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				status: true,
 				completedAt: true,
 				error: true,
-				agentMode: true,
+				accessLevel: true,
 				kind: true,
 				report: true,
 			},
@@ -756,15 +747,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
-		// The run keeps the mode it ran in: the row's, else what its first job asked for.
-		const first = row.agentMode
-			? null
-			: await this.prisma.job.findUnique({
-					where: { investigationId: id },
-					select: { payload: true },
-				});
-		const agentMode =
-			row.agentMode ?? (first ? jobAgentMode(first.payload) : undefined);
+		// The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
+		const accessLevel = AccessLevelSchema.safeParse(row.accessLevel).data;
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
@@ -781,7 +765,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const data: InvestigationJobData = {
 			incidentId: row.incidentId,
 			investigationId: id,
-			...(agentMode ? { agentMode } : {}),
+			...(accessLevel ? { accessLevel } : {}),
 			resume: {
 				text,
 				mode,

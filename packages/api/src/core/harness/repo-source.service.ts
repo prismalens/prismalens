@@ -51,7 +51,7 @@ export interface Snapshot {
 	branch: string | null;
 }
 
-/** Paths a supported harness loads as its own config, hooks or plugins when found in a repo. */
+/** Paths a supported harness loads as its own config, hooks, plugins or instructions when found in a repo. */
 const AGENT_CONFIG_NAMES = new Set([
 	".opencode",
 	"opencode.json",
@@ -60,6 +60,12 @@ const AGENT_CONFIG_NAMES = new Set([
 	".mcp.json",
 	".gemini",
 	".codex",
+	// A repository's instructions to an agent; the brief is the run's only instruction (#673 w21).
+	"AGENTS.md",
+	"AGENTS.override.md",
+	"CLAUDE.md",
+	"GEMINI.md",
+	".cursorrules",
 ]);
 
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;

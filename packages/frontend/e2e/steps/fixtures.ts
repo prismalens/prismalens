@@ -59,6 +59,18 @@ export const test = base.extend<Fixtures>({
 					.post(`/api/investigations/${run.id}/cancel`)
 					.catch(() => null);
 		}
+		await page.request
+			.patch("/api/settings/harness", {
+				data: {
+					accessLevels: { opencode: null, "claude-code": null, codex: null },
+					autoAccessLevels: {
+						opencode: null,
+						"claude-code": null,
+						codex: null,
+					},
+				},
+			})
+			.catch(() => null);
 	},
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern.
 	alertmanager: async ({}, use) => {
@@ -120,6 +132,12 @@ export const test = base.extend<Fixtures>({
 				data: {
 					harness: "auto",
 					models: { opencode: null, "claude-code": null, codex: null },
+					accessLevels: { opencode: null, "claude-code": null, codex: null },
+					autoAccessLevels: {
+						opencode: null,
+						"claude-code": null,
+						codex: null,
+					},
 					favourites: [],
 				},
 			});

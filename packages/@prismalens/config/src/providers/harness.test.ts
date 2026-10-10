@@ -3,17 +3,16 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	AGENT_DEFAULT_MODE,
-	agentModeEnv,
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	modeFidelity,
 	runsInSandbox,
-	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
-	runnableModes,
+	ACCESS_LEVELS,
+	levelOfAgentMode,
+	mergeConfigPatch,
 } from "./harness.js";
 
 afterEach(() => {
@@ -165,10 +164,9 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 });
 
 describe("row data every reader needs (#634)", () => {
-	it("gives every row a non-empty loginHint and a default mode", () => {
+	it("gives every row a non-empty loginHint", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			expect(descriptor.loginHint.length, `${id} loginHint`).toBeGreaterThan(0);
-			expect(descriptor.defaultMode.length, `${id} defaultMode`).toBeGreaterThan(0);
 		}
 	});
 
@@ -251,71 +249,7 @@ describe("resumeBlockedReason (#747)", () => {
 	});
 });
 
-describe("the agent's own mode (#673 w21)", () => {
-	it("defaults each row to its own mode, and the operator's setting wins", () => {
-		expect(resolveAgentMode("claude-code")).toBe("default");
-		expect(resolveAgentMode("opencode")).toBe("build");
-		expect(resolveAgentMode("codex")).toBe("read-only");
-		expect(resolveAgentMode("gemini")).toBe("default");
-		expect(resolveAgentMode("deepagents")).toBe(AGENT_DEFAULT_MODE);
-		expect(resolveAgentMode("claude-code", "acceptEdits")).toBe("acceptEdits");
-		expect(resolveAgentMode("claude-code", " ")).toBe("default");
-	});
-
-	it("every row's defaultMode equals modeTiers.supervised when it has one", () => {
-		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
-			if (descriptor.modeTiers.supervised) {
-				expect(descriptor.defaultMode, `${id} defaultMode`).toBe(
-					descriptor.modeTiers.supervised,
-				);
-			}
-		}
-	});
-
-	it("maps access tiers for claude-code, codex, and gemini", () => {
-		expect(HARNESS_REGISTRY["claude-code"].modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "acceptEdits",
-			auto: "auto",
-			"full-access": "bypassPermissions",
-		});
-		expect(HARNESS_REGISTRY.codex.modeTiers).toEqual({
-			supervised: "read-only",
-			"auto-edits": "workspace-write",
-			auto: "agent",
-			"full-access": "agent-full-access",
-		});
-		expect(HARNESS_REGISTRY.gemini.modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "autoEdit",
-			"full-access": "yolo",
-		});
-	});
-
-	it("drops a plan mode to the row default, keeping non-plan modes", () => {
-		expect(resolveAgentMode("claude-code", "plan")).toBe("default");
-		expect(resolveAgentMode("opencode", "plan")).toBe("build");
-		expect(resolveAgentMode("gemini", "plan")).toBe("default");
-		expect(resolveAgentMode("codex", "read-only")).toBe("read-only");
-	});
-
-	it("runnableModes drops plan and returns null for [plan]", () => {
-		expect(
-			runnableModes("claude-code", [
-				{ id: "default" },
-				{ id: "plan" },
-			]),
-		).toEqual([{ id: "default" }]);
-		expect(runnableModes("claude-code", [{ id: "plan" }])).toBeNull();
-		expect(runnableModes("opencode", [{ id: "plan" }])).toBeNull();
-	});
-
-	it("passes Codex its mode through INITIAL_AGENT_MODE, and no other row an env", () => {
-		expect(agentModeEnv("codex", "agent-full-access")).toEqual({ INITIAL_AGENT_MODE: "agent-full-access" });
-		expect(agentModeEnv("codex", AGENT_DEFAULT_MODE)).toEqual({});
-		expect(agentModeEnv("claude-code", "default")).toEqual({});
-	});
-
+describe("sandbox and fidelity (#673 w51)", () => {
 	it("runs only Codex's sandboxed modes in its sandbox, never full access", () => {
 		for (const mode of ["read-only", "workspace-write", "agent"]) expect(runsInSandbox("codex", mode)).toBe(true);
 		expect(runsInSandbox("codex", "agent-full-access")).toBe(false);
@@ -330,3 +264,107 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(modeFidelity(undefined)).toBe("cooperative");
 	});
 });
+
+describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
+	it("gives every row access for all four levels with non-empty mechanism and non-empty line(null)", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const access = descriptor.access[level];
+				expect(access, `${id} missing access for ${level}`).toBeDefined();
+				expect(access.mechanism.length, `${id} ${level} mechanism`).toBeGreaterThan(0);
+				const line = access.line(null);
+				expect(typeof line).toBe("string");
+				expect(line.length, `${id} ${level} line(null)`).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it("never uses a plan mode as an access level mode", () => {
+		const planIds = new Set(["plan"]);
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode) {
+					expect(planIds.has(mode), `${id} ${level} must not use plan mode ${mode}`).toBe(false);
+				}
+			}
+		}
+	});
+
+	it("configures harness-specific access level modes and mechanisms", () => {
+		expect(HARNESS_REGISTRY["claude-code"].access["full-access"].fallbackMode).toBe("acceptEdits");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
+		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
+		for (const level of ACCESS_LEVELS) {
+			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
+		}
+	});
+
+	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			const harnessId = id as keyof typeof HARNESS_REGISTRY;
+			const seenModes = new Set<string>();
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode && !seenModes.has(mode)) {
+					seenModes.add(mode);
+					expect(levelOfAgentMode(harnessId, mode), `${harnessId} mode ${mode}`).toBe(level);
+				}
+			}
+			expect(levelOfAgentMode(harnessId, "unknown-mode-id")).toBeNull();
+			expect(levelOfAgentMode(harnessId, null)).toBeNull();
+		}
+	});
+
+	it("deep-merges opencode configPatch into opencode.json preserving pre-existing deny rules", () => {
+		const baseFiles = HARNESS_REGISTRY.opencode.configFiles?.({
+			cwd: "/r",
+			configDir: "/c",
+			dataDir: "/d",
+		});
+		const generated = JSON.parse(baseFiles?.["opencode.json"] ?? "{}");
+
+		const userCustomConfig = {
+			...generated,
+			permission: {
+				bash: {
+					"rm -rf *": "deny",
+				},
+			},
+		};
+
+		for (const level of ACCESS_LEVELS) {
+			const patch = HARNESS_REGISTRY.opencode.access[level].configPatch ?? {};
+			const merged = mergeConfigPatch(userCustomConfig, patch) as Record<string, unknown>;
+
+			const perm = merged.permission as Record<string, unknown>;
+			expect(perm).toBeDefined();
+			expect((perm.edit as Record<string, unknown>)["*"]).toBeDefined();
+			expect((perm.bash as Record<string, unknown>)["*"]).toBeDefined();
+
+			const agent = merged.agent as {
+				build: { permission: Record<string, unknown> };
+				plan: { permission: Record<string, unknown> };
+			};
+			expect(agent.build.permission).toBeDefined();
+			expect(agent.plan.permission).toBeDefined();
+
+			if (level === "full-access") {
+				expect((perm.bash as Record<string, unknown>)["rm -rf *"]).toBe("deny");
+			}
+		}
+	});
+
+	it("contains no inspiration names", () => {
+		const forbidden = /t3code|t3 code|\bT3('s)?\b|traycer|pingdotgg/i;
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			expect(descriptor.label).not.toMatch(forbidden);
+			for (const level of ACCESS_LEVELS) {
+				const line = descriptor.access[level].line(null);
+				expect(line).not.toMatch(forbidden);
+			}
+		}
+	});
+});
+

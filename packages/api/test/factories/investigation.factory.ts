@@ -45,6 +45,7 @@ export class InvestigationFactory {
 			triggerReason: null,
 			kind: "investigation",
 			agentMode: null,
+			accessLevel: null,
 			title: null,
 			liveTurn: null,
 			lastTurnOutcome: null,

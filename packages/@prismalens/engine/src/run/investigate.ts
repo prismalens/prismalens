@@ -3,8 +3,8 @@
 
 /**
  * One investigation is one ACP session in a clone (ADR 0002). The harness is a
- * registry row; prismalens writes the per-run config it reads, hands its
- * permission asks to the operator, records the stream, and validates the report with one
+ * registry row; prismalens writes the per-run config it reads, answers its
+ * permission asks by the run's level, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
 import {
@@ -15,16 +15,18 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
-	AGENT_DEFAULT_MODE,
-	agentModeEnv,
+	type AccessLevel,
+	DEFAULT_ACCESS_LEVEL,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
-	isPlanMode,
+	levelOfAgentMode,
 	type ModelSource,
+	mergeConfigPatch,
 	modeFidelity,
-	resolveAgentMode,
+	NO_MODE_KEY,
+	resolveAccess,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
 import {
@@ -49,6 +51,7 @@ import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import {
 	askWindow,
 	denyAllPolicy,
+	levelPolicy,
 	type PermissionPolicy,
 } from "./permission.js";
 import {
@@ -94,14 +97,18 @@ export interface RunInvestigationOptions {
 	effort?: string;
 	/** Files that go with the brief (R4.3). */
 	attachments?: JobAttachment[];
-	/** The agent's own mode id (#673 w21); the row's default when absent, `agent-default` asks for none. */
-	agentMode?: string;
+	/**
+	 * The run's permission level (#673 w21 ruling 2026-10-10): the agent mode it
+	 * sets and how asks are answered. Ask always when absent; a follow-up without
+	 * one keeps the reopened session's mode and shows every ask.
+	 */
+	accessLevel?: AccessLevel;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
 	limits?: RunLimits;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
-	/** Answers the agent's asks; without one nobody can, so each is denied (#673 w21). */
+	/** Shows an ask to the operator; without one nobody can answer, so each that reaches it is denied (#673 w21). */
 	permission?: PermissionPolicy;
 	/** How long the policy lets an ask wait; the conversation shows when it lapses. */
 	askTimeoutMs?: number;
@@ -245,6 +252,7 @@ export function buildRunFidelity(
 	harness: HarnessId,
 	model: { id?: string; source?: ModelSource } | undefined,
 	mode: string,
+	mechanism = "agent",
 ): RunFidelity {
 	return {
 		harness,
@@ -252,8 +260,23 @@ export function buildRunFidelity(
 		fidelity: modeFidelity(undefined),
 		...(model?.id ? { model: model.id } : {}),
 		...(model?.source ? { modelSource: model.source } : {}),
-		mechanism: "agent",
+		mechanism,
 	};
+}
+
+/**
+ * The level a run ran at, from the mode the agent reported: the asked level
+ * when it runs that level's mode, else the level whose mode it runs.
+ */
+export function ranLevel(
+	harness: HarnessId,
+	asked: AccessLevel | undefined,
+	reported: string | null,
+): AccessLevel | undefined {
+	if (!asked) return levelOfAgentMode(harness, reported) ?? undefined;
+	const mode = resolveAccess(harness, asked).mode ?? null;
+	if (mode === null || reported === mode) return asked;
+	return levelOfAgentMode(harness, reported) ?? undefined;
 }
 
 /**
@@ -270,9 +293,24 @@ export type PrepareRunEnvOptions = Pick<
 	| "runDir"
 	| "model"
 	| "env"
-	| "agentMode"
+	| "accessLevel"
 	| "customModel"
 >;
+
+/** The row's config files with the level's overlay merged into each JSON one. */
+function levelConfigFiles(
+	files: Record<string, string>,
+	patch: Record<string, unknown> | undefined,
+): Record<string, string> {
+	if (!patch) return files;
+	return Object.fromEntries(
+		Object.entries(files).map(([rel, content]) => {
+			if (!rel.endsWith(".json")) return [rel, content];
+			const base = JSON.parse(content) as Record<string, unknown>;
+			return [rel, JSON.stringify(mergeConfigPatch(base, patch), null, 2)];
+		}),
+	);
+}
 
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -294,20 +332,21 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 	};
+	const patch = opts.accessLevel
+		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
+		: undefined;
 	for (const [rel, content] of Object.entries(
-		descriptor.configFiles?.(runEnv) ?? {},
+		levelConfigFiles(descriptor.configFiles?.(runEnv) ?? {}, patch),
 	)) {
 		const path = join(configDir, rel);
 		mkdirSync(join(path, ".."), { recursive: true });
 		writeFileSync(path, content);
 	}
-	const mode = resolveAgentMode(opts.harness, opts.agentMode);
 	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
 	return {
 		env: {
 			...(opts.env ?? {}),
 			...descriptor.acpEnv(runEnv),
-			...agentModeEnv(opts.harness, mode),
 			...(opts.customModel && opts.model && customKey
 				? { [customKey]: opts.model }
 				: {}),
@@ -325,13 +364,21 @@ export async function* runInvestigation(
 		branchId: "run",
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
-	const agentMode = resolveAgentMode(opts.harness, opts.agentMode);
+	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
+	const keepMode = !!opts.resume && !opts.accessLevel;
+	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+	const access = resolveAccess(opts.harness, level);
+	const askedMode = access.mode ?? null;
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
-		agentMode,
+		askedMode ?? NO_MODE_KEY,
+		access.mechanism,
 	);
-	const { env, runEnv } = prepareRunEnv(opts);
+	const { env, runEnv } = prepareRunEnv({
+		...opts,
+		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
+	});
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	const wire = (direction: "in" | "out", line: string): void => {
 		try {
@@ -352,7 +399,9 @@ export async function* runInvestigation(
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission: opts.permission ?? denyAllPolicy,
+		permission: levelPolicy(keepMode ? "supervised" : level, {
+			policy: opts.permission ?? denyAllPolicy,
+		}),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
 			askWindow(
@@ -421,7 +470,15 @@ export async function* runInvestigation(
 					}),
 				);
 				if (item.warn) opts.onPolicyWarning?.(item.warn);
-				yield adapter.permissionAnswer(item.askId, item.outcome);
+				if (item.sync) {
+					const flushed = adapter.flushText();
+					if (flushed) yield flushed;
+				}
+				yield adapter.permissionAnswer(
+					item.askId,
+					item.outcome,
+					item.sync ? item.request.toolCall : undefined,
+				);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -456,31 +513,40 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
-		// The agent's own mode decides what it asks; a reopened session keeps its mode (#747), unless it is a plan mode (#673 w21).
-		const setMode =
-			agentMode !== AGENT_DEFAULT_MODE &&
-			(!opts.resume || isPlanMode(opts.harness, session.currentMode));
-		if (setMode && !(await session.setMode(agentMode))) {
-			yield adapter.error(
-				`${label} did not offer mode "${agentMode}"; run a check in Settings, Agent`,
-			);
-			return;
+		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
+		if (!keepMode && !(opts.resume && session.offeredModes.length === 0)) {
+			const refused = await applyMode(session, {
+				label,
+				target: askedMode,
+				fallback: access.fallbackMode,
+			});
+			if (refused) {
+				yield adapter.error(refused);
+				return;
+			}
 		}
-		const ranMode = session.currentMode ?? agentMode;
+		const ranMode = session.currentMode ?? askedMode ?? NO_MODE_KEY;
 		const sandbox = await (opts.sandboxCheck ?? checkSandbox)(
 			opts.harness,
 			[ranMode],
 			{ env },
 		);
+		const ran = ranLevel(
+			opts.harness,
+			keepMode ? undefined : level,
+			session.currentMode ?? askedMode,
+		);
 		fidelity = {
 			...fidelity,
 			mode: ranMode,
 			fidelity: modeFidelity(sandbox[ranMode]),
+			...(keepMode ? {} : { access: level }),
+			...(ran ? { ranAccess: ran } : {}),
 		};
 		const noNetwork = fidelity.fidelity === "enforced";
 		const modeName =
 			session.offeredModes.find((m) => m.id === ranMode)?.name ??
-			(ranMode === AGENT_DEFAULT_MODE ? "the agent's default" : ranMode);
+			(ranMode === NO_MODE_KEY ? "no agent mode" : ranMode);
 		if (session.agent.version) {
 			fidelity = { ...fidelity, harnessVersion: session.agent.version };
 		}
@@ -583,7 +649,11 @@ export async function* runInvestigation(
 				);
 			outcome = yield* turn(
 				promptParts(
-					buildInvestigationPrompt(opts.context, { modeName, noNetwork }) +
+					buildInvestigationPrompt(opts.context, {
+						modeName,
+						noNetwork,
+						level,
+					}) +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
@@ -696,6 +766,23 @@ export async function* runInvestigation(
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}
+}
+
+/**
+ * Sets the run's agent mode, or its fallback when the agent does not offer or
+ * refuses it (#673 w21 ruling 2026-10-10). Returns why the run cannot start, or null.
+ */
+async function applyMode(
+	session: AcpSession,
+	run: { label: string; target: string | null; fallback: string | undefined },
+): Promise<string | null> {
+	if (!run.target) return null;
+	const took =
+		(await session.setMode(run.target)) ||
+		(!!run.fallback && (await session.setMode(run.fallback)));
+	return took
+		? null
+		: `${run.label} did not offer mode "${run.target}"; run a check in Settings, Agent`;
 }
 
 /** An agent sandbox with no network is named under What we could not check (#778). */

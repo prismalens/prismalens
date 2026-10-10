@@ -72,7 +72,10 @@ describe("probeHarness", () => {
 				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_MODES: "default=Manual,plan=Plan", FAKE_EFFORTS: "low,high" }),
 			},
 		});
-		expect(result.modes).toEqual([{ id: "default", name: "Manual" }]);
+		expect(result.modes).toEqual([
+			{ id: "default", name: "Manual" },
+			{ id: "plan", name: "Plan" },
+		]);
 		expect(result.efforts).toEqual([
 			{ id: "low", name: "low", default: true },
 			{ id: "high", name: "high", default: false },
@@ -162,3 +165,4 @@ describe("probeHarness", () => {
 		expect(Date.now() - started).toBeLessThan(600);
 	});
 });
+

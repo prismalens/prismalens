@@ -5,10 +5,16 @@
  * The one investigation prompt (ADR 0002). Telemetry surfaces appear only when
  * the host configured them; the report contract is the last fenced json block.
  */
-import type { InvestigationContext } from "@prismalens/contracts/schemas";
+import type { AccessLevel } from "@prismalens/config/harness";
 import {
+	ACCESS_LEVEL_LABEL,
+	type InvestigationContext,
+} from "@prismalens/contracts/schemas";
+import {
+	fenceUntrusted,
 	renderAlertPayload,
 	renderContextPack,
+	sanitizeUntrustedBlock,
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
@@ -68,7 +74,7 @@ export function buildChatPrompt(
 	text: string,
 	options: { noNetwork?: boolean } = {},
 ): string {
-	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Do not deploy, restart or change infrastructure.
+	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
 ${renderSurfaces(context, !options.noNetwork).join("\n")}
@@ -82,9 +88,22 @@ ${text}`;
 const NO_NETWORK =
 	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
 
+/** The run's permission level in the brief (#673 w21). */
+function accessLine(level: AccessLevel, modeName: string): string {
+	return `Permission: ${ACCESS_LEVEL_LABEL[level]} (${modeName}, the agent's own mode).`;
+}
+
+/** The job's scope at every level (ADR 0001 detect-and-report), not a permission rule (#673 w21). */
+const SCOPE_LINE =
+	"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.";
+
 export function buildInvestigationPrompt(
 	context: InvestigationContext,
-	options: { modeName?: string; noNetwork?: boolean } = {},
+	options: {
+		modeName?: string;
+		noNetwork?: boolean;
+		level?: AccessLevel;
+	} = {},
 ): string {
 	const [primary, ...rest] = context.alerts;
 	if (!primary) throw new Error("buildInvestigationPrompt: no alerts");
@@ -104,27 +123,45 @@ export function buildInvestigationPrompt(
 	const surfaces = renderSurfaces(context, online);
 
 	const pack = context.contextPack;
-	const packBlock = pack ? `\n\n${renderContextPack(pack)}` : "";
+	const notes = s?.notes?.trim();
+	const packBlock =
+		(pack ? `\n\n${renderContextPack(pack)}` : "") +
+		(notes
+			? `\n\n${fenceUntrusted("RUNBOOK_NOTES", "service-catalogue", sanitizeUntrustedBlock(notes))}`
+			: "");
 	const packCite = pack
 		? `\n  A fact you take from CONTEXT_PACK without re-observing it with a tool cites source "${CONTEXT_PACK_SOURCE}<which fact>"; it is recorded as inferred.`
 		: "";
 
+	// A phase order the agent works through, the same for every agent and model (#673 w21 prompting).
 	const methodSteps = [
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
 		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
-		...(t?.prometheusUrl && online
+		...(notes
 			? [
-					"Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.",
+					"RUNBOOK_NOTES is the operator's advice about this service; follow it where it applies and say when you did not.",
 				]
 			: []),
+		...(t?.prometheusUrl && online
+			? [
+					"Confirm the signal: which metric or expression fired and how far past threshold.",
+				]
+			: []),
+		"Localise: which operation, endpoint or component the signal is about.",
+		"Read that code path's handler and the configuration it depends on; git log and git blame on what you read; a recent change is a suspect.",
+		"Hold at least two hypotheses until the evidence rules one out; a probe that confirms your favourite and tests nothing else is not the next probe.",
+		"Name impact and blast radius for the services, endpoints or users you observed affected; a mechanism you infer is a hypothesis, not an impact.",
+		"When you can, give the chain: what changed or failed first, how it reached this alert, with the evidence for each link.",
+		"If a command fails, say why in one line, try one alternative, then move on; a dead end is a finding.",
 		"After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
-		`Localize, then go to the code. Identify WHICH operation/endpoint/component the signal is about, then READ that code path's handler and the configuration it depends on. Use git log and git blame on the files you read; a recent change is a suspect.`,
 		"Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
 		...(options.noNetwork ? [NO_NETWORK] : []),
-		`Permission mode: ${options.modeName ?? "the agent's default"}, the agent's own.`,
-		// The job's scope (ADR 0001 detect-and-report), not a permission rule (#673 w21).
-		"This is an investigation: report; do not deploy, restart or change infrastructure.",
+		accessLine(
+			options.level ?? "supervised",
+			options.modeName ?? "the agent's default",
+		),
+		SCOPE_LINE,
 	];
 	const methodBlock = methodSteps
 		.map((step, i) => `  ${i + 1}. ${step}`)

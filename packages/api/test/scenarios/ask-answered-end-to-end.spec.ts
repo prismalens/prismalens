@@ -28,10 +28,55 @@ afterAll(async () => {
 
 interface InvestigationWithApproval extends Investigation {
 	awaitingApprovalAt?: string | null;
+	accessLevel?: string | null;
+}
+
+/** An auto-started run is Auto unless Settings says otherwise; these walks need Ask always. */
+async function autoStartAt(level: string) {
+	await pl.api("/settings/harness", {
+		method: "PATCH",
+		body: { autoAccessLevels: { opencode: level } },
+	});
 }
 
 describe("Walk: an ask answered end to end (#673 w21)", () => {
+	it("Given an alert with fake-session:ask and no auto-start setting, When the run starts, Then it records accessLevel auto and runs on without an approval (#673)", async () => {
+		await pl.serviceWithRepo("ledger");
+		const alert = am.fire({
+			labels: {
+				alertname: "LedgerSlow fake-session:ask",
+				service: "ledger",
+				severity: "critical",
+			},
+			annotations: { summary: "ledger latency" },
+		});
+		expect(
+			(await am.post(pl.webhookUrl, pl.webhookToken)).status,
+		).toBeLessThan(300);
+
+		const [incident] = await eventually(
+			() => pl.incidentFor(alert.fingerprint),
+			(found) => found.length === 1,
+			"an incident carrying the alert",
+		);
+		const [run] = await eventually(
+			() => pl.investigations(incident.id),
+			(runs) => runs.length === 1,
+			"the run the alert started",
+		);
+
+		const done = await eventually(
+			() => pl.api<InvestigationWithApproval>(`/investigations/${run.id}`),
+			(i) => i.status === "completed",
+			"the run to complete without waiting for approval",
+			30_000,
+		);
+		expect(done.accessLevel).toBe("auto");
+		expect(done.awaitingApprovalAt).toBeNull();
+	}, 60_000);
+
 	it("Given an alert with fake-session:ask, When the agent asks permission and operator approves, Then the run completes with a report and a second answer returns 409", async () => {
+		await autoStartAt("supervised");
 		await pl.serviceWithRepo("books");
 		const alert = am.fire({
 			labels: {
@@ -108,6 +153,7 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 	}, 60_000);
 
 	it("Given an alert with fake-session:ask, When the operator denies permission, Then permission_answer outcome is denied and the run still completes", async () => {
+		await autoStartAt("supervised");
 		await pl.serviceWithRepo("billing");
 		const alert = am.fire({
 			labels: {
@@ -183,5 +229,61 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 			throw new Error("expected permission_answer event");
 		}
 		expect(answerEvent.outcome).toBe("denied");
+	}, 60_000);
+
+	it("Given an alert with fake-session:ask and autoAccessLevels auto-edits, When the run starts, Then it completes with permission_answer outcome allowed and no awaitingApprovalAt (#673 w21)", async () => {
+		await pl.api("/settings/harness", {
+			method: "PATCH",
+			body: {
+				autoAccessLevels: { opencode: "auto-edits" },
+			},
+		});
+
+		await pl.serviceWithRepo("payments");
+		const alert = am.fire({
+			labels: {
+				alertname: "PaymentsSlow fake-session:ask",
+				service: "payments",
+				severity: "critical",
+			},
+			annotations: { summary: "payments latency" },
+		});
+		expect(
+			(await am.post(pl.webhookUrl, pl.webhookToken)).status,
+		).toBeLessThan(300);
+
+		const [incident] = await eventually(
+			() => pl.incidentFor(alert.fingerprint),
+			(found) => found.length === 1,
+			"an incident carrying the alert",
+		);
+		const [run] = await eventually(
+			() => pl.investigations(incident.id),
+			(runs) => runs.length === 1,
+			"the run the alert started",
+		);
+
+		const done = await eventually(
+			() => pl.api<InvestigationWithApproval>(`/investigations/${run.id}`),
+			(i) => i.status === "completed",
+			"the run to complete without waiting for approval",
+			30_000,
+		);
+		expect(done.awaitingApprovalAt).toBeNull();
+		expect(done.report?.rootCause).toContain("d37d888");
+
+		const eventsPage = await pl.api<{ events: CanonicalEvent[] }>(
+			`/investigations/${run.id}/events`,
+		);
+		const askEvent = eventsPage.events.find((e) => e.kind === "permission_ask");
+		expect(askEvent).toBeUndefined();
+
+		const answerEvent = eventsPage.events.find(
+			(e) => e.kind === "permission_answer",
+		);
+		if (!answerEvent || answerEvent.kind !== "permission_answer") {
+			throw new Error("expected permission_answer event");
+		}
+		expect(answerEvent.outcome).toBe("allowed");
 	}, 60_000);
 });

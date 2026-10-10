@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessSettings } from "./HarnessSettings";
@@ -20,7 +21,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -36,7 +37,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g @openai/codex",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -52,7 +53,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g opencode",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -91,20 +92,27 @@ vi.mock("@/lib/api/hooks", () => ({
 	}),
 }));
 
+let mockChoice = {
+	effective: mockHarnesses[0],
+	model: "",
+	efforts: {} as Record<string, string | null>,
+	axes: {
+		accessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
+		autoAccessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
+	},
+	setting: "claude-code",
+	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
+	isLoading: false,
+	isError: false,
+};
+
 vi.mock("@/components/agent/AgentPicker", () => ({
-	useAgentChoice: () => ({
-		effective: mockHarnesses[0],
-		model: "",
-		efforts: {},
-		agentModes: {},
-		setting: "claude-code",
-		customModels: { "claude-code": ["gw-a"] },
-		isLoading: false,
-		isError: false,
-	}),
+	useAgentChoice: () => mockChoice,
 	AgentModelPicker: () => <div data-testid="stub-agent-model-picker" />,
 	EffortChip: () => <div data-testid="stub-effort-chip" />,
-	AccessMenu: () => <div data-testid="stub-access-menu" />,
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+	}),
 }));
 
 if (typeof globalThis.ResizeObserver === "undefined") {
@@ -143,6 +151,19 @@ beforeEach(() => {
 	mutateSpy.mockClear();
 	mutateAsyncSpy.mockClear();
 	mutateAsyncSpy.mockResolvedValue(undefined);
+	mockChoice = {
+		effective: mockHarnesses[0],
+		model: "",
+		efforts: {},
+		axes: {
+			accessLevels: {},
+			autoAccessLevels: {},
+		},
+		setting: "claude-code",
+		customModels: { "claude-code": ["gw-a"] },
+		isLoading: false,
+		isError: false,
+	};
 });
 
 afterEach(async () => {
@@ -317,7 +338,7 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 		);
 		expect(opencodeAsks).not.toBeNull();
 		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-			"OpenCode asks where your opencode.json says ask; by default that is files outside the workspace only.",
+			'A run sets each tool\'s "*" rule for its permission level; the other patterns in your opencode.json stay.',
 		);
 
 		const claudeRow = container.querySelector(
@@ -327,5 +348,85 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 		expect(
 			claudeRow?.querySelector('[data-testid="harness-opencode-asks"]'),
 		).toBeNull();
+	});
+});
+
+describe("HarnessSettings Permission rows (#673 w21)", () => {
+	it("renders the Next run Permission select and no Mode row", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+
+		expect(
+			container.querySelector('[data-testid="harness-run-mode"]'),
+		).toBeNull();
+
+		const accessRow = container.querySelector('[data-testid="harness-access"]');
+		expect(accessRow).not.toBeNull();
+		expect(accessRow?.textContent).toContain("Permission");
+		expect(accessRow?.textContent).toContain("Ask always, PrismaLens default.");
+
+		// Verify Claude Code agent note is displayed
+		const note = container.querySelector('[data-testid="harness-agent-note"]');
+		expect(note).not.toBeNull();
+		expect(note?.textContent).toContain(
+			"Your ~/.claude/settings.json allow and deny rules",
+		);
+
+		// Select elements exist
+		const accessSelect = container.querySelector(
+			'[data-testid="harness-access-select"]',
+		);
+		expect(accessSelect).not.toBeNull();
+	});
+
+	it("renders Auto-started runs group with Auto as its default (#673)", async () => {
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+
+		const autoGroup = container.querySelector(
+			'[data-testid="harness-auto-start"]',
+		);
+		expect(autoGroup).not.toBeNull();
+		expect(autoGroup?.textContent).toContain("Auto-started runs");
+
+		expect(
+			container.querySelector('[data-testid="harness-auto-run-mode"]'),
+		).toBeNull();
+
+		const autoAccessRow = container.querySelector(
+			'[data-testid="harness-auto-access"]',
+		);
+		expect(autoAccessRow).not.toBeNull();
+		expect(autoAccessRow?.textContent).toContain("Auto, the default.");
+		expect(autoAccessRow?.textContent).not.toContain("Same as next run");
+
+		const autoAccessSelect = container.querySelector(
+			'[data-testid="harness-auto-access-select"]',
+		);
+		expect(autoAccessSelect?.textContent).toBe("Auto (default)");
+	});
+
+	it("renders set here lines when axes are set in settings", async () => {
+		mockChoice = {
+			...mockChoice,
+			axes: {
+				accessLevels: { "claude-code": "auto" },
+				autoAccessLevels: { "claude-code": "full-access" },
+			},
+		};
+
+		await act(async () => {
+			root.render(<HarnessSettings />);
+		});
+
+		const accessRow = container.querySelector('[data-testid="harness-access"]');
+		expect(accessRow?.textContent).toContain("Auto, set here.");
+
+		const autoAccessRow = container.querySelector(
+			'[data-testid="harness-auto-access"]',
+		);
+		expect(autoAccessRow?.textContent).toContain("Full access, set here.");
 	});
 });

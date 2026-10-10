@@ -48,13 +48,15 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		ModeChip: (p: { onMode: (m: string) => void; mode: string }) =>
+		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
 			el(
 				"span",
-				{ "data-testid": "mode", "data-value": p.mode },
-				button("pick-mode", () => p.onMode("build")),
+				{ "data-testid": "mode", "data-value": p.level },
+				button("pick-mode", () => p.onLevel("full-access")),
 			),
-		defaultModeOf: () => "plan",
+		defaultAccessOf: () => ({
+			level: { level: "auto", from: "agent" },
+		}),
 		modelName: (_h: unknown, id: string) => id,
 		unreadyReason: () => null,
 		useAgentChoice: () => ({
@@ -63,7 +65,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 			model: "vendor/a",
 			models: { opencode: "vendor/a", codex: "gpt-x" },
 			efforts: { opencode: "low" },
-			agentModes: {},
+			axes: { accessLevels: {}, autoAccessLevels: {} },
 		}),
 	};
 });
@@ -81,6 +83,7 @@ vi.mock("@/components/incidents/run-facts", () => ({
 	runElapsed: () => 0,
 	runTimed: () => false,
 	modelSource: () => "the agent's own",
+	runAccessLine: () => null,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -103,7 +106,8 @@ function setRecord(over: Record<string, unknown>) {
 						harness: "opencode",
 						model: "vendor/run",
 						effort: "medium",
-						agentMode: "plan",
+						agentMode: "build",
+						accessLevel: "auto-edits",
 					},
 			sendMessage: vi.fn(),
 			stop: vi.fn(),
@@ -157,10 +161,10 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await click("pick-agent");
 		const set = h.record.setDraftChoice as ReturnType<typeof vi.fn>;
 		expect(set.mock.calls.map((c) => c[0])).toEqual([
-			{ harness: "opencode", model: "vendor/a", effort: "high", mode: "plan" },
-			{ harness: "opencode", model: "vendor/a", effort: "low", mode: "build" },
-			{ harness: "opencode", model: "vendor/b", effort: "low", mode: "plan" },
-			// Another agent starts from its own Settings for effort and mode.
+			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto" },
+			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access" },
+			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto" },
+			// Another agent starts from its own Settings for effort and level.
 			{ harness: "codex", model: "" },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
@@ -173,8 +177,8 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await click("pick-mode");
 		const newRun = h.record.newRun as ReturnType<typeof vi.fn>;
 		expect(newRun.mock.calls.map((c) => c[0])).toEqual([
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", mode: "plan" } },
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", mode: "build" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "auto-edits" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "full-access" } },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
 	});
@@ -183,13 +187,13 @@ describe("DockedComposer chips (#673 w52)", () => {
 		setRecord({
 			draft: true,
 			draftText: "look",
-			draftChoice: { harness: "codex", model: "", effort: null, mode: "build" },
+			draftChoice: { harness: "codex", model: "", effort: null, accessLevel: "full-access" },
 		});
 		await render();
-		expect(q("mode").dataset.value).toBe("build");
+		expect(q("mode").dataset.value).toBe("full-access");
 		await click("composer-investigate");
 		expect(h.record.investigate).toHaveBeenCalledWith(
-			expect.objectContaining({ harness: "codex", model: "", effort: null, agentMode: "build" }),
+			expect.objectContaining({ harness: "codex", model: "", effort: null, accessLevel: "full-access" }),
 		);
 
 		await act(async () => root.unmount());

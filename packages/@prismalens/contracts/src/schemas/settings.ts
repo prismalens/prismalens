@@ -5,8 +5,66 @@
  * Settings schemas: harness detection, investigation policy, danger zone, MCP.
  */
 
-import { HARNESS_IDS, SANDBOX_STATES } from "@prismalens/config/harness";
+import {
+	ACCESS_LEVELS,
+	type AccessLevel,
+	DEFAULT_ACCESS_LEVEL,
+	HARNESS_IDS,
+	type HarnessId,
+	SANDBOX_STATES,
+} from "@prismalens/config/harness";
 import { z } from "zod";
+
+// =============================================================================
+// PERMISSION LEVEL (#673 w21 ruling 2026-10-10)
+// =============================================================================
+
+export const AccessLevelSchema = z.enum(ACCESS_LEVELS);
+
+/**
+ * The agent's own permission default, read from the user's settings file.
+ * Null: no file or no key; a null level: a value with no PrismaLens
+ * equivalent, or with `reason`, one that cannot run here.
+ */
+export const LocalDefaultSchema = z.object({
+	permission: z
+		.object({
+			level: AccessLevelSchema.nullable(),
+			file: z.string(),
+			value: z.string(),
+			reason: z.string().optional(),
+		})
+		.nullable(),
+});
+export type LocalDefault = z.infer<typeof LocalDefaultSchema>;
+
+/** Where a run's level came from, for the default row's tag. */
+export type AxisSource = "auto-settings" | "settings" | "agent" | "prismalens";
+
+type AxisSettings<K extends string, V> = Partial<
+	Record<K, Partial<Record<HarnessId, V>> | undefined>
+>;
+
+/** An auto-started run's level when Settings names none: nobody is there to approve an ask (#673). */
+export const AUTO_START_ACCESS_LEVEL: AccessLevel = "auto";
+
+/** An auto-started run: its Settings row, else Auto. Otherwise Settings, then the agent's own default, then PrismaLens's. */
+export function effectiveAccess(
+	s: AxisSettings<"accessLevels" | "autoAccessLevels", AccessLevel>,
+	harness: HarnessId,
+	local: LocalDefault["permission"] | undefined,
+	autoStart = false,
+): { level: AccessLevel; from: AxisSource } {
+	if (autoStart) {
+		const auto = s.autoAccessLevels?.[harness];
+		if (auto) return { level: auto, from: "auto-settings" };
+		return { level: AUTO_START_ACCESS_LEVEL, from: "prismalens" };
+	}
+	const set = s.accessLevels?.[harness];
+	if (set) return { level: set, from: "settings" };
+	if (local?.level) return { level: local.level, from: "agent" };
+	return { level: DEFAULT_ACCESS_LEVEL, from: "prismalens" };
+}
 
 // =============================================================================
 // HARNESS (detect and report, ADR 0003 §9)
@@ -51,7 +109,7 @@ export const EffortLevelSchema = z.object({
 });
 export type EffortLevel = z.infer<typeof EffortLevelSchema>;
 
-/** A starred model, across agents (T3's star tile; R4.2). */
+/** A starred model, across agents (R4.2). */
 export const FavouriteModelSchema = z.object({
 	harness: z.enum(HARNESS_IDS),
 	model: z.string().min(1).max(200),
@@ -83,8 +141,8 @@ export const HarnessStatusSchema = z.object({
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: z.string().nullable(),
-	/** The agent's own mode a run asks for when Settings names none; `agent-default` asks for none (#673 w21). */
-	defaultMode: z.string().default("agent-default"),
+	/** The agent's own permission default, from the user's settings file (#673 w21). */
+	localDefault: LocalDefaultSchema.default({ permission: null }),
 	/** How the Model setting reaches this harness: ACP `session/set_config_option`, or not at all (R4.2). */
 	modelVia: z.enum(["acp", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
@@ -123,7 +181,7 @@ export const HarnessStatusSchema = z.object({
 			outcome: HarnessProbeOutcomeSchema,
 			/** The check's one line, as `pl doctor` prints it. */
 			detail: z.string(),
-			/** The model it reported as current: "Agent default" names this, never a PrismaLens choice. */
+			/** The model it reported as current: the agent's own model row names this, never a PrismaLens choice. */
 			servedModel: z.string().nullable(),
 			effort: EffortOptionSchema.nullable(),
 			/** The agent's own permission modes; null when it advertised none. */
@@ -153,7 +211,6 @@ export type HarnessSelectionStatus = z.infer<
 
 const ModelIdSchema = z.string().min(1).max(200);
 const EffortValueSchema = z.string().min(1).max(64);
-const AgentModeIdSchema = z.string().min(1).max(64);
 const CustomModelsSchema = z.array(ModelIdSchema).max(50);
 
 /**
@@ -168,9 +225,13 @@ export const HarnessSettingsSchema = z.object({
 	favourites: z.array(FavouriteModelSchema).optional(),
 	/** Effort per harness, one of the values its `thought_level` option offers (R4.2). */
 	efforts: z.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema).optional(),
-	/** The agent's own mode id per harness; a harness without one uses its row default (#673 w21). */
-	agentModes: z
-		.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema)
+	/** Permission level per agent for the next run; unset follows the agent's own default (#673 w21). */
+	accessLevels: z
+		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
+		.optional(),
+	/** Permission level per agent for runs PrismaLens starts from an alert; unset follows `accessLevels`. */
+	autoAccessLevels: z
+		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),
 	/** Model ids the operator added per agent, shown in the picker beside the agent's own list (#673 w57). */
 	customModels: z
@@ -192,9 +253,12 @@ export const UpdateHarnessSettingsSchema = z
 		efforts: z
 			.partialRecord(z.enum(HARNESS_IDS), EffortValueSchema.nullable())
 			.optional(),
-		/** Merges per harness; `null` goes back to the row default. */
-		agentModes: z
-			.partialRecord(z.enum(HARNESS_IDS), AgentModeIdSchema.nullable())
+		/** Each merges per harness; `null` goes back to the default. */
+		accessLevels: z
+			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
+			.optional(),
+		autoAccessLevels: z
+			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
 			.optional(),
 		/** Replaces that agent's list; `null` clears it. */
 		customModels: z

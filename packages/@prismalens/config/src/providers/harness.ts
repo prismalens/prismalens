@@ -48,26 +48,40 @@ export interface SandboxCheck {
 	reason: string;
 }
 
-/**
- * The reserved mode id that asks for no mode: `session/set_mode` is never
- * called and the run records what the agent reports as current (#673 w21).
- */
-export const AGENT_DEFAULT_MODE = "agent-default";
-
-/**
- * The four access levels a run can ask for, after t3code's runtime modes
- * (pingdotgg/t3code @454b94a): each row names its agent's own mode for each (#673 w21).
- */
-export const ACCESS_TIERS = [
+/** The four permission levels, in display order; each row names its agent's own mode for each. */
+export const ACCESS_LEVELS = [
 	"supervised",
 	"auto-edits",
 	"auto",
 	"full-access",
 ] as const;
-export type AccessTier = (typeof ACCESS_TIERS)[number];
+export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+export const DEFAULT_ACCESS_LEVEL: AccessLevel = "supervised";
 
-/** How a mode reaches the agent: ACP `session/set_mode` (or its `mode` option), an env var at spawn, or not at all. */
-export type ModeMechanism = "acp" | "env" | "none";
+/** The sandbox check's key for an agent that offers no modes; never sent to an agent. */
+export const NO_MODE_KEY = "agent-default";
+
+/** How a mode reaches the agent: ACP `session/set_mode` (or its `mode` option), or not at all. */
+export type ModeMechanism = "acp" | "none";
+
+/** What the last readiness check offered, as much of it as a row line reads. */
+export type CheckedModes = {
+	modes: readonly { id: string; name: string }[] | null;
+} | null;
+
+/** One permission level on one agent: the agent's own mode, a config overlay, or nothing to set. */
+export interface HarnessAccess {
+	/** The agent's own mode id; null when there is nothing to set. */
+	mode?: string | null;
+	/** Run when `mode` is not offered, or the agent refuses it. */
+	fallbackMode?: string;
+	/** Deep-merged into the row's generated JSON config files. */
+	configPatch?: Record<string, unknown>;
+	/** Recorded as `fidelity.mechanism`. */
+	mechanism: string;
+	/** The row line under the level: what this agent runs, by its own mode name when the check listed one. */
+	line: (checked: CheckedModes) => string;
+}
 
 /**
  * Per-run environment for the harness child. Config is isolated to what
@@ -113,15 +127,9 @@ export interface HarnessDescriptor {
 	 * schema twice). Recorded per run with its source in `RunFidelity`.
 	 */
 	defaultModel?: string;
-	/** The agent's own permission mode a run asks for when the operator set none: its supervised one (#673 w21). */
-	defaultMode: string;
-	/** The agent's own mode id for each access tier it has (#673 w21). */
-	modeTiers: Partial<Record<AccessTier, string>>;
-	/** Plan-style modes: never offered, never run; a stored one reads as `defaultMode` (#673 w21). */
-	planModes?: readonly string[];
+	/** Each permission level on this agent (#673 w21 ruling 2026-10-10). */
+	access: Record<AccessLevel, HarnessAccess>;
 	modeMechanism: ModeMechanism;
-	/** For `env`: the variable the mode id is written to before spawn. */
-	modeEnvKey?: string;
 	/** Modes the agent runs under its OS sandbox with no network, per its source; a probe still decides `enforced` (#673 w51). */
 	sandboxedModes?: readonly string[];
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
@@ -147,6 +155,54 @@ export interface HarnessDescriptor {
 	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
 	resume: boolean;
 }
+
+/** A mode by the agent's own name in the last check, else `fallback`. */
+function modeNamed(
+	checked: CheckedModes,
+	id: string,
+	fallback: string,
+): string {
+	return checked?.modes?.find((m) => m.id === id)?.name ?? fallback;
+}
+
+function offers(checked: CheckedModes, id: string): boolean {
+	return !!checked?.modes?.some((m) => m.id === id);
+}
+
+/**
+ * OpenCode's per-tool catch-alls for a level, top level and on both its agents:
+ * agent rules win over global ones, and object form keeps the user's own patterns (#673 w21).
+ */
+function opencodePermission(
+	edit: "ask" | "allow",
+	rest: "ask" | "allow",
+): Record<string, unknown> {
+	const permission = {
+		edit: { "*": edit },
+		bash: { "*": rest },
+		webfetch: rest,
+		websearch: rest,
+		external_directory: rest,
+	};
+	return {
+		permission,
+		agent: { build: { permission }, plan: { permission } },
+	};
+}
+
+function geminiDefault(line: HarnessAccess["line"]): HarnessAccess {
+	return { mode: "default", mechanism: "acp-mode", line };
+}
+
+const geminiUntrusted: HarnessAccess["line"] = (c) =>
+	`Gemini CLI runs the copy untrusted, so this level runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`;
+
+const NO_MODE: HarnessAccess = {
+	mode: null,
+	mechanism: "none",
+	line: () =>
+		"deepagents has no modes; PrismaLens answers its asks by this level.",
+};
 
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
@@ -194,10 +250,37 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		],
 		install:
 			"curl -fsSL https://opencode.ai/install | bash  (or: npm i -g opencode-ai)",
-		// OpenCode offers its agents as the ACP `mode` config option; what `build` asks is the user's opencode.json.
-		defaultMode: "build",
-		modeTiers: { supervised: "build" },
-		planModes: ["plan"],
+		// OpenCode offers its agents as the ACP `mode` config option; a level is a catch-all overlay on its rules.
+		access: {
+			supervised: {
+				mode: "build",
+				configPatch: opencodePermission("ask", "ask"),
+				mechanism: "opencode-permission",
+				line: () =>
+					"OpenCode runs its build agent; each tool's catch-all asks.",
+			},
+			"auto-edits": {
+				mode: "build",
+				configPatch: opencodePermission("allow", "ask"),
+				mechanism: "opencode-permission",
+				line: () =>
+					"OpenCode runs its build agent; edits are allowed and other tools ask.",
+			},
+			auto: {
+				mode: "build",
+				configPatch: opencodePermission("ask", "ask"),
+				mechanism: "opencode-permission",
+				line: () =>
+					"OpenCode has no reviewer of its own; its build agent keeps the Ask always rules.",
+			},
+			"full-access": {
+				mode: "build",
+				configPatch: opencodePermission("allow", "allow"),
+				mechanism: "opencode-permission",
+				line: () =>
+					"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
+			},
+		},
 		modeMechanism: "acp",
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "acp",
@@ -238,15 +321,44 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		customModelEnvKey: "ANTHROPIC_CUSTOM_MODEL_OPTION",
 		install:
 			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
-		// claude-agent-acp's modes; `plan` rewrites the system prompt into planning (r4 R4.1).
-		defaultMode: "default",
-		modeTiers: {
-			supervised: "default",
-			"auto-edits": "acceptEdits",
-			auto: "auto",
-			"full-access": "bypassPermissions",
+		// claude-agent-acp 0.81.1 modes. It reports `acceptEdits` when the model has no `auto`, and
+		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
+		access: {
+			supervised: {
+				mode: "default",
+				mechanism: "acp-mode",
+				line: (c) =>
+					`Claude Code runs in ${modeNamed(c, "default", "Manual")}.`,
+			},
+			"auto-edits": {
+				mode: "acceptEdits",
+				mechanism: "acp-mode",
+				line: (c) =>
+					`Claude Code runs in ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
+			},
+			auto: {
+				mode: "auto",
+				mechanism: "acp-mode",
+				line: (c) =>
+					`Claude Code runs in ${modeNamed(c, "auto", "Auto")}; with a model that has no Auto it runs ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
+			},
+			"full-access": {
+				mode: "bypassPermissions",
+				fallbackMode: "acceptEdits",
+				mechanism: "acp-mode",
+				line: (c) => {
+					const bypass = modeNamed(
+						c,
+						"bypassPermissions",
+						"Bypass Permissions",
+					);
+					const edits = modeNamed(c, "acceptEdits", "Accept Edits");
+					return c?.modes && !offers(c, "bypassPermissions")
+						? `Claude Code runs in ${edits}: your settings turn ${bypass} off.`
+						: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
+				},
+			},
 		},
-		planModes: ["plan"],
 		modeMechanism: "acp",
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
@@ -269,16 +381,41 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install:
 			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
 		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
-		defaultMode: "read-only",
-		// codex-acp 2.x; 1.13.x has no workspace-write, and its read-only writes inside the workspace.
-		modeTiers: {
-			supervised: "read-only",
-			"auto-edits": "workspace-write",
-			auto: "agent",
-			"full-access": "agent-full-access",
+		// Set through its `mode` config option, the reply verified; 1.13.1 has no workspace-write (#673 w21).
+		access: {
+			supervised: {
+				mode: "read-only",
+				mechanism: "acp-config",
+				line: (c) =>
+					`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
+			},
+			"auto-edits": {
+				mode: "workspace-write",
+				fallbackMode: "read-only",
+				mechanism: "acp-config",
+				line: (c) => {
+					const ask = modeNamed(c, "read-only", "Ask for approval");
+					if (offers(c, "workspace-write"))
+						return `Codex runs in ${modeNamed(c, "workspace-write", "Workspace write")}.`;
+					return c?.modes
+						? `Codex runs in ${ask}, the same mode as Ask always on this version.`
+						: `Codex runs in Workspace write, or ${ask} on a version without it.`;
+				},
+			},
+			auto: {
+				mode: "agent",
+				mechanism: "acp-config",
+				line: (c) =>
+					`Codex runs in ${modeNamed(c, "agent", "Approve for me")}, its own reviewer.`,
+			},
+			"full-access": {
+				mode: "agent-full-access",
+				mechanism: "acp-config",
+				line: (c) =>
+					`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
+			},
 		},
-		modeMechanism: "env",
-		modeEnvKey: "INITIAL_AGENT_MODE",
+		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
 		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "1.13.1", date: "2026-09-24" },
@@ -300,14 +437,16 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
-		// gemini-cli packages/core/src/policy/types.ts, ApprovalMode.
-		defaultMode: "default",
-		modeTiers: {
-			supervised: "default",
-			"auto-edits": "autoEdit",
-			"full-access": "yolo",
+		// gemini-cli config.ts setApprovalMode: an untrusted folder takes `default` and `plan` alone,
+		// so the three upper levels run `default` (#673 w21).
+		access: {
+			supervised: geminiDefault(
+				(c) => `Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
+			),
+			"auto-edits": geminiDefault(geminiUntrusted),
+			auto: geminiDefault(geminiUntrusted),
+			"full-access": geminiDefault(geminiUntrusted),
 		},
-		planModes: ["plan"],
 		modeMechanism: "acp",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
@@ -327,8 +466,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
 		install: "uv tool install -U deepagents-code --with deepagents-acp",
 		// No modes over ACP (deepagents #4254).
-		defaultMode: AGENT_DEFAULT_MODE,
-		modeTiers: {},
+		access: {
+			supervised: NO_MODE,
+			"auto-edits": NO_MODE,
+			auto: NO_MODE,
+			"full-access": NO_MODE,
+		},
 		modeMechanism: "none",
 		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
 		tested: { version: "0.1.75", date: "2026-09-23" },
@@ -433,40 +576,40 @@ export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
 ) as Record<HarnessId, string>;
 
-/** A plan-style mode, which no run starts in (#673 w21). */
-export function isPlanMode(harnessId: HarnessId, mode: string | null): boolean {
-	return !!mode && !!HARNESS_REGISTRY[harnessId].planModes?.includes(mode);
+/** A permission level on one agent (#673 w21 ruling 2026-10-10). */
+export function resolveAccess(
+	harnessId: HarnessId,
+	level: AccessLevel,
+): HarnessAccess {
+	return HARNESS_REGISTRY[harnessId].access[level];
 }
 
-/** The modes a run may start in: every one the agent offered but a plan mode; null when none is left (#673 w21). */
-export function runnableModes<M extends { id: string }>(
+/** The first level whose mode is `modeId`; null for an id no level sets. */
+export function levelOfAgentMode(
 	harnessId: HarnessId,
-	modes: readonly M[] | null | undefined,
-): M[] | null {
-	const left = (modes ?? []).filter((m) => !isPlanMode(harnessId, m.id));
-	return left.length ? left : null;
-}
-
-/** The operator's per-agent setting, else the row's default; a stored plan mode reads as the default (#673 w21). */
-export function resolveAgentMode(
-	harnessId: HarnessId,
-	setting?: string | null,
-): string {
-	const asked = setting?.trim();
-	return asked && !isPlanMode(harnessId, asked)
-		? asked
-		: HARNESS_REGISTRY[harnessId].defaultMode;
-}
-
-/** Env a row with `modeMechanism: "env"` takes the mode through; empty otherwise. */
-export function agentModeEnv(
-	harnessId: HarnessId,
-	mode: string,
-): Record<string, string> {
+	modeId: string | null,
+): AccessLevel | null {
+	if (!modeId) return null;
 	const row = HARNESS_REGISTRY[harnessId];
-	if (row.modeMechanism !== "env" || !row.modeEnvKey) return {};
-	if (mode === AGENT_DEFAULT_MODE) return {};
-	return { [row.modeEnvKey]: mode };
+	return ACCESS_LEVELS.find((l) => row.access[l].mode === modeId) ?? null;
+}
+
+type JsonObject = Record<string, unknown>;
+const isObject = (v: unknown): v is JsonObject =>
+	!!v && typeof v === "object" && !Array.isArray(v);
+
+/** `patch` over `base`, objects merged key by key, so keys the patch does not name stay. */
+export function mergeConfigPatch(
+	base: JsonObject,
+	patch: JsonObject,
+): JsonObject {
+	const out: JsonObject = { ...base };
+	for (const [key, value] of Object.entries(patch)) {
+		const prev = out[key];
+		out[key] =
+			isObject(prev) && isObject(value) ? mergeConfigPatch(prev, value) : value;
+	}
+	return out;
 }
 
 /** Whether the agent runs `mode` under its own OS sandbox at all; whether that sandbox works here is a probe's call. */

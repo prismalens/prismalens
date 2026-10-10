@@ -3,10 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	ACCESS_LEVEL_LABEL,
+	ACCESS_LEVEL_LINE,
 	INCIDENT_ACTION_LABEL,
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
 	LIVE_TURN_LABEL,
+	NO_SANDBOX,
 	PRIORITY_LABEL,
 	runStateLabel,
 	TURN_OUTCOME_LABEL,
@@ -96,5 +99,38 @@ describe("runStateLabel covers every kind × state (#673 w59)", () => {
 		});
 		expect(TURN_OUTCOME_LABEL.stopped).toBe("stopped by you");
 		expect(TURN_OUTCOME_LABEL.error).toBe("error");
+	});
+});
+
+describe("permission labels and word guard (#673 w21 ruling 2026-10-10)", () => {
+	it("asserts labels exact", () => {
+		expect(ACCESS_LEVEL_LABEL).toEqual({
+			supervised: "Ask always",
+			"auto-edits": "Auto-accept edits",
+			auto: "Auto",
+			"full-access": "Full access",
+		});
+	});
+
+	it("word guard over ACCESS_LEVEL_LINE, NO_SANDBOX, and every row line", async () => {
+		const { HARNESS_REGISTRY } = await import("@prismalens/config/harness");
+
+		const forbidden = /\bnever\b|\bonly\b|without sending|PrismaLens refuses/i;
+
+		const lines: string[] = [
+			...Object.values(ACCESS_LEVEL_LINE),
+			NO_SANDBOX,
+		];
+
+		for (const descriptor of Object.values(HARNESS_REGISTRY)) {
+			for (const access of Object.values(descriptor.access)) {
+				lines.push(access.line(null));
+			}
+		}
+
+		for (const line of lines) {
+			expect(line.length).toBeGreaterThan(0);
+			expect(line).not.toMatch(forbidden);
+		}
 	});
 });

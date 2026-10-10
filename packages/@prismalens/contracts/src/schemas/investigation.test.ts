@@ -20,6 +20,7 @@ import {
 	InvestigationJobDataSchema,
 	InvestigationReportSchema,
 	InvestigationSchema,
+	fidelityAccess,
 	PostReportToGitHubResultSchema,
 	PostReportToGitHubSchema,
 	RunFidelitySchema,
@@ -37,17 +38,96 @@ describe("RunFidelitySchema", () => {
 			placement: "server",
 			model: "opencode/muse-spark-1.3-contributor-free",
 			sandbox: { requested: "auto", actual: "process-floor", fidelity: "cooperative" },
+			runMode: "plan",
 		});
 		expect(parsed.model).toBe("opencode/muse-spark-1.3-contributor-free");
 		expect("placement" in parsed).toBe(false);
 		expect("sandbox" in parsed).toBe(false);
+		expect("runMode" in parsed).toBe(false);
 	});
 
-	it("reads an access level stored since #778 as the nearest agent mode, and takes any agent mode id (#673 w21)", () => {
-		const base = { harness: "codex", fidelity: "cooperative", mechanism: "agent" };
-		expect(RunFidelitySchema.parse({ ...base, mode: "read-only-tools" }).mode).toBe("read-only");
+	it("keeps a #778 level id and any agent mode id as stored (#673 w21)", () => {
+		const base = { harness: "codex", fidelity: "cooperative" as const, mechanism: "agent" };
+		expect(RunFidelitySchema.parse({ ...base, mode: "read-only-tools" }).mode).toBe("read-only-tools");
 		expect(RunFidelitySchema.parse({ ...base, mode: "workspace-write" }).mode).toBe("workspace-write");
 		expect(RunFidelitySchema.parse({ ...base, mode: "acceptEdits" }).mode).toBe("acceptEdits");
+	});
+
+	it("parses a #778 report (mode: 'read-only-tools') and a #808 report (mode: 'default')", () => {
+		const report778 = {
+			harness: "codex",
+			mode: "read-only-tools",
+			fidelity: "enforced" as const,
+			mechanism: "codex-sandbox",
+		};
+		const parsed778 = RunFidelitySchema.parse(report778);
+		expect(parsed778.mode).toBe("read-only-tools");
+		expect(parsed778.fidelity).toBe("enforced");
+
+		const report808 = {
+			harness: "claude-code",
+			mode: "default",
+			fidelity: "cooperative" as const,
+			mechanism: "acp",
+			model: "claude-3-7-sonnet",
+		};
+		const parsed808 = RunFidelitySchema.parse(report808);
+		expect(parsed808.mode).toBe("default");
+		expect(parsed808.fidelity).toBe("cooperative");
+	});
+
+	it("maps fidelityAccess by agentMode null-ness", () => {
+		// When agentMode is null or undefined (predates #808 / #778 legacy row):
+		// maps #778 mode strings to AccessLevel via LEGACY_ACCESS_LEVEL
+		expect(
+			fidelityAccess(
+				{ mode: "read-only-tools" },
+				null,
+			),
+		).toBe("supervised");
+		expect(
+			fidelityAccess(
+				{ mode: "read-only" },
+				undefined,
+			),
+		).toBe("supervised");
+		expect(
+			fidelityAccess(
+				{ mode: "workspace-write" },
+				null,
+			),
+		).toBe("auto-edits");
+		expect(
+			fidelityAccess(
+				{ mode: "full-access" },
+				null,
+			),
+		).toBe("full-access");
+
+		// If agentMode is non-null (a #808 row where mode is an agent mode, not a #778 level id):
+		// legacy mapping does not apply; returns undefined unless ranAccess or access is set
+		expect(
+			fidelityAccess(
+				{ mode: "default" },
+				"default",
+			),
+		).toBeUndefined();
+
+		// ranAccess wins over access and legacy mapping
+		expect(
+			fidelityAccess(
+				{ mode: "acceptEdits", access: "auto", ranAccess: "auto-edits" },
+				"acceptEdits",
+			),
+		).toBe("auto-edits");
+
+		// access is used when ranAccess is absent
+		expect(
+			fidelityAccess(
+				{ mode: "default", access: "supervised" },
+				"default",
+			),
+		).toBe("supervised");
 	});
 });
 
@@ -581,6 +661,29 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			outcome: "approved" as const,
 		};
 		expect(CanonicalEventSchema.parse(answer)).toEqual(answer);
+	});
+
+	it("parses permission_answer with allowed and mode_kept", () => {
+		const allowed = {
+			...base,
+			kind: "permission_answer" as const,
+			askId,
+			outcome: "allowed" as const,
+			title: "Edit file",
+			toolKind: "edit",
+		};
+		expect(CanonicalEventSchema.parse(allowed)).toEqual(allowed);
+
+
+		const modeKept = {
+			...base,
+			kind: "permission_answer" as const,
+			askId,
+			outcome: "mode_kept" as const,
+			title: "Enter Plan Mode",
+			toolKind: "switch_mode",
+		};
+		expect(CanonicalEventSchema.parse(modeKept)).toEqual(modeKept);
 	});
 
 	it("parses permission_ask with nullable detail and toolKind", () => {

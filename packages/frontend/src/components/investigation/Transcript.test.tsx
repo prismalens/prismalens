@@ -256,3 +256,45 @@ describe("Transcript AskCard", () => {
 		);
 	});
 });
+
+describe("Transcript level lines (#673 w21)", () => {
+	it("renders allowed and mode_kept lines with their respective testids", async () => {
+		const levelItems: TranscriptItem[] = [
+			{
+				kind: "level",
+				key: "lvl-1",
+				outcome: "allowed",
+				text: "Allowed at Ask always: A tool call",
+			},
+			{
+				kind: "level",
+				key: "lvl-3",
+				outcome: "mode_kept",
+				text: "Mode switch refused: Enter Plan Mode",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={levelItems}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+
+		const allowed = container.querySelector(
+			'[data-testid="transcript-allowed"]',
+		);
+		expect(allowed).not.toBeNull();
+		expect(allowed?.textContent).toBe("Allowed at Ask always: A tool call");
+
+		const modeKept = container.querySelector(
+			'[data-testid="transcript-mode-kept"]',
+		);
+		expect(modeKept).not.toBeNull();
+		expect(modeKept?.textContent).toBe("Mode switch refused: Enter Plan Mode");
+	});
+});

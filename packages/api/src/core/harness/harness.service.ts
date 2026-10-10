@@ -17,18 +17,22 @@ import {
 	resolveHarnessSelection,
 } from "@prismalens/config";
 import {
+	ACCESS_LEVELS,
+	type AccessLevel,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
-	isPlanMode,
 	refuseModel,
 } from "@prismalens/config/harness";
-import type {
-	FavouriteModel,
-	HarnessesResponse,
-	HarnessStatus,
-	RunChoice,
+import {
+	effectiveAccess,
+	type FavouriteModel,
+	type HarnessesResponse,
+	type HarnessStatus,
+	type LocalDefault,
+	type RunChoice,
 } from "@prismalens/contracts/schemas";
+import { localDefault } from "@prismalens/engine";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
@@ -56,11 +60,20 @@ export interface HarnessSettings {
 	favourites?: FavouriteModel[];
 	/** Effort per harness, a value of its `thought_level` option (R4.2). */
 	efforts?: Partial<Record<HarnessId, string>>;
-	/** The agent's own mode id per harness (#673 w21); absent means the row's default. */
-	agentModes?: Partial<Record<HarnessId, string>>;
+	/** Permission level per harness for the next run (#673 w21); absent follows the agent's own default. */
+	accessLevels?: Partial<Record<HarnessId, AccessLevel>>;
+	/** The same for runs PrismaLens starts from an alert; absent follows the next-run values. */
+	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel>>;
 	/** Model ids the operator added per harness (#673 w57). */
 	customModels?: Partial<Record<HarnessId, string[]>>;
 }
+
+const AXES = ["accessLevels", "autoAccessLevels"] as const;
+type Axis = (typeof AXES)[number];
+const AXIS_VALUES: Record<Axis, readonly string[]> = {
+	accessLevels: ACCESS_LEVELS,
+	autoAccessLevels: ACCESS_LEVELS,
+};
 
 export interface HarnessSettingsPatch {
 	harness?: "auto" | HarnessId;
@@ -70,8 +83,9 @@ export interface HarnessSettingsPatch {
 	favourites?: FavouriteModel[];
 	/** Merged per harness; `null` goes back to the harness's own default. */
 	efforts?: Partial<Record<HarnessId, string | null>>;
-	/** Merged per harness; `null` goes back to the row's default. */
-	agentModes?: Partial<Record<HarnessId, string | null>>;
+	/** Each merged per harness; `null` goes back to the default. */
+	accessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
+	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
 	/** Replaces that harness's list; `null` clears it. */
 	customModels?: Partial<Record<HarnessId, string[] | null>>;
 }
@@ -91,12 +105,27 @@ function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 	return out;
 }
 
-/** A stored plan mode is dropped, so the run takes the agent's default ask mode (#673 w21). */
-function cleanModes(raw: unknown): Partial<Record<HarnessId, string>> {
+/** One axis per harness: a value this build knows survives, anything else is dropped (#673 w21). */
+function cleanAxis(
+	axis: Axis,
+	raw: unknown,
+): Partial<Record<HarnessId, string>> {
 	const out = cleanModels(raw);
 	for (const id of Object.keys(out) as HarnessId[])
-		if (isPlanMode(id, out[id] ?? null)) delete out[id];
+		if (!AXIS_VALUES[axis].includes(out[id] ?? "")) delete out[id];
 	return out;
+}
+
+/** The four axis maps of `raw`, each with its unknown values dropped and empty maps left out. */
+function cleanAxes(
+	raw: Partial<Record<Axis, unknown>>,
+): Pick<HarnessSettings, Axis> {
+	const out: Record<string, unknown> = {};
+	for (const axis of AXES) {
+		const values = cleanAxis(axis, raw[axis]);
+		if (Object.keys(values).length) out[axis] = values;
+	}
+	return out as Pick<HarnessSettings, Axis>;
 }
 
 /** Custom model ids per harness: trimmed, deduplicated, empty lists dropped (#673 w57). */
@@ -199,6 +228,29 @@ export class HarnessService implements OnApplicationBootstrap {
 		return next;
 	}
 
+	/** Reads the agent's own default from the user's settings file; tests swap it (#673 w21). */
+	localDefaultOf: (id: HarnessId) => LocalDefault = (id) =>
+		localDefault(id, process.env, {
+			onDebug: (m) => this.logger.debug(m),
+		});
+
+	/**
+	 * A run's level where the request named none (#673 w21): an
+	 * auto-started run's own Settings row, else Auto; any other run Settings,
+	 * then the agent's own default, then PrismaLens's.
+	 */
+	async effectiveChoice(
+		id: HarnessId,
+		autoStart = false,
+	): Promise<{ accessLevel: AccessLevel }> {
+		const settings = await this.getSettings();
+		const local = this.localDefaultOf(id);
+		return {
+			accessLevel: effectiveAccess(settings, id, local.permission, autoStart)
+				.level,
+		};
+	}
+
 	/** A mode's name as the agent's last check listed it; the id when it listed none (#673 w21). */
 	modeName(harness: string | null, modeId: string | null): string | null {
 		if (!modeId) return null;
@@ -222,14 +274,14 @@ export class HarnessService implements OnApplicationBootstrap {
 			const models = cleanModels(parsed.models);
 			const efforts = cleanModels(parsed.efforts);
 			const favourites = cleanFavourites(parsed.favourites);
-			const agentModes = cleanModes(parsed.agentModes);
 			const customModels = cleanCustomModels(parsed.customModels);
+			// A stored `agentModes` (before the two axes) is not read back (#673 w21).
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
-				...(Object.keys(agentModes).length ? { agentModes } : {}),
+				...cleanAxes(parsed),
 				...(Object.keys(customModels).length ? { customModels } : {}),
 			};
 		} catch {
@@ -242,10 +294,11 @@ export class HarnessService implements OnApplicationBootstrap {
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
-		const agentModes = cleanModes({
-			...current.agentModes,
-			...patch.agentModes,
-		});
+		const axes = cleanAxes(
+			Object.fromEntries(
+				AXES.map((axis) => [axis, { ...current[axis], ...patch[axis] }]),
+			),
+		);
 		const customModels = cleanCustomModels({
 			...current.customModels,
 			...patch.customModels,
@@ -255,7 +308,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
-			...(Object.keys(agentModes).length ? { agentModes } : {}),
+			...axes,
 			...(Object.keys(customModels).length ? { customModels } : {}),
 		};
 		await this.prisma.setting.upsert({
@@ -336,6 +389,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				const catalogue = this.models.catalogue();
 				return listHarnessStatus().map((h) => ({
 					...h,
+					localDefault: this.localDefaultOf(h.id),
 					models: this.models.modelsFor(h.id, catalogue),
 					checked: this.models.checked(h.id),
 				}));

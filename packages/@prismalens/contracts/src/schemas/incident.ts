@@ -25,6 +25,7 @@ import {
 	RunChoiceSchema,
 } from "./investigation.js";
 import { ServiceSchema } from "./service.js";
+import { AccessLevelSchema } from "./settings.js";
 import {
 	INVESTIGATION_KINDS,
 	LIVE_TURNS,
@@ -136,6 +137,7 @@ const InvestigationRefSchema = z.object({
 	/** A run is a thread (#673); the run tabs read these without a second route. */
 	kind: z.enum(INVESTIGATION_KINDS).optional().default("investigation"),
 	agentMode: z.string().nullable().optional(),
+	accessLevel: AccessLevelSchema.nullable().optional(),
 	title: z.string().nullable().optional(),
 	startedAt: DateStringSchema.nullable().optional(),
 	hasReport: z.boolean().optional(),
@@ -248,8 +250,8 @@ export const IncidentStatsSchema = z.object({
 /** Optional operator brief, appended to the agent's first prompt (#743). */
 export const InvestigateIncidentSchema = z.object({
 	brief: z.string().trim().max(4000).optional(),
-	/** The agent's own mode id (#673 w21); the agent's default when absent. */
-	agentMode: z.string().max(64).optional(),
+	/** This run's permission level (#673 w21); Settings, else the agent's own default, when absent. */
+	accessLevel: AccessLevelSchema.optional(),
 	...RunChoiceSchema.shape,
 	/** Uploaded with `POST /incidents/{id}/attachments` first (R4.3). */
 	attachments: AttachmentIdsSchema.optional(),
@@ -258,7 +260,7 @@ export const InvestigateIncidentSchema = z.object({
 /** A person's message that starts a chat run on the incident (#673). */
 export const ChatIncidentSchema = z.object({
 	text: z.string().trim().min(1).max(4000),
-	agentMode: z.string().max(64).optional(),
+	accessLevel: AccessLevelSchema.optional(),
 	...RunChoiceSchema.shape,
 	attachments: AttachmentIdsSchema.optional(),
 });

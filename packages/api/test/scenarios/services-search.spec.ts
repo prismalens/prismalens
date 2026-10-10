@@ -26,4 +26,16 @@ describe("Services filter on SQLite", () => {
 		const none = await pl.api<{ data: unknown[] }>("/services?search=nothing-here");
 		expect(none.data).toEqual([]);
 	});
+
+	it("rejects metadata.investigation.notes over 4096 characters with 400 (#673 w21)", async () => {
+		await expect(
+			pl.api("/services", {
+				method: "POST",
+				body: {
+					name: "long-notes-service",
+					metadata: { investigation: { notes: "x".repeat(4097) } },
+				},
+			}),
+		).rejects.toThrow(/400/);
+	});
 });
