@@ -48,22 +48,28 @@ for (const width of [800, 1024, 1440]) {
 				expect(c.x + c.width).toBeLessThanOrEqual(width - CONTROLS_W);
 			// And what is painted there is the control itself, not the strip over it.
 			if (c) {
+				const point = await control.evaluate((el) => {
+					const rect = el.getBoundingClientRect();
+					let parent = el.parentElement;
+					let right = rect.right;
+					while (parent) {
+						const style = getComputedStyle(parent);
+						if (style.overflow === "hidden" || style.overflowX === "hidden") {
+							right = Math.min(right, parent.getBoundingClientRect().right);
+						}
+						parent = parent.parentElement;
+					}
+					const visibleWidth = Math.max(1, right - rect.left);
+					return [rect.left + visibleWidth / 2, rect.top + rect.height / 2];
+				});
 				const hit = await page.evaluate(
-					([x, y]) => {
-						const el = document.elementFromPoint(x, y);
-						return {
-							matched: !!el?.closest(
-								'[data-testid="incident-header"] :is(a, button)',
-							),
-							elTag: el?.tagName,
-							elTestId: el?.getAttribute("data-testid"),
-							elHtml: el?.outerHTML?.slice(0, 100),
-						};
-					},
-					[c.x + c.width / 2, c.y + c.height / 2],
+					([x, y]) =>
+						!!document
+							.elementFromPoint(x, y)
+							?.closest('[data-testid="incident-header"] :is(a, button)'),
+					point,
 				);
-				console.log({ width, i, text: await control.textContent(), c, hit });
-				expect(hit.matched).toBe(true);
+				expect(hit).toBe(true);
 			}
 		}
 	});

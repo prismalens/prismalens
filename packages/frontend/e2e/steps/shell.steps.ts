@@ -285,6 +285,9 @@ When(
 );
 
 Given("I open the same alert from the Alerts door", async ({ page }) => {
+	if (page.url() === "about:blank") {
+		await visit(page, "/incidents");
+	}
 	await page.getByTestId("sidebar").getByTestId("nav-alerts").click();
 	// Back's trail records resolved pages; a row clicked while /alerts still loads skips it.
 	await expect(page.getByTestId("alerts-frame")).toBeVisible();

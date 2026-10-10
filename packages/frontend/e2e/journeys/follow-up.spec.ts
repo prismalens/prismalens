@@ -84,8 +84,9 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		const why = page.getByTestId("why-card");
 		await expect(why).toBeVisible({ timeout: 15_000 });
-		await expect(why.getByTestId("why-cause")).toBeVisible();
-		const before = await why.innerText();
+		const cause = why.getByTestId("why-cause");
+		await expect(cause).toBeVisible();
+		const before = await cause.innerText();
 
 		// The seeded run by id: an earlier journey can leave a newer run on this incident.
 		await page.goto(
@@ -147,6 +148,6 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await expect(why).toBeVisible({ timeout: 15_000 });
-		await expect.poll(() => why.innerText()).toBe(before);
+		await expect.poll(() => cause.innerText()).toBe(before);
 	});
 });

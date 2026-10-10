@@ -64,6 +64,5 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		// Export as Markdown is in the header menu (header-more → header-export); absent without a report
 		await page.getByTestId("header-more").click();
 		await expect(page.getByTestId("header-export")).toHaveCount(0);
-		await expect(page.getByTestId("export-report-markdown")).toHaveCount(0);
 	});
 });

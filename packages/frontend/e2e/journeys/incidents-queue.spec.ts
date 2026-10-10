@@ -100,6 +100,9 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		// Clicking a row in the tree navigates to the incident overview
 		await page.goto("/incidents?view=analytics");
 		await expect(headerHeading(page)).toBeVisible({ timeout: 15_000 });
+		for (const more of await tree.getByTestId("tree-more").all()) {
+			if (await more.isVisible()) await more.click();
+		}
 		await treeRow(page, resolvedId).getByTestId("tree-incident-link").click();
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}(\?|$)/, {
 			timeout: 15_000,
