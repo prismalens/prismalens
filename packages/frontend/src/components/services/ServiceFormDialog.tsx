@@ -5,8 +5,11 @@
 
 import {
 	enumOptions,
+	SERVICE_NOTES_MAX,
 	SERVICE_TIER_METADATA,
 	SERVICE_TYPE_LABEL,
+	type ServiceInvestigationMetadata,
+	ServiceInvestigationMetadataSchema,
 	type ServiceTier,
 	type ServiceType,
 	ServiceTypeSchema,
@@ -50,6 +53,16 @@ export interface ServiceFormDialogProps {
 
 const SERVICE_TYPES = enumOptions(ServiceTypeSchema, SERVICE_TYPE_LABEL);
 
+/** The service's `metadata.investigation`, as much of it as parses. */
+function investigationOf(
+	metadata: Record<string, unknown> | null | undefined,
+): ServiceInvestigationMetadata {
+	const parsed = ServiceInvestigationMetadataSchema.safeParse(
+		metadata?.investigation ?? {},
+	);
+	return parsed.success ? parsed.data : {};
+}
+
 /** "Tier 1", the word the services list and the band use. */
 const SERVICE_TIERS: { value: ServiceTier; label: string }[] = Object.keys(
 	SERVICE_TIER_METADATA,
@@ -72,6 +85,7 @@ export function ServiceFormDialog({
 	const [team, setTeam] = useState("");
 	const [tags, setTags] = useState<string[]>([]);
 	const [repository, setRepository] = useState("");
+	const [notes, setNotes] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	// Set once create succeeds, so a retry after a repository error updates instead of creating twice.
 	const [createdId, setCreatedId] = useState<string | null>(null);
@@ -101,6 +115,7 @@ export function ServiceFormDialog({
 				setTeam(service.team || "");
 				setTags(service.tags || []);
 				setRepository(currentRepository);
+				setNotes(investigationOf(service.metadata).notes ?? "");
 			} else {
 				// Reset form for create
 				setName("");
@@ -111,6 +126,7 @@ export function ServiceFormDialog({
 				setTeam("");
 				setTags([]);
 				setRepository("");
+				setNotes("");
 			}
 			setError(null);
 			setCreatedId(null);
@@ -125,6 +141,17 @@ export function ServiceFormDialog({
 
 		setError(null);
 
+		// The rest of `metadata` (the trigger policy) is kept as stored (#673).
+		const investigation = investigationOf(service?.metadata);
+		const typed = notes.trim();
+		const changedNotes = typed !== (investigation.notes ?? "");
+		const metadata = changedNotes
+			? {
+					...(service?.metadata ?? {}),
+					investigation: { ...investigation, notes: typed || undefined },
+				}
+			: undefined;
+
 		try {
 			let serviceId = service?.id ?? createdId ?? undefined;
 			if (serviceId) {
@@ -136,6 +163,7 @@ export function ServiceFormDialog({
 					tier,
 					team: team || undefined,
 					tags: tags.length > 0 ? tags : undefined,
+					...(metadata ? { metadata } : {}),
 				});
 			} else {
 				const created = await createService.mutateAsync({
@@ -146,6 +174,7 @@ export function ServiceFormDialog({
 					tier,
 					team: team || undefined,
 					tags: tags.length > 0 ? tags : undefined,
+					...(metadata ? { metadata } : {}),
 				});
 				serviceId = created.id;
 				setCreatedId(created.id);
@@ -273,6 +302,22 @@ export function ServiceFormDialog({
 							<TagInput tags={tags} onChange={setTags} />
 						</Field>
 					</div>
+
+					<Field
+						label="Investigation notes"
+						htmlFor="service-investigation-notes"
+						hint="What the agent should know first about this service: dashboards, usual causes, what not to touch."
+					>
+						<Textarea
+							id="service-investigation-notes"
+							value={notes}
+							onChange={(e) => setNotes(e.target.value)}
+							maxLength={SERVICE_NOTES_MAX}
+							rows={3}
+							className="min-h-20 resize-y"
+							data-testid="service-investigation-notes"
+						/>
+					</Field>
 				</div>
 
 				<DialogFooter className="items-center">

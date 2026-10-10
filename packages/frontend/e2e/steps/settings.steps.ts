@@ -513,7 +513,7 @@ Then(
 );
 
 Then(
-	'the list shows "Agent default" first, then the models with their provider under each, no headings, each named once',
+	"the list shows the agent's own model first, then the models with their provider under each, no headings, each named once",
 	async ({ page }) => {
 		const list = picker(page).getByRole("listbox", { name: "Models" });
 		await expect(list.getByRole("option").first()).toHaveAttribute(
@@ -669,18 +669,13 @@ Then(
 Then(
 	"every agent shows its own default permission mode, by the agent's name once checked",
 	async ({ page }) => {
-		// The agent's own name after a check, its mode id before one (#673 w21).
-		const expected: Record<string, RegExp> = {
-			opencode: /^(Build|build)$/,
-			"claude-code": /^(Manual|default)$/,
-			codex: /^(Ask for approval|read-only)$/,
-		};
-		for (const [id, text] of Object.entries(expected)) {
+		// Each agent's Permission row names its default and where it came from (#673 w21).
+		for (const id of ["opencode", "claude-code", "codex"]) {
 			await pickAgent(page, id);
 			await page.goto("/settings?tab=harness");
-			await expect(
-				page.getByTestId("harness-permission-mode").getByTestId("access-chip"),
-			).toHaveText(text);
+			await expect(page.getByTestId("harness-access")).toContainText(
+				/(Your default: |PrismaLens default|set here)/,
+			);
 		}
 		await pickAgent(page, "auto");
 	},
@@ -823,7 +818,7 @@ Then(
 );
 
 Then(
-	/^"Muse Spark 1\.3 \(free\)" carries the line "trains on your prompts" and "Agent default" shows what OpenCode reports, not a PrismaLens choice$/,
+	/^"Muse Spark 1\.3 \(free\)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice$/,
 	async ({ page }) => {
 		await openPicker(page);
 		await picker(page).getByTestId("rail-opencode").click();
@@ -831,9 +826,9 @@ Then(
 			.locator('[data-testid=model-option][data-model="Muse Spark 1.3 (free)"]')
 			.first();
 		await expect(muse).toContainText("trains on your prompts");
-		// Agent default's sub-line is the model OpenCode reports it serves, nothing more.
+		// The agent's own model row's sub-line is the model OpenCode reports it serves, nothing more.
 		await expect(picker(page).getByTestId("model-default")).toContainText(
-			"Agent default",
+			"Agent's own model",
 		);
 		await expect(picker(page).getByTestId("model-default")).not.toContainText(
 			"PrismaLens",

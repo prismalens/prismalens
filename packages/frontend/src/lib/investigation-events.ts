@@ -10,12 +10,16 @@
  * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
  * adopts it, so all three runtimes render the canonical stream identically.
  */
+import type { AccessLevel, RunMode } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	PermissionAskOutcome,
 	StreamToolResult,
 } from "@prismalens/contracts";
-import { InvestigationReportSchema } from "@prismalens/contracts/schemas";
+import {
+	ACCESS_LEVEL_LABEL,
+	InvestigationReportSchema,
+} from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
@@ -347,6 +351,9 @@ export interface TranscriptRun {
 	startedAt?: string | null;
 	completedAt?: string | null;
 	id?: string;
+	/** The level the run's asks were answered at, and its mode (#673 w21). */
+	accessLevel?: AccessLevel | null;
+	runMode?: RunMode | null;
 }
 
 /** An ask's standing: waiting on you, how it ended, or `ended` when the run ended first (#673 w21). */
@@ -367,6 +374,13 @@ export type TranscriptItem =
 			state: AskState;
 	  }
 	| { kind: "line"; key: string; text: string }
+	/** An ask the run's level answered: allowed, or a mode switch refused (#673 w21). */
+	| {
+			kind: "level";
+			key: string;
+			outcome: "allowed" | "plan_kept" | "mode_kept";
+			text: string;
+	  }
 	| {
 			kind: "tools";
 			key: string;
@@ -532,6 +546,34 @@ function stoppedLine(
 		tone: "stale",
 		text: at ? `Stopped by you at ${formatClock(at)}` : "Stopped by you",
 		detail: took !== null ? `after ${formatElapsed(took)}` : undefined,
+	};
+}
+
+const LEVEL_OUTCOMES = new Set(["allowed", "plan_kept", "mode_kept"]);
+const READS = new Set(["read", "search"]);
+
+/** The one line an ask the level answered leaves; reads and searches leave none (#673 w21). */
+function levelLine(
+	event: Extract<CanonicalEvent, { kind: "permission_answer" }>,
+	level: AccessLevel | null | undefined,
+): Omit<Extract<TranscriptItem, { kind: "level" }>, "key"> | null {
+	if (!LEVEL_OUTCOMES.has(event.outcome)) return null;
+	const outcome = event.outcome as "allowed" | "plan_kept" | "mode_kept";
+	const title = event.title ?? "A tool call";
+	if (outcome === "allowed") {
+		if (event.toolKind && READS.has(event.toolKind)) return null;
+		return {
+			kind: "level",
+			outcome,
+			text: level
+				? `Allowed at ${ACCESS_LEVEL_LABEL[level]}: ${title}`
+				: `Allowed: ${title}`,
+		};
+	}
+	return {
+		kind: "level",
+		outcome,
+		text: `${outcome === "plan_kept" ? "Kept Plan" : "Kept Execute"}: ${title}`,
 	};
 }
 
@@ -759,7 +801,15 @@ export function deriveTranscript(
 			}
 			case "permission_answer": {
 				const ask = asks.get(event.askId);
-				if (ask) ask.state = event.outcome;
+				if (ask) {
+					ask.state = event.outcome;
+					break;
+				}
+				const line = levelLine(event, run?.accessLevel);
+				if (line) {
+					closeGroup();
+					items.push({ ...line, key });
+				}
 				break;
 			}
 			case "error": {
@@ -858,7 +908,21 @@ export function deriveTranscript(
 		return items;
 	}
 
-	if (run?.status === "cancelled" && standingAt < 0) {
+	if (
+		run?.status === "completed" &&
+		run.runMode === "plan" &&
+		!sawReport &&
+		standingAt < 0 &&
+		run.kind !== "chat"
+	) {
+		standingAt = items.length;
+		items.push({
+			kind: "end",
+			key: "planned",
+			tone: "done",
+			text: "No report: the agent's plan is in the conversation",
+		});
+	} else if (run?.status === "cancelled" && standingAt < 0) {
 		standingAt = items.length;
 		items.push(stoppedLine(run, lastTs));
 	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {

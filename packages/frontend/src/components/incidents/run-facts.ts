@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { type AccessLevel, NO_MODE_KEY } from "@prismalens/config/harness";
 import {
+	ACCESS_LEVEL_LABEL,
 	type CanonicalEvent,
+	fidelityAccess,
+	type HarnessStatus,
 	type InvestigationWithRelations,
 	isWorkflowLive,
 	latestRun,
+	RUN_MODE_LABEL,
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
@@ -14,6 +19,7 @@ import {
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { planIsCoupled } from "@/lib/access-levels";
 import { formatElapsed } from "@/lib/format-time";
 import type { RunRef } from "./record-context";
 
@@ -45,6 +51,43 @@ export function useRunAgentModel(
 		};
 	}
 	return { ...agentModelLabel(effective, model), id: effective?.id ?? null };
+}
+
+/**
+ * A run's mode and level as it ran (#673 w21 ruling 2026-10-10): the level
+ * with the agent's own mode name, `X asked, ran in Y` when the agent ran
+ * another, and no level in a Plan that takes its slot. A run from before the
+ * two axes reads its #778 level, or the agent mode #808 set.
+ */
+export function runAccessLine(
+	inv: Pick<
+		InvestigationWithRelations,
+		"agentMode" | "accessLevel" | "runMode" | "harness" | "report"
+	>,
+	harness: HarnessStatus | undefined,
+): string | null {
+	const f = inv.report?.fidelity;
+	const modeId = f?.mode ?? inv.agentMode ?? null;
+	const named = (id: string | null) =>
+		(id && harness?.checked?.modes?.find((m) => m.id === id)?.name) || id;
+	const asked = f?.access ?? inv.accessLevel ?? undefined;
+	const runMode = f?.runMode ?? inv.runMode ?? "execute";
+	const agent = harness?.label ?? inv.harness ?? "the agent";
+	if (runMode === "plan") {
+		if (planIsCoupled(harness)) return `${RUN_MODE_LABEL.plan} (${agent} Plan)`;
+		const level = asked ? `, ${ACCESS_LEVEL_LABEL[asked]}` : "";
+		return `${RUN_MODE_LABEL.plan}${level}${modeId ? ` (${named(modeId)})` : ""}`;
+	}
+	const ran = f ? fidelityAccess(f, inv.agentMode) : asked;
+	if (!asked && !ran)
+		return inv.agentMode ? `ran in ${named(inv.agentMode)}` : null;
+	if (asked && ran && asked !== ran)
+		return `${ACCESS_LEVEL_LABEL[asked]} asked, ran in ${ACCESS_LEVEL_LABEL[ran]}`;
+	const label = ACCESS_LEVEL_LABEL[(ran ?? asked) as AccessLevel];
+	// A #778 level id is not an agent mode: the label alone.
+	return asked && modeId && modeId !== NO_MODE_KEY
+		? `${label} (${named(modeId)})`
+		: label;
 }
 
 type Timed = {

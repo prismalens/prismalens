@@ -6,7 +6,7 @@ Feature: Agent and model picker
     Given OpenCode, Claude Code and Codex are installed and deepagents is not
     When I open the picker in Settings, Agent
     Then the left rail shows a Starred tile and one tile per installed agent, and none for deepagents
-    And the list shows "Agent default" first, then the models with their provider under each, no headings, each named once
+    And the list shows the agent's own model first, then the models with their provider under each, no headings, each named once
     When I type "sonnet" in the search
     Then only models matching "sonnet" remain
     When I star "Claude Sonnet 5.5"
@@ -39,7 +39,7 @@ Feature: Agent and model picker
     Given OpenCode offers "Claude Sonnet 5.5" and "Muse Spark 1.3 (free)"
     When I choose "Claude Sonnet 5.5"
     Then the picker's chip, the Settings row and the box on an incident all read "Claude Sonnet 5.5"
-    And "Muse Spark 1.3 (free)" carries the line "trains on your prompts" and "Agent default" shows what OpenCode reports, not a PrismaLens choice
+    And "Muse Spark 1.3 (free)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice
 
   Scenario: Agents are shown by mark, the search names them, favourites across agents
     Then every rail tile is a tab showing the agent's mark and no label, and the search names the agent

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { HarnessId } from "@prismalens/config/harness";
+import type {
+	AccessLevel,
+	HarnessId,
+	RunMode,
+} from "@prismalens/config/harness";
 import {
 	type FollowUpKind,
+	fidelityAccess,
 	type HarnessStatus,
 	isRunStateLive,
 	LIVE_TURN_LABEL,
@@ -13,9 +18,9 @@ import {
 import { GitCommitHorizontal } from "lucide-react";
 import { type MutableRefObject, useState } from "react";
 import {
-	defaultModeOf,
+	AccessChip,
+	defaultAccessOf,
 	EffortChip,
-	ModeChip,
 	ModelChip,
 	unreadyReason,
 	useAgentChoice,
@@ -25,6 +30,7 @@ import {
 	useIncidentRecord,
 } from "@/components/incidents/record-context";
 import {
+	runAccessLine,
 	runEffort,
 	runNumber,
 	runTimed,
@@ -53,7 +59,8 @@ import { ComposerBox, type ComposerSend } from "./ComposerBox";
 type Choice =
 	| { kind: "model"; harness: HarnessStatus; model: string }
 	| { kind: "effort"; effort: string }
-	| { kind: "mode"; mode: string };
+	| { kind: "level"; level: AccessLevel }
+	| { kind: "runMode"; runMode: RunMode };
 
 /** The box's placeholder, by what the next message asks for (#673 w59, DESIGN §4). */
 function placeholderFor(
@@ -147,15 +154,24 @@ export function DockedComposer({
 			? own.effort
 			: (choice.efforts[hid] ?? null)
 		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
-	const agentMode = draft
-		? (own.mode ?? defaultModeOf(harness, choice.agentModes))
-		: (inv?.agentMode ?? "agent-default");
+	// A run shows what it asked for; one from before the two axes, the level its report records (#673 w21).
+	const defaults = defaultAccessOf(harness, choice.axes);
+	const accessLevel: AccessLevel = draft
+		? (own.accessLevel ?? defaults.level.level)
+		: (inv?.accessLevel ??
+			(inv?.report?.fidelity
+				? fidelityAccess(inv.report.fidelity, inv.agentMode)
+				: undefined) ??
+			"supervised");
+	const runMode: RunMode = draft
+		? (own.runMode ?? defaults.mode.mode)
+		: (inv?.runMode ?? "execute");
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
-			? { harness: hid, model, effort, mode: agentMode }
+			? { harness: hid, model, effort, accessLevel, runMode }
 			: {};
-		// Mode ids and effort levels are per agent: another agent starts from its Settings (#798).
+		// Effort levels are per agent: another agent starts from its Settings (#798).
 		const next: DraftChoice =
 			c.kind === "model"
 				? c.harness.id === hid
@@ -163,7 +179,9 @@ export function DockedComposer({
 					: { harness: c.harness.id as HarnessId, model: c.model }
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
-					: { ...now, mode: c.mode };
+					: c.kind === "level"
+						? { ...now, accessLevel: c.level }
+						: { ...now, runMode: c.runMode };
 		// On a run, the draft is this run with one change.
 		if (draft) record.setDraftChoice(next);
 		else record.newRun({ choice: next });
@@ -209,11 +227,13 @@ export function DockedComposer({
 				onEffort={(e) => choose({ kind: "effort", effort: e })}
 				onModel={(m) => harness && choose({ kind: "model", harness, model: m })}
 			/>
-			<ModeChip
+			<AccessChip
 				harness={harness}
-				mode={agentMode}
+				level={accessLevel}
+				runMode={runMode}
 				disabled={blocked}
-				onMode={(m) => choose({ kind: "mode", mode: m })}
+				onLevel={(l) => choose({ kind: "level", level: l })}
+				onRunMode={(m) => choose({ kind: "runMode", runMode: m })}
 			/>
 		</>
 	);
@@ -269,7 +289,8 @@ export function DockedComposer({
 					const attachments = await upload(files);
 					await record.investigate({
 						text: text || undefined,
-						agentMode,
+						accessLevel,
+						runMode,
 						...sent,
 						attachments: attachments.map((a) => a.id),
 					});
@@ -278,7 +299,8 @@ export function DockedComposer({
 					const attachments = await upload(files);
 					await record.chat({
 						text,
-						agentMode,
+						accessLevel,
+						runMode,
 						...sent,
 						attachments: attachments.map((a) => a.id),
 					});
@@ -330,6 +352,7 @@ export function originWord(triggerType: string | null | undefined): string {
  */
 function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 	const { run, runs, incident } = useIncidentRecord();
+	const { harnesses } = useAgentChoice();
 	const now = useNow(1000);
 	const stream = useStreamStatus();
 	const inv = run.investigation;
@@ -350,6 +373,10 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 	const sha = pinnedTo(inv.workspace);
 	const service = incident.service?.displayName || incident.service?.name;
 	const lastMessage = !live && !chat ? lastMessageWord(inv) : null;
+	const access = runAccessLine(
+		inv,
+		harnesses.find((h) => h.id === inv.harness),
+	);
 	return (
 		<div
 			className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-0.5 text-meta text-text-3"
@@ -384,6 +411,7 @@ function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
 			{lastMessage && (
 				<span data-testid="run-status-last-message">{lastMessage}</span>
 			)}
+			{access && <span data-testid="run-status-access">{access}</span>}
 			{sha && (
 				<span
 					className="inline-flex items-center gap-1"

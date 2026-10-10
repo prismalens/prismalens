@@ -20,7 +20,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null, mode: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -36,7 +36,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g @openai/codex",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null, mode: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -52,7 +52,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g opencode",
 		defaultModel: null,
-		defaultMode: "default",
+		localDefault: { permission: null, mode: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -96,7 +96,12 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		effective: mockHarnesses[0],
 		model: "",
 		efforts: {},
-		agentModes: {},
+		axes: {
+			accessLevels: {},
+			runModes: {},
+			autoAccessLevels: {},
+			autoRunModes: {},
+		},
 		setting: "claude-code",
 		customModels: { "claude-code": ["gw-a"] },
 		isLoading: false,
@@ -104,7 +109,10 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	}),
 	AgentModelPicker: () => <div data-testid="stub-agent-model-picker" />,
 	EffortChip: () => <div data-testid="stub-effort-chip" />,
-	AccessMenu: () => <div data-testid="stub-access-menu" />,
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+		mode: { mode: "execute", from: "prismalens" },
+	}),
 }));
 
 if (typeof globalThis.ResizeObserver === "undefined") {
@@ -317,7 +325,7 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 		);
 		expect(opencodeAsks).not.toBeNull();
 		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-			"OpenCode asks where your opencode.json says ask; by default that is files outside the workspace only.",
+			'A run sets each tool\'s "*" rule for its permission level; the other patterns in your opencode.json stay.',
 		);
 
 		const claudeRow = container.querySelector(

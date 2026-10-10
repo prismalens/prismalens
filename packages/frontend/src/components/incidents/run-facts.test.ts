@@ -10,8 +10,11 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
 	CHIP: "chip",
 	EffortChip: () => null,
-	ModeChip: () => null,
-	defaultModeOf: () => "agent-default",
+	AccessChip: () => null,
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+		mode: { mode: "execute", from: "prismalens" },
+	}),
 	modelName: (_h: unknown, id: string) => id,
 	unreadyReason: () => null,
 	useAgentChoice: () => ({
@@ -19,7 +22,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		effective: undefined,
 		model: "",
 		efforts: {},
-		agentModes: {},
+		axes: { accessLevels: {}, runModes: {}, autoAccessLevels: {}, autoRunModes: {} },
 	}),
 }));
 

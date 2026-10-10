@@ -10,7 +10,7 @@ import {
 	defaultModelLine,
 	EffortChip,
 	effortLevels,
-	ModeChip,
+	AccessChip,
 	modelName,
 	unreadyReason,
 } from "./AgentPicker";
@@ -26,7 +26,7 @@ vi.mock("@/components/shared/Hint", () => ({
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({ data: { harnesses: [] }, isLoading: false }),
-	useHarnessSettings: () => ({ data: { agentModes: {} }, isLoading: false }),
+	useHarnessSettings: () => ({ data: {}, isLoading: false }),
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 	useCheckHarness: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -39,7 +39,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	tested: null,
 	install: "",
 	defaultModel: null,
-	defaultMode: "default",
+	localDefault: { permission: null, mode: null },
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,
@@ -64,6 +64,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 			{ id: "high", name: "High", default: true },
 		],
 		images: true,
+		plan: true,
 		sandbox: null,
 	},
 	...over,
@@ -117,23 +118,20 @@ describe("the box's chips (#673)", () => {
 		expect(off).toContain("disabled");
 	});
 
-	it("lists the agent's own modes, its default first and tagged, with the yes clause where the agent asks", () => {
+	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
 		const html = renderToStaticMarkup(
-			React.createElement(ModeChip, {
+			React.createElement(AccessChip, {
 				harness: claude(),
-				mode: "default",
-				onMode: () => {},
+				level: "supervised",
+				runMode: "execute",
+				onLevel: () => {},
+				onRunMode: () => {},
 			}),
 		);
-		expect(html.indexOf("Manual")).toBeLessThan(html.indexOf("Bypass permissions"));
-		expect(html).toContain("Your default");
-		expect(html).toContain(
-			"Always ask before making changes. PrismaLens answers yes and logs it.",
-		);
-		// claude-agent-acp still asks on bypass-immune safety checks, so bypass carries the clause too (#799).
-		expect(html).toContain(
-			"Accepts all permissions. PrismaLens answers yes and logs it.",
-		);
+		expect(html.indexOf("Ask always")).toBeLessThan(html.indexOf("Full access"));
+		expect(html).toContain("PrismaLens default");
+		expect(html).toContain("Claude Code runs in Manual.");
+		expect(html).not.toContain("answers yes");
 	});
 });
 

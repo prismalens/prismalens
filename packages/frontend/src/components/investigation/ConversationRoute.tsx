@@ -78,6 +78,10 @@ export function ConversationRoute() {
 							hasReport: !!investigation.report,
 							continuable: run.continuable,
 							lastTurnOutcome: investigation.lastTurnOutcome,
+							accessLevel:
+								investigation.report?.fidelity?.access ??
+								investigation.accessLevel,
+							runMode: investigation.runMode,
 						}
 					: undefined,
 			}),

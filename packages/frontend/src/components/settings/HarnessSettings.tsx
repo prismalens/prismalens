@@ -15,14 +15,23 @@
  * (`selection.pinned`), so the picker stays editable but the page says so.
  */
 
-import type { HarnessId } from "@prismalens/config/harness";
-import type { HarnessProbeResult, HarnessStatus } from "@prismalens/contracts";
+import {
+	ACCESS_LEVELS,
+	type HarnessId,
+	RUN_MODES,
+} from "@prismalens/config/harness";
+import {
+	ACCESS_LEVEL_LABEL,
+	type HarnessProbeResult,
+	type HarnessStatus,
+	RUN_MODE_LABEL,
+} from "@prismalens/contracts";
 import { X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
-	AccessMenu,
 	AgentModelPicker,
+	defaultAccessOf,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
@@ -36,7 +45,15 @@ import { Loading, Problem } from "@/components/shared/State";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { agentNote, modeLine, permissionLine } from "@/lib/access-levels";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -100,10 +117,12 @@ export function HarnessSettings() {
 						<AgentModelPicker />
 					</SettingRow>
 					<EffortRow />
-					<PermissionModeRow />
+					<AccessRows />
 					<AutoRow />
 				</Pool>
 			</SettingGroup>
+
+			<AutoStartedRuns />
 
 			<CustomModels harnesses={harnesses} />
 
@@ -157,25 +176,164 @@ function EffortRow() {
 	);
 }
 
-/** The agent's own mode a run on the next agent starts in, saved per agent (#673 w21). */
-function PermissionModeRow() {
-	const { effective } = useAgentChoice();
+/** The value a Select stores for "no value here": Default, or Same as next run. */
+const UNSET = "unset";
+
+function AxisSelect<V extends string>({
+	value,
+	options,
+	unsetLabel,
+	onChange,
+	label,
+	testId,
+}: {
+	value: V | undefined;
+	options: readonly { value: V; label: string }[];
+	unsetLabel: string;
+	onChange: (value: V | null) => void;
+	label: string;
+	testId: string;
+}) {
+	return (
+		<Select
+			value={value ?? UNSET}
+			onValueChange={(v) => onChange(v === UNSET ? null : (v as V))}
+		>
+			<SelectTrigger
+				className="w-44 bg-surface-2"
+				aria-label={label}
+				data-testid={`${testId}-select`}
+			>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectItem value={UNSET}>{unsetLabel}</SelectItem>
+				{options.map((o) => (
+					<SelectItem key={o.value} value={o.value}>
+						{o.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
+
+const MODE_OPTIONS = RUN_MODES.map((m) => ({
+	value: m,
+	label: RUN_MODE_LABEL[m],
+}));
+const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
+	value: l,
+	label: ACCESS_LEVEL_LABEL[l],
+}));
+
+/** The next run's mode and permission level on this agent, saved per agent; unset follows the agent's own default (#673 w21). */
+function AccessRows() {
+	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	if (!effective) return null;
+	const id = effective.id as HarnessId;
+	const note = agentNote(effective);
 	return (
-		<SettingRow
-			label="Permission mode"
-			description={`For ${effective.label}; the agent's own modes`}
-			testId="harness-permission-mode"
-		>
-			<AccessMenu
-				value={undefined}
-				side="bottom"
-				onChange={(mode) =>
-					update.mutate({ agentModes: { [effective.id as HarnessId]: mode } })
+		<>
+			<SettingRow
+				label="Mode"
+				description={modeLine(effective, axes.runModes[id])}
+				testId="harness-run-mode"
+			>
+				<AxisSelect
+					value={axes.runModes[id]}
+					options={MODE_OPTIONS}
+					unsetLabel="Default"
+					label={`Mode for ${effective.label}`}
+					testId="harness-run-mode"
+					onChange={(v) => update.mutate({ runModes: { [id]: v } })}
+				/>
+			</SettingRow>
+			<SettingRow
+				label="Permission"
+				description={
+					<>
+						{permissionLine(effective, axes.accessLevels[id])}
+						{note && (
+							<span
+								className="mt-1 block text-text-3"
+								data-testid="harness-agent-note"
+							>
+								{note}
+							</span>
+						)}
+					</>
 				}
-			/>
-		</SettingRow>
+				testId="harness-access"
+			>
+				<AxisSelect
+					value={axes.accessLevels[id]}
+					options={LEVEL_OPTIONS}
+					unsetLabel="Default"
+					label={`Permission for ${effective.label}`}
+					testId="harness-access"
+					onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
+				/>
+			</SettingRow>
+		</>
+	);
+}
+
+/** Runs PrismaLens starts from an alert: their own mode and level, else the next run's (#673 w21). */
+function AutoStartedRuns() {
+	const { effective, axes } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	if (!effective) return null;
+	const id = effective.id as HarnessId;
+	const next = defaultAccessOf(effective, axes);
+	const autoMode = axes.autoRunModes[id];
+	const autoLevel = axes.autoAccessLevels[id];
+	return (
+		<SettingGroup
+			title="Auto-started runs"
+			description="Runs PrismaLens starts from an alert. Unset rows follow the next-run rows above. At Ask always an unattended run waits for your approval of its first command; Auto or Auto-accept edits let it run on."
+			testId="harness-auto-start"
+		>
+			<Pool>
+				<SettingRow
+					label="Mode"
+					description={
+						autoMode
+							? `${RUN_MODE_LABEL[autoMode]}, set here.`
+							: `Same as next run: ${RUN_MODE_LABEL[next.mode.mode]}.`
+					}
+					testId="harness-auto-run-mode"
+				>
+					<AxisSelect
+						value={autoMode}
+						options={MODE_OPTIONS}
+						unsetLabel="Same as next run"
+						label={`Mode for auto-started runs on ${effective.label}`}
+						testId="harness-auto-run-mode"
+						onChange={(v) => update.mutate({ autoRunModes: { [id]: v } })}
+					/>
+				</SettingRow>
+				<SettingRow
+					label="Permission"
+					description={
+						autoLevel
+							? `${ACCESS_LEVEL_LABEL[autoLevel]}, set here.`
+							: `Same as next run: ${ACCESS_LEVEL_LABEL[next.level.level]}.`
+					}
+					testId="harness-auto-access"
+				>
+					<AxisSelect
+						value={autoLevel}
+						options={LEVEL_OPTIONS}
+						unsetLabel="Same as next run"
+						label={`Permission for auto-started runs on ${effective.label}`}
+						testId="harness-auto-access"
+						onChange={(v) => update.mutate({ autoAccessLevels: { [id]: v } })}
+					/>
+				</SettingRow>
+			</Pool>
+		</SettingGroup>
 	);
 }
 
@@ -410,13 +568,13 @@ function AgentRow({
 			}
 			below={
 				harness.id === "opencode" ? (
-					// opencode.ai/docs/permissions: OpenCode's own rules decide what it asks (#673 w21).
+					// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
 					<p
 						className="text-meta text-text-3 [&_code]:bg-transparent! [&_code]:p-0!"
 						data-testid="harness-opencode-asks"
 					>
-						OpenCode asks where your opencode.json says <code>ask</code>; by
-						default that is files outside the workspace only.
+						A run sets each tool's <code>"*"</code> rule for its permission
+						level; the other patterns in your opencode.json stay.
 					</p>
 				) : undefined
 			}

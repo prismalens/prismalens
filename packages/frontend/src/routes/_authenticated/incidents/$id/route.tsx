@@ -181,7 +181,8 @@ function IncidentLayout() {
 				(r.id === run.investigation?.id && run.isActive),
 		) ?? null;
 	const startInput = (start: RunStart) => ({
-		...(start.agentMode ? { agentMode: start.agentMode } : {}),
+		...(start.accessLevel ? { accessLevel: start.accessLevel } : {}),
+		...(start.runMode ? { runMode: start.runMode } : {}),
 		...(start.harness ? { harness: start.harness } : {}),
 		...(start.model !== undefined ? { model: start.model || null } : {}),
 		...(start.effort !== undefined ? { effort: start.effort } : {}),
