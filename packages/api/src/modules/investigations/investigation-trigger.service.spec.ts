@@ -387,6 +387,51 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
+		it("auto_critical trigger stores auto rows' values when set and the next-run chain when not (#673 w21)", async () => {
+			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-auto" }, created: true });
+			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
+			mockPrisma.alert.findMany.mockResolvedValue([]);
+			mockDispatchService.addInvestigationJob.mockResolvedValue("job-auto");
+
+			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
+				accessLevel: "auto-edits",
+				runMode: "plan",
+			});
+
+			const criticalDecision = {
+				shouldTrigger: true,
+				triggerType: "auto_critical",
+				reason: "Auto-investigation policy: auto_critical, incident severity critical",
+			} as unknown as TriggerDecision;
+
+			await service.triggerInvestigation(incident, criticalDecision);
+
+			expect(mockHarnessService.effectiveChoice).toHaveBeenCalledWith("codex", true);
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.objectContaining({
+					investigationId: "inv-auto",
+					accessLevel: "auto-edits",
+					runMode: "plan",
+				}),
+			);
+
+			// When auto rows are not set, effectiveChoice resolves the next-run chain
+			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
+				accessLevel: "supervised",
+				runMode: "execute",
+			});
+
+			await service.triggerInvestigation(incident, criticalDecision);
+
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
+				expect.objectContaining({
+					investigationId: "inv-auto",
+					accessLevel: "supervised",
+					runMode: "execute",
+				}),
+			);
+		});
+
 		it("should handle enqueue failure", async () => {
 			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-1" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);

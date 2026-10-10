@@ -432,23 +432,45 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{} as never,
 			);
 			const investigate = getHandlers(controller).investigate as (a: {
-				input: { id: string; accessLevel?: string };
+				input: { id: string; accessLevel?: string; runMode?: string };
 			}) => Promise<unknown>;
-			return { dispatchService, investigationsService, investigate };
+			return { dispatchService, investigationsService, investigate, controller };
 		};
 		const full = make();
-		await full.investigate({ input: { id: mockIncident.id, accessLevel: "full-access" } });
+		await full.investigate({ input: { id: mockIncident.id, accessLevel: "full-access", runMode: "plan" } });
 		expect(full.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
-			expect.objectContaining({ accessLevel: "full-access" }),
+			expect.objectContaining({ accessLevel: "full-access", runMode: "plan" }),
 		);
 		expect(full.investigationsService.startOrGet).toHaveBeenCalledWith(
-			expect.objectContaining({ accessLevel: "full-access" }),
+			expect.objectContaining({ accessLevel: "full-access", runMode: "plan" }),
 		);
 		const none = make();
 		await none.investigate({ input: { id: mockIncident.id } });
 		expect(none.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
 			expect.not.objectContaining({ accessLevel: expect.anything() }),
 		);
+
+		// Views return accessLevel and runMode
+		const view = (full.controller as unknown as { serializeIncident: (i: unknown) => Record<string, unknown> }).serializeIncident({
+			id: "inc-1",
+			number: 1,
+			title: "Inc",
+			severity: "critical",
+			status: "investigating",
+			investigations: [
+				{
+					id: "inv-1",
+					status: "running",
+					kind: "investigation",
+					accessLevel: "full-access",
+					runMode: "plan",
+				},
+			],
+		});
+		expect((view.investigations as Array<Record<string, unknown>>)[0]).toMatchObject({
+			accessLevel: "full-access",
+			runMode: "plan",
+		});
 	});
 
 	it("returns the investigation already in progress instead of starting a second one", async () => {

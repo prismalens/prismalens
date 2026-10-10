@@ -184,4 +184,60 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 		}
 		expect(answerEvent.outcome).toBe("denied");
 	}, 60_000);
+
+	it("Given an alert with fake-session:ask and autoAccessLevels auto-edits, When the run starts, Then it completes with permission_answer outcome allowed and no awaitingApprovalAt (#673 w21)", async () => {
+		await pl.api("/settings/harness", {
+			method: "PATCH",
+			body: {
+				autoAccessLevels: { opencode: "auto-edits" },
+			},
+		});
+
+		await pl.serviceWithRepo("payments");
+		const alert = am.fire({
+			labels: {
+				alertname: "PaymentsSlow fake-session:ask",
+				service: "payments",
+				severity: "critical",
+			},
+			annotations: { summary: "payments latency" },
+		});
+		expect(
+			(await am.post(pl.webhookUrl, pl.webhookToken)).status,
+		).toBeLessThan(300);
+
+		const [incident] = await eventually(
+			() => pl.incidentFor(alert.fingerprint),
+			(found) => found.length === 1,
+			"an incident carrying the alert",
+		);
+		const [run] = await eventually(
+			() => pl.investigations(incident.id),
+			(runs) => runs.length === 1,
+			"the run the alert started",
+		);
+
+		const done = await eventually(
+			() => pl.api<InvestigationWithApproval>(`/investigations/${run.id}`),
+			(i) => i.status === "completed",
+			"the run to complete without waiting for approval",
+			30_000,
+		);
+		expect(done.awaitingApprovalAt).toBeNull();
+		expect(done.report?.rootCause).toContain("d37d888");
+
+		const eventsPage = await pl.api<{ events: CanonicalEvent[] }>(
+			`/investigations/${run.id}/events`,
+		);
+		const askEvent = eventsPage.events.find((e) => e.kind === "permission_ask");
+		expect(askEvent).toBeUndefined();
+
+		const answerEvent = eventsPage.events.find(
+			(e) => e.kind === "permission_answer",
+		);
+		if (!answerEvent || answerEvent.kind !== "permission_answer") {
+			throw new Error("expected permission_answer event");
+		}
+		expect(answerEvent.outcome).toBe("allowed");
+	}, 60_000);
 });
