@@ -157,7 +157,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 			expect(prompt).toContain("curl -s 'http://am.internal:9093/api/v2/alerts'");
 			expect(prompt).toContain("Permission: Ask always (Manual, the agent's own mode).");
 			expect(prompt).toContain(
-				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if your evidence shows a way to stop the impact, put it in nextSteps with kind stop-impact. None is a valid answer.",
 			);
 			expect(prompt).toContain("\nSURFACES\n");
 			expect(prompt).not.toContain("READ-ONLY SURFACES");
@@ -212,7 +212,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"10. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
 				"11. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
 				"12. Permission: Ask always (Manual, the agent's own mode).",
-				"13. Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+				"13. Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if your evidence shows a way to stop the impact, put it in nextSteps with kind stop-impact. None is a valid answer.",
 			];
 			for (let i = 0; i < expectedSteps.length; i++) {
 				expect(prompt).toContain(expectedSteps[i]);
@@ -233,7 +233,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"Permission: Full access (Bypass Permissions, the agent's own mode).",
 			);
 			expect(prompt).toContain(
-				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if your evidence shows a way to stop the impact, put it in nextSteps with kind stop-impact. None is a valid answer.",
 			);
 		});
 

@@ -22,6 +22,7 @@
  * `cancelled` outcome calls neither finish nor fail, so it invokes {@link flush}
  * directly to drain the same buffered tail before it resolves.
  */
+import { randomUUID } from "node:crypto";
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
@@ -225,6 +226,14 @@ export function createPrismaInvestigationStore(
 				}));
 				return;
 			}
+			// One id per option, shared with its Recommendation row: applied, Undo and checks bind by it (#811).
+			const stamped = {
+				...report,
+				nextSteps: report.nextSteps.map((step) => ({
+					...step,
+					id: randomUUID(),
+				})),
+			};
 			refused = !(await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,
@@ -232,8 +241,9 @@ export function createPrismaInvestigationStore(
 				summary: report.summary,
 				rootCause: report.rootCause ?? undefined,
 				rootCauseCategory: report.rootCauseCategory ?? undefined,
-				report,
-				recommendations: report.nextSteps.map((step) => ({
+				report: stamped,
+				recommendations: stamped.nextSteps.map((step) => ({
+					id: step.id,
 					title: step.title,
 					description: step.detail,
 					priority: step.priority ?? undefined,

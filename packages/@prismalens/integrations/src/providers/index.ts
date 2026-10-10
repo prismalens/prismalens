@@ -19,7 +19,14 @@ export type {
 } from "./git.interface.js";
 export { GitHubAdapter, GitHubVcsSegment } from "./github/index.js";
 // Metrics provider (#633)
-export type { MetricsQueries, RangeSeries } from "./metrics.interface.js";
+export {
+	type AlertRule,
+	type InstantSample,
+	type MetricsQueries,
+	type QueryBudget,
+	QueryBudgetExceededError,
+	type RangeSeries,
+} from "./metrics.interface.js";
 export {
 	PrometheusAdapter,
 	PrometheusMetricsSegment,
