@@ -60,7 +60,7 @@
    Windows and Linux draw their controls over its right end, macOS its lights over the sidebar. */
 :root[data-desktop] {
 	--titlebar-h: 2.5rem;
-	--controls-w: 132px;
+	--controls-w: 138px;
 }
 :root[data-desktop="darwin"] {
 	--controls-w: 0px;
