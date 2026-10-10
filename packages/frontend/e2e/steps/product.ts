@@ -215,15 +215,9 @@ export const cardOf = (scope: Page | Locator, title: string) => {
 	const page = "goto" in scope ? scope : scope.page();
 	return scope
 		.locator(
-			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"], [data-testid="board-card"]',
+			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"]',
 		)
-		.filter({
-			has: page
-				.getByTestId("inbox-row-title")
-				.filter({ hasText: title })
-				.or(page.getByTestId("card-title").filter({ hasText: title }))
-				.or(page.getByText(title, { exact: true })),
-		});
+		.filter({ has: page.getByText(title, { exact: true }) });
 };
 
 /**

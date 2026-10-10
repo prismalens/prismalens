@@ -19,7 +19,7 @@ Feature: First run
   Scenario: Unfinished steps stay visible after the first incident
     Given a coding agent is on PATH and no service names its code
     When the first alert arrives
-    Then the board shows the card and one line above the columns reading "Setup, 3 of 4 done" with "Add a service"
+    Then the inbox shows the row and one line above Needs you reading "Setup, 3 of 4 done" with "Add a service"
     When I add a service with a folder
     Then the line goes
 

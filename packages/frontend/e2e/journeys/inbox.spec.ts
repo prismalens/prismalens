@@ -5,7 +5,6 @@ import { expect, type Page } from "@playwright/test";
 import { fingerprintOf } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { test } from "../steps/fixtures";
 import {
-	acknowledge,
 	detail,
 	ensureService,
 	fireIncident,
@@ -72,7 +71,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			const r = d.investigations?.[0] as
 				| { id: string; status: string; awaitingApprovalAt?: string }
 				| undefined;
-			return r && r.awaitingApprovalAt ? r : undefined;
+			return r?.awaitingApprovalAt ? r : undefined;
 		}, "awaiting approval");
 
 		// 2. Ready run (completed with rootCause)
@@ -491,7 +490,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		unique,
 	}) => {
 		test.slow();
-		const serviceId = await ensureService(page, {
+		await ensureService(page, {
 			name: "tree-test-service",
 			displayName: "Tree Test Service",
 			trigger: "never",

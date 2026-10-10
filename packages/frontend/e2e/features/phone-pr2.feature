@@ -9,7 +9,7 @@ Feature: Phone
   Scenario: Acknowledge in two taps from a push link
     Given a push link opens INC-4
     When I press "Acknowledge" in the band
-    Then the band reads "Acknowledged" and the list shows INC-4 under Working
+    Then the band reads "Acknowledged" and the list leaves INC-4 out of Needs you while its run works
 
   Scenario: Analytics on the phone
     When I open Incidents, Analytics

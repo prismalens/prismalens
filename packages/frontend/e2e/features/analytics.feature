@@ -10,9 +10,9 @@ Feature: Analytics
     And a bar per day coloured by severity, then incidents by service and by recorded cause
     And no number sits in a framed box and no line reads "updated 0s ago"
 
-  Scenario: The board's window becomes 30 days
+  Scenario: All incidents' window becomes 30 days
     Given 3 resolved incidents in the last 30 days
-    When I pick 24 hours on the board and switch to Analytics
+    When I pick 24 hours in All incidents and switch to Analytics
     Then the window reads "Last 30 days" and a bar per day covers 30 days
 
   Scenario: Three kinds of month

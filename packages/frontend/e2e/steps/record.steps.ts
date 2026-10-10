@@ -906,14 +906,12 @@ Then(
 		);
 		await openBoard(page);
 		const group = page.locator(
-			'[data-testid="needs-group"][data-need="failed"], [data-testid="board-column-needs_you"]',
+			'[data-testid="needs-group"][data-need="failed"]',
 		);
 		const card = cardOf(group, inc(page).title);
 		await expect(card).toBeVisible({ timeout: 60_000 });
 		await expect(
-			card.locator(
-				'[data-testid="inbox-row-reason"], [data-testid="card-word"]',
-			),
+			card.locator('[data-testid="inbox-row-reason"]'),
 		).toContainText(/Failed|Run failed/, {
 			timeout: 60_000,
 		});
