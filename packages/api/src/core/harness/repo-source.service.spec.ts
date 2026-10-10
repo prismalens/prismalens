@@ -24,8 +24,13 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	type GitHttpServer,
+	startGitHttpServer,
+} from "./__fixtures__/git-http-server.js";
 import { GitCredential } from "./git-credential.js";
 import { gitEnv } from "./git-env.js";
+import { GitFailure, scrubGitStderr } from "./git-failure.js";
 import {
 	classifySource,
 	displayNameFor,
@@ -481,6 +486,253 @@ describe("repo-source.service", () => {
 			await expect(
 				service.validate({ kind: "url", source: badUrl }),
 			).rejects.toThrow(/does not appear to be a git repository/);
+		});
+	});
+
+	describe("against Git HTTP server fixture", () => {
+		let server: GitHttpServer;
+		let tempHome: string;
+
+		beforeEach(async () => {
+			server = await startGitHttpServer({ tls: true });
+			tempHome = tmp("pl-home-");
+			vi.stubEnv("HOME", tempHome);
+			writeFileSync(
+				join(tempHome, ".gitconfig"),
+				`[http]\n\tsslCAInfo = ${server.caFile}\n`,
+			);
+		});
+
+		afterEach(async () => {
+			await server.close();
+		});
+
+		it("T9: parent GIT_ASKPASS and SSH_ASKPASS point at scripts that touch a file; validate with source none fails in < 5 s with no-credential, files untouched", async () => {
+			const touchedAskpass = join(tempHome, "touched-git-askpass");
+			const touchedSshAskpass = join(tempHome, "touched-ssh-askpass");
+			const gitAskpassScript = join(tempHome, "git-askpass.sh");
+			const sshAskpassScript = join(tempHome, "ssh-askpass.sh");
+
+			writeFileSync(
+				gitAskpassScript,
+				`#!/bin/sh\ntouch "${touchedAskpass}"\nsleep 10\nexit 1\n`,
+				{ mode: 0o755 },
+			);
+			writeFileSync(
+				sshAskpassScript,
+				`#!/bin/sh\ntouch "${touchedSshAskpass}"\nsleep 10\nexit 1\n`,
+				{ mode: 0o755 },
+			);
+
+			vi.stubEnv("GIT_ASKPASS", gitAskpassScript);
+			vi.stubEnv("SSH_ASKPASS", sshAskpassScript);
+
+			const repoUrl = server.addRepo("reject-repo", { kind: "reject-401" });
+			const service = new RepoSourceService();
+
+			const start = Date.now();
+			let failure: unknown;
+			try {
+				await service.validate({
+					kind: "url",
+					source: repoUrl,
+					credential: new GitCredential({
+						source: "none",
+						label: "public",
+						via: "none",
+					}),
+				});
+			} catch (err) {
+				failure = err;
+			}
+			const durationMs = Date.now() - start;
+
+			expect(durationMs).toBeLessThan(5000);
+			expect(failure).toBeInstanceOf(GitFailure);
+			expect((failure as GitFailure).code).toBe("no-credential");
+			expect(existsSync(touchedAskpass)).toBe(false);
+			expect(existsSync(touchedSshAskpass)).toBe(false);
+		});
+
+		it("T9c: source connection, helper configured, reject-401 -> token-rejected, HELPER_LOG empty, server saw exactly one Authorization header", async () => {
+			const helperLog = join(tempHome, "helper.log");
+			const helperScript = join(tempHome, "helper.sh");
+			writeFileSync(
+				helperScript,
+				`#!/bin/sh\necho "$1" >> "${helperLog}"\nif [ "$1" = "get" ]; then\necho "username=u"\necho "password=p"\nfi\n`,
+				{ mode: 0o755 },
+			);
+
+			// Configure helper in user's gitconfig
+			writeFileSync(
+				join(tempHome, ".gitconfig"),
+				`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = "${helperScript}"\n`,
+			);
+
+			const repoUrl = server.addRepo("token-reject-repo", {
+				kind: "reject-401",
+			});
+			const u = new URL(repoUrl);
+			const service = new RepoSourceService();
+			const tokenCred = new GitCredential(
+				{
+					source: "connection",
+					label: "token A",
+					via: "git-host-token",
+					fingerprint: "11223344",
+				},
+				"my-secret-token",
+				{ host: u.host },
+			);
+
+			let failure: unknown;
+			try {
+				await service.validate({
+					kind: "url",
+					source: repoUrl,
+					credential: tokenCred,
+				});
+			} catch (err) {
+				failure = err;
+			}
+
+			expect(failure).toBeInstanceOf(GitFailure);
+			expect((failure as GitFailure).code).toBe("token-rejected");
+			expect(existsSync(helperLog)).toBe(false);
+
+			const authHeaders = server.headerValues("authorization");
+			expect(authHeaders.length).toBe(1);
+			expect(authHeaders[0]).toBe(
+				`Basic ${Buffer.from("x-access-token:my-secret-token").toString("base64")}`,
+			);
+		});
+
+		it("T9d: source machine, helper configured, reject-401 -> machine-rejected", async () => {
+			const helperScript = join(tempHome, "helper.sh");
+			writeFileSync(
+				helperScript,
+				'#!/bin/sh\nif [ "$1" = "get" ]; then\necho "username=u"\necho "password=p"\nfi\n',
+				{ mode: 0o755 },
+			);
+
+			writeFileSync(
+				join(tempHome, ".gitconfig"),
+				`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = "${helperScript}"\n`,
+			);
+
+			const repoUrl = server.addRepo("machine-reject-repo", {
+				kind: "reject-401",
+			});
+			const service = new RepoSourceService();
+			const machineCred = new GitCredential({
+				source: "machine",
+				label: "machine git (helper.sh, u)",
+				via: helperScript,
+			});
+
+			let failure: unknown;
+			try {
+				await service.validate({
+					kind: "url",
+					source: repoUrl,
+					credential: machineCred,
+				});
+			} catch (err) {
+				failure = err;
+			}
+
+			expect(failure).toBeInstanceOf(GitFailure);
+			expect((failure as GitFailure).code).toBe("machine-rejected");
+		});
+
+		it("T9e: user [http] extraHeader = X-Test: 1 in .gitconfig, source connection -> server saw no X-Test", async () => {
+			writeFileSync(
+				join(tempHome, ".gitconfig"),
+				`[http]\n\tsslCAInfo = ${server.caFile}\n\textraHeader = X-Test: 1\n`,
+			);
+
+			const repoUrl = server.addRepo("anon-repo", { kind: "anonymous" });
+			const u = new URL(repoUrl);
+			const service = new RepoSourceService();
+			const tokenCred = new GitCredential(
+				{
+					source: "connection",
+					label: "token A",
+					via: "git-host-token",
+				},
+				"tok",
+				{ host: u.host },
+			);
+
+			await service.validate({
+				kind: "url",
+				source: repoUrl,
+				credential: tokenCred,
+			});
+
+			expect(server.headerValues("x-test")).toEqual([]);
+		});
+
+		it("T11: inFlight keyed by credential (two concurrent ensureMirror with different credentials -> two fetches)", async () => {
+			const repoUrl = server.addRepo("concurrent-repo", {
+				kind: "anonymous",
+			});
+			const u = new URL(repoUrl);
+			const service = new RepoSourceService();
+
+			// Initial validate creates the bare mirror once
+			await service.validate({ kind: "url", source: repoUrl });
+			server.requests.length = 0;
+
+			const cred1 = new GitCredential(
+				{
+					source: "connection",
+					label: "token 1",
+					via: "git-host-token",
+					connectionId: "conn-1",
+				},
+				"tok1",
+				{ host: u.host },
+			);
+			const cred2 = new GitCredential(
+				{
+					source: "connection",
+					label: "token 2",
+					via: "git-host-token",
+					connectionId: "conn-2",
+				},
+				"tok2",
+				{ host: u.host },
+			);
+
+			// Two concurrent calls on existing mirror with different credentials
+			const [res1, res2] = await Promise.all([
+				service.validate({ kind: "url", source: repoUrl, credential: cred1 }),
+				service.validate({ kind: "url", source: repoUrl, credential: cred2 }),
+			]);
+
+			expect(res1.head).toBeDefined();
+			expect(res2.head).toBeDefined();
+			expect(res1.head).toBe(res2.head);
+
+			// The server should have received fetches with both tokens
+			const authHeaders = server.headerValues("authorization");
+			expect(authHeaders).toContain(
+				`Basic ${Buffer.from("x-access-token:tok1").toString("base64")}`,
+			);
+			expect(authHeaders).toContain(
+				`Basic ${Buffer.from("x-access-token:tok2").toString("base64")}`,
+			);
+		});
+
+		it("T12: scrubbing removes an Authorization: Basic ... fragment and ://u:p@", () => {
+			const raw =
+				"error: Authorization: Basic dXNlcjpzZWNyZXQ= failed\nfatal: unable to access 'https://user:password@github.com/org/repo.git': 401";
+			const scrubbed = scrubGitStderr(raw);
+			expect(scrubbed).not.toContain("Basic dXNlcjpzZWNyZXQ=");
+			expect(scrubbed).not.toContain("user:password");
+			expect(scrubbed).toContain("Authorization: ***");
+			expect(scrubbed).toContain("https://***@github.com/org/repo.git");
 		});
 	});
 });
