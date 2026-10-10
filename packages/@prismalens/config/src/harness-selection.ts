@@ -137,8 +137,6 @@ export interface HarnessStatus {
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
-	/** The agent's own mode a run asks for when Settings names none (#673 w21). */
-	defaultMode: string;
 	/** How the Model setting reaches this harness; `unsupported` means it is ignored. */
 	modelVia: "acp" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
@@ -168,7 +166,6 @@ export function listHarnessStatus(
 			tested: d.tested ?? null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,
-			defaultMode: d.defaultMode,
 			modelVia: d.modelVia,
 			loginHint: d.loginHint,
 			envModel: harnessEnvModel(id, input.env ?? process.env),

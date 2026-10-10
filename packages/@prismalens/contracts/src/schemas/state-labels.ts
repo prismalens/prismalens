@@ -7,6 +7,7 @@
  * enum: adding a value fails the build here until it has a label.
  */
 
+import type { AccessLevel } from "@prismalens/config/harness";
 import type { z } from "zod";
 import type {
 	AlertStatus,
@@ -178,6 +179,36 @@ export const MODEL_SOURCE_LABEL: Record<
 	"product-default": "PrismaLens default",
 	"harness-default": "the agent's default",
 	env: "set in the environment",
+};
+
+/** The four permission levels, by their one name (#673 w21, operator 2026-10-10). */
+export const ACCESS_LEVEL_LABEL: Record<AccessLevel, string> = {
+	supervised: "Ask always",
+	"auto-edits": "Auto-accept edits",
+	auto: "Auto",
+	"full-access": "Full access",
+};
+
+/** What a level means on any agent; what each agent runs sits on its own row line. */
+export const ACCESS_LEVEL_LINE: Record<AccessLevel, string> = {
+	supervised:
+		"The agent's most cautious mode. Every ask it raises waits for you here; reads and searches run.",
+	"auto-edits":
+		"File changes the agent asks about are approved by PrismaLens and logged; every other ask waits for you.",
+	auto: "The agent's own review mode where it has one. PrismaLens approves what it still asks and logs it.",
+	"full-access":
+		"The agent's full-access mode. PrismaLens approves what it still asks and logs it. It can do anything your user can on this machine, inside whatever sandbox the agent itself runs.",
+};
+
+/** A mode whose sandbox no check proved here. */
+export const NO_SANDBOX = "No sandbox proven here.";
+
+/** Levels a run recorded before the two axes (#778), by the level they read as now. */
+export const LEGACY_ACCESS_LEVEL: Record<string, AccessLevel> = {
+	"read-only": "supervised",
+	"read-only-tools": "supervised",
+	"workspace-write": "auto-edits",
+	"full-access": "full-access",
 };
 
 export const RUN_STATE_LABEL: Record<RunState, string> = {

@@ -6,6 +6,7 @@ import {
 	askWindow,
 	createAskChannel,
 	denyAllPolicy,
+	levelPolicy,
 	type PermissionRequest,
 } from "./permission.js";
 
@@ -285,5 +286,218 @@ describe("createAskChannel", () => {
 			outcome: "timed_out",
 		});
 		expect(channel.pending()).toHaveLength(0);
+	});
+ });
+
+describe("levelPolicy", () => {
+	const claudeSwitchReq: PermissionRequest = {
+		toolCall: {
+			title: "Approve Plan",
+			kind: "switch_mode",
+			rawInput: { plan: "1. Read handler. 2. Write report." },
+		},
+		options: [
+			{ optionId: "auto", name: "Yes, and use auto mode", kind: "allow_always" },
+			{
+				optionId: "bypass",
+				name: "Yes, and bypass permissions",
+				kind: "allow_always",
+			},
+			{
+				optionId: "manual",
+				name: "Yes, manually approve edits",
+				kind: "allow_once",
+			},
+			{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
+		],
+	};
+
+	const codexSwitchReq: PermissionRequest = {
+		toolCall: {
+			title: "Implement this plan?",
+			kind: "switch_mode",
+			rawInput: { plan: "1. Read handler. 2. Write report." },
+		},
+		options: [
+			{
+				optionId: "yes",
+				name: "Yes, implement this plan",
+				kind: "allow_once",
+			},
+			{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
+		],
+	};
+
+	const ctx = {
+		askId: "ask1",
+		signal: new AbortController().signal,
+	};
+
+	const levels = [
+		"supervised",
+		"auto-edits",
+		"auto",
+		"full-access",
+	] as const;
+
+	describe("switch_mode rejection", () => {
+		for (const level of levels) {
+			it(`rejects switch_mode (first shape) at ${level} with mode_kept`, () => {
+				const channel = createAskChannel({ timeoutMs: 5000 });
+				const policy = levelPolicy(level, channel);
+				const verdict = policy(claudeSwitchReq, ctx);
+				expect(verdict).toEqual({
+					allow: false,
+					optionId: "no",
+					outcome: "mode_kept",
+					why: "the run stays in its mode",
+				});
+			});
+
+			it(`rejects switch_mode (second shape) at ${level} with mode_kept`, () => {
+				const channel = createAskChannel({ timeoutMs: 5000 });
+				const policy = levelPolicy(level, channel);
+				const verdict = policy(codexSwitchReq, ctx);
+				expect(verdict).toEqual({
+					allow: false,
+					optionId: "no",
+					outcome: "mode_kept",
+					why: "the run stays in its mode",
+				});
+			});
+		}
+
+		it("never approves switch_mode even at full-access", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const policy = levelPolicy("full-access", channel);
+			const claudeVerdict = policy(claudeSwitchReq, ctx);
+			expect(claudeVerdict).toHaveProperty("allow", false);
+			expect(claudeVerdict).not.toHaveProperty("outcome", "allowed");
+			expect(claudeVerdict).not.toHaveProperty("outcome", "approved");
+
+			const codexVerdict = policy(codexSwitchReq, ctx);
+			expect(codexVerdict).toHaveProperty("allow", false);
+			expect(codexVerdict).not.toHaveProperty("outcome", "allowed");
+			expect(codexVerdict).not.toHaveProperty("outcome", "approved");
+		});
+	});
+
+	describe("tool kinds order and verdicts", () => {
+		const makeReq = (kind?: string): PermissionRequest => ({
+			toolCall: {
+				title: `Run ${kind ?? "unknown"}`,
+				toolCallId: "tc_1",
+				kind,
+			},
+			options: [
+				{ optionId: "allow_1", kind: "allow_once" },
+				{ optionId: "reject_1", kind: "reject_once" },
+			],
+		});
+
+		it("read and search are allowed at supervised as plain objects", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const policy = levelPolicy("supervised", channel);
+
+			const readVerdict = policy(makeReq("read"), ctx);
+			expect(readVerdict).toBeInstanceOf(Object);
+			expect(readVerdict).not.toBeInstanceOf(Promise);
+			expect(readVerdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "allowed",
+			});
+
+			const searchVerdict = policy(makeReq("search"), ctx);
+			expect(searchVerdict).toBeInstanceOf(Object);
+			expect(searchVerdict).not.toBeInstanceOf(Promise);
+			expect(searchVerdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "allowed",
+			});
+		});
+
+		it("edit, delete, and move return card verdicts (Promises) at supervised", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const policy = levelPolicy("supervised", channel);
+
+			for (const kind of ["edit", "delete", "move"]) {
+				const verdict = policy(makeReq(kind), {
+					askId: `ask_${kind}`,
+					signal: new AbortController().signal,
+				});
+				expect(verdict).toBeInstanceOf(Promise);
+			}
+		});
+
+		it("edit, delete, and move are allowed at auto-edits as plain objects", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const policy = levelPolicy("auto-edits", channel);
+
+			for (const kind of ["edit", "delete", "move"]) {
+				const verdict = policy(makeReq(kind), ctx);
+				expect(verdict).toBeInstanceOf(Object);
+				expect(verdict).not.toBeInstanceOf(Promise);
+				expect(verdict).toEqual({
+					allow: true,
+					optionId: "allow_1",
+					outcome: "allowed",
+				});
+			}
+		});
+
+		it("execute returns card verdict (Promise) at auto-edits", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const policy = levelPolicy("auto-edits", channel);
+
+			const verdict = policy(makeReq("execute"), {
+				askId: "ask_exec",
+				signal: new AbortController().signal,
+			});
+			expect(verdict).toBeInstanceOf(Promise);
+		});
+
+		it("execute is allowed at auto and full-access as plain objects", () => {
+			for (const level of ["auto", "full-access"] as const) {
+				const channel = createAskChannel({ timeoutMs: 5000 });
+				const policy = levelPolicy(level, channel);
+
+				const verdict = policy(makeReq("execute"), ctx);
+				expect(verdict).toBeInstanceOf(Object);
+				expect(verdict).not.toBeInstanceOf(Promise);
+				expect(verdict).toEqual({
+					allow: true,
+					optionId: "allow_1",
+					outcome: "allowed",
+				});
+			}
+		});
+
+		it("sync verdicts are plain objects and card verdicts are Promises", () => {
+			const channel = createAskChannel({ timeoutMs: 5000 });
+			const supervisedPolicy = levelPolicy("supervised", channel);
+			const autoEditsPolicy = levelPolicy("auto-edits", channel);
+
+			// sync verdict (read)
+			const syncVerdict = supervisedPolicy(makeReq("read"), ctx);
+			expect(syncVerdict).toBeInstanceOf(Object);
+			expect(syncVerdict).not.toBeInstanceOf(Promise);
+			expect(syncVerdict).toHaveProperty("allow", true);
+
+			// card verdict (edit at supervised)
+			const cardVerdict = supervisedPolicy(makeReq("edit"), {
+				askId: "ask_sync_card",
+				signal: new AbortController().signal,
+			});
+			expect(cardVerdict).toBeInstanceOf(Promise);
+
+			// card verdict (execute at auto-edits)
+			const cardVerdict2 = autoEditsPolicy(makeReq("execute"), {
+				askId: "ask_sync_card_2",
+				signal: new AbortController().signal,
+			});
+			expect(cardVerdict2).toBeInstanceOf(Promise);
+		});
 	});
 });

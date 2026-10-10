@@ -14,12 +14,11 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	AGENT_DEFAULT_MODE,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
-	runnableModes,
+	NO_MODE_KEY,
 } from "@prismalens/config/harness";
 import {
 	type AcpOfferedEffort,
@@ -189,7 +188,7 @@ export async function probeHarness(
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,
-				modes: runnableModes(harness, session.offeredModes),
+				modes: session.offeredModes.length ? session.offeredModes : null,
 				efforts: effortLevels(session.effort),
 				images: session.takesImages,
 			};
@@ -199,7 +198,7 @@ export async function probeHarness(
 			clearTimeout(timer);
 			await session.close();
 		}
-		const modeIds = answered.modes?.map((m) => m.id) ?? [AGENT_DEFAULT_MODE];
+		const modeIds = answered.modes?.map((m) => m.id) ?? [NO_MODE_KEY];
 		// A failed sandbox check must not lose an agent that answered ACP.
 		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {
 			env,

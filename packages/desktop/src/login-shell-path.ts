@@ -5,7 +5,7 @@
  * A GUI-launched app on macOS or Linux inherits a minimal PATH and no shell
  * rc, so `git`, `claude` and every harness the user installed through their
  * shell are invisible to it. Ask the login shell what PATH it would give an
- * interactive session, the way t3code does, and hand that to the backend.
+ * interactive session, and hand that to the backend.
  */
 
 import { execFile } from "node:child_process";

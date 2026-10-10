@@ -43,11 +43,14 @@ export function loadSession(nameOrPath) {
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
 
-/** The modes a run asks for by default (#673 w21): Claude Code's `default`, OpenCode's `build`; `plan` is offered and never run. */
+/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
 const DEFAULT_MODES = {
 	currentModeId: "default",
 	availableModes: [
 		{ id: "default", name: "Manual" },
+		{ id: "acceptEdits", name: "Accept Edits" },
+		{ id: "auto", name: "Auto" },
+		{ id: "bypassPermissions", name: "Bypass Permissions" },
 		{ id: "build", name: "Build" },
 		{ id: "plan", name: "Plan" },
 	],
@@ -99,7 +102,11 @@ export function installFakeAgent(binDir, opts = {}) {
 function run() {
 	const sessionArg = process.argv.indexOf("--session");
 	const defaultName =
-		sessionArg > -1 ? process.argv[sessionArg + 1] : "success";
+		process.env.FAKE_ACP_MODE === "switch-mode"
+			? "switch-mode"
+			: sessionArg > -1
+				? process.argv[sessionArg + 1]
+				: "success";
 	const cwd = process.cwd();
 	let script = loadSession(defaultName);
 	let scriptName = defaultName;
@@ -111,6 +118,13 @@ function run() {
 	const pending = new Map();
 	/** @type {(() => void) | null} */
 	let onCancel = null;
+	/** @type {string | null} */
+	let currentMode = null;
+	/** The script's modes, or the default set, with the mode a switch took as current. */
+	const sessionModes = () => {
+		const modes = script.modes ?? DEFAULT_MODES;
+		return { ...modes, currentModeId: currentMode ?? modes.currentModeId };
+	};
 
 	const send = (/** @type {unknown} */ message) =>
 		process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -335,11 +349,29 @@ function run() {
 				sessionId = `fake-${Date.now().toString(36)}-${process.pid}`;
 				return reply({
 					sessionId,
-					modes: script.modes ?? DEFAULT_MODES,
+					modes: sessionModes(),
 					...(script.configOptions
 						? { configOptions: script.configOptions }
 						: {}),
 				});
+			case "session/set_mode": {
+				// Takes a mode it lists and says so, as an agent reports its own mode (ACP session-modes).
+				const modeId = String(msg.params?.modeId ?? "");
+				if (!sessionModes().availableModes.some((m) => m.id === modeId)) {
+					send({
+						jsonrpc: "2.0",
+						id: msg.id,
+						error: { code: -32602, message: `no mode ${modeId}` },
+					});
+					return;
+				}
+				currentMode = modeId;
+				notify(sessionId, {
+					sessionUpdate: "current_mode_update",
+					currentModeId: modeId,
+				});
+				return reply({});
+			}
 			case "session/set_config_option": {
 				// Takes a value its option lists, unless the script refuses switches.
 				const { configId, value } = msg.params ?? {};
@@ -370,7 +402,7 @@ function run() {
 				turns = (script.turns ?? []).length;
 				loaded = true;
 				await play(sessionId, script.load ?? [], "");
-				return reply({});
+				return reply({ modes: sessionModes() });
 			}
 			case "session/prompt": {
 				const blocks = msg.params?.prompt ?? [];

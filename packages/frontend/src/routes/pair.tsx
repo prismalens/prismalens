@@ -4,7 +4,7 @@
 /**
  * The page a pairing link opens (ADR 0004 §8). The token rides in the URL
  * fragment, so it never reaches a server log. The page reads it, drops it
- * from the address bar and redeems it at once, the way t3code does: no
+ * from the address bar and redeems it at once: no
  * form, no click. The device's name is the link's label, else its model, else
  * its browser. What is left on screen is only what went wrong, and the two
  * ways to get a new link.

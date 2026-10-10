@@ -477,7 +477,10 @@ describe("AcpSession session/load (#747)", () => {
 
 describe("AcpSession setMode (#778)", () => {
 	/** A harness that answers each request and lets the test push its own notifications. */
-	function modalChild(session: Record<string, unknown>) {
+	function modalChild(
+		session: Record<string, unknown>,
+		opts: { refuseMode?: boolean; clampAuto?: boolean } = {},
+	) {
 		const sent: Array<{ method?: string; params?: Record<string, unknown> }> = [];
 		const child = quietChild();
 		const stdout = child.stdout as PassThrough;
@@ -487,14 +490,43 @@ describe("AcpSession setMode (#778)", () => {
 					const msg = JSON.parse(line);
 					if (msg.method === undefined) continue;
 					sent.push(msg);
-					const result = msg.method === "initialize" ? { protocolVersion: 1 } : msg.method === "session/new" ? session : {};
-					stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result })}\n`);
+					if (msg.method === "session/set_mode" && opts.refuseMode) {
+						stdout.write(
+							`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "mode refused" } })}\n`,
+						);
+						continue;
+					}
+					if (
+						msg.method === "session/set_mode" &&
+						opts.clampAuto &&
+						msg.params?.modeId === "auto"
+					) {
+						notify({
+							sessionUpdate: "current_mode_update",
+							currentModeId: "acceptEdits",
+						});
+						stdout.write(
+							`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} })}\n`,
+						);
+						continue;
+					}
+					const result =
+						msg.method === "initialize"
+							? { protocolVersion: 1 }
+							: msg.method === "session/new"
+								? session
+								: {};
+					stdout.write(
+						`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, result })}\n`,
+					);
 				}
 				cb();
 			},
 		});
 		const notify = (update: Record<string, unknown>) =>
-			stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s1", update } })}\n`);
+			stdout.write(
+				`${JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "s1", update } })}\n`,
+			);
 		return { child, sent, notify };
 	}
 	const tick = () => new Promise((r) => setTimeout(r, 10));
@@ -502,16 +534,27 @@ describe("AcpSession setMode (#778)", () => {
 	it("Given the harness switches mode itself, When the old mode is asked for again, Then set_mode is sent", async () => {
 		const { child, sent, notify } = modalChild({
 			sessionId: "s1",
-			modes: { currentModeId: "default", availableModes: [{ id: "default", name: "Default" }, { id: "bypassPermissions", name: "Bypass" }] },
+			modes: {
+				currentModeId: "default",
+				availableModes: [
+					{ id: "default", name: "Default" },
+					{ id: "bypassPermissions", name: "Bypass" },
+				],
+			},
 		});
 		const session = sessionOver(child);
 		await session.open();
 		expect(await session.setMode("default")).toBe(true);
 		expect(sent.filter((m) => m.method === "session/set_mode")).toHaveLength(0);
-		notify({ sessionUpdate: "current_mode_update", currentModeId: "bypassPermissions" });
+		notify({
+			sessionUpdate: "current_mode_update",
+			currentModeId: "bypassPermissions",
+		});
 		await tick();
 		expect(await session.setMode("default")).toBe(true);
-		expect(sent.filter((m) => m.method === "session/set_mode").map((m) => m.params?.modeId)).toEqual(["default"]);
+		expect(
+			sent.filter((m) => m.method === "session/set_mode").map((m) => m.params?.modeId),
+		).toEqual(["default"]);
 		await session.close();
 	});
 
@@ -527,13 +570,98 @@ describe("AcpSession setMode (#778)", () => {
 				{ value: "agent", name: "Agent" },
 			],
 		});
-		const { child, sent, notify } = modalChild({ sessionId: "s1", configOptions: [option("read-only")] });
+		const { child, sent, notify } = modalChild({
+			sessionId: "s1",
+			configOptions: [option("read-only")],
+		});
 		const session = sessionOver(child);
 		await session.open();
-		notify({ sessionUpdate: "config_option_update", configOptions: [option("agent")] });
+		notify({
+			sessionUpdate: "config_option_update",
+			configOptions: [option("agent")],
+		});
 		await tick();
 		expect(await session.setMode("read-only")).toBe(true);
-		expect(sent.filter((m) => m.method === "session/set_config_option").map((m) => m.params?.value)).toEqual(["read-only"]);
+		expect(
+			sent
+				.filter((m) => m.method === "session/set_config_option")
+				.map((m) => m.params?.value),
+		).toEqual(["read-only"]);
+		await session.close();
+	});
+
+	it("returns false on a JSON-RPC error when setting mode (#673 w21)", async () => {
+		const { child } = modalChild(
+			{
+				sessionId: "s1",
+				modes: {
+					currentModeId: "default",
+					availableModes: [
+						{ id: "default", name: "Default" },
+						{ id: "bypassPermissions", name: "Bypass" },
+					],
+				},
+			},
+			{ refuseMode: true },
+		);
+		const session = sessionOver(child);
+		await session.open();
+		const result = await session.setMode("bypassPermissions");
+		expect(result).toBe(false);
+		await session.close();
+	});
+
+	it("sets this.modes.current to the agent's reported mode on clamp (#673 w21)", async () => {
+		const { child } = modalChild(
+			{
+				sessionId: "s1",
+				modes: {
+					currentModeId: "default",
+					availableModes: [
+						{ id: "default", name: "Default" },
+						{ id: "acceptEdits", name: "Accept Edits" },
+						{ id: "auto", name: "Auto" },
+					],
+				},
+			},
+			{ clampAuto: true },
+		);
+		const session = sessionOver(child);
+		await session.open();
+		const ok = await session.setMode("auto");
+		expect(ok).toBe(true);
+		expect(session.currentMode).toBe("acceptEdits");
 		await session.close();
 	});
 });
+
+describe("AcpSession permission stream items (#673 w21)", () => {
+	it("permission stream items for allowed carry no permission_asked", async () => {
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: "/tmp",
+			env: { ...process.env, FAKE_ACP_MODE: "ok" },
+			permission: () => ({ allow: true, optionId: "once", outcome: "allowed" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+		});
+		await session.open();
+		const items: AcpStreamItem[] = [];
+		for await (const item of session.prompt("go")) {
+			items.push(item);
+		}
+		await session.close();
+
+		const permissions = items.filter((i) => i.kind === "permission");
+		expect(permissions.length).toBeGreaterThan(0);
+		for (const p of permissions) {
+			if (p.kind === "permission") {
+				expect(p.outcome).toBe("allowed");
+				expect(p.sync).toBe(true);
+			}
+		}
+		expect(items.some((i) => i.kind === "permission_asked")).toBe(false);
+	});
+});
+

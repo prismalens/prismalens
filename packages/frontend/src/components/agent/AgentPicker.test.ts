@@ -10,7 +10,7 @@ import {
 	defaultModelLine,
 	EffortChip,
 	effortLevels,
-	ModeChip,
+	AccessChip,
 	modelName,
 	unreadyReason,
 } from "./AgentPicker";
@@ -26,7 +26,7 @@ vi.mock("@/components/shared/Hint", () => ({
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({ data: { harnesses: [] }, isLoading: false }),
-	useHarnessSettings: () => ({ data: { agentModes: {} }, isLoading: false }),
+	useHarnessSettings: () => ({ data: {}, isLoading: false }),
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 	useCheckHarness: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -39,7 +39,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	tested: null,
 	install: "",
 	defaultModel: null,
-	defaultMode: "default",
+	localDefault: { permission: null },
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,
@@ -117,23 +117,62 @@ describe("the box's chips (#673)", () => {
 		expect(off).toContain("disabled");
 	});
 
-	it("lists the agent's own modes, its default first and tagged, with the yes clause where the agent asks", () => {
+	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
 		const html = renderToStaticMarkup(
-			React.createElement(ModeChip, {
+			React.createElement(AccessChip, {
 				harness: claude(),
-				mode: "default",
-				onMode: () => {},
+				level: "supervised",
+				onLevel: () => {},
 			}),
 		);
-		expect(html.indexOf("Manual")).toBeLessThan(html.indexOf("Bypass permissions"));
-		expect(html).toContain("Your default");
-		expect(html).toContain(
-			"Always ask before making changes. PrismaLens answers yes and logs it.",
+		expect(html.indexOf("Ask always")).toBeLessThan(html.indexOf("Full access"));
+		expect(html).toContain("PrismaLens default");
+		expect(html).toContain("Claude Code runs in Manual.");
+		expect(html).not.toContain("answers yes");
+	});
+
+	it("renders four level rows always and no mode segment, default first and tagged per from", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "supervised",
+				onLevel: () => {},
+			}),
 		);
-		// claude-agent-acp still asks on bypass-immune safety checks, so bypass carries the clause too (#799).
-		expect(html).toContain(
-			"Accepts all permissions. PrismaLens answers yes and logs it.",
+		expect(html).not.toContain("run-mode-");
+		expect(html).toContain('data-testid="access-level-supervised"');
+		expect(html).toContain('data-testid="access-level-auto-edits"');
+		expect(html).toContain('data-testid="access-level-auto"');
+		expect(html).toContain('data-testid="access-level-full-access"');
+		expect(html).toContain("PrismaLens default");
+	});
+
+	it("shows lock icon only when sandbox is enforced, and no icon otherwise", () => {
+		const enforcedClaude = claude({
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				sandbox: {
+					default: { state: "enforced", reason: "sandbox active" },
+				},
+			},
+		});
+		const withLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: enforcedClaude,
+				level: "supervised",
+				onLevel: () => {},
+			}),
 		);
+		expect(withLock).toContain("lucide-lock");
+
+		const withoutLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "supervised",
+				onLevel: () => {},
+			}),
+		);
+		expect(withoutLock).not.toContain("lucide-lock");
 	});
 });
 

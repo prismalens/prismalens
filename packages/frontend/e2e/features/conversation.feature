@@ -142,7 +142,7 @@ Feature: The conversation and the box
       Then the phone's status line reads "Stopped by you" and its box reads "Say what to change, or just continue"
 
   Rule: Ask
-    PrismaLens never approves an ask itself: the run waits.
+    PrismaLens answers an ask by the run's permission level: at Ask always it waits for you.
 
     Background:
       Given a paired browser at 1440 px
@@ -163,4 +163,15 @@ Feature: The conversation and the box
       Then the card reads "You denied it"
       And the band text goes away
       And the run ends with "Report ready"
+
+    Scenario: Auto-accept edits approves the write
+      Given INC-2 has a run started on "ask" at "Auto-accept edits"
+      Then no card waits and the conversation shows "Allowed at Auto-accept edits: Write /tmp/pl-ask-probe.txt"
+      And the run ends with "Report ready"
+
+    Scenario: An agent's mode-switch request is refused
+      Given INC-3 has a run started on "switch-mode"
+      Then the conversation shows "Mode switch refused: Enter Plan Mode"
+      And the run ends with "Report ready"
+
 

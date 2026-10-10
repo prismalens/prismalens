@@ -34,6 +34,20 @@ export const ServiceSchema = z.object({
 	updatedAt: DateStringSchema,
 });
 
+/** The longest investigation notes a service keeps. */
+export const SERVICE_NOTES_MAX = 4096;
+
+/** `metadata.investigation` as the services API checks it; other keys pass as stored. */
+export const ServiceInvestigationMetadataSchema = z
+	.object({
+		/** What the agent should know first about this service (#673). */
+		notes: z.string().max(SERVICE_NOTES_MAX).optional(),
+	})
+	.passthrough();
+export type ServiceInvestigationMetadata = z.infer<
+	typeof ServiceInvestigationMetadataSchema
+>;
+
 export const CreateServiceSchema = z.object({
 	name: z.string().min(1),
 	displayName: z.string().optional(),

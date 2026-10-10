@@ -191,6 +191,12 @@ importers:
       '@prismalens/contracts':
         specifier: workspace:*
         version: link:../contracts
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
+      smol-toml:
+        specifier: 1.9.0
+        version: 1.9.0
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -6342,6 +6348,10 @@ packages:
   slice-ansi@9.0.1:
     resolution: {integrity: sha512-aBY19bn/XA+hKOKX0qL7Z0UfdBsbQvc9hn993U8ALUjzxCvDcuZqLoRXjGJrUARWAlwMnsRVD9sw2AFNOYvalA==}
     engines: {node: '>=22'}
+
+  smol-toml@1.9.0:
+    resolution: {integrity: sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==}
+    engines: {node: '>= 18'}
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
@@ -13403,6 +13413,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  smol-toml@1.9.0: {}
 
   sonic-boom@4.2.1:
     dependencies:

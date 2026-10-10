@@ -3,17 +3,17 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	AGENT_DEFAULT_MODE,
-	agentModeEnv,
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
 	modeFidelity,
 	runsInSandbox,
-	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
-	runnableModes,
+	ACCESS_LEVELS,
+	type AccessLevel,
+	levelOfAgentMode,
+	mergeConfigPatch,
 } from "./harness.js";
 
 afterEach(() => {
@@ -165,10 +165,9 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 });
 
 describe("row data every reader needs (#634)", () => {
-	it("gives every row a non-empty loginHint and a default mode", () => {
+	it("gives every row a non-empty loginHint", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			expect(descriptor.loginHint.length, `${id} loginHint`).toBeGreaterThan(0);
-			expect(descriptor.defaultMode.length, `${id} defaultMode`).toBeGreaterThan(0);
 		}
 	});
 
@@ -251,71 +250,7 @@ describe("resumeBlockedReason (#747)", () => {
 	});
 });
 
-describe("the agent's own mode (#673 w21)", () => {
-	it("defaults each row to its own mode, and the operator's setting wins", () => {
-		expect(resolveAgentMode("claude-code")).toBe("default");
-		expect(resolveAgentMode("opencode")).toBe("build");
-		expect(resolveAgentMode("codex")).toBe("read-only");
-		expect(resolveAgentMode("gemini")).toBe("default");
-		expect(resolveAgentMode("deepagents")).toBe(AGENT_DEFAULT_MODE);
-		expect(resolveAgentMode("claude-code", "acceptEdits")).toBe("acceptEdits");
-		expect(resolveAgentMode("claude-code", " ")).toBe("default");
-	});
-
-	it("every row's defaultMode equals modeTiers.supervised when it has one", () => {
-		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
-			if (descriptor.modeTiers.supervised) {
-				expect(descriptor.defaultMode, `${id} defaultMode`).toBe(
-					descriptor.modeTiers.supervised,
-				);
-			}
-		}
-	});
-
-	it("maps access tiers for claude-code, codex, and gemini", () => {
-		expect(HARNESS_REGISTRY["claude-code"].modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "acceptEdits",
-			auto: "auto",
-			"full-access": "bypassPermissions",
-		});
-		expect(HARNESS_REGISTRY.codex.modeTiers).toEqual({
-			supervised: "read-only",
-			"auto-edits": "workspace-write",
-			auto: "agent",
-			"full-access": "agent-full-access",
-		});
-		expect(HARNESS_REGISTRY.gemini.modeTiers).toEqual({
-			supervised: "default",
-			"auto-edits": "autoEdit",
-			"full-access": "yolo",
-		});
-	});
-
-	it("drops a plan mode to the row default, keeping non-plan modes", () => {
-		expect(resolveAgentMode("claude-code", "plan")).toBe("default");
-		expect(resolveAgentMode("opencode", "plan")).toBe("build");
-		expect(resolveAgentMode("gemini", "plan")).toBe("default");
-		expect(resolveAgentMode("codex", "read-only")).toBe("read-only");
-	});
-
-	it("runnableModes drops plan and returns null for [plan]", () => {
-		expect(
-			runnableModes("claude-code", [
-				{ id: "default" },
-				{ id: "plan" },
-			]),
-		).toEqual([{ id: "default" }]);
-		expect(runnableModes("claude-code", [{ id: "plan" }])).toBeNull();
-		expect(runnableModes("opencode", [{ id: "plan" }])).toBeNull();
-	});
-
-	it("passes Codex its mode through INITIAL_AGENT_MODE, and no other row an env", () => {
-		expect(agentModeEnv("codex", "agent-full-access")).toEqual({ INITIAL_AGENT_MODE: "agent-full-access" });
-		expect(agentModeEnv("codex", AGENT_DEFAULT_MODE)).toEqual({});
-		expect(agentModeEnv("claude-code", "default")).toEqual({});
-	});
-
+describe("sandbox and fidelity (#673 w51)", () => {
 	it("runs only Codex's sandboxed modes in its sandbox, never full access", () => {
 		for (const mode of ["read-only", "workspace-write", "agent"]) expect(runsInSandbox("codex", mode)).toBe(true);
 		expect(runsInSandbox("codex", "agent-full-access")).toBe(false);
@@ -330,3 +265,131 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(modeFidelity(undefined)).toBe("cooperative");
 	});
 });
+
+describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
+	it("gives every row access for all four levels with non-empty mechanism and non-empty line(null)", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const access = descriptor.access[level];
+				expect(access, `${id} missing access for ${level}`).toBeDefined();
+				expect(access.mechanism.length, `${id} ${level} mechanism`).toBeGreaterThan(0);
+				const line = access.line(null);
+				expect(typeof line).toBe("string");
+				expect(line.length, `${id} ${level} line(null)`).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it("never uses a plan mode as an access level mode", () => {
+		const planIds = new Set(["plan"]);
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode) {
+					expect(planIds.has(mode), `${id} ${level} must not use plan mode ${mode}`).toBe(false);
+				}
+			}
+		}
+	});
+
+	it("configures harness-specific access level modes and mechanisms", () => {
+		expect(HARNESS_REGISTRY["claude-code"].access["full-access"].fallbackMode).toBe("acceptEdits");
+		expect(HARNESS_REGISTRY["claude-code"].access.auto.fallbackMode).toBe("acceptEdits");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
+		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
+		for (const level of ACCESS_LEVELS) {
+			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
+		}
+	});
+
+	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			const harnessId = id as keyof typeof HARNESS_REGISTRY;
+			const seenModes = new Set<string>();
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode && !seenModes.has(mode)) {
+					seenModes.add(mode);
+					expect(levelOfAgentMode(harnessId, mode), `${harnessId} mode ${mode}`).toBe(level);
+				}
+			}
+			expect(levelOfAgentMode(harnessId, "unknown-mode-id")).toBeNull();
+			expect(levelOfAgentMode(harnessId, null)).toBeNull();
+		}
+	});
+
+	describe("OpenCode levels keep the user's own rules (#809)", () => {
+		type Json = Record<string, unknown>;
+		// OpenCode 1.18.30: the global file merges first (remeda mergeDeep keeps its key order), then
+		// the agent's rules = its top-level rules then agent.<name>.permission; the last match wins.
+		function effective(user: Json, level: AccessLevel, agent: string, tool: string, input: string): unknown {
+			const generated = JSON.parse(
+				HARNESS_REGISTRY.opencode.configFiles?.({ cwd: "/r", configDir: "/c", dataDir: "/d" })["opencode.json"] ?? "{}",
+			);
+			const ours = mergeConfigPatch(generated, HARNESS_REGISTRY.opencode.access[level].configPatch?.(user) ?? {});
+			const merged = mergeConfigPatch(user, ours) as {
+				permission?: Json;
+				agent?: Record<string, { permission?: Json }>;
+			};
+			const rules = (map: Json | undefined) =>
+				Object.entries(map?.[tool] === undefined ? {} : typeof map[tool] === "string" ? { "*": map[tool] } : (map[tool] as Json));
+			const escape = (t: string) => t.replace(/[.+?^$(){}|[\]\\]/g, "\\$&");
+			const glob = (p: string) => new RegExp(`^${p.split("*").map(escape).join(".*")}$`);
+			const all = [...rules(merged.permission), ...rules(merged.agent?.[agent]?.permission)];
+			return all.findLast(([pattern]) => glob(pattern).test(input))?.[1];
+		}
+
+		it("a deny pattern in the global config stays at every level, on the run's agent and its subagents", () => {
+			const user = { permission: { bash: { "rm -rf *": "deny" } } };
+			for (const level of ACCESS_LEVELS) {
+				for (const agent of ["build", "general", "explore"]) {
+					expect(effective(user, level, agent, "bash", "rm -rf /srv"), `${level} ${agent}`).toBe("deny");
+				}
+			}
+			expect(effective(user, "full-access", "build", "bash", "ls")).toBe("allow");
+			expect(effective(user, "supervised", "build", "bash", "ls")).toBe("ask");
+		});
+
+		it("the level replaces the user's own allow catch-all, and their patterns stay", () => {
+			const user = { permission: { bash: { "*": "allow", "git status*": "allow" }, edit: "allow" } };
+			expect(effective(user, "supervised", "build", "bash", "ls")).toBe("ask");
+			expect(effective(user, "supervised", "build", "bash", "git status")).toBe("allow");
+			expect(effective(user, "supervised", "build", "edit", "a.ts")).toBe("ask");
+		});
+
+		it("webfetch and websearch stay single actions, as OpenCode's schema requires", () => {
+			for (const level of ACCESS_LEVELS) {
+				const patch = HARNESS_REGISTRY.opencode.access[level].configPatch?.({}) as {
+					permission: Record<string, unknown>;
+					agent: Record<string, { permission: Record<string, unknown> }>;
+				};
+				for (const map of [patch.permission, ...Object.values(patch.agent).map((a) => a.permission)]) {
+					expect(typeof map.webfetch, level).toBe("string");
+					expect(typeof map.websearch, level).toBe("string");
+				}
+			}
+		});
+
+		it("a deny catch-all stays, and so do agent rules written without one", () => {
+			expect(effective({ permission: { webfetch: "deny" } }, "full-access", "build", "webfetch", "https://x")).toBe("deny");
+			const user = { agent: { build: { permission: { bash: { "rm *": "deny" } } } } };
+			expect(effective(user, "full-access", "build", "bash", "rm x")).toBe("deny");
+			expect(effective(user, "full-access", "build", "bash", "ls")).toBe("allow");
+			const custom = { agent: { triage: { permission: { bash: { "kubectl delete*": "deny" } } } } };
+			expect(effective(custom, "auto", "triage", "bash", "kubectl delete pod x")).toBe("deny");
+		});
+	});
+
+	it("contains no inspiration names", () => {
+		const forbidden = /t3code|t3 code|\bT3('s)?\b|traycer|pingdotgg/i;
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			expect(descriptor.label).not.toMatch(forbidden);
+			for (const level of ACCESS_LEVELS) {
+				const line = descriptor.access[level].line(null);
+				expect(line).not.toMatch(forbidden);
+			}
+		}
+	});
+});
+

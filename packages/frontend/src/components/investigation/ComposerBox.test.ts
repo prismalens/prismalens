@@ -22,8 +22,10 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
 	CHIP: "chip",
 	EffortChip: () => null,
-	ModeChip: () => null,
-	defaultModeOf: () => "agent-default",
+	AccessChip: () => null,
+	defaultAccessOf: () => ({
+		level: { level: "supervised", from: "prismalens" },
+	}),
 	modelName: (_h: unknown, id: string) => id,
 	unreadyReason: () => null,
 	useAgentChoice: () => ({
@@ -31,7 +33,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		effective: undefined,
 		model: "",
 		efforts: {},
-		agentModes: {},
+		axes: { accessLevels: {}, autoAccessLevels: {} },
 	}),
 }));
 vi.mock("@/lib/api/hooks", () => ({
@@ -78,6 +80,7 @@ vi.mock("@/components/incidents/run-facts", () => ({
 	runElapsed: () => 0,
 	runTimed: () => false,
 	modelSource: () => "the agent's own",
+	runAccessLine: () => null,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

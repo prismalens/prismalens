@@ -101,16 +101,18 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("a stored {agentModes: {'claude-code':'plan', codex:'agent'}} reads back without claude-code", async () => {
+		it("drops a stored agentModes, run modes and any level this build does not know (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
 					harness: "auto",
 					agentModes: { "claude-code": "plan", codex: "agent" },
+					accessLevels: { codex: "auto", opencode: "yolo" },
+					runModes: { "claude-code": "plan" },
 				}),
 			);
 			await expect(service().getSettings()).resolves.toEqual({
 				harness: "auto",
-				agentModes: { codex: "agent" },
+				accessLevels: { codex: "auto" },
 			});
 		});
 	});
@@ -146,25 +148,34 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("merges agent modes per harness, null going back to the row's default, and drops a stored allowWriteLevels (#673 w21)", async () => {
+		it("merges levels per harness, null going back to the default, and drops a stored allowWriteLevels (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "auto", agentModes: { codex: "agent", opencode: "build" }, allowWriteLevels: true }),
+				settingRow({ harness: "auto", accessLevels: { codex: "auto", opencode: "full-access" }, allowWriteLevels: true }),
 			);
 			await expect(
-				service().updateSettings({ agentModes: { "claude-code": "acceptEdits", opencode: null } }),
-			).resolves.toEqual({ harness: "auto", agentModes: { codex: "agent", "claude-code": "acceptEdits" } });
+				service().updateSettings({ accessLevels: { "claude-code": "auto-edits", opencode: null } }),
+			).resolves.toEqual({ harness: "auto", accessLevels: { codex: "auto", "claude-code": "auto-edits" } });
 		});
 
-		it("updateSettings with agentModes {opencode:'plan'} stores none for opencode", async () => {
+		it("merges both level maps and null clears them (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "auto", agentModes: {} }),
+				settingRow({
+					harness: "auto",
+					accessLevels: { codex: "auto", opencode: "full-access" },
+					autoAccessLevels: { codex: "auto-edits", gemini: "supervised" },
+				}),
 			);
-			const result = await service().updateSettings({
-				agentModes: { opencode: "plan" },
+
+			const updated = await service().updateSettings({
+				accessLevels: { opencode: null, gemini: "auto" },
+				autoAccessLevels: { gemini: null, "claude-code": "auto" },
 			});
-			expect(result.agentModes).toBeUndefined();
-			const call = mockPrismaService.setting.upsert.mock.calls[0][0];
-			expect(JSON.parse(call.create.value).agentModes).toBeUndefined();
+
+			expect(updated).toEqual({
+				harness: "auto",
+				accessLevels: { codex: "auto", gemini: "auto" },
+				autoAccessLevels: { codex: "auto-edits", "claude-code": "auto" },
+			});
 		});
 
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {
@@ -406,6 +417,39 @@ describe("HarnessService", () => {
 		});
 	});
 
+	describe("effectiveChoice (#673)", () => {
+		const agentSaysAskAlways = {
+			permission: { level: "supervised" as const, file: "f", value: "default" },
+		};
+
+		it("gives an auto-started run Auto when no auto-start row is stored, whatever the next-run chain says", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", accessLevels: { opencode: "supervised" } }),
+			);
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue(agentSaysAskAlways);
+
+			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "auto" });
+		});
+
+		it("gives an auto-started run its stored auto-start row", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", autoAccessLevels: { opencode: "supervised" } }),
+			);
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue({ permission: null });
+
+			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "supervised" });
+		});
+
+		it("leaves an interactive run on the next-run chain: the agent's own default here", async () => {
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue(agentSaysAskAlways);
+
+			await expect(s.effectiveChoice("opencode")).resolves.toEqual({ accessLevel: "supervised" });
+		});
+	});
+
 	describe("getStatus", () => {
 		it("reports every registry row alongside the verdict", async () => {
 			process.env.PATH = pathWith("opencode");
@@ -424,6 +468,24 @@ describe("HarnessService", () => {
 				pinnedBy: null,
 				blockedReason: null,
 			});
+		});
+
+		it("localDefault injected reader reaches HarnessStatus (#673 w21)", async () => {
+			const s = service();
+			const stubDefault = {
+				permission: {
+					level: "supervised" as const,
+					file: "/path/to/settings.json",
+					value: "default",
+				},
+			};
+			s.localDefaultOf = vi.fn().mockReturnValue(stubDefault);
+
+			const status = await s.getStatus();
+
+			expect(s.localDefaultOf).toHaveBeenCalledWith("opencode");
+			const row = status.harnesses.find((h) => h.id === "opencode");
+			expect(row?.localDefault).toEqual(stubDefault);
 		});
 
 		it("marks an auto-detected selection as not pinned", async () => {

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Device pairing (ADR 0004 §8), the t3code way.
+ * Device pairing (ADR 0004 §8).
  *
  * The operator mints a one-time link on the host. The device that opens it
  * exchanges the link token for a device token and holds it until the operator

@@ -22,6 +22,7 @@
  * `cancelled` outcome calls neither finish nor fail, so it invokes {@link flush}
  * directly to drain the same buffered tail before it resolves.
  */
+import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	InvestigationReport,
@@ -49,8 +50,10 @@ export interface PrismaInvestigationStoreParams {
 	effort?: string;
 	/** JSON RunWorkspace, kept on the row so a follow-up can rebuild it (#747). */
 	workspace?: string;
-	/** The agent's own mode id the run asked for, kept so a follow-up runs in it (#673 w21). */
+	/** The agent's own mode id PrismaLens set (#673 w21). */
 	agentMode?: string;
+	/** The level the run asked for, kept so a follow-up runs at it (#673 w21). */
+	accessLevel?: AccessLevel;
 	/**
 	 * A follow-up (#747): the row only goes live, the timeline says resumed with
 	 * this note, and nothing is written at the end; the run settles the row.
@@ -92,6 +95,7 @@ export function createPrismaInvestigationStore(
 		effort,
 		workspace,
 		agentMode,
+		accessLevel,
 		resume,
 		chat,
 	}: PrismaInvestigationStoreParams,
@@ -166,6 +170,7 @@ export function createPrismaInvestigationStore(
 				...(effort ? { effort } : {}),
 				...(workspace ? { workspace } : {}),
 				...(agentMode ? { agentMode } : {}),
+				...(accessLevel ? { accessLevel } : {}),
 			});
 			await ports.initLiveTurn(investigationId, turn);
 			await ports.createTimelineEntry({

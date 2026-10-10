@@ -3,7 +3,11 @@
 
 import { Controller } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { servicesContract } from "@prismalens/contracts";
+import {
+	SERVICE_NOTES_MAX,
+	ServiceInvestigationMetadataSchema,
+	servicesContract,
+} from "@prismalens/contracts";
 import type {
 	Service,
 	ServiceDependency,
@@ -24,6 +28,20 @@ import {
 	type ServiceWithDependencies,
 } from "./services.service.js";
 
+/** `metadata` stays free-form; its `investigation` key is checked, so the notes stay within their limit (#673). */
+function refuseBadInvestigationMetadata(
+	metadata: Record<string, unknown> | undefined,
+): void {
+	if (!metadata || metadata.investigation === undefined) return;
+	const parsed = ServiceInvestigationMetadataSchema.safeParse(
+		metadata.investigation,
+	);
+	if (!parsed.success)
+		throw new ORPCError("BAD_REQUEST", {
+			message: `Investigation notes are at most ${SERVICE_NOTES_MAX} characters.`,
+		});
+}
+
 @Controller()
 export class ServicesController {
 	constructor(private readonly servicesService: ServicesService) {}
@@ -33,6 +51,7 @@ export class ServicesController {
 		return {
 			// POST /services - Create a new service
 			create: implement(servicesContract.create).handler(async ({ input }) => {
+				refuseBadInvestigationMetadata(input.metadata);
 				// Check if service with same name exists
 				const existing = await this.servicesService.findByName(input.name);
 				if (existing) {
@@ -82,6 +101,7 @@ export class ServicesController {
 			// PATCH /services/:id - Update a service
 			update: implement(servicesContract.update).handler(async ({ input }) => {
 				const { id, ...updateData } = input;
+				refuseBadInvestigationMetadata(updateData.metadata);
 				const service = await this.servicesService.update(
 					id,
 					updateData as UpdateServiceDto,

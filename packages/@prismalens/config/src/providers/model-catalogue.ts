@@ -3,7 +3,7 @@
 
 /**
  * The model catalogue (#639): which model ids prismalens knows per harness, as
- * data. The t3code shape minus the fetch: a bundled file ships with every
+ * data, with no fetch: a bundled file ships with every
  * release, an operator's copy may replace it, `updatedAt` inside the file
  * decides which one wins, and an invalid file keeps the last good one. There
  * is no network fetch: a self-hosted install never calls our repo at runtime.

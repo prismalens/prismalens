@@ -121,10 +121,12 @@ try {
 		process.exit(1);
 	}, timeoutMs);
 
+	// Unattended like an alert-started run, so asks are answered at Auto (#673).
 	for await (const ev of runInvestigation({
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,
 		harness,
+		accessLevel: "auto",
 		cwd: cloneDir,
 		runDir,
 		env: process.env,
@@ -237,6 +239,7 @@ const r5 = await (async (): Promise<string> => {
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,
 		harness,
+		accessLevel: "auto",
 		cwd: cloneDir,
 		runDir,
 		env: process.env,
@@ -340,6 +343,7 @@ async function reopensAfterFailedReport(): Promise<string> {
 		runId: "00000000-0000-4000-8000-000000000007",
 		context,
 		harness,
+		accessLevel: "auto" as const,
 		cwd: cloneDir,
 		runDir: dir,
 		...(process.env.PRISMALENS_HARNESS_MODEL

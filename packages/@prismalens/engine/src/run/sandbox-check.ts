@@ -3,7 +3,7 @@
 
 /**
  * Does this machine run the agent in its own OS sandbox, per mode (#673 w51)?
- * The agent's own mode decides what it asks, and every ask reaches the operator
+ * The agent's own mode decides what it asks and the run's level answers it
  * (#673 w21); only a sandbox the agent itself enforces holds without a person.
  * `enforced` comes from a local probe, never a mode name.
  */
@@ -213,32 +213,39 @@ export async function probeCodexSandbox(
 	}
 }
 
-const CLAUDE_MANAGED_DIR: Partial<Record<NodeJS.Platform, string>> = {
+/** Claude Code's managed-settings directory per platform; the legacy `C:\ProgramData` path is not read (Claude docs). */
+export const CLAUDE_MANAGED_DIR: Partial<Record<NodeJS.Platform, string>> = {
 	linux: "/etc/claude-code",
 	darwin: "/Library/Application Support/ClaudeCode",
+	win32: "C:\\Program Files\\ClaudeCode",
 };
 
-/** `sandbox.enabled` as the last of `files` that sets it says; undefined when none does. */
-function sandboxSetting(files: readonly string[]): boolean | undefined {
-	let enabled: boolean | undefined;
+/** The value at `path` as the last of `files` that sets it says, and that file; undefined when none does. */
+export function claudeSettingAt(
+	files: readonly string[],
+	path: readonly string[],
+	accept: (v: unknown) => boolean = () => true,
+): { value: unknown; file: string } | undefined {
+	let found: { value: unknown; file: string } | undefined;
 	for (const file of files) {
 		try {
-			const value = (
-				JSON.parse(readFileSync(file, "utf8")) as {
-					sandbox?: { enabled?: unknown };
-				}
-			).sandbox?.enabled;
-			if (typeof value === "boolean") enabled = value;
+			let value: unknown = JSON.parse(readFileSync(file, "utf8"));
+			for (const key of path)
+				value =
+					value && typeof value === "object"
+						? (value as Record<string, unknown>)[key]
+						: undefined;
+			if (value !== undefined && accept(value)) found = { value, file };
 		} catch {
 			// Absent or unreadable: Claude Code reads nothing from it either.
 		}
 	}
-	return enabled;
+	return found;
 }
 
-/** `sandbox.enabled` from managed-settings.json, then managed-settings.d/*.json in name order; undefined when none sets it. */
-export function managedSandboxSetting(dir: string | null): boolean | undefined {
-	if (!dir) return undefined;
+/** managed-settings.json, then managed-settings.d/*.json in name order. */
+export function claudeManagedFiles(dir: string | null): string[] {
+	if (!dir) return [];
 	const files = [join(dir, "managed-settings.json")];
 	try {
 		const dropIns = join(dir, "managed-settings.d");
@@ -248,7 +255,21 @@ export function managedSandboxSetting(dir: string | null): boolean | undefined {
 	} catch {
 		// No drop-in directory.
 	}
-	return sandboxSetting(files);
+	return files;
+}
+
+const isBoolean = (v: unknown) => typeof v === "boolean";
+
+/** `sandbox.enabled` as the last of `files` that sets it says; undefined when none does. */
+function sandboxSetting(files: readonly string[]): boolean | undefined {
+	return claudeSettingAt(files, ["sandbox", "enabled"], isBoolean)?.value as
+		| boolean
+		| undefined;
+}
+
+/** `sandbox.enabled` from managed-settings.json, then managed-settings.d/*.json in name order; undefined when none sets it. */
+export function managedSandboxSetting(dir: string | null): boolean | undefined {
+	return sandboxSetting(claudeManagedFiles(dir));
 }
 
 /** The settings file Claude Code reads as the user's, for the run's env. */

@@ -36,6 +36,11 @@ import { isConflict } from "./useInvestigationRun";
 const ENTER =
 	"motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200";
 
+const LEVEL_TEST_ID = {
+	allowed: "transcript-allowed",
+	mode_kept: "transcript-mode-kept",
+} as const;
+
 /** The delivery word under "You" (decision 18): Enter waits for the agent's next pause. */
 function deliveryWord(state: OperatorState, mode: "queue" | "now"): string {
 	if (state === "not_delivered") return "Not delivered";
@@ -151,6 +156,15 @@ function TranscriptRow({
 				<p
 					className={cn("text-meta text-text-3", ENTER)}
 					data-testid="transcript-line"
+				>
+					{item.text}
+				</p>
+			);
+		case "level":
+			return (
+				<p
+					className={cn("text-meta text-text-3", ENTER)}
+					data-testid={LEVEL_TEST_ID[item.outcome]}
 				>
 					{item.text}
 				</p>
@@ -296,6 +310,8 @@ const ASK_END: Record<Exclude<AskState, "waiting">, string> = {
 	stopped: "Denied: the run stopped",
 	restarted: "Denied: PrismaLens restarted",
 	ended: "Not answered before the run ended",
+	allowed: "Allowed by the run's permission level",
+	mode_kept: "Refused: the run keeps its mode",
 };
 
 /**

@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { AGENT_DEFAULT_MODE, type HarnessId } from "@prismalens/config/harness";
-import type {
-	FavouriteModel,
-	HarnessSetting,
-	HarnessStatus,
+import {
+	ACCESS_LEVELS,
+	type AccessLevel,
+	type HarnessId,
+} from "@prismalens/config/harness";
+import {
+	ACCESS_LEVEL_LABEL,
+	ACCESS_LEVEL_LINE,
+	type AxisSource,
+	effectiveAccess,
+	type FavouriteModel,
+	type HarnessSetting,
+	type HarnessStatus,
 } from "@prismalens/contracts";
-import { Check, ChevronDown, Lock, LockOpen, Pencil, Star } from "lucide-react";
+import { Check, ChevronDown, Lock, Star } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
 	ModelSelector,
@@ -25,11 +33,12 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	type ModeIcon,
-	modeIcon,
-	modeLine,
+	defaultTag,
+	levelIcon,
+	levelRowLine,
+	levelSandbox,
 	sandboxLine,
-} from "@/lib/agent-modes";
+} from "@/lib/access-levels";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -59,29 +68,29 @@ export function useAgentChoice() {
 		models: settingsQuery.data?.models ?? {},
 		favourites: settingsQuery.data?.favourites ?? [],
 		efforts: settingsQuery.data?.efforts ?? {},
-		agentModes: settingsQuery.data?.agentModes ?? {},
+		axes: {
+			accessLevels: settingsQuery.data?.accessLevels ?? {},
+			autoAccessLevels: settingsQuery.data?.autoAccessLevels ?? {},
+		},
 		customModels: settingsQuery.data?.customModels ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};
 }
 
-/** The mode a run on `agent` asks for when the box names none (#673 w21). */
-export function defaultModeOf(
-	agent: HarnessStatus | undefined,
-	agentModes: Partial<Record<HarnessId, string>>,
-): string {
-	if (!agent) return AGENT_DEFAULT_MODE;
-	return agentModes[agent.id as HarnessId] ?? agent.defaultMode;
-}
+type Axes = ReturnType<typeof useAgentChoice>["axes"];
 
-/** A mode by the name the agent's own list gives it, else its id (#673 w21). */
-export function modeName(
+/** The level a run on `agent` takes when the box names none, and where it came from (#673 w21). */
+export function defaultAccessOf(
 	agent: HarnessStatus | undefined,
-	id: string | null | undefined,
-): string {
-	if (!id || id === AGENT_DEFAULT_MODE) return "Agent default";
-	return agent?.checked?.modes?.find((m) => m.id === id)?.name ?? id;
+	axes: Axes,
+	autoStart = false,
+): { level: { level: AccessLevel; from: AxisSource } } {
+	if (!agent) return { level: { level: "supervised", from: "prismalens" } };
+	const id = agent.id as HarnessId;
+	return {
+		level: effectiveAccess(axes, id, agent.localDefault?.permission, autoStart),
+	};
 }
 
 /** `OpenCode Zen/Muse Spark 1.3 Free` is `Muse Spark 1.3 Free` under its provider's heading. */
@@ -151,7 +160,7 @@ export function agentModelLabel(
 	};
 }
 
-/** The chip's words for a model: never a bare `Agent default` (#673 w7). */
+/** The chip's words for a model: never a bare default with no model named (#673 w7). */
 export function chipModel(h: HarnessStatus | undefined, model: string): string {
 	if (!h) return "No agent";
 	if (h.modelVia === "unsupported") return h.label;
@@ -230,7 +239,7 @@ interface Row {
 }
 
 /**
- * The agent and model chip (T3's shape, #673 w7): a 44 px rail of installed
+ * The agent and model chip (#673 w7): a 44 px rail of installed
  * agents and a cmdk list of the shown agent's models, fixed at 380 × 400.
  */
 export function ModelChip({
@@ -451,7 +460,10 @@ export function ModelChip({
 									data-testid="model-default"
 									data-checked={chosen(agent, "") ? "" : undefined}
 								>
-									<RowText name="Agent default" sub={defaultModelLine(agent)} />
+									<RowText
+										name="Agent's own model"
+										sub={defaultModelLine(agent)}
+									/>
 									{chosen(agent, "") && <Tick />}
 									<span className="w-6 shrink-0" />
 								</ModelSelectorItem>
@@ -694,7 +706,7 @@ export function EffortChip({
 		);
 	}
 	const win = windowOf(model);
-	// Agent default has no id to alias, so 1M takes the id the agent serves.
+	// The agent's own model has no id to alias, so 1M takes the id the agent serves.
 	const base =
 		(model.endsWith(WINDOW_ALIAS)
 			? model.slice(0, -WINDOW_ALIAS.length)
@@ -778,47 +790,31 @@ export function EffortChip({
 	);
 }
 
-const MODE_ICON: Record<ModeIcon, typeof Lock> = {
-	lock: Lock,
-	pencil: Pencil,
-	open: LockOpen,
-};
-
-/** The agent's own permission modes, by its own names (#673 w21); its default first. */
-export function ModeChip({
+/** Permission level for this run (#673 w21 ruling 2026-10-10): the four levels, the default first. */
+export function AccessChip({
 	harness,
-	mode,
-	onMode,
+	level,
+	onLevel,
 	disabled,
 	side = "top",
 	testId = "access-chip",
 }: {
 	harness: HarnessStatus | undefined;
-	mode: string;
-	onMode: (id: string) => void;
+	level: AccessLevel;
+	onLevel: (level: AccessLevel) => void;
 	disabled?: boolean;
 	side?: "top" | "bottom";
 	testId?: string;
 }) {
-	const { agentModes } = useAgentChoice();
+	const { axes } = useAgentChoice();
 	const [open, setOpen] = useState(false);
-	const fallback = defaultModeOf(harness, agentModes);
-	const offered = harness?.checked?.modes ?? [];
-	const rows = offered.length
-		? [
-				...offered.filter((m) => m.id === fallback),
-				...offered.filter((m) => m.id !== fallback),
-			]
-		: [
-				{
-					id: AGENT_DEFAULT_MODE,
-					name: "Agent default",
-					description: undefined,
-				},
-			];
-	const name = modeName(harness, mode);
-	const sandbox = harness?.checked?.sandbox;
-	const Icon = MODE_ICON[modeIcon(mode, sandbox?.[mode])];
+	const fallback = defaultAccessOf(harness, axes).level;
+	const rows = [
+		fallback.level,
+		...ACCESS_LEVELS.filter((l) => l !== fallback.level),
+	];
+	const text = ACCESS_LEVEL_LABEL[level];
+	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -827,10 +823,10 @@ export function ModeChip({
 					disabled={disabled}
 					className={cn(CHIP, "max-w-48")}
 					data-testid={testId}
-					aria-label={`Permission mode: ${name}`}
+					aria-label={`Permission: ${text}`}
 				>
-					<Icon className="size-3.5 shrink-0" aria-hidden />
-					<span className="truncate">{name}</span>
+					{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
+					<span className="truncate">{text}</span>
 					<Caret />
 				</button>
 			</PopoverTrigger>
@@ -841,50 +837,63 @@ export function ModeChip({
 				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="access-menu"
 			>
-				<div role="listbox" aria-label="Permission mode">
-					{rows.map((m) => {
-						const RowIcon = MODE_ICON[modeIcon(m.id, sandbox?.[m.id])];
-						const line = modeLine(m.id, m.description);
-						const guard = sandboxLine(sandbox?.[m.id]);
+				<div role="listbox" aria-label="Permission level">
+					{rows.map((l) => {
+						const sandbox = harness ? levelSandbox(harness, l) : undefined;
 						return (
 							<button
-								key={m.id}
+								key={l}
 								type="button"
 								role="option"
-								aria-selected={m.id === mode}
+								aria-selected={l === level}
 								onClick={() => {
 									setOpen(false);
-									if (m.id !== mode) onMode(m.id);
+									if (l !== level) onLevel(l);
 								}}
 								className={cn(
 									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-									m.id === mode && "bg-surface-3",
+									l === level && "bg-surface-3",
 								)}
-								data-testid={`access-level-${m.id}`}
+								data-testid={`access-level-${l}`}
 							>
-								<RowIcon className="size-3.5 text-text-2" aria-hidden />
-								<span className="truncate text-body font-medium text-text-1">
-									{m.name}
-								</span>
-								{m.id === fallback ? (
-									<span className="text-meta text-text-3">Your default</span>
+								{levelIcon(sandbox) === "lock" ? (
+									<Lock className="size-3.5 text-text-2" aria-hidden />
 								) : (
 									<span />
 								)}
-								{line && (
+								<span className="truncate text-body font-medium text-text-1">
+									{ACCESS_LEVEL_LABEL[l]}
+								</span>
+								{l === fallback.level ? (
 									<span
-										className="col-start-2 col-end-4 truncate text-meta text-text-2"
-										data-testid="access-line"
+										className="text-meta text-text-3"
+										data-testid="access-default-tag"
 									>
-										{line}
+										{defaultTag(fallback.from)}
+									</span>
+								) : (
+									<span />
+								)}
+								<span
+									className="col-start-2 col-end-4 text-meta text-text-2"
+									data-testid="access-line"
+								>
+									{ACCESS_LEVEL_LINE[l]}
+								</span>
+								{harness && (
+									<span
+										className="col-start-2 col-end-4 text-meta text-text-2"
+										data-testid="access-row-line"
+									>
+										{levelRowLine(harness, l)}
 									</span>
 								)}
 								<span
 									className="col-start-2 col-end-4 truncate text-meta text-text-3"
-									title={sandbox?.[m.id]?.reason}
+									title={sandbox?.reason}
 									data-testid="access-sandbox"
 								>
-									{guard}
+									{sandboxLine(sandbox)}
 								</span>
 							</button>
 						);
@@ -915,27 +924,6 @@ export function AgentModelPicker({
 					models: { [h.id]: id || null },
 				})
 			}
-		/>
-	);
-}
-
-/** Settings' Permission mode row: the stored per-agent default. */
-export function AccessMenu({
-	value,
-	onChange,
-	side = "top",
-}: {
-	value: string | undefined;
-	onChange: (mode: string) => void;
-	side?: "top" | "bottom";
-}) {
-	const { effective, agentModes } = useAgentChoice();
-	return (
-		<ModeChip
-			harness={effective}
-			mode={value ?? defaultModeOf(effective, agentModes)}
-			onMode={onChange}
-			side={side}
 		/>
 	);
 }
