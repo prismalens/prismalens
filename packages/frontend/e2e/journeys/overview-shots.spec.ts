@@ -6,7 +6,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
-import { fireIncident, LIVE, visit, waitForRun } from "../steps/product";
+import {
+	ensureService,
+	fireIncident,
+	LIVE,
+	visit,
+	waitForRun,
+} from "../steps/product";
 
 /**
  * The overview redesign's screenshots (#811), compared by hand against the
@@ -394,6 +400,17 @@ test("overview shots", async ({
 		severity: "medium",
 		session: "live",
 	});
+	// What booklogr-api depends on: the Situation card's dependency line.
+	const api = await ensureService(page, LIVE);
+	for (const dep of [
+		{ name: "booklogr-db", type: "database" },
+		{ name: "redis", type: "cache" },
+	]) {
+		const id = await ensureService(page, dep);
+		await page.request.post(`/api/services/${api}/dependencies`, {
+			data: { dependencyId: id },
+		});
+	}
 	const run = await waitForRun(
 		page,
 		ready.id,
@@ -423,6 +440,16 @@ test("overview shots", async ({
 		await expect(page.getByTestId("fix-command")).toBeInViewport({ ratio: 1 });
 		await expect(page.getByTestId("fix-copy")).toBeInViewport({ ratio: 1 });
 		await expect(page.getByTestId("next-strip")).toBeInViewport({ ratio: 1 });
+		await expect(page.getByTestId("situation-depends")).toBeVisible();
+		// The overflow cue sits in its own row, below the scrolling body, never over it.
+		for (const more of await page.getByTestId("card-more").all()) {
+			const cue = await more.boundingBox();
+			const body = await more
+				.locator("xpath=ancestor::section[1]")
+				.getByTestId("card-body")
+				.boundingBox();
+			expect(cue && body && cue.y >= body.y + body.height - 0.5).toBe(true);
+		}
 		await shot(page, `overview-${size.width}x${size.height}-dark`);
 	}
 

@@ -58,22 +58,37 @@ export function Card({
 	);
 }
 
-/** Rows below the visible part of `el`; a row cut at the bottom counts. */
-function hiddenBelow(el: HTMLElement): { rows: number; more: boolean } {
+interface Overflow {
+	/** The content is taller than the body: the foot row shows. */
+	overflows: boolean;
+	/** Rows not yet in view below; a row cut at the bottom counts. */
+	rows: number;
+	atEnd: boolean;
+}
+
+function overflowOf(el: HTMLElement): Overflow {
+	const overflows = el.scrollHeight - el.clientHeight > 2;
 	const bottom = el.scrollTop + el.clientHeight;
-	const more = el.scrollHeight - bottom > 2;
-	if (!more) return { rows: 0, more };
+	const atEnd = el.scrollHeight - bottom <= 2;
+	if (!overflows || atEnd) return { overflows, rows: 0, atEnd };
 	const top = el.getBoundingClientRect().top - el.scrollTop;
 	let rows = 0;
 	for (const row of Array.from(
 		el.querySelectorAll<HTMLElement>("[data-row]"),
 	)) {
-		const r = row.getBoundingClientRect();
-		if (r.bottom - top > bottom + 2) rows++;
+		if (row.getBoundingClientRect().bottom - top > bottom + 2) rows++;
 	}
-	return { rows, more };
+	return { overflows, rows, atEnd };
 }
 
+const same = (a: Overflow, b: Overflow) =>
+	a.overflows === b.overflows && a.rows === b.rows && a.atEnd === b.atEnd;
+
+/**
+ * The card's scrolling body. While its content overflows, a foot row of its
+ * own (never over the content) says how many rows are below; at the end it
+ * offers the way back up.
+ */
 export function ScrollBody({
 	children,
 	className,
@@ -82,12 +97,16 @@ export function ScrollBody({
 	className?: string;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
-	const [state, setState] = useState({ rows: 0, more: false });
+	const [state, setState] = useState<Overflow>({
+		overflows: false,
+		rows: 0,
+		atEnd: true,
+	});
 	const measure = useCallback(() => {
 		const el = ref.current;
 		if (!el) return;
-		const next = hiddenBelow(el);
-		setState((s) => (s.rows === next.rows && s.more === next.more ? s : next));
+		const next = overflowOf(el);
+		setState((s) => (same(s, next) ? s : next));
 	}, []);
 	useEffect(() => {
 		const el = ref.current;
@@ -104,33 +123,43 @@ export function ScrollBody({
 		};
 	}, [measure]);
 	return (
-		<div className="relative min-h-0 flex-1">
+		<div className="flex min-h-0 flex-1 flex-col">
 			<div
 				ref={ref}
 				onScroll={measure}
 				className={cn(
-					"h-full overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+					"min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]",
 					className,
 				)}
 				data-testid="card-body"
 			>
 				{children}
 			</div>
-			{state.more && (
-				<button
-					type="button"
-					onClick={() =>
-						ref.current?.scrollBy({
-							top: ref.current.clientHeight * 0.8,
-							behavior: "smooth",
-						})
-					}
-					className="absolute right-0 bottom-0 flex h-6 items-center gap-1 rounded-control bg-surface-3 px-2 text-meta text-text-1 shadow-float transition-colors duration-(--dur-instant) hover:bg-surface-4"
-					data-testid="card-more"
-				>
-					{state.rows > 0 ? `${state.rows} more` : "More below"}
-					<ChevronDown className="size-3" aria-hidden />
-				</button>
+			{state.overflows && (
+				<div className="flex h-6 shrink-0 items-end justify-end">
+					<button
+						type="button"
+						onClick={() => {
+							const el = ref.current;
+							if (!el) return;
+							if (state.atEnd) el.scrollTo({ top: 0, behavior: "smooth" });
+							else
+								el.scrollBy({ top: el.clientHeight * 0.8, behavior: "smooth" });
+						}}
+						className="flex items-center gap-1 rounded-control px-1.5 text-meta text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3"
+						data-testid="card-more"
+					>
+						{state.atEnd
+							? "Back to top"
+							: state.rows > 0
+								? `${state.rows} more`
+								: "More below"}
+						<ChevronDown
+							className={cn("size-3", state.atEnd && "rotate-180")}
+							aria-hidden
+						/>
+					</button>
+				</div>
 			)}
 		</div>
 	);
