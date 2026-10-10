@@ -10,12 +10,17 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
+	type AccessLevel,
+	DEFAULT_ACCESS_LEVEL,
+	DEFAULT_RUN_MODE,
 	getHarnessProviderKeys,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
-	resolveAgentMode,
+	planModeId,
+	type RunMode,
+	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
@@ -33,6 +38,7 @@ import {
 	type RunWorkspace,
 	type RunWorkspaceRepo,
 	RunWorkspaceSchema,
+	ServiceInvestigationMetadataSchema,
 	type TurnOutcome,
 	toFiringAlert,
 	type WorkflowStatus,
@@ -155,23 +161,18 @@ async function runJobInternal(
 			}
 		}
 
-		const {
-			selection,
-			model,
-			modelSource,
-			effort,
-			agentMode: settingsMode,
-			customModel,
-		} = await ports.resolveHarness({
+		const resolved = await ports.resolveHarness({
 			...(data.harness ? { harness: data.harness } : {}),
 			...(data.model !== undefined ? { model: data.model } : {}),
 			...(data.effort !== undefined ? { effort: data.effort } : {}),
 		});
+		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
-		const agentMode = resolveAgentMode(
-			selection.harness,
-			data.agentMode ?? settingsMode,
-		);
+		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
+		const accessLevel =
+			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
+		const runMode = data.runMode ?? resolved.runMode ?? DEFAULT_RUN_MODE;
+		const agentMode = askedAgentMode(selection.harness, accessLevel, runMode);
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -225,7 +226,9 @@ async function runJobInternal(
 			...(model ? { model } : {}),
 			...(effort ? { effort } : {}),
 			workspace: JSON.stringify(toRunWorkspace(workspace)),
-			agentMode,
+			...(agentMode ? { agentMode } : {}),
+			accessLevel,
+			runMode,
 			...(data.chat ? { chat: true } : {}),
 		});
 		const harness = selection.harness;
@@ -244,7 +247,8 @@ async function runJobInternal(
 				...(modelSource ? { modelSource } : {}),
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
-				agentMode,
+				accessLevel,
+				runMode,
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
@@ -284,8 +288,9 @@ async function runJobInternal(
 				})
 			: null;
 		if (owned) return owned;
-		if (data.chat && !outcome.error) {
-			logger.info(`Job ${job.id} chat ended`);
+		// A Plan run ends with its plan in the conversation, never a report (#673 w21).
+		if ((data.chat || runMode === "plan") && !outcome.error) {
+			logger.info(`Job ${job.id} ${data.chat ? "chat" : "plan"} ended`);
 			return chatResult(data);
 		}
 		if (!outcome.report) {
@@ -358,6 +363,19 @@ async function runJobInternal(
 			clearRunWorkspace(runDirFor(unvalidated.investigationId));
 		}
 	}
+}
+
+/** The agent mode id a run asks for: the plan mode when Plan is one, else the level's; null when none. */
+function askedAgentMode(
+	harness: HarnessId,
+	level: AccessLevel,
+	runMode: RunMode,
+): string | null {
+	return (
+		(runMode === "plan" ? planModeId(harness) : null) ??
+		resolveAccess(harness, level).mode ??
+		null
+	);
 }
 
 /** Only a session the harness can load again is worth keeping (#747). */
@@ -489,7 +507,8 @@ async function runFollowUp(
 				...(modelSource ? { modelSource } : {}),
 				...(customModel ? { customModel } : {}),
 				...(inv.effort ? { effort: inv.effort } : {}),
-				...(data.agentMode ? { agentMode: data.agentMode } : {}),
+				...(data.accessLevel ? { accessLevel: data.accessLevel } : {}),
+				...(data.runMode ? { runMode: data.runMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -1181,9 +1200,10 @@ async function assembleInvestigationContext(
 		? rawAlerts.map((a) => toFiringAlert(a as Record<string, unknown>))
 		: [incidentAsAlert(incident)];
 	const service = incident?.service as
-		| { name?: string; tier?: string }
+		| { name?: string; tier?: string; metadata?: unknown }
 		| null
 		| undefined;
+	const notes = serviceNotes(service?.metadata);
 	const telemetry = telemetryEndpointsFrom(connectors, (m) => logger.warn(m));
 	return correlatedAlertsContext(firingAlerts, telemetry, {
 		incident: incident ? incidentMeta(incident) : undefined,
@@ -1192,11 +1212,28 @@ async function assembleInvestigationContext(
 					service: {
 						name: service.name,
 						...(service.tier ? { tier: service.tier } : {}),
+						...(notes ? { notes } : {}),
 					},
 				}
 			: {}),
 		...(contextPack ? { contextPack } : {}),
 	});
+}
+
+/** The service's `metadata.investigation.notes`, stored as JSON text or an object; null when absent or empty. */
+function serviceNotes(metadata: unknown): string | null {
+	let value: unknown = metadata;
+	if (typeof value === "string") {
+		try {
+			value = JSON.parse(value);
+		} catch {
+			return null;
+		}
+	}
+	const parsed = ServiceInvestigationMetadataSchema.safeParse(
+		(value as { investigation?: unknown } | null)?.investigation,
+	);
+	return parsed.success ? parsed.data.notes?.trim() || null : null;
 }
 
 function toIsoString(value: unknown): string | null {

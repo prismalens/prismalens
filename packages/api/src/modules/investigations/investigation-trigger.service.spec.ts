@@ -61,6 +61,7 @@ describe("InvestigationTriggerService", () => {
 	const mockHarnessService = {
 		resolveSelection: vi.fn(),
 		ensureReady: vi.fn(),
+		effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised", runMode: "execute" })),
 	};
 
 	beforeEach(async () => {
@@ -71,6 +72,7 @@ describe("InvestigationTriggerService", () => {
 			auto: true,
 		});
 		mockHarnessService.ensureReady.mockResolvedValue({ ready: true });
+		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "supervised", runMode: "execute" });
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});

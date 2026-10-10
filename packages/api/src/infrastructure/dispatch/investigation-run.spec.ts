@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
+import type { AccessLevel } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
@@ -539,8 +540,8 @@ describe("assembled investigation context (Date-typed incident fields)", () => {
 });
 
 describe("the agent's own mode (#673 w21)", () => {
-	it("asks for the job's mode, else Settings', else the row's default, and keeps it on the row", async () => {
-		const modeOf = async (job: { agentMode?: string }, settings?: string) => {
+	it("asks for the job's level, else the resolved one, else Ask always, and keeps it on the row", async () => {
+		const levelOf = async (job: { accessLevel?: AccessLevel }, resolved?: AccessLevel) => {
 			mocks.conductRun.mockReset();
 			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
 				await io.store.create();
@@ -548,20 +549,23 @@ describe("the agent's own mode (#673 w21)", () => {
 			});
 			const ports = fakePorts();
 			const resolve = ports.resolveHarness;
-			ports.resolveHarness = vi.fn(async () => ({ ...(await resolve()), ...(settings ? { agentMode: settings } : {}) }));
+			ports.resolveHarness = vi.fn(async () => ({ ...(await resolve()), ...(resolved ? { accessLevel: resolved } : {}) }));
 			await runInvestigationJob(
 				{ id: "job-mode", investigationId: "inv-mode", attempts: 1 },
 				{ investigationId: "inv-mode", incidentId: "inc-mode", ...job },
 				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
 				ports,
 			);
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ agentMode?: string }];
-			expect(ports.updateStatus).toHaveBeenCalledWith("inv-mode", expect.objectContaining({ agentMode: opts.agentMode }));
-			return opts.agentMode;
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ accessLevel?: AccessLevel }];
+			expect(ports.updateStatus).toHaveBeenCalledWith(
+				"inv-mode",
+				expect.objectContaining({ accessLevel: opts.accessLevel, runMode: "execute" }),
+			);
+			return opts.accessLevel;
 		};
-		expect(await modeOf({ agentMode: "build" }, "plan")).toBe("build");
-		expect(await modeOf({}, "build")).toBe("build");
-		expect(await modeOf({})).toBe("build");
+		expect(await levelOf({ accessLevel: "full-access" }, "auto")).toBe("full-access");
+		expect(await levelOf({}, "auto")).toBe("auto");
+		expect(await levelOf({})).toBe("supervised");
 	});
 });
 

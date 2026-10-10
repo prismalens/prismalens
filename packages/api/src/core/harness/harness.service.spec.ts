@@ -101,16 +101,19 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("a stored {agentModes: {'claude-code':'plan', codex:'agent'}} reads back without claude-code", async () => {
+		it("drops a stored agentModes and any level or mode this build does not know (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
 					harness: "auto",
 					agentModes: { "claude-code": "plan", codex: "agent" },
+					accessLevels: { codex: "auto", opencode: "yolo" },
+					runModes: { "claude-code": "plan" },
 				}),
 			);
 			await expect(service().getSettings()).resolves.toEqual({
 				harness: "auto",
-				agentModes: { codex: "agent" },
+				accessLevels: { codex: "auto" },
+				runModes: { "claude-code": "plan" },
 			});
 		});
 	});
@@ -146,25 +149,13 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("merges agent modes per harness, null going back to the row's default, and drops a stored allowWriteLevels (#673 w21)", async () => {
+		it("merges levels per harness, null going back to the default, and drops a stored allowWriteLevels (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "auto", agentModes: { codex: "agent", opencode: "build" }, allowWriteLevels: true }),
+				settingRow({ harness: "auto", accessLevels: { codex: "auto", opencode: "full-access" }, allowWriteLevels: true }),
 			);
 			await expect(
-				service().updateSettings({ agentModes: { "claude-code": "acceptEdits", opencode: null } }),
-			).resolves.toEqual({ harness: "auto", agentModes: { codex: "agent", "claude-code": "acceptEdits" } });
-		});
-
-		it("updateSettings with agentModes {opencode:'plan'} stores none for opencode", async () => {
-			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "auto", agentModes: {} }),
-			);
-			const result = await service().updateSettings({
-				agentModes: { opencode: "plan" },
-			});
-			expect(result.agentModes).toBeUndefined();
-			const call = mockPrismaService.setting.upsert.mock.calls[0][0];
-			expect(JSON.parse(call.create.value).agentModes).toBeUndefined();
+				service().updateSettings({ accessLevels: { "claude-code": "auto-edits", opencode: null } }),
+			).resolves.toEqual({ harness: "auto", accessLevels: { codex: "auto", "claude-code": "auto-edits" } });
 		});
 
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {

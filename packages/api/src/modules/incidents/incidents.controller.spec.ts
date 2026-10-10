@@ -320,7 +320,8 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		// A manual run records its trigger and its title, the brief's first line (#673).
 		expect(investigationsService.startOrGet).toHaveBeenCalledWith({
 			incidentId: mockIncident.id,
-			agentMode: null,
+			accessLevel: null,
+			runMode: null,
 			afterResolve: true,
 			triggerType: "manual",
 			title: "The fix did not hold.",
@@ -336,7 +337,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			}) as unknown as HarnessService;
-		type Chat = (a: { input: { id: string; text: string; agentMode?: string } }) => Promise<unknown>;
+		type Chat = (a: { input: { id: string; text: string; runMode?: string } }) => Promise<unknown>;
 
 		it("starts a chat run whose job carries the message and no brief", async () => {
 			const investigationsService = {
@@ -353,7 +354,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			);
 			const text = `Is the pool still saturated? ${"x".repeat(200)}`;
 			const result = await (getHandlers(controller).chat as Chat)({
-				input: { id: mockIncident.id, text, agentMode: "plan" },
+				input: { id: mockIncident.id, text, runMode: "plan" },
 			});
 			expect(result).toMatchObject({ investigationId: "inv-chat", jobId: "job-c", queued: true });
 			expect(investigationsService.startOrGet).toHaveBeenCalledWith(
@@ -361,7 +362,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					kind: "chat",
 					triggerType: "manual",
 					title: text.slice(0, 120),
-					agentMode: "plan",
+					runMode: "plan",
 				}),
 			);
 			const job = dispatchService.addInvestigationJob.mock.calls[0][0];
@@ -413,7 +414,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		});
 	});
 
-	it("starts any agent mode with no ceiling, and carries the chosen one on the job and the row (#673 w21)", async () => {
+	it("starts any permission level, and carries the chosen one on the job and the row (#673 w21)", async () => {
 		const make = () => {
 			const dispatchService = { addInvestigationJob: vi.fn().mockResolvedValue("job-3") };
 			const investigationsService = {
@@ -431,22 +432,22 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{} as never,
 			);
 			const investigate = getHandlers(controller).investigate as (a: {
-				input: { id: string; agentMode?: string };
+				input: { id: string; accessLevel?: string };
 			}) => Promise<unknown>;
 			return { dispatchService, investigationsService, investigate };
 		};
 		const full = make();
-		await full.investigate({ input: { id: mockIncident.id, agentMode: "bypassPermissions" } });
+		await full.investigate({ input: { id: mockIncident.id, accessLevel: "full-access" } });
 		expect(full.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
-			expect.objectContaining({ agentMode: "bypassPermissions" }),
+			expect.objectContaining({ accessLevel: "full-access" }),
 		);
 		expect(full.investigationsService.startOrGet).toHaveBeenCalledWith(
-			expect.objectContaining({ agentMode: "bypassPermissions" }),
+			expect.objectContaining({ accessLevel: "full-access" }),
 		);
 		const none = make();
 		await none.investigate({ input: { id: mockIncident.id } });
 		expect(none.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
-			expect.not.objectContaining({ agentMode: expect.anything() }),
+			expect.not.objectContaining({ accessLevel: expect.anything() }),
 		);
 	});
 

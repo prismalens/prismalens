@@ -49,6 +49,8 @@ export type IncidentWithRelations = Incident & {
 		status: string;
 		kind?: string;
 		agentMode?: string | null;
+		accessLevel?: string | null;
+		runMode?: string | null;
 		title?: string | null;
 		startedAt?: Date | null;
 		/** A completed investigation wrote its summary from its report; a chat has none (#673). */
@@ -215,6 +217,8 @@ export class IncidentsService {
 						lastTurnOutcome: true,
 						kind: true,
 						agentMode: true,
+						accessLevel: true,
+						runMode: true,
 						title: true,
 						startedAt: true,
 						createdAt: true,
@@ -305,6 +309,8 @@ export class IncidentsService {
 							lastTurnOutcome: true,
 							kind: true,
 							agentMode: true,
+							accessLevel: true,
+							runMode: true,
 							title: true,
 							startedAt: true,
 							createdAt: true,

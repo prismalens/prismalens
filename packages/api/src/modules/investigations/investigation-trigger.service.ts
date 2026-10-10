@@ -337,9 +337,15 @@ export class InvestigationTriggerService {
 				orderBy: { triggeredAt: "desc" },
 			});
 
+			// An auto-started run takes its own Settings rows, else the next-run chain (#673 w21).
+			const choice = selection.runnable
+				? await this.harnessService.effectiveChoice(selection.harness, true)
+				: null;
+
 			jobId = await this.dispatchService.addInvestigationJob({
 				incidentId: incident.id,
 				investigationId: investigation.id,
+				...(choice ?? {}),
 				priority: this.mapSeverityToPriority(incident.severity),
 				context: {
 					title: incident.title,

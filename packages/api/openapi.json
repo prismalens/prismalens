@@ -4047,6 +4047,36 @@
                                     }
                                   ]
                                 },
+                                "accessLevel": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "runMode": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "title": {
                                   "anyOf": [
                                     {
@@ -5308,6 +5338,36 @@
                               }
                             ]
                           },
+                          "accessLevel": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runMode": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "execute",
+                                  "plan"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "title": {
                             "anyOf": [
                               {
@@ -6109,9 +6169,21 @@
                     "type": "string",
                     "maxLength": 4000
                   },
-                  "agentMode": {
-                    "type": "string",
-                    "maxLength": 64
+                  "accessLevel": {
+                    "enum": [
+                      "supervised",
+                      "auto-edits",
+                      "auto",
+                      "full-access"
+                    ],
+                    "type": "string"
+                  },
+                  "runMode": {
+                    "enum": [
+                      "execute",
+                      "plan"
+                    ],
+                    "type": "string"
                   },
                   "harness": {
                     "enum": [
@@ -6325,9 +6397,21 @@
                     "minLength": 1,
                     "maxLength": 4000
                   },
-                  "agentMode": {
-                    "type": "string",
-                    "maxLength": 64
+                  "accessLevel": {
+                    "enum": [
+                      "supervised",
+                      "auto-edits",
+                      "auto",
+                      "full-access"
+                    ],
+                    "type": "string"
+                  },
+                  "runMode": {
+                    "enum": [
+                      "execute",
+                      "plan"
+                    ],
+                    "type": "string"
                   },
                   "harness": {
                     "enum": [
@@ -7868,6 +7952,36 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runMode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "title": {
                       "anyOf": [
                         {
@@ -8251,6 +8365,31 @@
                                       "type": "string"
                                     },
                                     "mechanism": {
+                                      "type": "string"
+                                    },
+                                    "access": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ranAccess": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "runMode": {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
                                       "type": "string"
                                     },
                                     "model": {
@@ -8897,6 +9036,36 @@
                               }
                             ]
                           },
+                          "accessLevel": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runMode": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "execute",
+                                  "plan"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "title": {
                             "anyOf": [
                               {
@@ -9280,6 +9449,31 @@
                                             "type": "string"
                                           },
                                           "mechanism": {
+                                            "type": "string"
+                                          },
+                                          "access": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "ranAccess": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "runMode": {
+                                            "enum": [
+                                              "execute",
+                                              "plan"
+                                            ],
                                             "type": "string"
                                           },
                                           "model": {
@@ -9945,6 +10139,36 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runMode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "title": {
                       "anyOf": [
                         {
@@ -10328,6 +10552,31 @@
                                       "type": "string"
                                     },
                                     "mechanism": {
+                                      "type": "string"
+                                    },
+                                    "access": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ranAccess": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "runMode": {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
                                       "type": "string"
                                     },
                                     "model": {
@@ -10960,6 +11209,36 @@
                             }
                           ]
                         },
+                        "accessLevel": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "supervised",
+                                "auto-edits",
+                                "auto",
+                                "full-access"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "runMode": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "execute",
+                                "plan"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "title": {
                           "anyOf": [
                             {
@@ -11343,6 +11622,31 @@
                                           "type": "string"
                                         },
                                         "mechanism": {
+                                          "type": "string"
+                                        },
+                                        "access": {
+                                          "enum": [
+                                            "supervised",
+                                            "auto-edits",
+                                            "auto",
+                                            "full-access"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "ranAccess": {
+                                          "enum": [
+                                            "supervised",
+                                            "auto-edits",
+                                            "auto",
+                                            "full-access"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "runMode": {
+                                          "enum": [
+                                            "execute",
+                                            "plan"
+                                          ],
                                           "type": "string"
                                         },
                                         "model": {
@@ -12041,6 +12345,36 @@
                         }
                       ]
                     },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runMode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "title": {
                       "anyOf": [
                         {
@@ -12424,6 +12758,31 @@
                                       "type": "string"
                                     },
                                     "mechanism": {
+                                      "type": "string"
+                                    },
+                                    "access": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ranAccess": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "runMode": {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
                                       "type": "string"
                                     },
                                     "model": {
@@ -13686,9 +14045,25 @@
                                   "denied",
                                   "timed_out",
                                   "stopped",
-                                  "restarted"
+                                  "restarted",
+                                  "allowed",
+                                  "plan_kept",
+                                  "mode_kept"
                                 ],
                                 "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "toolKind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -14032,6 +14407,31 @@
                                           "mechanism": {
                                             "type": "string"
                                           },
+                                          "access": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "ranAccess": {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "runMode": {
+                                            "enum": [
+                                              "execute",
+                                              "plan"
+                                            ],
+                                            "type": "string"
+                                          },
                                           "model": {
                                             "type": "string"
                                           },
@@ -14197,6 +14597,36 @@
                     "agentMode": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runMode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
                           "type": "string"
                         },
                         {
@@ -14587,6 +15017,31 @@
                                       "type": "string"
                                     },
                                     "mechanism": {
+                                      "type": "string"
+                                    },
+                                    "access": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ranAccess": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "runMode": {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
                                       "type": "string"
                                     },
                                     "model": {
@@ -15769,6 +16224,31 @@
                               "mechanism": {
                                 "type": "string"
                               },
+                              "access": {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              "ranAccess": {
+                                "enum": [
+                                  "supervised",
+                                  "auto-edits",
+                                  "auto",
+                                  "full-access"
+                                ],
+                                "type": "string"
+                              },
+                              "runMode": {
+                                "enum": [
+                                  "execute",
+                                  "plan"
+                                ],
+                                "type": "string"
+                              },
                               "model": {
                                 "type": "string"
                               },
@@ -15931,6 +16411,36 @@
                     "agentMode": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runMode": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
                           "type": "string"
                         },
                         {
@@ -16321,6 +16831,31 @@
                                       "type": "string"
                                     },
                                     "mechanism": {
+                                      "type": "string"
+                                    },
+                                    "access": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ranAccess": {
+                                      "enum": [
+                                        "supervised",
+                                        "auto-edits",
+                                        "auto",
+                                        "full-access"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "runMode": {
+                                      "enum": [
+                                        "execute",
+                                        "plan"
+                                      ],
                                       "type": "string"
                                     },
                                     "model": {
@@ -27633,9 +28168,97 @@
                               }
                             ]
                           },
-                          "defaultMode": {
-                            "type": "string",
-                            "default": "agent-default"
+                          "localDefault": {
+                            "type": "object",
+                            "properties": {
+                              "permission": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "level": {
+                                        "anyOf": [
+                                          {
+                                            "enum": [
+                                              "supervised",
+                                              "auto-edits",
+                                              "auto",
+                                              "full-access"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "file": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "reason": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "level",
+                                      "file",
+                                      "value"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mode": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "mode": {
+                                        "anyOf": [
+                                          {
+                                            "enum": [
+                                              "execute",
+                                              "plan"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "file": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "mode",
+                                      "file",
+                                      "value"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "permission",
+                              "mode"
+                            ],
+                            "default": {
+                              "permission": null,
+                              "mode": null
+                            }
                           },
                           "modelVia": {
                             "enum": [
@@ -27818,6 +28441,17 @@
                                             "name"
                                           ]
                                         }
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "plan": {
+                                    "anyOf": [
+                                      {
+                                        "type": "boolean"
                                       },
                                       {
                                         "type": "null"
@@ -28076,7 +28710,7 @@
                         "maxLength": 64
                       }
                     },
-                    "agentModes": {
+                    "accessLevels": {
                       "type": "object",
                       "propertyNames": {
                         "enum": [
@@ -28089,9 +28723,75 @@
                         "type": "string"
                       },
                       "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 64
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "runModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "execute",
+                          "plan"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "autoAccessLevels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "autoRunModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "execute",
+                          "plan"
+                        ],
+                        "type": "string"
                       }
                     },
                     "customModels": {
@@ -28228,7 +28928,7 @@
                       ]
                     }
                   },
-                  "agentModes": {
+                  "accessLevels": {
                     "type": "object",
                     "propertyNames": {
                       "enum": [
@@ -28243,9 +28943,96 @@
                     "additionalProperties": {
                       "anyOf": [
                         {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 64
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "runModes": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "autoAccessLevels": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "autoRunModes": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "execute",
+                            "plan"
+                          ],
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -28370,7 +29157,7 @@
                         "maxLength": 64
                       }
                     },
-                    "agentModes": {
+                    "accessLevels": {
                       "type": "object",
                       "propertyNames": {
                         "enum": [
@@ -28383,9 +29170,75 @@
                         "type": "string"
                       },
                       "additionalProperties": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 64
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "runModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "execute",
+                          "plan"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "autoAccessLevels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "supervised",
+                          "auto-edits",
+                          "auto",
+                          "full-access"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "autoRunModes": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "enum": [
+                          "execute",
+                          "plan"
+                        ],
+                        "type": "string"
                       }
                     },
                     "customModels": {
@@ -28572,6 +29425,16 @@
                               "name"
                             ]
                           }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "plan": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
                         },
                         {
                           "type": "null"

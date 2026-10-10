@@ -52,12 +52,13 @@ export class HarnessModelsService {
 	/** What the check read from the harness itself: its current model, effort option and image capability. */
 	rememberCheck(
 		id: HarnessId,
-		facts: Omit<Check, "at" | "modes" | "efforts" | "sandbox"> &
-			Partial<Pick<Check, "modes" | "efforts" | "sandbox">>,
+		facts: Omit<Check, "at" | "modes" | "plan" | "efforts" | "sandbox"> &
+			Partial<Pick<Check, "modes" | "plan" | "efforts" | "sandbox">>,
 	) {
 		this.checks.set(id, {
 			at: new Date().toISOString(),
 			modes: null,
+			plan: null,
 			efforts: null,
 			sandbox: null,
 			...facts,

@@ -3,9 +3,11 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import {
+	type AccessLevel,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	type RunMode,
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
@@ -126,7 +128,8 @@ export class InvestigationsService {
 			/** A run is a thread (#673); set at create, never scanned for later. */
 			kind?: InvestigationKind;
 			title?: string | null;
-			agentMode?: string | null;
+			accessLevel?: AccessLevel | null;
+			runMode?: RunMode | null;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -159,7 +162,8 @@ export class InvestigationsService {
 						...(dto.kind ? { kind: dto.kind } : {}),
 						liveTurn: dto.kind === "chat" ? "answer" : "report",
 						...(dto.title ? { title: dto.title } : {}),
-						...(dto.agentMode ? { agentMode: dto.agentMode } : {}),
+						...(dto.accessLevel ? { accessLevel: dto.accessLevel } : {}),
+						...(dto.runMode ? { runMode: dto.runMode } : {}),
 					},
 				});
 				return { investigation, created: true };
@@ -374,6 +378,8 @@ export class InvestigationsService {
 			acpSessionId?: string;
 			workspace?: string;
 			agentMode?: string;
+			accessLevel?: AccessLevel;
+			runMode?: RunMode;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
 		},
@@ -407,6 +413,8 @@ export class InvestigationsService {
 			if (facts?.acpSessionId) updateData.acpSessionId = facts.acpSessionId;
 			if (facts?.workspace) updateData.workspace = facts.workspace;
 			if (facts?.agentMode) updateData.agentMode = facts.agentMode;
+			if (facts?.accessLevel) updateData.accessLevel = facts.accessLevel;
+			if (facts?.runMode) updateData.runMode = facts.runMode;
 			if (facts?.lastTurnOutcome)
 				updateData.lastTurnOutcome = facts.lastTurnOutcome;
 

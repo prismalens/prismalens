@@ -290,6 +290,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 				auto: false,
 			})),
 			getSettings: vi.fn(async () => settings),
+			localDefaultOf: vi.fn(() => ({ permission: null, mode: null })),
 		};
 		const service = new DispatchService(
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
@@ -313,7 +314,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		harness: "opencode",
 		models: { opencode: "vendor/stored", codex: "gpt-stored" },
 		efforts: { opencode: "low", codex: "medium" },
-		agentModes: { codex: "read-only" },
+		accessLevels: { codex: "auto" },
 	};
 
 	it("reads Settings when the run names nothing (an alert's run)", async () => {
@@ -335,7 +336,8 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 			selection: { harness: "codex" },
 			model: "gpt-stored",
 			effort: "high",
-			agentMode: "read-only",
+			accessLevel: "auto",
+			runMode: "execute",
 		});
 		expect(harnessService.resolveSelection).toHaveBeenCalledWith({
 			harness: "codex",
@@ -409,19 +411,20 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } })).status).toBe("succeeded");
 	});
 
-	it("keeps the mode the run ran in, and drops a queued legacy access so the row's default applies (#673 w21)", async () => {
+	it("keeps the level and mode the run asked for, and none on a row from before them (#673 w21)", async () => {
 		const { service } = realDispatch();
 		const inc = await incident();
-		const ran = await thread(inc.id, { agentMode: "acceptEdits" });
+		const ran = await thread(inc.id, { agentMode: "acceptEdits", accessLevel: "auto-edits", runMode: "execute" });
 		await service.resumeInvestigation(ran.id, "and now?", "queue");
 		const kept = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
-		expect(JSON.parse(kept.payload).agentMode).toBe("acceptEdits");
+		expect(JSON.parse(kept.payload)).toMatchObject({ accessLevel: "auto-edits", runMode: "execute" });
 
 		const inc2 = await incident();
-		const old = await thread(inc2.id, { agentMode: null });
+		const old = await thread(inc2.id, { agentMode: "acceptEdits" });
 		await job(old.id, inc2.id, { access: "workspace-write" } as never, "succeeded");
 		await service.resumeInvestigation(old.id, "and now?", "queue");
 		const dropped = await prisma.job.findUniqueOrThrow({ where: { investigationId: old.id } });
+		expect(JSON.parse(dropped.payload)).not.toHaveProperty("accessLevel");
 		expect(JSON.parse(dropped.payload)).not.toHaveProperty("agentMode");
 	});
 

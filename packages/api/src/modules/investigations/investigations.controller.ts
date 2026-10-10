@@ -12,10 +12,12 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	AccessLevelSchema,
 	continuableRun,
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	RunModeSchema,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
@@ -595,6 +597,9 @@ export class InvestigationsController {
 					? ("chat" as const)
 					: ("investigation" as const),
 			agentMode: investigation.agentMode ?? null,
+			accessLevel:
+				AccessLevelSchema.safeParse(investigation.accessLevel).data ?? null,
+			runMode: RunModeSchema.safeParse(investigation.runMode).data ?? null,
 			title: investigation.title ?? null,
 			hasReport: investigation.report !== null,
 			startedAt: investigation.startedAt?.toISOString() ?? null,

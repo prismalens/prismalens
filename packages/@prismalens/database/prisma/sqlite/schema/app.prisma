@@ -286,8 +286,10 @@ model Investigation {
 
   // A run is a thread (#673): an investigation workflow, or a chat a message started
   kind      String  @default("investigation") // investigation | chat
-  agentMode String? // the agent's own ACP mode id asked for; agent-default: none asked
+  agentMode String? // the agent's own ACP mode id PrismaLens set
   title     String? // investigation: the brief's first line; chat: the message's first 120 chars
+  accessLevel String? // supervised | auto-edits | auto | full-access; null before #673 w21
+  runMode     String? // execute | plan; null before #673 w21
 
   // A thread's turns (#673 w59): what the live turn owes, how the last message ended
   liveTurn        String? // report | answer; null when nothing runs
