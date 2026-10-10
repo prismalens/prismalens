@@ -1252,6 +1252,32 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(finishedReport).toBeNull();
 	});
 
+	it("ends a Plan run when its session/cancel lands before the agent waits for it (#809)", async () => {
+		const outcome = await conductRun(
+			opts("plan", {
+				harness: "claude-code",
+				runMode: "plan",
+				env: {
+					...process.env,
+					FAKE_ACP_MODE: "plan",
+					FAKE_PROFILE: "claude",
+					FAKE_MODES: "",
+					FAKE_PLAN_LAG_MS: "300",
+				},
+			}),
+			{
+				sink: () => {},
+				store: {
+					create: async () => {},
+					append: async () => {},
+					finish: async () => {},
+					fail: async () => {},
+				},
+			},
+		);
+		expect(outcome).toMatchObject({ report: null, error: null, failureKind: "none" });
+	});
+
 	it("resumed run keeps the stored mode and re-sets only when different (#673 w21)", async () => {
 		const same = await collect("resume", {
 			harness: "opencode",

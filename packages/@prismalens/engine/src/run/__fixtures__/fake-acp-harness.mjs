@@ -197,12 +197,17 @@ const configOptions = () => [
 		: []),
 ];
 let onCancel = null;
+// A cancel can land before the turn awaits it (#809); it is latched until the turn ends.
+let cancelLatched = false;
 const cancelled = () =>
-	new Promise((resolve) => {
-		onCancel = resolve;
-	});
+	cancelLatched
+		? Promise.resolve()
+		: new Promise((resolve) => {
+				onCancel = resolve;
+			});
 async function turn(sessionId, promptText) {
 	turns += 1;
+	cancelLatched = false;
 	if (mode === "crash") process.exit(3);
 	if (mode === "resume" || mode === "continue") {
 		// FAKE_RESUME_CURL: the reopened session queries a host address first (#673 w26).
@@ -300,6 +305,9 @@ async function turn(sessionId, promptText) {
 		const left = answer.outcome?.optionId && answer.outcome.optionId !== "no";
 		process.stderr.write(`fake: plan ${left ? "LEFT" : "kept"}\n`);
 		if (left) return { stopReason: "end_turn" };
+		// FAKE_PLAN_LAG_MS: the session/cancel lands before the turn starts waiting for it.
+		const lag = Number(process.env.FAKE_PLAN_LAG_MS ?? 0);
+		if (lag) await new Promise((r) => setTimeout(r, lag));
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
@@ -591,6 +599,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		send({ jsonrpc: "2.0", id: msg.id, result });
 	} else if (msg.method === "session/cancel") {
 		process.stderr.write("fake: cancel\n");
+		cancelLatched = true;
 		onCancel?.();
 		onCancel = null;
 	} else if (msg.id !== undefined) {
