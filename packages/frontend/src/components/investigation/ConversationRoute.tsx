@@ -210,7 +210,7 @@ export function ConversationRoute() {
  * On an older run, the newer one and the code it looked at (#673 w27): this
  * run keeps reasoning at its own pinned commit (ADR 0004 §2).
  */
-function NewerRunLine({
+export function NewerRunLine({
 	incidentId,
 	runs,
 	selected,
@@ -222,7 +222,7 @@ function NewerRunLine({
 	const newer = newerRunOf(runs, selected);
 	const { data } = useInvestigation(newer?.id ?? "");
 	const at = pinnedTo(data?.workspace);
-	if (!newer || !at) return null;
+	if (!newer) return null;
 	const n = runNumber(runs, newer.id);
 	return (
 		<p
@@ -237,7 +237,7 @@ function NewerRunLine({
 			>
 				Run #{n}
 			</RecordLink>
-			) looks at {at}
+			) {at ? `looks at ${at}` : "exists"}
 		</p>
 	);
 }

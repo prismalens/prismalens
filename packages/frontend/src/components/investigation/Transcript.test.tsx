@@ -10,12 +10,14 @@ import type { TranscriptItem } from "@/lib/investigation-events";
 import { Transcript } from "./Transcript";
 
 const mutateSpy = vi.fn();
+let answerError: { code: string } | null = null;
 
 vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
 	useAnswerAsk: () => ({
 		mutate: mutateSpy,
 		isPending: false,
-		isError: false,
+		isError: answerError !== null,
+		error: answerError,
 	}),
 }));
 
@@ -39,6 +41,7 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	mutateSpy.mockClear();
+	answerError = null;
 });
 
 afterEach(async () => {
@@ -113,6 +116,29 @@ describe("Transcript AskCard", () => {
 			askId: "00000000-0000-0000-0000-000000000001",
 			decision: "deny",
 		});
+	});
+
+	it("says the ask is gone only on CONFLICT; any other failure asks for a retry", async () => {
+		const render = async () =>
+			act(async () => {
+				root.render(
+					<Transcript
+						items={[askItem]}
+						incidentId="inc-1"
+						runId="run-1"
+						agent="Claude Code"
+					/>,
+				);
+			});
+		answerError = { code: "CONFLICT" };
+		await render();
+		expect(container.textContent).toContain("That ask is no longer waiting.");
+		answerError = { code: "TOO_MANY_REQUESTS" };
+		await render();
+		expect(container.textContent).not.toContain("no longer waiting");
+		expect(container.textContent).toContain(
+			"Your answer did not reach the run. Try again.",
+		);
 	});
 
 	it("an ended item shows no buttons and the end line", async () => {

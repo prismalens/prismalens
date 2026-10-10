@@ -31,6 +31,7 @@ import {
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { commandText, shortPath } from "@/lib/report-view";
 import { cn } from "@/lib/utils";
+import { isConflict } from "./useInvestigationRun";
 
 const ENTER =
 	"motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200";
@@ -363,7 +364,9 @@ function AskCard({
 					</Button>
 					<span className="text-meta text-text-3">
 						{answer.isError
-							? "That ask is no longer waiting."
+							? isConflict(answer.error)
+								? "That ask is no longer waiting."
+								: "Your answer did not reach the run. Try again."
 							: item.clamped
 								? `The run's time limit is near, so this ask expires at ${formatClock(item.expiresAt)}`
 								: `Denied at ${formatClock(item.expiresAt)} if no one answers`}
