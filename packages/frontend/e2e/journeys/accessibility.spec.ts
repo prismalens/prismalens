@@ -96,10 +96,6 @@ test.describe("Accessibility at 1440, dark", () => {
 	test("an incident record has no serious or critical axe violations", async ({
 		page,
 	}) => {
-		test.fixme(
-			true,
-			"color-contrast failure on a[aria-current=true] > .tabular-nums.text-text-3 in RunTree on dark theme",
-		);
 		await page.goto(DEMO_INCIDENT);
 		await expect(page.getByTestId("incident-state-band")).toBeVisible({
 			timeout: 15_000,

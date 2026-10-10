@@ -109,10 +109,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 	test("#step-N deep link via /investigations/<id>#step-1", async ({
 		page,
 	}) => {
-		test.fixme(
-			true,
-			"/investigations/$id route in investigations/$id/index.tsx fails without trailing slash",
-		);
 		await page.route(
 			(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}`,
 			async (route) => {

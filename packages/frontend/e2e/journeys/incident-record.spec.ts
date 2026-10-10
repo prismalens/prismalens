@@ -167,10 +167,6 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 	test("an old investigation link lands on the conversation", async ({
 		page,
 	}) => {
-		test.fixme(
-			true,
-			"/investigations/$id route in investigations/$id/index.tsx fails without trailing slash",
-		);
 		await page.goto(`/investigations/${INVESTIGATION_ID}`);
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/conversation/, {
 			timeout: 15_000,
