@@ -216,7 +216,7 @@ test.describe("Segmented", () => {
 		await page.keyboard.press("Enter");
 		await expect(board).toHaveAttribute("aria-pressed", "true");
 		await page.keyboard.press("Tab");
-		await expect(analytics).toBeFocused();
+		await expect(page.getByTestId("incidents-view-all")).toBeFocused();
 	});
 });
 
