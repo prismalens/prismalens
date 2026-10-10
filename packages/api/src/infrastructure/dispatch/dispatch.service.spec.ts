@@ -659,6 +659,78 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 		const newest = await ports.newerRun(run2.id);
 		expect(newest).toBeNull();
 	});
+
+	it("snapshotWith port reads the pick from Repository.metadata and delegates to withCredential and repoSource.snapshot", async () => {
+		const { ports, service } = realDispatch();
+		const mockGitCredentials = {
+			withCredential: vi.fn(async (_ref, fn) => {
+				const cred = { display: { source: "connection", label: "token A", via: "git-host-token" } };
+				const result = await fn(cred);
+				return { result, credential: { source: "connection", label: "token A", via: "git-host-token" } };
+			}),
+		};
+		const mockRepoSource = {
+			snapshot: vi.fn(async () => ({
+				path: "/mock/dest",
+				head: "abcd1234ef5678",
+				branch: "main",
+			})),
+		};
+		(service as any).gitCredentials = mockGitCredentials;
+		(service as any).repoSource = mockRepoSource;
+
+		await prisma.repository.create({
+			data: {
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				fullName: "acme/dispatch-test",
+				metadata: JSON.stringify({ credentialConnectionId: "pinned-conn-id" }),
+			},
+		});
+
+		const res = await ports.snapshotWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				connectionId: null,
+				defaultBranch: "main",
+			},
+			"/target/dest",
+		);
+
+		expect(mockGitCredentials.withCredential).toHaveBeenCalledWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				connectionId: null,
+				pick: "pinned-conn-id",
+			},
+			expect.any(Function),
+		);
+		expect(mockRepoSource.snapshot).toHaveBeenCalledWith(
+			{
+				kind: "url",
+				source: "https://github.com/acme/dispatch-test.git",
+				defaultBranch: "main",
+				credential: expect.anything(),
+			},
+			"/target/dest",
+			undefined,
+			undefined,
+		);
+		expect(res).toEqual({
+			snap: {
+				path: "/mock/dest",
+				head: "abcd1234ef5678",
+				branch: "main",
+			},
+			credential: {
+				source: "connection",
+				label: "token A",
+				via: "git-host-token",
+			},
+		});
+	});
 });
 
 describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 window B)", () => {
