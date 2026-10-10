@@ -434,6 +434,7 @@ function MenuLink({ to, children }: { to: string; children: ReactNode }) {
 function useArrivals(groups: Grouped[]): Set<string> {
 	const seen = useRef<Set<string> | null>(null);
 	const [fresh, setFresh] = useState<Set<string>>(new Set());
+	const timers = useRef<number[]>([]);
 	const ids = groups.flatMap((g) => g.rows.map((r) => r.id)).join(",");
 	useEffect(() => {
 		const now = ids ? ids.split(",") : [];
@@ -445,15 +446,18 @@ function useArrivals(groups: Grouped[]): Set<string> {
 		for (const id of now) seen.current.add(id);
 		if (added.length === 0) return;
 		setFresh((f) => new Set(Array.from(f).concat(added)));
-		const t = window.setTimeout(
-			() =>
-				setFresh(
-					(f) => new Set(Array.from(f).filter((id) => !added.includes(id))),
-				),
-			3000,
+		// Each batch ends its own glow: a later arrival must not cancel an earlier timer.
+		timers.current.push(
+			window.setTimeout(
+				() =>
+					setFresh(
+						(f) => new Set(Array.from(f).filter((id) => !added.includes(id))),
+					),
+				3000,
+			),
 		);
-		return () => window.clearTimeout(t);
 	}, [ids]);
+	useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
 	return fresh;
 }
 
@@ -468,6 +472,7 @@ function useRowActions(
 	const investigate = useMutation(orpc.incidents.investigate.mutationOptions());
 	const close = useMutation(orpc.incidents.close.mutationOptions());
 	const merge = useMutation(orpc.incidents.merge.mutationOptions());
+	const cancel = useMutation(orpc.investigations.cancel.mutationOptions());
 	const done = (id: string) => async () => {
 		await queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
 		await queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
@@ -510,11 +515,22 @@ function useRowActions(
 			cause: Omit<CloseIncidentInput, "id">,
 		) => {
 			setBusy((b) => ({ ...b, [incident.id]: "Resolving" }));
-			close.mutate(
-				{ id: incident.id, ...cause },
+			const closeIt = () =>
+				close.mutate(
+					{ id: incident.id, ...cause },
+					{
+						onSuccess: done(incident.id),
+						onError: fail(incident.id, "Not resolved"),
+					},
+				);
+			// Stop whichever turn is live first, an older resumed run or a chat (#673 w59).
+			const live = liveOf(incident);
+			if (!live) return closeIt();
+			cancel.mutate(
+				{ id: live.id },
 				{
-					onSuccess: done(incident.id),
-					onError: fail(incident.id, "Not resolved"),
+					onSuccess: closeIt,
+					onError: fail(incident.id, "Stop did not reach the investigation"),
 				},
 			);
 		},

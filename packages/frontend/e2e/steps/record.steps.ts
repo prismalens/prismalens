@@ -905,11 +905,14 @@ Then(
 			"the failed run",
 		);
 		await openBoard(page);
-		const card = cardOf(
-			page.getByTestId("board-column-needs_you"),
-			inc(page).title,
+		const group = page.locator(
+			'[data-testid="needs-group"][data-need="failed"]',
 		);
-		await expect(card.getByTestId("card-word")).toHaveText("Run failed", {
+		const card = cardOf(group, inc(page).title);
+		await expect(card).toBeVisible({ timeout: 60_000 });
+		await expect(
+			card.locator('[data-testid="inbox-row-reason"]'),
+		).toContainText(/Failed|Run failed/, {
 			timeout: 60_000,
 		});
 	},
