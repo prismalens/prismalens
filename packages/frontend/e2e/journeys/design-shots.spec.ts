@@ -136,27 +136,33 @@ test("design shots", async ({ page, agents, alertmanager, deliverWebhook }) => {
 			await expect(page.getByTestId("report-answer")).toBeVisible();
 			await shot(page, `report-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
-			await expect(page.getByTestId("draft-heading")).toBeVisible();
+			await expect(page.getByTestId("run-page")).toHaveAttribute(
+				"data-draft",
+				"",
+			);
 			// This incident has a report, so the draft opens on Ask.
-			await expect(page.getByTestId("verb-chip")).toHaveAttribute(
-				"data-verb",
+			await expect(page.getByTestId("action-chip")).toHaveAttribute(
+				"data-action",
 				"ask",
 			);
 			await shot(page, `conversation-draft-ask-${tag}`);
-			await page.getByTestId("verb-chip").click();
-			await expect(page.getByTestId("verb-menu")).toBeVisible();
+			await page.getByTestId("action-chip").click();
+			await expect(page.getByTestId("action-menu")).toBeVisible();
 			await shot(page, `picker-verbs-${tag}`);
-			await page.getByTestId("verb-investigate").click();
-			await expect(page.getByTestId("composer-investigate")).toBeVisible();
+			await page.getByTestId("action-investigate").click();
+			await expect(page.getByTestId("composer-send")).toBeVisible();
 			await shot(page, `conversation-draft-investigate-${tag}`);
 			await visit(page, `/incidents/${stopped.id}/conversation`);
-			await expect(page.getByTestId("verb-chip")).toHaveAttribute(
-				"data-verb",
-				"investigate",
+			await expect(page.getByTestId("action-chip")).toHaveAttribute(
+				"data-action",
+				"continue",
 			);
 			await shot(page, `conversation-stopped-${tag}`);
 			await visit(page, `/incidents/${done.id}/conversation?investigation=new`);
-			await expect(page.getByTestId("draft-heading")).toBeVisible();
+			await expect(page.getByTestId("run-page")).toHaveAttribute(
+				"data-draft",
+				"",
+			);
 			for (const [chip, menu, name] of [
 				["agent-picker", "agent-picker-list", "picker-models"],
 				["effort-chip", "effort-menu", "picker-effort"],
