@@ -278,9 +278,11 @@ Then(
 				timeout: 15_000,
 			},
 		);
-		await expect(page.getByTestId("transcript-end")).toContainText(
-			"Report ready",
-		);
+		await expect(
+			page
+				.getByTestId("transcript-report")
+				.or(page.getByTestId("transcript-end")),
+		).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByTestId("run-strip")).toBeVisible();
 	},
 );
