@@ -20,6 +20,31 @@ const VALID = {
 };
 
 describe("parseReport", () => {
+	it("keeps an option's kind, command and facts, and drops an id the model wrote (#811)", () => {
+		const step = {
+			title: "Roll back to v1.41",
+			detail: "v1.42 added the query",
+			kind: "stop-impact",
+			command: "kubectl rollout undo deploy/api",
+			facts: ["Undo: deploy v1.42 again"],
+			id: "11111111-1111-4111-8111-111111111111",
+		};
+		const r = parseReport(`\`\`\`json\n${JSON.stringify({ ...VALID, nextSteps: [step] })}\n\`\`\``);
+		expect(r.ok).toBe(true);
+		if (r.ok) {
+			const { id: _id, ...kept } = step;
+			expect(r.report.nextSteps[0]).toEqual(kept);
+		}
+		expect(reportJsonSchema()).toContain("stop-impact");
+		expect(reportJsonSchema()).not.toMatch(/"id":\{"type":"string","format":"uuid"/);
+	});
+
+	it("refuses a fourth fact", () => {
+		const step = { title: "t", detail: "d", facts: ["a", "b", "c", "d"] };
+		const r = parseReport(`\`\`\`json\n${JSON.stringify({ ...VALID, nextSteps: [step] })}\n\`\`\``);
+		expect(r).toMatchObject({ ok: false, reason: "schema" });
+	});
+
 	it("takes the LAST fenced json block and validates it", () => {
 		const text = `thinking...\n\`\`\`json\n{"summary":"draft"}\n\`\`\`\nfinal:\n\`\`\`json\n${JSON.stringify(VALID)}\n\`\`\`\n`;
 		const r = parseReport(text);

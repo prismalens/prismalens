@@ -126,6 +126,32 @@ export class ChangeEventsService {
 		return this.read(scope, opts.limit ?? 6, !sync.done);
 	}
 
+	/** Stored deploys, releases and merges of these services in the window, oldest first; no git read. */
+	async deploysIn(
+		serviceIds: string[],
+		window: { start: Date; end: Date },
+	): Promise<IncidentChange[]> {
+		if (serviceIds.length === 0) return [];
+		const [rows, services] = await Promise.all([
+			this.prisma.changeEvent.findMany({
+				where: {
+					serviceId: { in: serviceIds },
+					timestamp: { gte: window.start, lte: window.end },
+				},
+				orderBy: { timestamp: "asc" },
+				take: MAX_ROWS,
+			}),
+			this.prisma.service.findMany({
+				where: { id: { in: serviceIds } },
+				select: { id: true, name: true },
+			}),
+		]);
+		const names = new Map(services.map((s) => [s.id, s.name]));
+		return rows
+			.map((r) => toChange(r, names))
+			.filter((c) => DEPLOY_KINDS.has(c.kind));
+	}
+
 	/** Reads every linked repository unless a read of this incident is running or fresh. */
 	private sync(scope: Scope, refresh = false): Sync {
 		const now = Date.now();

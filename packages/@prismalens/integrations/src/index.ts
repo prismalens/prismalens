@@ -58,9 +58,13 @@ export {
 	templatesForSegment,
 } from "./providers/index.js";
 // Providers — metrics (#633)
-export type {
-	MetricsQueries,
-	RangeSeries,
+export {
+	type AlertRule,
+	type InstantSample,
+	type MetricsQueries,
+	type QueryBudget,
+	QueryBudgetExceededError,
+	type RangeSeries,
 } from "./providers/metrics.interface.js";
 // Providers — shared types
 export type {

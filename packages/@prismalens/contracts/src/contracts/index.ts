@@ -5,6 +5,8 @@
 export { alertsContract } from "./alerts.js";
 export { changesContract } from "./changes.js";
 export { eventsContract } from "./events.js";
+export { fixesContract } from "./fixes.js";
+export { impactContract } from "./impact.js";
 export { incidentsContract } from "./incidents.js";
 export { type InstanceInfo, instanceContract } from "./instance.js";
 export { integrationsContract } from "./integrations.js";
@@ -42,6 +44,8 @@ export { webhooksContract } from "./webhooks.js";
 import { alertsContract } from "./alerts.js";
 import { changesContract } from "./changes.js";
 import { eventsContract } from "./events.js";
+import { fixesContract } from "./fixes.js";
+import { impactContract } from "./impact.js";
 import { incidentsContract } from "./incidents.js";
 import { instanceContract } from "./instance.js";
 import { integrationsContract } from "./integrations.js";
@@ -64,6 +68,8 @@ import { webhooksContract } from "./webhooks.js";
 export const contract = {
 	alerts: alertsContract,
 	changes: changesContract,
+	fixes: fixesContract,
+	impact: impactContract,
 	incidents: incidentsContract,
 	investigations: investigationsContract,
 	live: liveContract,

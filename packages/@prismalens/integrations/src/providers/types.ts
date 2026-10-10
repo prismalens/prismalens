@@ -19,7 +19,11 @@ import type { MetricsQueries } from "./metrics.interface.js";
 export type AuthenticatedRequestFn = (
 	method: string,
 	path: string,
-	options?: { body?: string; headers?: Record<string, string> },
+	options?: {
+		body?: string;
+		headers?: Record<string, string>;
+		signal?: AbortSignal;
+	},
 ) => Promise<Response>;
 
 /** Segment kind supported by adapters (#446, #633). */

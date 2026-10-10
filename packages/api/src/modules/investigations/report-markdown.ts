@@ -102,7 +102,10 @@ export function reportToMarkdown({
 		out.push("## Next steps", "");
 		for (const step of report.nextSteps) {
 			const priority = step.priority ? ` [${step.priority}]` : "";
-			out.push(`- **${step.title}**${priority}: ${step.detail}`);
+			const kind = step.kind ? `${STEP_KIND_LABEL[step.kind]}: ` : "";
+			out.push(`- ${kind}**${step.title}**${priority}: ${step.detail}`);
+			if (step.command) out.push(...fenced(step.command));
+			for (const fact of step.facts ?? []) out.push(`  - ${fact}`);
 		}
 		out.push("");
 	}
@@ -123,4 +126,24 @@ export function reportToMarkdown({
 
 export function reportFilename(incidentNumber: number): string {
 	return `INC-${incidentNumber}-report.md`;
+}
+
+const STEP_KIND_LABEL = {
+	"stop-impact": "Stop the impact",
+	lasting: "Lasting fix",
+	probe: "Check next",
+} as const;
+
+/** A fence longer than any backtick run in the command, so a model-written command cannot close it. */
+function fenced(command: string): string[] {
+	const longest = Math.max(
+		2,
+		...[...command.matchAll(/`+/g)].map((m) => m[0].length),
+	);
+	const fence = "`".repeat(longest + 1);
+	return [
+		`  ${fence}sh`,
+		...command.split("\n").map((l) => `  ${l}`),
+		`  ${fence}`,
+	];
 }

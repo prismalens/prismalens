@@ -275,6 +275,12 @@ importers:
 
   packages/api:
     dependencies:
+      '@lezer/highlight':
+        specifier: ^1.2.4
+        version: 1.2.4
+      '@lezer/lr':
+        specifier: ^1.4.10
+        version: 1.4.10
       '@nestjs/common':
         specifier: 'catalog:'
         version: 12.1.2(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -329,6 +335,9 @@ importers:
       '@prismalens/logger':
         specifier: workspace:*
         version: link:../@prismalens/logger
+      '@prometheus-io/lezer-promql':
+        specifier: ^0.315.0
+        version: 0.315.0(@lezer/highlight@1.2.4)(@lezer/lr@1.4.10)
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -1509,6 +1518,15 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
+  '@lezer/common@1.5.3':
+    resolution: {integrity: sha512-H0iErY4e43LpXbYDyBci5W4v/RwTgGV3YzYOlJPiGZ8RY8w51kVE+xLn1tg3Z6UmSfyETvtsUK3r7YsgDQEI7Q==}
+
+  '@lezer/highlight@1.2.4':
+    resolution: {integrity: sha512-4UeRVFO0lsBaM7GA32zOqbmqNPme9jedo8Ey+5c5656MU3MLitMLIA8aCZTYjUMEpEsuSeXEm78Uea6Iq3bvSg==}
+
+  '@lezer/lr@1.4.10':
+    resolution: {integrity: sha512-rnCpTIBafOx4mRp43xOxDJbFipJm/c0cia/V5TiGlhmMa+wsSdoGmUN3w5Bqrks/09Q/D4tNAmWaT8p6NRi77A==}
+
   '@lukeed/csprng@1.1.0':
     resolution: {integrity: sha512-Z7C/xXCiGWsg0KuKsHTKJxbWhpI3Vs5GwLfOean7MGyVFGqdRgBbAjOCh6u4bbjPc/8MJ2pZmK/0DLdCbivLDA==}
     engines: {node: '>=8'}
@@ -1848,6 +1866,12 @@ packages:
       '@types/react': ^18.0.0 || ^19.0.0
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
+
+  '@prometheus-io/lezer-promql@0.315.0':
+    resolution: {integrity: sha512-aqLlU1aaoR7OA6ZXM0B6rC+IN6sVTiiWTxMYMmR1xANAF2UJ4aA5XYoveocsdZRMeWDZssPIkmohP0TStV2RVQ==}
+    peerDependencies:
+      '@lezer/highlight': ^1.1.2
+      '@lezer/lr': ^1.2.3
 
   '@publint/pack@0.1.7':
     resolution: {integrity: sha512-4EDEmvxWtgsCnnVeBvtFIFZtUhPPt1+bA9JrSwU4Sa//6oKtzCSlGGXYJr44OD9aGISymbieJ4mCKHUygUDU+g==}
@@ -7938,6 +7962,16 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
+  '@lezer/common@1.5.3': {}
+
+  '@lezer/highlight@1.2.4':
+    dependencies:
+      '@lezer/common': 1.5.3
+
+  '@lezer/lr@1.4.10':
+    dependencies:
+      '@lezer/common': 1.5.3
+
   '@lukeed/csprng@1.1.0': {}
 
   '@malept/cross-spawn-promise@2.0.0':
@@ -8411,6 +8445,11 @@ snapshots:
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
       - '@types/react-dom'
+
+  '@prometheus-io/lezer-promql@0.315.0(@lezer/highlight@1.2.4)(@lezer/lr@1.4.10)':
+    dependencies:
+      '@lezer/highlight': 1.2.4
+      '@lezer/lr': 1.4.10
 
   '@publint/pack@0.1.7':
     dependencies:

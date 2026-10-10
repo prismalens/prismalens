@@ -86,6 +86,23 @@ describe("slackMessage (#606)", () => {
 		);
 	});
 
+	it("leads with the first stop-the-impact option when the report has one (#811)", () => {
+		const text = slackMessage({
+			status: "completed",
+			incident: { id: "i", number: 7, title: "t" },
+			report: {
+				...REPORT,
+				nextSteps: [
+					{ title: "Check logs", detail: "d", kind: "probe" },
+					{ title: "Roll back", detail: "d", kind: "stop-impact" },
+				],
+			},
+			error: null,
+		});
+		expect(text).toContain("*Stop the impact:* Roll back");
+		expect(text).not.toContain("Check logs");
+	});
+
 	it("says a failed run failed, with its error", () => {
 		expect(
 			slackMessage({

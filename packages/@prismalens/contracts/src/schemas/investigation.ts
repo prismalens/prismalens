@@ -93,10 +93,21 @@ export const CoverageSchema = z.object({
  * the report delivered over the wire is self-contained; the persistence layer also
  * writes these as relational Recommendation rows.
  */
+export const NextStepKindSchema = z.enum(["stop-impact", "lasting", "probe"]);
+export type NextStepKind = z.infer<typeof NextStepKindSchema>;
+
 export const NextStepSchema = z.object({
 	title: z.string().min(1),
 	detail: z.string().min(1),
 	priority: RecommendationPrioritySchema.nullable().optional(),
+	/** stop-impact: undo or switch off now (0 to 3); lasting: the fix that stops a recurrence (0 or 1); probe: what to check next. Absent reads as probe. */
+	kind: NextStepKindSchema.optional(),
+	/** One shell command the user copies and runs; nothing runs it (ADR 0001 §4). */
+	command: z.string().min(1).max(2000).optional(),
+	/** Up to three short facts beside the option; one states the undo, "No undo known" or "Not reversible". */
+	facts: z.array(z.string().min(1).max(300)).max(3).optional(),
+	/** Host-stamped: the Recommendation row this option is (#811). Absent on reports written before it, which are read-only. */
+	id: z.string().uuid().optional(),
 });
 
 /**
