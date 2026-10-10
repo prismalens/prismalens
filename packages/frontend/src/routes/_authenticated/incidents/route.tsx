@@ -1,13 +1,11 @@
 /**
- * The incidents frame (#523, #743): a fixed viewport beside the sidebar, which
- * carries the incident list from 1280; the board or the open incident fills
- * it. On the phone the board's columns stack and are the list (study-v3 §3.1).
- * Nothing here scrolls the window; each pane scrolls itself. The filters live
- * in this route's search so the list, the board and the record share one window.
+ * The incidents frame (#523, #811): a fixed viewport beside the sidebar; the
+ * inbox, All incidents, Analytics or the open incident fills it. Nothing here
+ * scrolls the window; each pane scrolls itself. The views and their filters
+ * live in this route's search.
  */
 import type { IncidentStatus, Priority, Severity } from "@prismalens/contracts";
-import { createFileRoute, Outlet, useMatch } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 export interface IncidentsSearch {
 	status?: IncidentStatus;
@@ -17,7 +15,7 @@ export interface IncidentsSearch {
 	open?: "1";
 	from?: string;
 	to?: string;
-	view?: "analytics";
+	view?: "analytics" | "all";
 }
 
 function str<T extends string>(v: unknown): T | undefined {
@@ -32,23 +30,18 @@ export const Route = createFileRoute("/_authenticated/incidents")({
 		open: search.open === "1" ? "1" : undefined,
 		from: str(search.from),
 		to: str(search.to),
-		view: search.view === "analytics" ? "analytics" : undefined,
+		view:
+			search.view === "analytics" || search.view === "all"
+				? search.view
+				: undefined,
 	}),
 	component: IncidentsFrame,
 });
 
 function IncidentsFrame() {
-	const record = useMatch({
-		from: "/_authenticated/incidents/$id",
-		shouldThrow: false,
-	});
 	return (
 		<div
-			className={cn(
-				"fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)",
-				// In the desktop window an open record's band is the title strip (#752).
-				!!record && "desktop:top-0 desktop:z-40",
-			)}
+			className="fixed inset-x-0 bottom-0 top-(--frame-top) bg-canvas md:left-(--sidebar-w)"
 			data-testid="incidents-frame"
 		>
 			<div className="h-full min-h-0 min-w-0">
