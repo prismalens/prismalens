@@ -200,8 +200,8 @@ export const ACCESS_LEVEL_LINE: Record<AccessLevel, string> = {
 		"The agent's full-access mode. PrismaLens approves what it still asks and logs it. It can do anything your user can on this machine, inside whatever sandbox the agent itself runs.",
 };
 
-/** A mode whose sandbox no check proved here. */
-export const NO_SANDBOX = "No sandbox proven here.";
+/** A mode whose sandbox no check proved here; the operator's wording (#811, build-handoff ruling 3). */
+export const NO_SANDBOX = "No sandbox on this machine.";
 
 /** Levels a run recorded before the two axes (#778), by the level they read as now. */
 export const LEGACY_ACCESS_LEVEL: Record<string, AccessLevel> = {
