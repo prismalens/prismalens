@@ -18,7 +18,15 @@ Feature: Agent and model picker
     And the model chip's list is the one Codex offers, with no "Run a check to list models"
     When I pick Claude Code and open a new run's draft
     Then the effort chip is disabled, reading "Default"
-    And every agent shows its own default permission mode, by the agent's name once checked
+    And every agent offers the same four permission levels, "Ask always" first, the default row tagged "Your default", "PrismaLens default" or "From Settings", and a lock only where a sandbox was proven
+
+  Scenario: The access chip shows four levels with Ask always as the default
+    When I pick Codex and open a new run's draft
+    Then the access chip reads "Ask always"
+    When I open the access chip
+    Then the popover shows four permission levels with "Ask always" first
+    And "Ask always" is tagged "PrismaLens default"
+
 
   # #673 w59: the verb chip, first in a draft's footer, and its popover.
   Scenario: The verb chip says what the next message asks for

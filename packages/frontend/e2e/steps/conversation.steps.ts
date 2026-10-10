@@ -72,7 +72,12 @@ async function runOn(page: Page, f: Fire, name: string, session: string) {
 	await f.deliverWebhook([listed.fingerprint]);
 	const made = { ...(await incidentByTitle(page, labels.alertname)), labels };
 	w(page).inc = made;
-	await waitForRun(page, made.id, (r) => r.status === "running", "the run");
+	await waitForRun(
+		page,
+		made.id,
+		(r) => r.status === "running" || r.status === "completed",
+		"the run",
+	);
 	return made;
 }
 
@@ -1152,16 +1157,103 @@ Then(
 );
 
 Then(
-	/^(?:the run ends with|the end line offers) "Report ready"$/,
-	async ({ page }) => {
+	/^(?:the run ends with|the end line offers) "(Report ready|No report)"$/,
+	async ({ page }, expected: string) => {
 		await waitForRun(
 			page,
 			inc(page).id,
 			(r) => r.status === "completed",
-			"the run's report",
+			`the run's end with ${expected}`,
 		);
 		const end = page.getByTestId("transcript-end");
 		await expect(end).toBeVisible();
-		await expect(end).toContainText("Report ready");
+		await expect(end).toContainText(expected);
 	},
 );
+
+Given(
+	'INC-2 has a run started on {string} at "Auto-accept edits"',
+	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
+		const oldRuns = await page.request
+			.get("/api/investigations?status=running&limit=100")
+			.catch(() => null);
+		if (oldRuns?.ok()) {
+			const { data } = (await oldRuns.json()) as { data: { id: string }[] };
+			for (const r of data) {
+				await page.request
+					.post(`/api/investigations/${r.id}/cancel`)
+					.catch(() => null);
+			}
+		}
+
+		await page.request.patch("/api/settings/harness", {
+			data: {
+				autoAccessLevels: {
+					opencode: "auto-edits",
+					"claude-code": "auto-edits",
+					codex: "auto-edits",
+				},
+				accessLevels: {
+					opencode: "auto-edits",
+					"claude-code": "auto-edits",
+					codex: "auto-edits",
+				},
+			},
+		});
+		const s = session.replace(/^fake-session:/, "");
+		await runOn(
+			page,
+			{ alertmanager, deliverWebhook, unique },
+			"BooklogrAutoEditsProbe",
+			s,
+		);
+		await openConversation(page);
+	},
+);
+
+Then(
+	"no card waits and the conversation shows {string}",
+	async ({ page }, text: string) => {
+		await expect(page.getByTestId("transcript-ask")).toHaveCount(0);
+		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
+		const allowed = page.getByTestId("transcript-allowed");
+		await expect(allowed).toBeVisible();
+		await expect(allowed).toContainText(text);
+	},
+);
+
+Given(
+	"INC-3 has a run started on {string}",
+	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
+		const oldRuns = await page.request
+			.get("/api/investigations?status=running&limit=100")
+			.catch(() => null);
+		if (oldRuns?.ok()) {
+			const { data } = (await oldRuns.json()) as { data: { id: string }[] };
+			for (const r of data) {
+				await page.request
+					.post(`/api/investigations/${r.id}/cancel`)
+					.catch(() => null);
+			}
+		}
+
+		const s = session.replace(/^fake-session:/, "");
+		await runOn(
+			page,
+			{ alertmanager, deliverWebhook, unique },
+			"BooklogrSwitchModeProbe",
+			s,
+		);
+		await openConversation(page);
+	},
+);
+
+Then("the conversation shows {string}", async ({ page }, text: string) => {
+	const kept = page.getByTestId("transcript-mode-kept");
+	if ((await kept.count()) > 0) {
+		await expect(kept).toBeVisible();
+		await expect(kept).toContainText(text);
+		return;
+	}
+	await expect(page.getByTestId("transcript")).toContainText(text);
+});

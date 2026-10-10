@@ -102,7 +102,11 @@ export function installFakeAgent(binDir, opts = {}) {
 function run() {
 	const sessionArg = process.argv.indexOf("--session");
 	const defaultName =
-		sessionArg > -1 ? process.argv[sessionArg + 1] : "success";
+		process.env.FAKE_ACP_MODE === "switch-mode"
+			? "switch-mode"
+			: sessionArg > -1
+				? process.argv[sessionArg + 1]
+				: "success";
 	const cwd = process.cwd();
 	let script = loadSession(defaultName);
 	let scriptName = defaultName;

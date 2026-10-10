@@ -667,19 +667,77 @@ Then(
 );
 
 Then(
-	"every agent shows its own default permission mode, by the agent's name once checked",
+	'every agent offers the same four permission levels, "Ask always" first, the default row tagged "Your default", "PrismaLens default" or "From Settings", and a lock only where a sandbox was proven',
 	async ({ page }) => {
-		// Each agent's Permission row names its default and where it came from (#673 w21).
-		for (const id of ["opencode", "claude-code", "codex"]) {
+		for (const id of ["claude-code", "codex", "opencode"]) {
 			await pickAgent(page, id);
-			await page.goto("/settings?tab=harness");
-			await expect(page.getByTestId("harness-access")).toContainText(
-				/(Your default: |PrismaLens default|set here)/,
+			await page.reload();
+			await expect(page.getByTestId("docked-composer")).toBeVisible();
+			const chip = page.getByTestId("access-chip");
+			await expect(chip).toBeVisible();
+			await chip.click();
+			const menu = page.getByTestId("access-menu");
+			await expect(menu).toBeVisible();
+
+			const levels = menu.locator('[role="option"]');
+			await expect(levels).toHaveCount(4);
+
+			for (const level of ["supervised", "auto-edits", "auto", "full-access"]) {
+				await expect(menu.getByTestId(`access-level-${level}`)).toBeVisible();
+			}
+
+			const tag = menu.getByTestId("access-default-tag");
+			await expect(tag).toBeVisible();
+			await expect(tag).toHaveText(
+				/^(Your default|PrismaLens default|From Settings)$/,
 			);
+
+			await page.keyboard.press("Escape");
+			await expect(menu).toBeHidden();
 		}
 		await pickAgent(page, "auto");
 	},
 );
+
+Then("the access chip reads {string}", async ({ page }, text: string) => {
+	await expect(page.getByTestId("access-chip")).toContainText(text);
+});
+
+When("I open the access chip", async ({ page }) => {
+	await page.getByTestId("access-chip").click();
+	await expect(page.getByTestId("access-menu")).toBeVisible();
+});
+
+Then(
+	'the popover shows four permission levels with "Ask always" first',
+	async ({ page }) => {
+		const menu = page.getByTestId("access-menu");
+		const levels = menu.locator('[role="option"]');
+		await expect(levels).toHaveCount(4);
+		await expect(levels.first()).toHaveAttribute(
+			"data-testid",
+			"access-level-supervised",
+		);
+		await expect(levels.first()).toContainText("Ask always");
+		for (const level of ["supervised", "auto-edits", "auto", "full-access"]) {
+			await expect(menu.getByTestId(`access-level-${level}`)).toBeVisible();
+		}
+	},
+);
+
+Then(
+	"{string} is tagged {string}",
+	async ({ page }, _level: string, tagText: string) => {
+		const tag = page.getByTestId("access-default-tag");
+		await expect(tag).toBeVisible();
+		await expect(tag).toHaveText(tagText);
+	},
+);
+
+When("I pick {string} in the access menu", async ({ page }, level: string) => {
+	const menu = page.getByTestId("access-menu");
+	await menu.getByText(level, { exact: true }).click();
+});
 
 // --- A chip changes only this run (#673 w52) ------------------------------------------
 
