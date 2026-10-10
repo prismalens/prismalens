@@ -12,10 +12,17 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
-import { buildRunFidelity, createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
+import {
+	buildRunFidelity,
+	createSteerChannel,
+	prepareRunEnv,
+	ranLevel,
+	runInvestigation,
+} from "./investigate.js";
 import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
 
 const autoApprovePolicy: PermissionPolicy = (req) => {
@@ -986,5 +993,300 @@ describe("the agent's own mode (#673 w21)", () => {
 		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
 		const setMode = sent.find((m) => m.method === "session/set_mode");
 		expect(setMode?.params?.modeId).toBe("build");
+	});
+
+	it("each level on Codex sets the mode via config option (#673 w21)", async () => {
+		const levels = [
+			{
+				level: "supervised" as const,
+				initialModes: "agent=Approve for me,read-only=Ask for approval",
+				wantMode: "read-only",
+			},
+			{ level: "auto" as const, initialModes: "", wantMode: "agent" },
+			{
+				level: "full-access" as const,
+				initialModes: "",
+				wantMode: "agent-full-access",
+			},
+		];
+		for (const { level, initialModes, wantMode } of levels) {
+			const { events, runDir } = await collect("ok", {
+				harness: "codex",
+				accessLevel: level,
+				permission: autoApprovePolicy,
+				env: {
+					...process.env,
+					FAKE_ACP_MODE: "ok",
+					FAKE_PROFILE: "codex",
+					FAKE_MODES: initialModes,
+				},
+			});
+			const wire = wireOut(runDir);
+			const setConfig = wire
+				.map(
+					(m) =>
+						JSON.parse(m) as {
+							method?: string;
+							params?: { configId?: string; value?: string };
+						},
+				)
+				.find(
+					(m) =>
+						m.method === "session/set_config_option" &&
+						m.params?.configId === "mode",
+				);
+			expect(setConfig?.params?.value).toBe(wantMode);
+			expect(wire.some((m) => m.includes("session/set_mode"))).toBe(false);
+			const report = events.at(-1);
+			if (report?.kind !== "report") throw new Error("no report");
+			expect(report.report.fidelity).toMatchObject({
+				mode: wantMode,
+				mechanism: "acp-config",
+				access: level,
+				ranAccess: level,
+			});
+		}
+	});
+
+	it("each level on Claude Code sets the mode via session/set_mode (#673 w21)", async () => {
+		const levels = [
+			{
+				level: "supervised" as const,
+				initialModes: "plan=Plan,default=Manual",
+				wantMode: "default",
+			},
+			{ level: "auto-edits" as const, initialModes: "", wantMode: "acceptEdits" },
+			{ level: "auto" as const, initialModes: "", wantMode: "auto" },
+			{
+				level: "full-access" as const,
+				initialModes: "",
+				wantMode: "bypassPermissions",
+			},
+		];
+		for (const { level, initialModes, wantMode } of levels) {
+			const { events, runDir } = await collect("ok", {
+				harness: "claude-code",
+				accessLevel: level,
+				permission: autoApprovePolicy,
+				env: {
+					...process.env,
+					FAKE_ACP_MODE: "ok",
+					FAKE_PROFILE: "claude",
+					FAKE_MODES: initialModes,
+				},
+			});
+			const sent = wireOut(runDir).map(
+				(m) =>
+					JSON.parse(m) as { method?: string; params?: { modeId?: string } },
+			);
+			const setMode = sent.find((m) => m.method === "session/set_mode");
+			expect(setMode?.params?.modeId).toBe(wantMode);
+			const report = events.at(-1);
+			if (report?.kind !== "report") throw new Error("no report");
+			expect(report.report.fidelity).toMatchObject({
+				mode: wantMode,
+				mechanism: "acp-mode",
+				access: level,
+				ranAccess: level,
+			});
+		}
+	});
+
+	it("each level on OpenCode applies the right overlay and mode build (#673 w21)", async () => {
+		const levels = [
+			{ level: "supervised" as const, edit: "ask", bash: "ask" },
+			{ level: "auto-edits" as const, edit: "allow", bash: "ask" },
+			{ level: "auto" as const, edit: "ask", bash: "ask" },
+			{ level: "full-access" as const, edit: "allow", bash: "allow" },
+		];
+		for (const { level, edit, bash } of levels) {
+			const { events, runDir } = await collect("ok", {
+				harness: "opencode",
+				accessLevel: level,
+				permission: autoApprovePolicy,
+				descriptor: {
+					...HARNESS_REGISTRY.opencode,
+					binary: process.execPath,
+					acpArgs: () => [FAKE],
+				},
+			});
+			const config = JSON.parse(
+				readFileSync(join(runDir, "config", "opencode.json"), "utf8"),
+			);
+			expect(config.permission.edit["*"]).toBe(edit);
+			expect(config.permission.bash["*"]).toBe(bash);
+			expect(config.agent.build.permission.edit["*"]).toBe(edit);
+			expect(config.agent.build.permission.bash["*"]).toBe(bash);
+			const report = events.at(-1);
+			if (report?.kind !== "report") throw new Error("no report");
+			expect(report.report.fidelity).toMatchObject({
+				mode: "build",
+				mechanism: "opencode-permission",
+				access: level,
+				ranAccess: level,
+			});
+		}
+	});
+
+	it("When setMode receives a JSON-RPC error, Then it returns false and the fallback runs (#673 w21)", async () => {
+		const { events, runDir } = await collect("ok", {
+			harness: "claude-code",
+			accessLevel: "full-access",
+			permission: autoApprovePolicy,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_PROFILE: "claude",
+				FAKE_MODES: "",
+				FAKE_REFUSE_MODES: "bypassPermissions",
+			},
+		});
+		const sent = wireOut(runDir).map(
+			(m) =>
+				JSON.parse(m) as { method?: string; params?: { modeId?: string } },
+		);
+		const modeCalls = sent
+			.filter((m) => m.method === "session/set_mode")
+			.map((m) => m.params?.modeId);
+		expect(modeCalls).toEqual(["bypassPermissions", "acceptEdits"]);
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({
+			mode: "acceptEdits",
+			access: "full-access",
+			ranAccess: "auto-edits",
+		});
+	});
+
+	it("clamp case: this.modes.current equals the agent's reported mode (#673 w21)", async () => {
+		const { events } = await collect("ok", {
+			harness: "claude-code",
+			accessLevel: "auto",
+			permission: autoApprovePolicy,
+			descriptor: {
+				binary: process.execPath,
+				acpArgs: () => [FAKE, "--clamp-auto"],
+				acpEnv: () => ({
+					FAKE_ACP_MODE: "ok",
+					FAKE_PROFILE: "claude",
+					FAKE_MODES: "",
+				}),
+				configFiles: () => ({}),
+			},
+		});
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({
+			mode: "acceptEdits",
+			ranAccess: "auto-edits",
+			access: "auto",
+			runMode: "execute",
+		});
+	});
+
+	it("Plan on a claude-shaped fake records ranAccess null and runs sandbox check for plan (#673 w21)", async () => {
+		const askedSandbox: string[][] = [];
+		const { events, runDir } = await collect("plan", {
+			harness: "claude-code",
+			runMode: "plan",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "plan",
+				FAKE_PROFILE: "claude",
+				FAKE_MODES: "",
+			},
+			sandboxCheck: async (_h, modes) => {
+				askedSandbox.push([...modes]);
+				return Object.fromEntries(
+					modes.map((m) => [m, { state: "none", reason: "test" }]),
+				);
+			},
+		});
+		expect(askedSandbox).toEqual([["plan"]]);
+		expect(ranLevel("claude-code", "supervised", "plan", "plan")).toBeUndefined();
+
+		const kept = events.find((e) => e.kind === "permission_answer");
+		expect(kept).toMatchObject({ kind: "permission_answer", outcome: "plan_kept" });
+		const wire = wireOut(runDir);
+		expect(wire.some((m) => m.includes("session/cancel"))).toBe(true);
+		expect(events.some((e) => e.kind === "report")).toBe(false);
+		expect(events.at(-1)?.kind).toBe("branch_done");
+		const steps = events.filter((e) => e.kind === "agent_step");
+		expect(
+			steps.some(
+				(s) => s.kind === "agent_step" && s.text.includes("1. Read the handler"),
+			),
+		).toBe(true);
+	});
+
+	it("conductRun ends Plan run without a report with failureKind none (#673 w21)", async () => {
+		let finishedReport: unknown = "not-called";
+		const outcome = await conductRun(
+			opts("plan", {
+				harness: "claude-code",
+				runMode: "plan",
+				env: {
+					...process.env,
+					FAKE_ACP_MODE: "plan",
+					FAKE_PROFILE: "claude",
+					FAKE_MODES: "",
+				},
+			}),
+			{
+				sink: () => {},
+				store: {
+					create: async () => {},
+					append: async () => {},
+					finish: async (report) => {
+						finishedReport = report;
+					},
+					fail: async () => {},
+				},
+			},
+		);
+		expect(outcome).toMatchObject({
+			report: null,
+			error: null,
+			failureKind: "none",
+		});
+		expect(finishedReport).toBeNull();
+	});
+
+	it("resumed run keeps the stored mode and re-sets only when different (#673 w21)", async () => {
+		const same = await collect("resume", {
+			harness: "opencode",
+			accessLevel: "supervised",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "resume",
+				FAKE_LOAD_SESSION: "1",
+				FAKE_MODES: "build=Build",
+			},
+			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [] },
+		});
+		expect(
+			wireOut(same.runDir).some((m) => m.includes("session/set_mode")),
+		).toBe(false);
+	});
+
+	it("permission stream items for allowed carry no permission_asked (#673 w21)", async () => {
+		const { events } = await collect("ok", {
+			harness: "claude-code",
+			accessLevel: "auto",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_PROFILE: "claude",
+				FAKE_MODES: "",
+			},
+		});
+		const answers = events.filter((e) => e.kind === "permission_answer");
+		expect(answers.length).toBeGreaterThan(0);
+		for (const a of answers) {
+			if (a.kind === "permission_answer") {
+				expect(a.outcome).toBe("allowed");
+			}
+		}
+		expect(events.some((e) => e.kind === "permission_ask")).toBe(false);
 	});
 });

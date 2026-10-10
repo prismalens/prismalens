@@ -32,8 +32,19 @@ import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
 const cwd = process.cwd();
-const clampAuto = process.argv.includes("--clamp-auto");
-const refuseMode = process.argv.includes("--refuse-mode");
+const clampAuto =
+	process.argv.includes("--clamp-auto") || Boolean(process.env.FAKE_CLAMP_AUTO);
+const refuseModeArg =
+	process.argv.find(
+		(a) => a === "--refuse-mode" || a.startsWith("--refuse-mode="),
+	) ?? "";
+const refuseModeTarget = refuseModeArg.startsWith("--refuse-mode=")
+	? refuseModeArg.slice(14)
+	: (process.env.FAKE_REFUSE_MODES ?? "");
+const refuseMode =
+	process.argv.includes("--refuse-mode") ||
+	Boolean(refuseModeTarget) ||
+	Boolean(process.env.FAKE_REFUSE_MODE);
 const profile = process.env.FAKE_PROFILE ?? "";
 
 if (mode === "unauthenticated") {
@@ -106,7 +117,7 @@ const CLAUDE_MODES =
 	"default=Manual,acceptEdits=Accept Edits,auto=Auto,bypassPermissions=Bypass Permissions,plan=Plan";
 const CODEX_MODES = `read-only=Ask for approval,${process.env.FAKE_CODEX_V2 ? "workspace-write=Workspace write," : ""}agent=Approve for me,agent-full-access=Full access`;
 const modeList = (
-	process.env.FAKE_MODES ??
+	(process.env.FAKE_MODES ? process.env.FAKE_MODES : null) ??
 	(profile === "claude" ? CLAUDE_MODES : profile === "codex" ? CODEX_MODES : "")
 )
 	.split(",")
@@ -147,7 +158,11 @@ const sessionModes = () =>
 		: undefined;
 /** A mode switch as the agent takes it: refused, clamped, or as asked. */
 const switchMode = (sessionId, modeId) => {
-	if (refuseMode) return false;
+	if (
+		refuseMode &&
+		(!refuseModeTarget || refuseModeTarget.split(",").includes(modeId))
+	)
+		return false;
 	currentMode = clampAuto && modeId === "auto" ? "acceptEdits" : modeId;
 	if (profile !== "codex")
 		notify(sessionId, {
