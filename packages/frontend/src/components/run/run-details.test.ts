@@ -190,7 +190,7 @@ describe("summarySections (#811 data mapping)", () => {
 				agent: "Claude Code 2.3.1",
 				model: { text: "Opus", warn: false },
 				effort: "High",
-				access: { text: "Auto", sub: "No sandbox proven here." },
+				access: { text: "Auto", sub: "No sandbox on this machine." },
 				chat: false,
 			},
 		);
