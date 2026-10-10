@@ -17,7 +17,11 @@ import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
 import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { gatherLine } from "@/lib/gather-line";
-import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
+import {
+	deriveTranscript,
+	pinnedTo,
+	runCodeClause,
+} from "@/lib/investigation-events";
 import { recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import type { ComposerSend } from "./ComposerBox";
@@ -180,6 +184,7 @@ export function ConversationRoute() {
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
 						lead={lead}
+						code={runCodeClause(investigation.workspace)}
 						onRecheck={onRecheck}
 					/>
 				)}

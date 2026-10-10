@@ -64,6 +64,10 @@ export default defineConfig({
 					NEW_CODE_THRESHOLD,
 				"src/core/harness/harness.service.ts": NEW_CODE_THRESHOLD,
 				"src/core/harness/repo-source.service.ts": NEW_CODE_THRESHOLD,
+				"src/core/harness/git-*.ts": NEW_CODE_THRESHOLD,
+				"src/modules/integrations/git-credential.service.ts":
+					NEW_CODE_THRESHOLD,
+				"src/modules/integrations/host-token.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

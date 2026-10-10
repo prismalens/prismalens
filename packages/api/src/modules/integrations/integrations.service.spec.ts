@@ -167,7 +167,7 @@ describe("IntegrationsService.testConnection (#633)", () => {
 		});
 	});
 
-	it("github-app has verify and no connection credential fields, and still goes through verifyConnection", async () => {
+	it("a removed GitHub App row is never verified and its status is left alone", async () => {
 		const conn = {
 			id: "conn-gh-1",
 			integrationId: "int-gh-1",
@@ -177,12 +177,11 @@ describe("IntegrationsService.testConnection (#633)", () => {
 		};
 
 		mockPrisma.connection.findFirst.mockResolvedValue(conn);
-		mockPrisma.connection.update.mockResolvedValue(conn);
-		mockAuthManager.verifyConnection.mockResolvedValue({ success: true });
 
 		const result = await service.testConnection("conn-gh-1");
 
-		expect(result).toEqual({ success: true });
-		expect(mockAuthManager.verifyConnection).toHaveBeenCalledWith("conn-gh-1");
+		expect(result.success).toBe(false);
+		expect(mockAuthManager.verifyConnection).not.toHaveBeenCalled();
+		expect(mockPrisma.connection.update).not.toHaveBeenCalled();
 	});
 });

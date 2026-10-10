@@ -6,7 +6,7 @@
  * saves, even when git fails — a failed validation lands as `syncError`, never
  * a thrown request — and becomes the service's one primary repo, demoting
  * whichever repo held that slot before. PrismaService, RepoSourceService and
- * IntegrationsService are doubles; `$transaction(async (tx) => …)` is
+ * GitCredentialService are doubles; `$transaction(async (tx) => …)` is
  * exercised through the same interactive-tx double as
  * `incidents.service.spec.ts` uses.
  */
@@ -14,7 +14,7 @@ import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
-import { IntegrationsService } from "../integrations/integrations.service.js";
+import { GitCredentialService } from "../integrations/git-credential.service.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
@@ -48,8 +48,10 @@ describe("RepositoriesService.addSource", () => {
 		validate: vi.fn(),
 	};
 
-	const mockIntegrations = {
-		gitToken: vi.fn(),
+	const mockGitCredentials = {
+		withCredential: vi.fn(),
+		preview: vi.fn(),
+		invalidate: vi.fn(),
 	};
 
 	beforeEach(async () => {
@@ -76,7 +78,7 @@ describe("RepositoriesService.addSource", () => {
 				RepositoriesService,
 				{ provide: PrismaService, useValue: mockPrisma },
 				{ provide: RepoSourceService, useValue: mockRepoSource },
-				{ provide: IntegrationsService, useValue: mockIntegrations },
+				{ provide: GitCredentialService, useValue: mockGitCredentials },
 				{ provide: TelemetryService, useValue: telemetryStub() },
 			],
 		}).compile();

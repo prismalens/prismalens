@@ -156,15 +156,8 @@ export function IntegrationFormDialog({
 					clientId = oauthClientId;
 					clientSecret = oauthClientSecret;
 				} else if (integrationFields.length > 0) {
-					clientId = credentialValues.appId;
-					const privateKey = credentialValues.privateKey;
-					const webhookSecret = credentialValues.webhookSecret;
-					if (privateKey) {
-						clientSecret = JSON.stringify({
-							privateKey,
-							...(webhookSecret ? { webhookSecret } : {}),
-						});
-					}
+					clientId = credentialValues.clientId;
+					clientSecret = credentialValues.clientSecret;
 				}
 
 				const created = await createIntegration.mutateAsync({
@@ -198,15 +191,8 @@ export function IntegrationFormDialog({
 						clientId = oauthClientId || undefined;
 						clientSecret = oauthClientSecret || undefined;
 					} else if (integrationFields.length > 0) {
-						clientId = credentialValues.appId || undefined;
-						const privateKey = credentialValues.privateKey;
-						const webhookSecret = credentialValues.webhookSecret;
-						if (privateKey) {
-							clientSecret = JSON.stringify({
-								privateKey,
-								...(webhookSecret ? { webhookSecret } : {}),
-							});
-						}
+						clientId = credentialValues.clientId || undefined;
+						clientSecret = credentialValues.clientSecret || undefined;
 					}
 				}
 
@@ -254,7 +240,10 @@ export function IntegrationFormDialog({
 					<div className="-mx-2">
 						{templates
 							?.filter(
-								(t) => t.authMode !== "api_key" && t.authMode !== "basic",
+								(t) =>
+									t.authMode !== "api_key" &&
+									t.authMode !== "basic" &&
+									t.listed !== false,
 							)
 							.map((template) => (
 								<button

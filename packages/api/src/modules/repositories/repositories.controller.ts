@@ -13,23 +13,29 @@ import type { Repository as PrismaRepository } from "@prismalens/database";
 import { RepositoriesService } from "./repositories.service.js";
 import { serializeRepository } from "./serialize-repository.js";
 
-function serializeRepositoryWithServices(
-	repo: PrismaRepository & {
-		services?: Array<{ createdAt: Date; [key: string]: unknown }>;
-	},
-): RepositoryWithServices {
-	return {
-		...serializeRepository(repo),
-		services: repo.services?.map((s) => ({
-			...s,
-			createdAt: s.createdAt.toISOString(),
-		})) as ServiceRepository[] | undefined,
-	} as RepositoryWithServices;
-}
-
 @Controller()
 export class RepositoriesController {
 	constructor(private readonly repositoriesService: RepositoriesService) {}
+
+	private serialize(repo: PrismaRepository): Promise<Repository> {
+		return serializeRepository(repo, (r) =>
+			this.repositoriesService.credentialFor(r),
+		);
+	}
+
+	private async serializeWithServices(
+		repo: PrismaRepository & {
+			services?: Array<{ createdAt: Date; [key: string]: unknown }>;
+		},
+	): Promise<RepositoryWithServices> {
+		return {
+			...(await this.serialize(repo)),
+			services: repo.services?.map((s) => ({
+				...s,
+				createdAt: s.createdAt.toISOString(),
+			})) as ServiceRepository[] | undefined,
+		} as RepositoryWithServices;
+	}
 
 	@Implement(repositoriesContract)
 	repositories() {
@@ -38,18 +44,18 @@ export class RepositoriesController {
 			addSource: implement(repositoriesContract.addSource).handler(
 				async ({ input, context }) => {
 					const repo = await this.repositoriesService.addSource(input);
-					return serializeRepository(repo);
+					return this.serialize(repo);
 				},
 			),
 
-			// POST /repositories/batch - Batch create repositories
-			batchCreate: implement(repositoriesContract.batchCreate).handler(
-				async ({ input, context }) => {
-					const result = await this.repositoriesService.batchCreate(input);
-					return {
-						created: result.created,
-						repositories: result.repositories.map(serializeRepository),
-					};
+			// PATCH /repositories/:id/credential - Pin a saved token, or Auto
+			setCredential: implement(repositoriesContract.setCredential).handler(
+				async ({ input }) => {
+					const repo = await this.repositoriesService.setCredential(
+						input.id,
+						input.connectionId,
+					);
+					return this.serialize(repo);
 				},
 			),
 
@@ -70,7 +76,9 @@ export class RepositoriesController {
 					offset: input.offset,
 				});
 				return {
-					data: data.map(serializeRepositoryWithServices),
+					data: await Promise.all(
+						data.map((r) => this.serializeWithServices(r)),
+					),
 					total,
 				};
 			}),
@@ -83,7 +91,7 @@ export class RepositoriesController {
 						message: "Repository not found",
 					});
 				}
-				return serializeRepositoryWithServices(repo);
+				return this.serializeWithServices(repo);
 			}),
 
 			// POST /repositories/:id/link - Link repository to service

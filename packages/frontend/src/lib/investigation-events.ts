@@ -14,6 +14,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	PermissionAskOutcome,
+	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
 import {
@@ -506,6 +507,38 @@ export function pinnedTo(
 	if (repos.length === 0) return undefined;
 	if (repos.length === 1) return repos[0]?.head.slice(0, 7);
 	return repos.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
+}
+
+/** `token A`, `machine git (gh, sumit)`, `public`; a fallback says the machine's own git was refused (#673). */
+export function credentialLabel(c: RunCredential): string {
+	return c.fallback ? `${c.label} (your machine's git was refused)` : c.label;
+}
+
+/**
+ * The `Code:` clause of a run (UI placement, #673): which credential cloned each
+ * repository, with the full source and fingerprint for the tooltip. Null on a run
+ * from before credentials were recorded, or one that read no code.
+ */
+export function runCodeClause(
+	workspace:
+		| { repos: { name: string; credential?: RunCredential }[] }
+		| null
+		| undefined,
+): { text: string; title: string } | null {
+	const repos = (workspace?.repos ?? []).flatMap((r) =>
+		r.credential ? [{ name: r.name, credential: r.credential }] : [],
+	);
+	if (repos.length === 0) return null;
+	const labels = repos
+		.map((r) => credentialLabel(r.credential))
+		.filter((label, i, all) => all.indexOf(label) === i);
+	const title = repos
+		.map((r) => {
+			const detail = `${credentialLabel(r.credential)}, via ${r.credential.via}`;
+			return repos.length > 1 ? `${r.name}: ${detail}` : detail;
+		})
+		.join("\n");
+	return { text: `Code: ${labels.join(", ")}`, title };
 }
 
 /** The line before a follow-up's first message: the same session, and the code it reopened at. */

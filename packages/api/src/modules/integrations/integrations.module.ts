@@ -6,6 +6,7 @@ import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { ConnectorResolverService } from "./connector-resolver.service.js";
 import { CredentialsService } from "./crypto/credentials.service.js";
+import { GitCredentialService } from "./git-credential.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
@@ -18,7 +19,13 @@ import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 		CredentialsService,
 		TokenRefreshProcessor,
 		ConnectorResolverService,
+		GitCredentialService,
 	],
-	exports: [IntegrationsService, CredentialsService, ConnectorResolverService],
+	exports: [
+		IntegrationsService,
+		CredentialsService,
+		ConnectorResolverService,
+		GitCredentialService,
+	],
 })
 export class IntegrationsModule {}

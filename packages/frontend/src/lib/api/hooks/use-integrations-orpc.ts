@@ -252,32 +252,8 @@ export function useTestConnection() {
 }
 
 // =============================================================================
-// GIT PROVIDER (GitHub, GitLab, BitBucket)
+// CONNECTION CONFIG
 // =============================================================================
-
-/**
- * Fetch organizations from a git provider connection
- */
-export function useGitOrganizations(connectionId: string) {
-	return useQuery({
-		...orpc.integrations.getGitOrganizations.queryOptions({
-			input: { id: connectionId },
-		}),
-		enabled: !!connectionId,
-	});
-}
-
-/**
- * Fetch repositories from a git provider connection
- */
-export function useGitRepositories(connectionId: string, org?: string) {
-	return useQuery({
-		...orpc.integrations.getGitRepositories.queryOptions({
-			input: { id: connectionId, org },
-		}),
-		enabled: !!connectionId,
-	});
-}
 
 /**
  * Update connection config (e.g., selected repos after OAuth)
@@ -293,38 +269,6 @@ export function useUpdateConnectionConfig() {
 			});
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.detail(variables.id),
-			});
-		},
-	});
-}
-
-// =============================================================================
-// GITHUB APP (installations)
-// =============================================================================
-
-/**
- * Fetch available GitHub App installations for an integration
- */
-export function useGitHubInstallations(integrationId: string) {
-	return useQuery({
-		...orpc.integrations.listGitHubInstallations.queryOptions({
-			input: { id: integrationId },
-		}),
-		enabled: !!integrationId,
-	});
-}
-
-/**
- * Connect a GitHub App installation (creates a connection)
- */
-export function useConnectGitHubInstallation() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		...orpc.integrations.connectGitHubInstallation.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({
-				queryKey: integrationsKeys.connections.all(),
 			});
 		},
 	});

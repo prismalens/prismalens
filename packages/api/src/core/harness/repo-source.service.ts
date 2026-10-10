@@ -6,21 +6,31 @@
  * fresh snapshot of the committed HEAD under the app-data dir, so the harness
  * cwd is never the user's checkout and never a worktree linked into it
  * (ADR 0004 §2, #629). A URL is kept as a bare mirror and refreshed before each
- * snapshot with the user's own git; a stored connection token rides as a
- * per-command header, never in the URL or the mirror's config.
+ * snapshot; a saved token rides as a per-command header, never in the URL or
+ * the mirror's config.
  */
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { Injectable, Logger } from "@nestjs/common";
 import { getAppDataDir } from "@prismalens/config";
+import {
+	type GitCredential,
+	MACHINE_CREDENTIAL,
+	repoPath,
+	urlHost,
+} from "./git-credential.js";
+import { gitEnv } from "./git-env.js";
+import { diagnoseGitFailure, GitFailure } from "./git-failure.js";
+import {
+	GIT_TIMEOUT_MS,
+	GitSpawnError,
+	remoteGitEnv,
+	spawnGit,
+} from "./git-spawn.js";
 
-const run = promisify(execFile);
-/** A remote that accepts the connection and then stalls must not hang a save or a run. */
-const GIT_TIMEOUT_MS = 10 * 60_000;
+export { tokenUsernameFor } from "./git-credential.js";
 
 export type RepoSourceKind = "folder" | "url";
 
@@ -29,8 +39,8 @@ export interface RepoSource {
 	/** An absolute folder path, or a git URL (https, ssh, scp-style). */
 	source: string;
 	defaultBranch?: string | null;
-	/** Token of the VCS connection that discovered the repo, when one exists. HTTPS only. */
-	token?: string | null;
+	/** Who git authenticates as; absent means the machine's own git. */
+	credential?: GitCredential;
 }
 
 export interface SourceCheck {
@@ -87,7 +97,7 @@ export function classifySource(input: string): {
 	if (URL_LIKE.test(trimmed)) {
 		if (hasEmbeddedSecret(trimmed))
 			throw new Error(
-				"Repository URL must not carry credentials; connect the VCS integration instead",
+				"Repository URL must not carry credentials; add a Git host token in Settings instead",
 			);
 		return { kind: "url", source: trimmed };
 	}
@@ -135,10 +145,25 @@ function urlSegments(url: string): string[] {
 		.filter(Boolean);
 }
 
-function gitError(err: unknown): Error {
-	const e = err as { stderr?: string; message?: string };
-	const text = (e.stderr ?? e.message ?? String(err)).trim();
-	return new Error(text || "git failed");
+/** A git error a person can act on: the taxonomy for a remote call, git's own text otherwise. */
+export function remoteFailure(err: unknown, src: RepoSource): Error {
+	if (err instanceof GitFailure) return err;
+	const url = src.credential?.effectiveUrl ?? src.source;
+	const host = urlHost(url) ?? url;
+	if (err instanceof GitSpawnError && err.timedOut)
+		return new GitFailure(
+			"unreachable",
+			`Could not reach ${host}: ${err.message}.`,
+		);
+	if (err instanceof GitSpawnError)
+		return diagnoseGitFailure({
+			stderr: err.stderr || err.message,
+			credential: (src.credential ?? MACHINE_CREDENTIAL).display,
+			host,
+			repo: repoPath(url),
+			sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
+		});
+	return err instanceof Error ? err : new Error(String(err));
 }
 
 @Injectable()
@@ -146,7 +171,7 @@ export class RepoSourceService {
 	private readonly logger = new Logger(RepoSourceService.name);
 	private readonly inFlight = new Map<string, Promise<string>>();
 
-	/** What save shows: the branch and commit the next snapshot would take, or the git error verbatim. */
+	/** What save shows: the branch and commit the next snapshot would take, or why git could not. */
 	async validate(src: RepoSource): Promise<SourceCheck> {
 		if (src.kind === "folder") return this.checkFolder(src.source);
 		const mirror = await this.ensureMirror(src);
@@ -196,14 +221,12 @@ export class RepoSourceService {
 				dest,
 			],
 			undefined,
-			{},
 			signal,
 		);
 		if (at)
 			await this.git(
 				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
 				undefined,
-				{},
 				signal,
 			);
 		const check = await this.headOf(dest);
@@ -232,29 +255,45 @@ export class RepoSourceService {
 		return [...hits].sort();
 	}
 
-	/** Bare mirror under the app-data dir: cloned on first sight, fetched afterwards. Concurrent calls share one operation. */
+	/**
+	 * Bare mirror under the app-data dir: cloned on first sight, fetched afterwards. Concurrent
+	 * calls with the same credential share one operation; another credential gets its own fetch.
+	 */
 	private ensureMirror(src: RepoSource): Promise<string> {
 		const path = mirrorPathFor(src.source);
-		const pending = this.inFlight.get(path);
+		const key = `${path}\0${(src.credential ?? MACHINE_CREDENTIAL).key}`;
+		const pending = this.inFlight.get(key);
 		if (pending) return pending;
 		const op = this.syncMirror(src, path).finally(() =>
-			this.inFlight.delete(path),
+			this.inFlight.delete(key),
 		);
-		this.inFlight.set(path, op);
+		this.inFlight.set(key, op);
 		return op;
 	}
 
 	private async syncMirror(src: RepoSource, path: string): Promise<string> {
-		const auth = gitAuthEnv(src);
-		if (existsSync(join(path, "HEAD"))) {
-			await this.git(["fetch", "--prune", "--quiet", "origin"], path, auth);
-		} else {
-			mkdirSync(join(path, ".."), { recursive: true });
-			await this.git(
-				["clone", "--mirror", "--quiet", "--", src.source, path],
-				undefined,
-				auth,
-			);
+		const env = await remoteGitEnv(
+			(src.credential ?? MACHINE_CREDENTIAL).envInput(src.source),
+		);
+		try {
+			if (existsSync(join(path, "HEAD"))) {
+				await spawnGit(["fetch", "--prune", "--quiet", "origin"], {
+					cwd: path,
+					env,
+					timeoutMs: GIT_TIMEOUT_MS,
+				});
+			} else {
+				mkdirSync(join(path, ".."), { recursive: true });
+				await spawnGit(
+					["clone", "--mirror", "--quiet", "--", src.source, path],
+					{ env, timeoutMs: GIT_TIMEOUT_MS },
+				);
+			}
+		} catch (err) {
+			const failure = remoteFailure(err, src);
+			if (failure instanceof GitFailure && failure.stderr)
+				this.logger.warn(`git ${src.source}: ${failure.stderr.trim()}`);
+			throw failure;
 		}
 		return path;
 	}
@@ -282,24 +321,22 @@ export class RepoSourceService {
 		return { branch, head: head.trim() };
 	}
 
+	/** A local git call: no remote, so no credential. */
 	private async git(
 		args: string[],
 		cwd?: string,
-		extraEnv: Record<string, string> = {},
 		signal?: AbortSignal,
 	): Promise<{ stdout: string; stderr: string }> {
 		try {
-			return await run("git", args, {
+			return await spawnGit(args, {
 				cwd,
 				signal,
-				env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...extraEnv },
-				maxBuffer: 16 * 1024 * 1024,
-				timeout: GIT_TIMEOUT_MS,
-				killSignal: "SIGKILL",
+				env: gitEnv({ source: "machine" }),
+				timeoutMs: GIT_TIMEOUT_MS,
 			});
 		} catch (err) {
 			if (signal?.aborted) throw signal.reason;
-			throw gitError(err);
+			throw err instanceof Error ? new Error(err.message) : err;
 		}
 	}
 }
@@ -314,34 +351,4 @@ function abortable<T>(op: Promise<T>, signal?: AbortSignal): Promise<T> {
 			signal.removeEventListener("abort", onAbort),
 		);
 	});
-}
-
-/**
- * The connection token as an HTTPS auth header, passed through git's config env so it
- * never appears in argv (`ps`) or the mirror's config. Empty for ssh and scp remotes.
- */
-export function gitAuthEnv(src: RepoSource): Record<string, string> {
-	const token = src.token?.trim();
-	if (!token || !/^https:\/\//.test(src.source)) return {};
-	const user = tokenUsernameFor(new URL(src.source).hostname);
-	const basic = Buffer.from(`${user}:${token}`).toString("base64");
-	return {
-		GIT_CONFIG_COUNT: "1",
-		GIT_CONFIG_KEY_0: "http.extraheader",
-		GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
-	};
-}
-
-/**
- * The username each host expects beside a token over HTTPS basic auth (#634):
- * GitLab (gitlab.com and self-managed hosts named gitlab.*) takes `oauth2`,
- * Bitbucket Cloud `x-token-auth`, GitHub and everything else `x-access-token`.
- */
-export function tokenUsernameFor(hostname: string): string {
-	const host = hostname.toLowerCase();
-	if (host === "bitbucket.org") return "x-token-auth";
-	if (host === "gitlab.com" || host.split(".").includes("gitlab")) {
-		return "oauth2";
-	}
-	return "x-access-token";
 }

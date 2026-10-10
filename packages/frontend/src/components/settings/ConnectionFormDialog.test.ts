@@ -44,9 +44,9 @@ const github = {
 	name: "GitHub",
 	version: "1.0",
 	category: "git",
-	authMode: "github_app" as const,
+	authMode: "oauth2" as const,
 	hasOAuth: true,
-	authModeLabel: "GitHub App",
+	authModeLabel: "OAuth",
 	connectionCreationMode: "oauth_redirect" as const,
 	postCreationAction: "oauth_redirect" as const,
 } satisfies AuthTemplateResponse;

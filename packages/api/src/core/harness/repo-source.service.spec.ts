@@ -24,10 +24,11 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GitCredential } from "./git-credential.js";
+import { gitEnv } from "./git-env.js";
 import {
 	classifySource,
 	displayNameFor,
-	gitAuthEnv,
 	mirrorPathFor,
 	tokenUsernameFor,
 	RepoSourceService,
@@ -165,22 +166,30 @@ describe("repo-source.service", () => {
 		});
 	});
 
-	describe("gitAuthEnv", () => {
-		it("carries an https token as a config-env header, never in argv", () => {
-			const env = gitAuthEnv({
-				kind: "url",
-				source: "https://github.com/acme/api.git",
-				token: "tok",
+	describe("GitCredential header", () => {
+		const token = (host = "github.com") =>
+			new GitCredential(
+				{ source: "connection", label: "token A", via: "git-host-token" },
+				"tok",
+				{ host },
+			);
+
+		it("carries an https token as a config-env header scoped to its host, never in argv", () => {
+			const env = gitEnv({
+				...token().envInput("https://github.com/acme/api.git"),
+				parent: {},
+				wsl: false,
 			});
-			expect(env.GIT_CONFIG_KEY_0).toBe("http.extraheader");
-			expect(env.GIT_CONFIG_VALUE_0).toBe(
+			expect(env.GIT_CONFIG_KEY_0).toBe("credential.helper");
+			expect(env.GIT_CONFIG_KEY_2).toBe("http.https://github.com/.extraheader");
+			expect(env.GIT_CONFIG_VALUE_2).toBe(
 				`Authorization: Basic ${Buffer.from("x-access-token:tok").toString("base64")}`,
 			);
 		});
 
 		it("sends each host's own token username (#634)", () => {
 			const header = (source: string) =>
-				gitAuthEnv({ kind: "url", source, token: "tok" }).GIT_CONFIG_VALUE_0;
+				token(new URL(source).host).authHeader(source);
 			const basic = (user: string) =>
 				`Authorization: Basic ${Buffer.from(`${user}:tok`).toString("base64")}`;
 			expect(header("https://gitlab.com/acme/api.git")).toBe(basic("oauth2"));
@@ -194,19 +203,18 @@ describe("repo-source.service", () => {
 			expect(tokenUsernameFor("GitLab.com")).toBe("oauth2");
 		});
 
-		it("sends nothing for ssh remotes or without a token", () => {
+		it("sends nothing for ssh remotes, another host, or without a token", () => {
+			expect(token().authHeader("ssh://git@github.com/acme/api.git")).toBeUndefined();
+			expect(token().authHeader("https://gitlab.com/acme/api.git")).toBeUndefined();
 			expect(
-				gitAuthEnv({ kind: "url", source: "git@github.com:acme/api.git", token: "tok" }),
-			).toEqual({});
-			expect(
-				gitAuthEnv({ kind: "url", source: "https://github.com/acme/api.git" }),
-			).toEqual({});
+				new GitCredential({ source: "none", label: "public", via: "none" }).authHeader(
+					"https://github.com/acme/api.git",
+				),
+			).toBeUndefined();
 		});
 
 		it("never sends a token over plain http", () => {
-			expect(
-				gitAuthEnv({ kind: "url", source: "http://git.example/acme/api.git", token: "tok" }),
-			).toEqual({});
+			expect(token("git.example").authHeader("http://git.example/acme/api.git")).toBeUndefined();
 		});
 	});
 

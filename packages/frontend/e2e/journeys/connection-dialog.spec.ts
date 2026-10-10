@@ -7,16 +7,9 @@ test.describe("Add connection dialog (walk f13, #776 review)", () => {
 	test("picking a provider keeps it open; a backdrop click closes it", async ({
 		page,
 	}) => {
-		// The dialog opens from an integration row's "Connect an account", so seed one.
-		const templates = (await (
-			await page.request.get("/api/integrations/templates")
-		).json()) as { id: string }[];
-		const template =
-			templates.find((t) => t.id === "github") ??
-			templates.find((t) => t.id !== "alertmanager" && t.id !== "prometheus");
-		expect(template).toBeDefined();
+		// The dialog opens from a git host token row's "Add a token", so seed one.
 		const created = await page.request.post("/api/integrations", {
-			data: { templateId: template?.id, label: "Dialog check" },
+			data: { templateId: "git-host-token", label: "Dialog check" },
 		});
 		expect(created.ok()).toBe(true);
 		const { id } = (await created.json()) as { id: string };
@@ -26,7 +19,7 @@ test.describe("Add connection dialog (walk f13, #776 review)", () => {
 			await page
 				.getByTestId("integration-row")
 				.filter({ hasText: "Dialog check" })
-				.getByRole("button", { name: "Connect an account" })
+				.getByRole("button", { name: "Add a token" })
 				.click();
 			const dialog = page.getByRole("dialog", { name: "Add connection" });
 			await expect(dialog).toBeVisible({ timeout: 15_000 });

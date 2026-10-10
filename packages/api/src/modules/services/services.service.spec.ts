@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
+import type { GitCredentialService } from "../integrations/git-credential.service.js";
 import { ServicesService } from "./services.service.js";
 
 function serviceWith(teams: Array<string | null>) {
@@ -48,7 +49,10 @@ describe("ServicesController metadata.investigation.notes validation (#673 w21)"
 			create: vi.fn(),
 			update: vi.fn(),
 		};
-		const controller = new ServicesController(mockServicesService as unknown as ServicesService);
+		const controller = new ServicesController(
+			mockServicesService as unknown as ServicesService,
+			{ preview: vi.fn() } as unknown as GitCredentialService,
+		);
 		// biome-ignore lint/suspicious/noExplicitAny: oRPC handler extraction
 		const procs = controller.services() as Record<string, any>;
 		const createHandler = procs.create["~orpc"].handler;
