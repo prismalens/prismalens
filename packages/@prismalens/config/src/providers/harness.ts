@@ -180,6 +180,8 @@ const OPENCODE_TOOLS = [
 	"websearch",
 	"external_directory",
 ] as const;
+/** Tools OpenCode 1.18.30 types as one action, never a pattern map (core v1/config/permission.ts). */
+const OPENCODE_ACTION_ONLY = new Set<string>(["webfetch", "websearch"]);
 /** The built-in agents that run tools: the run's own, and the subagents it can start. */
 const OPENCODE_AGENTS = ["build", "plan", "general", "explore"];
 
@@ -216,6 +218,11 @@ function opencodePermission(
 			return Object.fromEntries(
 				OPENCODE_TOOLS.map((tool) => {
 					const mine = rules[tool];
+					if (OPENCODE_ACTION_ONLY.has(tool))
+						return [
+							tool,
+							top[tool] === "deny" || mine === "deny" ? "deny" : level[tool],
+						];
 					// Their own map without "*" keeps its order, so the top-level catch-all stands in.
 					const all =
 						isObject(mine) && !("*" in mine) ? {} : { "*": level[tool] };
@@ -229,7 +236,10 @@ function opencodePermission(
 		const names = new Set([...OPENCODE_AGENTS, ...Object.keys(agents)]);
 		return {
 			permission: Object.fromEntries(
-				OPENCODE_TOOLS.map((tool) => [tool, { "*": level[tool] }]),
+				OPENCODE_TOOLS.map((tool) => [
+					tool,
+					OPENCODE_ACTION_ONLY.has(tool) ? level[tool] : { "*": level[tool] },
+				]),
 			),
 			agent: Object.fromEntries(
 				[...names].map((name) => [name, { permission: forAgent(name) }]),

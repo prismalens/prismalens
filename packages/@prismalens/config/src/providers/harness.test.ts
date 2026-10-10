@@ -358,6 +358,19 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 			expect(effective(user, "supervised", "build", "edit", "a.ts")).toBe("ask");
 		});
 
+		it("webfetch and websearch stay single actions, as OpenCode's schema requires", () => {
+			for (const level of ACCESS_LEVELS) {
+				const patch = HARNESS_REGISTRY.opencode.access[level].configPatch?.({}) as {
+					permission: Record<string, unknown>;
+					agent: Record<string, { permission: Record<string, unknown> }>;
+				};
+				for (const map of [patch.permission, ...Object.values(patch.agent).map((a) => a.permission)]) {
+					expect(typeof map.webfetch, level).toBe("string");
+					expect(typeof map.websearch, level).toBe("string");
+				}
+			}
+		});
+
 		it("a deny catch-all stays, and so do agent rules written without one", () => {
 			expect(effective({ permission: { webfetch: "deny" } }, "full-access", "build", "webfetch", "https://x")).toBe("deny");
 			const user = { agent: { build: { permission: { bash: { "rm *": "deny" } } } } };
