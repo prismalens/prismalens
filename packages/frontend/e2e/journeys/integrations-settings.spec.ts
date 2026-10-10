@@ -24,7 +24,7 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(page.getByTestId("add-integration")).toHaveText("Add a token");
 		// Each field's control is described by its hint, then by its error.
 		await page.getByTestId("add-integration").click();
-		const dialog = page.getByRole("dialog", { name: "Add connection" });
+		const dialog = page.getByRole("dialog", { name: "Add a git host token" });
 		const host = dialog.locator("#cred-host");
 		await expect(host).toHaveValue("github.com");
 		await expect(host).toHaveAccessibleDescription(
