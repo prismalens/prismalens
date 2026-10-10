@@ -10,6 +10,9 @@ import {
 	runsInSandbox,
 	resolveHarnessModel,
 	resumeBlockedReason,
+	ACCESS_LEVELS,
+	levelOfAgentMode,
+	mergeConfigPatch,
 } from "./harness.js";
 
 afterEach(() => {
@@ -261,3 +264,130 @@ describe("sandbox and fidelity (#673 w51)", () => {
 		expect(modeFidelity(undefined)).toBe("cooperative");
 	});
 });
+
+describe("permission levels and plan modes (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
+	it("gives every row access for all four levels with non-empty mechanism and non-empty line(null)", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const access = descriptor.access[level];
+				expect(access, `${id} missing access for ${level}`).toBeDefined();
+				expect(access.mechanism.length, `${id} ${level} mechanism`).toBeGreaterThan(0);
+				const line = access.line(null);
+				expect(typeof line).toBe("string");
+				expect(line.length, `${id} ${level} line(null)`).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it("never uses a plan mode as an access level mode", () => {
+		const planModes = new Set(["plan"]);
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode) {
+					expect(planModes.has(mode), `${id} ${level} must not use plan mode ${mode}`).toBe(false);
+				}
+			}
+		}
+	});
+
+	it("configures harness-specific access level modes and mechanisms", () => {
+		expect(HARNESS_REGISTRY["claude-code"].access["full-access"].fallbackMode).toBe("acceptEdits");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
+		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
+		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
+		for (const level of ACCESS_LEVELS) {
+			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
+		}
+	});
+
+	it("configures planMode appropriately across harnesses", () => {
+		expect(HARNESS_REGISTRY["claude-code"].planMode).toEqual({
+			via: "acp",
+			mode: "plan",
+			replacesLevel: true,
+		});
+		expect(HARNESS_REGISTRY.gemini.planMode).toEqual({
+			via: "acp",
+			mode: "plan",
+			replacesLevel: true,
+		});
+		expect(HARNESS_REGISTRY.opencode.planMode).toEqual({
+			via: "acp",
+			mode: "plan",
+		});
+		expect(HARNESS_REGISTRY.codex.planMode).toEqual({
+			via: "config",
+			configId: "collaboration_mode",
+			value: "plan",
+		});
+		expect(HARNESS_REGISTRY.deepagents.planMode).toBeUndefined();
+	});
+
+	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			const harnessId = id as keyof typeof HARNESS_REGISTRY;
+			const seenModes = new Set<string>();
+			for (const level of ACCESS_LEVELS) {
+				const mode = descriptor.access[level].mode;
+				if (mode && !seenModes.has(mode)) {
+					seenModes.add(mode);
+					expect(levelOfAgentMode(harnessId, mode), `${harnessId} mode ${mode}`).toBe(level);
+				}
+			}
+			expect(levelOfAgentMode(harnessId, "unknown-mode-id")).toBeNull();
+			expect(levelOfAgentMode(harnessId, null)).toBeNull();
+		}
+	});
+
+	it("deep-merges opencode configPatch into opencode.json preserving pre-existing deny rules", () => {
+		const baseFiles = HARNESS_REGISTRY.opencode.configFiles?.({
+			cwd: "/r",
+			configDir: "/c",
+			dataDir: "/d",
+		});
+		const generated = JSON.parse(baseFiles?.["opencode.json"] ?? "{}");
+
+		const userCustomConfig = {
+			...generated,
+			permission: {
+				bash: {
+					"rm -rf *": "deny",
+				},
+			},
+		};
+
+		for (const level of ACCESS_LEVELS) {
+			const patch = HARNESS_REGISTRY.opencode.access[level].configPatch ?? {};
+			const merged = mergeConfigPatch(userCustomConfig, patch) as Record<string, unknown>;
+
+			const perm = merged.permission as Record<string, unknown>;
+			expect(perm).toBeDefined();
+			expect((perm.edit as Record<string, unknown>)["*"]).toBeDefined();
+			expect((perm.bash as Record<string, unknown>)["*"]).toBeDefined();
+
+			const agent = merged.agent as {
+				build: { permission: Record<string, unknown> };
+				plan: { permission: Record<string, unknown> };
+			};
+			expect(agent.build.permission).toBeDefined();
+			expect(agent.plan.permission).toBeDefined();
+
+			if (level === "full-access") {
+				expect((perm.bash as Record<string, unknown>)["rm -rf *"]).toBe("deny");
+			}
+		}
+	});
+
+	it("contains no inspiration names", () => {
+		const forbidden = /t3code|t3 code|\bT3('s)?\b|traycer|pingdotgg/i;
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			expect(descriptor.label).not.toMatch(forbidden);
+			for (const level of ACCESS_LEVELS) {
+				const line = descriptor.access[level].line(null);
+				expect(line).not.toMatch(forbidden);
+			}
+		}
+	});
+});
+
