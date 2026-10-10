@@ -9,7 +9,11 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
+import {
+	type AccessLevel,
+	type HarnessId,
+	mergeConfigPatch,
+} from "@prismalens/config/harness";
 import type { LocalDefault } from "@prismalens/contracts/schemas";
 import { type ParseError, parse as parseJsonc } from "jsonc-parser";
 import { parse as parseToml } from "smol-toml";
@@ -221,4 +225,22 @@ export function localDefault(
 		);
 		return NONE;
 	}
+}
+
+/**
+ * OpenCode's global config as it merges it (opencode 1.18.30 config.ts loadGlobal):
+ * config.json, opencode.json, then opencode.jsonc under $XDG_CONFIG_HOME/opencode. Never throws.
+ */
+export function opencodeUserConfig(
+	env: NodeJS.ProcessEnv = process.env,
+	onDebug?: (message: string) => void,
+): Record<string, unknown> {
+	const home = env.HOME ?? homedir();
+	const dir = join(env.XDG_CONFIG_HOME || join(home, ".config"), "opencode");
+	let merged: Record<string, unknown> = {};
+	for (const file of ["config.json", "opencode.json", "opencode.jsonc"]) {
+		const config = readJsonc(join(dir, file), onDebug);
+		if (config) merged = mergeConfigPatch(merged, config);
+	}
+	return merged;
 }

@@ -1058,8 +1058,13 @@ describe("IncidentsController - runs as threads (#673)", () => {
 			investigations: [
 				{ id: "chat", status: "completed", kind: "chat", title: "Is it full?", agentMode: "plan", hasReport: false, startedAt: at, createdAt: at, completedAt: at },
 				{ id: "old", status: "completed", createdAt: at, completedAt: at },
+				{ id: "lvl", status: "completed", accessLevel: "auto", createdAt: at, completedAt: at },
+				// Outside the enum (a rollback, an older build): null, not a failed list (#809).
+				{ id: "odd", status: "completed", accessLevel: "yolo", createdAt: at, completedAt: at },
 			],
 		});
+		expect(out.investigations?.[2]).toMatchObject({ accessLevel: "auto" });
+		expect(out.investigations?.[3]).toMatchObject({ accessLevel: null });
 		expect(out.investigations?.[0]).toMatchObject({
 			kind: "chat",
 			title: "Is it full?",
