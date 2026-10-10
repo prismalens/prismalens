@@ -209,7 +209,9 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		).toBeVisible();
 	});
 
-	test("design evidence: default, dark, empty, and error", async ({ page }) => {
+	// One test per state: each pays only its own page loads. As one test, the
+	// four states' reloads summed past the 30 s test timeout on CI (#807).
+	test("design evidence: default and dark", async ({ page }) => {
 		// Default (light) — the incident-detail header, provider selected, gate
 		// refusing. The dashboard panel this used to photograph is gone (the
 		// Command Center screen was deleted); the header carries the same verdict.
@@ -234,9 +236,14 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			timeout: 15_000,
 		});
 		await settled(page);
+	});
 
-		// Empty — the incident has no run, so the Report pool says so and the
-		// blocked draft is the only way to start one.
+	test("design evidence: empty", async ({ page }) => {
+		// The incident has no run, so the Report pool says so and the blocked
+		// draft is the only way to start one.
+		await serveUnrunnableSelection(page);
+		const id = await createIncident(page, `Readiness empty ${Date.now()}`);
+		await page.goto(`/incidents/${id}/conversation`);
 		await setTheme(page, "light");
 		await page.getByTestId("tab-overview").click();
 		await expect(page.getByTestId("overview-report")).toContainText(
@@ -248,10 +255,14 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await page.getByTestId("tab-conversation").click();
 		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await settled(page);
+	});
 
-		// Error — the harness probe itself fails, so the gate stays shut and says so.
+	test("design evidence: error", async ({ page }) => {
+		// The harness probe itself fails, so the gate stays shut and says so.
 		await failHarnesses(page);
+		const id = await createIncident(page, `Readiness error ${Date.now()}`);
 		await page.goto(`/incidents/${id}/conversation`);
+		await setTheme(page, "light");
 		await expect(
 			page.getByText("Could not check agent status").first(),
 		).toBeVisible({ timeout: 15_000 });
