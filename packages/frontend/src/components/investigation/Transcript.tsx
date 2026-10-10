@@ -227,7 +227,9 @@ function TranscriptRow({
 							data-testid="transcript-delivery"
 						>
 							{brief
-								? `brief for ${runName ?? "this run"}`
+								? runName === "Ask"
+									? "asked"
+									: `brief for ${runName ?? "this run"}`
 								: deliveryWord(item.state, item.mode)}
 						</span>
 					</span>

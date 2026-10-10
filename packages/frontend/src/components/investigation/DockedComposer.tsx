@@ -213,7 +213,7 @@ export function DockedComposer({
 		continuable: run.continuable,
 		reported: !!inv?.report,
 		name,
-		nextName: `Run ${runs.filter((r) => r.kind !== "chat").length + 1}`,
+		nextName: `Run ${runNumber(runs, "")}`,
 		defaultDraft:
 			record.draftVerb ??
 			defaultVerb(
@@ -303,7 +303,9 @@ export function DockedComposer({
 		!draft && (live || !liveNumber)
 			? undefined
 			: liveNumber
-				? `Run ${liveNumber} is working; message it or stop it`
+				? otherLive?.kind === "chat"
+					? "An Ask is answering; message it or stop it"
+					: `Run ${liveNumber} is working; message it or stop it`
 				: unready
 					? `${unready}. Check it in Settings, Agent.`
 					: own.harness
@@ -382,7 +384,7 @@ export function DockedComposer({
 				(m) => m.mode === "queue" && !m.undelivered,
 			)
 		: [];
-	const hint = thread.hint[action];
+	const hint = ended ? null : thread.hint[action];
 	const above = (
 		<>
 			{hint && (

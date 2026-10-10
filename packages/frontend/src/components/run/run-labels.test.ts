@@ -31,9 +31,9 @@ const runs: RunRef[] = [
 ];
 
 describe("run labels (#811)", () => {
-	it("names runs by number among investigations and chats alike, and asks by their question", () => {
+	it("numbers investigations only, and names an Ask by its question", () => {
 		expect(runs.map((r) => runLabel(runs, r))).toEqual([
-			"Run 4, investigating",
+			"Run 3, investigating",
 			"Ask: did v1.41 run the same query?",
 			"Run 2, likely cause",
 			"Run 1, no cause named",

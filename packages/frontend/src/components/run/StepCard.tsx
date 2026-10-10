@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { ChevronDown, FileText, TerminalSquare } from "lucide-react";
+import { ChevronDown, FileText, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ export function StepCard({
 	flagged?: boolean;
 	onSeeFlag?: () => void;
 }) {
-	const Icon = step.kind === "file" ? FileText : TerminalSquare;
+	const Icon = step.kind === "file" ? FileText : Terminal;
 	const refused =
 		step.ok === false ? refusalReason(step.output ?? undefined) : null;
 	return (
@@ -64,9 +64,9 @@ export function StepCard({
 					>
 						{step.verb}
 					</span>
-					<code className="min-w-0 flex-1 truncate bg-transparent p-0 font-mono text-mono text-text-1">
+					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
 						{step.command}
-					</code>
+					</span>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
 						{stepTook(step.took)}
 					</span>
