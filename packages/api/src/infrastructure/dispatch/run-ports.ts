@@ -98,7 +98,7 @@ export interface RunPorts {
 	followUpStatus(
 		id: string,
 		state: {
-			status: WorkflowStatus;
+			status?: WorkflowStatus;
 			completedAt?: Date | null;
 			error?: string | null;
 			/** JSON RunWorkspace the follow-up rebuilt, with the credentials it used. */

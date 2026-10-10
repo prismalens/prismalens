@@ -170,6 +170,7 @@ export function remoteFailure(err: unknown, src: RepoSource): Error {
 export class RepoSourceService {
 	private readonly logger = new Logger(RepoSourceService.name);
 	private readonly inFlight = new Map<string, Promise<string>>();
+	private readonly pathTail = new Map<string, Promise<string>>();
 
 	/** What save shows: the branch and commit the next snapshot would take, or why git could not. */
 	async validate(src: RepoSource): Promise<SourceCheck> {
@@ -257,17 +258,24 @@ export class RepoSourceService {
 
 	/**
 	 * Bare mirror under the app-data dir: cloned on first sight, fetched afterwards. Concurrent
-	 * calls with the same credential share one operation; another credential gets its own fetch.
+	 * calls with the same credential share one operation; another credential gets its own fetch,
+	 * queued behind the path's last one so two never clone or lock refs at once.
 	 */
 	private ensureMirror(src: RepoSource): Promise<string> {
 		const path = mirrorPathFor(src.source);
 		const key = `${path}\0${(src.credential ?? MACHINE_CREDENTIAL).key}`;
 		const pending = this.inFlight.get(key);
 		if (pending) return pending;
-		const op = this.syncMirror(src, path).finally(() =>
-			this.inFlight.delete(key),
-		);
+		const prev = this.pathTail.get(path) ?? Promise.resolve();
+		const op: Promise<string> = prev
+			.catch(() => undefined)
+			.then(() => this.syncMirror(src, path))
+			.finally(() => {
+				this.inFlight.delete(key);
+				if (this.pathTail.get(path) === op) this.pathTail.delete(path);
+			});
 		this.inFlight.set(key, op);
+		this.pathTail.set(path, op);
 		return op;
 	}
 

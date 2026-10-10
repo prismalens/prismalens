@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
@@ -73,6 +75,17 @@ describe("git-env", () => {
 		expect(env.GIT_CONFIG_KEY_0).toBe("credential.helper");
 		expect(env.GIT_CONFIG_VALUE_0).toBe("");
 		expect(env.GIT_CONFIG_KEY_1).toBeUndefined();
+	});
+
+	it("T9c: strips every repo-local variable the installed git lists, so a hook's GIT_DIR never redirects a child (#810)", () => {
+		const local = execFileSync("git", ["rev-parse", "--local-env-vars"], { cwd: tmpdir() })
+			.toString()
+			.split("\n")
+			.filter(Boolean);
+		expect(local).toContain("GIT_DIR");
+		const parent = Object.fromEntries([...local, "GIT_NAMESPACE"].map((k) => [k, "/elsewhere"]));
+		const env = gitEnv({ source: "machine", parent, wsl: false });
+		for (const key of [...local, "GIT_NAMESPACE"]) expect(env[key], key).toBeUndefined();
 	});
 
 	it("T9b: appends GCM_INTERACTIVE to WSLENV only under isWsl()", () => {
