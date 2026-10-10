@@ -4,13 +4,8 @@
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
-	DEFAULT_RUN_MODE,
-	HARNESS_REGISTRY,
 	type HarnessId,
 	NO_MODE_KEY,
-	planModeId,
-	planReplacesLevel,
-	type RunMode,
 	resolveAccess,
 } from "@prismalens/config/harness";
 import {
@@ -18,7 +13,6 @@ import {
 	type AxisSource,
 	type HarnessStatus,
 	NO_SANDBOX,
-	RUN_MODE_LABEL,
 	type SandboxCheck,
 } from "@prismalens/contracts";
 
@@ -44,30 +38,18 @@ export function defaultTag(from: AxisSource): string {
 
 const harnessId = (h: HarnessStatus): HarnessId => h.id as HarnessId;
 
-/** Plan takes the level's slot on this agent: in Plan no level applies. */
-export function planIsCoupled(h: HarnessStatus | undefined): boolean {
-	return !!h && planReplacesLevel(harnessId(h));
+/** The agent mode a run at `level` asks for; `agent-default` where none. */
+export function levelModeId(h: HarnessStatus, level: AccessLevel): string {
+	return resolveAccess(harnessId(h), level).mode ?? NO_MODE_KEY;
 }
 
-/** The agent mode a run at `level` in `runMode` asks for; `agent-default` where none. */
-export function runModeId(
-	h: HarnessStatus,
-	level: AccessLevel,
-	runMode: RunMode,
-): string {
-	const id = harnessId(h);
-	const plan = runMode === "plan" ? planModeId(id) : null;
-	return plan ?? resolveAccess(id, level).mode ?? NO_MODE_KEY;
-}
-
-/** The sandbox check for the mode a run at `level` in `runMode` runs. */
+/** The sandbox check for the mode a run at `level` runs. */
 export function levelSandbox(
 	h: HarnessStatus | undefined,
 	level: AccessLevel,
-	runMode: RunMode = "execute",
 ): SandboxCheck | undefined {
 	if (!h) return undefined;
-	return h.checked?.sandbox?.[runModeId(h, level, runMode)];
+	return h.checked?.sandbox?.[levelModeId(h, level)];
 }
 
 /** The row line under a level: what this agent runs at it. */
@@ -75,18 +57,6 @@ export function levelRowLine(h: HarnessStatus, level: AccessLevel): string {
 	return resolveAccess(harnessId(h), level).line(
 		h.checked ? { modes: h.checked.modes } : null,
 	);
-}
-
-/** The chip's words: the level in Execute; Plan, and the level where Plan keeps one. */
-export function accessChipText(
-	h: HarnessStatus | undefined,
-	level: AccessLevel,
-	runMode: RunMode,
-): string {
-	if (runMode === "execute") return ACCESS_LEVEL_LABEL[level];
-	return planIsCoupled(h)
-		? RUN_MODE_LABEL.plan
-		: `${RUN_MODE_LABEL.plan}, ${ACCESS_LEVEL_LABEL[level]}`;
 }
 
 /** The file PrismaLens reads each agent's default from, as a line names it when nothing is set there. */
@@ -118,22 +88,6 @@ export function permissionLine(
 	return `${fallback} Your ${h.label} default "${local.value}" in ${local.file} has no PrismaLens Permission.`;
 }
 
-/** The Settings line under Mode. */
-export function modeLine(h: HarnessStatus, set: RunMode | undefined): string {
-	if (set) return `${RUN_MODE_LABEL[set]}, set here.`;
-	const fallback = `${RUN_MODE_LABEL[DEFAULT_RUN_MODE]}, PrismaLens default.`;
-	const id = harnessId(h);
-	if (id === "deepagents") return `${fallback} deepagents has no modes.`;
-	const local = h.localDefault?.mode;
-	if (!local)
-		return id === "codex"
-			? fallback
-			: `${fallback} No default set in ${DEFAULT_FILE[id] ?? "its settings"}.`;
-	if (local.mode)
-		return `Your default: ${RUN_MODE_LABEL[local.mode]}, from ${local.file} ("${local.value}").`;
-	return `${fallback} Your ${h.label} default "${local.value}" in ${local.file} has no PrismaLens Mode.`;
-}
-
 /** What each agent's own settings still decide, under the Settings rows (#673 w21). */
 export function agentNote(h: HarnessStatus): string | null {
 	switch (harnessId(h)) {
@@ -147,17 +101,8 @@ export function agentNote(h: HarnessStatus): string | null {
 		case "opencode":
 			return "Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.";
 		case "gemini":
-			return "Gemini CLI runs the copy untrusted, so it offers Ask always and Plan here; the other levels run as Ask always.";
+			return "Gemini CLI runs the copy untrusted, so every level runs as Ask always here.";
 		default:
 			return null;
 	}
-}
-
-/** Whether the agent offers a plan mode, by its last check; false until a check said so. */
-export function offersPlan(h: HarnessStatus | undefined): boolean {
-	return (
-		!!h &&
-		!!HARNESS_REGISTRY[harnessId(h)]?.planMode &&
-		h.checked?.plan === true
-	);
 }

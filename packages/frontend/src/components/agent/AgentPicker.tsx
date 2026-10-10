@@ -5,19 +5,15 @@ import {
 	ACCESS_LEVELS,
 	type AccessLevel,
 	type HarnessId,
-	type RunMode,
 } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	ACCESS_LEVEL_LINE,
 	type AxisSource,
 	effectiveAccess,
-	effectiveMode,
 	type FavouriteModel,
 	type HarnessSetting,
 	type HarnessStatus,
-	RUN_MODE_LABEL,
-	RUN_MODE_LINE,
 } from "@prismalens/contracts";
 import { Check, ChevronDown, Lock, Star } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
@@ -37,13 +33,10 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	accessChipText,
 	defaultTag,
 	levelIcon,
 	levelRowLine,
 	levelSandbox,
-	offersPlan,
-	planIsCoupled,
 	sandboxLine,
 } from "@/lib/access-levels";
 import {
@@ -77,9 +70,7 @@ export function useAgentChoice() {
 		efforts: settingsQuery.data?.efforts ?? {},
 		axes: {
 			accessLevels: settingsQuery.data?.accessLevels ?? {},
-			runModes: settingsQuery.data?.runModes ?? {},
 			autoAccessLevels: settingsQuery.data?.autoAccessLevels ?? {},
-			autoRunModes: settingsQuery.data?.autoRunModes ?? {},
 		},
 		customModels: settingsQuery.data?.customModels ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
@@ -89,24 +80,16 @@ export function useAgentChoice() {
 
 type Axes = ReturnType<typeof useAgentChoice>["axes"];
 
-/** The level and mode a run on `agent` takes when the box names none, and where each came from (#673 w21). */
+/** The level a run on `agent` takes when the box names none, and where it came from (#673 w21). */
 export function defaultAccessOf(
 	agent: HarnessStatus | undefined,
 	axes: Axes,
 	autoStart = false,
-): {
-	level: { level: AccessLevel; from: AxisSource };
-	mode: { mode: RunMode; from: AxisSource };
-} {
-	if (!agent)
-		return {
-			level: { level: "supervised", from: "prismalens" },
-			mode: { mode: "execute", from: "prismalens" },
-		};
+): { level: { level: AccessLevel; from: AxisSource } } {
+	if (!agent) return { level: { level: "supervised", from: "prismalens" } };
 	const id = agent.id as HarnessId;
 	return {
 		level: effectiveAccess(axes, id, agent.localDefault?.permission, autoStart),
-		mode: effectiveMode(axes, id, agent.localDefault?.mode, autoStart),
 	};
 }
 
@@ -807,25 +790,18 @@ export function EffortChip({
 	);
 }
 
-/**
- * Mode and permission level for this run (#673 w21 ruling 2026-10-10): a
- * segment Execute or Plan, then the four levels with the default first.
- */
+/** Permission level for this run (#673 w21 ruling 2026-10-10): the four levels, the default first. */
 export function AccessChip({
 	harness,
 	level,
-	runMode,
 	onLevel,
-	onRunMode,
 	disabled,
 	side = "top",
 	testId = "access-chip",
 }: {
 	harness: HarnessStatus | undefined;
 	level: AccessLevel;
-	runMode: RunMode;
 	onLevel: (level: AccessLevel) => void;
-	onRunMode: (mode: RunMode) => void;
 	disabled?: boolean;
 	side?: "top" | "bottom";
 	testId?: string;
@@ -837,11 +813,8 @@ export function AccessChip({
 		fallback.level,
 		...ACCESS_LEVELS.filter((l) => l !== fallback.level),
 	];
-	const coupled = runMode === "plan" && planIsCoupled(harness);
-	const plan = offersPlan(harness);
-	const agent = harness?.label ?? "The agent";
-	const text = accessChipText(harness, level, runMode);
-	const locked = levelIcon(levelSandbox(harness, level, runMode)) === "lock";
+	const text = ACCESS_LEVEL_LABEL[level];
+	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -850,7 +823,7 @@ export function AccessChip({
 					disabled={disabled}
 					className={cn(CHIP, "max-w-48")}
 					data-testid={testId}
-					aria-label={`Mode and permission: ${text}`}
+					aria-label={`Permission: ${text}`}
 				>
 					{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
 					<span className="truncate">{text}</span>
@@ -864,47 +837,6 @@ export function AccessChip({
 				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="access-menu"
 			>
-				<fieldset aria-label="Mode" className="grid grid-cols-2 gap-1 p-1">
-					{(["execute", "plan"] as const).map((m) => {
-						const off = m === "plan" && !plan;
-						return (
-							<button
-								key={m}
-								type="button"
-								aria-pressed={runMode === m}
-								disabled={off}
-								title={off ? `${agent} offers no plan mode` : RUN_MODE_LINE[m]}
-								onClick={() => {
-									if (m !== runMode) onRunMode(m);
-								}}
-								className={cn(
-									"rounded-control px-2.5 py-1.5 text-body transition-colors duration-(--dur-instant) hover:bg-surface-3 disabled:cursor-not-allowed disabled:text-text-3",
-									runMode === m ? "bg-surface-3 text-text-1" : "text-text-2",
-								)}
-								data-testid={`run-mode-${m}`}
-							>
-								{RUN_MODE_LABEL[m]}
-							</button>
-						);
-					})}
-				</fieldset>
-				<p
-					className="px-2.5 pb-1.5 text-meta text-text-3"
-					data-testid="run-mode-line"
-				>
-					{plan || runMode === "plan"
-						? RUN_MODE_LINE[runMode]
-						: `${agent} offers no plan mode`}
-				</p>
-				{coupled && (
-					<p
-						className="px-2.5 pb-1.5 text-meta text-text-2"
-						data-testid="access-plan-line"
-					>
-						Plan uses {agent}'s own Plan mode; the permission level applies to a
-						run that starts in Execute.
-					</p>
-				)}
 				<div role="listbox" aria-label="Permission level">
 					{rows.map((l) => {
 						const sandbox = harness ? levelSandbox(harness, l) : undefined;
@@ -914,14 +846,13 @@ export function AccessChip({
 								type="button"
 								role="option"
 								aria-selected={l === level}
-								disabled={coupled}
 								onClick={() => {
 									setOpen(false);
 									if (l !== level) onLevel(l);
 								}}
 								className={cn(
-									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent",
-									l === level && !coupled && "bg-surface-3",
+									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
+									l === level && "bg-surface-3",
 								)}
 								data-testid={`access-level-${l}`}
 							>

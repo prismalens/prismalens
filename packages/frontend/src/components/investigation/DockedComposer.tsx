@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	AccessLevel,
-	HarnessId,
-	RunMode,
-} from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
 	type FollowUpKind,
 	fidelityAccess,
@@ -59,8 +55,7 @@ import { ComposerBox, type ComposerSend } from "./ComposerBox";
 type Choice =
 	| { kind: "model"; harness: HarnessStatus; model: string }
 	| { kind: "effort"; effort: string }
-	| { kind: "level"; level: AccessLevel }
-	| { kind: "runMode"; runMode: RunMode };
+	| { kind: "level"; level: AccessLevel };
 
 /** The box's placeholder, by what the next message asks for (#673 w59, DESIGN §4). */
 function placeholderFor(
@@ -154,7 +149,7 @@ export function DockedComposer({
 			? own.effort
 			: (choice.efforts[hid] ?? null)
 		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
-	// A run shows what it asked for; one from before the two axes, the level its report records (#673 w21).
+	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
@@ -163,13 +158,10 @@ export function DockedComposer({
 				? fidelityAccess(inv.report.fidelity, inv.agentMode)
 				: undefined) ??
 			"supervised");
-	const runMode: RunMode = draft
-		? (own.runMode ?? defaults.mode.mode)
-		: (inv?.runMode ?? "execute");
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
-			? { harness: hid, model, effort, accessLevel, runMode }
+			? { harness: hid, model, effort, accessLevel }
 			: {};
 		// Effort levels are per agent: another agent starts from its Settings (#798).
 		const next: DraftChoice =
@@ -179,9 +171,7 @@ export function DockedComposer({
 					: { harness: c.harness.id as HarnessId, model: c.model }
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
-					: c.kind === "level"
-						? { ...now, accessLevel: c.level }
-						: { ...now, runMode: c.runMode };
+					: { ...now, accessLevel: c.level };
 		// On a run, the draft is this run with one change.
 		if (draft) record.setDraftChoice(next);
 		else record.newRun({ choice: next });
@@ -230,10 +220,8 @@ export function DockedComposer({
 			<AccessChip
 				harness={harness}
 				level={accessLevel}
-				runMode={runMode}
 				disabled={blocked}
 				onLevel={(l) => choose({ kind: "level", level: l })}
-				onRunMode={(m) => choose({ kind: "runMode", runMode: m })}
 			/>
 		</>
 	);
@@ -290,7 +278,6 @@ export function DockedComposer({
 					await record.investigate({
 						text: text || undefined,
 						accessLevel,
-						runMode,
 						...sent,
 						attachments: attachments.map((a) => a.id),
 					});
@@ -300,7 +287,6 @@ export function DockedComposer({
 					await record.chat({
 						text,
 						accessLevel,
-						runMode,
 						...sent,
 						attachments: attachments.map((a) => a.id),
 					});

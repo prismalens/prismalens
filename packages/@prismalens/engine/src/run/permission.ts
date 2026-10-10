@@ -7,7 +7,7 @@
  * the operator's Approve or Deny, and nobody answering denies it.
  */
 import { randomUUID } from "node:crypto";
-import type { AccessLevel, RunMode } from "@prismalens/config/harness";
+import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
 	type PermissionAskOutcome,
@@ -132,20 +132,13 @@ function allowed(
  */
 export function levelPolicy(
 	level: AccessLevel,
-	runMode: RunMode,
 	channel: { policy: PermissionPolicy },
 ): PermissionPolicy {
 	const card = channel.policy;
 	return (req, ctx) => {
 		const kind = req.toolCall?.kind;
 		if (kind === "switch_mode")
-			return deny(
-				req,
-				runMode === "plan" ? "plan_kept" : "mode_kept",
-				runMode === "plan"
-					? "the run stays in Plan"
-					: "the run stays in Execute",
-			);
+			return deny(req, "mode_kept", "the run stays in its mode");
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
 		if (level === "supervised") return card(req, ctx);
 		if (level === "auto-edits")

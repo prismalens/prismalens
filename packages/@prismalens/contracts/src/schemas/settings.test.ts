@@ -3,7 +3,6 @@
 
 import {
 	effectiveAccess,
-	effectiveMode,
 	HarnessSettingsSchema,
 	HarnessStatusSchema,
 	LocalDefaultSchema,
@@ -30,18 +29,14 @@ describe("UpdateHarnessSettingsSchema", () => {
 		expect(res.success).toBe(false);
 	});
 
-	it("accepts null per key and rejects agentModes (strict)", () => {
+	it("accepts null per key and rejects agentModes and runModes (strict)", () => {
 		const parsed = UpdateHarnessSettingsSchema.parse({
 			accessLevels: { "claude-code": null },
-			runModes: { codex: null },
 			autoAccessLevels: { gemini: null },
-			autoRunModes: { opencode: null },
 		});
 		expect(parsed).toEqual({
 			accessLevels: { "claude-code": null },
-			runModes: { codex: null },
 			autoAccessLevels: { gemini: null },
-			autoRunModes: { opencode: null },
 		});
 
 		expect(
@@ -49,29 +44,33 @@ describe("UpdateHarnessSettingsSchema", () => {
 				agentModes: { "claude-code": "default" },
 			}).success,
 		).toBe(false);
+		expect(
+			UpdateHarnessSettingsSchema.safeParse({ runModes: { codex: "plan" } })
+				.success,
+		).toBe(false);
 	});
 });
 
 describe("HarnessSettingsSchema", () => {
-	it("accepts the four maps and strips agentModes", () => {
+	it("accepts both level maps and strips agentModes and legacy run modes", () => {
 		const raw = {
 			harness: "claude-code" as const,
 			accessLevels: { "claude-code": "supervised" as const },
-			runModes: { codex: "plan" as const },
+			runModes: { codex: "plan" },
 			autoAccessLevels: { gemini: "auto" as const },
-			autoRunModes: { opencode: "execute" as const },
+			autoRunModes: { opencode: "execute" },
 			agentModes: { "claude-code": "default" },
 		};
 		const parsed = HarnessSettingsSchema.parse(raw);
 		expect(parsed.accessLevels).toEqual({ "claude-code": "supervised" });
-		expect(parsed.runModes).toEqual({ codex: "plan" });
 		expect(parsed.autoAccessLevels).toEqual({ gemini: "auto" });
-		expect(parsed.autoRunModes).toEqual({ opencode: "execute" });
 		expect("agentModes" in parsed).toBe(false);
+		expect("runModes" in parsed).toBe(false);
+		expect("autoRunModes" in parsed).toBe(false);
 	});
 });
 
-describe("effectiveAccess and effectiveMode precedence", () => {
+describe("effectiveAccess precedence", () => {
 	it("follows autoStart true precedence: autoAccessLevels -> accessLevels -> local.level -> DEFAULT_ACCESS_LEVEL", () => {
 		const s = {
 			accessLevels: { "claude-code": "auto-edits" as const },
@@ -151,50 +150,6 @@ describe("effectiveAccess and effectiveMode precedence", () => {
 			from: "prismalens",
 		});
 	});
-
-	it("follows effectiveMode precedence for autoStart true and false", () => {
-		const s = {
-			runModes: { codex: "execute" as const },
-			autoRunModes: { codex: "plan" as const },
-		};
-		const local = {
-			mode: "plan" as const,
-			file: "~/.codex/config.toml",
-			value: "plan",
-		};
-
-		// autoStart true
-		expect(effectiveMode(s, "codex", local, true)).toEqual({
-			mode: "plan",
-			from: "auto-settings",
-		});
-		expect(effectiveMode({ runModes: s.runModes }, "codex", local, true)).toEqual({
-			mode: "execute",
-			from: "settings",
-		});
-		expect(effectiveMode({}, "codex", local, true)).toEqual({
-			mode: "plan",
-			from: "agent",
-		});
-		expect(effectiveMode({}, "codex", undefined, true)).toEqual({
-			mode: "execute",
-			from: "prismalens",
-		});
-
-		// autoStart false
-		expect(effectiveMode(s, "codex", local, false)).toEqual({
-			mode: "execute",
-			from: "settings",
-		});
-		expect(effectiveMode({ autoRunModes: s.autoRunModes }, "codex", local, false)).toEqual({
-			mode: "plan",
-			from: "agent",
-		});
-		expect(effectiveMode({}, "codex", undefined, false)).toEqual({
-			mode: "execute",
-			from: "prismalens",
-		});
-	});
 });
 
 describe("LocalDefaultSchema", () => {
@@ -206,11 +161,6 @@ describe("LocalDefaultSchema", () => {
 				value: "manual",
 				reason: "managed policy",
 			},
-			mode: {
-				mode: "execute" as const,
-				file: "~/.claude/settings.json",
-				value: "default",
-			},
 		};
 		expect(LocalDefaultSchema.parse(full)).toEqual(full);
 
@@ -221,17 +171,11 @@ describe("LocalDefaultSchema", () => {
 				value: "auto_edit",
 				reason: "cannot run untrusted",
 			},
-			mode: {
-				mode: null,
-				file: "~/.config/opencode/opencode.json",
-				value: "unknown_agent",
-			},
 		};
 		expect(LocalDefaultSchema.parse(nullable)).toEqual(nullable);
 
 		const allNull = {
 			permission: null,
-			mode: null,
 		};
 		expect(LocalDefaultSchema.parse(allNull)).toEqual(allNull);
 	});

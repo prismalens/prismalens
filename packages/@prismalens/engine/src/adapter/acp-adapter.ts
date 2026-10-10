@@ -228,11 +228,6 @@ export class AcpAdapter {
 		};
 	}
 
-	/** The agent's own words, as one message (a plan it asked to leave Plan with, #673 w21). */
-	agentMessage(text: string): CanonicalEvent {
-		return { kind: "agent_step", ...this.base(), text, toolCalls: [] };
-	}
-
 	/** Terminal: a branch failed. */
 	error(message: string): CanonicalEvent {
 		return { kind: "error", ...this.base(), message };

@@ -258,7 +258,7 @@ describe("Transcript AskCard", () => {
 });
 
 describe("Transcript level lines (#673 w21)", () => {
-	it("renders allowed, plan_kept and mode_kept lines with their respective testids", async () => {
+	it("renders allowed and mode_kept lines with their respective testids", async () => {
 		const levelItems: TranscriptItem[] = [
 			{
 				kind: "level",
@@ -268,15 +268,9 @@ describe("Transcript level lines (#673 w21)", () => {
 			},
 			{
 				kind: "level",
-				key: "lvl-2",
-				outcome: "plan_kept",
-				text: "Kept Plan: Implement this plan?",
-			},
-			{
-				kind: "level",
 				key: "lvl-3",
 				outcome: "mode_kept",
-				text: "Kept Execute: Implement this plan?",
+				text: "Mode switch refused: Enter Plan Mode",
 			},
 		];
 
@@ -297,16 +291,10 @@ describe("Transcript level lines (#673 w21)", () => {
 		expect(allowed).not.toBeNull();
 		expect(allowed?.textContent).toBe("Allowed at Ask always: A tool call");
 
-		const planKept = container.querySelector(
-			'[data-testid="transcript-plan-kept"]',
-		);
-		expect(planKept).not.toBeNull();
-		expect(planKept?.textContent).toBe("Kept Plan: Implement this plan?");
-
 		const modeKept = container.querySelector(
 			'[data-testid="transcript-mode-kept"]',
 		);
 		expect(modeKept).not.toBeNull();
-		expect(modeKept?.textContent).toBe("Kept Execute: Implement this plan?");
+		expect(modeKept?.textContent).toBe("Mode switch refused: Enter Plan Mode");
 	});
 });

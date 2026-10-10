@@ -167,7 +167,6 @@ export interface AcpSessionConfig {
 /** Outcomes the run's level gives without the operator; they never show an ask. */
 const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 	"allowed",
-	"plan_kept",
 	"mode_kept",
 ]);
 
@@ -643,26 +642,6 @@ export class AcpSession {
 	/** The mode the agent last reported as current; null when it reported none. */
 	get currentMode(): string | null {
 		return this.modes.current;
-	}
-
-	/** Whether the agent lists config option `configId` with `value` among its choices. */
-	offersConfigValue(configId: string, value: string): boolean {
-		const option = this.options.find((o) => o?.id === configId);
-		const entries = Array.isArray(option?.options)
-			? (option.options as Array<Record<string, unknown>>)
-			: [];
-		return entries
-			.flatMap((e) =>
-				Array.isArray(e?.options)
-					? (e.options as Array<Record<string, unknown>>)
-					: [e],
-			)
-			.some((o) => o?.value === value);
-	}
-
-	/** The current value of config option `configId`; null when the agent lists none. */
-	configValue(configId: string): string | null {
-		return currentValueOf(this.options, configId);
 	}
 
 	/**

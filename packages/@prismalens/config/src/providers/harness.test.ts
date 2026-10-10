@@ -265,7 +265,7 @@ describe("sandbox and fidelity (#673 w51)", () => {
 	});
 });
 
-describe("permission levels and plan modes (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
+describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 	it("gives every row access for all four levels with non-empty mechanism and non-empty line(null)", () => {
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			for (const level of ACCESS_LEVELS) {
@@ -280,12 +280,12 @@ describe("permission levels and plan modes (ADR 0003, #673 w21 ruling 2026-10-10
 	});
 
 	it("never uses a plan mode as an access level mode", () => {
-		const planModes = new Set(["plan"]);
+		const planIds = new Set(["plan"]);
 		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
 			for (const level of ACCESS_LEVELS) {
 				const mode = descriptor.access[level].mode;
 				if (mode) {
-					expect(planModes.has(mode), `${id} ${level} must not use plan mode ${mode}`).toBe(false);
+					expect(planIds.has(mode), `${id} ${level} must not use plan mode ${mode}`).toBe(false);
 				}
 			}
 		}
@@ -299,29 +299,6 @@ describe("permission levels and plan modes (ADR 0003, #673 w21 ruling 2026-10-10
 		for (const level of ACCESS_LEVELS) {
 			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
 		}
-	});
-
-	it("configures planMode appropriately across harnesses", () => {
-		expect(HARNESS_REGISTRY["claude-code"].planMode).toEqual({
-			via: "acp",
-			mode: "plan",
-			replacesLevel: true,
-		});
-		expect(HARNESS_REGISTRY.gemini.planMode).toEqual({
-			via: "acp",
-			mode: "plan",
-			replacesLevel: true,
-		});
-		expect(HARNESS_REGISTRY.opencode.planMode).toEqual({
-			via: "acp",
-			mode: "plan",
-		});
-		expect(HARNESS_REGISTRY.codex.planMode).toEqual({
-			via: "config",
-			configId: "collaboration_mode",
-			value: "plan",
-		});
-		expect(HARNESS_REGISTRY.deepagents.planMode).toBeUndefined();
 	});
 
 	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {

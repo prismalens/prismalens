@@ -12,14 +12,11 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
-	DEFAULT_RUN_MODE,
 	getHarnessProviderKeys,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
 	type ModelSource,
-	planModeId,
-	type RunMode,
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
@@ -171,8 +168,8 @@ async function runJobInternal(
 		// The run's own chip, else Settings and the agent's default as resolved (#673 w21).
 		const accessLevel =
 			data.accessLevel ?? resolved.accessLevel ?? DEFAULT_ACCESS_LEVEL;
-		const runMode = data.runMode ?? resolved.runMode ?? DEFAULT_RUN_MODE;
-		const agentMode = askedAgentMode(selection.harness, accessLevel, runMode);
+		const agentMode =
+			resolveAccess(selection.harness, accessLevel).mode ?? null;
 		logger.info(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
@@ -228,7 +225,6 @@ async function runJobInternal(
 			workspace: JSON.stringify(toRunWorkspace(workspace)),
 			...(agentMode ? { agentMode } : {}),
 			accessLevel,
-			runMode,
 			...(data.chat ? { chat: true } : {}),
 		});
 		const harness = selection.harness;
@@ -248,7 +244,6 @@ async function runJobInternal(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				accessLevel,
-				runMode,
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
@@ -288,9 +283,8 @@ async function runJobInternal(
 				})
 			: null;
 		if (owned) return owned;
-		// A Plan run ends with its plan in the conversation, never a report (#673 w21).
-		if ((data.chat || runMode === "plan") && !outcome.error) {
-			logger.info(`Job ${job.id} ${data.chat ? "chat" : "plan"} ended`);
+		if (data.chat && !outcome.error) {
+			logger.info(`Job ${job.id} chat ended`);
 			return chatResult(data);
 		}
 		if (!outcome.report) {
@@ -363,19 +357,6 @@ async function runJobInternal(
 			clearRunWorkspace(runDirFor(unvalidated.investigationId));
 		}
 	}
-}
-
-/** The agent mode id a run asks for: the plan mode when Plan is one, else the level's; null when none. */
-function askedAgentMode(
-	harness: HarnessId,
-	level: AccessLevel,
-	runMode: RunMode,
-): string | null {
-	return (
-		(runMode === "plan" ? planModeId(harness) : null) ??
-		resolveAccess(harness, level).mode ??
-		null
-	);
 }
 
 /** Only a session the harness can load again is worth keeping (#747). */
@@ -508,7 +489,6 @@ async function runFollowUp(
 				...(customModel ? { customModel } : {}),
 				...(inv.effort ? { effort: inv.effort } : {}),
 				...(data.accessLevel ? { accessLevel: data.accessLevel } : {}),
-				...(data.runMode ? { runMode: data.runMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,

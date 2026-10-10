@@ -81,7 +81,6 @@ export function ConversationRoute() {
 							accessLevel:
 								investigation.report?.fidelity?.access ??
 								investigation.accessLevel,
-							runMode: investigation.runMode,
 						}
 					: undefined,
 			}),

@@ -11,8 +11,6 @@ import {
 	LIVE_TURN_LABEL,
 	NO_SANDBOX,
 	PRIORITY_LABEL,
-	RUN_MODE_LABEL,
-	RUN_MODE_LINE,
 	runStateLabel,
 	TURN_OUTCOME_LABEL,
 } from "./state-labels.js";
@@ -104,7 +102,7 @@ describe("runStateLabel covers every kind × state (#673 w59)", () => {
 	});
 });
 
-describe("mode and permission labels and word guard (#673 w21 ruling 2026-10-10)", () => {
+describe("permission labels and word guard (#673 w21 ruling 2026-10-10)", () => {
 	it("asserts labels exact", () => {
 		expect(ACCESS_LEVEL_LABEL).toEqual({
 			supervised: "Ask always",
@@ -112,20 +110,15 @@ describe("mode and permission labels and word guard (#673 w21 ruling 2026-10-10)
 			auto: "Auto",
 			"full-access": "Full access",
 		});
-		expect(RUN_MODE_LABEL).toEqual({
-			execute: "Execute",
-			plan: "Plan",
-		});
 	});
 
-	it("word guard over ACCESS_LEVEL_LINE, RUN_MODE_LINE, NO_SANDBOX, and every row line", async () => {
+	it("word guard over ACCESS_LEVEL_LINE, NO_SANDBOX, and every row line", async () => {
 		const { HARNESS_REGISTRY } = await import("@prismalens/config/harness");
 
 		const forbidden = /\bnever\b|\bonly\b|without sending|PrismaLens refuses/i;
 
 		const lines: string[] = [
 			...Object.values(ACCESS_LEVEL_LINE),
-			...Object.values(RUN_MODE_LINE),
 			NO_SANDBOX,
 		];
 

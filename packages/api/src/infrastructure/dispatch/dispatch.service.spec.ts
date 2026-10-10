@@ -290,7 +290,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 				auto: false,
 			})),
 			getSettings: vi.fn(async () => settings),
-			localDefaultOf: vi.fn(() => ({ permission: null, mode: null })),
+			localDefaultOf: vi.fn(() => ({ permission: null })),
 		};
 		const service = new DispatchService(
 			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
@@ -337,7 +337,6 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 			model: "gpt-stored",
 			effort: "high",
 			accessLevel: "auto",
-			runMode: "execute",
 		});
 		expect(harnessService.resolveSelection).toHaveBeenCalledWith({
 			harness: "codex",
@@ -411,13 +410,13 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } })).status).toBe("succeeded");
 	});
 
-	it("keeps the level and mode the run asked for, and none on a row from before them (#673 w21)", async () => {
+	it("keeps the level the run asked for, and none on a row from before levels (#673 w21)", async () => {
 		const { service } = realDispatch();
 		const inc = await incident();
-		const ran = await thread(inc.id, { agentMode: "acceptEdits", accessLevel: "auto-edits", runMode: "execute" });
+		const ran = await thread(inc.id, { agentMode: "acceptEdits", accessLevel: "auto-edits" });
 		await service.resumeInvestigation(ran.id, "and now?", "queue");
 		const kept = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
-		expect(JSON.parse(kept.payload)).toMatchObject({ accessLevel: "auto-edits", runMode: "execute" });
+		expect(JSON.parse(kept.payload)).toMatchObject({ accessLevel: "auto-edits" });
 
 		const inc2 = await incident();
 		const old = await thread(inc2.id, { agentMode: "acceptEdits" });

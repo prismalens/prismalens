@@ -233,7 +233,6 @@ export class IncidentsController {
 							triggerType: "manual",
 							title: input.brief?.trim().split("\n")[0]?.slice(0, 120) || null,
 							accessLevel: input.accessLevel ?? null,
-							runMode: input.runMode ?? null,
 						});
 					if (!created) {
 						return {
@@ -247,7 +246,6 @@ export class IncidentsController {
 					const jobId = await this.enqueueRun(incident, investigation.id, {
 						...(input.brief ? { brief: input.brief } : {}),
 						...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
-						...(input.runMode ? { runMode: input.runMode } : {}),
 						...choice,
 						...(attachments.length ? { attachments } : {}),
 					});
@@ -284,7 +282,6 @@ export class IncidentsController {
 						kind: "chat",
 						title: input.text.slice(0, 120),
 						accessLevel: input.accessLevel ?? null,
-						runMode: input.runMode ?? null,
 					});
 				// Never hand the message to the live run silently (#673 review M7).
 				if (!created) {
@@ -301,7 +298,6 @@ export class IncidentsController {
 				const jobId = await this.enqueueRun(incident, investigation.id, {
 					kind: "chat",
 					...(input.accessLevel ? { accessLevel: input.accessLevel } : {}),
-					...(input.runMode ? { runMode: input.runMode } : {}),
 					...choice,
 					chat: {
 						text: input.text,
@@ -599,7 +595,6 @@ export class IncidentsController {
 				kind: i.kind === "chat" ? "chat" : "investigation",
 				agentMode: i.agentMode ?? null,
 				accessLevel: i.accessLevel ?? null,
-				runMode: i.runMode ?? null,
 				title: i.title ?? null,
 				startedAt: iso(i.startedAt),
 				...(i.hasReport !== undefined ? { hasReport: i.hasReport } : {}),

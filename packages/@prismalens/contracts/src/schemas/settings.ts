@@ -9,25 +9,21 @@ import {
 	ACCESS_LEVELS,
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
-	DEFAULT_RUN_MODE,
 	HARNESS_IDS,
 	type HarnessId,
-	RUN_MODES,
-	type RunMode,
 	SANDBOX_STATES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
 
 // =============================================================================
-// MODE AND PERMISSION (#673 w21 ruling 2026-10-10)
+// PERMISSION LEVEL (#673 w21 ruling 2026-10-10)
 // =============================================================================
 
 export const AccessLevelSchema = z.enum(ACCESS_LEVELS);
-export const RunModeSchema = z.enum(RUN_MODES);
 
 /**
- * The agent's own default for each axis, read from the user's settings file.
- * Null: no file or no key; a null level or mode: a value with no PrismaLens
+ * The agent's own permission default, read from the user's settings file.
+ * Null: no file or no key; a null level: a value with no PrismaLens
  * equivalent, or with `reason`, one that cannot run here.
  */
 export const LocalDefaultSchema = z.object({
@@ -39,17 +35,10 @@ export const LocalDefaultSchema = z.object({
 			reason: z.string().optional(),
 		})
 		.nullable(),
-	mode: z
-		.object({
-			mode: RunModeSchema.nullable(),
-			file: z.string(),
-			value: z.string(),
-		})
-		.nullable(),
 });
 export type LocalDefault = z.infer<typeof LocalDefaultSchema>;
 
-/** Where a run's level or mode came from, for the default row's tag. */
+/** Where a run's level came from, for the default row's tag. */
 export type AxisSource = "auto-settings" | "settings" | "agent" | "prismalens";
 
 type AxisSettings<K extends string, V> = Partial<
@@ -69,21 +58,6 @@ export function effectiveAccess(
 	if (set) return { level: set, from: "settings" };
 	if (local?.level) return { level: local.level, from: "agent" };
 	return { level: DEFAULT_ACCESS_LEVEL, from: "prismalens" };
-}
-
-/** The same order over the Mode axis. */
-export function effectiveMode(
-	s: AxisSettings<"runModes" | "autoRunModes", RunMode>,
-	harness: HarnessId,
-	local: LocalDefault["mode"] | undefined,
-	autoStart = false,
-): { mode: RunMode; from: AxisSource } {
-	const auto = autoStart ? s.autoRunModes?.[harness] : undefined;
-	if (auto) return { mode: auto, from: "auto-settings" };
-	const set = s.runModes?.[harness];
-	if (set) return { mode: set, from: "settings" };
-	if (local?.mode) return { mode: local.mode, from: "agent" };
-	return { mode: DEFAULT_RUN_MODE, from: "prismalens" };
 }
 
 // =============================================================================
@@ -161,8 +135,8 @@ export const HarnessStatusSchema = z.object({
 	install: z.string(),
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: z.string().nullable(),
-	/** The agent's own default for Mode and Permission, from the user's settings file (#673 w21). */
-	localDefault: LocalDefaultSchema.default({ permission: null, mode: null }),
+	/** The agent's own permission default, from the user's settings file (#673 w21). */
+	localDefault: LocalDefaultSchema.default({ permission: null }),
 	/** How the Model setting reaches this harness: ACP `session/set_config_option`, or not at all (R4.2). */
 	modelVia: z.enum(["acp", "unsupported"]),
 	/** One line the picker and the doctor show: how to sign this harness in. */
@@ -206,8 +180,6 @@ export const HarnessStatusSchema = z.object({
 			effort: EffortOptionSchema.nullable(),
 			/** The agent's own permission modes; null when it advertised none. */
 			modes: z.array(AgentModeOptionSchema).nullable().default(null),
-			/** The session offered the agent's plan mode; null before a check said (#673 w21). */
-			plan: z.boolean().nullable().default(null),
 			/** The effort levels the agent offered, by name; null when it offered none. */
 			efforts: z.array(EffortLevelSchema).nullable().default(null),
 			images: z.boolean(),
@@ -251,14 +223,10 @@ export const HarnessSettingsSchema = z.object({
 	accessLevels: z
 		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),
-	/** Mode per agent for the next run. */
-	runModes: z.partialRecord(z.enum(HARNESS_IDS), RunModeSchema).optional(),
 	/** Permission level per agent for runs PrismaLens starts from an alert; unset follows `accessLevels`. */
 	autoAccessLevels: z
 		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),
-	/** Mode per agent for runs PrismaLens starts from an alert; unset follows `runModes`. */
-	autoRunModes: z.partialRecord(z.enum(HARNESS_IDS), RunModeSchema).optional(),
 	/** Model ids the operator added per agent, shown in the picker beside the agent's own list (#673 w57). */
 	customModels: z
 		.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema)
@@ -283,14 +251,8 @@ export const UpdateHarnessSettingsSchema = z
 		accessLevels: z
 			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
 			.optional(),
-		runModes: z
-			.partialRecord(z.enum(HARNESS_IDS), RunModeSchema.nullable())
-			.optional(),
 		autoAccessLevels: z
 			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
-			.optional(),
-		autoRunModes: z
-			.partialRecord(z.enum(HARNESS_IDS), RunModeSchema.nullable())
 			.optional(),
 		/** Replaces that agent's list; `null` clears it. */
 		customModels: z
@@ -323,7 +285,6 @@ export const HarnessProbeResultSchema = z.object({
 	servedModel: z.string().nullable().optional(),
 	effort: EffortOptionSchema.nullable().optional(),
 	modes: z.array(AgentModeOptionSchema).nullable().optional(),
-	plan: z.boolean().nullable().optional(),
 	efforts: z.array(EffortLevelSchema).nullable().optional(),
 	images: z.boolean().optional(),
 	sandbox: SandboxChecksSchema.nullable().optional(),

@@ -48,16 +48,14 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: { onLevel: (l: string) => void; level: string; onRunMode?: (m: string) => void; runMode?: string }) =>
+		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
 			el(
 				"span",
-				{ "data-testid": "mode", "data-value": p.level, "data-runmode": p.runMode ?? "" },
+				{ "data-testid": "mode", "data-value": p.level },
 				button("pick-mode", () => p.onLevel("full-access")),
-				button("pick-runmode", () => p.onRunMode?.("plan")),
 			),
 		defaultAccessOf: () => ({
 			level: { level: "auto", from: "agent" },
-			mode: { mode: "execute", from: "prismalens" },
 		}),
 		modelName: (_h: unknown, id: string) => id,
 		unreadyReason: () => null,
@@ -67,7 +65,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 			model: "vendor/a",
 			models: { opencode: "vendor/a", codex: "gpt-x" },
 			efforts: { opencode: "low" },
-			axes: { accessLevels: {}, runModes: {}, autoAccessLevels: {}, autoRunModes: {} },
+			axes: { accessLevels: {}, autoAccessLevels: {} },
 		}),
 	};
 });
@@ -110,7 +108,6 @@ function setRecord(over: Record<string, unknown>) {
 						effort: "medium",
 						agentMode: "build",
 						accessLevel: "auto-edits",
-						runMode: "execute",
 					},
 			sendMessage: vi.fn(),
 			stop: vi.fn(),
@@ -160,16 +157,14 @@ describe("DockedComposer chips (#673 w52)", () => {
 		expect(q("effort").dataset.value).toBe("low");
 		await click("pick-effort");
 		await click("pick-mode");
-		await click("pick-runmode");
 		await click("pick-model");
 		await click("pick-agent");
 		const set = h.record.setDraftChoice as ReturnType<typeof vi.fn>;
 		expect(set.mock.calls.map((c) => c[0])).toEqual([
-			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto", runMode: "execute" },
-			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access", runMode: "execute" },
-			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "auto", runMode: "plan" },
-			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto", runMode: "execute" },
-			// Another agent starts from its own Settings for effort, mode and level.
+			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto" },
+			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access" },
+			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto" },
+			// Another agent starts from its own Settings for effort and level.
 			{ harness: "codex", model: "" },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
@@ -180,12 +175,10 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await render();
 		await click("pick-effort");
 		await click("pick-mode");
-		await click("pick-runmode");
 		const newRun = h.record.newRun as ReturnType<typeof vi.fn>;
 		expect(newRun.mock.calls.map((c) => c[0])).toEqual([
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "auto-edits", runMode: "execute" } },
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "full-access", runMode: "execute" } },
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "auto-edits", runMode: "plan" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "auto-edits" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "full-access" } },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
 	});
@@ -200,7 +193,7 @@ describe("DockedComposer chips (#673 w52)", () => {
 		expect(q("mode").dataset.value).toBe("full-access");
 		await click("composer-investigate");
 		expect(h.record.investigate).toHaveBeenCalledWith(
-			expect.objectContaining({ harness: "codex", model: "", effort: null, accessLevel: "full-access", runMode: "execute" }),
+			expect.objectContaining({ harness: "codex", model: "", effort: null, accessLevel: "full-access" }),
 		);
 
 		await act(async () => root.unmount());

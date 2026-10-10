@@ -43,7 +43,7 @@ export function loadSession(nameOrPath) {
 
 const RELEASE_DIR = join(PICKED_DIR, "release");
 
-/** Claude Code's modes and OpenCode's agents, so each permission level and Plan has its mode (#673 w21). */
+/** Claude Code's modes and OpenCode's agents, so each permission level has its mode (#673 w21). */
 const DEFAULT_MODES = {
 	currentModeId: "default",
 	availableModes: [

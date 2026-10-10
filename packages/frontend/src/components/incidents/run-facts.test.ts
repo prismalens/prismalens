@@ -13,7 +13,6 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	AccessChip: () => null,
 	defaultAccessOf: () => ({
 		level: { level: "supervised", from: "prismalens" },
-		mode: { mode: "execute", from: "prismalens" },
 	}),
 	modelName: (_h: unknown, id: string) => id,
 	unreadyReason: () => null,
@@ -22,7 +21,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		effective: undefined,
 		model: "",
 		efforts: {},
-		axes: { accessLevels: {}, runModes: {}, autoAccessLevels: {}, autoRunModes: {} },
+		axes: { accessLevels: {}, autoAccessLevels: {} },
 	}),
 }));
 
@@ -131,7 +130,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		tested: null,
 		install: "",
 		defaultModel: null,
-		localDefault: { permission: null, mode: null },
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -151,7 +150,6 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 			],
 			efforts: [],
 			images: false,
-			plan: true,
 			sandbox: null,
 		},
 	};
@@ -164,7 +162,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		tested: null,
 		install: "",
 		defaultModel: null,
-		localDefault: { permission: null, mode: null },
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -182,7 +180,6 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 			],
 			efforts: [],
 			images: false,
-			plan: true,
 			sandbox: null,
 		},
 	};
@@ -191,7 +188,6 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		const inv = {
 			agentMode: "default",
 			accessLevel: "supervised" as const,
-			runMode: "execute" as const,
 			harness: "claude-code",
 		};
 		expect(runAccessLine(inv, claudeHarness)).toBe("Ask always (Manual)");
@@ -201,7 +197,6 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		const inv = {
 			agentMode: "acceptEdits",
 			accessLevel: "auto" as const,
-			runMode: "execute" as const,
 			harness: "claude-code",
 			report: {
 				fidelity: {
@@ -216,33 +211,10 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		);
 	});
 
-	it("formats 'Plan (Claude Code Plan)' on Claude Code (coupled harness)", () => {
-		const inv = {
-			agentMode: "plan",
-			accessLevel: "supervised" as const,
-			runMode: "plan" as const,
-			harness: "claude-code",
-		};
-		expect(runAccessLine(inv, claudeHarness)).toBe("Plan (Claude Code Plan)");
-	});
-
-	it("formats 'Plan, Ask always (Ask for approval)' on Codex (uncoupled harness)", () => {
-		const inv = {
-			agentMode: "read-only",
-			accessLevel: "supervised" as const,
-			runMode: "plan" as const,
-			harness: "codex",
-		};
-		expect(runAccessLine(inv, codexHarness)).toBe(
-			"Plan, Ask always (Ask for approval)",
-		);
-	});
-
 	it("formats #778 legacy row (no agentMode, fidelity has legacy level)", () => {
 		const inv = {
 			agentMode: null,
 			accessLevel: undefined,
-			runMode: undefined,
 			harness: "codex",
 			report: {
 				fidelity: {
@@ -257,7 +229,6 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		const inv = {
 			agentMode: "read-only",
 			accessLevel: undefined,
-			runMode: undefined,
 			harness: "codex",
 		};
 		expect(runAccessLine(inv, codexHarness)).toBe("ran in Ask for approval");

@@ -101,7 +101,7 @@ describe("HarnessService", () => {
 			});
 		});
 
-		it("drops a stored agentModes and any level or mode this build does not know (#673 w21)", async () => {
+		it("drops a stored agentModes, run modes and any level this build does not know (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
 					harness: "auto",
@@ -113,7 +113,6 @@ describe("HarnessService", () => {
 			await expect(service().getSettings()).resolves.toEqual({
 				harness: "auto",
 				accessLevels: { codex: "auto" },
-				runModes: { "claude-code": "plan" },
 			});
 		});
 	});
@@ -158,30 +157,24 @@ describe("HarnessService", () => {
 			).resolves.toEqual({ harness: "auto", accessLevels: { codex: "auto", "claude-code": "auto-edits" } });
 		});
 
-		it("merges the four axis maps and null clears them (#673 w21)", async () => {
+		it("merges both level maps and null clears them (#673 w21)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
 					harness: "auto",
 					accessLevels: { codex: "auto", opencode: "full-access" },
-					runModes: { "claude-code": "plan", codex: "execute" },
 					autoAccessLevels: { codex: "auto-edits", gemini: "supervised" },
-					autoRunModes: { "claude-code": "plan" },
 				}),
 			);
 
 			const updated = await service().updateSettings({
 				accessLevels: { opencode: null, gemini: "auto" },
-				runModes: { "claude-code": null },
 				autoAccessLevels: { gemini: null, "claude-code": "auto" },
-				autoRunModes: { "claude-code": null, codex: "execute" },
 			});
 
 			expect(updated).toEqual({
 				harness: "auto",
 				accessLevels: { codex: "auto", gemini: "auto" },
-				runModes: { codex: "execute" },
 				autoAccessLevels: { codex: "auto-edits", "claude-code": "auto" },
-				autoRunModes: { codex: "execute" },
 			});
 		});
 
@@ -447,12 +440,11 @@ describe("HarnessService", () => {
 		it("localDefault injected reader reaches HarnessStatus (#673 w21)", async () => {
 			const s = service();
 			const stubDefault = {
-				permission: "supervised" as const,
-				mode: "execute" as const,
-				source: "settings" as const,
-				file: "/path/to/settings.json",
-				line: "Supervised mode",
-				details: {},
+				permission: {
+					level: "supervised" as const,
+					file: "/path/to/settings.json",
+					value: "default",
+				},
 			};
 			s.localDefaultOf = vi.fn().mockReturnValue(stubDefault);
 

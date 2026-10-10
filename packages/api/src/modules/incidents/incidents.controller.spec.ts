@@ -321,7 +321,6 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(investigationsService.startOrGet).toHaveBeenCalledWith({
 			incidentId: mockIncident.id,
 			accessLevel: null,
-			runMode: null,
 			afterResolve: true,
 			triggerType: "manual",
 			title: "The fix did not hold.",
@@ -337,7 +336,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				ensureReady: vi.fn().mockResolvedValue({ ready: true }),
 				resolveSelection: vi.fn().mockResolvedValue({ runnable: true, harness: "opencode", auto: true }),
 			}) as unknown as HarnessService;
-		type Chat = (a: { input: { id: string; text: string; runMode?: string } }) => Promise<unknown>;
+		type Chat = (a: { input: { id: string; text: string; accessLevel?: string } }) => Promise<unknown>;
 
 		it("starts a chat run whose job carries the message and no brief", async () => {
 			const investigationsService = {
@@ -354,7 +353,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			);
 			const text = `Is the pool still saturated? ${"x".repeat(200)}`;
 			const result = await (getHandlers(controller).chat as Chat)({
-				input: { id: mockIncident.id, text, runMode: "plan" },
+				input: { id: mockIncident.id, text, accessLevel: "auto" },
 			});
 			expect(result).toMatchObject({ investigationId: "inv-chat", jobId: "job-c", queued: true });
 			expect(investigationsService.startOrGet).toHaveBeenCalledWith(
@@ -362,7 +361,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					kind: "chat",
 					triggerType: "manual",
 					title: text.slice(0, 120),
-					runMode: "plan",
+					accessLevel: "auto",
 				}),
 			);
 			const job = dispatchService.addInvestigationJob.mock.calls[0][0];
@@ -432,17 +431,17 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				{} as never,
 			);
 			const investigate = getHandlers(controller).investigate as (a: {
-				input: { id: string; accessLevel?: string; runMode?: string };
+				input: { id: string; accessLevel?: string };
 			}) => Promise<unknown>;
 			return { dispatchService, investigationsService, investigate, controller };
 		};
 		const full = make();
-		await full.investigate({ input: { id: mockIncident.id, accessLevel: "full-access", runMode: "plan" } });
+		await full.investigate({ input: { id: mockIncident.id, accessLevel: "full-access" } });
 		expect(full.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
-			expect.objectContaining({ accessLevel: "full-access", runMode: "plan" }),
+			expect.objectContaining({ accessLevel: "full-access" }),
 		);
 		expect(full.investigationsService.startOrGet).toHaveBeenCalledWith(
-			expect.objectContaining({ accessLevel: "full-access", runMode: "plan" }),
+			expect.objectContaining({ accessLevel: "full-access" }),
 		);
 		const none = make();
 		await none.investigate({ input: { id: mockIncident.id } });
@@ -450,7 +449,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			expect.not.objectContaining({ accessLevel: expect.anything() }),
 		);
 
-		// Views return accessLevel and runMode
+		// Views return accessLevel
 		const view = (full.controller as unknown as { serializeIncident: (i: unknown) => Record<string, unknown> }).serializeIncident({
 			id: "inc-1",
 			number: 1,
@@ -463,13 +462,11 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 					status: "running",
 					kind: "investigation",
 					accessLevel: "full-access",
-					runMode: "plan",
 				},
 			],
 		});
 		expect((view.investigations as Array<Record<string, unknown>>)[0]).toMatchObject({
 			accessLevel: "full-access",
-			runMode: "plan",
 		});
 	});
 

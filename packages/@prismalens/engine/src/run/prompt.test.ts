@@ -155,7 +155,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"curl -sG 'http://prometheus.internal:9090/api/v1/query' --data-urlencode 'query=<promql>'",
 			);
 			expect(prompt).toContain("curl -s 'http://am.internal:9093/api/v2/alerts'");
-			expect(prompt).toContain("Mode: Execute. Permission: Ask always (Manual, the agent's own mode).");
+			expect(prompt).toContain("Permission: Ask always (Manual, the agent's own mode).");
 			expect(prompt).toContain(
 				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
 			);
@@ -166,7 +166,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 
 		it("says the agent's default when no mode name is known", () => {
 			expect(buildInvestigationPrompt(context)).toContain(
-				"Mode: Execute. Permission: Ask always (the agent's default, the agent's own mode).",
+				"Permission: Ask always (the agent's default, the agent's own mode).",
 			);
 		});
 
@@ -197,7 +197,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				modeName: "Manual",
 			});
 			expect(prompt).toContain(
-				"Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+				"Permission: Ask always (Manual, the agent's own mode).",
 			);
 			const expectedSteps = [
 				"1. Shell tool calls take the full command as ONE string in the tool's `command` field — never an argv array.",
@@ -211,7 +211,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"9. If a command fails, say why in one line, try one alternative, then move on; a dead end is a finding.",
 				"10. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
 				"11. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
-				"12. Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+				"12. Permission: Ask always (Manual, the agent's own mode).",
 				"13. Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
 			];
 			for (let i = 0; i < expectedSteps.length; i++) {
@@ -230,7 +230,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				modeName: "Bypass Permissions",
 			});
 			expect(prompt).toContain(
-				"Mode: Execute. Permission: Full access (Bypass Permissions, the agent's own mode).",
+				"Permission: Full access (Bypass Permissions, the agent's own mode).",
 			);
 			expect(prompt).toContain(
 				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",

@@ -40,7 +40,6 @@ describe("probeHarness", () => {
 			servedModel: null,
 			effort: null,
 			modes: null,
-			plan: false,
 			efforts: null,
 			images: false,
 			sandbox: { "agent-default": { state: "none", reason: "OpenCode has no sandbox" } },
@@ -77,7 +76,6 @@ describe("probeHarness", () => {
 			{ id: "default", name: "Manual" },
 			{ id: "plan", name: "Plan" },
 		]);
-		expect(result.plan).toBe(true);
 		expect(result.efforts).toEqual([
 			{ id: "low", name: "low", default: true },
 			{ id: "high", name: "high", default: false },
@@ -165,48 +163,6 @@ describe("probeHarness", () => {
 		expect(result.outcome).toBe("no-answer");
 		// Per-request timeouts would take about 300 + 400 ms.
 		expect(Date.now() - started).toBeLessThan(600);
-	});
-
-	it("sets checked.plan true/false per fake based on plan mode offering (#673 w21)", async () => {
-		const claudeWithPlan = await probeHarness("claude-code", {
-			descriptor: {
-				...descriptor("ok"),
-				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_PROFILE: "claude" }),
-			},
-		});
-		expect(claudeWithPlan.plan).toBe(true);
-
-		const claudeWithoutPlan = await probeHarness("claude-code", {
-			descriptor: {
-				...descriptor("ok"),
-				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_MODES: "default=Manual" }),
-			},
-		});
-		expect(claudeWithoutPlan.plan).toBe(false);
-
-		const codexWithPlan = await probeHarness("codex", {
-			descriptor: {
-				...descriptor("ok"),
-				acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_PROFILE: "codex" }),
-			},
-		});
-		expect(codexWithPlan.plan).toBe(true);
-
-		const codexWithoutPlan = await probeHarness("codex", {
-			descriptor: {
-				...descriptor("ok"),
-				acpEnv: () => ({
-					FAKE_ACP_MODE: "ok",
-					FAKE_MODES: "read-only=Ask for approval",
-				}),
-			},
-		});
-		expect(codexWithoutPlan.plan).toBe(false);
-
-		const deepagents = await probeHarness("deepagents", {
-			descriptor: descriptor("ok"),
-		});
-		expect(deepagents.plan).toBe(false);
 	});
 });
 

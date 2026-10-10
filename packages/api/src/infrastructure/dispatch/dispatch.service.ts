@@ -36,11 +36,9 @@ import {
 	AccessLevelSchema,
 	CanonicalEventSchema,
 	effectiveAccess,
-	effectiveMode,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
-	RunModeSchema,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
@@ -200,7 +198,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						workspace: dto.workspace,
 						agentMode: dto.agentMode,
 						accessLevel: dto.accessLevel,
-						runMode: dto.runMode,
 						lastTurnOutcome: dto.lastTurnOutcome,
 					},
 				);
@@ -405,7 +402,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			...model,
 			...(effort ? { effort } : {}),
 			accessLevel: effectiveAccess(settings, h, local.permission).level,
-			runMode: effectiveMode(settings, h, local.mode).mode,
 			...(isCustomModel(model, settings.customModels?.[h])
 				? { customModel: true }
 				: {}),
@@ -732,7 +728,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				completedAt: true,
 				error: true,
 				accessLevel: true,
-				runMode: true,
 				kind: true,
 				report: true,
 			},
@@ -752,9 +747,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
-		// The run keeps the level and mode it asked for; a row from before them keeps the session's mode (#673 w21).
+		// The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
 		const accessLevel = AccessLevelSchema.safeParse(row.accessLevel).data;
-		const runMode = RunModeSchema.safeParse(row.runMode).data;
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
@@ -772,7 +766,6 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			incidentId: row.incidentId,
 			investigationId: id,
 			...(accessLevel ? { accessLevel } : {}),
-			...(runMode ? { runMode } : {}),
 			resume: {
 				text,
 				mode,

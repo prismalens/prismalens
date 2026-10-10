@@ -20,7 +20,6 @@ import {
 	buildRunFidelity,
 	createSteerChannel,
 	prepareRunEnv,
-	ranLevel,
 	runInvestigation,
 } from "./investigate.js";
 import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
@@ -892,7 +891,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
 		expect(sent.find((m) => m.method === "session/set_mode")?.params?.modeId).toBe("default");
 		expect(wireOut(runDir).find((m) => m.includes("session/prompt"))).toContain(
-			"Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+			"Permission: Ask always (Manual, the agent's own mode).",
 		);
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
@@ -902,7 +901,6 @@ describe("the agent's own mode (#673 w21)", () => {
 			fidelity: "cooperative",
 			access: "supervised",
 			ranAccess: "supervised",
-			runMode: "execute",
 		});
 	});
 
@@ -1180,102 +1178,28 @@ describe("the agent's own mode (#673 w21)", () => {
 			mode: "acceptEdits",
 			ranAccess: "auto-edits",
 			access: "auto",
-			runMode: "execute",
 		});
 	});
 
-	it("Plan on a claude-shaped fake records ranAccess null and runs sandbox check for plan (#673 w21)", async () => {
-		const askedSandbox: string[][] = [];
-		const { events, runDir } = await collect("plan", {
+	it("refuses the agent's own switch_mode ask at Full access as mode_kept, and the run goes on to its report (#673 w21)", async () => {
+		const { events } = await collect("switch-mode", {
 			harness: "claude-code",
-			runMode: "plan",
+			accessLevel: "full-access",
 			env: {
 				...process.env,
-				FAKE_ACP_MODE: "plan",
+				FAKE_ACP_MODE: "switch-mode",
 				FAKE_PROFILE: "claude",
 				FAKE_MODES: "",
 			},
-			sandboxCheck: async (_h, modes) => {
-				askedSandbox.push([...modes]);
-				return Object.fromEntries(
-					modes.map((m) => [m, { state: "none", reason: "test" }]),
-				);
-			},
 		});
-		expect(askedSandbox).toEqual([["plan"]]);
-		expect(ranLevel("claude-code", "supervised", "plan", "plan")).toBeUndefined();
-
 		const kept = events.find((e) => e.kind === "permission_answer");
-		expect(kept).toMatchObject({ kind: "permission_answer", outcome: "plan_kept" });
-		const wire = wireOut(runDir);
-		expect(wire.some((m) => m.includes("session/cancel"))).toBe(true);
-		expect(events.some((e) => e.kind === "report")).toBe(false);
-		expect(events.at(-1)?.kind).toBe("branch_done");
-		const steps = events.filter((e) => e.kind === "agent_step");
-		expect(
-			steps.some(
-				(s) => s.kind === "agent_step" && s.text.includes("1. Read the handler"),
-			),
-		).toBe(true);
-	});
-
-	it("conductRun ends Plan run without a report with failureKind none (#673 w21)", async () => {
-		let finishedReport: unknown = "not-called";
-		const outcome = await conductRun(
-			opts("plan", {
-				harness: "claude-code",
-				runMode: "plan",
-				env: {
-					...process.env,
-					FAKE_ACP_MODE: "plan",
-					FAKE_PROFILE: "claude",
-					FAKE_MODES: "",
-				},
-			}),
-			{
-				sink: () => {},
-				store: {
-					create: async () => {},
-					append: async () => {},
-					finish: async (report) => {
-						finishedReport = report;
-					},
-					fail: async () => {},
-				},
-			},
-		);
-		expect(outcome).toMatchObject({
-			report: null,
-			error: null,
-			failureKind: "none",
+		expect(kept).toMatchObject({
+			kind: "permission_answer",
+			outcome: "mode_kept",
+			title: "Enter Plan Mode",
+			toolKind: "switch_mode",
 		});
-		expect(finishedReport).toBeNull();
-	});
-
-	it("ends a Plan run when its session/cancel lands before the agent waits for it (#809)", async () => {
-		const outcome = await conductRun(
-			opts("plan", {
-				harness: "claude-code",
-				runMode: "plan",
-				env: {
-					...process.env,
-					FAKE_ACP_MODE: "plan",
-					FAKE_PROFILE: "claude",
-					FAKE_MODES: "",
-					FAKE_PLAN_LAG_MS: "300",
-				},
-			}),
-			{
-				sink: () => {},
-				store: {
-					create: async () => {},
-					append: async () => {},
-					finish: async () => {},
-					fail: async () => {},
-				},
-			},
-		);
-		expect(outcome).toMatchObject({ report: null, error: null, failureKind: "none" });
+		expect(events.at(-1)?.kind).toBe("report");
 	});
 
 	it("resumed run keeps the stored mode and re-sets only when different (#673 w21)", async () => {

@@ -22,13 +22,10 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
-	RUN_MODES,
-	type RunMode,
 	refuseModel,
 } from "@prismalens/config/harness";
 import {
 	effectiveAccess,
-	effectiveMode,
 	type FavouriteModel,
 	type HarnessesResponse,
 	type HarnessStatus,
@@ -63,28 +60,19 @@ export interface HarnessSettings {
 	favourites?: FavouriteModel[];
 	/** Effort per harness, a value of its `thought_level` option (R4.2). */
 	efforts?: Partial<Record<HarnessId, string>>;
-	/** Permission level and mode per harness for the next run (#673 w21); absent follows the agent's own default. */
+	/** Permission level per harness for the next run (#673 w21); absent follows the agent's own default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel>>;
-	runModes?: Partial<Record<HarnessId, RunMode>>;
 	/** The same for runs PrismaLens starts from an alert; absent follows the next-run values. */
 	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel>>;
-	autoRunModes?: Partial<Record<HarnessId, RunMode>>;
 	/** Model ids the operator added per harness (#673 w57). */
 	customModels?: Partial<Record<HarnessId, string[]>>;
 }
 
-const AXES = [
-	"accessLevels",
-	"runModes",
-	"autoAccessLevels",
-	"autoRunModes",
-] as const;
+const AXES = ["accessLevels", "autoAccessLevels"] as const;
 type Axis = (typeof AXES)[number];
 const AXIS_VALUES: Record<Axis, readonly string[]> = {
 	accessLevels: ACCESS_LEVELS,
-	runModes: RUN_MODES,
 	autoAccessLevels: ACCESS_LEVELS,
-	autoRunModes: RUN_MODES,
 };
 
 export interface HarnessSettingsPatch {
@@ -97,9 +85,7 @@ export interface HarnessSettingsPatch {
 	efforts?: Partial<Record<HarnessId, string | null>>;
 	/** Each merged per harness; `null` goes back to the default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
-	runModes?: Partial<Record<HarnessId, RunMode | null>>;
 	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
-	autoRunModes?: Partial<Record<HarnessId, RunMode | null>>;
 	/** Replaces that harness's list; `null` clears it. */
 	customModels?: Partial<Record<HarnessId, string[] | null>>;
 }
@@ -249,20 +235,19 @@ export class HarnessService implements OnApplicationBootstrap {
 		});
 
 	/**
-	 * A run's level and mode where the request named none (#673 w21): an
+	 * A run's level where the request named none (#673 w21): an
 	 * auto-started run's own Settings rows, then Settings, then the agent's own
 	 * default, then PrismaLens's.
 	 */
 	async effectiveChoice(
 		id: HarnessId,
 		autoStart = false,
-	): Promise<{ accessLevel: AccessLevel; runMode: RunMode }> {
+	): Promise<{ accessLevel: AccessLevel }> {
 		const settings = await this.getSettings();
 		const local = this.localDefaultOf(id);
 		return {
 			accessLevel: effectiveAccess(settings, id, local.permission, autoStart)
 				.level,
-			runMode: effectiveMode(settings, id, local.mode, autoStart).mode,
 		};
 	}
 

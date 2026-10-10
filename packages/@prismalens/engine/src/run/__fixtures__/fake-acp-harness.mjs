@@ -22,10 +22,9 @@
 // and reports what the client decided for each so the test can assert the gate.
 // Access levels (#673 w21): FAKE_PROFILE=claude offers default, acceptEdits, auto, bypassPermissions
 // and plan over session/set_mode when FAKE_MODES is unset; FAKE_PROFILE=codex offers its modes as a
-// `mode` config option (read-only, agent, agent-full-access; FAKE_CODEX_V2=1 adds workspace-write)
-// beside a `collaboration_mode` option (default, plan). FAKE_ACP_MODE=plan writes a plan and asks to
-// leave Plan with a `switch_mode` ask (codex's "Implement this plan?" under FAKE_PROFILE=codex), then
-// waits for session/cancel when refused. argv flags: --clamp-auto answers a switch to `auto` with
+// `mode` config option (read-only, agent, agent-full-access; FAKE_CODEX_V2=1 adds workspace-write).
+// FAKE_ACP_MODE=switch-mode first asks to enter its own plan mode with a `switch_mode` ask, then runs
+// as "ok". argv flags: --clamp-auto answers a switch to `auto` with
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -127,7 +126,6 @@ const modeList = (
 		return { id, name: name ?? id };
 	});
 let currentMode = modeList[0]?.id;
-let collaboration = "default";
 const modeOptions = () =>
 	profile === "codex"
 		? [
@@ -138,17 +136,6 @@ const modeOptions = () =>
 					category: "mode",
 					currentValue: currentMode,
 					options: modeList.map((m) => ({ value: m.id, name: m.name })),
-				},
-				{
-					id: "collaboration_mode",
-					name: "Collaboration mode",
-					type: "select",
-					category: "collaboration_mode",
-					currentValue: collaboration,
-					options: [
-						{ value: "default", name: "Default" },
-						{ value: "plan", name: "Plan" },
-					],
 				},
 			]
 		: [];
@@ -258,58 +245,22 @@ async function turn(sessionId, promptText) {
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
-	if (mode === "plan") {
-		const plan =
-			"1. Read the handler. 2. Check the pool size. 3. Write the report.";
-		notify(sessionId, {
-			sessionUpdate: "agent_message_chunk",
-			content: { type: "text", text: "Here is my plan." },
-		});
-		const codex = profile === "codex";
+	if (mode === "switch-mode" && turns === 1) {
 		const answer = await ask({
 			sessionId,
 			toolCall: {
-				toolCallId: "t_plan",
-				title: codex ? "Implement this plan?" : "Approve Plan",
+				toolCallId: "t_switch",
+				title: "Enter Plan Mode",
 				kind: "switch_mode",
-				rawInput: { plan },
+				rawInput: {},
 			},
-			options: codex
-				? [
-						{
-							optionId: "yes",
-							name: "Yes, implement this plan",
-							kind: "allow_once",
-						},
-						{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
-					]
-				: [
-						{
-							optionId: "auto",
-							name: "Yes, and use auto mode",
-							kind: "allow_always",
-						},
-						{
-							optionId: "bypass",
-							name: "Yes, and bypass permissions",
-							kind: "allow_always",
-						},
-						{
-							optionId: "manual",
-							name: "Yes, manually approve edits",
-							kind: "allow_once",
-						},
-						{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
-					],
+			options: [
+				{ optionId: "yes", name: "Yes, enter plan mode", kind: "allow_once" },
+				{ optionId: "no", name: "No", kind: "reject_once" },
+			],
 		});
-		const left = answer.outcome?.optionId && answer.outcome.optionId !== "no";
-		process.stderr.write(`fake: plan ${left ? "LEFT" : "kept"}\n`);
-		if (left) return { stopReason: "end_turn" };
-		// FAKE_PLAN_LAG_MS: the session/cancel lands before the turn starts waiting for it.
-		const lag = Number(process.env.FAKE_PLAN_LAG_MS ?? 0);
-		if (lag) await new Promise((r) => setTimeout(r, lag));
-		await cancelled();
-		return { stopReason: "cancelled" };
+		const left = answer.outcome?.optionId === "yes";
+		process.stderr.write(`fake: mode ${left ? "SWITCHED" : "kept"}\n`);
 	}
 	if (mode === "tolerant") {
 		notify(sessionId, {
@@ -449,6 +400,7 @@ async function turn(sessionId, promptText) {
 		});
 	const valid =
 		mode === "ok" ||
+		mode === "switch-mode" ||
 		mode === "nowrite" ||
 		mode === "steerable" ||
 		(mode === "retry" && turns >= 2);
@@ -565,8 +517,6 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				});
 				return;
 			}
-		} else if (profile === "codex" && configId === "collaboration_mode") {
-			collaboration = value;
 		} else if (
 			!process.env.FAKE_REFUSE_SET &&
 			offered[configId]?.includes(value)

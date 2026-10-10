@@ -39,7 +39,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	tested: null,
 	install: "",
 	defaultModel: null,
-	localDefault: { permission: null, mode: null },
+	localDefault: { permission: null },
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,
@@ -64,7 +64,6 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 			{ id: "high", name: "High", default: true },
 		],
 		images: true,
-		plan: true,
 		sandbox: null,
 	},
 	...over,
@@ -123,9 +122,7 @@ describe("the box's chips (#673)", () => {
 			React.createElement(AccessChip, {
 				harness: claude(),
 				level: "supervised",
-				runMode: "execute",
 				onLevel: () => {},
-				onRunMode: () => {},
 			}),
 		);
 		expect(html.indexOf("Ask always")).toBeLessThan(html.indexOf("Full access"));
@@ -134,50 +131,20 @@ describe("the box's chips (#673)", () => {
 		expect(html).not.toContain("answers yes");
 	});
 
-	it("renders segment Execute | Plan and four level rows always, default first and tagged per from", () => {
+	it("renders four level rows always and no mode segment, default first and tagged per from", () => {
 		const html = renderToStaticMarkup(
 			React.createElement(AccessChip, {
 				harness: claude(),
 				level: "supervised",
-				runMode: "execute",
 				onLevel: () => {},
-				onRunMode: () => {},
 			}),
 		);
-		expect(html).toContain('data-testid="run-mode-execute"');
-		expect(html).toContain('data-testid="run-mode-plan"');
+		expect(html).not.toContain("run-mode-");
 		expect(html).toContain('data-testid="access-level-supervised"');
 		expect(html).toContain('data-testid="access-level-auto-edits"');
 		expect(html).toContain('data-testid="access-level-auto"');
 		expect(html).toContain('data-testid="access-level-full-access"');
 		expect(html).toContain("PrismaLens default");
-	});
-
-	it("disables Plan when checked.plan is not true, with title/explanation", () => {
-		const html = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: claude({ checked: { ...(claude().checked as NonNullable<HarnessStatus["checked"]>), plan: false } }),
-				level: "supervised",
-				runMode: "execute",
-				onLevel: () => {},
-				onRunMode: () => {},
-			}),
-		);
-		expect(html).toContain("Claude Code offers no plan mode");
-	});
-
-	it("disables levels in Plan on claude with the coupling line", () => {
-		const html = renderToStaticMarkup(
-			React.createElement(AccessChip, {
-				harness: claude(),
-				level: "supervised",
-				runMode: "plan",
-				onLevel: () => {},
-				onRunMode: () => {},
-			}),
-		);
-		expect(html).toContain("Plan uses Claude Code&#x27;s own Plan mode; the permission level applies to a run that starts in Execute.");
-		expect(html).toContain('data-testid="access-plan-line"');
 	});
 
 	it("shows lock icon only when sandbox is enforced, and no icon otherwise", () => {
@@ -193,9 +160,7 @@ describe("the box's chips (#673)", () => {
 			React.createElement(AccessChip, {
 				harness: enforcedClaude,
 				level: "supervised",
-				runMode: "execute",
 				onLevel: () => {},
-				onRunMode: () => {},
 			}),
 		);
 		expect(withLock).toContain("lucide-lock");
@@ -204,9 +169,7 @@ describe("the box's chips (#673)", () => {
 			React.createElement(AccessChip, {
 				harness: claude(),
 				level: "supervised",
-				runMode: "execute",
 				onLevel: () => {},
-				onRunMode: () => {},
 			}),
 		);
 		expect(withoutLock).not.toContain("lucide-lock");

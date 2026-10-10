@@ -10,7 +10,6 @@ import {
 	type InvestigationWithRelations,
 	isWorkflowLive,
 	latestRun,
-	RUN_MODE_LABEL,
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
@@ -19,7 +18,6 @@ import {
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { planIsCoupled } from "@/lib/access-levels";
 import { formatElapsed } from "@/lib/format-time";
 import type { RunRef } from "./record-context";
 
@@ -54,15 +52,14 @@ export function useRunAgentModel(
 }
 
 /**
- * A run's mode and level as it ran (#673 w21 ruling 2026-10-10): the level
- * with the agent's own mode name, `X asked, ran in Y` when the agent ran
- * another, and no level in a Plan that takes its slot. A run from before the
- * two axes reads its #778 level, or the agent mode #808 set.
+ * A run's level as it ran (#673 w21 ruling 2026-10-10): the level with the
+ * agent's own mode name, or `X asked, ran in Y` when the agent ran another.
+ * A run from before levels reads its #778 level, or the agent mode #808 set.
  */
 export function runAccessLine(
 	inv: Pick<
 		InvestigationWithRelations,
-		"agentMode" | "accessLevel" | "runMode" | "harness" | "report"
+		"agentMode" | "accessLevel" | "harness" | "report"
 	>,
 	harness: HarnessStatus | undefined,
 ): string | null {
@@ -71,13 +68,6 @@ export function runAccessLine(
 	const named = (id: string | null) =>
 		(id && harness?.checked?.modes?.find((m) => m.id === id)?.name) || id;
 	const asked = f?.access ?? inv.accessLevel ?? undefined;
-	const runMode = f?.runMode ?? inv.runMode ?? "execute";
-	const agent = harness?.label ?? inv.harness ?? "the agent";
-	if (runMode === "plan") {
-		if (planIsCoupled(harness)) return `${RUN_MODE_LABEL.plan} (${agent} Plan)`;
-		const level = asked ? `, ${ACCESS_LEVEL_LABEL[asked]}` : "";
-		return `${RUN_MODE_LABEL.plan}${level}${modeId ? ` (${named(modeId)})` : ""}`;
-	}
 	const ran = f ? fidelityAccess(f, inv.agentMode) : asked;
 	if (!asked && !ran)
 		return inv.agentMode ? `ran in ${named(inv.agentMode)}` : null;

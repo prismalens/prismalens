@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	AccessLevel,
-	HarnessId,
-	RunMode,
-} from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -25,7 +21,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "",
 		defaultModel: null,
-		localDefault: { permission: null, mode: null },
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -41,7 +37,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g @openai/codex",
 		defaultModel: null,
-		localDefault: { permission: null, mode: null },
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -57,7 +53,7 @@ const mockHarnesses: HarnessStatus[] = [
 		tested: null,
 		install: "npm i -g opencode",
 		defaultModel: null,
-		localDefault: { permission: null, mode: null },
+		localDefault: { permission: null },
 		modelVia: "acp",
 		loginHint: "",
 		envModel: null,
@@ -102,9 +98,7 @@ let mockChoice = {
 	efforts: {} as Record<string, string | null>,
 	axes: {
 		accessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
-		runModes: {} as Partial<Record<HarnessId, RunMode>>,
 		autoAccessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
-		autoRunModes: {} as Partial<Record<HarnessId, RunMode>>,
 	},
 	setting: "claude-code",
 	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
@@ -118,7 +112,6 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 	EffortChip: () => <div data-testid="stub-effort-chip" />,
 	defaultAccessOf: () => ({
 		level: { level: "supervised", from: "prismalens" },
-		mode: { mode: "execute", from: "prismalens" },
 	}),
 }));
 
@@ -164,9 +157,7 @@ beforeEach(() => {
 		efforts: {},
 		axes: {
 			accessLevels: {},
-			runModes: {},
 			autoAccessLevels: {},
-			autoRunModes: {},
 		},
 		setting: "claude-code",
 		customModels: { "claude-code": ["gw-a"] },
@@ -360,16 +351,15 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 	});
 });
 
-describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
-	it("renders Next run Mode and Permission selects, Default first option (null value), and updates settings", async () => {
+describe("HarnessSettings Permission rows (#673 w21)", () => {
+	it("renders the Next run Permission select and no Mode row", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
 
-		const modeRow = container.querySelector('[data-testid="harness-run-mode"]');
-		expect(modeRow).not.toBeNull();
-		expect(modeRow?.textContent).toContain("Mode");
-		expect(modeRow?.textContent).toContain("Execute, PrismaLens default.");
+		expect(
+			container.querySelector('[data-testid="harness-run-mode"]'),
+		).toBeNull();
 
 		const accessRow = container.querySelector('[data-testid="harness-access"]');
 		expect(accessRow).not.toBeNull();
@@ -384,11 +374,6 @@ describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
 		);
 
 		// Select elements exist
-		const modeSelect = container.querySelector(
-			'[data-testid="harness-run-mode-select"]',
-		);
-		expect(modeSelect).not.toBeNull();
-
 		const accessSelect = container.querySelector(
 			'[data-testid="harness-access-select"]',
 		);
@@ -406,11 +391,9 @@ describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
 		expect(autoGroup).not.toBeNull();
 		expect(autoGroup?.textContent).toContain("Auto-started runs");
 
-		const autoModeRow = container.querySelector(
-			'[data-testid="harness-auto-run-mode"]',
-		);
-		expect(autoModeRow).not.toBeNull();
-		expect(autoModeRow?.textContent).toContain("Same as next run: Execute.");
+		expect(
+			container.querySelector('[data-testid="harness-auto-run-mode"]'),
+		).toBeNull();
 
 		const autoAccessRow = container.querySelector(
 			'[data-testid="harness-auto-access"]',
@@ -419,11 +402,6 @@ describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
 		expect(autoAccessRow?.textContent).toContain(
 			"Same as next run: Ask always.",
 		);
-
-		const autoModeSelect = container.querySelector(
-			'[data-testid="harness-auto-run-mode-select"]',
-		);
-		expect(autoModeSelect).not.toBeNull();
 
 		const autoAccessSelect = container.querySelector(
 			'[data-testid="harness-auto-access-select"]',
@@ -436,9 +414,7 @@ describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
 			...mockChoice,
 			axes: {
 				accessLevels: { "claude-code": "auto" },
-				runModes: { "claude-code": "plan" },
 				autoAccessLevels: { "claude-code": "full-access" },
-				autoRunModes: { "claude-code": "execute" },
 			},
 		};
 
@@ -446,16 +422,8 @@ describe("HarnessSettings Mode and Permission rows (#673 w21)", () => {
 			root.render(<HarnessSettings />);
 		});
 
-		const modeRow = container.querySelector('[data-testid="harness-run-mode"]');
-		expect(modeRow?.textContent).toContain("Plan, set here.");
-
 		const accessRow = container.querySelector('[data-testid="harness-access"]');
 		expect(accessRow?.textContent).toContain("Auto, set here.");
-
-		const autoModeRow = container.querySelector(
-			'[data-testid="harness-auto-run-mode"]',
-		);
-		expect(autoModeRow?.textContent).toContain("Execute, set here.");
 
 		const autoAccessRow = container.querySelector(
 			'[data-testid="harness-auto-access"]',

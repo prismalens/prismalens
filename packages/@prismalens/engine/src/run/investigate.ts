@@ -17,7 +17,6 @@ import { join } from "node:path";
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
-	DEFAULT_RUN_MODE,
 	HARNESS_REGISTRY,
 	type HarnessDescriptor,
 	type HarnessId,
@@ -27,9 +26,6 @@ import {
 	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
-	planModeId,
-	planReplacesLevel,
-	type RunMode,
 	resolveAccess,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
@@ -107,8 +103,6 @@ export interface RunInvestigationOptions {
 	 * one keeps the reopened session's mode and shows every ask.
 	 */
 	accessLevel?: AccessLevel;
-	/** Execute, or the agent's own plan mode; Execute when absent. */
-	runMode?: RunMode;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
 	limits?: RunLimits;
@@ -272,20 +266,16 @@ export function buildRunFidelity(
 
 /**
  * The level a run ran at, from the mode the agent reported: the asked level
- * when it runs that level's mode (or the plan mode that carries it), else the
- * level whose mode it runs; none in a Plan that takes the level's slot.
+ * when it runs that level's mode, else the level whose mode it runs.
  */
 export function ranLevel(
 	harness: HarnessId,
 	asked: AccessLevel | undefined,
-	runMode: RunMode,
 	reported: string | null,
 ): AccessLevel | undefined {
 	if (!asked) return levelOfAgentMode(harness, reported) ?? undefined;
-	if (runMode === "plan" && planReplacesLevel(harness)) return undefined;
 	const mode = resolveAccess(harness, asked).mode ?? null;
 	if (mode === null || reported === mode) return asked;
-	if (runMode === "plan" && reported === planModeId(harness)) return asked;
 	return levelOfAgentMode(harness, reported) ?? undefined;
 }
 
@@ -374,15 +364,11 @@ export async function* runInvestigation(
 		branchId: "run",
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
-	const runMode = opts.runMode ?? DEFAULT_RUN_MODE;
-	// A follow-up on a run from before the two axes keeps the session's mode and shows every ask (#673 w21).
+	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
 	const keepMode = !!opts.resume && !opts.accessLevel;
 	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
 	const access = resolveAccess(opts.harness, level);
-	const plan =
-		runMode === "plan" ? HARNESS_REGISTRY[opts.harness]?.planMode : undefined;
-	const coupled = runMode === "plan" && planReplacesLevel(opts.harness);
-	const askedMode = plan?.via === "acp" ? plan.mode : (access.mode ?? null);
+	const askedMode = access.mode ?? null;
 	let fidelity = buildRunFidelity(
 		opts.harness,
 		{ id: opts.model, source: opts.modelSource },
@@ -413,7 +399,7 @@ export async function* runInvestigation(
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission: levelPolicy(keepMode ? "supervised" : level, runMode, {
+		permission: levelPolicy(keepMode ? "supervised" : level, {
 			policy: opts.permission ?? denyAllPolicy,
 		}),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
@@ -439,8 +425,6 @@ export async function* runInvestigation(
 
 	let text = "";
 	let sawEvidence = false;
-	// A kept plan ends its turn: the agent would otherwise plan again (#673 w21 ruling 2026-10-10).
-	let planKeptThisTurn = false;
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
@@ -495,15 +479,6 @@ export async function* runInvestigation(
 					item.outcome,
 					item.sync ? item.request.toolCall : undefined,
 				);
-				if (item.outcome === "plan_kept" && !planKeptThisTurn) {
-					planKeptThisTurn = true;
-					const planText = (
-						item.request.toolCall?.rawInput as { plan?: unknown } | undefined
-					)?.plan;
-					if (typeof planText === "string" && planText.trim())
-						yield adapter.agentMessage(planText.trim());
-					session.cancel();
-				}
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -538,14 +513,12 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
-		// The level's mode, then Plan; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
+		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
 		if (!keepMode && !(opts.resume && session.offeredModes.length === 0)) {
-			const refused = await applyModes(session, {
-				harness: opts.harness,
+			const refused = await applyMode(session, {
 				label,
-				runMode,
 				target: askedMode,
-				fallback: plan?.via === "acp" ? undefined : access.fallbackMode,
+				fallback: access.fallbackMode,
 			});
 			if (refused) {
 				yield adapter.error(refused);
@@ -561,14 +534,13 @@ export async function* runInvestigation(
 		const ran = ranLevel(
 			opts.harness,
 			keepMode ? undefined : level,
-			runMode,
 			session.currentMode ?? askedMode,
 		);
 		fidelity = {
 			...fidelity,
 			mode: ranMode,
 			fidelity: modeFidelity(sandbox[ranMode]),
-			...(keepMode ? {} : { access: level, runMode }),
+			...(keepMode ? {} : { access: level }),
 			...(ran ? { ranAccess: ran } : {}),
 		};
 		const noNetwork = fidelity.fidelity === "enforced";
@@ -630,12 +602,7 @@ export async function* runInvestigation(
 			if (opts.signal?.aborted) return { stop: "cancelled" };
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
-			planKeptThisTurn = false;
-			const end = yield* consume(session.prompt(parts));
-			// The turn PrismaLens cancelled after a kept plan ended as planned, not stopped.
-			return planKeptThisTurn && "stop" in end && end.stop === "cancelled"
-				? { stop: "end_turn" }
-				: end;
+			return yield* consume(session.prompt(parts));
 		};
 
 		let outcome: { stop: string } | { error: string };
@@ -685,8 +652,7 @@ export async function* runInvestigation(
 					buildInvestigationPrompt(opts.context, {
 						modeName,
 						noNetwork,
-						runMode,
-						level: coupled || keepMode ? null : level,
+						level,
 					}) +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
@@ -743,10 +709,8 @@ export async function* runInvestigation(
 		}
 		// A follow-up is chat only: its answer lives in the stream, never in a report (#747).
 		// Continuing a stopped run finishes it as the run it was, report and all (R4.4).
-		// A Plan run's plan is in the conversation; it has no report (#673 w21 ruling 2026-10-10).
 		if (
 			opts.kind === "chat" ||
-			runMode === "plan" ||
 			(opts.resume && opts.resume.kind !== "continue")
 		) {
 			yield adapter.branchDone(mapStopReason(outcome.stop));
@@ -805,39 +769,20 @@ export async function* runInvestigation(
 }
 
 /**
- * Sets the run's agent mode, its fallback when the agent does not offer or
- * refuses it, then a plan mode that is a config option (#673 w21 ruling
- * 2026-10-10). Returns why the run cannot start, or null.
+ * Sets the run's agent mode, or its fallback when the agent does not offer or
+ * refuses it (#673 w21 ruling 2026-10-10). Returns why the run cannot start, or null.
  */
-async function applyModes(
+async function applyMode(
 	session: AcpSession,
-	run: {
-		harness: HarnessId;
-		label: string;
-		runMode: RunMode;
-		target: string | null;
-		fallback: string | undefined;
-	},
+	run: { label: string; target: string | null; fallback: string | undefined },
 ): Promise<string | null> {
-	const plan = HARNESS_REGISTRY[run.harness]?.planMode;
-	if (run.runMode === "plan" && !plan)
-		return `${run.label} offers no plan mode`;
-	if (run.target) {
-		const took =
-			(await session.setMode(run.target)) ||
-			(!!run.fallback && (await session.setMode(run.fallback)));
-		if (!took)
-			return `${run.label} did not offer mode "${run.target}"; run a check in Settings, Agent`;
-	}
-	if (run.runMode === "plan" && plan?.via === "config") {
-		if (session.configValue(plan.configId) === plan.value) return null;
-		const took = await session
-			.setConfigOption(plan.configId, plan.value)
-			.catch(() => null);
-		if (took !== plan.value)
-			return `${run.label} would not switch to its plan mode; run a check in Settings, Agent`;
-	}
-	return null;
+	if (!run.target) return null;
+	const took =
+		(await session.setMode(run.target)) ||
+		(!!run.fallback && (await session.setMode(run.fallback)));
+	return took
+		? null
+		: `${run.label} did not offer mode "${run.target}"; run a check in Settings, Agent`;
 }
 
 /** An agent sandbox with no network is named under What we could not check (#778). */

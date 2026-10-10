@@ -4063,20 +4063,6 @@
                                     }
                                   ]
                                 },
-                                "runMode": {
-                                  "anyOf": [
-                                    {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
                                 "title": {
                                   "anyOf": [
                                     {
@@ -5354,20 +5340,6 @@
                               }
                             ]
                           },
-                          "runMode": {
-                            "anyOf": [
-                              {
-                                "enum": [
-                                  "execute",
-                                  "plan"
-                                ],
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
                           "title": {
                             "anyOf": [
                               {
@@ -6178,13 +6150,6 @@
                     ],
                     "type": "string"
                   },
-                  "runMode": {
-                    "enum": [
-                      "execute",
-                      "plan"
-                    ],
-                    "type": "string"
-                  },
                   "harness": {
                     "enum": [
                       "opencode",
@@ -6403,13 +6368,6 @@
                       "auto-edits",
                       "auto",
                       "full-access"
-                    ],
-                    "type": "string"
-                  },
-                  "runMode": {
-                    "enum": [
-                      "execute",
-                      "plan"
                     ],
                     "type": "string"
                   },
@@ -7968,20 +7926,6 @@
                         }
                       ]
                     },
-                    "runMode": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
                     "title": {
                       "anyOf": [
                         {
@@ -8382,13 +8326,6 @@
                                         "auto-edits",
                                         "auto",
                                         "full-access"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "runMode": {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
                                       ],
                                       "type": "string"
                                     },
@@ -9052,20 +8989,6 @@
                               }
                             ]
                           },
-                          "runMode": {
-                            "anyOf": [
-                              {
-                                "enum": [
-                                  "execute",
-                                  "plan"
-                                ],
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
                           "title": {
                             "anyOf": [
                               {
@@ -9466,13 +9389,6 @@
                                               "auto-edits",
                                               "auto",
                                               "full-access"
-                                            ],
-                                            "type": "string"
-                                          },
-                                          "runMode": {
-                                            "enum": [
-                                              "execute",
-                                              "plan"
                                             ],
                                             "type": "string"
                                           },
@@ -10155,20 +10071,6 @@
                         }
                       ]
                     },
-                    "runMode": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
                     "title": {
                       "anyOf": [
                         {
@@ -10569,13 +10471,6 @@
                                         "auto-edits",
                                         "auto",
                                         "full-access"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "runMode": {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
                                       ],
                                       "type": "string"
                                     },
@@ -11225,20 +11120,6 @@
                             }
                           ]
                         },
-                        "runMode": {
-                          "anyOf": [
-                            {
-                              "enum": [
-                                "execute",
-                                "plan"
-                              ],
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
                         "title": {
                           "anyOf": [
                             {
@@ -11639,13 +11520,6 @@
                                             "auto-edits",
                                             "auto",
                                             "full-access"
-                                          ],
-                                          "type": "string"
-                                        },
-                                        "runMode": {
-                                          "enum": [
-                                            "execute",
-                                            "plan"
                                           ],
                                           "type": "string"
                                         },
@@ -12361,20 +12235,6 @@
                         }
                       ]
                     },
-                    "runMode": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
                     "title": {
                       "anyOf": [
                         {
@@ -12775,13 +12635,6 @@
                                         "auto-edits",
                                         "auto",
                                         "full-access"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "runMode": {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
                                       ],
                                       "type": "string"
                                     },
@@ -14047,7 +13900,6 @@
                                   "stopped",
                                   "restarted",
                                   "allowed",
-                                  "plan_kept",
                                   "mode_kept"
                                 ],
                                 "type": "string"
@@ -14425,13 +14277,6 @@
                                             ],
                                             "type": "string"
                                           },
-                                          "runMode": {
-                                            "enum": [
-                                              "execute",
-                                              "plan"
-                                            ],
-                                            "type": "string"
-                                          },
                                           "model": {
                                             "type": "string"
                                           },
@@ -14612,20 +14457,6 @@
                             "auto-edits",
                             "auto",
                             "full-access"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "runMode": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
                           ],
                           "type": "string"
                         },
@@ -15034,13 +14865,6 @@
                                         "auto-edits",
                                         "auto",
                                         "full-access"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "runMode": {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
                                       ],
                                       "type": "string"
                                     },
@@ -16242,13 +16066,6 @@
                                 ],
                                 "type": "string"
                               },
-                              "runMode": {
-                                "enum": [
-                                  "execute",
-                                  "plan"
-                                ],
-                                "type": "string"
-                              },
                               "model": {
                                 "type": "string"
                               },
@@ -16426,20 +16243,6 @@
                             "auto-edits",
                             "auto",
                             "full-access"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "runMode": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
                           ],
                           "type": "string"
                         },
@@ -16848,13 +16651,6 @@
                                         "auto-edits",
                                         "auto",
                                         "full-access"
-                                      ],
-                                      "type": "string"
-                                    },
-                                    "runMode": {
-                                      "enum": [
-                                        "execute",
-                                        "plan"
                                       ],
                                       "type": "string"
                                     },
@@ -28212,52 +28008,13 @@
                                     "type": "null"
                                   }
                                 ]
-                              },
-                              "mode": {
-                                "anyOf": [
-                                  {
-                                    "type": "object",
-                                    "properties": {
-                                      "mode": {
-                                        "anyOf": [
-                                          {
-                                            "enum": [
-                                              "execute",
-                                              "plan"
-                                            ],
-                                            "type": "string"
-                                          },
-                                          {
-                                            "type": "null"
-                                          }
-                                        ]
-                                      },
-                                      "file": {
-                                        "type": "string"
-                                      },
-                                      "value": {
-                                        "type": "string"
-                                      }
-                                    },
-                                    "required": [
-                                      "mode",
-                                      "file",
-                                      "value"
-                                    ]
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
                               }
                             },
                             "required": [
-                              "permission",
-                              "mode"
+                              "permission"
                             ],
                             "default": {
-                              "permission": null,
-                              "mode": null
+                              "permission": null
                             }
                           },
                           "modelVia": {
@@ -28441,17 +28198,6 @@
                                             "name"
                                           ]
                                         }
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ],
-                                    "default": null
-                                  },
-                                  "plan": {
-                                    "anyOf": [
-                                      {
-                                        "type": "boolean"
                                       },
                                       {
                                         "type": "null"
@@ -28732,26 +28478,6 @@
                         "type": "string"
                       }
                     },
-                    "runModes": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "execute",
-                          "plan"
-                        ],
-                        "type": "string"
-                      }
-                    },
                     "autoAccessLevels": {
                       "type": "object",
                       "propertyNames": {
@@ -28770,26 +28496,6 @@
                           "auto-edits",
                           "auto",
                           "full-access"
-                        ],
-                        "type": "string"
-                      }
-                    },
-                    "autoRunModes": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "execute",
-                          "plan"
                         ],
                         "type": "string"
                       }
@@ -28957,33 +28663,6 @@
                       ]
                     }
                   },
-                  "runModes": {
-                    "type": "object",
-                    "propertyNames": {
-                      "enum": [
-                        "opencode",
-                        "claude-code",
-                        "codex",
-                        "gemini",
-                        "deepagents"
-                      ],
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
                   "autoAccessLevels": {
                     "type": "object",
                     "propertyNames": {
@@ -29004,33 +28683,6 @@
                             "auto-edits",
                             "auto",
                             "full-access"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "autoRunModes": {
-                    "type": "object",
-                    "propertyNames": {
-                      "enum": [
-                        "opencode",
-                        "claude-code",
-                        "codex",
-                        "gemini",
-                        "deepagents"
-                      ],
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "execute",
-                            "plan"
                           ],
                           "type": "string"
                         },
@@ -29179,26 +28831,6 @@
                         "type": "string"
                       }
                     },
-                    "runModes": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "execute",
-                          "plan"
-                        ],
-                        "type": "string"
-                      }
-                    },
                     "autoAccessLevels": {
                       "type": "object",
                       "propertyNames": {
@@ -29217,26 +28849,6 @@
                           "auto-edits",
                           "auto",
                           "full-access"
-                        ],
-                        "type": "string"
-                      }
-                    },
-                    "autoRunModes": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "execute",
-                          "plan"
                         ],
                         "type": "string"
                       }
@@ -29425,16 +29037,6 @@
                               "name"
                             ]
                           }
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "plan": {
-                      "anyOf": [
-                        {
-                          "type": "boolean"
                         },
                         {
                           "type": "null"

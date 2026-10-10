@@ -1,28 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { AccessLevel, HarnessId, RunMode } from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type AxisSource,
 	type HarnessStatus,
 	NO_SANDBOX,
-	RUN_MODE_LABEL,
 	type SandboxCheck,
 } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
-	accessChipText,
 	agentNote,
 	defaultTag,
 	levelIcon,
 	levelRowLine,
 	levelSandbox,
-	modeLine,
-	offersPlan,
 	permissionLine,
-	planIsCoupled,
-	runModeId,
+	levelModeId,
 	sandboxLine,
 } from "./access-levels";
 
@@ -37,7 +32,7 @@ const mockHarness = (
 	tested: null,
 	install: "",
 	defaultModel: null,
-	localDefault: { permission: null, mode: null },
+	localDefault: { permission: null },
 	modelVia: "acp",
 	loginHint: "",
 	envModel: null,
@@ -87,39 +82,6 @@ describe("defaultTag", () => {
 	});
 });
 
-describe("planIsCoupled and accessChipText", () => {
-	it("planIsCoupled is true for claude-code and gemini, false for others", () => {
-		expect(planIsCoupled(mockHarness("claude-code"))).toBe(true);
-		expect(planIsCoupled(mockHarness("gemini"))).toBe(true);
-		expect(planIsCoupled(mockHarness("codex"))).toBe(false);
-		expect(planIsCoupled(mockHarness("opencode"))).toBe(false);
-		expect(planIsCoupled(mockHarness("deepagents"))).toBe(false);
-		expect(planIsCoupled(undefined)).toBe(false);
-	});
-
-	it("accessChipText returns level in Execute", () => {
-		expect(accessChipText(mockHarness("claude-code"), "supervised", "execute")).toBe("Ask always");
-		expect(accessChipText(mockHarness("codex"), "auto-edits", "execute")).toBe("Auto-accept edits");
-	});
-
-	it("accessChipText in Plan returns 'Plan' on coupled harnesses, and 'Plan, <Level>' on uncoupled", () => {
-		expect(accessChipText(mockHarness("claude-code"), "supervised", "plan")).toBe("Plan");
-		expect(accessChipText(mockHarness("gemini"), "supervised", "plan")).toBe("Plan");
-		expect(accessChipText(mockHarness("codex"), "supervised", "plan")).toBe("Plan, Ask always");
-		expect(accessChipText(mockHarness("opencode"), "auto", "plan")).toBe("Plan, Auto");
-	});
-});
-
-describe("offersPlan", () => {
-	it("returns true only when harness registry has planMode and checked.plan is true", () => {
-		expect(offersPlan(undefined)).toBe(false);
-		expect(offersPlan(mockHarness("claude-code", { checked: null }))).toBe(false);
-		expect(offersPlan(mockHarness("claude-code", { checked: { at: "", outcome: "answers-acp", detail: "", servedModel: null, effort: null, modes: [], efforts: [], images: false, plan: false, sandbox: null } }))).toBe(false);
-		expect(offersPlan(mockHarness("claude-code", { checked: { at: "", outcome: "answers-acp", detail: "", servedModel: null, effort: null, modes: [], efforts: [], images: false, plan: true, sandbox: null } }))).toBe(true);
-		expect(offersPlan(mockHarness("deepagents", { checked: { at: "", outcome: "answers-acp", detail: "", servedModel: null, effort: null, modes: [], efforts: [], images: false, plan: true, sandbox: null } }))).toBe(false);
-	});
-});
-
 describe("permissionLine variants (§1 Settings lines)", () => {
 	it("operator set: '<label>, set here.'", () => {
 		expect(permissionLine(mockHarness("claude-code"), "supervised")).toBe("Ask always, set here.");
@@ -154,7 +116,6 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 		const h = mockHarness("claude-code", {
 			localDefault: {
 				permission: { level: "auto", file: "~/.claude/settings.json", value: "auto" },
-				mode: null,
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
@@ -171,7 +132,6 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 					value: "auto_edit",
 					reason: "Gemini CLI runs the copy untrusted here",
 				},
-				mode: null,
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
@@ -183,66 +143,10 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 		const h = mockHarness("claude-code", {
 			localDefault: {
 				permission: { level: null, file: "~/.claude/settings.json", value: "dontAsk" },
-				mode: null,
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
 			'Ask always, PrismaLens default. Your Claude Code default "dontAsk" in ~/.claude/settings.json has no PrismaLens Permission.',
-		);
-	});
-});
-
-describe("modeLine variants (§1 Settings lines)", () => {
-	it("operator set: '<label>, set here.'", () => {
-		expect(modeLine(mockHarness("claude-code"), "plan")).toBe("Plan, set here.");
-		expect(modeLine(mockHarness("claude-code"), "execute")).toBe("Execute, set here.");
-	});
-
-	it("deepagents: 'Execute, PrismaLens default. deepagents has no modes.'", () => {
-		expect(modeLine(mockHarness("deepagents"), undefined)).toBe(
-			"Execute, PrismaLens default. deepagents has no modes.",
-		);
-	});
-
-	it("codex when absent: 'Execute, PrismaLens default.'", () => {
-		expect(modeLine(mockHarness("codex"), undefined)).toBe(
-			"Execute, PrismaLens default.",
-		);
-	});
-
-	it("key absent for other agents: '<default label>, PrismaLens default. No default set in <file>.'", () => {
-		expect(modeLine(mockHarness("claude-code"), undefined)).toBe(
-			"Execute, PrismaLens default. No default set in ~/.claude/settings.json.",
-		);
-		expect(modeLine(mockHarness("gemini"), undefined)).toBe(
-			"Execute, PrismaLens default. No default set in ~/.gemini/settings.json.",
-		);
-		expect(modeLine(mockHarness("opencode"), undefined)).toBe(
-			"Execute, PrismaLens default. No default set in ~/.config/opencode/opencode.json.",
-		);
-	});
-
-	it("mapped: 'Your default: <label>, from <file> (\"<value>\").'", () => {
-		const h = mockHarness("claude-code", {
-			localDefault: {
-				permission: null,
-				mode: { mode: "plan", file: "~/.claude/settings.json", value: "plan" },
-			},
-		});
-		expect(modeLine(h, undefined)).toBe(
-			'Your default: Plan, from ~/.claude/settings.json ("plan").',
-		);
-	});
-
-	it("present, no equivalent: '<default label>, PrismaLens default. Your <agent> default \"<value>\" in <file> has no PrismaLens Mode.'", () => {
-		const h = mockHarness("claude-code", {
-			localDefault: {
-				permission: null,
-				mode: { mode: null, file: "~/.claude/settings.json", value: "custom" },
-			},
-		});
-		expect(modeLine(h, undefined)).toBe(
-			'Execute, PrismaLens default. Your Claude Code default "custom" in ~/.claude/settings.json has no PrismaLens Mode.',
 		);
 	});
 });
@@ -265,7 +169,6 @@ describe("agentNote variants (the four agent notes)", () => {
 				modes: [{ id: "read-only", name: "Ask for approval" }],
 				efforts: [],
 				images: false,
-				plan: false,
 				sandbox: null,
 			},
 		});
@@ -286,7 +189,6 @@ describe("agentNote variants (the four agent notes)", () => {
 				],
 				efforts: [],
 				images: false,
-				plan: false,
 				sandbox: null,
 			},
 		});
@@ -301,7 +203,7 @@ describe("agentNote variants (the four agent notes)", () => {
 
 	it("Gemini CLI agent note", () => {
 		expect(agentNote(mockHarness("gemini"))).toBe(
-			"Gemini CLI runs the copy untrusted, so it offers Ask always and Plan here; the other levels run as Ask always.",
+			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
 		);
 	});
 
@@ -310,15 +212,15 @@ describe("agentNote variants (the four agent notes)", () => {
 	});
 });
 
-describe("levelRowLine, runModeId, and levelSandbox", () => {
+describe("levelRowLine, levelModeId, and levelSandbox", () => {
 	it("levelRowLine reflects the agent's own mode", () => {
 		expect(levelRowLine(mockHarness("claude-code"), "supervised")).toBe("Claude Code runs in Manual.");
 		expect(levelRowLine(mockHarness("codex"), "supervised")).toBe("Codex runs in Ask for approval.");
 	});
 
-	it("runModeId resolves mode id for level and runMode", () => {
-		expect(runModeId(mockHarness("claude-code"), "supervised", "execute")).toBe("default");
-		expect(runModeId(mockHarness("claude-code"), "supervised", "plan")).toBe("plan");
+	it("levelModeId resolves the agent mode id for a level", () => {
+		expect(levelModeId(mockHarness("claude-code"), "supervised")).toBe("default");
+		expect(levelModeId(mockHarness("deepagents"), "supervised")).toBe("agent-default");
 	});
 
 	it("levelSandbox returns sandbox check from checked.sandbox", () => {
@@ -332,13 +234,12 @@ describe("levelRowLine, runModeId, and levelSandbox", () => {
 				modes: [],
 				efforts: [],
 				images: false,
-				plan: true,
 				sandbox: {
 					default: { state: "enforced", reason: "sandbox active" },
 				},
 			},
 		});
-		expect(levelSandbox(h, "supervised", "execute")?.state).toBe("enforced");
+		expect(levelSandbox(h, "supervised")?.state).toBe("enforced");
 		expect(levelSandbox(undefined, "supervised")).toBeUndefined();
 	});
 });

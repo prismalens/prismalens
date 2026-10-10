@@ -7,7 +7,6 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
-	type RunMode,
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
@@ -129,7 +128,6 @@ export class InvestigationsService {
 			kind?: InvestigationKind;
 			title?: string | null;
 			accessLevel?: AccessLevel | null;
-			runMode?: RunMode | null;
 		},
 	): Promise<{ investigation: Investigation; created: boolean }> {
 		// Every run starts here — the manual button, a webhook trigger and the
@@ -163,7 +161,6 @@ export class InvestigationsService {
 						liveTurn: dto.kind === "chat" ? "answer" : "report",
 						...(dto.title ? { title: dto.title } : {}),
 						...(dto.accessLevel ? { accessLevel: dto.accessLevel } : {}),
-						...(dto.runMode ? { runMode: dto.runMode } : {}),
 					},
 				});
 				return { investigation, created: true };
@@ -379,7 +376,6 @@ export class InvestigationsService {
 			workspace?: string;
 			agentMode?: string;
 			accessLevel?: AccessLevel;
-			runMode?: RunMode;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
 		},
@@ -414,7 +410,6 @@ export class InvestigationsService {
 			if (facts?.workspace) updateData.workspace = facts.workspace;
 			if (facts?.agentMode) updateData.agentMode = facts.agentMode;
 			if (facts?.accessLevel) updateData.accessLevel = facts.accessLevel;
-			if (facts?.runMode) updateData.runMode = facts.runMode;
 			if (facts?.lastTurnOutcome)
 				updateData.lastTurnOutcome = facts.lastTurnOutcome;
 

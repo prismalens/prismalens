@@ -6,11 +6,7 @@ import type { HarnessSelection } from "@prismalens/config";
  * What one investigation run needs from the API, as functions, so the run is
  * testable without NestJS. Wired in dispatch.service.ts.
  */
-import type {
-	AccessLevel,
-	ModelSource,
-	RunMode,
-} from "@prismalens/config/harness";
+import type { AccessLevel, ModelSource } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	LiveTurn,
@@ -72,9 +68,8 @@ export interface RunPorts {
 			workspace?: string;
 			/** The agent's own mode id PrismaLens set (#673 w21). */
 			agentMode?: string;
-			/** The run's level and mode as asked (#673 w21 ruling 2026-10-10). */
+			/** The run's level as asked (#673 w21 ruling 2026-10-10). */
 			accessLevel?: AccessLevel;
-			runMode?: RunMode;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
 		},
@@ -136,9 +131,8 @@ export interface RunPorts {
 		modelSource?: ModelSource;
 		/** The operator's effort for this harness (R4.2); absent means its own default. */
 		effort?: string;
-		/** The next run's level and mode on this harness: Settings, the agent's own default, else PrismaLens's (#673 w21). */
+		/** The next run's level on this harness: Settings, the agent's own default, else PrismaLens's (#673 w21). */
 		accessLevel?: AccessLevel;
-		runMode?: RunMode;
 		/** The model is one the operator added in Settings, Agent (#673 w57). */
 		customModel?: boolean;
 	}>;

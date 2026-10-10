@@ -10,7 +10,7 @@
  * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
  * adopts it, so all three runtimes render the canonical stream identically.
  */
-import type { AccessLevel, RunMode } from "@prismalens/config/harness";
+import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	PermissionAskOutcome,
@@ -351,9 +351,8 @@ export interface TranscriptRun {
 	startedAt?: string | null;
 	completedAt?: string | null;
 	id?: string;
-	/** The level the run's asks were answered at, and its mode (#673 w21). */
+	/** The level the run's asks were answered at (#673 w21). */
 	accessLevel?: AccessLevel | null;
-	runMode?: RunMode | null;
 }
 
 /** An ask's standing: waiting on you, how it ended, or `ended` when the run ended first (#673 w21). */
@@ -378,7 +377,7 @@ export type TranscriptItem =
 	| {
 			kind: "level";
 			key: string;
-			outcome: "allowed" | "plan_kept" | "mode_kept";
+			outcome: "allowed" | "mode_kept";
 			text: string;
 	  }
 	| {
@@ -549,7 +548,7 @@ function stoppedLine(
 	};
 }
 
-const LEVEL_OUTCOMES = new Set(["allowed", "plan_kept", "mode_kept"]);
+const LEVEL_OUTCOMES = new Set(["allowed", "mode_kept"]);
 const READS = new Set(["read", "search"]);
 
 /** The one line an ask the level answered leaves; reads and searches leave none (#673 w21). */
@@ -558,7 +557,7 @@ function levelLine(
 	level: AccessLevel | null | undefined,
 ): Omit<Extract<TranscriptItem, { kind: "level" }>, "key"> | null {
 	if (!LEVEL_OUTCOMES.has(event.outcome)) return null;
-	const outcome = event.outcome as "allowed" | "plan_kept" | "mode_kept";
+	const outcome = event.outcome as "allowed" | "mode_kept";
 	const title = event.title ?? "A tool call";
 	if (outcome === "allowed") {
 		if (event.toolKind && READS.has(event.toolKind)) return null;
@@ -573,7 +572,7 @@ function levelLine(
 	return {
 		kind: "level",
 		outcome,
-		text: `${outcome === "plan_kept" ? "Kept Plan" : "Kept Execute"}: ${title}`,
+		text: `Mode switch refused: ${title}`,
 	};
 }
 
@@ -908,21 +907,7 @@ export function deriveTranscript(
 		return items;
 	}
 
-	if (
-		run?.status === "completed" &&
-		run.runMode === "plan" &&
-		!sawReport &&
-		standingAt < 0 &&
-		run.kind !== "chat"
-	) {
-		standingAt = items.length;
-		items.push({
-			kind: "end",
-			key: "planned",
-			tone: "done",
-			text: "No report: the agent's plan is in the conversation",
-		});
-	} else if (run?.status === "cancelled" && standingAt < 0) {
+	if (run?.status === "cancelled" && standingAt < 0) {
 		standingAt = items.length;
 		items.push(stoppedLine(run, lastTs));
 	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {

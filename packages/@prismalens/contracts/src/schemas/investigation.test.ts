@@ -38,10 +38,12 @@ describe("RunFidelitySchema", () => {
 			placement: "server",
 			model: "opencode/muse-spark-1.3-contributor-free",
 			sandbox: { requested: "auto", actual: "process-floor", fidelity: "cooperative" },
+			runMode: "plan",
 		});
 		expect(parsed.model).toBe("opencode/muse-spark-1.3-contributor-free");
 		expect("placement" in parsed).toBe(false);
 		expect("sandbox" in parsed).toBe(false);
+		expect("runMode" in parsed).toBe(false);
 	});
 
 	it("keeps a #778 level id and any agent mode id as stored (#673 w21)", () => {
@@ -661,7 +663,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 		expect(CanonicalEventSchema.parse(answer)).toEqual(answer);
 	});
 
-	it("parses permission_answer with allowed, plan_kept, mode_kept", () => {
+	it("parses permission_answer with allowed and mode_kept", () => {
 		const allowed = {
 			...base,
 			kind: "permission_answer" as const,
@@ -672,15 +674,6 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 		};
 		expect(CanonicalEventSchema.parse(allowed)).toEqual(allowed);
 
-		const planKept = {
-			...base,
-			kind: "permission_answer" as const,
-			askId,
-			outcome: "plan_kept" as const,
-			title: "Approve Plan",
-			toolKind: "switch_mode",
-		};
-		expect(CanonicalEventSchema.parse(planKept)).toEqual(planKept);
 
 		const modeKept = {
 			...base,
@@ -688,7 +681,7 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 			askId,
 			outcome: "mode_kept" as const,
 			title: "Enter Plan Mode",
-			toolKind: null,
+			toolKind: "switch_mode",
 		};
 		expect(CanonicalEventSchema.parse(modeKept)).toEqual(modeKept);
 	});

@@ -15,16 +15,11 @@
  * (`selection.pinned`), so the picker stays editable but the page says so.
  */
 
-import {
-	ACCESS_LEVELS,
-	type HarnessId,
-	RUN_MODES,
-} from "@prismalens/config/harness";
+import { ACCESS_LEVELS, type HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type HarnessProbeResult,
 	type HarnessStatus,
-	RUN_MODE_LABEL,
 } from "@prismalens/contracts";
 import { X } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -53,7 +48,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { agentNote, modeLine, permissionLine } from "@/lib/access-levels";
+import { agentNote, permissionLine } from "@/lib/access-levels";
 import {
 	useCheckHarness,
 	useHarnesses,
@@ -218,16 +213,12 @@ function AxisSelect<V extends string>({
 	);
 }
 
-const MODE_OPTIONS = RUN_MODES.map((m) => ({
-	value: m,
-	label: RUN_MODE_LABEL[m],
-}));
 const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 	value: l,
 	label: ACCESS_LEVEL_LABEL[l],
 }));
 
-/** The next run's mode and permission level on this agent, saved per agent; unset follows the agent's own default (#673 w21). */
+/** The next run's permission level on this agent, saved per agent; unset follows the agent's own default (#673 w21). */
 function AccessRows() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
@@ -235,85 +226,50 @@ function AccessRows() {
 	const id = effective.id as HarnessId;
 	const note = agentNote(effective);
 	return (
-		<>
-			<SettingRow
-				label="Mode"
-				description={modeLine(effective, axes.runModes[id])}
-				testId="harness-run-mode"
-			>
-				<AxisSelect
-					value={axes.runModes[id]}
-					options={MODE_OPTIONS}
-					unsetLabel="Default"
-					label={`Mode for ${effective.label}`}
-					testId="harness-run-mode"
-					onChange={(v) => update.mutate({ runModes: { [id]: v } })}
-				/>
-			</SettingRow>
-			<SettingRow
-				label="Permission"
-				description={
-					<>
-						{permissionLine(effective, axes.accessLevels[id])}
-						{note && (
-							<span
-								className="mt-1 block text-text-3"
-								data-testid="harness-agent-note"
-							>
-								{note}
-							</span>
-						)}
-					</>
-				}
+		<SettingRow
+			label="Permission"
+			description={
+				<>
+					{permissionLine(effective, axes.accessLevels[id])}
+					{note && (
+						<span
+							className="mt-1 block text-text-3"
+							data-testid="harness-agent-note"
+						>
+							{note}
+						</span>
+					)}
+				</>
+			}
+			testId="harness-access"
+		>
+			<AxisSelect
+				value={axes.accessLevels[id]}
+				options={LEVEL_OPTIONS}
+				unsetLabel="Default"
+				label={`Permission for ${effective.label}`}
 				testId="harness-access"
-			>
-				<AxisSelect
-					value={axes.accessLevels[id]}
-					options={LEVEL_OPTIONS}
-					unsetLabel="Default"
-					label={`Permission for ${effective.label}`}
-					testId="harness-access"
-					onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
-				/>
-			</SettingRow>
-		</>
+				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
+			/>
+		</SettingRow>
 	);
 }
 
-/** Runs PrismaLens starts from an alert: their own mode and level, else the next run's (#673 w21). */
+/** Runs PrismaLens starts from an alert: their own level, else the next run's (#673 w21). */
 function AutoStartedRuns() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
 	const next = defaultAccessOf(effective, axes);
-	const autoMode = axes.autoRunModes[id];
 	const autoLevel = axes.autoAccessLevels[id];
 	return (
 		<SettingGroup
 			title="Auto-started runs"
-			description="Runs PrismaLens starts from an alert. Unset rows follow the next-run rows above. At Ask always an unattended run waits for your approval of its first command; Auto or Auto-accept edits let it run on."
+			description="Runs PrismaLens starts from an alert. Unset, it follows the next-run row above. At Ask always an unattended run waits for your approval of its first command; Auto or Auto-accept edits let it run on."
 			testId="harness-auto-start"
 		>
 			<Pool>
-				<SettingRow
-					label="Mode"
-					description={
-						autoMode
-							? `${RUN_MODE_LABEL[autoMode]}, set here.`
-							: `Same as next run: ${RUN_MODE_LABEL[next.mode.mode]}.`
-					}
-					testId="harness-auto-run-mode"
-				>
-					<AxisSelect
-						value={autoMode}
-						options={MODE_OPTIONS}
-						unsetLabel="Same as next run"
-						label={`Mode for auto-started runs on ${effective.label}`}
-						testId="harness-auto-run-mode"
-						onChange={(v) => update.mutate({ autoRunModes: { [id]: v } })}
-					/>
-				</SettingRow>
 				<SettingRow
 					label="Permission"
 					description={

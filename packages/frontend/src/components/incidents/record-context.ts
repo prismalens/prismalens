@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	AccessLevel,
-	HarnessId,
-	RunMode,
-} from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type {
 	IncidentWithRelations,
 	TimelineEntryWithRelations,
@@ -30,7 +26,6 @@ export interface DraftChoice {
 	model?: string;
 	effort?: string | null;
 	accessLevel?: AccessLevel;
-	runMode?: RunMode;
 }
 
 /** What `+ New run` opens with: chips, a verb, text and files (#673 w59). */
@@ -43,9 +38,8 @@ export interface NewRunPrefill {
 
 export interface RunStart {
 	text?: string;
-	/** This run's level and mode; Settings, else the agent's own default, when absent (#673 w21). */
+	/** This run's level; Settings, else the agent's own default, when absent (#673 w21). */
 	accessLevel?: AccessLevel;
-	runMode?: RunMode;
 	attachments?: string[];
 	harness?: HarnessId;
 	model?: string;

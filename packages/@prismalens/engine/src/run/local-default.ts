@@ -2,18 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The agent's own default for each axis, read from the user's settings file
+ * The agent's own permission default, read from the user's settings file
  * (#673 w21 ruling 2026-10-10). Files only: managed, MDM and in-memory values
  * are not seen, and every answer names the file it read. Never throws.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type {
-	AccessLevel,
-	HarnessId,
-	RunMode,
-} from "@prismalens/config/harness";
+import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { LocalDefault } from "@prismalens/contracts/schemas";
 import { type ParseError, parse as parseJsonc } from "jsonc-parser";
 import { parse as parseToml } from "smol-toml";
@@ -34,8 +30,7 @@ export interface LocalDefaultOptions {
 }
 
 type Permission = LocalDefault["permission"];
-type Mode = LocalDefault["mode"];
-const NONE: LocalDefault = { permission: null, mode: null };
+const NONE: LocalDefault = { permission: null };
 
 /** `~/x` for a path under the home directory, so the line reads as the user wrote it. */
 function shown(path: string, home: string): string {
@@ -119,14 +114,8 @@ function claude(
 	const value = found.value as string;
 	const file = shown(found.file, home);
 	const id = CLAUDE_ALIASES[value.toLowerCase()];
-	const known = id !== undefined;
 	return {
 		permission: { level: (id && CLAUDE_LEVEL[id]) || null, file, value },
-		mode: {
-			mode: !known ? null : id === "plan" ? "plan" : "execute",
-			file,
-			value,
-		},
 	};
 }
 
@@ -169,7 +158,7 @@ function codex(
 		file: shown(path, home),
 		value: approval ? `${sandbox}, ${approval}` : sandbox,
 	};
-	return { permission, mode: null };
+	return { permission };
 }
 
 const GEMINI_UNTRUSTED = "Gemini CLI runs the copy untrusted here";
@@ -205,39 +194,10 @@ function gemini(
 			: value === "auto_edit"
 				? { level: null, file, value, reason: GEMINI_UNTRUSTED }
 				: { level: null, file, value };
-	const runMode: RunMode | null =
-		value === "plan"
-			? "plan"
-			: value === "default" || value === "auto_edit"
-				? "execute"
-				: null;
-	return { permission, mode: { mode: runMode, file, value } };
+	return { permission };
 }
 
-const OPENCODE_FILES = ["opencode.json", "opencode.jsonc", "config.json"];
-
-function opencode(
-	env: NodeJS.ProcessEnv,
-	home: string,
-	onDebug?: (m: string) => void,
-): LocalDefault {
-	const dir = join(env.XDG_CONFIG_HOME ?? join(home, ".config"), "opencode");
-	for (const name of OPENCODE_FILES) {
-		const path = join(dir, name);
-		if (readText(path) === null) continue;
-		const value = at(readJsonc(path, onDebug), "default_agent");
-		if (typeof value !== "string") return NONE;
-		const mode: Mode = {
-			mode: value === "plan" ? "plan" : value === "build" ? "execute" : null,
-			file: shown(path, home),
-			value,
-		};
-		return { permission: null, mode };
-	}
-	return NONE;
-}
-
-/** What the user's own settings file names for `harness`, on both axes. */
+/** What the user's own settings file names for `harness`'s permission level; OpenCode's is not read. */
 export function localDefault(
 	harness: HarnessId,
 	env: NodeJS.ProcessEnv = process.env,
@@ -252,8 +212,6 @@ export function localDefault(
 				return codex(env, home, opts.onDebug);
 			case "gemini":
 				return gemini(env, home, opts);
-			case "opencode":
-				return opencode(env, home, opts.onDebug);
 			default:
 				return NONE;
 		}

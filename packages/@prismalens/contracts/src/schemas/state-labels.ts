@@ -7,7 +7,7 @@
  * enum: adding a value fails the build here until it has a label.
  */
 
-import type { AccessLevel, RunMode } from "@prismalens/config/harness";
+import type { AccessLevel } from "@prismalens/config/harness";
 import type { z } from "zod";
 import type {
 	AlertStatus,
@@ -198,16 +198,6 @@ export const ACCESS_LEVEL_LINE: Record<AccessLevel, string> = {
 	auto: "The agent's own review mode where it has one. PrismaLens approves what it still asks and logs it.",
 	"full-access":
 		"The agent's full-access mode. PrismaLens approves what it still asks and logs it. It can do anything your user can on this machine, inside whatever sandbox the agent itself runs.",
-};
-
-export const RUN_MODE_LABEL: Record<RunMode, string> = {
-	execute: "Execute",
-	plan: "Plan",
-};
-
-export const RUN_MODE_LINE: Record<RunMode, string> = {
-	execute: "The agent investigates and acts as its permission level allows.",
-	plan: "The agent's own plan mode: it reads and writes a plan; a request to leave Plan is refused and the plan is shown here.",
 };
 
 /** A mode whose sandbox no check proved here. */

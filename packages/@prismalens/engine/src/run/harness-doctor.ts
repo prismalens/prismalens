@@ -54,8 +54,6 @@ export interface HarnessProbeResult {
 	effort?: AcpOfferedEffort | null;
 	/** The agent's own permission modes and effort levels, by its names (#673 w21); null when it offered none. */
 	modes?: AcpOfferedMode[] | null;
-	/** The session offered the agent's plan mode (#673 w21). */
-	plan?: boolean;
 	efforts?: { id: string; name: string; default: boolean }[] | null;
 	images?: boolean;
 	/** Per offered mode (or `agent-default`): does the agent's own sandbox hold it on this machine (#673 w51). */
@@ -67,15 +65,6 @@ function effortLevels(
 ): HarnessProbeResult["efforts"] {
 	if (!effort) return null;
 	return effort.levels.map((l) => ({ ...l, default: l.id === effort.default }));
-}
-
-/** The session offered the row's plan mode: its mode id, or its config option value (#673 w21). */
-function offersPlan(harness: HarnessId, session: AcpSession): boolean {
-	const plan = HARNESS_REGISTRY[harness]?.planMode;
-	if (!plan) return false;
-	return plan.via === "acp"
-		? session.offeredModes.some((m) => m.id === plan.mode)
-		: session.offersConfigValue(plan.configId, plan.value);
 }
 
 function oneLine(message: string): string {
@@ -200,7 +189,6 @@ export async function probeHarness(
 				servedModel: session.servedModel,
 				effort: session.effort,
 				modes: session.offeredModes.length ? session.offeredModes : null,
-				plan: offersPlan(harness, session),
 				efforts: effortLevels(session.effort),
 				images: session.takesImages,
 			};

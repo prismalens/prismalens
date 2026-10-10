@@ -61,7 +61,7 @@ describe("InvestigationTriggerService", () => {
 	const mockHarnessService = {
 		resolveSelection: vi.fn(),
 		ensureReady: vi.fn(),
-		effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised", runMode: "execute" })),
+		effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised" })),
 	};
 
 	beforeEach(async () => {
@@ -72,7 +72,7 @@ describe("InvestigationTriggerService", () => {
 			auto: true,
 		});
 		mockHarnessService.ensureReady.mockResolvedValue({ ready: true });
-		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "supervised", runMode: "execute" });
+		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "supervised" });
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
@@ -395,7 +395,6 @@ describe("InvestigationTriggerService", () => {
 
 			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
 				accessLevel: "auto-edits",
-				runMode: "plan",
 			});
 
 			const criticalDecision = {
@@ -411,14 +410,12 @@ describe("InvestigationTriggerService", () => {
 				expect.objectContaining({
 					investigationId: "inv-auto",
 					accessLevel: "auto-edits",
-					runMode: "plan",
 				}),
 			);
 
 			// When auto rows are not set, effectiveChoice resolves the next-run chain
 			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
 				accessLevel: "supervised",
-				runMode: "execute",
 			});
 
 			await service.triggerInvestigation(incident, criticalDecision);
@@ -427,7 +424,6 @@ describe("InvestigationTriggerService", () => {
 				expect.objectContaining({
 					investigationId: "inv-auto",
 					accessLevel: "supervised",
-					runMode: "execute",
 				}),
 			);
 		});

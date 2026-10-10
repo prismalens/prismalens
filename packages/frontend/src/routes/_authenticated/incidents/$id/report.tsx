@@ -263,10 +263,6 @@ function NoReportPage() {
 	} else if (inv.kind === "chat") {
 		title = "No report";
 		body = "A chat run ends with no report.";
-	} else if (run.state === "done" && inv.runMode === "plan") {
-		// A Plan run ends with its plan in the conversation (#673 w21).
-		title = "No report";
-		body = "The agent's plan is in the conversation.";
 	} else {
 		title = "No report yet";
 		body = "The report comes when the run finishes.";

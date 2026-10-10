@@ -559,7 +559,7 @@ describe("the agent's own mode (#673 w21)", () => {
 			const [opts] = mocks.conductRun.mock.calls[0] as [{ accessLevel?: AccessLevel }];
 			expect(ports.updateStatus).toHaveBeenCalledWith(
 				"inv-mode",
-				expect.objectContaining({ accessLevel: opts.accessLevel, runMode: "execute" }),
+				expect.objectContaining({ accessLevel: opts.accessLevel }),
 			);
 			return opts.accessLevel;
 		};

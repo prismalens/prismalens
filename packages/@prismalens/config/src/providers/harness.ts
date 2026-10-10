@@ -48,11 +48,6 @@ export interface SandboxCheck {
 	reason: string;
 }
 
-/** A run's mode: the agent investigates and acts, or plans in its own plan mode (#673 w21 ruling 2026-10-10). */
-export const RUN_MODES = ["execute", "plan"] as const;
-export type RunMode = (typeof RUN_MODES)[number];
-export const DEFAULT_RUN_MODE: RunMode = "execute";
-
 /** The four permission levels, in display order; each row names its agent's own mode for each. */
 export const ACCESS_LEVELS = [
 	"supervised",
@@ -87,16 +82,6 @@ export interface HarnessAccess {
 	/** The row line under the level: what this agent runs, by its own mode name when the check listed one. */
 	line: (checked: CheckedModes) => string;
 }
-
-/** The agent's own plan mode: an ACP mode, or a config option value. */
-export type HarnessPlanMode =
-	| {
-			via: "acp";
-			mode: string;
-			/** Plan takes the permission mode slot, so no level applies in Plan. */
-			replacesLevel?: boolean;
-	  }
-	| { via: "config"; configId: string; value: string };
 
 /**
  * Per-run environment for the harness child. Config is isolated to what
@@ -144,8 +129,6 @@ export interface HarnessDescriptor {
 	defaultModel?: string;
 	/** Each permission level on this agent (#673 w21 ruling 2026-10-10). */
 	access: Record<AccessLevel, HarnessAccess>;
-	/** The agent's own plan mode; absent when it has none. */
-	planMode?: HarnessPlanMode;
 	modeMechanism: ModeMechanism;
 	/** Modes the agent runs under its OS sandbox with no network, per its source; a probe still decides `enforced` (#673 w51). */
 	sandboxedModes?: readonly string[];
@@ -298,7 +281,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 					"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
 			},
 		},
-		planMode: { via: "acp", mode: "plan" },
 		modeMechanism: "acp",
 		tested: { version: "1.18.30", date: "2026-09-20" },
 		modelVia: "acp",
@@ -377,7 +359,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 				},
 			},
 		},
-		planMode: { via: "acp", mode: "plan", replacesLevel: true },
 		modeMechanism: "acp",
 		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
 		tested: { version: "0.81.1", date: "2026-09-23" },
@@ -434,7 +415,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 					`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 			},
 		},
-		planMode: { via: "config", configId: "collaboration_mode", value: "plan" },
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
 		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
@@ -467,7 +447,6 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			auto: geminiDefault(geminiUntrusted),
 			"full-access": geminiDefault(geminiUntrusted),
 		},
-		planMode: { via: "acp", mode: "plan", replacesLevel: true },
 		modeMechanism: "acp",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
@@ -613,18 +592,6 @@ export function levelOfAgentMode(
 	if (!modeId) return null;
 	const row = HARNESS_REGISTRY[harnessId];
 	return ACCESS_LEVELS.find((l) => row.access[l].mode === modeId) ?? null;
-}
-
-/** Plan takes the permission mode slot on this agent, so no level applies in Plan. */
-export function planReplacesLevel(harnessId: HarnessId): boolean {
-	const plan = HARNESS_REGISTRY[harnessId].planMode;
-	return plan?.via === "acp" && !!plan.replacesLevel;
-}
-
-/** The agent mode id a run in Plan asks for, when the plan mode is one; null otherwise. */
-export function planModeId(harnessId: HarnessId): string | null {
-	const plan = HARNESS_REGISTRY[harnessId].planMode;
-	return plan?.via === "acp" ? plan.mode : null;
 }
 
 type JsonObject = Record<string, unknown>;

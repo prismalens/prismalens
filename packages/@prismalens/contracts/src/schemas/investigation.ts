@@ -18,7 +18,7 @@ import {
 } from "./common.js";
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import { OverlaySchema } from "./overlay.js";
-import { AccessLevelSchema, RunModeSchema } from "./settings.js";
+import { AccessLevelSchema } from "./settings.js";
 import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
@@ -110,9 +110,7 @@ export const RunFidelitySchema = z.object({
 	mechanism: z.string(),
 	/** The level the run asked for, and the one the reported mode is (#673 w21 ruling 2026-10-10). */
 	access: AccessLevelSchema.optional(),
-	/** Absent in Plan where the plan mode takes the level's slot. */
 	ranAccess: AccessLevelSchema.optional(),
-	runMode: RunModeSchema.optional(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
@@ -249,9 +247,8 @@ export const InvestigationSchema = z.object({
 	kind: InvestigationKindSchema.optional().default("investigation"),
 	/** The agent's own mode id PrismaLens set; null when it set none. */
 	agentMode: z.string().nullable().optional(),
-	/** The permission level and mode the run asked for (#673 w21); null on a run from before. */
+	/** The permission level the run asked for (#673 w21); null on a run from before. */
 	accessLevel: AccessLevelSchema.nullable().optional(),
-	runMode: RunModeSchema.nullable().optional(),
 	/** Investigation: the brief's first line; chat: the message's first 120 characters. */
 	title: z.string().nullable().optional(),
 	/** The run left a report; a chat never does. */
@@ -548,8 +545,8 @@ export type SendInvestigationMessageResult = z.infer<
 /**
  * How an agent's permission ask ended (#673 w21): the operator answered, nobody
  * did within {@link ASK_TIMEOUT_MS}, the run stopped, or PrismaLens restarted;
- * or the run's level answered it: `allowed`, or a request to leave Plan
- * (`plan_kept`) or enter it (`mode_kept`) refused.
+ * or the run's level answered it: `allowed`, or an agent's request to switch
+ * its own mode refused (`mode_kept`).
  */
 export const PERMISSION_ASK_OUTCOMES = [
 	"approved",
@@ -558,7 +555,6 @@ export const PERMISSION_ASK_OUTCOMES = [
 	"stopped",
 	"restarted",
 	"allowed",
-	"plan_kept",
 	"mode_kept",
 ] as const;
 export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
@@ -950,9 +946,8 @@ export const InvestigationJobDataSchema = z.object({
 	alerts: z.array(FiringAlertSchema).optional(),
 	/** The operator's brief for the agent (#743). */
 	brief: z.string().max(4000).optional(),
-	/** The run's two axes (#673 w21); Settings, else the agent's own default, when absent. A resume without them keeps the session's mode. */
+	/** The run's permission level (#673 w21); Settings, else the agent's own default, when absent. A resume without one keeps the session's mode. */
 	accessLevel: AccessLevelSchema.optional(),
-	runMode: RunModeSchema.optional(),
 	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),

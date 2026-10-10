@@ -5,11 +5,10 @@
  * The one investigation prompt (ADR 0002). Telemetry surfaces appear only when
  * the host configured them; the report contract is the last fenced json block.
  */
-import type { AccessLevel, RunMode } from "@prismalens/config/harness";
+import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type InvestigationContext,
-	RUN_MODE_LABEL,
 } from "@prismalens/contracts/schemas";
 import {
 	fenceUntrusted,
@@ -89,16 +88,9 @@ ${text}`;
 const NO_NETWORK =
 	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
 
-/** The run's two axes in the brief; a level that does not apply in Plan is left out (#673 w21). */
-function accessLine(
-	runMode: RunMode,
-	level: AccessLevel | null,
-	modeName: string,
-): string {
-	const own = `${modeName}, the agent's own mode`;
-	return level
-		? `Mode: ${RUN_MODE_LABEL[runMode]}. Permission: ${ACCESS_LEVEL_LABEL[level]} (${own}).`
-		: `Mode: ${RUN_MODE_LABEL[runMode]} (${own}).`;
+/** The run's permission level in the brief (#673 w21). */
+function accessLine(level: AccessLevel, modeName: string): string {
+	return `Permission: ${ACCESS_LEVEL_LABEL[level]} (${modeName}, the agent's own mode).`;
 }
 
 /** The job's scope at every level (ADR 0001 detect-and-report), not a permission rule (#673 w21). */
@@ -110,9 +102,7 @@ export function buildInvestigationPrompt(
 	options: {
 		modeName?: string;
 		noNetwork?: boolean;
-		runMode?: RunMode;
-		/** Null where no level applies: Plan on an agent whose plan mode takes the level's slot. */
-		level?: AccessLevel | null;
+		level?: AccessLevel;
 	} = {},
 ): string {
 	const [primary, ...rest] = context.alerts;
@@ -168,8 +158,7 @@ export function buildInvestigationPrompt(
 		"Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
 		...(options.noNetwork ? [NO_NETWORK] : []),
 		accessLine(
-			options.runMode ?? "execute",
-			options.level === undefined ? "supervised" : options.level,
+			options.level ?? "supervised",
 			options.modeName ?? "the agent's default",
 		),
 		SCOPE_LINE,

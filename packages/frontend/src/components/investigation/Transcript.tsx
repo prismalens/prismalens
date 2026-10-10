@@ -38,7 +38,6 @@ const ENTER =
 
 const LEVEL_TEST_ID = {
 	allowed: "transcript-allowed",
-	plan_kept: "transcript-plan-kept",
 	mode_kept: "transcript-mode-kept",
 } as const;
 
@@ -312,8 +311,7 @@ const ASK_END: Record<Exclude<AskState, "waiting">, string> = {
 	restarted: "Denied: PrismaLens restarted",
 	ended: "Not answered before the run ended",
 	allowed: "Allowed by the run's permission level",
-	plan_kept: "Refused: the run stays in Plan",
-	mode_kept: "Refused: the run stays in Execute",
+	mode_kept: "Refused: the run keeps its mode",
 };
 
 /**
