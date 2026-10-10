@@ -142,7 +142,7 @@ export async function fireIncident(
 		name: string;
 		service: { name: string; displayName: string };
 		severity?: string;
-		session?: "live" | "success" | "failure" | "nocause";
+		session?: "live" | "success" | "failure" | "nocause" | "ask" | string;
 		quiet?: boolean;
 	},
 ): Promise<Made> {
@@ -210,12 +210,20 @@ export async function reopen(page: Page, id: string) {
 	);
 }
 
-/** The board card for a title, inside `scope` (the page or a column). */
+/** The inbox row or card for a title, inside `scope` (the page or a group). */
 export const cardOf = (scope: Page | Locator, title: string) => {
 	const page = "goto" in scope ? scope : scope.page();
-	return scope.getByTestId("board-card").filter({
-		has: page.getByTestId("card-title").getByText(title, { exact: true }),
-	});
+	return scope
+		.locator(
+			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"], [data-testid="board-card"]',
+		)
+		.filter({
+			has: page
+				.getByTestId("inbox-row-title")
+				.filter({ hasText: title })
+				.or(page.getByTestId("card-title").filter({ hasText: title }))
+				.or(page.getByText(title, { exact: true })),
+		});
 };
 
 /**
@@ -250,7 +258,9 @@ export async function visit(target: Page, path: string, frame?: string) {
 
 export async function openBoard(page: Page) {
 	await visit(page, "/incidents");
-	await expect(page.getByTestId("incident-board")).toBeVisible();
+	await expect(
+		page.locator('[data-testid="inbox"], [data-testid="first-run"]'),
+	).toBeVisible();
 }
 
 /** The page's horizontal overflow in px; 0 when nothing scrolls sideways. */

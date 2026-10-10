@@ -140,12 +140,12 @@ Then(
 		const incident = world(page).incident;
 		const group = page
 			.getByTestId("sidebar")
-			.getByTestId("sidebar-group")
-			.filter({
-				has: page.getByTestId("service-lane").filter({ hasText: lane }),
-			});
+			.locator('[data-testid="tree-service"], [data-testid="sidebar-group"]')
+			.filter({ hasText: lane });
 		await expect(
-			group.getByTestId("incident-row").filter({ hasText: incident?.title }),
+			group
+				.locator('[data-testid="tree-incident"], [data-testid="incident-row"]')
+				.filter({ hasText: incident?.title }),
 		).toBeVisible();
 	},
 );
@@ -168,7 +168,11 @@ Then(
 				.getByTestId("alert-row-link")
 				.filter({ hasText: world(page).incident?.title }),
 		).toBeVisible();
-		await expect(page.getByTestId("incident-row")).toHaveCount(0);
+		await expect(
+			page.locator(
+				'[data-testid="tree-incident"], [data-testid="incident-row"]',
+			),
+		).toHaveCount(0);
 	},
 );
 
@@ -320,7 +324,11 @@ Then(
 			.getByTestId("settings-sections")
 			.boundingBox();
 		expect(backBox?.y ?? 0).toBeLessThan(listBox?.y ?? 0);
-		await expect(page.getByTestId("incident-row")).toHaveCount(0);
+		await expect(
+			page.locator(
+				'[data-testid="tree-incident"], [data-testid="incident-row"]',
+			),
+		).toHaveCount(0);
 	},
 );
 
@@ -451,7 +459,9 @@ Then(
 // On the phone the board's columns stack and are the list (study-v3 §3.1, PR 2).
 Then("the incident list is the page", async ({ page }) => {
 	await expect(
-		page.getByTestId("incidents-frame").getByTestId("incident-board"),
+		page
+			.getByTestId("incidents-frame")
+			.locator('[data-testid="inbox"], [data-testid="incident-board"]'),
 	).toBeVisible();
 	await expect(page.getByTestId("sidebar")).toBeHidden();
 });
@@ -502,12 +512,16 @@ When("I press the chevron at the left of the band", async ({ page }) => {
 Then("I am on the incident list", async ({ page }) => {
 	const p = here(page);
 	await expect.poll(() => pathOf(p)).toBe("/incidents");
-	await expect(p.getByTestId("incident-board").first()).toBeVisible();
+	await expect(
+		p.locator('[data-testid="inbox"], [data-testid="incident-board"]').first(),
+	).toBeVisible();
 });
 
 When("I press {string} in the header", async ({ page }, _label: string) => {
 	await visit(page, "/incidents");
-	await expect(page.getByTestId("incident-board")).toBeVisible();
+	await expect(
+		page.locator('[data-testid="inbox"], [data-testid="incident-board"]'),
+	).toBeVisible();
 	await page
 		.getByTestId("page-header")
 		.getByTestId("create-incident-button")
@@ -534,7 +548,9 @@ Then(
 
 When("I press Settings in the strip", async ({ page }) => {
 	await visit(page, "/incidents");
-	await expect(page.getByTestId("incident-board")).toBeVisible();
+	await expect(
+		page.locator('[data-testid="inbox"], [data-testid="incident-board"]'),
+	).toBeVisible();
 	await page.getByTestId("topbar").getByTestId("strip-settings").click();
 });
 
@@ -644,7 +660,9 @@ Then(
 		const phone = here(page);
 		// A fresh context cold-loads /pair, redeems the link, then opens the board.
 		await expect(phone).toHaveURL(/\/incidents$/, FIRST_PAINT);
-		await expect(phone.getByTestId("incident-board")).toBeVisible();
+		await expect(
+			phone.locator('[data-testid="inbox"], [data-testid="incident-board"]'),
+		).toBeVisible();
 		await visit(page, "/settings?tab=devices");
 		await expect(
 			page

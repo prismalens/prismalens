@@ -54,10 +54,32 @@ const inc = (page: Page): Made => {
 	return i;
 };
 const here = (page: Page) => w(page).page ?? page;
-const column = (page: Page, label: string) =>
-	page.getByTestId(
-		`board-column-${{ "Needs you": "needs_you", Working: "working", Concluded: "concluded", Resolved: "resolved" }[label]}`,
+const column = (page: Page, label: string) => {
+	const boardCol = {
+		"Needs you": "needs_you",
+		Working: "working",
+		Concluded: "concluded",
+		Resolved: "resolved",
+	}[label];
+	if (label === "Needs you") {
+		return page.locator(
+			`[data-testid="needs-you"], [data-testid="board-column-${boardCol}"]`,
+		);
+	}
+	if (label === "Resolved") {
+		return page.locator(
+			`[data-testid="recently-resolved"], [data-testid="all-incidents"], [data-testid="needs-group"][data-need="cleared"], [data-testid="board-column-${boardCol}"]`,
+		);
+	}
+	if (label === "Concluded") {
+		return page.locator(
+			`[data-testid="needs-group"][data-need="ready"], [data-testid="needs-group"][data-need="nocause"], [data-testid="needs-group"][data-need="failed"], [data-testid="board-column-${boardCol}"]`,
+		);
+	}
+	return page.locator(
+		`[data-testid="needs-you"], [data-testid="incident-tree"], [data-testid="board-column-${boardCol}"]`,
 	);
+};
 
 // --- Board ------------------------------------------------------------------
 
@@ -356,17 +378,19 @@ Then(
 		// Titles and services are the alert's words, not the board's: another
 		// scenario's incident may be titled "Closed without a cause".
 		const words = () =>
-			page.getByTestId("incident-board").evaluate((board) => {
-				const copy = board.cloneNode(true) as HTMLElement;
-				copy
-					.querySelectorAll(
-						'[data-testid="card-title"], [data-testid="card-service"]',
-					)
-					.forEach((el) => {
-						el.remove();
-					});
-				return copy.textContent ?? "";
-			});
+			page
+				.locator('[data-testid="inbox"], [data-testid="incident-board"]')
+				.evaluate((board) => {
+					const copy = board.cloneNode(true) as HTMLElement;
+					copy
+						.querySelectorAll(
+							'[data-testid="card-title"], [data-testid="card-service"]',
+						)
+						.forEach((el) => {
+							el.remove();
+						});
+					return copy.textContent ?? "";
+				});
 		await expect.poll(words).not.toContain(a);
 		await expect.poll(words).not.toContain(b);
 	},
@@ -880,7 +904,9 @@ Then(
 			line.getByRole("link", { name: "Add a service" }),
 		).toBeVisible();
 		const lineBox = await line.boundingBox();
-		const board = await page.getByTestId("incident-board").boundingBox();
+		const board = await page
+			.locator('[data-testid="inbox"], [data-testid="incident-board"]')
+			.boundingBox();
 		expect(lineBox?.y ?? 0).toBeLessThan(board?.y ?? 0);
 	},
 );

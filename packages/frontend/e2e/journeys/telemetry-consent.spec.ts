@@ -91,7 +91,7 @@ test.describe("#673 w45: usage data on after a notice", () => {
 		page,
 	}) => {
 		const heading = page
-			.getByTestId("incident-list-pane")
+			.getByTestId("page-header")
 			.getByRole("heading", { name: "Incidents", exact: true });
 		for (const flags of [
 			{ ...FRESH, noticed: true, dismissed: true },
