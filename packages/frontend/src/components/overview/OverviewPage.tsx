@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
+import { IncidentHeader } from "@/components/run/IncidentHeader";
+import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/get-error-message";
+import { ChangesCard } from "./ChangesCard";
+import type { NextActionId } from "./fixes";
+import { ImpactCard } from "./ImpactCard";
+import { LatestRunStrip } from "./LatestRunStrip";
+import { type OverviewAction, OverviewComposer } from "./OverviewComposer";
+import { SituationCard } from "./SituationCard";
+import { StopImpactCard } from "./StopImpactCard";
+import { useOverview } from "./use-overview";
+import { WhyCard } from "./WhyCard";
+
+/**
+ * The incident overview (#811 spec screen 2): one page, no tabs. The window
+ * never scrolls (ADR 0008 §2): the Situation row takes what it needs, two
+ * rows of fixed cards split the rest, and each card scrolls inside itself.
+ */
+export function OverviewPage() {
+	const o = useOverview();
+	const { incident } = o.record;
+	const navigate = useNavigate();
+	const { toast } = useToast();
+	const commandRef = useRef<HTMLElement>(null);
+	const [action, setAction] = useState<OverviewAction | null>(null);
+
+	const focusBox = (a: OverviewAction) => {
+		setAction(a);
+		window.setTimeout(
+			() =>
+				document
+					.querySelector<HTMLTextAreaElement>(
+						"[data-testid=overview-composer] textarea",
+					)
+					?.focus(),
+			0,
+		);
+	};
+	const start = () =>
+		void o.record.investigate({ stay: true }).catch((error: unknown) =>
+			toast({
+				title: "The run did not start",
+				description: getErrorMessage(error),
+				variant: "destructive",
+			}),
+		);
+
+	const onNext = (id: NextActionId) => {
+		const opt = o.current;
+		switch (id) {
+			case "copy":
+				if (opt) void o.copy(opt, commandRef.current);
+				return;
+			case "applied":
+				if (opt) o.apply(opt);
+				return;
+			case "check":
+				if (opt) void o.check(opt);
+				return;
+			case "next-option":
+				o.nextOption();
+				return;
+			case "resolve":
+				o.record.openClose();
+				return;
+			case "retry":
+			case "investigate":
+				start();
+				return;
+			case "watch":
+				if (o.live)
+					void navigate({
+						to: "/incidents/$id/conversation",
+						params: { id: incident.id },
+						search: { investigation: o.live.id },
+					});
+				return;
+		}
+	};
+
+	return (
+		<div
+			className="flex h-full min-h-0 flex-col"
+			data-testid="incident-overview"
+		>
+			<IncidentHeader
+				incident={incident}
+				view="Overview"
+				reportRunId={o.reported?.id ?? null}
+				onResolve={o.record.openClose}
+				onReopen={o.record.openReopen}
+				onEditCause={o.record.openEditCause}
+			/>
+			<LatestRunStrip o={o} />
+			<main
+				className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-4 pt-3 pb-1"
+				data-testid="overview-grid"
+			>
+				<div className="col-span-2 min-w-0">
+					<SituationCard o={o} onAction={onNext} />
+				</div>
+				<ImpactCard view={o.impact} />
+				<StopImpactCard o={o} commandRef={commandRef} />
+				<WhyCard o={o} onInvestigate={() => focusBox("investigate")} />
+				<ChangesCard o={o} />
+			</main>
+			<OverviewComposer o={o} action={action} onAction={setAction} />
+		</div>
+	);
+}

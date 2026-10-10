@@ -1,0 +1,220 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import type { Fixes } from "@prismalens/contracts";
+import { describe, expect, it } from "vitest";
+import { type FixOption, fixStage, nextStrip, splitOptions } from "./fixes";
+
+const opt: FixOption = {
+	id: "a",
+	index: 0,
+	kind: "stop-impact",
+	title: "Roll back booklogr-api to v1.41",
+	detail: "Undo deploy v1.42",
+	command: "kubectl rollout undo deployment/booklogr-api",
+	facts: [],
+	priority: "high",
+	readOnly: false,
+	appliedAt: null,
+	lastCheck: null,
+	canUndo: false,
+};
+
+const base = {
+	ended: false,
+	cleared: false,
+	runs: 1,
+	live: null,
+	failed: null,
+	reported: true,
+	option: opt,
+	checkable: true,
+	hasNextOption: true,
+};
+
+const firing = [{ status: "triggered", resolvedAt: null }];
+
+describe("splitOptions", () => {
+	it("keeps stop-impact options in rank order, at most three, and the lasting fix", () => {
+		const o = (index: number, kind: FixOption["kind"]) => ({ ...opt, id: String(index), index, kind });
+		const fixes: Fixes = {
+			investigationId: "r",
+			flagged: false,
+			options: [o(4, "stop-impact"), o(0, "probe"), o(1, "stop-impact"), o(2, "lasting"), o(3, "stop-impact"), o(5, "stop-impact")],
+		};
+		const r = splitOptions(fixes);
+		expect(r.stop.map((s) => s.id)).toEqual(["1", "3", "4"]);
+		expect(r.lasting?.id).toBe("2");
+		expect(splitOptions(undefined)).toEqual({ stop: [], lasting: null });
+	});
+});
+
+describe("fixStage", () => {
+	it("is ready until applied, then applied, then checked", () => {
+		const input = {
+			option: opt,
+			copied: true,
+			checking: false,
+			check: null,
+			alerts: firing,
+		};
+		expect(fixStage(input)).toMatchObject({ stage: "ready", copied: true });
+		const applied = {
+			...input,
+			option: { ...opt, appliedAt: "2026-10-11T12:20:00Z" },
+		};
+		expect(fixStage(applied).stage).toBe("applied");
+		expect(
+			fixStage({
+				...applied,
+				check: { verdict: "not_yet", at: "2026-10-11T12:23:00Z" },
+			}).stage,
+		).toBe("checked");
+		// After a reload the option's own last check stands.
+		expect(
+			fixStage({
+				...applied,
+				option: {
+					...applied.option,
+					lastCheck: { verdict: "it_worked", at: "2026-10-11T12:30:00Z" },
+				},
+			}).stage,
+		).toBe("worked");
+		// A check from before the option was applied again does not count.
+		expect(
+			fixStage({
+				...applied,
+				check: { verdict: "not_yet", at: "2026-10-11T12:10:00Z" },
+			}).stage,
+		).toBe("applied");
+	});
+
+	it("worked only when every alert cleared after it was applied", () => {
+		const applied = {
+			option: { ...opt, appliedAt: "2026-10-11T12:20:00Z" },
+			copied: false,
+			checking: false,
+			check: null,
+		};
+		expect(
+			fixStage({
+				...applied,
+				alerts: [{ status: "resolved", resolvedAt: "2026-10-11T12:31:00Z" }],
+			}),
+		).toMatchObject({ stage: "worked", clearedAt: "2026-10-11T12:31:00Z" });
+		expect(
+			fixStage({
+				...applied,
+				alerts: [{ status: "resolved", resolvedAt: "2026-10-11T12:00:00Z" }],
+			}).stage,
+		).toBe("applied");
+	});
+});
+
+describe("nextStrip", () => {
+	it("walks copy, I applied it, Check now", () => {
+		const ready = nextStrip({
+			...base,
+			stage: { stage: "ready", copied: false, copyFailed: false },
+		});
+		expect(ready.primary?.id).toBe("copy");
+		const copied = nextStrip({
+			...base,
+			stage: { stage: "ready", copied: true, copyFailed: false },
+		});
+		expect(copied.primary?.id).toBe("applied");
+		expect(copied.secondary?.id).toBe("copy");
+		const applied = nextStrip({
+			...base,
+			stage: { stage: "applied", appliedAt: "2026-10-11T12:20:00Z" },
+		});
+		expect(applied.primary?.id).toBe("check");
+	});
+
+	it("says so when the clipboard was blocked and the command is selected", () => {
+		const s = nextStrip({
+			...base,
+			stage: { stage: "ready", copied: false, copyFailed: true },
+		});
+		expect(s.text).toMatch(/blocked the clipboard/);
+		expect(s.primary?.id).toBe("applied");
+	});
+
+	it("never offers I applied it on an old report's option", () => {
+		const s = nextStrip({
+			...base,
+			option: { ...opt, id: null, readOnly: true },
+			stage: { stage: "ready", copied: true, copyFailed: false },
+		});
+		expect(s.primary?.id).toBe("copy");
+	});
+
+	it("offers no check when nothing can check the alert", () => {
+		const s = nextStrip({
+			...base,
+			checkable: false,
+			stage: { stage: "applied", appliedAt: "2026-10-11T12:20:00Z" },
+		});
+		expect(s.primary).toBeUndefined();
+		expect(s.text).toMatch(/clears on its own/);
+	});
+
+	it("words each verdict; It worked only from the alert clearing", () => {
+		const at = "2026-10-11T12:20:00Z";
+		const notYet = nextStrip({
+			...base,
+			stage: {
+				stage: "checked",
+				appliedAt: at,
+				check: { verdict: "not_yet", at: "2026-10-11T12:23:00Z", value: 2.1 },
+			},
+		});
+		expect(notYet.text).toMatch(/^Not yet: 2.1 at .*, 3 minutes after/);
+		expect(notYet.secondary?.id).toBe("next-option");
+		const below = nextStrip({
+			...base,
+			stage: {
+				stage: "checked",
+				appliedAt: at,
+				check: { verdict: "below_threshold", at, value: 0.5 },
+			},
+		});
+		expect(below.text).toMatch(/^Below the alert threshold: 0.5 at/);
+		const unsupported = nextStrip({
+			...base,
+			stage: {
+				stage: "checked",
+				appliedAt: at,
+				check: { verdict: "could_not_check", at, retryable: false },
+			},
+		});
+		expect(unsupported.text).toBe(
+			"Could not check; the alert clears on its own once its rule sees the recovery.",
+		);
+		expect(unsupported.primary).toBeUndefined();
+		const worked = nextStrip({
+			...base,
+			stage: { stage: "worked", appliedAt: at, clearedAt: at },
+		});
+		expect(worked.primary?.id).toBe("resolve");
+	});
+
+	it("falls back to the run when there is no option", () => {
+		const none = { ...base, option: null, stage: null };
+		expect(nextStrip({ ...none, runs: 0, reported: false }).primary?.id).toBe(
+			"investigate",
+		);
+		expect(
+			nextStrip({
+				...none,
+				reported: false,
+				failed: { name: "Run 2", reason: "Rate limited." },
+			}).primary?.id,
+		).toBe("retry");
+		expect(nextStrip({ ...none, live: { name: "Run 3" } }).primary?.id).toBe(
+			"watch",
+		);
+		expect(nextStrip(none).text).toMatch(/nothing to undo/);
+		expect(nextStrip({ ...none, cleared: true }).primary?.id).toBe("resolve");
+	});
+});

@@ -44,6 +44,8 @@ export interface RunStart {
 	harness?: HarnessId;
 	model?: string;
 	effort?: string | null;
+	/** Start it and stay on this page (the overview), not open its transcript. */
+	stay?: boolean;
 }
 
 /** What every layer under an incident shares: the incident, its runs, the selected run and the draft. */
@@ -83,7 +85,11 @@ export interface IncidentRecord {
 	openClose: () => void;
 	openEditCause: () => void;
 	openReopen: () => void;
-	addNote: (text: string, onDone?: () => void) => void;
+	addNote: (
+		text: string,
+		onDone?: () => void,
+		onError?: (error: unknown) => void,
+	) => void;
 	isSavingNote: boolean;
 	timeline: TimelineEntryWithRelations[];
 	timelineLoading: boolean;
