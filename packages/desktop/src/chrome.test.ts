@@ -10,7 +10,7 @@ describe("frameOptions", () => {
 			expect(frameOptions(platform, "light")).toEqual({
 				titleBarStyle: "hidden",
 				backgroundColor: "#fafafa",
-				titleBarOverlay: { color: "#fafafa", symbolColor: "#09090b", height: 40 },
+				titleBarOverlay: { color: "#eeeef0", symbolColor: "#09090b", height: 40 },
 			});
 		}
 	});

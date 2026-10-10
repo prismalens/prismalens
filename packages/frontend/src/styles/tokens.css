@@ -49,14 +49,22 @@
 	--reading-w: 52rem;
 	/* The desktop window's top strip; equals TITLEBAR_HEIGHT in packages/desktop. */
 	--titlebar-h: 0px;
+	/* The width the window controls cover at the strip's right end; nothing clickable sits there. */
+	--controls-w: 0px;
 	/* Set by the reconnect line while it shows; every frame starts below it. */
 	--reconnect-h: 0px;
-	--frame-top: calc(var(--titlebar-h) + var(--reconnect-h));
+	--frame-top: var(--reconnect-h);
 }
 
-/* Inside the Electron window the band or header is the title strip (#752). */
+/* Inside the Electron window each page's header is the title strip (#811):
+   Windows and Linux draw their controls over its right end, macOS its lights over the sidebar. */
 :root[data-desktop] {
 	--titlebar-h: 2.5rem;
+	--controls-w: 138px;
+}
+:root[data-desktop="darwin"] {
+	--controls-w: 0px;
+	--rail-w: 80px;
 }
 
 @media (max-width: 1279px) {

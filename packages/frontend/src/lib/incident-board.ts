@@ -23,13 +23,6 @@ import { STALE_AFTER_S } from "./investigation-events";
 
 export type BoardColumn = "needs_you" | "working" | "concluded" | "resolved";
 
-export const BOARD_COLUMNS: { id: BoardColumn; label: string }[] = [
-	{ id: "needs_you", label: "Needs you" },
-	{ id: "working", label: "Working" },
-	{ id: "concluded", label: "Concluded" },
-	{ id: "resolved", label: "Resolved" },
-];
-
 type LatestRun = NonNullable<IncidentWithRelations["investigations"]>[number];
 
 /** The newest run of any kind (#673). */
@@ -81,11 +74,6 @@ export function orderNeedsYou(
 		.map((incident, i) => ({ incident, i, rank: attentionRank(incident) }))
 		.sort((a, b) => a.rank - b.rank || a.i - b.i)
 		.map((x) => x.incident);
-}
-
-/** Alerts cleared: the one Needs you kind that is paperwork, not fire. */
-export function isWrapUp(incident: IncidentWithRelations): boolean {
-	return attentionFor(incident) === "awaiting_close";
 }
 
 /** The run's own state for a list row or a board card (#743 §2). */
@@ -177,17 +165,6 @@ export function runWord(
 	};
 }
 
-/** A column's state colour, repeated in its head, its cards and the sidebar (#673 w14). */
-export const COLUMN_TONE: Record<
-	BoardColumn,
-	"warn" | "live" | "text-2" | "ok"
-> = {
-	needs_you: "warn",
-	working: "live",
-	concluded: "text-2",
-	resolved: "ok",
-};
-
 /** `danger` for firing or failed, `warn` for the rest of Needs you, else plain. */
 export type CardTone = "danger" | "warn" | "plain";
 
@@ -251,19 +228,6 @@ export function cardWord(
 			incident.status,
 		tone: "plain",
 	};
-}
-
-/**
- * Resolved cards older than a day fold into Settled under the columns, the
- * board's twin of the sidebar's Settled group (#673 w14).
- */
-export function isSettled(
-	incident: IncidentWithRelations,
-	now: number,
-): boolean {
-	if (boardColumn(incident) !== "resolved") return false;
-	const at = incident.closedAt ?? incident.updatedAt;
-	return !!at && now - new Date(at).getTime() > 86_400_000;
 }
 
 export interface Headline {

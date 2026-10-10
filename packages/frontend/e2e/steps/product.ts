@@ -142,7 +142,7 @@ export async function fireIncident(
 		name: string;
 		service: { name: string; displayName: string };
 		severity?: string;
-		session?: "live" | "success" | "failure";
+		session?: "live" | "success" | "failure" | "nocause";
 		quiet?: boolean;
 	},
 ): Promise<Made> {

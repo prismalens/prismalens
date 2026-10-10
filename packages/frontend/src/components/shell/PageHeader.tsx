@@ -9,8 +9,8 @@ import { NewIncidentButton } from "./NewIncident";
 
 /**
  * A list screen's top row (study-v2 §2.5 rule 2): the area's title, its
- * controls, and the one primary at the right; Settings has none (look
- * ruling §2). Records use a band instead.
+ * controls, and New incident at the right; Settings has none. In the desktop
+ * window it is the title strip and keeps clear of the window controls (#811).
  */
 export function PageHeader({
 	title,
@@ -28,7 +28,7 @@ export function PageHeader({
 	return (
 		<header
 			className={cn(
-				"flex min-h-(--header-h) shrink-0 flex-wrap items-center gap-x-3 gap-y-2 bg-canvas px-4 py-1.5 md:px-6 desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[&_input]:app-no-drag desktop:[&_select]:app-no-drag",
+				"flex min-h-(--header-h) shrink-0 flex-wrap items-center gap-x-3 gap-y-2 bg-surface-1 py-1.5 pr-3 pl-4 desktop:pr-[calc(var(--controls-w)+12px)] desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag desktop:[&_input]:app-no-drag desktop:[&_select]:app-no-drag",
 				className,
 			)}
 			data-testid="page-header"

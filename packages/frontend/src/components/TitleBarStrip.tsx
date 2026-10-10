@@ -2,8 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The desktop window's draggable top strip (#736). The window controls draw
- * over its right end. The browser has none.
+ * The desktop window's draggable top strip (#736) for screens with no page
+ * header: pairing, not found and errors. Elsewhere the header is the strip
+ * (#811). The window controls draw over its right end; the browser has none.
  */
 export function TitleBarStrip() {
 	return (
