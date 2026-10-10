@@ -7,6 +7,7 @@ import {
 	buildInvestigationPrompt,
 	newerRunNote,
 } from "./prompt.js";
+import { UNTRUSTED_DATA_METHOD_GUARD } from "./fence.js";
 
 describe("buildInvestigationPrompt (#633)", () => {
 	const baseContext: InvestigationContext = {
@@ -183,8 +184,75 @@ describe("buildInvestigationPrompt (#633)", () => {
 			expect(prompt).not.toContain("curl");
 			expect(prompt).not.toContain("Confirm the signal");
 			expect(prompt).not.toContain("query recent logs");
-			for (const address of ["http://prometheus.internal:9090", "http://am.internal:9093", "http://logs.internal"])
+			for (const address of [
+				"http://prometheus.internal:9090",
+				"http://am.internal:9093",
+				"http://logs.internal",
+			])
 				expect(prompt).toContain(address);
+		});
+
+		it("carries the thirteen method lines in order and the brief mode/permission line (#673 w21)", () => {
+			const prompt = buildInvestigationPrompt(baseContext, {
+				modeName: "Manual",
+			});
+			expect(prompt).toContain(
+				"Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+			);
+			const expectedSteps = [
+				"1. Shell tool calls take the full command as ONE string in the tool's `command` field — never an argv array.",
+				"2. File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.",
+				`3. ${UNTRUSTED_DATA_METHOD_GUARD}`,
+				"4. Localise: which operation, endpoint or component the signal is about.",
+				"5. Read that code path's handler and the configuration it depends on; git log and git blame on what you read; a recent change is a suspect.",
+				"6. Hold at least two hypotheses until the evidence rules one out; a probe that confirms your favourite and tests nothing else is not the next probe.",
+				"7. Name impact and blast radius for the services, endpoints or users you observed affected; a mechanism you infer is a hypothesis, not an impact.",
+				"8. When you can, give the chain: what changed or failed first, how it reached this alert, with the evidence for each link.",
+				"9. If a command fails, say why in one line, try one alternative, then move on; a dead end is a finding.",
+				"10. After EACH command, say in one line what you learned and what you will check next; let the evidence pick the next probe.",
+				"11. Never run the same command with the same arguments twice. If your last couple of probes produced nothing new, stop and write the report.",
+				"12. Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+				"13. Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+			];
+			for (let i = 0; i < expectedSteps.length; i++) {
+				expect(prompt).toContain(expectedSteps[i]);
+				if (i > 0) {
+					expect(prompt.indexOf(expectedSteps[i])).toBeGreaterThan(
+						prompt.indexOf(expectedSteps[i - 1]),
+					);
+				}
+			}
+		});
+
+		it("keeps the reworded scope line at full-access (#673 w21)", () => {
+			const prompt = buildInvestigationPrompt(baseContext, {
+				level: "full-access",
+				modeName: "Bypass Permissions",
+			});
+			expect(prompt).toContain(
+				"Mode: Execute. Permission: Full access (Bypass Permissions, the agent's own mode).",
+			);
+			expect(prompt).toContain(
+				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+			);
+		});
+
+		it("fences RUNBOOK_NOTES and includes the method line when service.notes is set (#673 w21 prompting)", () => {
+			const prompt = buildInvestigationPrompt({
+				...baseContext,
+				service: {
+					name: "checkout",
+					notes: "Check the redis cluster first before querying the DB.",
+				},
+			});
+			expect(prompt).toContain("<<<RUNBOOK_NOTES");
+			expect(prompt).toContain(
+				"Check the redis cluster first before querying the DB.",
+			);
+			expect(prompt).toContain("<<<END RUNBOOK_NOTES>>>");
+			expect(prompt).toContain(
+				"RUNBOOK_NOTES is the operator's advice about this service; follow it where it applies and say when you did not.",
+			);
 		});
 	});
 });
