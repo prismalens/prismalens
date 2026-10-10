@@ -256,3 +256,57 @@ describe("Transcript AskCard", () => {
 		);
 	});
 });
+
+describe("Transcript level lines (#673 w21)", () => {
+	it("renders allowed, plan_kept and mode_kept lines with their respective testids", async () => {
+		const levelItems: TranscriptItem[] = [
+			{
+				kind: "level",
+				key: "lvl-1",
+				outcome: "allowed",
+				text: "Allowed at Ask always: A tool call",
+			},
+			{
+				kind: "level",
+				key: "lvl-2",
+				outcome: "plan_kept",
+				text: "Kept Plan: Implement this plan?",
+			},
+			{
+				kind: "level",
+				key: "lvl-3",
+				outcome: "mode_kept",
+				text: "Kept Execute: Implement this plan?",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={levelItems}
+					incidentId="inc-1"
+					runId="run-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+
+		const allowed = container.querySelector(
+			'[data-testid="transcript-allowed"]',
+		);
+		expect(allowed).not.toBeNull();
+		expect(allowed?.textContent).toBe("Allowed at Ask always: A tool call");
+
+		const planKept = container.querySelector(
+			'[data-testid="transcript-plan-kept"]',
+		);
+		expect(planKept).not.toBeNull();
+		expect(planKept?.textContent).toBe("Kept Plan: Implement this plan?");
+
+		const modeKept = container.querySelector(
+			'[data-testid="transcript-mode-kept"]',
+		);
+		expect(modeKept).not.toBeNull();
+		expect(modeKept?.textContent).toBe("Kept Execute: Implement this plan?");
+	});
+});

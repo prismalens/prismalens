@@ -133,6 +133,84 @@ describe("the box's chips (#673)", () => {
 		expect(html).toContain("Claude Code runs in Manual.");
 		expect(html).not.toContain("answers yes");
 	});
+
+	it("renders segment Execute | Plan and four level rows always, default first and tagged per from", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "supervised",
+				runMode: "execute",
+				onLevel: () => {},
+				onRunMode: () => {},
+			}),
+		);
+		expect(html).toContain('data-testid="run-mode-execute"');
+		expect(html).toContain('data-testid="run-mode-plan"');
+		expect(html).toContain('data-testid="access-level-supervised"');
+		expect(html).toContain('data-testid="access-level-auto-edits"');
+		expect(html).toContain('data-testid="access-level-auto"');
+		expect(html).toContain('data-testid="access-level-full-access"');
+		expect(html).toContain("PrismaLens default");
+	});
+
+	it("disables Plan when checked.plan is not true, with title/explanation", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude({ checked: { ...(claude().checked as NonNullable<HarnessStatus["checked"]>), plan: false } }),
+				level: "supervised",
+				runMode: "execute",
+				onLevel: () => {},
+				onRunMode: () => {},
+			}),
+		);
+		expect(html).toContain("Claude Code offers no plan mode");
+	});
+
+	it("disables levels in Plan on claude with the coupling line", () => {
+		const html = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "supervised",
+				runMode: "plan",
+				onLevel: () => {},
+				onRunMode: () => {},
+			}),
+		);
+		expect(html).toContain("Plan uses Claude Code&#x27;s own Plan mode; the permission level applies to a run that starts in Execute.");
+		expect(html).toContain('data-testid="access-plan-line"');
+	});
+
+	it("shows lock icon only when sandbox is enforced, and no icon otherwise", () => {
+		const enforcedClaude = claude({
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				sandbox: {
+					default: { state: "enforced", reason: "sandbox active" },
+				},
+			},
+		});
+		const withLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: enforcedClaude,
+				level: "supervised",
+				runMode: "execute",
+				onLevel: () => {},
+				onRunMode: () => {},
+			}),
+		);
+		expect(withLock).toContain("lucide-lock");
+
+		const withoutLock = renderToStaticMarkup(
+			React.createElement(AccessChip, {
+				harness: claude(),
+				level: "supervised",
+				runMode: "execute",
+				onLevel: () => {},
+				onRunMode: () => {},
+			}),
+		);
+		expect(withoutLock).not.toContain("lucide-lock");
+	});
 });
 
 describe("defaultModelLine (#673 w57)", () => {

@@ -48,11 +48,12 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				{ "data-testid": "effort", "data-value": p.effort ?? "" },
 				button("pick-effort", () => p.onEffort("high")),
 			),
-		AccessChip: (p: { onLevel: (l: string) => void; level: string }) =>
+		AccessChip: (p: { onLevel: (l: string) => void; level: string; onRunMode?: (m: string) => void; runMode?: string }) =>
 			el(
 				"span",
-				{ "data-testid": "mode", "data-value": p.level },
+				{ "data-testid": "mode", "data-value": p.level, "data-runmode": p.runMode ?? "" },
 				button("pick-mode", () => p.onLevel("full-access")),
+				button("pick-runmode", () => p.onRunMode?.("plan")),
 			),
 		defaultAccessOf: () => ({
 			level: { level: "auto", from: "agent" },
@@ -159,12 +160,14 @@ describe("DockedComposer chips (#673 w52)", () => {
 		expect(q("effort").dataset.value).toBe("low");
 		await click("pick-effort");
 		await click("pick-mode");
+		await click("pick-runmode");
 		await click("pick-model");
 		await click("pick-agent");
 		const set = h.record.setDraftChoice as ReturnType<typeof vi.fn>;
 		expect(set.mock.calls.map((c) => c[0])).toEqual([
 			{ harness: "opencode", model: "vendor/a", effort: "high", accessLevel: "auto", runMode: "execute" },
 			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "full-access", runMode: "execute" },
+			{ harness: "opencode", model: "vendor/a", effort: "low", accessLevel: "auto", runMode: "plan" },
 			{ harness: "opencode", model: "vendor/b", effort: "low", accessLevel: "auto", runMode: "execute" },
 			// Another agent starts from its own Settings for effort, mode and level.
 			{ harness: "codex", model: "" },
@@ -177,10 +180,12 @@ describe("DockedComposer chips (#673 w52)", () => {
 		await render();
 		await click("pick-effort");
 		await click("pick-mode");
+		await click("pick-runmode");
 		const newRun = h.record.newRun as ReturnType<typeof vi.fn>;
 		expect(newRun.mock.calls.map((c) => c[0])).toEqual([
 			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "auto-edits", runMode: "execute" } },
 			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "full-access", runMode: "execute" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "auto-edits", runMode: "plan" } },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
 	});
