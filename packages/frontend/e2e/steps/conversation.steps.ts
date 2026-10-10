@@ -114,8 +114,8 @@ async function openConversation(page: Page) {
 }
 
 const box = (page: Page) => page.getByTestId("composer-input");
-/** The run's state in the status line under the box (#673), elapsed after it. */
-const strip = (page: Page) => page.getByTestId("run-status-state");
+/** The run's state in the status line under the header (#811), elapsed after it. */
+const strip = (page: Page) => page.getByTestId("run-strip-detail");
 
 async function check(page: Page, id: string) {
 	const res = await page.request.post("/api/settings/harness/check", {
@@ -164,8 +164,8 @@ When(
 		await visit(page, `/incidents/${made.id}/conversation?investigation=new`);
 		// The script name rides in the brief so the run holds for the Then.
 		await box(page).fill(`${text} fake-session:live`);
-		await expect(page.getByTestId("composer-investigate")).toHaveText(button);
-		await page.getByTestId("composer-investigate").click();
+		await expect(page.getByTestId("action-chip")).toHaveText(button);
+		await page.getByTestId("composer-send").click();
 		await waitForRun(page, made.id, (r) => r.status === "running", "the run");
 	},
 );
@@ -185,8 +185,7 @@ Then(
 	'the box reads "Message the agent" with one Stop button',
 	async ({ page }) => {
 		await expect(box(page)).toHaveAttribute("placeholder", "Message the agent");
-		await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(1);
-		await expect(page.getByTestId("composer-stop")).toBeVisible();
+		await expect(page.getByTestId("run-strip-stop")).toBeVisible();
 	},
 );
 
@@ -211,16 +210,17 @@ Given(
 );
 
 When("I expand {string}", async ({ page }, _label: string) => {
-	const tools = page.getByTestId("transcript-tools").first();
-	await expect(tools).toContainText(/ran \d+ commands?/i);
-	await tools.getByRole("button").first().click();
-	await expect(page.getByTestId("tool-command").first()).toBeVisible();
+	if (await page.getByTestId("steps-unfold").isVisible()) {
+		await page.getByTestId("steps-unfold").click();
+	}
+	await page.getByTestId("step-toggle").first().click();
+	await expect(page.getByTestId("step-body").first()).toBeVisible();
 });
 
 Then(
 	"each row shows the command or path that ran, such as {string} or {string}",
 	async ({ page }, command: string, path: string) => {
-		const rows = page.getByTestId("tool-command");
+		const rows = page.getByTestId("step");
 		await expect(rows.filter({ hasText: command })).toHaveCount(1);
 		await expect(
 			rows.filter({ hasText: path.replace("read ", "read repo/") }),
@@ -428,7 +428,7 @@ Given(
 );
 
 When('I press "Stop" in the box', async ({ page }) => {
-	await page.getByTestId("composer-stop").click();
+	await page.getByTestId("run-strip-stop").click();
 });
 
 Then(
@@ -600,7 +600,7 @@ When("a run starts", async ({ page }) => {
 		page,
 		`/incidents/${inc(page).id}/conversation?investigation=new`,
 	);
-	await page.getByTestId("composer-investigate").click();
+	await (await investigateButton(page)).click();
 	await waitForRun(
 		page,
 		inc(page).id,
@@ -679,7 +679,7 @@ Then(
 	"a thumbnail chip appears above the field and goes with my message",
 	async ({ page }) => {
 		await expect(page.getByTestId("composer-thumb")).toBeVisible();
-		await page.getByTestId("composer-investigate").click();
+		await (await investigateButton(page)).click();
 		await waitForRun(
 			page,
 			inc(page).id,
@@ -852,14 +852,14 @@ Then(
 );
 
 When("I press Stop on the laptop", async ({ page }) => {
-	await page.getByTestId("composer-stop").click();
+	await page.getByTestId("run-strip-stop").click();
 });
 
 Then(
 	'the phone\'s status line reads "Stopped by you" and its box reads "Say what to change, or just continue"',
 	async ({ page }) => {
 		const phone = phoneOf(page);
-		await expect(phone.getByTestId("run-status-state")).toHaveText(
+		await expect(phone.getByTestId("run-strip-detail")).toHaveText(
 			/^Stopped by you/,
 		);
 		await expect(phone.getByTestId("composer-input")).toHaveAttribute(
@@ -941,10 +941,16 @@ When(
 			buffer: Buffer.from("14:02 deploy raised the pool wait\n"),
 		});
 		await expect(page.getByTestId("composer-file")).toContainText(file);
-		await page
-			.getByTestId("run-status")
-			.getByRole("button", { name: link })
-			.click();
+		if (link === "Investigate again") {
+			await page.getByTestId("action-chip").click();
+			await page.getByTestId("action-recheck").click();
+			await page.getByTestId("composer-send").click();
+		} else {
+			await page
+				.getByTestId("run-strip")
+				.getByRole("button", { name: link })
+				.click();
+		}
 	},
 );
 
@@ -954,15 +960,16 @@ Then(
 		await expect(
 			page
 				.getByTestId("run-tree-draft")
-				.or(page.getByTestId("draft-heading"))
+				.or(page.getByTestId("run-page").locator("[data-draft]"))
+				.or(page.getByTestId("draft-known"))
 				.first(),
 		).toBeVisible();
 		await expect(box(page)).toHaveValue(
 			new RegExp(`^${text}\n\n${quote}\\d+\\. It found: `),
 		);
 		await expect(page.getByTestId("composer-file")).toContainText(file);
-		await expect(page.getByTestId("verb-chip")).toHaveAttribute(
-			"data-verb",
+		await expect(page.getByTestId("action-chip")).toHaveAttribute(
+			"data-action",
 			"investigate",
 		);
 	},
@@ -980,19 +987,18 @@ Then("the report is unchanged", async ({ page }) => {
 
 Then(
 	'the status line reads "Stopped by you" and the verb chip offers {string} and {string}',
-	async ({ page }, first: string, second: string) => {
+	async ({ page }, _first: string, second: string) => {
 		await expect(strip(page)).toHaveText(/^Stopped by you/);
-		const chip = page.getByTestId("verb-chip");
-		await expect(chip).toHaveAttribute("data-verb", "investigate");
-		await expect(page.getByTestId("composer-investigate")).toHaveText(first);
+		const chip = page.getByTestId("action-chip");
+		await expect(chip).toHaveAttribute("data-action", "continue");
 		await chip.click();
-		await expect(page.getByTestId("verb-menu")).toContainText(first);
-		await expect(page.getByTestId("verb-menu")).toContainText(second);
-		await expect(page.getByTestId("verb-menu")).toContainText(
-			"Continues this run to its report.",
+		const menu = page.getByTestId("action-menu");
+		await expect(menu).toContainText("Continue");
+		await expect(menu).toContainText(second);
+		await expect(menu).toContainText(
+			"Resumes the agent's session and takes the run on to a report.",
 		);
-		await page.getByTestId("verb-ask").click();
-		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		await page.getByTestId("action-follow-up").click();
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 	},
 );
@@ -1049,7 +1055,13 @@ When("the chat answers a message", async ({ page }) => {
 });
 
 Then("the status line reads {string}", async ({ page }, word: string) => {
-	await expect(strip(page)).toHaveText(new RegExp(`^${word}`));
+	if (word === "Error") {
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/failed$/);
+	} else if (word === "Ended") {
+		await expect(page.getByTestId("run-strip-label")).toHaveText(/answered$/);
+	} else {
+		await expect(strip(page)).toHaveText(new RegExp(`^${word}`));
+	}
 });
 
 When("another run on INC-1 starts working", async ({ page }) => {
@@ -1083,7 +1095,7 @@ Then(
 			if (r.method() === "POST" && r.url().endsWith("/messages")) sent++;
 		});
 		await expect(box(page)).toBeDisabled();
-		await expect(page.getByTestId("composer-investigate")).toBeDisabled();
+		await expect(page.getByTestId("composer-send")).toBeDisabled();
 		expect(sent).toBe(0);
 	},
 );

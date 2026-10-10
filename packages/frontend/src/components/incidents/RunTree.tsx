@@ -119,7 +119,12 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 								{INCIDENT_ATTENTION_LABEL.awaiting_approval}
 							</span>
 						) : (
-							<span className="shrink-0 text-text-3 tabular-nums">
+							<span
+								className={cn(
+									"shrink-0 tabular-nums",
+									on ? "text-text-2" : "text-text-3",
+								)}
+							>
 								{runAge(r, now)}
 							</span>
 						)}

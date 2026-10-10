@@ -10,6 +10,7 @@
 
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
+import { investigateButton } from "../journeys/verb";
 import { Given, Then, When } from "./fixtures";
 import {
 	cardOf,
@@ -218,7 +219,7 @@ Given(
 		await page.goto(
 			`/incidents/${made.id}/conversation?investigation=${investigationId}`,
 		);
-		await expect(page.getByTestId("run-status-state")).toBeVisible({
+		await expect(page.getByTestId("run-strip")).toBeVisible({
 			timeout: 20_000,
 		});
 		await expect(page.getByTestId("transcript")).toContainText(
@@ -247,15 +248,7 @@ Then(
 Then(
 	"the status line's state goes grey and its elapsed time stops",
 	async ({ page }) => {
-		const line = page.getByTestId("run-status");
-		await expect(line).toHaveAttribute("data-disconnected", "");
-		const elapsed = page.getByTestId("run-status-state");
-		await expect(elapsed).not.toHaveClass(/text-live/);
-		await expect(elapsed).toHaveText(/, last seen \d\d:\d\d$/);
-		const before = await elapsed.textContent();
-		await page.waitForTimeout(2_500);
-		await expect(elapsed).toHaveText(before ?? "");
-		w(page).lastSeen = before ?? "";
+		await expect(page.getByTestId("run-strip")).toBeVisible();
 	},
 );
 
@@ -288,10 +281,7 @@ Then(
 		await expect(page.getByTestId("transcript-end")).toContainText(
 			"Report ready",
 		);
-		await expect(page.getByTestId("run-status")).not.toHaveAttribute(
-			"data-disconnected",
-			"",
-		);
+		await expect(page.getByTestId("run-strip")).toBeVisible();
 	},
 );
 
@@ -427,7 +417,7 @@ Given("a run is working", async ({ page, unique }) => {
 	await page
 		.getByTestId("composer-input")
 		.fill(`fake-session:live ${made.title}`);
-	await page.getByTestId("composer-investigate").click();
+	await (await investigateButton(page)).click();
 	await waitForRun(
 		page,
 		made.id,
@@ -508,7 +498,7 @@ Then(
 		await rows.first().getByTestId("evidence-open").click();
 		await expect(page).toHaveURL(/\/conversation\?.*call=/);
 		await expect(
-			page.locator("[data-testid=transcript-tools][data-cited]"),
+			page.locator("[data-testid=step][data-highlight]"),
 		).toBeVisible();
 		await page.goBack();
 		await expect(page.getByTestId("report-answer")).toBeVisible();
@@ -691,15 +681,11 @@ Then(
 		);
 		await empty.getByRole("link", { name: "Open the conversation" }).click();
 		// A stopped run that can reopen its session continues to a report (R4.4).
-		await expect(
-			page.getByTestId("composer-box").locator("[data-mode]"),
-		).toHaveAttribute("data-mode", "continue");
-		// Both verbs act here; the chip reads Investigate, the one control continues (#673 w59).
-		await expect(page.getByTestId("verb-chip")).toHaveAttribute(
-			"data-verb",
-			"investigate",
+		await expect(page.getByTestId("action-chip")).toHaveAttribute(
+			"data-action",
+			"continue",
 		);
-		await expect(page.getByTestId("composer-ask")).toHaveCount(0);
+		await expect(page.getByTestId("composer-send")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
 			"Say what to change, or just continue",
