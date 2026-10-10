@@ -8,13 +8,14 @@ import {
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState, useSearch } from "@tanstack/react-router";
-import { MessageSquare, Plus, Search } from "lucide-react";
+import { MessageSquare, Search } from "lucide-react";
+import { runAge, runLabel } from "@/components/run/run-labels";
 import { useNow } from "@/hooks/use-now";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 import { DRAFT } from "./record-context";
-import { elapsedWord, openRun, refState, runDot, runName } from "./run-facts";
+import { openRun, refState, runDot } from "./run-facts";
 
 export function RunDot({
 	state,
@@ -61,7 +62,8 @@ const ROW =
 
 /**
  * The open incident's runs as its children in the sidebar (#673): newest
- * first, a state dot, the title or `Run #N`, elapsed or `Working`; then `New run`.
+ * first, a state dot, the runs menu's own label (`Run 2, likely cause`,
+ * `Ask: …`) and age (#811); then `New conversation`.
  */
 export function RunTree({ incidentId }: { incidentId: string }) {
 	const { data } = useQuery({
@@ -108,8 +110,7 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 						title={r.kind === "chat" ? undefined : (r.title ?? undefined)}
 					>
 						<RunDot state={refState(r)} className={dot} />
-						<KindIcon kind={r.kind} />
-						<span className="min-w-0 flex-1 truncate">{runName(runs, r)}</span>
+						<span className="min-w-0 flex-1 truncate">{runLabel(runs, r)}</span>
 						{r.awaitingApprovalAt && isWorkflowLive(r.status) ? (
 							<span
 								className="shrink-0 text-danger"
@@ -119,7 +120,7 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 							</span>
 						) : (
 							<span className="shrink-0 text-text-3 tabular-nums">
-								{elapsedWord(r, now)}
+								{runAge(r, now)}
 							</span>
 						)}
 					</Link>
@@ -132,8 +133,7 @@ export function RunTree({ incidentId }: { incidentId: string }) {
 				className={cn(ROW, "text-text-3")}
 				data-testid="run-tree-new"
 			>
-				<Plus className="-ml-0.5 size-3" aria-hidden />
-				<span>New run</span>
+				<span>New conversation</span>
 			</Link>
 		</div>
 	);

@@ -45,6 +45,7 @@ vi.mock("@/components/incidents/record-context", () => ({
 		run: {
 			state: "working",
 			events: [],
+			pending: [],
 			investigation: { id: "inv-1", harness: "opencode", agentMode: "plan", agentModeName: "Plan", liveTurn: "report" },
 			sendMessage: record.sendMessage,
 			stop: vi.fn(),
@@ -84,6 +85,8 @@ vi.mock("@/components/incidents/run-facts", () => ({
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const MESSAGE = { id: "message", label: "Message", detail: "At the next pause.", needsText: true };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -128,16 +131,15 @@ describe("ComposerBox image previews (R4.3)", () => {
 		await act(async () => {
 			root.render(
 				createElement(ComposerBox, {
-					mode: "live",
+					actions: [MESSAGE],
+					action: "message",
+					onAction: () => {},
+					live: true,
 					chips: null,
 					text: "",
 					setText: () => {},
-					verbs: [],
-					verb: "ask",
 					placeholder: "Message the agent",
-					onInvestigate: () => {},
-					onAsk: () => {},
-					onMessage: () => {},
+					onSend: () => {},
 					agent: { label: "OpenCode", images: true },
 				}),
 			);
@@ -158,69 +160,70 @@ describe("ComposerBox image previews (R4.3)", () => {
 	});
 });
 
-describe("the box: one send control, the verb chip where both verbs act (#673 w59, T22)", () => {
-	const copy = { investigate: "Gathers…", ask: "A question to the agent. No report." };
+describe("the box: one chip row, one Send (#811)", () => {
+	const ASK = { id: "ask", label: "Ask", detail: "A question.", needsText: true };
+	const INVESTIGATE = { id: "investigate", label: "Investigate", detail: "A run.", needsText: false };
 	async function render(props: Record<string, unknown>) {
-		const calls = { investigate: vi.fn(), ask: vi.fn(), message: vi.fn() };
+		const onSend = vi.fn();
+		const onAction = vi.fn();
 		await act(async () => {
 			root.render(
 				createElement(ComposerBox, {
-					mode: "draft",
+					actions: [ASK, INVESTIGATE],
+					action: "ask",
+					onAction,
 					chips: null,
 					text: "why the pool?",
 					setText: () => {},
-					verbs: [],
-					verb: "ask",
-					verbCopy: copy,
-					onVerb: () => {},
 					placeholder: "p",
-					onInvestigate: calls.investigate,
-					onAsk: calls.ask,
-					onMessage: calls.message,
+					onSend,
 					agent: { label: "OpenCode", images: true },
 					...props,
 				} as Parameters<typeof ComposerBox>[0]),
 			);
 		});
-		return calls;
+		return { onSend, onAction };
 	}
-	const controls = () =>
-		["composer-investigate", "composer-ask", "composer-send"].filter((id) => q(id) !== null);
-	const enter = async () => {
+	const enter = async (ctrl = false) => {
 		await act(async () => {
-			q("composer-input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+			q("composer-input").dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", ctrlKey: ctrl, bubbles: true }),
+			);
 		});
 	};
 
-	it.each([
-		["a draft set to Investigate", { mode: "draft", verbs: ["investigate", "ask"], verb: "investigate" }, ["composer-investigate"], true],
-		["a draft set to Ask", { mode: "draft", verbs: ["investigate", "ask"], verb: "ask" }, ["composer-ask"], true],
-		["a live thread", { mode: "live", verbs: [], verb: "ask" }, ["composer-send"], false],
-		["a stopped reportless run set to Investigate", { mode: "continue", verbs: ["investigate", "ask"], verb: "investigate" }, ["composer-investigate"], true],
-		["a stopped reportless run set to Ask", { mode: "continue", verbs: ["investigate", "ask"], verb: "ask" }, ["composer-send"], true],
-		["a finished investigation", { mode: "resume", verbs: [], verb: "ask" }, ["composer-send"], false],
-	])("%s: one send control, chip %s", async (_name, props, shown, chip) => {
-		await render(props);
-		expect(controls()).toEqual(shown);
-		expect(q("verb-chip") !== null).toBe(chip);
+	it("shows the action as a menu only where there is a choice", async () => {
+		await render({});
+		expect(q("action-chip").tagName).toBe("BUTTON");
+		await render({ actions: [MESSAGE], action: "message", live: true });
+		expect(q("action-chip").tagName).toBe("SPAN");
+		expect(q("action-chip").textContent).toBe("Message");
 	});
 
 	it("wraps chips instead of horizontal scrolling (#673 walk 4, QA-06)", async () => {
-		await render({ mode: "draft" });
+		await render({});
 		const chips = q("composer-chips");
 		expect(chips.classList.contains("flex-wrap")).toBe(true);
 		expect(chips.classList.contains("overflow-x-auto")).toBe(false);
 	});
 
-	it("Enter follows the verb on a draft", async () => {
-		const investigates = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "investigate" });
-		await enter();
-		expect(investigates.investigate).toHaveBeenCalledTimes(1);
-		expect(investigates.ask).not.toHaveBeenCalled();
+	it("Enter sends; Ctrl+Enter sends now only on a live run", async () => {
+		const draft = await render({});
+		await enter(true);
+		expect(draft.onSend).toHaveBeenCalledWith({ text: "why the pool?", files: [] }, false);
+		const live = await render({ actions: [MESSAGE], action: "message", live: true });
+		await enter(true);
+		expect(live.onSend).toHaveBeenCalledWith({ text: "why the pool?", files: [] }, true);
+	});
 
-		const asks = await render({ mode: "draft", verbs: ["investigate", "ask"], verb: "ask" });
+	it("an action that needs text does not send an empty box; one that does not, does", async () => {
+		const asks = await render({ text: "" });
 		await enter();
-		expect(asks.ask).toHaveBeenCalledTimes(1);
+		expect(asks.onSend).not.toHaveBeenCalled();
+		expect(q<HTMLButtonElement>("composer-send").disabled).toBe(true);
+		const investigates = await render({ text: "", action: "investigate" });
+		await enter();
+		expect(investigates.onSend).toHaveBeenCalledTimes(1);
 	});
 
 	it("a removed prefill file is reported back, so a remount does not bring it back", async () => {
@@ -235,12 +238,27 @@ describe("the box: one send control, the verb chip where both verbs act (#673 w5
 	});
 
 	it("a thread blocked by another live one sends nothing", async () => {
-		const calls = await render({ mode: "resume", blockedReason: "Run #2 is working; message it or stop it" });
+		const calls = await render({ blockedReason: "Run 2 is working; message it or stop it" });
 		await enter();
-		expect(calls.message).not.toHaveBeenCalled();
-		expect(q("composer-blocked").textContent).toBe("Run #2 is working; message it or stop it");
+		expect(calls.onSend).not.toHaveBeenCalled();
+		expect(q("composer-blocked").textContent).toBe("Run 2 is working; message it or stop it");
 	});
 
+	it("a run with no session offers a new run instead of the box", async () => {
+		const onNewRun = vi.fn();
+		await render({ ended: { onNewRun } });
+		expect(q("composer-input")).toBeNull();
+		await act(async () => q<HTMLButtonElement>("composer-new-run").click());
+		expect(onNewRun).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("DockedComposer sends (#673 w59, #811)", () => {
+	const enter = async () => {
+		await act(async () => {
+			q("composer-input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+		});
+	};
 	it.each([
 		["a live report turn", { state: "working", investigation: { id: "inv-1", liveTurn: "report" } }, "continue"],
 		["a live answer turn", { state: "working", investigation: { id: "inv-1", liveTurn: "answer" } }, "chat"],

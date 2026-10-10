@@ -7,11 +7,8 @@ import {
 	fidelityAccess,
 	type HarnessStatus,
 	isRunStateLive,
-	LIVE_TURN_LABEL,
-	runStateLabel,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
-import { GitCommitHorizontal } from "lucide-react";
 import { type MutableRefObject, useState } from "react";
 import {
 	AccessChip,
@@ -26,30 +23,22 @@ import {
 	useIncidentRecord,
 } from "@/components/incidents/record-context";
 import {
-	runAccessLine,
 	runEffort,
 	runNumber,
-	runTimed,
-	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import { useNow } from "@/hooks/use-now";
+import { viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
-import { reconnectAsOf, useStreamStatus } from "@/lib/api/live-refresh";
 import { uploadAttachment } from "@/lib/attachments";
-import { composerMode } from "@/lib/composer-keys";
-import { formatClock, formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { pinnedTo, runCodeClause } from "@/lib/investigation-events";
-import {
-	defaultVerb,
-	followUpKind,
-	type RunVerb,
-	verbCopy,
-	verbsFor,
-} from "@/lib/run-verb";
+import { unmatchedPending } from "@/lib/investigation-events";
+import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
-import { ComposerBox, type ComposerSend } from "./ComposerBox";
+import {
+	type ComposerAction,
+	ComposerBox,
+	type ComposerSend,
+} from "./ComposerBox";
 
 /** What a chip choice changes: one of the three, the rest stay. */
 type Choice =
@@ -57,37 +46,154 @@ type Choice =
 	| { kind: "effort"; effort: string }
 	| { kind: "level"; level: AccessLevel };
 
-/** The box's placeholder, by what the next message asks for (#673 w59, DESIGN §4). */
-function placeholderFor(
-	draft: boolean,
-	live: boolean,
-	continuable: boolean,
-	chat: boolean,
-	verb: RunVerb,
-): string {
-	if (draft)
-		return verb === "investigate"
-			? "Brief the agent (optional)"
-			: "Ask about this incident";
-	if (live) return "Message the agent";
-	if (continuable) return "Say what to change, or just continue";
-	return chat ? "Continue this chat" : "Ask about this run";
+/** The thread the box sits under, and what Send can do on it (#811). */
+export interface ThreadActions {
+	actions: ComposerAction[];
+	/** The action a fresh box starts on. */
+	initial: string;
+	placeholder: string;
+	/** Where each action's result goes, the line above the box. */
+	hint: Record<string, string>;
 }
 
 /**
- * The box under the transcript (#673): a draft starts a run, a live run takes
- * messages, a finished one continues. On a run the chips read that run, and
- * changing one opens a draft prefilled with the run plus the change.
+ * The box's actions by thread (#811): a draft asks or investigates; a live
+ * run takes messages; a finished run continues in its session or is
+ * investigated again; a stopped run without a report continues to one.
+ */
+export function threadActions(t: {
+	draft: boolean;
+	live: boolean;
+	chat: boolean;
+	continuable: boolean;
+	reported: boolean;
+	name: string;
+	nextName: string;
+	defaultDraft: "ask" | "investigate";
+}): ThreadActions {
+	if (t.draft)
+		return {
+			actions: [
+				{
+					id: "ask",
+					label: "Ask",
+					detail: "A question about this incident. No new report.",
+					needsText: true,
+				},
+				{
+					id: "investigate",
+					label: "Investigate",
+					detail:
+						"Gathers the alert, code and telemetry, then starts a run that ends in a report.",
+					needsText: false,
+				},
+			],
+			initial: t.defaultDraft,
+			placeholder:
+				t.defaultDraft === "ask"
+					? "Ask about this incident"
+					: "Brief the agent (optional)",
+			hint: {
+				ask: "Starts a conversation about this incident. Its latest answer also shows on the overview.",
+				investigate:
+					"Starts a run. It runs live and ends in a report on the overview.",
+			},
+		};
+	if (t.live)
+		return {
+			actions: [
+				{
+					id: "message",
+					label: "Message",
+					detail: "Reaches the agent at its next pause.",
+					needsText: true,
+				},
+			],
+			initial: "message",
+			placeholder: "Message the agent",
+			hint: { message: "" },
+		};
+	if (t.chat)
+		return {
+			actions: [
+				{
+					id: "follow-up",
+					label: "Ask",
+					detail: "A follow-up in this conversation.",
+					needsText: true,
+				},
+			],
+			initial: "follow-up",
+			placeholder: "Ask a follow-up",
+			hint: {
+				"follow-up":
+					"Follow-ups stay in this conversation. The latest answer also shows on the overview.",
+			},
+		};
+	if (t.continuable)
+		return {
+			actions: [
+				{
+					id: "continue",
+					label: `Continue ${t.name}`,
+					detail:
+						"Resumes the agent's session and takes the run on to a report.",
+					needsText: true,
+				},
+				{
+					id: "follow-up",
+					label: "Ask",
+					detail: "A question in the same session. No report.",
+					needsText: true,
+				},
+			],
+			initial: "continue",
+			placeholder: "Say what to change, or just continue",
+			hint: {
+				continue: `Continuing resumes ${t.name}'s agent session and ends in a report on the overview.`,
+				"follow-up": `Asks in ${t.name}'s agent session. The answer shows here.`,
+			},
+		};
+	const actions: ComposerAction[] = [
+		{
+			id: "follow-up",
+			label: `Continue ${t.name}`,
+			detail: `A follow-up in ${t.name}'s agent session. The answer shows here.`,
+			needsText: true,
+		},
+	];
+	if (t.reported)
+		actions.push({
+			id: "recheck",
+			label: "Investigate again",
+			detail: `Starts ${t.nextName} with this report quoted and anything typed here.`,
+			needsText: false,
+		});
+	return {
+		actions,
+		initial: "follow-up",
+		placeholder: "Say what to change, or just continue",
+		hint: {
+			"follow-up": `Continuing resumes ${t.name}'s agent session. Its answer shows here.`,
+			recheck: `${t.nextName} runs live and ends in a new report on the overview; ${t.name}'s finding stands until then.`,
+		},
+	};
+}
+
+/**
+ * The box under a transcript (#811): a draft starts a run or an Ask, a live
+ * run takes messages, a finished one continues. On a run the chips read
+ * that run, and changing one opens a draft prefilled with the run plus the change.
  */
 export function DockedComposer({
 	branchId,
 	boxRef,
-	onRecheck,
+	floating,
 }: {
 	branchId?: string;
-	/** What is in the box now, for `Investigate again` (#673 w59). */
 	boxRef?: MutableRefObject<ComposerSend | null>;
-	onRecheck?: () => void;
+	/** The new conversation's box, centred until the first send. */
+	floating?: boolean;
 }) {
 	const record = useIncidentRecord();
 	const { run, incident, runs, draft } = record;
@@ -97,36 +203,42 @@ export function DockedComposer({
 	const who = useRunAgentModel(run.investigation);
 	const inv = run.investigation;
 	const live = !!run.state && isRunStateLive(run.state);
-	const mode = composerMode(
-		draft || !inv
-			? null
-			: { live, continuable: run.continuable, resumable: run.resumable },
-	);
+	const ended = !draft && !!inv && !live && !run.continuable && !run.resumable;
 
-	// What the next message asks for: a draft's own pick, else its default (#673 w59).
-	const thread = { draft, live, continuable: run.continuable };
-	const verbs = verbsFor(thread);
-	// A pick holds for the state it was made in: a run stopped while open offers Investigate.
-	const verbKey = `${inv?.id}:${run.continuable}`;
-	const [picked, setPicked] = useState<{ key: string; verb: RunVerb } | null>(
+	const name = inv ? viewName(runs, inv) : "this run";
+	const thread = threadActions({
+		draft,
+		live,
+		chat: inv?.kind === "chat",
+		continuable: run.continuable,
+		reported: !!inv?.report,
+		name,
+		nextName: `Run ${runNumber(runs, "")}`,
+		defaultDraft:
+			record.draftVerb ??
+			defaultVerb(
+				{ draft: true },
+				{
+					alertCount: incident.alertCount,
+					reported: runs.some((r) => r.hasReport),
+				},
+			),
+	});
+	const actionKey = `${draft ? "draft" : inv?.id}:${live}:${run.continuable}`;
+	const [picked, setPicked] = useState<{ key: string; id: string } | null>(
 		null,
 	);
-	const runVerb: RunVerb =
-		picked?.key === verbKey
-			? picked.verb
-			: run.continuable
-				? "investigate"
-				: "ask";
-	const setRunVerb = (v: RunVerb) => setPicked({ key: verbKey, verb: v });
-	const verb: RunVerb = draft
-		? (record.draftVerb ??
-			defaultVerb(thread, {
-				alertCount: incident.alertCount,
-				reported: runs.some((r) => r.hasReport),
-			}))
-		: verbs.length
-			? runVerb
-			: "ask";
+	const action =
+		draft && record.draftVerb
+			? record.draftVerb
+			: picked?.key === actionKey
+				? picked.id
+				: thread.initial;
+	const setAction = (id: string) => {
+		if (draft && (id === "ask" || id === "investigate"))
+			record.setDraftVerb(id);
+		else setPicked({ key: actionKey, id });
+	};
 	const liveKind: FollowUpKind | undefined =
 		inv?.liveTurn === "report"
 			? "continue"
@@ -191,7 +303,9 @@ export function DockedComposer({
 		!draft && (live || !liveNumber)
 			? undefined
 			: liveNumber
-				? `Run #${liveNumber} is working; message it or stop it`
+				? otherLive?.kind === "chat"
+					? "An Ask is answering; message it or stop it"
+					: `Run ${liveNumber} is working; message it or stop it`
 				: unready
 					? `${unready}. Check it in Settings, Agent.`
 					: own.harness
@@ -229,82 +343,115 @@ export function DockedComposer({
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
 
+	const onSend = async ({ text, files }: ComposerSend, now: boolean) => {
+		const attachments = await upload(files);
+		const ids = attachments.map((a) => a.id);
+		switch (action) {
+			case "investigate":
+				return record.investigate({
+					text: text || undefined,
+					accessLevel,
+					...sent,
+					attachments: ids,
+				});
+			case "ask":
+				return record.chat({ text, accessLevel, ...sent, attachments: ids });
+			case "recheck":
+				if (!inv?.report) return;
+				return record.investigate({
+					text: recheckBrief(inv.report, runNumber(runs, inv.id), text),
+					accessLevel,
+					attachments: ids,
+				});
+			default: {
+				// Every message says what it asks for; a live one, the turn it joins (#673 w59).
+				const kind: FollowUpKind | undefined = live
+					? liveKind
+					: action === "continue"
+						? "continue"
+						: "chat";
+				await run.sendMessage(text, now ? "now" : "queue", {
+					branchId,
+					attachments,
+					...(kind ? { kind } : {}),
+				});
+			}
+		}
+	};
+
+	const queued = live
+		? unmatchedPending(run.events, run.pending).filter(
+				(m) => m.mode === "queue" && !m.undelivered,
+			)
+		: [];
+	const hint = ended ? null : thread.hint[action];
+	const above = (
+		<>
+			{hint && (
+				<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
+					{hint}
+				</p>
+			)}
+			{queued.map((m) => (
+				<p
+					key={m.id}
+					className="truncate px-3 text-meta text-text-2"
+					data-testid="composer-queued"
+				>
+					Waiting for the agent's next pause: {m.text}
+				</p>
+			))}
+		</>
+	);
+
 	return (
-		<div className="shrink-0 pb-3" data-testid="docked-composer">
-			<ComposerBox
-				mode={mode}
-				chips={chips}
-				verbs={verbs}
-				verb={verb}
-				onVerb={draft ? record.setDraftVerb : setRunVerb}
-				verbCopy={verbCopy(thread)}
-				placeholder={placeholderFor(
-					draft,
-					live,
-					run.continuable,
-					inv?.kind === "chat",
-					verb,
-				)}
-				initialFiles={draft ? record.draftFiles : undefined}
-				onFilesChange={draft ? record.setDraftFiles : undefined}
-				boxRef={boxRef}
-				text={draft ? record.draftText : message}
-				setText={draft ? record.setDraftText : setMessage}
-				autoFocus={draft}
-				agent={{
-					label: harness?.label ?? who.agent,
-					images:
-						harness?.checked?.outcome === "answers-acp"
-							? harness.checked.images
-							: null,
-				}}
-				waiting={run.waiting}
-				isPending={record.isStarting}
-				stopping={run.stopRequested}
-				blockedReason={blockedReason}
-				onNewRun={() => record.newRun()}
-				onStop={() =>
-					run.stop({
-						onError: (error) =>
-							toast({
-								title: "Stop did not reach the agent",
-								description: getErrorMessage(error),
-								variant: "destructive",
-							}),
-					})
-				}
-				onInvestigate={async ({ text, files }) => {
-					const attachments = await upload(files);
-					await record.investigate({
-						text: text || undefined,
-						accessLevel,
-						...sent,
-						attachments: attachments.map((a) => a.id),
-					});
-				}}
-				onAsk={async ({ text, files }) => {
-					const attachments = await upload(files);
-					await record.chat({
-						text,
-						accessLevel,
-						...sent,
-						attachments: attachments.map((a) => a.id),
-					});
-				}}
-				onMessage={async ({ text, files }, send) => {
-					const attachments = await upload(files);
-					// Every message says what it asks for; a live one, the turn it joins (#673 w59).
-					const kind = live ? liveKind : followUpKind(verb);
-					await run.sendMessage(text, send, {
-						branchId,
-						attachments,
-						...(kind ? { kind } : {}),
-					});
-				}}
-				undeliverable={run.undeliverable}
-				onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
-				status={draft ? null : <RunStatusLine onRecheck={onRecheck} />}
-			/>
+		<div
+			className={cn("shrink-0", !floating && "px-4 pt-2 pb-3")}
+			data-testid="docked-composer"
+		>
+			<div className="mx-auto w-full max-w-[760px]">
+				<ComposerBox
+					actions={thread.actions}
+					action={action}
+					onAction={setAction}
+					chips={chips}
+					onSend={onSend}
+					live={live}
+					ended={ended ? { onNewRun: () => record.newRun() } : undefined}
+					placeholder={thread.placeholder}
+					initialFiles={draft ? record.draftFiles : undefined}
+					onFilesChange={draft ? record.setDraftFiles : undefined}
+					boxRef={boxRef}
+					text={draft ? record.draftText : message}
+					setText={draft ? record.setDraftText : setMessage}
+					autoFocus={draft}
+					agent={{
+						label: harness?.label ?? who.agent,
+						images:
+							harness?.checked?.outcome === "answers-acp"
+								? harness.checked.images
+								: null,
+					}}
+					waiting={run.waiting}
+					isPending={record.isStarting}
+					stopping={run.stopRequested}
+					blockedReason={blockedReason}
+					onStop={() =>
+						run.stop({
+							onError: (error) =>
+								toast({
+									title: "Stop did not reach the agent",
+									description: getErrorMessage(error),
+									variant: "destructive",
+								}),
+						})
+					}
+					undeliverable={run.undeliverable}
+					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
+					above={above}
+					floating={floating}
+				/>
+			</div>
 		</div>
 	);
 }
@@ -323,102 +470,4 @@ export function lastMessageWord(inv: {
 	if (o === "error" && inv.status !== "failed")
 		return `Last message: ${TURN_OUTCOME_LABEL.error}`;
 	return null;
-}
-
-/** Who started a thread, from its trigger (#673 w59). */
-export function originWord(triggerType: string | null | undefined): string {
-	if (triggerType === "re_trigger") return "Started by the alert, reopened";
-	if (triggerType && triggerType !== "manual") return "Started by the alert";
-	return "Started by you";
-}
-
-/**
- * The thread's own facts under the box (#673, w59): which thread, who started
- * it, its state or live turn, how its last message ended, its code.
- */
-function RunStatusLine({ onRecheck }: { onRecheck?: () => void }) {
-	const { run, runs, incident } = useIncidentRecord();
-	const { harnesses } = useAgentChoice();
-	const now = useNow(1000);
-	const stream = useStreamStatus();
-	const inv = run.investigation;
-	if (!inv || !run.state) return null;
-	const live = isRunStateLive(run.state);
-	const chat = inv.kind === "chat";
-	// With the stream lost the clock stops at when the run was last heard from.
-	const lostAt = live && now !== null ? reconnectAsOf(stream, now) : null;
-	const took = runTimed(inv)
-		? formatElapsed(turnElapsed(inv, run.events, now))
-		: null;
-	const state =
-		run.state === "working"
-			? inv.liveTurn
-				? LIVE_TURN_LABEL[inv.liveTurn]
-				: "Working"
-			: runStateLabel(inv.kind, run.state);
-	const sha = pinnedTo(inv.workspace);
-	const code = runCodeClause(inv.workspace);
-	const service = incident.service?.displayName || incident.service?.name;
-	const lastMessage = !live && !chat ? lastMessageWord(inv) : null;
-	const access = runAccessLine(
-		inv,
-		harnesses.find((h) => h.id === inv.harness),
-	);
-	return (
-		<div
-			className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-0.5 text-meta text-text-3"
-			data-testid="run-status"
-			data-disconnected={lostAt !== null ? "" : undefined}
-		>
-			<span className="inline-flex items-center gap-1.5 text-text-2">
-				{chat ? (
-					"Chat"
-				) : (
-					<>
-						Run #{runNumber(runs, inv.id)}
-						<span className="text-[11px] text-text-3">Investigation</span>
-					</>
-				)}
-			</span>
-			<span data-testid="run-status-origin">{originWord(inv.triggerType)}</span>
-			<span
-				className={cn(
-					"tabular-nums",
-					live && lostAt === null && "text-live",
-					run.state === "failed" && "text-danger",
-				)}
-				data-testid="run-status-state"
-			>
-				{lostAt !== null
-					? `${state}, last seen ${formatClock(lostAt)}`
-					: live
-						? `${state}${took ? ` ${took}` : ""}`
-						: `${state}${took ? ` after ${took}` : ""}`}
-			</span>
-			{lastMessage && (
-				<span data-testid="run-status-last-message">{lastMessage}</span>
-			)}
-			{access && <span data-testid="run-status-access">{access}</span>}
-			{sha && (
-				<span
-					className="inline-flex items-center gap-1"
-					title={`${service ? `${service}, commit ${sha}` : `Commit ${sha}`}${code ? `\n${code.title}` : ""}`}
-				>
-					<GitCommitHorizontal className="size-3" aria-hidden />
-					<span className="font-mono">{sha}</span>
-				</span>
-			)}
-			{!live && !chat && inv.hasReport && onRecheck && (
-				<button
-					type="button"
-					onClick={onRecheck}
-					className="text-accent hover:underline"
-					title="Opens + New run with this report and anything typed here"
-					data-testid="run-status-recheck"
-				>
-					Investigate again
-				</button>
-			)}
-		</div>
-	);
 }

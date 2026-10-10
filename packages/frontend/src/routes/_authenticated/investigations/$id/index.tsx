@@ -1,9 +1,10 @@
 /**
  * A run has no page of its own: it lives under its incident (#599, #523). This
- * route keeps old deep links working by sending them to its conversation (#743).
+ * route keeps old deep links working by sending them to its page (#743), a
+ * `#step-N` with them (#811).
  */
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useLocation } from "@tanstack/react-router";
 import { Skeleton } from "@/components/ui/skeleton";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 
 function InvestigationRedirect() {
 	const { id } = Route.useParams();
+	const { hash } = useLocation();
 	const { data, error } = useQuery(
 		orpc.investigations.get.queryOptions({ input: { id } }),
 	);
@@ -23,6 +25,7 @@ function InvestigationRedirect() {
 			to="/incidents/$id/conversation"
 			params={{ id: data.incidentId }}
 			search={{ investigation: id }}
+			hash={hash || undefined}
 			replace
 		/>
 	);

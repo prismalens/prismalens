@@ -112,6 +112,10 @@ describe("permission labels and word guard (#673 w21 ruling 2026-10-10)", () => 
 		});
 	});
 
+	it("says a mode with no proven sandbox in the operator's words (#811)", () => {
+		expect(NO_SANDBOX).toBe("No sandbox on this machine.");
+	});
+
 	it("word guard over ACCESS_LEVEL_LINE, NO_SANDBOX, and every row line", async () => {
 		const { HARNESS_REGISTRY } = await import("@prismalens/config/harness");
 
