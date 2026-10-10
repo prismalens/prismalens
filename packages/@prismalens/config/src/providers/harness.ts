@@ -75,8 +75,8 @@ export interface HarnessAccess {
 	mode?: string | null;
 	/** Run when `mode` is not offered, or the agent refuses it. */
 	fallbackMode?: string;
-	/** Deep-merged into the row's generated JSON config files. */
-	configPatch?: Record<string, unknown>;
+	/** Deep-merged into the row's generated JSON config files; `user` is the user's own config the agent loads before them. */
+	configPatch?: (user: Record<string, unknown>) => Record<string, unknown>;
 	/** Recorded as `fidelity.mechanism`. */
 	mechanism: string;
 	/** The row line under the level: what this agent runs, by its own mode name when the check listed one. */
@@ -156,6 +156,10 @@ export interface HarnessDescriptor {
 	resume: boolean;
 }
 
+type JsonObject = Record<string, unknown>;
+const isObject = (v: unknown): v is JsonObject =>
+	!!v && typeof v === "object" && !Array.isArray(v);
+
 /** A mode by the agent's own name in the last check, else `fallback`. */
 function modeNamed(
 	checked: CheckedModes,
@@ -169,24 +173,68 @@ function offers(checked: CheckedModes, id: string): boolean {
 	return !!checked?.modes?.some((m) => m.id === id);
 }
 
+const OPENCODE_TOOLS = [
+	"edit",
+	"bash",
+	"webfetch",
+	"websearch",
+	"external_directory",
+] as const;
+/** The built-in agents that run tools: the run's own, and the subagents it can start. */
+const OPENCODE_AGENTS = ["build", "plan", "general", "explore"];
+
+/** A user's rule for one tool: its patterns, and its catch-all only when it denies. */
+function userPatterns(rule: unknown): JsonObject {
+	if (rule === "deny") return { "*": "deny" };
+	if (!isObject(rule)) return {};
+	const { "*": all, ...patterns } = rule;
+	return all === "deny" ? { "*": "deny", ...patterns } : patterns;
+}
+
 /**
- * OpenCode's per-tool catch-alls for a level, top level and on both its agents:
- * agent rules win over global ones, and object form keeps the user's own patterns (#673 w21).
+ * A level's catch-all per tool, with the user's own patterns listed again after it on every agent:
+ * OpenCode uses the last matching rule and merges this file after theirs in their key order (#809).
  */
 function opencodePermission(
 	edit: "ask" | "allow",
 	rest: "ask" | "allow",
-): Record<string, unknown> {
-	const permission = {
-		edit: { "*": edit },
-		bash: { "*": rest },
+): (user: JsonObject) => JsonObject {
+	const level: Record<(typeof OPENCODE_TOOLS)[number], string> = {
+		edit,
+		bash: rest,
 		webfetch: rest,
 		websearch: rest,
 		external_directory: rest,
 	};
-	return {
-		permission,
-		agent: { build: { permission }, plan: { permission } },
+	return (user) => {
+		const top = isObject(user.permission) ? user.permission : {};
+		const agents = isObject(user.agent) ? user.agent : {};
+		const forAgent = (name: string) => {
+			const own = agents[name];
+			const rules =
+				isObject(own) && isObject(own.permission) ? own.permission : {};
+			return Object.fromEntries(
+				OPENCODE_TOOLS.map((tool) => {
+					const mine = rules[tool];
+					// Their own map without "*" keeps its order, so the top-level catch-all stands in.
+					const all =
+						isObject(mine) && !("*" in mine) ? {} : { "*": level[tool] };
+					return [
+						tool,
+						{ ...all, ...userPatterns(top[tool]), ...userPatterns(mine) },
+					];
+				}),
+			);
+		};
+		const names = new Set([...OPENCODE_AGENTS, ...Object.keys(agents)]);
+		return {
+			permission: Object.fromEntries(
+				OPENCODE_TOOLS.map((tool) => [tool, { "*": level[tool] }]),
+			),
+			agent: Object.fromEntries(
+				[...names].map((name) => [name, { permission: forAgent(name) }]),
+			),
+		};
 	};
 }
 
@@ -338,6 +386,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 			auto: {
 				mode: "auto",
+				// A custom model id is outside the adapter's model list, so the CLI itself can refuse Auto (#809).
+				fallbackMode: "acceptEdits",
 				mechanism: "acp-mode",
 				line: (c) =>
 					`Claude Code runs in ${modeNamed(c, "auto", "Auto")}; with a model that has no Auto it runs ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
@@ -593,10 +643,6 @@ export function levelOfAgentMode(
 	const row = HARNESS_REGISTRY[harnessId];
 	return ACCESS_LEVELS.find((l) => row.access[l].mode === modeId) ?? null;
 }
-
-type JsonObject = Record<string, unknown>;
-const isObject = (v: unknown): v is JsonObject =>
-	!!v && typeof v === "object" && !Array.isArray(v);
 
 /** `patch` over `base`, objects merged key by key, so keys the patch does not name stay. */
 export function mergeConfigPatch(

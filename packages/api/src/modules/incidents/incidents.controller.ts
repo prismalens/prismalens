@@ -12,13 +12,14 @@ import {
 	isIncidentEnded,
 	toFiringAlert,
 } from "@prismalens/contracts";
-import type {
-	Alert,
-	Incident,
-	IncidentWithRelations,
-	InvestigationJobData,
-	RootCauseCategory,
-	RunChoice,
+import {
+	AccessLevelSchema,
+	type Alert,
+	type Incident,
+	type IncidentWithRelations,
+	type InvestigationJobData,
+	type RootCauseCategory,
+	type RunChoice,
 } from "@prismalens/contracts/schemas";
 import type {
 	Alert as PrismaAlert,
@@ -594,7 +595,7 @@ export class IncidentsController {
 				status: i.status,
 				kind: i.kind === "chat" ? "chat" : "investigation",
 				agentMode: i.agentMode ?? null,
-				accessLevel: i.accessLevel ?? null,
+				accessLevel: AccessLevelSchema.safeParse(i.accessLevel).data ?? null,
 				title: i.title ?? null,
 				startedAt: iso(i.startedAt),
 				...(i.hasReport !== undefined ? { hasReport: i.hasReport } : {}),
