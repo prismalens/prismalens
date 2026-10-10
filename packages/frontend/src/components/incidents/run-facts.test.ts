@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type { CanonicalEvent, HarnessStatus } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { RunRef } from "./record-context";
-import { newerRunOf, turnElapsed } from "./run-facts";
+import { newerRunOf, runAccessLine, turnElapsed } from "./run-facts";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
@@ -121,3 +121,146 @@ describe("newerRunOf", () => {
 		expect(newerRunOf(runs, "unknown-run")).toBeNull();
 	});
 });
+
+describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
+	const claudeHarness: HarnessStatus = {
+		id: "claude-code",
+		label: "Claude Code",
+		binary: "claude",
+		installed: true,
+		tested: null,
+		install: "",
+		defaultModel: null,
+		localDefault: { permission: null, mode: null },
+		modelVia: "acp",
+		loginHint: "",
+		envModel: null,
+		windowsOnlyPath: null,
+		models: { source: "harness", asOf: "", entries: [] },
+		checked: {
+			at: "",
+			outcome: "answers-acp",
+			detail: "",
+			servedModel: null,
+			effort: null,
+			modes: [
+				{ id: "default", name: "Manual" },
+				{ id: "acceptEdits", name: "Accept Edits" },
+				{ id: "auto", name: "Auto" },
+				{ id: "bypassPermissions", name: "Bypass Permissions" },
+			],
+			efforts: [],
+			images: false,
+			plan: true,
+			sandbox: null,
+		},
+	};
+
+	const codexHarness: HarnessStatus = {
+		id: "codex",
+		label: "Codex",
+		binary: "codex",
+		installed: true,
+		tested: null,
+		install: "",
+		defaultModel: null,
+		localDefault: { permission: null, mode: null },
+		modelVia: "acp",
+		loginHint: "",
+		envModel: null,
+		windowsOnlyPath: null,
+		models: { source: "harness", asOf: "", entries: [] },
+		checked: {
+			at: "",
+			outcome: "answers-acp",
+			detail: "",
+			servedModel: null,
+			effort: null,
+			modes: [
+				{ id: "read-only", name: "Ask for approval" },
+				{ id: "workspace-write", name: "Workspace write" },
+			],
+			efforts: [],
+			images: false,
+			plan: true,
+			sandbox: null,
+		},
+	};
+
+	it("formats 'Ask always (Manual)'", () => {
+		const inv = {
+			agentMode: "default",
+			accessLevel: "supervised" as const,
+			runMode: "execute" as const,
+			harness: "claude-code",
+		};
+		expect(runAccessLine(inv, claudeHarness)).toBe("Ask always (Manual)");
+	});
+
+	it("formats 'Auto asked, ran in Auto-accept edits'", () => {
+		const inv = {
+			agentMode: "acceptEdits",
+			accessLevel: "auto" as const,
+			runMode: "execute" as const,
+			harness: "claude-code",
+			report: {
+				fidelity: {
+					mode: "acceptEdits",
+					access: "auto" as const,
+					ranAccess: "auto-edits" as const,
+				},
+			},
+		} as Parameters<typeof runAccessLine>[0];
+		expect(runAccessLine(inv, claudeHarness)).toBe(
+			"Auto asked, ran in Auto-accept edits",
+		);
+	});
+
+	it("formats 'Plan (Claude Code Plan)' on Claude Code (coupled harness)", () => {
+		const inv = {
+			agentMode: "plan",
+			accessLevel: "supervised" as const,
+			runMode: "plan" as const,
+			harness: "claude-code",
+		};
+		expect(runAccessLine(inv, claudeHarness)).toBe("Plan (Claude Code Plan)");
+	});
+
+	it("formats 'Plan, Ask always (Ask for approval)' on Codex (uncoupled harness)", () => {
+		const inv = {
+			agentMode: "read-only",
+			accessLevel: "supervised" as const,
+			runMode: "plan" as const,
+			harness: "codex",
+		};
+		expect(runAccessLine(inv, codexHarness)).toBe(
+			"Plan, Ask always (Ask for approval)",
+		);
+	});
+
+	it("formats #778 legacy row (no agentMode, fidelity has legacy level)", () => {
+		const inv = {
+			agentMode: null,
+			accessLevel: undefined,
+			runMode: undefined,
+			harness: "codex",
+			report: {
+				fidelity: {
+					mode: "read-only",
+				},
+			},
+		} as Parameters<typeof runAccessLine>[0];
+		expect(runAccessLine(inv, codexHarness)).toBe("Ask always");
+	});
+
+	it("formats #808 row (inv.agentMode set, but no accessLevel)", () => {
+		const inv = {
+			agentMode: "read-only",
+			accessLevel: undefined,
+			runMode: undefined,
+			harness: "codex",
+		};
+		expect(runAccessLine(inv, codexHarness)).toBe("ran in Ask for approval");
+	});
+});
+

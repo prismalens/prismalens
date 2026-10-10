@@ -3,14 +3,21 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	ACCESS_LEVEL_LINE,
 	INCIDENT_ACTION_LABEL,
 	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
 	LIVE_TURN_LABEL,
+	NO_SANDBOX,
 	PRIORITY_LABEL,
+	RUN_MODE_LINE,
 	runStateLabel,
 	TURN_OUTCOME_LABEL,
 } from "./state-labels.js";
+import {
+	ACCESS_LEVELS,
+	HARNESS_REGISTRY,
+} from "@prismalens/config/harness";
 import {
 	BAND_ACTIONS,
 	INCIDENT_ACTION_FROM,
@@ -98,3 +105,26 @@ describe("runStateLabel covers every kind × state (#673 w59)", () => {
 		expect(TURN_OUTCOME_LABEL.error).toBe("error");
 	});
 });
+
+describe("word guard (#673 w21 ruling)", () => {
+	it("asserts every ACCESS_LEVEL_LINE, RUN_MODE_LINE, NO_SANDBOX and row line(null) is non-empty and contains no forbidden words", () => {
+		const forbidden = /\bnever\b|\bonly\b|without sending|PrismaLens refuses/i;
+		const allLines: string[] = [
+			...Object.values(ACCESS_LEVEL_LINE),
+			...Object.values(RUN_MODE_LINE),
+			NO_SANDBOX,
+		];
+
+		for (const harness of Object.values(HARNESS_REGISTRY)) {
+			for (const level of ACCESS_LEVELS) {
+				allLines.push(harness.access[level].line(null));
+			}
+		}
+
+		for (const line of allLines) {
+			expect(line.trim().length).toBeGreaterThan(0);
+			expect(line).not.toMatch(forbidden);
+		}
+	});
+});
+
