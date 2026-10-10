@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	awaitingApproval,
 	INCIDENT_ATTENTIONS,
 	type IncidentAttention,
 	type IncidentWithRelations,
@@ -17,11 +18,16 @@ export function attentionFor(
 ): IncidentAttention | null {
 	// A failed chat stays in its thread; any run since a reopen answers it (#673).
 	const investigation = latestRun(incident, { kind: "investigation" });
-	return incidentAttention(incident.status, investigation?.status, {
-		reason: incident.reopenReason,
-		at: incident.reopenedAt,
-		latestRunAt: latestRun(incident)?.createdAt,
-	});
+	return incidentAttention(
+		incident.status,
+		investigation?.status,
+		{
+			reason: incident.reopenReason,
+			at: incident.reopenedAt,
+			latestRunAt: latestRun(incident)?.createdAt,
+		},
+		awaitingApproval(incident),
+	);
 }
 
 /** Needs you's order (study-v3 §3.1): firing first, then a failed run, a reopen, Alerts cleared last. */
@@ -41,6 +47,7 @@ export function isBackAgain(incident: IncidentWithRelations): boolean {
 /** Red means a human is needed now (study-v3 §2); Alerts cleared is paperwork, in the plain colour. */
 export const attentionTone: Record<IncidentAttention, StateTone> = {
 	unacknowledged: "failed",
+	awaiting_approval: "failed",
 	failed_run: "failed",
 	reopened: "failed",
 	awaiting_close: "neutral",

@@ -2,8 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { InvestigationContext } from "@prismalens/contracts/schemas";
-import { describe, expect, it } from "vitest";
-import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
+import {
+	buildChatPrompt,
+	buildInvestigationPrompt,
+	newerRunNote,
+} from "./prompt.js";
 
 describe("buildInvestigationPrompt (#633)", () => {
 	const baseContext: InvestigationContext = {
@@ -207,3 +210,35 @@ describe("buildChatPrompt (#673: a chat run)", () => {
 		expect(prompt).not.toContain("```json");
 	});
 });
+
+describe("newerRunNote (#673 w27)", () => {
+	it("formats single-repo text with 7-char sha and Run #N", () => {
+		const note = newerRunNote({
+			number: 4,
+			heads: [{ name: "repo", head: "1a2b3c4d5e6f7a8b9c0d" }],
+		});
+		expect(note).toContain("Run #4");
+		expect(note).toContain("1a2b3c4");
+		expect(note).not.toContain("1a2b3c4d");
+		expect(note).toBe(
+			"Note from PrismaLens, not the operator: this conversation stays at the commit it was pinned to. A newer run (Run #4) has since looked at 1a2b3c4, so newer commits exist. If your answer rests on code that may have changed since, say so.",
+		);
+	});
+
+	it("formats multi-repo text with name@sha7 for each repository", () => {
+		const note = newerRunNote({
+			number: 4,
+			heads: [
+				{ name: "api", head: "1a2b3c4d5e6f7a8b9c0d" },
+				{ name: "worker", head: "9f8e7d6c5b4a3f2e1d0c" },
+			],
+		});
+		expect(note).toContain("Run #4");
+		expect(note).toContain("api@1a2b3c4");
+		expect(note).toContain("worker@9f8e7d6");
+		expect(note).toBe(
+			"Note from PrismaLens, not the operator: this conversation stays at the commit it was pinned to. A newer run (Run #4) has since looked at api@1a2b3c4, worker@9f8e7d6, so newer commits exist. If your answer rests on code that may have changed since, say so.",
+		);
+	});
+});
+

@@ -671,7 +671,7 @@ Then(
 	async ({ page }) => {
 		// The agent's own name after a check, its mode id before one (#673 w21).
 		const expected: Record<string, RegExp> = {
-			opencode: /^(Plan|plan)$/,
+			opencode: /^(Build|build)$/,
 			"claude-code": /^(Manual|default)$/,
 			codex: /^(Ask for approval|read-only)$/,
 		};

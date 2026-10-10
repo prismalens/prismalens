@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	AcpAdapter,
 	type AcpUpdate,
+	askDetail,
 	deriveSource,
 	flattenAcpContent,
 	mapStopReason,
@@ -97,6 +98,29 @@ describe("helpers", () => {
 		expect(mapStopReason("max_turn_requests")).toBe("budget");
 		expect(mapStopReason("refusal")).toBe("no_progress");
 		expect(mapStopReason(undefined)).toBe("no_progress");
+	});
+
+	it("askDetail returns rawInput.command (string, and string[] joined by space)", () => {
+		expect(askDetail({ command: "git status" })).toBe("git status");
+		expect(askDetail({ command: ["git", "status", "-s"] })).toBe(
+			"git status -s",
+		);
+	});
+
+	it("askDetail falls back to file_path, filePath, path, or locations[0].path, else null", () => {
+		expect(askDetail({ file_path: "src/a.ts" })).toBe("src/a.ts");
+		expect(askDetail({ filePath: "src/b.ts" })).toBe("src/b.ts");
+		expect(askDetail({ path: "src/c.ts" })).toBe("src/c.ts");
+		expect(askDetail({}, [{ path: "src/d.ts" }])).toBe("src/d.ts");
+		expect(askDetail({})).toBeNull();
+		expect(askDetail(null)).toBeNull();
+	});
+
+	it("askDetail truncates at 2000 chars", () => {
+		const long = "x".repeat(2500);
+		const result = askDetail({ command: long });
+		expect(result).toHaveLength(2000);
+		expect(result).toBe("x".repeat(2000));
 	});
 });
 
@@ -284,5 +308,31 @@ describe("AcpAdapter.normalize", () => {
 		for (const ev of [step, result, done, report]) {
 			expect(CanonicalEventSchema.safeParse(ev).success).toBe(true);
 		}
+	});
+
+	it("permissionAsk falls back to earlier tool_call rawInput and title when the ask has none", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "call_earlier",
+			title: "Earlier Tool Title",
+			kind: "execute",
+			rawInput: { command: "npm test" },
+		});
+		const askId = "22222222-2222-4222-8222-222222222222";
+		const event = adapter.permissionAsk(
+			askId,
+			{ toolCallId: "call_earlier" },
+			new Date("2026-06-29T00:05:00.000Z"),
+		);
+		expect(event).toMatchObject({
+			kind: "permission_ask",
+			askId,
+			title: "Earlier Tool Title",
+			detail: "npm test",
+			toolKind: "execute",
+			expiresAt: "2026-06-29T00:05:00.000Z",
+		});
+		expect(CanonicalEventSchema.safeParse(event).success).toBe(true);
 	});
 });

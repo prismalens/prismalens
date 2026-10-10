@@ -3,8 +3,8 @@
 
 /**
  * One investigation is one ACP session in a clone (ADR 0002). The harness is a
- * registry row; prismalens writes the per-run config it reads, answers its
- * permission requests, records the stream, and validates the report with one
+ * registry row; prismalens writes the per-run config it reads, hands its
+ * permission asks to the operator, records the stream, and validates the report with one
  * in-session retry. No model call happens here.
  */
 import {
@@ -21,20 +21,22 @@ import {
 	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessRunEnv,
+	isPlanMode,
 	type ModelSource,
 	modeFidelity,
 	resolveAgentMode,
 } from "@prismalens/config/harness";
 import { resolveOnPath } from "@prismalens/config/harness-selection";
-import type {
-	AttachmentRef,
-	CanonicalEvent,
-	FollowUpKind,
-	InvestigationContext,
-	InvestigationKind,
-	JobAttachment,
-	OperatorMessageMode,
-	RunFidelity,
+import {
+	ASK_TIMEOUT_MS,
+	type AttachmentRef,
+	type CanonicalEvent,
+	type FollowUpKind,
+	type InvestigationContext,
+	type InvestigationKind,
+	type JobAttachment,
+	type OperatorMessageMode,
+	type RunFidelity,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
@@ -44,8 +46,17 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
-import { allowAllPolicy, type PermissionPolicy } from "./permission.js";
-import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
+import {
+	askWindow,
+	denyAllPolicy,
+	type PermissionPolicy,
+} from "./permission.js";
+import {
+	buildChatPrompt,
+	buildInvestigationPrompt,
+	type NewerRun,
+	newerRunNote,
+} from "./prompt.js";
 import {
 	parseReport,
 	retryBudgetKey,
@@ -77,6 +88,8 @@ export interface RunInvestigationOptions {
 	model?: string;
 	/** Where `model` came from; recorded in the run's fidelity. */
 	modelSource?: ModelSource;
+	/** `model` is one the operator added: the row's `customModelEnvKey` lists it at spawn, then the model option takes it (#673 w57). */
+	customModel?: boolean;
 	/** A value of the harness's `thought_level` option; set before every prompt (R4.2). */
 	effort?: string;
 	/** Files that go with the brief (R4.3). */
@@ -88,7 +101,10 @@ export interface RunInvestigationOptions {
 	limits?: RunLimits;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
+	/** Answers the agent's asks; without one nobody can, so each is denied (#673 w21). */
 	permission?: PermissionPolicy;
+	/** How long the policy lets an ask wait; the conversation shows when it lapses. */
+	askTimeoutMs?: number;
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
 	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
@@ -119,6 +135,8 @@ export interface RunInvestigationOptions {
 		attachments?: JobAttachment[];
 		/** The stopped run already ran a tool, so its report has evidence behind it. */
 		sawEvidence?: boolean;
+		/** A newer run on the incident saw other commits; the prompt says so (#673 w27). */
+		newer?: NewerRun;
 	};
 	/** First event `seq`; a follow-up continues after the stored events. */
 	seqStart?: number;
@@ -246,7 +264,14 @@ export function buildRunFidelity(
  */
 export type PrepareRunEnvOptions = Pick<
 	RunInvestigationOptions,
-	"harness" | "descriptor" | "cwd" | "runDir" | "model" | "env" | "agentMode"
+	| "harness"
+	| "descriptor"
+	| "cwd"
+	| "runDir"
+	| "model"
+	| "env"
+	| "agentMode"
+	| "customModel"
 >;
 
 /** Materialise the per-run config and data dirs the registry row points the harness at. */
@@ -277,11 +302,15 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		writeFileSync(path, content);
 	}
 	const mode = resolveAgentMode(opts.harness, opts.agentMode);
+	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
 	return {
 		env: {
 			...(opts.env ?? {}),
 			...descriptor.acpEnv(runEnv),
 			...agentModeEnv(opts.harness, mode),
+			...(opts.customModel && opts.model && customKey
+				? { [customKey]: opts.model }
+				: {}),
 		},
 		runEnv,
 	};
@@ -315,13 +344,22 @@ export async function* runInvestigation(
 		}
 	};
 
+	// The launcher's wall clock starts at spawn, in open().
+	let spawnedAt = Date.now();
 	const session = new AcpSession({
 		command: descriptor.binary,
 		args: descriptor.acpArgs(runEnv),
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission: opts.permission ?? allowAllPolicy,
+		permission: opts.permission ?? denyAllPolicy,
+		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
+		askWindow: () =>
+			askWindow(
+				opts.askTimeoutMs ?? ASK_TIMEOUT_MS,
+				opts.limits?.wallClockMs,
+				Date.now() - spawnedAt,
+			),
 		sessionMeta: descriptor.sessionMeta?.(),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -357,17 +395,33 @@ export async function* runInvestigation(
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
 				}
+			} else if (item.kind === "permission_asked") {
+				const flushed = adapter.flushText();
+				if (flushed) yield flushed;
+				const window = item.window ?? {
+					timeoutMs: opts.askTimeoutMs ?? ASK_TIMEOUT_MS,
+					clamped: false,
+				};
+				yield adapter.permissionAsk(
+					item.askId,
+					item.request.toolCall,
+					new Date(Date.now() + window.timeoutMs),
+					window.clamped,
+				);
 			} else if (item.kind === "permission") {
 				wire(
 					"in",
 					JSON.stringify({
 						permission: item.request.toolCall,
+						askId: item.askId,
 						allowed: item.allowed,
+						outcome: item.outcome,
 						why: item.why,
 						warn: item.warn,
 					}),
 				);
 				if (item.warn) opts.onPolicyWarning?.(item.warn);
+				yield adapter.permissionAnswer(item.askId, item.outcome);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -393,6 +447,7 @@ export async function* runInvestigation(
 		descriptor.modelVia ?? HARNESS_REGISTRY[opts.harness]?.modelVia;
 
 	try {
+		spawnedAt = Date.now();
 		await session.open();
 		if (session.sessionId) {
 			opts.onSession?.({
@@ -401,12 +456,11 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
-		// The agent's own mode is the only limit; a reopened session keeps the mode it had (#747).
-		if (
-			!opts.resume &&
+		// The agent's own mode decides what it asks; a reopened session keeps its mode (#747), unless it is a plan mode (#673 w21).
+		const setMode =
 			agentMode !== AGENT_DEFAULT_MODE &&
-			!(await session.setMode(agentMode))
-		) {
+			(!opts.resume || isPlanMode(opts.harness, session.currentMode));
+		if (setMode && !(await session.setMode(agentMode))) {
 			yield adapter.error(
 				`${label} did not offer mode "${agentMode}"; run a check in Settings, Agent`,
 			);
@@ -487,7 +541,7 @@ export async function* runInvestigation(
 
 		let outcome: { stop: string } | { error: string };
 		if (opts.resume) {
-			const { text: line, mode, heads, attachments, kind } = opts.resume;
+			const { text: line, mode, heads, attachments, kind, newer } = opts.resume;
 			yield adapter.operatorMessage(
 				line,
 				mode,
@@ -496,7 +550,12 @@ export async function* runInvestigation(
 				refsOf(attachments),
 				kind ?? "chat",
 			);
-			outcome = yield* turn(promptParts(line, attachments));
+			outcome = yield* turn(
+				promptParts(
+					newer ? `${line}\n\n${newerRunNote(newer)}` : line,
+					attachments,
+				),
+			);
 		} else if (opts.kind === "chat") {
 			const message = opts.brief?.trim() ?? "";
 			yield adapter.operatorMessage(

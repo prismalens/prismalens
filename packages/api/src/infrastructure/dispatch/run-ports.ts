@@ -102,6 +102,16 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
+	markAwaitingApproval(id: string, since: Date | null): Promise<void>;
+	/**
+	 * The incident's newest run started after this one, with its `Run #N` and
+	 * the commits it looked at; null when there is none, or it kept no workspace (#673 w27).
+	 */
+	newerRun(id: string): Promise<{
+		number: number;
+		heads: { name: string; head: string }[];
+	} | null>;
 	/** The highest stored event `seq`, or -1 when none (#747). */
 	lastEventSeq(id: string): Promise<number>;
 	appendEvents(id: string, events: CanonicalEvent[]): Promise<void>;
@@ -121,6 +131,8 @@ export interface RunPorts {
 		effort?: string;
 		/** The operator's mode for this harness (#673 w21); absent means the row's default. */
 		agentMode?: string;
+		/** The model is one the operator added in Settings, Agent (#673 w57). */
+		customModel?: boolean;
 	}>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**

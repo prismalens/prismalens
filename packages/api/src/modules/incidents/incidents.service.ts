@@ -3,6 +3,7 @@
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import {
+	awaitingApproval,
 	ENDED_INCIDENT_STATUSES,
 	type IncidentStats,
 	incidentAttention,
@@ -61,6 +62,7 @@ export type IncidentWithRelations = Incident & {
 		harness?: string | null;
 		model?: string | null;
 		stopRequestedAt?: Date | null;
+		awaitingApprovalAt?: Date | null;
 		liveTurn?: string | null;
 		lastTurnOutcome?: string | null;
 		lastEventAt?: Date | null;
@@ -208,6 +210,7 @@ export class IncidentsService {
 						harness: true,
 						model: true,
 						stopRequestedAt: true,
+						awaitingApprovalAt: true,
 						liveTurn: true,
 						lastTurnOutcome: true,
 						kind: true,
@@ -297,6 +300,7 @@ export class IncidentsService {
 							harness: true,
 							model: true,
 							stopRequestedAt: true,
+							awaitingApprovalAt: true,
 							liveTurn: true,
 							lastTurnOutcome: true,
 							kind: true,
@@ -1068,7 +1072,12 @@ export class IncidentsService {
 					// Every kind: a failed run counts only if it is an investigation, a reopen clears on any run (#673).
 					investigations: {
 						orderBy: { createdAt: "desc" },
-						select: { status: true, createdAt: true, kind: true },
+						select: {
+							status: true,
+							createdAt: true,
+							kind: true,
+							awaitingApprovalAt: true,
+						},
 					},
 				},
 			}),
@@ -1078,6 +1087,7 @@ export class IncidentsService {
 			byStatus.map((row) => [row.status, row._count]),
 		);
 		const attention = {
+			awaiting_approval: 0,
 			failed_run: 0,
 			unacknowledged: 0,
 			reopened: 0,
@@ -1092,6 +1102,7 @@ export class IncidentsService {
 					at: row.reopenedAt,
 					latestRunAt: latestRun(row)?.createdAt,
 				},
+				awaitingApproval(row),
 			);
 			if (why) attention[why] += 1;
 		}

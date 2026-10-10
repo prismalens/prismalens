@@ -33,9 +33,11 @@ import type {
 	WorkflowStatus,
 } from "@prismalens/contracts";
 import {
+	CanonicalEventSchema,
 	InvestigationJobDataSchema,
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import { reapLiveHarnesses } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
@@ -60,7 +62,9 @@ import {
 	EVENT_BUS,
 	type EventBus,
 	type MessageState,
+	type RunAskRequest,
 	type RunMessageRequest,
+	runAskTopic,
 	runCancelTopic,
 	runMessageTopic,
 } from "./event-bus.js";
@@ -131,6 +135,18 @@ export function resolveHarnessRunModel(
 		...(resolved.model ? { model: resolved.model } : {}),
 		modelSource: resolved.source,
 	};
+}
+
+/** The run's model is one the operator added in Settings, Agent (#673 w57). */
+export function isCustomModel(
+	model: { model?: string; modelSource?: ModelSource },
+	custom: readonly string[] | undefined,
+): boolean {
+	return (
+		model.modelSource === "operator" &&
+		!!model.model &&
+		!!custom?.includes(model.model)
+	);
 }
 
 @Injectable()
@@ -221,6 +237,42 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					where: { id },
 					data: { acpSessionId },
 				});
+			},
+			markAwaitingApproval: async (id, since) => {
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { awaitingApprovalAt: since },
+				});
+			},
+			newerRun: async (id) => {
+				const self = await this.prisma.investigation.findUnique({
+					where: { id },
+					select: { incidentId: true, createdAt: true },
+				});
+				if (!self) return null;
+				const newer = await this.prisma.investigation.findFirst({
+					where: {
+						incidentId: self.incidentId,
+						createdAt: { gt: self.createdAt },
+						workspace: { not: null },
+					},
+					orderBy: { createdAt: "desc" },
+					select: { createdAt: true, workspace: true },
+				});
+				const ws = newer?.workspace
+					? RunWorkspaceSchema.safeParse(JSON.parse(newer.workspace))
+					: null;
+				if (!newer || !ws?.success || ws.data.repos.length === 0) return null;
+				const number = await this.prisma.investigation.count({
+					where: {
+						incidentId: self.incidentId,
+						createdAt: { lte: newer.createdAt },
+					},
+				});
+				return {
+					number,
+					heads: ws.data.repos.map((r) => ({ name: r.name, head: r.head })),
+				};
 			},
 			lastEventSeq: (id) => this.investigationsService.lastEventSeq(id),
 			appendEvents: async (id, events) => {
@@ -350,11 +402,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			asked === undefined ? stored : (asked ?? undefined);
 		const effort = pick(requested.effort, settings.efforts?.[h]);
 		const agentMode = settings.agentModes?.[h];
+		const model = resolveHarnessRunModel(
+			h,
+			pick(requested.model, settings.models?.[h]),
+		);
 		return {
 			selection,
-			...resolveHarnessRunModel(h, pick(requested.model, settings.models?.[h])),
+			...model,
 			...(effort ? { effort } : {}),
 			...(agentMode ? { agentMode } : {}),
+			...(isCustomModel(model, settings.customModels?.[h])
+				? { customModel: true }
+				: {}),
 		};
 	}
 
@@ -394,6 +453,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		// An API restart abandons whatever was `running` — there is no reclaim any
 		// more (0005 §2: one process). Fail those jobs, then settle every live row
 		// against its job before the loop starts, so nothing sits live forever.
+		await this.denyAsksLeftWaiting().catch((e) =>
+			this.logger.warn(
+				`Could not settle asks left waiting at boot: ${(e as Error).message}`,
+			),
+		);
 		const ids = await this.store.failRunning(RESTART_REASON);
 		if (ids.length > 0) {
 			this.logger.warn(
@@ -520,6 +584,58 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				);
 			}
 		}
+	}
+
+	/**
+	 * An ask whose agent died with the last process is denied (#673 w21): the
+	 * conversation says so and the row stops waiting, before the run itself is settled.
+	 */
+	private async denyAsksLeftWaiting(): Promise<void> {
+		const rows = await this.prisma.investigation.findMany({
+			where: { awaitingApprovalAt: { not: null } },
+			select: { id: true },
+		});
+		for (const { id } of rows) {
+			const events = await this.prisma.investigationEvent.findMany({
+				where: {
+					investigationId: id,
+					event: { contains: '"kind":"permission_' },
+				},
+				orderBy: { seq: "asc" },
+				select: { event: true },
+			});
+			const open = new Map<string, string>();
+			for (const row of events) {
+				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
+				const e = parsed.success ? parsed.data : null;
+				if (e?.kind === "permission_ask") open.set(e.askId, e.branchId);
+				else if (e?.kind === "permission_answer") open.delete(e.askId);
+			}
+			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+			const ts = new Date().toISOString();
+			await this.investigationsService.appendEvents(
+				id,
+				[...open].map(([askId, branchId]) => ({
+					kind: "permission_answer" as const,
+					runId: id,
+					branchId,
+					path: [],
+					seq: seq++,
+					label: null,
+					ts,
+					askId,
+					outcome: "restarted" as const,
+				})),
+			);
+			await this.prisma.investigation.update({
+				where: { id },
+				data: { awaitingApprovalAt: null },
+			});
+		}
+		if (rows.length)
+			this.logger.warn(
+				`Denied the asks of ${rows.length} run(s) left waiting by a previous process`,
+			);
 	}
 
 	/**
@@ -748,6 +864,23 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			},
 		});
 		return state;
+	}
+
+	/** The operator's Approve or Deny for a live run's ask (#673 w21); null when it no longer waits. */
+	answerAsk(
+		investigationId: string,
+		askId: string,
+		approve: boolean,
+	): "approved" | "denied" | null {
+		let outcome: "approved" | "denied" | null = null;
+		this.bus.publish<RunAskRequest>(runAskTopic(investigationId), {
+			askId,
+			approve,
+			reply: (o) => {
+				outcome = o;
+			},
+		});
+		return outcome;
 	}
 
 	async requestCancel(investigationId: string): Promise<number> {

@@ -35,7 +35,7 @@ import type {
 	InvestigationContext,
 } from "@prismalens/contracts/schemas";
 import { prepareRunEnv, runInvestigation } from "../src/run/investigate.js";
-import { allowAllPolicy } from "../src/run/permission.js";
+import { denyAllPolicy } from "../src/run/permission.js";
 import { AcpSession } from "../src/runner/acp-client.js";
 import {
 	initializeVersion,
@@ -291,7 +291,7 @@ const r6 = await (async (): Promise<string> => {
 			args: HARNESS_REGISTRY.opencode.acpArgs(runEnv),
 			cwd: cloneDir,
 			env: { ...env, XDG_CONFIG_HOME: xdg },
-			permission: allowAllPolicy,
+			permission: denyAllPolicy,
 		});
 		try {
 			await acp.open();

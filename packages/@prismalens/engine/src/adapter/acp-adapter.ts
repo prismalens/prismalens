@@ -37,6 +37,7 @@ import type {
 	FollowUpKind,
 	InvestigationReport,
 	OperatorMessageMode,
+	PermissionAskOutcome,
 	ToolCategory,
 } from "@prismalens/contracts/schemas";
 
@@ -168,6 +169,48 @@ export class AcpAdapter {
 		accepted: boolean,
 	): CanonicalEvent {
 		return { kind: "session_config", ...this.base(), option, value, accepted };
+	}
+
+	/** The agent asked before a tool call (#673 w21); the call's own update fills in what the ask omits. */
+	permissionAsk(
+		askId: string,
+		toolCall:
+			| {
+					title?: string;
+					toolCallId?: string;
+					kind?: string;
+					rawInput?: unknown;
+					locations?: { path?: string }[];
+			  }
+			| undefined,
+		expiresAt: Date,
+		clamped = false,
+	): CanonicalEvent {
+		const meta = toolCall?.toolCallId
+			? this.toolMeta.get(toolCall.toolCallId)
+			: undefined;
+		const input =
+			Object.keys(toArgs(toolCall?.rawInput)).length > 0
+				? toolCall?.rawInput
+				: meta?.rawInput;
+		return {
+			kind: "permission_ask",
+			...this.base(),
+			askId,
+			title: toolCall?.title?.trim() || meta?.name || "A tool call",
+			detail: askDetail(input, toolCall?.locations),
+			toolKind: toolCall?.kind ?? meta?.kind ?? null,
+			expiresAt: expiresAt.toISOString(),
+			...(clamped ? { clamped } : {}),
+		};
+	}
+
+	/** How the ask ended (#673 w21). */
+	permissionAnswer(
+		askId: string,
+		outcome: PermissionAskOutcome,
+	): CanonicalEvent {
+		return { kind: "permission_answer", ...this.base(), askId, outcome };
 	}
 
 	/** Terminal: a branch failed. */
@@ -391,4 +434,27 @@ export function mapStopReason(
 
 function truncate(s: string, limit: number): string {
 	return s.length > limit ? `${s.slice(0, limit)}…` : s;
+}
+
+const ASK_DETAIL_LIMIT = 2000;
+
+/** The command an ask names, else the path; null when it names neither. */
+export function askDetail(
+	rawInput: unknown,
+	locations?: { path?: string }[],
+): string | null {
+	const input = toArgs(rawInput);
+	const command = input.command ?? input.cmd;
+	const text =
+		typeof command === "string"
+			? command
+			: Array.isArray(command) && command.every((c) => typeof c === "string")
+				? command.join(" ")
+				: [
+						input.file_path,
+						input.filePath,
+						input.path,
+						locations?.[0]?.path,
+					].find((p): p is string => typeof p === "string" && p.length > 0);
+	return text ? text.slice(0, ASK_DETAIL_LIMIT) : null;
 }

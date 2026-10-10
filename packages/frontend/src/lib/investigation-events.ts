@@ -10,7 +10,11 @@
  * TODO(#5): lift this into a shared package once the CLI's `liveTimelineEntry`
  * adopts it, so all three runtimes render the canonical stream identically.
  */
-import type { CanonicalEvent, StreamToolResult } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	PermissionAskOutcome,
+	StreamToolResult,
+} from "@prismalens/contracts";
 import { InvestigationReportSchema } from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
@@ -345,8 +349,23 @@ export interface TranscriptRun {
 	id?: string;
 }
 
+/** An ask's standing: waiting on you, how it ended, or `ended` when the run ended first (#673 w21). */
+export type AskState = "waiting" | PermissionAskOutcome | "ended";
+
 export type TranscriptItem =
 	| { kind: "prose"; key: string; text: string; at?: string }
+	| {
+			kind: "ask";
+			key: string;
+			askId: string;
+			title: string;
+			detail: string | null;
+			at: string;
+			expiresAt: string;
+			/** The run's time limit cut the ask's window short (#673 w21). */
+			clamped: boolean;
+			state: AskState;
+	  }
 	| { kind: "line"; key: string; text: string }
 	| {
 			kind: "tools";
@@ -541,6 +560,7 @@ export function deriveTranscript(
 		item: Extract<TranscriptItem, { kind: "operator" }>;
 		brief: boolean;
 	}[] = [];
+	const asks = new Map<string, Extract<TranscriptItem, { kind: "ask" }>>();
 
 	const groups: OpenGroup[] = [];
 	const closeGroup = () => {
@@ -720,6 +740,28 @@ export function deriveTranscript(
 				closeGroup();
 				items.push({ kind: "line", key, text: sessionConfigLine(event) });
 				break;
+			case "permission_ask": {
+				closeGroup();
+				const item: Extract<TranscriptItem, { kind: "ask" }> = {
+					kind: "ask",
+					key,
+					askId: event.askId,
+					title: event.title,
+					detail: event.detail,
+					at: event.ts,
+					expiresAt: event.expiresAt,
+					clamped: event.clamped === true,
+					state: "waiting",
+				};
+				asks.set(event.askId, item);
+				items.push(item);
+				break;
+			}
+			case "permission_answer": {
+				const ask = asks.get(event.askId);
+				if (ask) ask.state = event.outcome;
+				break;
+			}
 			case "error": {
 				closeGroup();
 				const first = !sawEnd;
@@ -790,7 +832,13 @@ export function deriveTranscript(
 		});
 	}
 
+	const waiting = Array.from(asks.values()).filter(
+		(a) => a.state === "waiting",
+	);
+	// An ask the run outlived was never answered; the agent got no yes (#673 w21).
+	if (!run?.live) for (const ask of waiting) ask.state = "ended";
 	if (run && !run.live) endOpenCalls();
+
 	if (run?.live) {
 		const last = items[items.length - 1];
 		const toolRunning = last?.kind === "tools" && last.running > 0;
@@ -798,7 +846,7 @@ export function deriveTranscript(
 			items.push({ kind: "line", key: "stopping", text: "Stopping…" });
 		} else if (!sawAgent) {
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
-		} else if (lastTs && !toolRunning) {
+		} else if (lastTs && !toolRunning && waiting.length === 0) {
 			const s = seconds(lastTs, now);
 			items.push({
 				kind: "thinking",
@@ -871,6 +919,9 @@ export function runStepText(
 		return { text: "live stream lost, polling", stale: true };
 	const last = events[events.length - 1];
 	if (!last) return null;
+	// The agent waits on you; that quiet is not a stall (#673 w21).
+	if (last.kind === "permission_ask")
+		return { text: "waiting for your approval", stale: false };
 	const age = seconds(last.ts, now);
 	if (age > STALE_AFTER_S) {
 		return { text: `no step for ${formatElapsed(age)}`, stale: true };

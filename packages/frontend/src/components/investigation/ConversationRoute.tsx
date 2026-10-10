@@ -5,11 +5,17 @@ import { isRunStateLive } from "@prismalens/contracts";
 import { useSearch } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { useTelemetryNames } from "@/components/incidents/IncidentFacts";
-import { RECORD_GRID } from "@/components/incidents/RecordLayout";
+import { RECORD_GRID, RecordLink } from "@/components/incidents/RecordLayout";
+import type { RunRef } from "@/components/incidents/record-context";
 import { useIncidentRecord } from "@/components/incidents/record-context";
-import { runNumber, useRunAgentModel } from "@/components/incidents/run-facts";
+import {
+	newerRunOf,
+	runNumber,
+	useRunAgentModel,
+} from "@/components/incidents/run-facts";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
+import { useInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { gatherLine } from "@/lib/gather-line";
 import { deriveTranscript, pinnedTo } from "@/lib/investigation-events";
 import { recheckBrief } from "@/lib/run-verb";
@@ -166,6 +172,7 @@ export function ConversationRoute() {
 					<Transcript
 						items={items}
 						incidentId={incident.id}
+						runId={investigation.id}
 						focus={search.call}
 						cwd={investigation.workspace?.cwd}
 						agent={who.agent}
@@ -174,6 +181,13 @@ export function ConversationRoute() {
 					/>
 				)}
 			</div>
+			{!draft && investigation && (
+				<NewerRunLine
+					incidentId={incident.id}
+					runs={record.runs}
+					selected={investigation.id}
+				/>
+			)}
 			<div
 				className={cn(
 					RECORD_GRID,
@@ -192,6 +206,42 @@ export function ConversationRoute() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+/**
+ * On an older run, the newer one and the code it looked at (#673 w27): this
+ * run keeps reasoning at its own pinned commit (ADR 0004 §2).
+ */
+export function NewerRunLine({
+	incidentId,
+	runs,
+	selected,
+}: {
+	incidentId: string;
+	runs: RunRef[];
+	selected: string;
+}) {
+	const newer = newerRunOf(runs, selected);
+	const { data } = useInvestigation(newer?.id ?? "");
+	const at = pinnedTo(data?.workspace);
+	if (!newer) return null;
+	const n = runNumber(runs, newer.id);
+	return (
+		<p
+			className={cn(RECORD_GRID, "pb-1.5 text-meta text-text-2")}
+			data-testid="newer-run-line"
+		>
+			A newer run (
+			<RecordLink
+				incidentId={incidentId}
+				to="conversation"
+				search={{ investigation: newer.id }}
+			>
+				Run #{n}
+			</RecordLink>
+			) {at ? `looks at ${at}` : "exists"}
+		</p>
 	);
 }
 

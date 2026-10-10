@@ -20,6 +20,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	isPlanMode,
 	refuseModel,
 } from "@prismalens/config/harness";
 import type {
@@ -57,6 +58,8 @@ export interface HarnessSettings {
 	efforts?: Partial<Record<HarnessId, string>>;
 	/** The agent's own mode id per harness (#673 w21); absent means the row's default. */
 	agentModes?: Partial<Record<HarnessId, string>>;
+	/** Model ids the operator added per harness (#673 w57). */
+	customModels?: Partial<Record<HarnessId, string[]>>;
 }
 
 export interface HarnessSettingsPatch {
@@ -69,6 +72,8 @@ export interface HarnessSettingsPatch {
 	efforts?: Partial<Record<HarnessId, string | null>>;
 	/** Merged per harness; `null` goes back to the row's default. */
 	agentModes?: Partial<Record<HarnessId, string | null>>;
+	/** Replaces that harness's list; `null` clears it. */
+	customModels?: Partial<Record<HarnessId, string[] | null>>;
 }
 
 /** Keeps only registry ids with a non-empty string; anything else in the stored JSON is dropped (models, efforts and modes alike). */
@@ -82,6 +87,34 @@ function cleanModels(raw: unknown): Partial<Record<HarnessId, string>> {
 			model.trim()
 		)
 			out[id as HarnessId] = model.trim();
+	}
+	return out;
+}
+
+/** A stored plan mode is dropped, so the run takes the agent's default ask mode (#673 w21). */
+function cleanModes(raw: unknown): Partial<Record<HarnessId, string>> {
+	const out = cleanModels(raw);
+	for (const id of Object.keys(out) as HarnessId[])
+		if (isPlanMode(id, out[id] ?? null)) delete out[id];
+	return out;
+}
+
+/** Custom model ids per harness: trimmed, deduplicated, empty lists dropped (#673 w57). */
+function cleanCustomModels(raw: unknown): Partial<Record<HarnessId, string[]>> {
+	const out: Partial<Record<HarnessId, string[]>> = {};
+	if (!raw || typeof raw !== "object") return out;
+	for (const [id, list] of Object.entries(raw)) {
+		if (!HARNESS_IDS.includes(id as HarnessId) || !Array.isArray(list))
+			continue;
+		const ids = [
+			...new Set(
+				list
+					.filter((m): m is string => typeof m === "string")
+					.map((m) => m.trim())
+					.filter(Boolean),
+			),
+		];
+		if (ids.length) out[id as HarnessId] = ids;
 	}
 	return out;
 }
@@ -189,13 +222,15 @@ export class HarnessService implements OnApplicationBootstrap {
 			const models = cleanModels(parsed.models);
 			const efforts = cleanModels(parsed.efforts);
 			const favourites = cleanFavourites(parsed.favourites);
-			const agentModes = cleanModels(parsed.agentModes);
+			const agentModes = cleanModes(parsed.agentModes);
+			const customModels = cleanCustomModels(parsed.customModels);
 			return {
 				harness,
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
 				...(Object.keys(agentModes).length ? { agentModes } : {}),
+				...(Object.keys(customModels).length ? { customModels } : {}),
 			};
 		} catch {
 			return { harness: "auto" };
@@ -207,9 +242,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		const models = cleanModels({ ...current.models, ...patch.models });
 		const favourites = cleanFavourites(patch.favourites ?? current.favourites);
 		const efforts = cleanModels({ ...current.efforts, ...patch.efforts });
-		const agentModes = cleanModels({
+		const agentModes = cleanModes({
 			...current.agentModes,
 			...patch.agentModes,
+		});
+		const customModels = cleanCustomModels({
+			...current.customModels,
+			...patch.customModels,
 		});
 		const next: HarnessSettings = {
 			harness: patch.harness ?? current.harness,
@@ -217,6 +256,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
 			...(Object.keys(agentModes).length ? { agentModes } : {}),
+			...(Object.keys(customModels).length ? { customModels } : {}),
 		};
 		await this.prisma.setting.upsert({
 			where: { key: SETTING_KEY },

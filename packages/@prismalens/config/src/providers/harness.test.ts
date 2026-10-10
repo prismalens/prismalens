@@ -13,6 +13,7 @@ import {
 	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
+	runnableModes,
 } from "./harness.js";
 
 afterEach(() => {
@@ -150,9 +151,9 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		).toBeUndefined();
 	});
 
-	it("claude-code loads no setting sources from the snapshot", () => {
+	it("claude-code loads the user's settings, never the snapshot's", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
-			claudeCode: { options: { settingSources: [] } },
+			claudeCode: { options: { settingSources: ["user"] } },
 		});
 	});
 
@@ -253,12 +254,60 @@ describe("resumeBlockedReason (#747)", () => {
 describe("the agent's own mode (#673 w21)", () => {
 	it("defaults each row to its own mode, and the operator's setting wins", () => {
 		expect(resolveAgentMode("claude-code")).toBe("default");
-		expect(resolveAgentMode("opencode")).toBe("plan");
+		expect(resolveAgentMode("opencode")).toBe("build");
 		expect(resolveAgentMode("codex")).toBe("read-only");
-		expect(resolveAgentMode("gemini")).toBe("plan");
+		expect(resolveAgentMode("gemini")).toBe("default");
 		expect(resolveAgentMode("deepagents")).toBe(AGENT_DEFAULT_MODE);
 		expect(resolveAgentMode("claude-code", "acceptEdits")).toBe("acceptEdits");
 		expect(resolveAgentMode("claude-code", " ")).toBe("default");
+	});
+
+	it("every row's defaultMode equals modeTiers.supervised when it has one", () => {
+		for (const [id, descriptor] of Object.entries(HARNESS_REGISTRY)) {
+			if (descriptor.modeTiers.supervised) {
+				expect(descriptor.defaultMode, `${id} defaultMode`).toBe(
+					descriptor.modeTiers.supervised,
+				);
+			}
+		}
+	});
+
+	it("maps access tiers for claude-code, codex, and gemini", () => {
+		expect(HARNESS_REGISTRY["claude-code"].modeTiers).toEqual({
+			supervised: "default",
+			"auto-edits": "acceptEdits",
+			auto: "auto",
+			"full-access": "bypassPermissions",
+		});
+		expect(HARNESS_REGISTRY.codex.modeTiers).toEqual({
+			supervised: "read-only",
+			"auto-edits": "workspace-write",
+			auto: "agent",
+			"full-access": "agent-full-access",
+		});
+		expect(HARNESS_REGISTRY.gemini.modeTiers).toEqual({
+			supervised: "default",
+			"auto-edits": "autoEdit",
+			"full-access": "yolo",
+		});
+	});
+
+	it("drops a plan mode to the row default, keeping non-plan modes", () => {
+		expect(resolveAgentMode("claude-code", "plan")).toBe("default");
+		expect(resolveAgentMode("opencode", "plan")).toBe("build");
+		expect(resolveAgentMode("gemini", "plan")).toBe("default");
+		expect(resolveAgentMode("codex", "read-only")).toBe("read-only");
+	});
+
+	it("runnableModes drops plan and returns null for [plan]", () => {
+		expect(
+			runnableModes("claude-code", [
+				{ id: "default" },
+				{ id: "plan" },
+			]),
+		).toEqual([{ id: "default" }]);
+		expect(runnableModes("claude-code", [{ id: "plan" }])).toBeNull();
+		expect(runnableModes("opencode", [{ id: "plan" }])).toBeNull();
 	});
 
 	it("passes Codex its mode through INITIAL_AGENT_MODE, and no other row an env", () => {

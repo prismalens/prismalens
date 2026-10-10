@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import type {
+	CanonicalEvent,
+	PermissionAskOutcome,
+} from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { unfence } from "@/components/investigation/Transcript";
 import {
@@ -71,6 +74,36 @@ function operator(
 	delivered = true,
 ): CanonicalEvent {
 	return { kind: "operator_message", ...base(s), text, mode, delivered };
+}
+
+function ask(
+	s: number,
+	askId = "00000000-0000-0000-0000-000000000010",
+	title = "rm -rf /tmp",
+	detail: string | null = "/tmp",
+): CanonicalEvent {
+	return {
+		kind: "permission_ask",
+		...base(s),
+		askId,
+		title,
+		detail,
+		toolKind: null,
+		expiresAt: at(s + 600),
+	} as CanonicalEvent;
+}
+
+function answer(
+	s: number,
+	askId = "00000000-0000-0000-0000-000000000010",
+	outcome: PermissionAskOutcome = "approved",
+): CanonicalEvent {
+	return {
+		kind: "permission_answer",
+		...base(s),
+		askId,
+		outcome,
+	} as CanonicalEvent;
 }
 
 const kinds = (items: TranscriptItem[]) => items.map((i) => i.kind);
@@ -382,6 +415,51 @@ describe("deriveTranscript", () => {
 			path: "runs/r1/transcript.jsonl",
 		});
 	});
+
+	it("keeps card state waiting on a live run and suppresses thinking item (#673 w21)", () => {
+		const items = deriveTranscript([step(0, "Working."), ask(10)], T0 + 15_000, {
+			run: { status: "running", live: true },
+		});
+		const asks = items.filter((i) => i.kind === "ask");
+		expect(asks).toHaveLength(1);
+		expect(asks[0]).toMatchObject({
+			kind: "ask",
+			state: "waiting",
+		});
+		expect(items.some((i) => i.kind === "thinking")).toBe(false);
+	});
+
+	it.each([
+		"approved",
+		"denied",
+		"timed_out",
+		"stopped",
+		"restarted",
+	] as const)("sets ask state to %s when answered (#673 w21)", (outcome) => {
+		const items = deriveTranscript(
+			[step(0, "Working."), ask(10, "ask-1"), answer(20, "ask-1", outcome)],
+			T0 + 25_000,
+			{ run: { status: "running", live: true } },
+		);
+		const asks = items.filter((i) => i.kind === "ask");
+		expect(asks).toHaveLength(1);
+		expect(asks[0]).toMatchObject({
+			kind: "ask",
+			state: outcome,
+		});
+	});
+
+	it("marks an unanswered ask as ended when the run is not live (#673 w21)", () => {
+		const items = deriveTranscript([step(0, "Working."), ask(10)], T0 + 20_000, {
+			run: ended,
+		});
+		const asks = items.filter((i) => i.kind === "ask");
+		expect(asks).toHaveLength(1);
+		expect(asks[0]).toMatchObject({
+			kind: "ask",
+			state: "ended",
+		});
+	});
 });
 
 describe("runStepText", () => {
@@ -401,6 +479,14 @@ describe("runStepText", () => {
 			stale: true,
 		});
 		expect(runStepText(thinking, T0, { streamLost: true })?.stale).toBe(true);
+	});
+
+	it("is not stale for a 10-minute-old permission_ask (#673 w21)", () => {
+		const events = [ask(0)];
+		expect(runStepText(events, T0 + 600_000)).toEqual({
+			text: "waiting for your approval",
+			stale: false,
+		});
 	});
 });
 

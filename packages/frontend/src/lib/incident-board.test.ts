@@ -29,6 +29,7 @@ function incident(
 		error?: string | null;
 		evidenceCount?: number | null;
 		stopRequestedAt?: string | null;
+		awaitingApprovalAt?: string | null;
 	},
 	extra: Partial<IncidentWithRelations> = {},
 ): IncidentWithRelations {
@@ -48,6 +49,7 @@ function incident(
 						error: run.error ?? null,
 						evidenceCount: run.evidenceCount ?? null,
 						stopRequestedAt: run.stopRequestedAt ?? null,
+						awaitingApprovalAt: run.awaitingApprovalAt ?? null,
 					},
 				]
 			: [],
@@ -193,12 +195,44 @@ describe("orderNeedsYou (study-v3 §3.1)", () => {
 			orderNeedsYou([cleared, reopened, failed, firing]).map((i) => i.number),
 		).toEqual([4, 3, 2, 1]);
 	});
+
+	it("puts awaiting approval right after an unacknowledged incident (#673 w21)", () => {
+		const unacknowledged = incident("triggered", undefined, { number: 1 });
+		const awaiting = incident(
+			"investigating",
+			{ status: "running", awaitingApprovalAt: "2026-09-30T14:02:00Z" },
+			{ number: 2 },
+		);
+		const failed = incident("investigating", { status: "failed" }, { number: 3 });
+		const reopened = incident("investigating", undefined, {
+			number: 4,
+			reopenReason: "operator",
+			reopenedAt: "2026-09-30T15:00:00Z",
+		});
+		const cleared = incident("resolved", undefined, { number: 5 });
+		expect(
+			orderNeedsYou([cleared, failed, awaiting, reopened, unacknowledged]).map(
+				(i) => i.number,
+			),
+		).toEqual([1, 2, 3, 4, 5]);
+	});
 });
 
 describe("cardWord (study-v3 §4)", () => {
 	it("says what is left to do, never Closed or Awaiting close", () => {
 		expect(cardWord(incident("triggered"))).toEqual({
 			text: "Needs acknowledging",
+			tone: "danger",
+		});
+		expect(
+			cardWord(
+				incident("investigating", {
+					status: "running",
+					awaitingApprovalAt: "2026-09-30T14:02:00Z",
+				}),
+			),
+		).toEqual({
+			text: "Waiting for your approval",
 			tone: "danger",
 		});
 		expect(cardWord(incident("resolved"))).toEqual({
@@ -401,6 +435,19 @@ describe("runWord (study-v3 §3.1)", () => {
 		);
 		expect(word?.text).toBe("Working 14m, quiet for 5 min");
 		expect(word?.quietFor).toBe(5);
+	});
+
+	it("reports Waiting for your approval and null quietFor when awaiting approval (#673 w21)", () => {
+		const waitingIncident = incident("investigating", {
+			status: "running",
+			createdAt: "2026-09-30T14:00:00Z",
+			lastEventAt: "2026-09-30T14:01:00Z",
+			awaitingApprovalAt: "2026-09-30T14:02:00Z",
+		});
+		const word = runWord(waitingIncident, now);
+		expect(word?.step).toBe("Waiting for your approval");
+		expect(word?.quietFor).toBeNull();
+		expect(word?.text).toBe("Waiting for your approval 4:30");
 	});
 
 	it("formats elapsed as m:ss and h:mm:ss", () => {

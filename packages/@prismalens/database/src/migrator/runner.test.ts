@@ -233,7 +233,7 @@ describe("investigation_turns (#673 w59)", () => {
 		const shipped = resolveMigrationsDir();
 		const before = mkdtempSync(join(scratch, "before-"));
 		for (const name of readdirSync(shipped)) {
-			if (name === TURNS || !existsSync(join(shipped, name, "migration.sql")))
+			if (name >= TURNS || !existsSync(join(shipped, name, "migration.sql")))
 				continue;
 			cpSync(join(shipped, name), join(before, name), { recursive: true });
 		}
@@ -266,6 +266,66 @@ describe("investigation_turns (#673 w59)", () => {
 			expect(cols.find((c) => c.name === name)).toMatchObject({ notnull: 0, dflt_value: null });
 		}
 		expect(row).toEqual({ status: "completed", liveTurn: null, lastTurnOutcome: null });
+	});
+});
+
+describe("investigation_asks (#673 w21)", () => {
+	const ASKS = "20261009120000_investigation_asks";
+
+	it("adds awaitingApprovalAt and rewrites plan-mode runs to default ask mode", async () => {
+		const shipped = resolveMigrationsDir();
+		const before = mkdtempSync(join(scratch, "before-"));
+		for (const name of readdirSync(shipped)) {
+			if (name >= ASKS || !existsSync(join(shipped, name, "migration.sql")))
+				continue;
+			cpSync(join(shipped, name), join(before, name), { recursive: true });
+		}
+		const file = dbFile();
+		await runMigrations({ databaseFile: file, migrationsDir: before });
+
+		const seed = new Database(file);
+		seed.pragma("foreign_keys = OFF");
+		const insert = seed.prepare(
+			`INSERT INTO "investigations" ("id", "incidentId", "status", "updatedAt", "harness", "agentMode") VALUES (?, ?, ?, ?, ?, ?)`,
+		);
+		insert.run("inv-1", "inc-1", "completed", Date.now(), "opencode", "plan");
+		insert.run("inv-2", "inc-2", "completed", Date.now(), "claude-code", "plan");
+		insert.run("inv-3", "inc-3", "completed", Date.now(), "gemini", "plan");
+		insert.run("inv-4", "inc-4", "completed", Date.now(), "codex", "read-only");
+		insert.run("inv-5", "inc-5", "completed", Date.now(), "claude-code", "acceptEdits");
+		insert.run("inv-6", "inc-6", "completed", Date.now(), null, "plan");
+		seed.close();
+
+		const result = await runMigrations({ databaseFile: file, migrationsDir: shipped });
+		expect(result.applied).toContain(ASKS);
+
+		const db = new Database(file, { readonly: true });
+		const cols = db.prepare(`PRAGMA table_info("investigations")`).all() as {
+			name: string;
+			notnull: number;
+			dflt_value: unknown;
+		}[];
+		const rows = db
+			.prepare(`SELECT "id", "awaitingApprovalAt", "agentMode" FROM "investigations" ORDER BY "id"`)
+			.all() as {
+			id: string;
+			awaitingApprovalAt: unknown;
+			agentMode: string;
+		}[];
+		db.close();
+
+		const awaitingCol = cols.find((c) => c.name === "awaitingApprovalAt");
+		expect(awaitingCol).toBeDefined();
+		expect(awaitingCol).toMatchObject({ notnull: 0, dflt_value: null });
+
+		expect(rows).toEqual([
+			{ id: "inv-1", awaitingApprovalAt: null, agentMode: "build" },
+			{ id: "inv-2", awaitingApprovalAt: null, agentMode: "default" },
+			{ id: "inv-3", awaitingApprovalAt: null, agentMode: "default" },
+			{ id: "inv-4", awaitingApprovalAt: null, agentMode: "read-only" },
+			{ id: "inv-5", awaitingApprovalAt: null, agentMode: "acceptEdits" },
+			{ id: "inv-6", awaitingApprovalAt: null, agentMode: "plan" },
+		]);
 	});
 });
 

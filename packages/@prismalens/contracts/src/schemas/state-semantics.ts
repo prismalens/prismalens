@@ -266,6 +266,7 @@ export function canAlertAction(action: AlertAction, status: string): boolean {
  */
 export type IncidentAttention =
 	| "unacknowledged"
+	| "awaiting_approval"
 	| "failed_run"
 	| "reopened"
 	| "awaiting_close";
@@ -273,6 +274,7 @@ export type IncidentAttention =
 /** The order Needs you lists them in (study-v3 §3.1); Alerts cleared sits last, under "To wrap up". */
 export const INCIDENT_ATTENTIONS: readonly IncidentAttention[] = [
 	"unacknowledged",
+	"awaiting_approval",
 	"failed_run",
 	"reopened",
 	"awaiting_close",
@@ -293,7 +295,10 @@ export function incidentAttention(
 	status: string,
 	latestRunStatus?: string | null,
 	reopen?: IncidentReopen | null,
+	/** A live run's agent is waiting on an Approve or Deny (#673 w21). */
+	awaitingApproval = false,
 ): IncidentAttention | null {
+	if (awaitingApproval) return "awaiting_approval";
 	if (status === "resolved") return "awaiting_close";
 	if (!isIncidentOpen(status)) return null;
 	// A stopped run was the operator's choice; only a failure needs them (#743).
@@ -404,6 +409,19 @@ export function liveRun<R extends { status: string; createdAt: string | Date }>(
 	for (const run of live)
 		if (!newest || time(run.createdAt) > time(newest.createdAt)) newest = run;
 	return newest;
+}
+
+/** The incident's live run is waiting on the operator's Approve or Deny (#673 w21). */
+export function awaitingApproval(incident: {
+	investigations?:
+		| readonly {
+				status: string;
+				createdAt: string | Date;
+				awaitingApprovalAt?: string | Date | null;
+		  }[]
+		| null;
+}): boolean {
+	return !!liveRun(incident)?.awaitingApprovalAt;
 }
 
 /**

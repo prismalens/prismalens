@@ -10,7 +10,8 @@
  */
 
 import type { InvestigationJobData } from "@prismalens/contracts";
-import { createSteerChannel } from "@prismalens/engine";
+import { createAskChannel, createSteerChannel } from "@prismalens/engine";
+import { Logger } from "@prismalens/logger";
 import type { JobRunner, RunningJob, RunSink } from "./dispatcher.js";
 import runInvestigationJob, {
 	type InvestigationResult,
@@ -18,6 +19,8 @@ import runInvestigationJob, {
 import type { ClaimedJob } from "./job-store.js";
 import { payloadTurn } from "./prisma-investigation-store.js";
 import type { RunPorts } from "./run-ports.js";
+
+const logger = new Logger({ context: "InProcessRunner" });
 
 export function createInProcessRunner(ports: RunPorts): JobRunner {
 	return (job: ClaimedJob, sink: RunSink): RunningJob => {
@@ -35,6 +38,14 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 
 		const controller = new AbortController();
 		const steer = createSteerChannel();
+		// Every ask waits on the operator; the row shows it so the board, the band and a notification can (#673 w21).
+		const asks = createAskChannel({
+			onChange: (since) => {
+				ports
+					.markAwaitingApproval(job.investigationId, since)
+					.catch((e) => logger.warn("Could not record the waiting ask", e));
+			},
+		});
 		const owes =
 			payloadTurn({
 				chat: !!payload.chat,
@@ -73,25 +84,29 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				streamDone: () => closeStream(),
 				signal: controller.signal,
 				steer: steer.port,
+				permission: asks.policy,
 			},
 			ports,
-		).then(
-			(result: InvestigationResult) => {
-				closeStream();
-				const outcome =
-					result.errorType === "cancelled"
-						? ("cancelled" as const)
-						: result.success
-							? ("succeeded" as const)
-							: ("failed" as const);
-				return { outcome, ...(result.error ? { error: result.error } : {}) };
-			},
-			(error: unknown) => {
-				closeStream();
-				const message = error instanceof Error ? error.message : String(error);
-				return { outcome: "failed" as const, error: message };
-			},
-		);
+		)
+			.finally(() => asks.close())
+			.then(
+				(result: InvestigationResult) => {
+					closeStream();
+					const outcome =
+						result.errorType === "cancelled"
+							? ("cancelled" as const)
+							: result.success
+								? ("succeeded" as const)
+								: ("failed" as const);
+					return { outcome, ...(result.error ? { error: result.error } : {}) };
+				},
+				(error: unknown) => {
+					closeStream();
+					const message =
+						error instanceof Error ? error.message : String(error);
+					return { outcome: "failed" as const, error: message };
+				},
+			);
 
 		return {
 			done,
@@ -102,6 +117,7 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 				kind && kind !== owes
 					? "conflict"
 					: steer.send(text, mode, attachments),
+			answer: (askId, approve) => asks.answer(askId, approve),
 		};
 	};
 }

@@ -125,3 +125,8 @@ export function useCancelInvestigation() {
 export function useSendInvestigationMessage() {
 	return useMutation(orpc.investigations.message.mutationOptions());
 }
+
+/** The operator's Approve or Deny for the agent's ask (#673 w21): 409 once it no longer waits. */
+export function useAnswerAsk() {
+	return useMutation(orpc.investigations.answerAsk.mutationOptions());
+}

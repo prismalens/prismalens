@@ -6,7 +6,7 @@ export interface ToolStep {
 	title: string;
 	kind?: string;
 	rawInput: Record<string, unknown>;
-	/** false: run it without a permission request. */
+	/** true: send a permission request first; the run waits on the operator's answer (#673 w21). */
 	ask?: boolean;
 	output?: string;
 	/** Ends the call failed with this text, unasked: a refusal stored before #673 w21. */

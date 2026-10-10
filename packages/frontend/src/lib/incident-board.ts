@@ -152,13 +152,18 @@ export function runWord(
 		now !== null && run.lastEventAt
 			? (now - new Date(run.lastEventAt).getTime()) / 1000
 			: 0;
-	const quietFor = quiet > STALE_AFTER_S ? Math.floor(quiet / 60) : null;
+	// A run waiting on an ask is quiet by design; it says what it waits for (#673 w21).
+	const waiting = !!run.awaitingApprovalAt;
+	const quietFor =
+		!waiting && quiet > STALE_AFTER_S ? Math.floor(quiet / 60) : null;
 	const word = RUN_STATE_LABEL[state];
-	const step = answering
-		? "Answering"
-		: state === "working" && run.latestText
-			? firstClause(run.latestText)
-			: word;
+	const step = waiting
+		? INCIDENT_ATTENTION_LABEL.awaiting_approval
+		: answering
+			? "Answering"
+			: state === "working" && run.latestText
+				? firstClause(run.latestText)
+				: word;
 	const minutes = Math.max(0, Math.floor(elapsed / 60));
 	return {
 		state,
@@ -210,7 +215,7 @@ export function cardWord(
 				: INCIDENT_ATTENTION_LABEL[why],
 			tone: "danger",
 		};
-	if (why === "failed_run")
+	if (why === "failed_run" || why === "awaiting_approval")
 		return { text: INCIDENT_ATTENTION_LABEL[why], tone: "danger" };
 	if (why === "awaiting_close")
 		return {

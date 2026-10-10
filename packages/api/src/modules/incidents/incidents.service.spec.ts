@@ -846,6 +846,7 @@ describe("IncidentsService", () => {
 				byStatus: { triggered: 2, investigating: 1, resolved: 1, closed: 3 },
 				bySeverity: { critical: 1, medium: 6 },
 				attention: {
+					awaiting_approval: 0,
 					failed_run: 1,
 					unacknowledged: 1,
 					reopened: 1,
@@ -862,6 +863,25 @@ describe("IncidentsService", () => {
 					}),
 				}),
 			);
+		});
+
+		it("one incident whose live run has awaitingApprovalAt counts as awaiting_approval", async () => {
+			mockPrisma.incident.groupBy.mockResolvedValue([]);
+			mockPrisma.incident.aggregate.mockResolvedValue({
+				_avg: { timeToResolve: null },
+			});
+			mockPrisma.incident.findMany.mockResolvedValue([
+				{
+					status: "investigating",
+					investigations: [
+						{ status: "running", awaitingApprovalAt: new Date() },
+					],
+				},
+			]);
+
+			const stats = await service.getStats({});
+
+			expect(stats.attention.awaiting_approval).toBe(1);
 		});
 	});
 

@@ -8,6 +8,7 @@ import {
 	deriveStreamView,
 	deriveTranscript,
 	latestAgentText,
+	pinnedTo,
 } from "./investigation-events";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
@@ -342,6 +343,31 @@ describe("a report cut off mid-block (#673 walk 4)", () => {
 			agentStep("main", 2, walkShape),
 		];
 		expect(latestAgentText(events)).toBe("Checked the pool.");
+	});
+});
+
+describe("pinnedTo for newer-run line (#673 w27)", () => {
+	it("returns undefined when workspace is missing or has no repos", () => {
+		expect(pinnedTo(undefined)).toBeUndefined();
+		expect(pinnedTo(null)).toBeUndefined();
+		expect(pinnedTo({ repos: [] })).toBeUndefined();
+	});
+
+	it("derives sha7 for a single repo", () => {
+		expect(
+			pinnedTo({ repos: [{ name: "frontend", head: "1234567890abcdef" }] }),
+		).toBe("1234567");
+	});
+
+	it("derives repo names and short shas for multiple repos", () => {
+		expect(
+			pinnedTo({
+				repos: [
+					{ name: "api", head: "1a2b3c4d5e6f" },
+					{ name: "worker", head: "5d6e7f8a9b0c" },
+				],
+			}),
+		).toBe("api@1a2b3c4, worker@5d6e7f8");
 	});
 });
 

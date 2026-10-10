@@ -78,6 +78,18 @@ export interface RunMessageRequest {
 	reply(state: MessageState): void;
 }
 
+export function runAskTopic(investigationId: string): string {
+	return `investigation:ask:${investigationId}`;
+}
+
+/** The operator's Approve or Deny for one of the agent's asks (#673 w21). */
+export interface RunAskRequest {
+	askId: string;
+	approve: boolean;
+	/** null: no ask by that id waits. */
+	reply(outcome: "approved" | "denied" | null): void;
+}
+
 /** `conflict`: the receiving turn owes something else than the message asks for. */
 export type MessageState = "queued" | "sent" | "conflict" | null;
 

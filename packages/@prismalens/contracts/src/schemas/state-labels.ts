@@ -218,6 +218,7 @@ export const TURN_OUTCOME_LABEL: Record<TurnOutcome, string> = {
 
 export const INCIDENT_ATTENTION_LABEL: Record<IncidentAttention, string> = {
 	unacknowledged: "Needs acknowledging",
+	awaiting_approval: "Waiting for your approval",
 	failed_run: "Run failed",
 	reopened: "Reopened by you, cause not confirmed",
 	awaiting_close: "Alerts cleared, resolve it",

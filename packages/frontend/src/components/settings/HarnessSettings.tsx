@@ -17,7 +17,8 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessProbeResult, HarnessStatus } from "@prismalens/contracts";
-import { useState } from "react";
+import { X } from "lucide-react";
+import { type FormEvent, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AccessMenu,
@@ -25,6 +26,7 @@ import {
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
@@ -33,6 +35,7 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
 	useCheckHarness,
@@ -101,6 +104,8 @@ export function HarnessSettings() {
 					<AutoRow />
 				</Pool>
 			</SettingGroup>
+
+			<CustomModels harnesses={harnesses} />
 
 			<SettingGroup
 				title="Agents on this machine"
@@ -171,6 +176,120 @@ function PermissionModeRow() {
 				}
 			/>
 		</SettingRow>
+	);
+}
+
+/**
+ * Model ids the operator adds per agent, for a gateway or an endpoint whose
+ * models the agent does not list itself; the picker shows them (#673 w57).
+ */
+function CustomModels({ harnesses }: { harnesses: HarnessStatus[] }) {
+	const agents = harnesses.filter((h) => h.installed && h.modelVia === "acp");
+	if (agents.length === 0) return null;
+	return (
+		<SettingGroup
+			title="Custom models"
+			description="Models your endpoint serves that the agent does not list itself. PrismaLens never checks them; a run on one that the endpoint does not serve fails."
+			testId="harness-custom-models"
+		>
+			<Pool>
+				{agents.map((h) => (
+					<CustomModelRow key={h.id} harness={h} />
+				))}
+			</Pool>
+		</SettingGroup>
+	);
+}
+
+function CustomModelRow({ harness }: { harness: HarnessStatus }) {
+	const id = harness.id as HarnessId;
+	const { customModels } = useAgentChoice();
+	const update = useUpdateHarnessSettings();
+	const list = customModels[id] ?? [];
+	const [draft, setDraft] = useState("");
+	const [removing, setRemoving] = useState<string | null>(null);
+	const add = (e: FormEvent) => {
+		e.preventDefault();
+		const model = draft.trim();
+		if (!model || list.includes(model)) return setDraft("");
+		update.mutate(
+			{ customModels: { [id]: [...list, model] } },
+			{ onSuccess: () => setDraft("") },
+		);
+	};
+	return (
+		<Row
+			testId={`custom-models-${harness.id}`}
+			lead={<AgentMark id={harness.id} className="size-5" />}
+			label={harness.label}
+			stackOnPhone
+			meta={
+				list.length === 0 ? (
+					"None added"
+				) : (
+					<span className="flex min-w-0 flex-wrap gap-1.5">
+						{list.map((model) => (
+							<span
+								key={model}
+								className="inline-flex h-6 max-w-56 items-center gap-1 rounded-control bg-surface-3 pr-0.5 pl-2 text-meta text-text-1"
+								data-testid="custom-model"
+							>
+								<Mono className="truncate">{model}</Mono>
+								<button
+									type="button"
+									aria-label={`Remove ${model}`}
+									onClick={() => setRemoving(model)}
+									className="inline-flex size-5 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4 hover:text-text-1"
+									data-testid="custom-model-remove"
+								>
+									<X className="size-3" />
+								</button>
+							</span>
+						))}
+					</span>
+				)
+			}
+			trailing={
+				<form onSubmit={add} className="flex items-center gap-2">
+					<Input
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						placeholder="Model id"
+						aria-label={`Model id for ${harness.label}`}
+						maxLength={200}
+						className="h-7 w-44"
+						data-testid="custom-model-input"
+					/>
+					<Button
+						type="submit"
+						variant="secondary"
+						size="sm"
+						disabled={!draft.trim() || update.isPending}
+						data-testid="custom-model-add"
+					>
+						Add custom model
+					</Button>
+				</form>
+			}
+			below={
+				<DestructiveConfirm
+					open={removing !== null}
+					onOpenChange={(open) => !open && setRemoving(null)}
+					title="Remove this custom model?"
+					description={`${removing ?? ""} leaves the ${harness.label} picker. A run already set to it keeps it until you pick another.`}
+					confirmLabel="Remove"
+					isPending={update.isPending}
+					error={update.error}
+					onConfirm={() =>
+						update.mutateAsync({
+							customModels: {
+								[id]: list.filter((m) => m !== removing),
+							},
+						})
+					}
+				/>
+			}
+		/>
 	);
 }
 
@@ -288,6 +407,18 @@ function AgentRow({
 				) : (
 					<Mono>{harness.install}</Mono>
 				)
+			}
+			below={
+				harness.id === "opencode" ? (
+					// opencode.ai/docs/permissions: OpenCode's own rules decide what it asks (#673 w21).
+					<p
+						className="text-meta text-text-3 [&_code]:bg-transparent! [&_code]:p-0!"
+						data-testid="harness-opencode-asks"
+					>
+						OpenCode asks where your opencode.json says <code>ask</code>; by
+						default that is files outside the workspace only.
+					</p>
+				) : undefined
 			}
 			trailing={
 				harness.installed && (

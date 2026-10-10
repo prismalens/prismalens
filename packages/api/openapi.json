@@ -4168,6 +4168,17 @@
                                     }
                                   ]
                                 },
+                                "awaitingApprovalAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "lastEventAt": {
                                   "anyOf": [
                                     {
@@ -4506,6 +4517,11 @@
                     "attention": {
                       "type": "object",
                       "properties": {
+                        "awaiting_approval": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
                         "failed_run": {
                           "type": "integer",
                           "minimum": -9007199254740991,
@@ -4528,6 +4544,7 @@
                         }
                       },
                       "required": [
+                        "awaiting_approval",
                         "failed_run",
                         "unacknowledged",
                         "reopened",
@@ -5406,6 +5423,17 @@
                                   "error"
                                 ],
                                 "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "awaitingApprovalAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
                               },
                               {
                                 "type": "null"
@@ -8708,6 +8736,22 @@
                         }
                       ]
                     },
+                    "awaitingApprovalAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "incidentNumber": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -9720,6 +9764,22 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "awaitingApprovalAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "incidentNumber": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
                           },
                           "origin": {
                             "type": "string",
@@ -10753,6 +10813,22 @@
                         }
                       ]
                     },
+                    "awaitingApprovalAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "incidentNumber": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -11751,6 +11827,22 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "awaitingApprovalAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "incidentNumber": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
                         },
                         "origin": {
                           "type": "string",
@@ -12817,6 +12909,22 @@
                         }
                       ]
                     },
+                    "awaitingApprovalAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "incidentNumber": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -13439,6 +13547,159 @@
                               "option",
                               "value",
                               "accepted"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "permission_ask"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "askId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "detail": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "toolKind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "expiresAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "clamped": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "askId",
+                              "title",
+                              "detail",
+                              "toolKind",
+                              "expiresAt"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "permission_answer"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "askId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "outcome": {
+                                "enum": [
+                                  "approved",
+                                  "denied",
+                                  "timed_out",
+                                  "stopped",
+                                  "restarted"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "askId",
+                              "outcome"
                             ]
                           },
                           {
@@ -14811,6 +15072,22 @@
                         }
                       ]
                     },
+                    "awaitingApprovalAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "incidentNumber": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "origin": {
                       "type": "string",
                       "default": "local"
@@ -14960,6 +15237,141 @@
                         "message": {
                           "type": "string",
                           "default": "The run ended, or has not started, before the message reached it"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/asks/{askId}": {
+      "post": {
+        "operationId": "investigations.answerAsk",
+        "summary": "Answer the agent's permission ask",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "askId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "approve",
+                      "deny"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "outcome": {
+                      "enum": [
+                        "approved",
+                        "denied"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "outcome"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "The ask is no longer waiting: it was answered, timed out, or the run ended"
                         },
                         "data": {}
                       },
@@ -16393,6 +16805,22 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "awaitingApprovalAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "incidentNumber": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     },
                     "origin": {
                       "type": "string",
@@ -27665,6 +28093,28 @@
                         "minLength": 1,
                         "maxLength": 64
                       }
+                    },
+                    "customModels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -27802,6 +28252,35 @@
                         }
                       ]
                     }
+                  },
+                  "customModels": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -27907,6 +28386,28 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 64
+                      }
+                    },
+                    "customModels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
                       }
                     }
                   },

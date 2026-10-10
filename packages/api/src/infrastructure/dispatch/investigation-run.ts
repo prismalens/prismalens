@@ -47,6 +47,7 @@ import type {
 import {
 	conductRun,
 	type InvestigationSink,
+	type PermissionPolicy,
 	type ResolvedConnector,
 	type SteerPort,
 	telemetryEndpointsFrom,
@@ -82,6 +83,8 @@ export interface JobIo {
 	streamDone(): void | Promise<void>;
 	signal: AbortSignal;
 	steer?: SteerPort;
+	/** Answers the agent's asks; the operator's Approve or Deny (#673 w21). */
+	permission?: PermissionPolicy;
 }
 
 export interface JobContext {
@@ -158,6 +161,7 @@ async function runJobInternal(
 			modelSource,
 			effort,
 			agentMode: settingsMode,
+			customModel,
 		} = await ports.resolveHarness({
 			...(data.harness ? { harness: data.harness } : {}),
 			...(data.model !== undefined ? { model: data.model } : {}),
@@ -238,6 +242,7 @@ async function runJobInternal(
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				agentMode,
 				...(attachments?.length ? { attachments } : {}),
@@ -255,6 +260,7 @@ async function runJobInternal(
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
+				...(io.permission ? { permission: io.permission } : {}),
 				...(brief ? { brief } : {}),
 				onSession: (s) => keepSession(ports, runId, harness, s),
 			},
@@ -414,6 +420,13 @@ async function runFollowUp(
 		if (!resolveOnPath(row.binary))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
+		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).
+		const newer = await ports.newerRun(id).catch(() => null);
+		const moved = newer?.heads.some(
+			(h) => recorded.repos.find((r) => r.name === h.name)?.head !== h.head,
+		)
+			? newer
+			: null;
 		const workspace = await rebuildWorkspace(
 			recorded,
 			id,
@@ -458,6 +471,13 @@ async function runFollowUp(
 		delivered = base.delivered;
 		const store = base;
 		const modelSource = followUpModelSource(harness, inv.model);
+		// A reloaded session takes an added model the same way the run did (#673 w57).
+		const customModel =
+			modelSource === "operator" &&
+			!!(await ports
+				.resolveHarness({ harness, model: inv.model })
+				.then((r) => r.customModel)
+				.catch(() => false));
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -467,6 +487,7 @@ async function runFollowUp(
 				runDir,
 				...(inv.model ? { model: inv.model } : {}),
 				...(modelSource ? { modelSource } : {}),
+				...(customModel ? { customModel } : {}),
 				...(inv.effort ? { effort: inv.effort } : {}),
 				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
@@ -481,6 +502,7 @@ async function runFollowUp(
 				onHarnessDrift: (message) => logger.warn(message),
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
+				...(io.permission ? { permission: io.permission } : {}),
 				resume: {
 					sessionId: inv.acpSessionId,
 					text: resume.text,
@@ -492,6 +514,7 @@ async function runFollowUp(
 					...(resume.attachments?.length
 						? { attachments: resume.attachments }
 						: {}),
+					...(moved ? { newer: moved } : {}),
 				},
 				seqStart,
 			},

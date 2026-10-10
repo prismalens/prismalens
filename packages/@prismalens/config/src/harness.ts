@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 export {
+	ACCESS_TIERS,
+	type AccessTier,
 	AGENT_DEFAULT_MODE,
 	agentModeEnv,
 	getHarnessProviderKeys,
@@ -15,6 +17,7 @@ export {
 	type HarnessRunEnv,
 	type HarnessSelectionFailure,
 	harnessEnvModel,
+	isPlanMode,
 	MODEL_SOURCES,
 	type ModelSource,
 	type ModeMechanism,
@@ -25,6 +28,7 @@ export {
 	resolveAgentMode,
 	resolveHarnessModel,
 	resumeBlockedReason,
+	runnableModes,
 	runsInSandbox,
 	SANDBOX_STATES,
 	type SandboxCheck,

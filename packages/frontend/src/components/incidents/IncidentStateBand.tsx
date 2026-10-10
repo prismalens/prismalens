@@ -2,14 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	awaitingApproval,
 	BAND_ACTIONS,
 	canIncidentAction,
 	INCIDENT_ACTION_LABEL,
+	INCIDENT_ATTENTION_LABEL,
 	INCIDENT_STATUS_LABEL,
 	type IncidentAction,
 	type IncidentStatus,
 	type IncidentWithRelations,
 	isIncidentOpen,
+	liveRun,
 	REFIRE_LABEL,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
@@ -32,6 +35,7 @@ import { usePageTitle } from "@/hooks/use-page-title";
 import { formatClock } from "@/lib/format-time";
 import { shortAge } from "@/lib/incident-board";
 import { MergeDialog } from "./MergeDialog";
+import { RecordLink } from "./RecordLayout";
 
 export interface IncidentStateBandProps {
 	incident: IncidentWithRelations;
@@ -78,6 +82,7 @@ export function IncidentStateBand({
 	const service = incident.service;
 	const status =
 		INCIDENT_STATUS_LABEL[incident.status as IncidentStatus] ?? incident.status;
+	const asking = awaitingApproval(incident) ? liveRun(incident) : null;
 
 	return (
 		<div
@@ -126,6 +131,17 @@ export function IncidentStateBand({
 				</Link>
 			)}
 			<div className="ml-auto flex shrink-0 items-center gap-2.5">
+				{asking && (
+					<RecordLink
+						incidentId={incident.id}
+						to="conversation"
+						search={{ investigation: asking.id }}
+						className="text-body text-danger"
+						testId="band-awaiting-approval"
+					>
+						{INCIDENT_ATTENTION_LABEL.awaiting_approval}
+					</RecordLink>
+				)}
 				{merged ? (
 					<Link
 						to="/incidents/$id"

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
 	checkSandbox,
 	locateCodex,
-	managedSandboxEnabled,
+	managedSandboxSetting,
 	type ProbeRunner,
 	probeCodexSandbox,
 	readCodexProbe,
@@ -120,19 +120,76 @@ describe("checkSandbox", () => {
 		});
 		expect((await checkSandbox("deepagents", ["agent-default"]))["agent-default"]?.state).toBe("none");
 		expect((await checkSandbox("gemini", ["plan"])).plan?.state).toBe("unknown");
-		const off = await checkSandbox("claude-code", ["plan", "default"], { claudeManagedDir: tmp("none") });
-		expect(off.plan).toEqual({ state: "none", reason: "PrismaLens starts Claude Code without your settings files, so its sandbox is off" });
+		const off = await checkSandbox("claude-code", ["plan", "default"], {
+			claudeManagedDir: tmp("none"),
+			claudeUserSettings: null,
+		});
+		expect(off.plan).toEqual({
+			state: "none",
+			reason: "Claude Code's sandbox is off in your settings",
+		});
 	});
 
-	it("reads Claude Code's managed settings, drop-ins last, and calls an enabled sandbox unknown", async () => {
+	it("managedSandboxSetting returns true, false, or undefined", () => {
 		const dir = tmp("managed");
-		writeFileSync(join(dir, "managed-settings.json"), JSON.stringify({ sandbox: { enabled: true } }));
-		expect(managedSandboxEnabled(dir)).toBe(true);
-		const checks = await checkSandbox("claude-code", ["default"], { claudeManagedDir: dir });
-		expect(checks.default?.state).toBe("unknown");
+		expect(managedSandboxSetting(dir)).toBeUndefined();
+		expect(managedSandboxSetting(null)).toBeUndefined();
+		writeFileSync(
+			join(dir, "managed-settings.json"),
+			JSON.stringify({ sandbox: { enabled: true } }),
+		);
+		expect(managedSandboxSetting(dir)).toBe(true);
 		mkdirSync(join(dir, "managed-settings.d"));
-		writeFileSync(join(dir, "managed-settings.d", "20-off.json"), JSON.stringify({ sandbox: { enabled: false } }));
-		expect(managedSandboxEnabled(dir)).toBe(false);
-		expect(managedSandboxEnabled(null)).toBe(false);
+		writeFileSync(
+			join(dir, "managed-settings.d", "20-off.json"),
+			JSON.stringify({ sandbox: { enabled: false } }),
+		);
+		expect(managedSandboxSetting(dir)).toBe(false);
+	});
+
+	it("claude-code user settings sandbox.enabled true -> state unknown, reason starts with Your settings turn", async () => {
+		const userFile = join(tmp("user-on"), "settings.json");
+		writeFileSync(
+			userFile,
+			JSON.stringify({ sandbox: { enabled: true } }),
+		);
+		const checks = await checkSandbox("claude-code", ["default"], {
+			claudeManagedDir: null,
+			claudeUserSettings: userFile,
+		});
+		expect(checks.default?.state).toBe("unknown");
+		expect(checks.default?.reason).toMatch(/^Your settings turn/);
+	});
+
+	it("claude-code managed false wins over user true -> none Managed settings turn Claude Code's sandbox off", async () => {
+		const dir = tmp("managed-off");
+		writeFileSync(
+			join(dir, "managed-settings.json"),
+			JSON.stringify({ sandbox: { enabled: false } }),
+		);
+		const userFile = join(tmp("user-on"), "settings.json");
+		writeFileSync(
+			userFile,
+			JSON.stringify({ sandbox: { enabled: true } }),
+		);
+		const checks = await checkSandbox("claude-code", ["default"], {
+			claudeManagedDir: dir,
+			claudeUserSettings: userFile,
+		});
+		expect(checks.default).toEqual({
+			state: "none",
+			reason: "Managed settings turn Claude Code's sandbox off",
+		});
+	});
+
+	it("claude-code neither -> none Claude Code's sandbox is off in your settings", async () => {
+		const checks = await checkSandbox("claude-code", ["default"], {
+			claudeManagedDir: null,
+			claudeUserSettings: null,
+		});
+		expect(checks.default).toEqual({
+			state: "none",
+			reason: "Claude Code's sandbox is off in your settings",
+		});
 	});
 });

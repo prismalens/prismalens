@@ -56,7 +56,10 @@ import {
 import { readLoginShellPath } from "./login-shell-path.js";
 import { appMenuTemplate } from "./menu.js";
 import {
+	askNotificationText,
+	askSnapshot,
 	type InvestigationSummary,
+	newlyAsking,
 	newlyFinished,
 	notificationText,
 	runningCount,
@@ -875,6 +878,7 @@ function trayIcon() {
 
 function startPolling(): void {
 	let previous = new Map<string, InvestigationSummary["status"]>();
+	let asking = new Map<string, string>();
 	let first = true;
 	const tick = async () => {
 		try {
@@ -893,8 +897,20 @@ function startPolling(): void {
 					);
 					n.show();
 				}
+				for (const ask of newlyAsking(asking, current)) {
+					const n = new Notification(askNotificationText(ask));
+					n.on("click", () =>
+						openWindow(
+							ask.incidentId
+								? `/incidents/${ask.incidentId}/conversation?investigation=${ask.id}`
+								: "/",
+						),
+					);
+					n.show();
+				}
 			}
 			previous = snapshot(current);
+			asking = askSnapshot(current);
 			first = false;
 			const count = runningCount(current);
 			if (count !== running) {

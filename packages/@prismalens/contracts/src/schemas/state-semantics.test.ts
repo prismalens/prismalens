@@ -11,6 +11,7 @@ import {
 	WorkflowStatusSchema,
 } from "./common.js";
 import {
+	awaitingApproval,
 	continuableRun,
 	effectiveLiveTurn,
 	latestRun,
@@ -167,6 +168,7 @@ describe("state semantics", () => {
 		expect(isFlapReopen(null)).toBe(false);
 		expect(INCIDENT_ATTENTIONS).toEqual([
 			"unacknowledged",
+			"awaiting_approval",
 			"failed_run",
 			"reopened",
 			"awaiting_close",
@@ -182,6 +184,15 @@ describe("state semantics", () => {
 		expect(incidentAttention("investigating", "running")).toBeNull();
 		expect(incidentAttention("resolved", null)).toBe("awaiting_close");
 		expect(incidentAttention("closed", "failed")).toBeNull();
+		expect(incidentAttention("resolved", null, null, true)).toBe(
+			"awaiting_approval",
+		);
+		expect(incidentAttention("resolved", "failed", null, true)).toBe(
+			"awaiting_approval",
+		);
+		expect(incidentAttention("investigating", "running", null, true)).toBe(
+			"awaiting_approval",
+		);
 	});
 
 	it("says what a run is doing in the run's own words, apart from the incident", () => {
@@ -253,6 +264,44 @@ describe("liveRun picks the live row, not the newest (#673 w59, OBJ-014)", () =>
 		expect(liveRun(incident, onMany)?.id).toBe("newer");
 		expect(onMany).toHaveBeenCalledTimes(1);
 		expect(onMany.mock.calls[0]?.[0]).toHaveLength(2);
+	});
+});
+
+describe("awaitingApproval (#673 w21)", () => {
+	it("is true only when the live run has awaitingApprovalAt", () => {
+		expect(
+			awaitingApproval({
+				investigations: [
+					{
+						status: "completed",
+						createdAt: "2026-10-08T12:00:00Z",
+						awaitingApprovalAt: "2026-10-08T11:50:00Z",
+					},
+				],
+			}),
+		).toBe(false);
+		expect(
+			awaitingApproval({
+				investigations: [
+					{
+						status: "running",
+						createdAt: "2026-10-08T12:00:00Z",
+						awaitingApprovalAt: "2026-10-08T12:05:00Z",
+					},
+				],
+			}),
+		).toBe(true);
+		expect(
+			awaitingApproval({
+				investigations: [
+					{
+						status: "running",
+						createdAt: "2026-10-08T12:00:00Z",
+						awaitingApprovalAt: null,
+					},
+				],
+			}),
+		).toBe(false);
 	});
 });
 

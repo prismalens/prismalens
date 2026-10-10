@@ -3,7 +3,8 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { turnElapsed } from "./run-facts";
+import type { RunRef } from "./record-context";
+import { newerRunOf, turnElapsed } from "./run-facts";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
@@ -80,5 +81,40 @@ describe("turnElapsed", () => {
 			resumed: [{ name: "api", head: "1a2b3c4" }],
 		} as CanonicalEvent;
 		expect(turnElapsed(run, [resumedEvent], now)).toBe(300);
+	});
+});
+
+const makeRun = (id: string, createdAt: string): RunRef =>
+	({
+		id,
+		createdAt,
+		incidentId: "inc-1",
+		status: "completed",
+		kind: "investigation",
+	}) as unknown as RunRef;
+
+describe("newerRunOf", () => {
+	it("returns the newest when an older one is selected", () => {
+		const newest = makeRun("run-2", "2026-10-09T14:00:00.000Z");
+		const older = makeRun("run-1", "2026-10-09T12:00:00.000Z");
+		const runs = [newest, older];
+
+		expect(newerRunOf(runs, "run-1")).toBe(newest);
+	});
+
+	it("returns null when the newest is selected", () => {
+		const newest = makeRun("run-2", "2026-10-09T14:00:00.000Z");
+		const older = makeRun("run-1", "2026-10-09T12:00:00.000Z");
+		const runs = [newest, older];
+
+		expect(newerRunOf(runs, "run-2")).toBeNull();
+	});
+
+	it("returns null when the selected id is unknown", () => {
+		const newest = makeRun("run-2", "2026-10-09T14:00:00.000Z");
+		const older = makeRun("run-1", "2026-10-09T12:00:00.000Z");
+		const runs = [newest, older];
+
+		expect(newerRunOf(runs, "unknown-run")).toBeNull();
 	});
 });
