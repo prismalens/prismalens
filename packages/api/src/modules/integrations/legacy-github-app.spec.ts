@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { devNull } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -18,6 +19,9 @@ describe("Legacy GitHub App upgrade path (§1.5.3, D9, S15)", () => {
 	let mockTelemetry: any;
 
 	beforeEach(() => {
+		// preview() probes the machine's git helper; keep it off this host's config (macOS osxkeychain blocks on CI).
+		vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+		vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
 		const mockConfigService = {
 			get: vi.fn().mockReturnValue("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
 		};
@@ -66,6 +70,7 @@ describe("Legacy GitHub App upgrade path (§1.5.3, D9, S15)", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
 	});
 
 	it("mandatory upgrade path: sweep ignores row, Settings lists legacy: true, preview shows legacy-link, Delete detaches repos and removes Integration", async () => {

@@ -608,6 +608,32 @@ describe("IncidentsService", () => {
 		});
 	});
 
+	describe("severity change (#811)", () => {
+		it("writes one severity entry, and none when unchanged", async () => {
+			mockPrisma.incident.findUnique.mockResolvedValue({
+				id: "inc-1",
+				status: "investigating",
+				severity: "high",
+				triggeredAt: new Date("2026-10-01T09:00:00Z"),
+			});
+			mockTx.incident.update.mockResolvedValue({ id: "inc-1" });
+
+			await service.update("inc-1", { severity: "critical" });
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledTimes(1);
+			expect(mockTx.timelineEntry.create).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					type: TimelineEntryType.severity_changed,
+					title: "Severity changed to Critical",
+					description: "Severity changed from High to Critical",
+				}),
+			});
+
+			mockTx.timelineEntry.create.mockClear();
+			await service.update("inc-1", { severity: "high" });
+			expect(mockTx.timelineEntry.create).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("reopen (#743)", () => {
 		it("reopens a closed incident the same way, keeping its cause (walk u18)", async () => {
 			mockPrisma.incident.findUnique.mockResolvedValue({

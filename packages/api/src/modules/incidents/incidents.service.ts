@@ -15,6 +15,7 @@ import {
 	liveRun,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
+	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import type { Alert, Incident, Prisma, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -632,6 +633,21 @@ export class IncidentsService {
 								previousStatus: existing.status,
 								newStatus: dto.status,
 								...(statusNote && { reason: statusNote.reason }),
+							}),
+						},
+					});
+				}
+				if (dto.severity && dto.severity !== existing.severity) {
+					await tx.timelineEntry.create({
+						data: {
+							incidentId: id,
+							type: TimelineEntryType.severity_changed,
+							title: `Severity changed to ${SEVERITY_LABEL[dto.severity]}`,
+							description: `Severity changed from ${SEVERITY_LABEL[existing.severity as keyof typeof SEVERITY_LABEL] ?? existing.severity} to ${SEVERITY_LABEL[dto.severity]}`,
+							source: TimelineSource.user,
+							metadata: JSON.stringify({
+								previousSeverity: existing.severity,
+								newSeverity: dto.severity,
 							}),
 						},
 					});

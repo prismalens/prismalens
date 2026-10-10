@@ -374,6 +374,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 			const runDir = join(tmp, "runs", "inv-followup");
 			mkdirSync(runDir, { recursive: true });
+			// A follow-up refuses when the harness binary is missing; CI has no opencode.
+			const bin = join(tmp, "bin");
+			mkdirSync(bin);
+			writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+			vi.stubEnv("PATH", bin);
 			const resolvedCred = {
 				source: "connection" as const,
 				label: "token Updated",
@@ -440,6 +445,9 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			// The follow-up rebuilds workspace with snapshotWith and passes updated workspace JSON to store
 			expect(ports.snapshotWith).toHaveBeenCalled();
 			expect(mocks.conductRun).toHaveBeenCalled();
+			const [, dto] = vi.mocked(ports.followUpStatus).mock.calls[0] as [string, { workspace?: string }];
+			expect(JSON.parse(dto.workspace ?? "null").repos[0].credential).toEqual(resolvedCred);
+			rmSync(tmp, { recursive: true, force: true });
 		});
 	});
 
