@@ -56,10 +56,6 @@ test.describe("Accessibility at 1440, dark", () => {
 	test("the inbox, an incident record, Settings and the picker have no serious or critical axe violations", async ({
 		page,
 	}) => {
-		test.fixme(
-			true,
-			"IncidentTree active incident link font-mono has insufficient color contrast in dark theme",
-		);
 		test.slow();
 		const found: Record<string, string[]> = {};
 
