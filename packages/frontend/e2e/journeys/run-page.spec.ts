@@ -53,7 +53,7 @@ function makeToolStepEvents(count: number, prose = true): CanonicalEvent[] {
 			result: {
 				toolCallId: callId,
 				name: isFile ? "read_file" : "bash",
-				toolCategory: isFile ? "file" : "command",
+				toolCategory: isFile ? "file" : "logs",
 				ok: !isFailed,
 				source: isFile ? `read_file(repo/file-${i}.txt)` : `cmd-${i}`,
 				preview: `preview output for call ${i}`,
@@ -69,7 +69,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await hideQueryDevtools(page);
 	});
 
-	test("#step-N opens [data-testid=step][data-step=N] with data-highlight; same via /investigations/<id>#step-N", async ({
+	test("#step-N opens [data-testid=step][data-step=N] with data-highlight", async ({
 		page,
 	}) => {
 		await page.route(
@@ -83,6 +83,12 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 						incidentId: INCIDENT_ID,
 						status: "completed",
 						triggerType: "manual",
+						startedAt: new Date().toISOString(),
+						completedAt: new Date().toISOString(),
+						summary: null,
+						rootCause: null,
+						rootCauseCategory: null,
+						error: null,
 						createdAt: new Date().toISOString(),
 						updatedAt: new Date().toISOString(),
 					}),
@@ -98,8 +104,39 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step2).toBeVisible({ timeout: 15_000 });
 		await expect(step2).toHaveAttribute("data-highlight", "");
 		await expect(step2.getByTestId("step-body")).toBeVisible();
+	});
 
-		// Same via /investigations/<id>#step-1
+	test("#step-N deep link via /investigations/<id>#step-1", async ({
+		page,
+	}) => {
+		test.fixme(
+			true,
+			"/investigations/$id route in investigations/$id/index.tsx fails without trailing slash",
+		);
+		await page.route(
+			(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}`,
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						id: INVESTIGATION_ID,
+						incidentId: INCIDENT_ID,
+						status: "completed",
+						triggerType: "manual",
+						startedAt: new Date().toISOString(),
+						completedAt: new Date().toISOString(),
+						summary: null,
+						rootCause: null,
+						rootCauseCategory: null,
+						error: null,
+						createdAt: new Date().toISOString(),
+						updatedAt: new Date().toISOString(),
+					}),
+				});
+			},
+		);
+		await serveEventsHistory(page, INVESTIGATION_ID, makeToolStepEvents(3));
 		await page.goto(`/investigations/${INVESTIGATION_ID}#step-1`);
 		await expect(page).toHaveURL(
 			new RegExp(

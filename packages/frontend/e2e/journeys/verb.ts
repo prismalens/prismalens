@@ -10,7 +10,12 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export async function investigateButton(page: Page): Promise<Locator> {
 	const chip = page.getByTestId("action-chip");
 	await chip.waitFor({ timeout: 15_000 });
-	if ((await chip.getAttribute("data-action")) !== "investigate") {
+	const canOpen = await chip.evaluate(
+		(el) =>
+			el.tagName.toLowerCase() === "button" &&
+			!(el as HTMLButtonElement).disabled,
+	);
+	if (canOpen && (await chip.getAttribute("data-action")) !== "investigate") {
 		// A menu that just closed can swallow the first click; retry until the popover opens.
 		await expect(async () => {
 			if (!(await page.getByTestId("action-menu").isVisible()))
