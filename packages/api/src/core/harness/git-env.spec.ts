@@ -415,9 +415,10 @@ describe("git-spawn", () => {
 	it("spawnGit times out on long running command", async () => {
 		let failure: unknown;
 		try {
-			await spawnGit(["version"], {
+			// A shell alias that sleeps, so the timeout always wins (git version can finish first).
+			await spawnGit(["-c", "alias.nap=!sleep 5", "nap"], {
 				env: gitEnv({ source: "machine" }),
-				timeoutMs: 0,
+				timeoutMs: 100,
 			});
 		} catch (err) {
 			failure = err;
