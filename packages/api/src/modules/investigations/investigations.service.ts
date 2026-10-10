@@ -586,6 +586,7 @@ export class InvestigationsService {
 				if (dto.recommendations && dto.recommendations.length > 0) {
 					await tx.recommendation.createMany({
 						data: dto.recommendations.map((rec) => ({
+							...(rec.id ? { id: rec.id } : {}),
 							investigationId: id,
 							title: rec.title,
 							description: rec.description,

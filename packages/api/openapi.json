@@ -2817,6 +2817,1741 @@
         }
       }
     },
+    "/incidents/{id}/changes": {
+      "get": {
+        "operationId": "changes.forIncident",
+        "summary": "What changed around an incident's start",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 6
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "incidentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "startedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "start": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "end": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "deploy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "kind": {
+                              "enum": [
+                                "deployment",
+                                "rollback",
+                                "config",
+                                "migration",
+                                "release",
+                                "merge",
+                                "commit"
+                              ],
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "sha": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "tag": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pr": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "author": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "files": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "count": {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "paths": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "count",
+                                    "paths"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "url": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "repo": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "service": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "at",
+                            "title",
+                            "sha",
+                            "tag",
+                            "pr",
+                            "author",
+                            "files",
+                            "url",
+                            "repo",
+                            "service",
+                            "source"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timeline": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "kind": {
+                            "enum": [
+                              "deployment",
+                              "rollback",
+                              "config",
+                              "migration",
+                              "release",
+                              "merge",
+                              "commit"
+                            ],
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "sha": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tag": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pr": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "files": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "count",
+                                  "paths"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "url": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "service": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "at",
+                          "title",
+                          "sha",
+                          "tag",
+                          "pr",
+                          "author",
+                          "files",
+                          "url",
+                          "repo",
+                          "service",
+                          "source"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "state": {
+                      "enum": [
+                        "ok",
+                        "partial",
+                        "failed",
+                        "pending",
+                        "no-repos"
+                      ],
+                      "type": "string"
+                    },
+                    "refreshing": {
+                      "type": "boolean"
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "repositoryId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "repo": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "type": "string"
+                          },
+                          "serviceName": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "ok",
+                              "failed",
+                              "pending"
+                            ],
+                            "type": "string"
+                          },
+                          "credential": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "source": {
+                                    "enum": [
+                                      "connection",
+                                      "machine",
+                                      "none"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "via": {
+                                    "type": "string"
+                                  },
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  },
+                                  "fallback": {
+                                    "const": true
+                                  }
+                                },
+                                "required": [
+                                  "source",
+                                  "label",
+                                  "via"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "problem": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "enum": [
+                                      "no-credential",
+                                      "credential-rejected",
+                                      "no-access",
+                                      "pick-credential",
+                                      "rate-limited",
+                                      "unreachable",
+                                      "ssh",
+                                      "error"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "action": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "add-credential",
+                                          "pick-credential",
+                                          "replace-token"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "message",
+                                  "action"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "checkedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "repositoryId",
+                          "repo",
+                          "serviceId",
+                          "serviceName",
+                          "status",
+                          "credential",
+                          "problem",
+                          "checkedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "incidentId",
+                    "startedAt",
+                    "window",
+                    "deploy",
+                    "timeline",
+                    "total",
+                    "state",
+                    "refreshing",
+                    "sources"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/fixes": {
+      "get": {
+        "operationId": "fixes.forInvestigation",
+        "summary": "A run's options with their applied and check state",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "investigationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "flagged": {
+                      "type": "boolean"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "index": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "kind": {
+                            "enum": [
+                              "stop-impact",
+                              "lasting",
+                              "probe"
+                            ],
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "facts": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "priority": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "critical",
+                                  "high",
+                                  "medium",
+                                  "low"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readOnly": {
+                            "type": "boolean"
+                          },
+                          "appliedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastCheck": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "verdict": {
+                                    "enum": [
+                                      "not_yet",
+                                      "below_threshold",
+                                      "could_not_check",
+                                      "it_worked"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "at": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "verdict",
+                                  "at"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "canUndo": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "index",
+                          "kind",
+                          "title",
+                          "detail",
+                          "command",
+                          "facts",
+                          "priority",
+                          "readOnly",
+                          "appliedAt",
+                          "lastCheck",
+                          "canUndo"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "investigationId",
+                    "flagged",
+                    "options"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fixes/{id}/applied": {
+      "post": {
+        "operationId": "fixes.apply",
+        "summary": "Record that the user applied an option",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "index": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "kind": {
+                      "enum": [
+                        "stop-impact",
+                        "lasting",
+                        "probe"
+                      ],
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "command": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "priority": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "critical",
+                            "high",
+                            "medium",
+                            "low"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "appliedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastCheck": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "verdict": {
+                              "enum": [
+                                "not_yet",
+                                "below_threshold",
+                                "could_not_check",
+                                "it_worked"
+                              ],
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "verdict",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canUndo": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "index",
+                    "kind",
+                    "title",
+                    "detail",
+                    "command",
+                    "facts",
+                    "priority",
+                    "readOnly",
+                    "appliedAt",
+                    "lastCheck",
+                    "canUndo"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "fixes.undo",
+        "summary": "Take back an applied mark before any check",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "index": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "kind": {
+                      "enum": [
+                        "stop-impact",
+                        "lasting",
+                        "probe"
+                      ],
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "command": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "facts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "priority": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "critical",
+                            "high",
+                            "medium",
+                            "low"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "appliedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastCheck": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "verdict": {
+                              "enum": [
+                                "not_yet",
+                                "below_threshold",
+                                "could_not_check",
+                                "it_worked"
+                              ],
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "verdict",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canUndo": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "index",
+                    "kind",
+                    "title",
+                    "detail",
+                    "command",
+                    "facts",
+                    "priority",
+                    "readOnly",
+                    "appliedAt",
+                    "lastCheck",
+                    "canUndo"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fixes/{id}/check": {
+      "post": {
+        "operationId": "fixes.check",
+        "summary": "Check whether an applied option stopped the impact",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stepId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "verdict": {
+                      "enum": [
+                        "not_yet",
+                        "below_threshold",
+                        "could_not_check",
+                        "it_worked"
+                      ],
+                      "type": "string"
+                    },
+                    "checkedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "threshold": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "op": {
+                              "enum": [
+                                "==",
+                                "!=",
+                                ">",
+                                "<",
+                                ">=",
+                                "<="
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "op",
+                            "value"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "no-connection",
+                            "expression-unknown",
+                            "current-rule",
+                            "unsupported-shape",
+                            "range-function",
+                            "rule-not-matched",
+                            "series-not-scoped",
+                            "too-broad",
+                            "no-value",
+                            "timeout",
+                            "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "stepId",
+                    "verdict",
+                    "checkedAt",
+                    "value",
+                    "threshold",
+                    "reason",
+                    "message",
+                    "retryable"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incidents/{id}/impact": {
+      "get": {
+        "operationId": "impact.forIncident",
+        "summary": "The incident's impact over the last 24 hours",
+        "tags": [
+          "incidents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "incidentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "alertId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "enum": [
+                        "ok",
+                        "not_configured",
+                        "expression_unknown",
+                        "too_broad",
+                        "timeout",
+                        "error"
+                      ],
+                      "type": "string"
+                    },
+                    "expression": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "recovered",
+                            "recovered_current_rule",
+                            "expression_unknown",
+                            "not_configured"
+                          ],
+                          "type": "string"
+                        },
+                        "reason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "reason"
+                      ]
+                    },
+                    "metric": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "alert",
+                                "alert_current_rule",
+                                "service"
+                              ],
+                              "type": "string"
+                            },
+                            "query": {
+                              "type": "string"
+                            },
+                            "threshold": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "op": {
+                                      "enum": [
+                                        "==",
+                                        "!=",
+                                        ">",
+                                        "<",
+                                        ">=",
+                                        "<="
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "op",
+                                    "value"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "query",
+                            "threshold"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "scoped",
+                            "several",
+                            "unscoped"
+                          ],
+                          "type": "string"
+                        },
+                        "matched": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "matched"
+                      ]
+                    },
+                    "series": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "labels": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          },
+                          "points": {
+                            "type": "array",
+                            "items": {
+                              "type": "array",
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "labels",
+                          "points"
+                        ]
+                      }
+                    },
+                    "window": {
+                      "type": "object",
+                      "properties": {
+                        "start": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "end": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "stepSeconds": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "now": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "usual": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deploys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "kind": {
+                            "enum": [
+                              "deployment",
+                              "rollback",
+                              "config",
+                              "migration",
+                              "release",
+                              "merge",
+                              "commit"
+                            ],
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "sha": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tag": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pr": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "author": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "files": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "count",
+                                  "paths"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "url": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "service": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "at",
+                          "title",
+                          "sha",
+                          "tag",
+                          "pr",
+                          "author",
+                          "files",
+                          "url",
+                          "repo",
+                          "service",
+                          "source"
+                        ]
+                      }
+                    },
+                    "history": {
+                      "type": "object",
+                      "properties": {
+                        "firingSince": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolvedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "alertCount": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "refiresThisWeek": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "strip": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "end": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "start",
+                              "end"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "firingSince",
+                        "resolvedAt",
+                        "alertCount",
+                        "refiresThisWeek",
+                        "strip"
+                      ]
+                    },
+                    "linkOut": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "connection": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "capturedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "incidentId",
+                    "alertId",
+                    "state",
+                    "expression",
+                    "metric",
+                    "scope",
+                    "series",
+                    "window",
+                    "stepSeconds",
+                    "now",
+                    "usual",
+                    "deploys",
+                    "history",
+                    "linkOut",
+                    "connection",
+                    "error",
+                    "capturedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/incidents": {
       "post": {
         "operationId": "incidents.create",
@@ -8281,6 +10016,32 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "stop-impact",
+                                      "lasting",
+                                      "probe"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "facts": {
+                                    "type": "array",
+                                    "maxItems": 3,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 300
+                                    }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
                                   }
                                 },
                                 "required": [
@@ -9377,6 +11138,32 @@
                                               "type": "null"
                                             }
                                           ]
+                                        },
+                                        "kind": {
+                                          "enum": [
+                                            "stop-impact",
+                                            "lasting",
+                                            "probe"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "command": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 2000
+                                        },
+                                        "facts": {
+                                          "type": "array",
+                                          "maxItems": 3,
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 300
+                                          }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "format": "uuid"
                                         }
                                       },
                                       "required": [
@@ -10492,6 +12279,32 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "stop-impact",
+                                      "lasting",
+                                      "probe"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "facts": {
+                                    "type": "array",
+                                    "maxItems": 3,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 300
+                                    }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
                                   }
                                 },
                                 "required": [
@@ -11574,6 +13387,32 @@
                                             "type": "null"
                                           }
                                         ]
+                                      },
+                                      "kind": {
+                                        "enum": [
+                                          "stop-impact",
+                                          "lasting",
+                                          "probe"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "command": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2000
+                                      },
+                                      "facts": {
+                                        "type": "array",
+                                        "maxItems": 3,
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 300
+                                        }
+                                      },
+                                      "id": {
+                                        "type": "string",
+                                        "format": "uuid"
                                       }
                                     },
                                     "required": [
@@ -12722,6 +14561,32 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "stop-impact",
+                                      "lasting",
+                                      "probe"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "facts": {
+                                    "type": "array",
+                                    "maxItems": 3,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 300
+                                    }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
                                   }
                                 },
                                 "required": [
@@ -14394,6 +16259,32 @@
                                               "type": "null"
                                             }
                                           ]
+                                        },
+                                        "kind": {
+                                          "enum": [
+                                            "stop-impact",
+                                            "lasting",
+                                            "probe"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "command": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 2000
+                                        },
+                                        "facts": {
+                                          "type": "array",
+                                          "maxItems": 3,
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 300
+                                          }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "format": "uuid"
                                         }
                                       },
                                       "required": [
@@ -14985,6 +16876,32 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "stop-impact",
+                                      "lasting",
+                                      "probe"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "facts": {
+                                    "type": "array",
+                                    "maxItems": 3,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 300
+                                    }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
                                   }
                                 },
                                 "required": [
@@ -16216,6 +18133,32 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "kind": {
+                              "enum": [
+                                "stop-impact",
+                                "lasting",
+                                "probe"
+                              ],
+                              "type": "string"
+                            },
+                            "command": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            },
+                            "facts": {
+                              "type": "array",
+                              "maxItems": 3,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 300
+                              }
+                            },
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
                             }
                           },
                           "required": [
@@ -16804,6 +18747,32 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "stop-impact",
+                                      "lasting",
+                                      "probe"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2000
+                                  },
+                                  "facts": {
+                                    "type": "array",
+                                    "maxItems": 3,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 300
+                                    }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
                                   }
                                 },
                                 "required": [

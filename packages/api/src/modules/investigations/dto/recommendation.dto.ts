@@ -7,6 +7,7 @@ import {
 	IsNotEmpty,
 	IsOptional,
 	IsString,
+	IsUUID,
 } from "class-validator";
 import {
 	EffortEstimate,
@@ -19,6 +20,11 @@ import {
  * DTO for recommendation data on an investigation result
  */
 export class RecommendationDto {
+	/** The report's `nextSteps[i].id`, so the row and the option are one (#811). */
+	@IsOptional()
+	@IsUUID()
+	id?: string;
+
 	@IsString()
 	@IsNotEmpty()
 	title!: string;

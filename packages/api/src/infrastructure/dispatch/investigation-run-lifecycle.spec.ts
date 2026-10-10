@@ -629,7 +629,18 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 
 		expect(result.success).toBe(true);
 		expect(vi.mocked(ports.writeResult).mock.calls).toEqual([
-			["inv-1", expect.objectContaining({ status: "completed", lastTurnOutcome: "answered", report })],
+			[
+				"inv-1",
+				expect.objectContaining({
+					status: "completed",
+					lastTurnOutcome: "answered",
+					// Each option carries the id the host stamps on it (#811).
+					report: {
+						...report,
+						nextSteps: report.nextSteps.map((s) => ({ ...s, id: expect.any(String) })),
+					},
+				}),
+			],
 		]);
 		expect(ports.settleFollowUp).not.toHaveBeenCalled();
 	});

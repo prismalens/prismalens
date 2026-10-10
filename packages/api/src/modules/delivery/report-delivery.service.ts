@@ -65,8 +65,10 @@ export function slackMessage(run: DeliverableRun): string {
 	const lines = [head, `*Summary:* ${e(run.report.summary)}`];
 	if (run.report.rootCause)
 		lines.push(`*Root cause:* ${e(run.report.rootCause)}`);
-	const top = run.report.nextSteps[0];
-	if (top) lines.push(`*Next step:* ${e(top.title)}`);
+	const stop = run.report.nextSteps.find((s) => s.kind === "stop-impact");
+	const top = stop ?? run.report.nextSteps[0];
+	if (top)
+		lines.push(`*${stop ? "Stop the impact" : "Next step"}:* ${e(top.title)}`);
 	return lines.join("\n").slice(0, SLACK_TEXT_LIMIT);
 }
 

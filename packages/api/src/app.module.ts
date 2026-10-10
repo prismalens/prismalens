@@ -77,7 +77,10 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
+import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
+import { FixesModule } from "./modules/fixes/fixes.module.js";
+import { ImpactModule } from "./modules/impact/impact.module.js";
 import { IncidentsModule } from "./modules/incidents/incidents.module.js";
 import { IntegrationsModule } from "./modules/integrations/integrations.module.js";
 import { InvestigationsModule } from "./modules/investigations/investigations.module.js";
@@ -182,6 +185,9 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		IncidentsModule, // Incident management (primary entity)
 		InvestigationsModule, // AI investigation (replaces AnalysisModule)
 		TimelineModule, // Incident timeline
+		ChangesModule, // What changed around an incident, from its git hosts (#811)
+		ImpactModule, // The Impact chart, live from the alert's own expression (#811)
+		FixesModule, // Stop-the-impact options: applied, undo, check (#811)
 		WebhooksModule, // Webhook ingestion
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)

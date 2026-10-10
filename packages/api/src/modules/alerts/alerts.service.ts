@@ -14,6 +14,7 @@ import {
 	TimelineEntryType,
 	TimelineSource,
 } from "../../shared/enums/index.js";
+import { graphExpr, isAlertsSeriesExpr } from "../impact/promql-shape.js";
 import { CreateAlertDto, UpdateAlertDto } from "./dto/index.js";
 
 export type { Alert };
@@ -175,6 +176,9 @@ export class AlertsService {
 						occurrenceCount: { increment: 1 },
 						lastOccurrence: now,
 						updatedAt: now,
+						...(replacesMadeUpUrl(existing, dto.sourceUrl) && {
+							sourceUrl: dto.sourceUrl,
+						}),
 						...(outcome === "reopened" && {
 							status: AlertStatus.triggered,
 							resolvedAt: null,
@@ -658,4 +662,22 @@ export class AlertsService {
 			uncorrelated,
 		};
 	}
+}
+
+/**
+ * A catch-up row carries a made-up `ALERTS{alertname=…}` link; the alert's own notification
+ * that arrives later names the rule's real expression, so it replaces it (#811).
+ */
+function replacesMadeUpUrl(
+	existing: { title: string; sourceUrl: string | null },
+	incoming: string | undefined,
+): incoming is string {
+	const current = graphExpr(existing.sourceUrl);
+	const next = graphExpr(incoming);
+	return (
+		!!current &&
+		!!next &&
+		isAlertsSeriesExpr(current.expr, existing.title) &&
+		!isAlertsSeriesExpr(next.expr, existing.title)
+	);
 }
