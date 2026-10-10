@@ -387,7 +387,7 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
-		it("auto_critical trigger stores auto rows' values when set and the next-run chain when not (#673 w21)", async () => {
+		it("auto_critical trigger stores auto rows' values when set and Auto when not (#673)", async () => {
 			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-auto" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
 			mockPrisma.alert.findMany.mockResolvedValue([]);
@@ -413,17 +413,17 @@ describe("InvestigationTriggerService", () => {
 				}),
 			);
 
-			// When auto rows are not set, effectiveChoice resolves the next-run chain
+			// When auto rows are not set, effectiveChoice resolves Auto
 			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
-				accessLevel: "supervised",
+				accessLevel: "auto",
 			});
 
 			await service.triggerInvestigation(incident, criticalDecision);
 
-			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
+			expect(mockDispatchService.addInvestigationJob).toHaveBeenLastCalledWith(
 				expect.objectContaining({
 					investigationId: "inv-auto",
-					accessLevel: "supervised",
+					accessLevel: "auto",
 				}),
 			);
 		});

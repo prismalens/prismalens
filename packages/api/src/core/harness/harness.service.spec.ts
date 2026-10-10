@@ -417,6 +417,39 @@ describe("HarnessService", () => {
 		});
 	});
 
+	describe("effectiveChoice (#673)", () => {
+		const agentSaysAskAlways = {
+			permission: { level: "supervised" as const, file: "f", value: "default" },
+		};
+
+		it("gives an auto-started run Auto when no auto-start row is stored, whatever the next-run chain says", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", accessLevels: { opencode: "supervised" } }),
+			);
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue(agentSaysAskAlways);
+
+			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "auto" });
+		});
+
+		it("gives an auto-started run its stored auto-start row", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({ harness: "auto", autoAccessLevels: { opencode: "supervised" } }),
+			);
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue({ permission: null });
+
+			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "supervised" });
+		});
+
+		it("leaves an interactive run on the next-run chain: the agent's own default here", async () => {
+			const s = service();
+			s.localDefaultOf = vi.fn().mockReturnValue(agentSaysAskAlways);
+
+			await expect(s.effectiveChoice("opencode")).resolves.toEqual({ accessLevel: "supervised" });
+		});
+	});
+
 	describe("getStatus", () => {
 		it("reports every registry row alongside the verdict", async () => {
 			process.env.PATH = pathWith("opencode");

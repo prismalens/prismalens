@@ -236,8 +236,8 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/**
 	 * A run's level where the request named none (#673 w21): an
-	 * auto-started run's own Settings rows, then Settings, then the agent's own
-	 * default, then PrismaLens's.
+	 * auto-started run's own Settings row, else Auto; any other run Settings,
+	 * then the agent's own default, then PrismaLens's.
 	 */
 	async effectiveChoice(
 		id: HarnessId,

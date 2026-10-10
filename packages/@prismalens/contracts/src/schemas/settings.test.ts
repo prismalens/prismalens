@@ -71,15 +71,15 @@ describe("HarnessSettingsSchema", () => {
 });
 
 describe("effectiveAccess precedence", () => {
-	it("follows autoStart true precedence: autoAccessLevels -> accessLevels -> local.level -> DEFAULT_ACCESS_LEVEL", () => {
+	it("follows autoStart true precedence: autoAccessLevels -> Auto (ignores accessLevels and local.level)", () => {
 		const s = {
 			accessLevels: { "claude-code": "auto-edits" as const },
 			autoAccessLevels: { "claude-code": "full-access" as const },
 		};
 		const local = {
-			level: "auto" as const,
+			level: "supervised" as const,
 			file: "~/.claude/settings.json",
-			value: "auto",
+			value: "default",
 		};
 
 		// 1. autoStart true with autoAccessLevels set
@@ -88,35 +88,21 @@ describe("effectiveAccess precedence", () => {
 			from: "auto-settings",
 		});
 
-		// 2. autoStart true without autoAccessLevels falls back to accessLevels
-		const sNoAuto = {
-			accessLevels: { "claude-code": "auto-edits" as const },
-		};
-		expect(effectiveAccess(sNoAuto, "claude-code", local, true)).toEqual({
-			level: "auto-edits",
-			from: "settings",
-		});
-
-		// 3. autoStart true without any settings falls back to local.level
-		expect(effectiveAccess({}, "claude-code", local, true)).toEqual({
-			level: "auto",
-			from: "agent",
-		});
-
-		// 4. autoStart true without local falls back to default
-		expect(effectiveAccess({}, "claude-code", undefined, true)).toEqual({
-			level: "supervised",
-			from: "prismalens",
-		});
+		// 2. autoStart true without autoAccessLevels is Auto, whatever the next-run chain says
 		expect(
 			effectiveAccess(
-				{},
+				{ accessLevels: s.accessLevels },
 				"claude-code",
-				{ level: null, file: "f", value: "v" },
+				local,
 				true,
 			),
-		).toEqual({
-			level: "supervised",
+		).toEqual({ level: "auto", from: "prismalens" });
+		expect(effectiveAccess({}, "claude-code", local, true)).toEqual({
+			level: "auto",
+			from: "prismalens",
+		});
+		expect(effectiveAccess({}, "claude-code", undefined, true)).toEqual({
+			level: "auto",
 			from: "prismalens",
 		});
 	});

@@ -81,6 +81,19 @@ async function runOn(page: Page, f: Fire, name: string, session: string) {
 	return made;
 }
 
+/** Auto-started runs default to Auto (#673); an ask walk needs one that waits for you. */
+async function autoStartAskAlways(page: Page) {
+	await page.request.patch("/api/settings/harness", {
+		data: {
+			autoAccessLevels: {
+				opencode: "supervised",
+				"claude-code": "supervised",
+				codex: "supervised",
+			},
+		},
+	});
+}
+
 async function runId(page: Page): Promise<string> {
 	const run = (await detail(page, inc(page).id)).investigations?.[0];
 	if (!run) throw new Error("no run on the incident");
@@ -1080,6 +1093,7 @@ Then(
 Given(
 	/^(?:INC-1 has a run started on|INC-1 has a run in progress on) "(.+)"$/,
 	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
+		await autoStartAskAlways(page);
 		const s = session.replace(/^fake-session:/, "");
 		await runOn(
 			page,
@@ -1100,6 +1114,7 @@ Given(
 		session: string,
 	) => {
 		await page.setViewportSize({ width, height: 900 });
+		await autoStartAskAlways(page);
 		const s = session.replace(/^fake-session:/, "");
 		await runOn(
 			page,

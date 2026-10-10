@@ -832,16 +832,16 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(patches[1]).toEqual({ accessLevels: { "claude-code": null } });
 	});
 
-	test("shows Auto-started runs row, inherits Next run when unset, and saves overrides (#673 w21)", async ({
+	test("shows Auto-started runs row, Auto by default whatever the agent's own default, and saves overrides (#673)", async ({
 		page,
 	}) => {
 		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
 			...CLAUDE_INSTALLED,
 			localDefault: {
 				permission: {
-					level: "auto",
+					level: "supervised",
 					file: "~/.claude/settings.json",
-					value: "auto",
+					value: "default",
 				},
 			},
 		};
@@ -915,9 +915,12 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			"Runs PrismaLens starts from an alert",
 		);
 
-		// Unset line inherits Next run
+		// Unset is Auto, not the agent's own Ask always
 		const autoAccessRow = page.getByTestId("harness-auto-access");
-		await expect(autoAccessRow).toContainText("Same as next run: Auto.");
+		await expect(autoAccessRow).toContainText("Auto, the default.");
+		await expect(page.getByTestId("harness-auto-access-select")).toHaveText(
+			"Auto (default)",
+		);
 
 		// Override Auto Permission to Auto-accept edits
 		await page.getByTestId("harness-auto-access-select").click();
@@ -930,13 +933,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await expect(autoAccessRow).toContainText("Auto-accept edits, set here.");
 
-		// Clear Auto Permission with Same as next run
+		// Clear it back to the default
 		await page.getByTestId("harness-auto-access-select").click();
 		await page
-			.getByRole("option", { name: "Same as next run", exact: true })
+			.getByRole("option", { name: "Auto (default)", exact: true })
 			.click();
 		await expect.poll(() => patches.length).toBe(2);
 		expect(patches[1]).toEqual({ autoAccessLevels: { "claude-code": null } });
+		await expect(autoAccessRow).toContainText("Auto, the default.");
 	});
 
 	test("renders description line variants for Permission across harnesses (#673 w21)", async ({

@@ -18,6 +18,7 @@
 import { ACCESS_LEVELS, type HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
+	AUTO_START_ACCESS_LEVEL,
 	type HarnessProbeResult,
 	type HarnessStatus,
 } from "@prismalens/contracts";
@@ -26,7 +27,6 @@ import { type FormEvent, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
-	defaultAccessOf,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
@@ -171,7 +171,7 @@ function EffortRow() {
 	);
 }
 
-/** The value a Select stores for "no value here": Default, or Same as next run. */
+/** The value a Select stores for "no value here": the row's default. */
 const UNSET = "unset";
 
 function AxisSelect<V extends string>({
@@ -255,18 +255,18 @@ function AccessRows() {
 	);
 }
 
-/** Runs PrismaLens starts from an alert: their own level, else the next run's (#673 w21). */
+/** Runs PrismaLens starts from an alert: their own level, else Auto (#673). */
 function AutoStartedRuns() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	if (!effective) return null;
 	const id = effective.id as HarnessId;
-	const next = defaultAccessOf(effective, axes);
 	const autoLevel = axes.autoAccessLevels[id];
+	const defaultLabel = ACCESS_LEVEL_LABEL[AUTO_START_ACCESS_LEVEL];
 	return (
 		<SettingGroup
 			title="Auto-started runs"
-			description="Runs PrismaLens starts from an alert. Unset, it follows the next-run row above. At Ask always an unattended run waits for your approval of its first command; Auto or Auto-accept edits let it run on."
+			description="Runs PrismaLens starts from an alert. They start on Auto unless you pick another level here. At Ask always an unattended run waits for your approval of its first command."
 			testId="harness-auto-start"
 		>
 			<Pool>
@@ -275,14 +275,14 @@ function AutoStartedRuns() {
 					description={
 						autoLevel
 							? `${ACCESS_LEVEL_LABEL[autoLevel]}, set here.`
-							: `Same as next run: ${ACCESS_LEVEL_LABEL[next.level.level]}.`
+							: `${defaultLabel}, the default.`
 					}
 					testId="harness-auto-access"
 				>
 					<AxisSelect
 						value={autoLevel}
 						options={LEVEL_OPTIONS}
-						unsetLabel="Same as next run"
+						unsetLabel={`${defaultLabel} (default)`}
 						label={`Permission for auto-started runs on ${effective.label}`}
 						testId="harness-auto-access"
 						onChange={(v) => update.mutate({ autoAccessLevels: { [id]: v } })}

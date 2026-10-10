@@ -337,7 +337,7 @@ export class InvestigationTriggerService {
 				orderBy: { triggeredAt: "desc" },
 			});
 
-			// An auto-started run takes its own Settings rows, else the next-run chain (#673 w21).
+			// An auto-started run takes its own Settings row, else Auto (#673).
 			const choice = selection.runnable
 				? await this.harnessService.effectiveChoice(selection.harness, true)
 				: null;

@@ -45,15 +45,21 @@ type AxisSettings<K extends string, V> = Partial<
 	Record<K, Partial<Record<HarnessId, V>> | undefined>
 >;
 
-/** Auto-start rows (for an auto-started run), then Settings, then the agent's own default, then PrismaLens's. */
+/** An auto-started run's level when Settings names none: nobody is there to approve an ask (#673). */
+export const AUTO_START_ACCESS_LEVEL: AccessLevel = "auto";
+
+/** An auto-started run: its Settings row, else Auto. Otherwise Settings, then the agent's own default, then PrismaLens's. */
 export function effectiveAccess(
 	s: AxisSettings<"accessLevels" | "autoAccessLevels", AccessLevel>,
 	harness: HarnessId,
 	local: LocalDefault["permission"] | undefined,
 	autoStart = false,
 ): { level: AccessLevel; from: AxisSource } {
-	const auto = autoStart ? s.autoAccessLevels?.[harness] : undefined;
-	if (auto) return { level: auto, from: "auto-settings" };
+	if (autoStart) {
+		const auto = s.autoAccessLevels?.[harness];
+		if (auto) return { level: auto, from: "auto-settings" };
+		return { level: AUTO_START_ACCESS_LEVEL, from: "prismalens" };
+	}
 	const set = s.accessLevels?.[harness];
 	if (set) return { level: set, from: "settings" };
 	if (local?.level) return { level: local.level, from: "agent" };

@@ -380,7 +380,7 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 		expect(accessSelect).not.toBeNull();
 	});
 
-	it("renders Auto-started runs group with Same as next run null option and line", async () => {
+	it("renders Auto-started runs group with Auto as its default (#673)", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
@@ -399,14 +399,13 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 			'[data-testid="harness-auto-access"]',
 		);
 		expect(autoAccessRow).not.toBeNull();
-		expect(autoAccessRow?.textContent).toContain(
-			"Same as next run: Ask always.",
-		);
+		expect(autoAccessRow?.textContent).toContain("Auto, the default.");
+		expect(autoAccessRow?.textContent).not.toContain("Same as next run");
 
 		const autoAccessSelect = container.querySelector(
 			'[data-testid="harness-auto-access-select"]',
 		);
-		expect(autoAccessSelect).not.toBeNull();
+		expect(autoAccessSelect?.textContent).toBe("Auto (default)");
 	});
 
 	it("renders set here lines when axes are set in settings", async () => {
