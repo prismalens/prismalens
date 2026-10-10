@@ -422,10 +422,13 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			});
 
 			mocks.conductRun.mockReset();
-			mocks.conductRun.mockImplementation(async (_o, ioRun: { store: { create(): Promise<void> } }) => {
-				await ioRun.store.create();
-				return { runId: "inv-followup", report: null, error: null, failureKind: "none" };
-			});
+			mocks.conductRun.mockImplementation(
+				async (_o, ioRun: { store: { create(): Promise<void>; append(e: CanonicalEvent): Promise<void> } }) => {
+					await ioRun.store.create();
+					await ioRun.store.append({ kind: "operator_message", runId: "inv-followup", branchId: "b", path: [], ts: "2026-10-11T00:00:00.000Z", seq: 42, text: "go", mode: "queue", delivered: true });
+					return { runId: "inv-followup", report: null, error: null, failureKind: "none" };
+				},
+			);
 
 			await runInvestigationJob(
 				{ id: "job-followup", investigationId: "inv-followup", attempts: 1 },
@@ -445,7 +448,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			// The follow-up rebuilds workspace with snapshotWith and passes updated workspace JSON to store
 			expect(ports.snapshotWith).toHaveBeenCalled();
 			expect(mocks.conductRun).toHaveBeenCalled();
-			const [, dto] = vi.mocked(ports.followUpStatus).mock.calls[0] as [string, { workspace?: string }];
+			const [, dto] = vi.mocked(ports.followUpStatus).mock.calls[1] as [string, { workspace?: string }];
 			expect(JSON.parse(dto.workspace ?? "null").repos[0].credential).toEqual(resolvedCred);
 			rmSync(tmp, { recursive: true, force: true });
 		});

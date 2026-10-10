@@ -22,6 +22,7 @@ import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GIT_LOCAL_ENV_VARS } from "../git-env.js";
 
 export type RepoMode =
 	| { kind: "anonymous" }
@@ -58,7 +59,11 @@ export interface GitHttpServer {
 }
 
 const FIXTURE_GIT_ENV = {
-	...process.env,
+	...Object.fromEntries(
+		Object.entries(process.env).filter(
+			([k]) => !(GIT_LOCAL_ENV_VARS as readonly string[]).includes(k),
+		),
+	),
 	GIT_CONFIG_GLOBAL: "/dev/null",
 	GIT_CONFIG_NOSYSTEM: "1",
 	GIT_TERMINAL_PROMPT: "0",
