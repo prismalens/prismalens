@@ -28,8 +28,27 @@ type HarnessFixture = {
 	install: string;
 	defaultModel: string | null;
 	tested: { version: string; date: string } | null;
-	modelVia: "config" | "env" | "unsupported";
+	modelVia: "config" | "env" | "unsupported" | "acp";
 	loginHint: string;
+	localDefault?: {
+		permission: {
+			level: string | null;
+			file: string;
+			value: string;
+			reason?: string;
+		} | null;
+	} | null;
+	checked?: {
+		at: string;
+		outcome: string;
+		detail: string;
+		servedModel: string | null;
+		effort: unknown;
+		modes?: { id: string; name: string }[] | null;
+		efforts?: unknown;
+		images: boolean;
+		sandbox?: unknown;
+	} | null;
 	models: {
 		source: "harness" | "catalogue";
 		asOf: string;
@@ -169,10 +188,19 @@ async function failHarnesses(page: Page): Promise<void> {
 const isHarnessSettingsUrl = (url: URL) =>
 	url.pathname === "/api/settings/harness";
 
+type SettingsFixture = {
+	harness: string;
+	models?: Record<string, string | null>;
+	efforts?: Record<string, string | null>;
+	accessLevels?: Record<string, string | null>;
+	autoAccessLevels?: Record<string, string | null>;
+	favourites?: { harness: string; model: string }[];
+};
+
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
 	page: Page,
-	settings: { harness: string; models?: Record<string, string | null> },
+	settings: SettingsFixture,
 ): Promise<void> {
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
@@ -181,7 +209,28 @@ async function serveHarnessSettings(
 				string,
 				unknown
 			>;
-			current = { ...current, ...body } as typeof current;
+			current = {
+				...current,
+				...body,
+				models: {
+					...current.models,
+					...(body.models as Record<string, string | null> | undefined),
+				},
+				efforts: {
+					...current.efforts,
+					...(body.efforts as Record<string, string | null> | undefined),
+				},
+				accessLevels: {
+					...current.accessLevels,
+					...(body.accessLevels as Record<string, string | null> | undefined),
+				},
+				autoAccessLevels: {
+					...current.autoAccessLevels,
+					...(body.autoAccessLevels as
+						| Record<string, string | null>
+						| undefined),
+				},
+			} as typeof current;
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
@@ -203,7 +252,7 @@ async function serveHarnessSettings(
 
 async function openHarnessSettings(
 	page: Page,
-	settings: { harness: string; models?: Record<string, string | null> } = {
+	settings: SettingsFixture = {
 		harness: "auto",
 	},
 ): Promise<void> {
@@ -659,6 +708,341 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(
 			page.getByTestId("harness-check-result-claude-code"),
 		).toHaveText("sign in needed (Log in with Claude)");
+	});
+
+	test("shows Permission row under Next run with local defaults and agent notes (#673 w21)", async ({
+		page,
+	}) => {
+		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
+			...CLAUDE_INSTALLED,
+			localDefault: {
+				permission: {
+					level: "auto",
+					file: "~/.claude/settings.json",
+					value: "auto",
+				},
+			},
+		};
+		await serveHarnesses(
+			page,
+			[
+				OPENCODE_INSTALLED,
+				CLAUDE_WITH_DEFAULTS,
+				CODEX_INSTALLED,
+				DEEPAGENTS_MISSING,
+			],
+			{
+				runnable: true,
+				harness: "claude-code",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+		await openHarnessSettings(page, { harness: "claude-code" });
+
+		const accessRow = page.getByTestId("harness-access");
+		await expect(accessRow).toBeVisible();
+		await expect(accessRow).toContainText(
+			'Your default: Auto, from ~/.claude/settings.json ("auto").',
+		);
+
+		const note = accessRow.getByTestId("harness-agent-note");
+		await expect(note).toBeVisible();
+		await expect(note).toContainText(
+			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply",
+		);
+	});
+
+	test("updates Permission via PATCH /settings/harness and clears with Default (#673 w21)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "claude-code",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+
+		const patches: Record<string, unknown>[] = [];
+		let current: {
+			harness: string;
+			accessLevels?: Record<string, string | null>;
+		} = {
+			harness: "claude-code",
+		};
+
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			if (route.request().method() === "PATCH") {
+				const body = route.request().postDataJSON() as Record<string, unknown>;
+				patches.push(body);
+				current = {
+					...current,
+					...body,
+					...(body.accessLevels
+						? {
+								accessLevels: {
+									...current.accessLevels,
+									...(body.accessLevels as Record<string, string | null>),
+								},
+							}
+						: {}),
+				};
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(current),
+				});
+				return;
+			}
+			if (route.request().method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(current),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		await page.goto("/settings?tab=harness");
+		await expect(
+			page.getByRole("heading", { name: "Agent", exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		// Pick Auto-accept edits in Permission select
+		await page.getByTestId("harness-access-select").click();
+		await page
+			.getByRole("option", { name: "Auto-accept edits", exact: true })
+			.click();
+		await expect.poll(() => patches.length).toBe(1);
+		expect(patches[0]).toEqual({
+			accessLevels: { "claude-code": "auto-edits" },
+		});
+		await expect(page.getByTestId("harness-access")).toContainText(
+			"Auto-accept edits, set here.",
+		);
+
+		// Reset Permission with Default
+		await page.getByTestId("harness-access-select").click();
+		await page.getByRole("option", { name: "Default", exact: true }).click();
+		await expect.poll(() => patches.length).toBe(2);
+		expect(patches[1]).toEqual({ accessLevels: { "claude-code": null } });
+	});
+
+	test("shows Auto-started runs row, inherits Next run when unset, and saves overrides (#673 w21)", async ({
+		page,
+	}) => {
+		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
+			...CLAUDE_INSTALLED,
+			localDefault: {
+				permission: {
+					level: "auto",
+					file: "~/.claude/settings.json",
+					value: "auto",
+				},
+			},
+		};
+		await serveHarnesses(
+			page,
+			[
+				OPENCODE_INSTALLED,
+				CLAUDE_WITH_DEFAULTS,
+				CODEX_INSTALLED,
+				DEEPAGENTS_MISSING,
+			],
+			{
+				runnable: true,
+				harness: "claude-code",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+
+		const patches: Record<string, unknown>[] = [];
+		let current: {
+			harness: string;
+			autoAccessLevels?: Record<string, string | null>;
+		} = {
+			harness: "claude-code",
+		};
+
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			if (route.request().method() === "PATCH") {
+				const body = route.request().postDataJSON() as Record<string, unknown>;
+				patches.push(body);
+				current = {
+					...current,
+					...body,
+					...(body.autoAccessLevels
+						? {
+								autoAccessLevels: {
+									...current.autoAccessLevels,
+									...(body.autoAccessLevels as Record<string, string | null>),
+								},
+							}
+						: {}),
+				};
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(current),
+				});
+				return;
+			}
+			if (route.request().method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(current),
+				});
+				return;
+			}
+			await route.fallback();
+		});
+
+		await page.goto("/settings?tab=harness");
+		await expect(
+			page.getByRole("heading", { name: "Agent", exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+
+		const autoGroup = page.getByTestId("harness-auto-start");
+		await expect(autoGroup).toBeVisible();
+		await expect(autoGroup).toContainText(
+			"Runs PrismaLens starts from an alert",
+		);
+
+		// Unset line inherits Next run
+		const autoAccessRow = page.getByTestId("harness-auto-access");
+		await expect(autoAccessRow).toContainText("Same as next run: Auto.");
+
+		// Override Auto Permission to Auto-accept edits
+		await page.getByTestId("harness-auto-access-select").click();
+		await page
+			.getByRole("option", { name: "Auto-accept edits", exact: true })
+			.click();
+		await expect.poll(() => patches.length).toBe(1);
+		expect(patches[0]).toEqual({
+			autoAccessLevels: { "claude-code": "auto-edits" },
+		});
+		await expect(autoAccessRow).toContainText("Auto-accept edits, set here.");
+
+		// Clear Auto Permission with Same as next run
+		await page.getByTestId("harness-auto-access-select").click();
+		await page
+			.getByRole("option", { name: "Same as next run", exact: true })
+			.click();
+		await expect.poll(() => patches.length).toBe(2);
+		expect(patches[1]).toEqual({ autoAccessLevels: { "claude-code": null } });
+	});
+
+	test("renders description line variants for Permission across harnesses (#673 w21)", async ({
+		page,
+	}) => {
+		const CODEX_UNCHECKED: HarnessFixture = {
+			...CODEX_INSTALLED,
+			checked: {
+				at: "2026-10-10T00:00:00Z",
+				outcome: "answers-acp",
+				detail: "answers ACP",
+				servedModel: null,
+				effort: null,
+				modes: [{ id: "read-only", name: "Ask for approval" }],
+				efforts: null,
+				images: false,
+				sandbox: null,
+			},
+		};
+		const GEMINI_UNTRUSTED: HarnessFixture = {
+			id: "gemini",
+			label: "Gemini CLI",
+			binary: "gemini",
+			installed: true,
+			install: "npm i -g @google/gemini-cli",
+			defaultModel: null,
+			tested: null,
+			modelVia: "unsupported",
+			loginHint: "`gemini login`",
+			localDefault: {
+				permission: {
+					level: null,
+					file: "~/.gemini/settings.json",
+					value: "auto_edit",
+					reason: "Gemini CLI runs the copy untrusted here",
+				},
+			},
+			models: NO_MODELS,
+		};
+
+		let currentHarness = "opencode";
+		await page.route(isHarnessesUrl, async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					harnesses: [
+						OPENCODE_INSTALLED,
+						CLAUDE_INSTALLED,
+						CODEX_UNCHECKED,
+						GEMINI_UNTRUSTED,
+						DEEPAGENTS_MISSING,
+					],
+					selection: {
+						runnable: true,
+						harness: currentHarness,
+						pinned: false,
+						pinnedBy: null,
+						blockedReason: null,
+					},
+				}),
+			});
+		});
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ harness: currentHarness }),
+			});
+		});
+
+		// 1. OpenCode
+		await page.goto("/settings?tab=harness");
+		await expect(
+			page.getByRole("heading", { name: "Agent", exact: true }),
+		).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByTestId("harness-access")).toContainText(
+			"Ask always, PrismaLens default. OpenCode has per-tool rules, not one permission level.",
+		);
+		await expect(page.getByTestId("harness-agent-note")).toContainText(
+			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
+		);
+
+		// 2. Codex without workspace-write in checked modes
+		currentHarness = "codex";
+		await page.reload();
+		await expect(page.getByTestId("harness-agent-note")).toContainText(
+			"This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask.",
+		);
+
+		// 3. Gemini with untrusted reason
+		currentHarness = "gemini";
+		await page.reload();
+		await expect(page.getByTestId("harness-access")).toContainText(
+			'Ask always, PrismaLens default. Gemini CLI runs the copy untrusted here, so "auto_edit" cannot apply.',
+		);
+		await expect(page.getByTestId("harness-agent-note")).toContainText(
+			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
+		);
+
+		// 4. deepagents
+		currentHarness = "deepagents";
+		await page.reload();
+		await expect(page.getByTestId("harness-access")).toContainText(
+			"Ask always, PrismaLens default. deepagents has no modes.",
+		);
 	});
 });
 
