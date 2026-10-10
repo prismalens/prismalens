@@ -47,6 +47,7 @@ import {
 } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
+import { focusChosen, roveKeys } from "./rove";
 
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
@@ -439,6 +440,15 @@ export function ModelChip({
 				>
 					<ModelSelectorInput
 						ref={search}
+						onKeyDown={(e) => {
+							// Left at the start of the search goes back to the rail, as Right came from it.
+							if (e.key !== "ArrowLeft" || e.currentTarget.selectionStart)
+								return;
+							e.preventDefault();
+							rail.current
+								?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')
+								?.focus();
+						}}
 						placeholder={
 							shown === "starred"
 								? "Search starred models"
@@ -739,6 +749,8 @@ export function EffortChip({
 				sideOffset={6}
 				className="w-60 rounded-surface p-1"
 				data-testid="effort-menu"
+				onKeyDown={roveKeys}
+				onOpenAutoFocus={focusChosen}
 			>
 				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Effort</p>
 				{levels.map((l) => (
@@ -746,6 +758,9 @@ export function EffortChip({
 						key={l.id}
 						type="button"
 						className={cn(item, l.id === current.id && "bg-surface-3")}
+						tabIndex={l.id === current.id ? 0 : -1}
+						data-rove=""
+						data-chosen={l.id === current.id ? "" : undefined}
 						onClick={() => {
 							setOpen(false);
 							if (l.id !== current.id) onEffort(l.id);
@@ -763,6 +778,8 @@ export function EffortChip({
 						key={w}
 						type="button"
 						disabled={!windowed || (w === "1M" && !base)}
+						tabIndex={-1}
+						data-rove=""
 						className={cn(
 							item,
 							windowed && w === win && "bg-surface-3",
@@ -836,6 +853,8 @@ export function AccessChip({
 				sideOffset={6}
 				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="access-menu"
+				onKeyDown={roveKeys}
+				onOpenAutoFocus={focusChosen}
 			>
 				<div role="listbox" aria-label="Permission level">
 					{rows.map((l) => {
@@ -846,6 +865,9 @@ export function AccessChip({
 								type="button"
 								role="option"
 								aria-selected={l === level}
+								tabIndex={l === level ? 0 : -1}
+								data-rove=""
+								data-chosen={l === level ? "" : undefined}
 								onClick={() => {
 									setOpen(false);
 									if (l !== level) onLevel(l);
