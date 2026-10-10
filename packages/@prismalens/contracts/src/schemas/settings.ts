@@ -229,7 +229,7 @@ export const HarnessSettingsSchema = z.object({
 	accessLevels: z
 		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),
-	/** Permission level per agent for runs PrismaLens starts from an alert; unset follows `accessLevels`. */
+	/** Permission level per agent for runs PrismaLens starts from an alert; unset is Auto (`AUTO_START_ACCESS_LEVEL`). */
 	autoAccessLevels: z
 		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),

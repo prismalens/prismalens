@@ -62,7 +62,7 @@ export interface HarnessSettings {
 	efforts?: Partial<Record<HarnessId, string>>;
 	/** Permission level per harness for the next run (#673 w21); absent follows the agent's own default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel>>;
-	/** The same for runs PrismaLens starts from an alert; absent follows the next-run values. */
+	/** The same for runs PrismaLens starts from an alert; absent is Auto. */
 	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel>>;
 	/** Model ids the operator added per harness (#673 w57). */
 	customModels?: Partial<Record<HarnessId, string[]>>;

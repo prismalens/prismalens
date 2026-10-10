@@ -11,6 +11,7 @@ import {
 	resolveHarnessModel,
 	resumeBlockedReason,
 	ACCESS_LEVELS,
+	type AccessLevel,
 	levelOfAgentMode,
 	mergeConfigPatch,
 } from "./harness.js";
@@ -293,6 +294,7 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 
 	it("configures harness-specific access level modes and mechanisms", () => {
 		expect(HARNESS_REGISTRY["claude-code"].access["full-access"].fallbackMode).toBe("acceptEdits");
+		expect(HARNESS_REGISTRY["claude-code"].access.auto.fallbackMode).toBe("acceptEdits");
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
 		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
@@ -317,43 +319,66 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		}
 	});
 
-	it("deep-merges opencode configPatch into opencode.json preserving pre-existing deny rules", () => {
-		const baseFiles = HARNESS_REGISTRY.opencode.configFiles?.({
-			cwd: "/r",
-			configDir: "/c",
-			dataDir: "/d",
-		});
-		const generated = JSON.parse(baseFiles?.["opencode.json"] ?? "{}");
-
-		const userCustomConfig = {
-			...generated,
-			permission: {
-				bash: {
-					"rm -rf *": "deny",
-				},
-			},
-		};
-
-		for (const level of ACCESS_LEVELS) {
-			const patch = HARNESS_REGISTRY.opencode.access[level].configPatch ?? {};
-			const merged = mergeConfigPatch(userCustomConfig, patch) as Record<string, unknown>;
-
-			const perm = merged.permission as Record<string, unknown>;
-			expect(perm).toBeDefined();
-			expect((perm.edit as Record<string, unknown>)["*"]).toBeDefined();
-			expect((perm.bash as Record<string, unknown>)["*"]).toBeDefined();
-
-			const agent = merged.agent as {
-				build: { permission: Record<string, unknown> };
-				plan: { permission: Record<string, unknown> };
+	describe("OpenCode levels keep the user's own rules (#809)", () => {
+		type Json = Record<string, unknown>;
+		// OpenCode 1.18.30: the global file merges first (remeda mergeDeep keeps its key order), then
+		// the agent's rules = its top-level rules then agent.<name>.permission; the last match wins.
+		function effective(user: Json, level: AccessLevel, agent: string, tool: string, input: string): unknown {
+			const generated = JSON.parse(
+				HARNESS_REGISTRY.opencode.configFiles?.({ cwd: "/r", configDir: "/c", dataDir: "/d" })["opencode.json"] ?? "{}",
+			);
+			const ours = mergeConfigPatch(generated, HARNESS_REGISTRY.opencode.access[level].configPatch?.(user) ?? {});
+			const merged = mergeConfigPatch(user, ours) as {
+				permission?: Json;
+				agent?: Record<string, { permission?: Json }>;
 			};
-			expect(agent.build.permission).toBeDefined();
-			expect(agent.plan.permission).toBeDefined();
-
-			if (level === "full-access") {
-				expect((perm.bash as Record<string, unknown>)["rm -rf *"]).toBe("deny");
-			}
+			const rules = (map: Json | undefined) =>
+				Object.entries(map?.[tool] === undefined ? {} : typeof map[tool] === "string" ? { "*": map[tool] } : (map[tool] as Json));
+			const escape = (t: string) => t.replace(/[.+?^$(){}|[\]\\]/g, "\\$&");
+			const glob = (p: string) => new RegExp(`^${p.split("*").map(escape).join(".*")}$`);
+			const all = [...rules(merged.permission), ...rules(merged.agent?.[agent]?.permission)];
+			return all.findLast(([pattern]) => glob(pattern).test(input))?.[1];
 		}
+
+		it("a deny pattern in the global config stays at every level, on the run's agent and its subagents", () => {
+			const user = { permission: { bash: { "rm -rf *": "deny" } } };
+			for (const level of ACCESS_LEVELS) {
+				for (const agent of ["build", "general", "explore"]) {
+					expect(effective(user, level, agent, "bash", "rm -rf /srv"), `${level} ${agent}`).toBe("deny");
+				}
+			}
+			expect(effective(user, "full-access", "build", "bash", "ls")).toBe("allow");
+			expect(effective(user, "supervised", "build", "bash", "ls")).toBe("ask");
+		});
+
+		it("the level replaces the user's own allow catch-all, and their patterns stay", () => {
+			const user = { permission: { bash: { "*": "allow", "git status*": "allow" }, edit: "allow" } };
+			expect(effective(user, "supervised", "build", "bash", "ls")).toBe("ask");
+			expect(effective(user, "supervised", "build", "bash", "git status")).toBe("allow");
+			expect(effective(user, "supervised", "build", "edit", "a.ts")).toBe("ask");
+		});
+
+		it("webfetch and websearch stay single actions, as OpenCode's schema requires", () => {
+			for (const level of ACCESS_LEVELS) {
+				const patch = HARNESS_REGISTRY.opencode.access[level].configPatch?.({}) as {
+					permission: Record<string, unknown>;
+					agent: Record<string, { permission: Record<string, unknown> }>;
+				};
+				for (const map of [patch.permission, ...Object.values(patch.agent).map((a) => a.permission)]) {
+					expect(typeof map.webfetch, level).toBe("string");
+					expect(typeof map.websearch, level).toBe("string");
+				}
+			}
+		});
+
+		it("a deny catch-all stays, and so do agent rules written without one", () => {
+			expect(effective({ permission: { webfetch: "deny" } }, "full-access", "build", "webfetch", "https://x")).toBe("deny");
+			const user = { agent: { build: { permission: { bash: { "rm *": "deny" } } } } };
+			expect(effective(user, "full-access", "build", "bash", "rm x")).toBe("deny");
+			expect(effective(user, "full-access", "build", "bash", "ls")).toBe("allow");
+			const custom = { agent: { triage: { permission: { bash: { "kubectl delete*": "deny" } } } } };
+			expect(effective(custom, "auto", "triage", "bash", "kubectl delete pod x")).toBe("deny");
+		});
 	});
 
 	it("contains no inspiration names", () => {

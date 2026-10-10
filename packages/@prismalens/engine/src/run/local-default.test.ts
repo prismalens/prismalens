@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, write
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { localDefault } from "./local-default.js";
+import { localDefault, opencodeUserConfig } from "./local-default.js";
 
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `pl-ld-${name}-`)));
 
@@ -325,5 +325,25 @@ approval_policy = "on-request"
 			write(join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ default_agent: "build" }));
 			expect(localDefault("opencode", { HOME: home })).toEqual({ permission: null });
 		});
+	});
+});
+
+describe("opencodeUserConfig (#809)", () => {
+	it("merges config.json, opencode.json and opencode.jsonc under XDG_CONFIG_HOME in OpenCode's order", () => {
+		const xdg = tmp("oc-xdg");
+		write(join(xdg, "opencode", "config.json"), JSON.stringify({ permission: { bash: { "rm *": "ask" } } }));
+		write(
+			join(xdg, "opencode", "opencode.jsonc"),
+			'{\n  // comment\n  "permission": { "bash": { "rm *": "deny", "git *": "allow" } },\n}',
+		);
+		expect(opencodeUserConfig({ HOME: "/nowhere", XDG_CONFIG_HOME: xdg })).toEqual({
+			permission: { bash: { "rm *": "deny", "git *": "allow" } },
+		});
+	});
+
+	it("reads ~/.config without XDG_CONFIG_HOME and is empty when nothing parses", () => {
+		const home = tmp("oc-home");
+		write(join(home, ".config", "opencode", "opencode.json"), "{ bad json ");
+		expect(opencodeUserConfig({ HOME: home })).toEqual({});
 	});
 });

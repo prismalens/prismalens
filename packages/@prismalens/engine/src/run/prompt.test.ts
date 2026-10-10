@@ -250,6 +250,9 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"Check the redis cluster first before querying the DB.",
 			);
 			expect(prompt).toContain("<<<END RUNBOOK_NOTES>>>");
+			// Operator guidance, not data: the untrusted-data guard must not tell the agent to ignore it (#809).
+			expect(prompt).toContain("<<<RUNBOOK_NOTES — OPERATOR NOTES.");
+			expect(prompt).not.toContain("<<<RUNBOOK_NOTES — UNTRUSTED DATA");
 			expect(prompt).toContain(
 				"RUNBOOK_NOTES is the operator's advice about this service; follow it where it applies and say when you did not.",
 			);

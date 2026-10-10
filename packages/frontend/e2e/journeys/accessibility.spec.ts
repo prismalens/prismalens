@@ -53,23 +53,17 @@ test.describe("Accessibility at 1440, dark", () => {
 		await setTheme(page, "dark");
 	});
 
-	test("the inbox, an incident record, Settings and the picker have no serious or critical axe violations", async ({
+	test("the board, conversation, Settings and the picker have no serious or critical axe violations", async ({
 		page,
 	}) => {
 		test.slow();
 		const found: Record<string, string[]> = {};
 
 		await page.goto("/incidents");
-		await expect(page.getByTestId("inbox")).toBeVisible({
+		await expect(page.getByTestId("incident-board")).toBeVisible({
 			timeout: 15_000,
 		});
-		found.inbox = await blocking(page, "inbox");
-
-		await page.goto(DEMO_INCIDENT);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
-			timeout: 15_000,
-		});
-		found.record = await blocking(page, "record");
+		found.board = await blocking(page, "board");
 
 		// The box and its chips live on Conversation (#673); a draft shows all three.
 		await page.goto(`${DEMO_INCIDENT}/conversation?investigation=new`);
@@ -92,11 +86,21 @@ test.describe("Accessibility at 1440, dark", () => {
 		found.settings = await blocking(page, "settings");
 
 		expect(found).toEqual({
-			inbox: [],
-			record: [],
+			board: [],
 			conversation: [],
 			picker: [],
 			settings: [],
 		});
+	});
+
+	test("an incident record has no serious or critical axe violations", async ({
+		page,
+	}) => {
+		await page.goto(DEMO_INCIDENT);
+		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+			timeout: 15_000,
+		});
+		const found = await blocking(page, "record");
+		expect(found).toEqual([]);
 	});
 });

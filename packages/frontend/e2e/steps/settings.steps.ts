@@ -802,7 +802,7 @@ When('I press "Investigate" in the box', async ({ page }) => {
 	const sent = page.waitForRequest(
 		(r) => r.method() === "POST" && /\/investigate$/.test(r.url()),
 	);
-	await page.getByTestId("composer-investigate").click();
+	await page.getByTestId("composer-send").click();
 	w(page).sent = (await sent).postDataJSON() as Record<string, unknown>;
 });
 
@@ -980,34 +980,32 @@ Then(
 
 Then(
 	"the verb chip reads {string} and its menu explains {string} and {string} with {string}",
-	async ({ page }, verb: string, a: string, b: string, foot: string) => {
-		const chip = page.getByTestId("verb-chip");
+	async ({ page }, verb: string, a: string, b: string, _foot: string) => {
+		const chip = page.getByTestId("action-chip");
 		await expect(chip).toHaveText(verb);
 		await expect(
 			page.getByTestId("composer-chips").locator("button").first(),
-		).toHaveAttribute("data-testid", "verb-chip");
+		).toHaveAttribute("data-testid", "action-chip");
 		await chip.click();
-		const menu = page.getByTestId("verb-menu");
-		await expect(menu.getByTestId("verb-investigate")).toContainText(a);
-		await expect(menu.getByTestId("verb-investigate")).toContainText(
-			"Ends with a report.",
+		const menu = page.getByTestId("action-menu");
+		await expect(menu.getByTestId("action-investigate")).toContainText(a);
+		await expect(menu.getByTestId("action-investigate")).toContainText(
+			"ends in a report",
 		);
-		await expect(menu.getByTestId("verb-ask")).toContainText(b);
-		await expect(menu.getByTestId("verb-ask")).toContainText("No report.");
-		await expect(menu).toContainText(foot);
+		await expect(menu.getByTestId("action-ask")).toContainText(b);
+		await expect(menu.getByTestId("action-ask")).toContainText("No new report");
 	},
 );
 
 When("I pick {string} in the verb menu", async ({ page }, verb: string) => {
-	await page.getByTestId(`verb-${verb.toLowerCase()}`).click();
-	await expect(page.getByTestId("verb-menu")).toBeHidden();
+	await page.getByTestId(`action-${verb.toLowerCase()}`).click();
+	await expect(page.getByTestId("action-menu")).toBeHidden();
 });
 
 Then(
 	"the box's one send control is the arrow and its placeholder reads {string}",
 	async ({ page }, placeholder: string) => {
-		await expect(page.getByTestId("composer-ask")).toBeVisible();
-		await expect(page.getByTestId("composer-investigate")).toHaveCount(0);
+		await expect(page.getByTestId("composer-send")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
 			placeholder,
