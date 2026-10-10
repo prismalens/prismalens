@@ -5,7 +5,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A row of a settings pool, T3's rhythm (#673 w4): `[lead] [label / meta]
+ * A row of a settings pool (#673 w4): `[lead] [label / meta]
  * [trailing]`, at least 64 px, label 13/600, meta 12 px in two lines at most
  * inside 36rem, the control right and centred; a hairline between rows.
  */
