@@ -68,6 +68,8 @@ export default defineConfig({
 				"src/modules/integrations/git-credential.service.ts":
 					NEW_CODE_THRESHOLD,
 				"src/modules/integrations/host-token.ts": NEW_CODE_THRESHOLD,
+				"src/modules/changes/change-events.service.ts": NEW_CODE_THRESHOLD,
+				"src/modules/changes/git-history.ts": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

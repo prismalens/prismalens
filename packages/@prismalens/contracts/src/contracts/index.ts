@@ -3,6 +3,7 @@
 
 // Import individual contracts
 export { alertsContract } from "./alerts.js";
+export { changesContract } from "./changes.js";
 export { eventsContract } from "./events.js";
 export { incidentsContract } from "./incidents.js";
 export { type InstanceInfo, instanceContract } from "./instance.js";
@@ -39,6 +40,7 @@ export { webhooksContract } from "./webhooks.js";
 
 // Re-import for combined contract
 import { alertsContract } from "./alerts.js";
+import { changesContract } from "./changes.js";
 import { eventsContract } from "./events.js";
 import { incidentsContract } from "./incidents.js";
 import { instanceContract } from "./instance.js";
@@ -61,6 +63,7 @@ import { webhooksContract } from "./webhooks.js";
  */
 export const contract = {
 	alerts: alertsContract,
+	changes: changesContract,
 	incidents: incidentsContract,
 	investigations: investigationsContract,
 	live: liveContract,
