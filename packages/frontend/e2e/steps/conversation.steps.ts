@@ -259,11 +259,9 @@ Then(
 Then(
 	"a refused call reads {string} followed by a plain reason",
 	async ({ page }, prefix: string) => {
-		const failed = page
-			.locator('[data-testid="step"]')
-			.filter({
-				has: page.locator('[data-testid="step-verb"]:text("Failed")'),
-			});
+		const failed = page.locator('[data-testid="step"]').filter({
+			has: page.locator('[data-testid="step-verb"]:text("Failed")'),
+		});
 		if (!(await failed.getByTestId("step-body").isVisible())) {
 			await failed.getByTestId("step-toggle").click();
 		}
