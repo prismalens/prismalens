@@ -158,6 +158,33 @@ describe("HarnessService", () => {
 			).resolves.toEqual({ harness: "auto", accessLevels: { codex: "auto", "claude-code": "auto-edits" } });
 		});
 
+		it("merges the four axis maps and null clears them (#673 w21)", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					accessLevels: { codex: "auto", opencode: "full-access" },
+					runModes: { "claude-code": "plan", codex: "execute" },
+					autoAccessLevels: { codex: "auto-edits", gemini: "supervised" },
+					autoRunModes: { "claude-code": "plan" },
+				}),
+			);
+
+			const updated = await service().updateSettings({
+				accessLevels: { opencode: null, gemini: "auto" },
+				runModes: { "claude-code": null },
+				autoAccessLevels: { gemini: null, "claude-code": "auto" },
+				autoRunModes: { "claude-code": null, codex: "execute" },
+			});
+
+			expect(updated).toEqual({
+				harness: "auto",
+				accessLevels: { codex: "auto", gemini: "auto" },
+				runModes: { codex: "execute" },
+				autoAccessLevels: { codex: "auto-edits", "claude-code": "auto" },
+				autoRunModes: { codex: "execute" },
+			});
+		});
+
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
@@ -415,6 +442,25 @@ describe("HarnessService", () => {
 				pinnedBy: null,
 				blockedReason: null,
 			});
+		});
+
+		it("localDefault injected reader reaches HarnessStatus (#673 w21)", async () => {
+			const s = service();
+			const stubDefault = {
+				permission: "supervised" as const,
+				mode: "execute" as const,
+				source: "settings" as const,
+				file: "/path/to/settings.json",
+				line: "Supervised mode",
+				details: {},
+			};
+			s.localDefaultOf = vi.fn().mockReturnValue(stubDefault);
+
+			const status = await s.getStatus();
+
+			expect(s.localDefaultOf).toHaveBeenCalledWith("opencode");
+			const row = status.harnesses.find((h) => h.id === "opencode");
+			expect(row?.localDefault).toEqual(stubDefault);
 		});
 
 		it("marks an auto-detected selection as not pinned", async () => {

@@ -246,7 +246,16 @@ describe("repo-source.service", () => {
 				["opencode.json", "{}"],
 				[".claude/settings.json", "{}"],
 				[".mcp.json", "{}"],
+				["AGENTS.md", "instructions"],
+				["AGENTS.override.md", "override"],
+				["CLAUDE.md", "instructions"],
+				["GEMINI.md", "instructions"],
+				[".cursorrules", "rules"],
 				["services/api/.opencode/plugin/evil.js", "x"],
+				["services/api/AGENTS.md", "nested instructions"],
+				["services/api/CLAUDE.md", "nested instructions"],
+				["services/api/GEMINI.md", "nested instructions"],
+				["services/api/.cursorrules", "nested rules"],
 				["services/api/src/app.js", "code"],
 			]) {
 				mkdirSync(join(src, path, ".."), { recursive: true });
@@ -258,7 +267,22 @@ describe("repo-source.service", () => {
 			const dest = join(tmp("pl-dest-"), "repo");
 			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest);
 
-			for (const gone of [".opencode", "opencode.json", ".claude", ".mcp.json", "services/api/.opencode"]) {
+			for (const gone of [
+				".opencode",
+				"opencode.json",
+				".claude",
+				".mcp.json",
+				"AGENTS.md",
+				"AGENTS.override.md",
+				"CLAUDE.md",
+				"GEMINI.md",
+				".cursorrules",
+				"services/api/.opencode",
+				"services/api/AGENTS.md",
+				"services/api/CLAUDE.md",
+				"services/api/GEMINI.md",
+				"services/api/.cursorrules",
+			]) {
 				expect(existsSync(join(dest, gone)), gone).toBe(false);
 			}
 			expect(readFileSync(join(dest, "services/api/src/app.js"), "utf8")).toBe("code");
