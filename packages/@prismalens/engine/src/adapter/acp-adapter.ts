@@ -205,12 +205,32 @@ export class AcpAdapter {
 		};
 	}
 
-	/** How the ask ended (#673 w21). */
+	/** How the ask ended (#673 w21); `asked` names an ask the level answered, which showed no card. */
 	permissionAnswer(
 		askId: string,
 		outcome: PermissionAskOutcome,
+		asked?: { title?: string; toolCallId?: string; kind?: string },
 	): CanonicalEvent {
-		return { kind: "permission_answer", ...this.base(), askId, outcome };
+		const meta = asked?.toolCallId
+			? this.toolMeta.get(asked.toolCallId)
+			: undefined;
+		return {
+			kind: "permission_answer",
+			...this.base(),
+			askId,
+			outcome,
+			...(asked
+				? {
+						title: asked.title?.trim() || meta?.name || "A tool call",
+						toolKind: asked.kind ?? meta?.kind ?? null,
+					}
+				: {}),
+		};
+	}
+
+	/** The agent's own words, as one message (a plan it asked to leave Plan with, #673 w21). */
+	agentMessage(text: string): CanonicalEvent {
+		return { kind: "agent_step", ...this.base(), text, toolCalls: [] };
 	}
 
 	/** Terminal: a branch failed. */

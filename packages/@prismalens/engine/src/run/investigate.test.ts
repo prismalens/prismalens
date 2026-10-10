@@ -12,9 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_DEFAULT_MODE } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationContext } from "@prismalens/contracts/schemas";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { conductRun } from "./conductor.js";
 import { buildRunFidelity, createSteerChannel, prepareRunEnv, runInvestigation } from "./investigate.js";
 import { createAskChannel, optionOf, type PermissionPolicy } from "./permission.js";
@@ -38,7 +37,12 @@ function tmp(name: string): string {
 	dirs.push(d);
 	return d;
 }
+// OpenCode at Ask always runs `build`: the fake offers it unless a test names its own modes (#673 w21).
+beforeEach(() => {
+	vi.stubEnv("FAKE_MODES", "build=Build");
+});
 afterEach(() => {
+	vi.unstubAllEnvs();
 	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -58,7 +62,6 @@ function opts(mode: string, extra: Partial<Parameters<typeof runInvestigation>[0
 		cwd,
 		runDir,
 		env: { ...process.env, FAKE_ACP_MODE: mode },
-		agentMode: AGENT_DEFAULT_MODE,
 		initTimeoutMs: 10_000,
 		promptTimeoutMs: 10_000,
 		...extra,
@@ -874,22 +877,30 @@ describe("the agent's own mode (#673 w21)", () => {
 			.filter((e) => e.d === "out")
 			.map((e) => e.m);
 
-	it("Given the row's default mode, When the agent offers it, Then set_mode asks for it and the brief and report name it", async () => {
+	it("Given Ask always, When the agent offers its mode, Then set_mode asks for it and the brief and report name it", async () => {
 		const { events, runDir } = await collect("ok", {
 			harness: "claude-code",
-			agentMode: undefined,
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "plan=Plan,default=Manual" },
 		});
 		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
 		expect(sent.find((m) => m.method === "session/set_mode")?.params?.modeId).toBe("default");
-		expect(wireOut(runDir).find((m) => m.includes("session/prompt"))).toContain("Permission mode: Manual, the agent's own.");
+		expect(wireOut(runDir).find((m) => m.includes("session/prompt"))).toContain(
+			"Mode: Execute. Permission: Ask always (Manual, the agent's own mode).",
+		);
 		const report = events.at(-1);
 		if (report?.kind !== "report") throw new Error("no report");
-		expect(report.report.fidelity).toMatchObject({ mode: "default", mechanism: "agent", fidelity: "cooperative" });
+		expect(report.report.fidelity).toMatchObject({
+			mode: "default",
+			mechanism: "acp-mode",
+			fidelity: "cooperative",
+			access: "supervised",
+			ranAccess: "supervised",
+			runMode: "execute",
+		});
 	});
 
-	it("Given a mode the agent does not offer, Then the run fails before the first prompt", async () => {
-		const { events, runDir } = await collect("ok", { harness: "claude-code", agentMode: "bypassPermissions", env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default" } });
+	it("Given a mode the agent does not offer, nor its fallback, Then the run fails before the first prompt", async () => {
+		const { events, runDir } = await collect("ok", { harness: "claude-code", accessLevel: "full-access", env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "default" } });
 		expect(events.at(-1)).toMatchObject({
 			kind: "error",
 			message: 'Claude Code did not offer mode "bypassPermissions"; run a check in Settings, Agent',
@@ -897,7 +908,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(wireOut(runDir).some((m) => m.includes("session/prompt"))).toBe(false);
 	});
 
-	it("Given agent-default, Then no set_mode is sent and the report records the mode the agent reports", async () => {
+	it("Given OpenCode already in build, Then no set_mode is sent and the report records the mode the agent reports", async () => {
 		const { events, runDir } = await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "build=Build" } });
 		expect(wireOut(runDir).some((m) => m.includes("session/set_mode"))).toBe(false);
 		const report = events.at(-1);
@@ -905,10 +916,9 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(report.report.fidelity?.mode).toBe("build");
 	});
 
-	it("passes Codex its mode at spawn and calls nothing enforced before its sandbox is checked", () => {
-		expect(prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run") }).env.INITIAL_AGENT_MODE).toBe("read-only");
-		const full = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), agentMode: "agent-full-access" });
-		expect(full.env.INITIAL_AGENT_MODE).toBe("agent-full-access");
+	it("passes Codex no mode at spawn and calls nothing enforced before its sandbox is checked", () => {
+		const full = prepareRunEnv({ harness: "codex", cwd: tmp("clone"), runDir: tmp("run"), accessLevel: "full-access" });
+		expect(full.env.INITIAL_AGENT_MODE).toBeUndefined();
 		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "cooperative", mechanism: "agent" });
 	});
 
@@ -920,7 +930,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		};
 		const env = { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" };
 		for (const [state, want] of [["enforced", "enforced"], ["unknown", "cooperative"], ["none", "cooperative"]] as const) {
-			const { events } = await collect("ok", { harness: "codex", agentMode: undefined, env, sandboxCheck: check(state) });
+			const { events } = await collect("ok", { harness: "codex", env, sandboxCheck: check(state) });
 			const report = events.at(-1);
 			if (report?.kind !== "report") throw new Error("no report");
 			expect(report.report.fidelity).toMatchObject({ mode: "read-only", fidelity: want });
@@ -939,7 +949,6 @@ describe("the agent's own mode (#673 w21)", () => {
 	it("Given Codex read-only, Then What we could not check names its sandbox's missing network", async () => {
 		const { events } = await collect("ok", {
 			harness: "codex",
-			agentMode: undefined,
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" },
 			sandboxCheck: async () => ({ "read-only": { state: "enforced", reason: "refused" } }),
 		});
@@ -952,7 +961,6 @@ describe("the agent's own mode (#673 w21)", () => {
 	it("answers a resumed session's curl to a host address allow, and never sets a mode on it (#673 w26)", async () => {
 		const { events, runDir } = await collect("resume", {
 			harness: "claude-code",
-			agentMode: "default",
 			permission: autoApprovePolicy,
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", FAKE_RESUME_CURL: "1" },
 			resume: { sessionId: "ses_old", text: "Is Prometheus up?", mode: "queue", heads: [] },
@@ -963,20 +971,20 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(events.at(-1)?.kind).toBe("branch_done");
 	});
 
-	it("a resumed run on FAKE_MODES where the current mode is plan calls set_mode to the run's mode", async () => {
+	it("a resumed run whose session reports another mode than its stored level's sets the stored one", async () => {
 		const { runDir } = await collect("resume", {
 			harness: "opencode",
-			agentMode: "default",
+			accessLevel: "supervised",
 			env: {
 				...process.env,
 				FAKE_ACP_MODE: "resume",
 				FAKE_LOAD_SESSION: "1",
-				FAKE_MODES: "plan=Plan,default=Manual",
+				FAKE_MODES: "plan=Plan,build=Build",
 			},
 			resume: { sessionId: "ses_old", text: "go on", mode: "queue", heads: [] },
 		});
 		const sent = wireOut(runDir).map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } });
 		const setMode = sent.find((m) => m.method === "session/set_mode");
-		expect(setMode?.params?.modeId).toBe("default");
+		expect(setMode?.params?.modeId).toBe("build");
 	});
 });

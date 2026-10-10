@@ -54,6 +54,8 @@ export type AcpStreamItem =
 			outcome: PermissionAskOutcome;
 			why?: string;
 			warn?: string;
+			/** The policy answered at once: no `permission_asked` came before it (#673 w21). */
+			sync?: boolean;
 	  }
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string };
@@ -161,6 +163,13 @@ export interface AcpSessionConfig {
 	/** Reopen this session with `session/load` instead of starting one (#747). */
 	resume?: { sessionId: string };
 }
+
+/** Outcomes the run's level gives without the operator; they never show an ask. */
+const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
+	"allowed",
+	"plan_kept",
+	"mode_kept",
+]);
 
 // ACP v2 folds load into session/resume; one constant to move (#747).
 const SESSION_LOAD = "session/load";
@@ -458,6 +467,10 @@ export class AcpSession {
 	loadSession = false;
 	/** The modes `session/new` (or `session/load`) offered. */
 	private modes: AcpModeSurface = { configId: null, modes: [], current: null };
+	/** Every config option the agent last listed. */
+	private options: Array<Record<string, unknown>> = [];
+	/** Counts mode reports from the agent, so `setMode` can tell whether one answered it. */
+	private modeReports = 0;
 	/** History updates `session/load` replayed; dropped, never yielded. */
 	replayed = 0;
 
@@ -592,6 +605,8 @@ export class AcpSession {
 	}
 
 	private takeOptions(configOptions: unknown): void {
+		if (Array.isArray(configOptions))
+			this.options = configOptions as Array<Record<string, unknown>>;
 		const options = configOptions as NewSessionResponse["configOptions"];
 		this.models = offeredModels(options);
 		this.servedModel = selectedModel(options);
@@ -630,9 +645,31 @@ export class AcpSession {
 		return this.modes.current;
 	}
 
+	/** Whether the agent lists config option `configId` with `value` among its choices. */
+	offersConfigValue(configId: string, value: string): boolean {
+		const option = this.options.find((o) => o?.id === configId);
+		const entries = Array.isArray(option?.options)
+			? (option.options as Array<Record<string, unknown>>)
+			: [];
+		return entries
+			.flatMap((e) =>
+				Array.isArray(e?.options)
+					? (e.options as Array<Record<string, unknown>>)
+					: [e],
+			)
+			.some((o) => o?.value === value);
+	}
+
+	/** The current value of config option `configId`; null when the agent lists none. */
+	configValue(configId: string): string | null {
+		return currentValueOf(this.options, configId);
+	}
+
 	/**
 	 * Ask for the agent's own mode (#673 w21): `session/set_config_option` when the
-	 * mode is a config option, else `session/set_mode`. False when the harness never offered it.
+	 * mode is a config option, else `session/set_mode`. False when the harness never
+	 * offered it or answered with an error. `currentMode` is then what the agent
+	 * reported (a reply's `currentValue` or a mode update), never the request.
 	 */
 	async setMode(modeId: string): Promise<boolean> {
 		if (
@@ -642,24 +679,46 @@ export class AcpSession {
 			return false;
 		if (this.modes.current === modeId) return true;
 		const timeout = this.config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
-		if (this.modes.configId)
-			await this.request(
-				"session/set_config_option",
-				{
-					sessionId: this.currentSessionId,
-					configId: this.modes.configId,
-					value: modeId,
-				},
-				timeout,
-			);
-		else
-			await this.request(
-				"session/set_mode",
-				{ sessionId: this.currentSessionId, modeId },
-				timeout,
-			);
-		this.modes = { ...this.modes, current: modeId };
+		const reports = this.modeReports;
+		try {
+			if (this.modes.configId) {
+				const answer = (await this.request(
+					"session/set_config_option",
+					{
+						sessionId: this.currentSessionId,
+						configId: this.modes.configId,
+						value: modeId,
+					},
+					timeout,
+				)) as { configOptions?: unknown } | null;
+				if (Array.isArray(answer?.configOptions))
+					this.takeModeOptions(answer.configOptions);
+			} else
+				await this.request(
+					"session/set_mode",
+					{ sessionId: this.currentSessionId, modeId },
+					timeout,
+				);
+		} catch (err) {
+			if (err instanceof AcpRpcError) return false;
+			throw err;
+		}
+		// An agent that answered without reporting a mode took the one asked for (ACP session-modes).
+		if (this.modeReports === reports)
+			this.modes = { ...this.modes, current: modeId };
 		return true;
+	}
+
+	/** A config option list: its mode option's current value, when it is the session's mode option. */
+	private takeModeOptions(configOptions: unknown): void {
+		this.takeOptions(configOptions);
+		if (!this.modes.configId) return;
+		const next = offeredModes({
+			configOptions: configOptions as NewSessionResponse["configOptions"],
+		});
+		if (next.configId !== this.modes.configId) return;
+		this.modes = { ...this.modes, current: next.current };
+		this.modeReports += 1;
 	}
 
 	/** The harness's own session id once `open()` has one. */
@@ -861,14 +920,9 @@ export class AcpSession {
 				...this.modes,
 				current: typeof id === "string" ? id : null,
 			};
+			this.modeReports += 1;
 		} else if (u.sessionUpdate === "config_option_update") {
-			this.takeOptions(u.configOptions);
-			if (!this.modes.configId) return;
-			const next = offeredModes({
-				configOptions: u.configOptions as NewSessionResponse["configOptions"],
-			});
-			if (next.configId === this.modes.configId)
-				this.modes = { ...this.modes, current: next.current };
+			this.takeModeOptions(u.configOptions);
 		}
 	}
 
@@ -882,56 +936,68 @@ export class AcpSession {
 			};
 			const askId = newAskId();
 			const controller = new AbortController();
-			this.asks.add(controller);
 			const window = this.config.askWindow?.();
+			const refused = (err: unknown): PermissionDecision => ({
+				allow: false,
+				why: err instanceof Error ? err.message : String(err),
+				outcome: "denied",
+			});
+			const answer = (decision: PermissionDecision, sync: boolean): void => {
+				this.asks.delete(controller);
+				if (this.closed) return;
+				const optionId =
+					decision.outcome === "stopped" ? undefined : decision.optionId;
+				this.send({
+					jsonrpc: "2.0",
+					id: msg.id,
+					result: optionId
+						? { outcome: { outcome: "selected", optionId } }
+						: { outcome: { outcome: "cancelled" } },
+				});
+				this.push({
+					kind: "permission",
+					askId,
+					request,
+					allowed: decision.allow,
+					outcome: decision.outcome,
+					...(decision.allow
+						? decision.warn
+							? { warn: decision.warn }
+							: {}
+						: { why: decision.why }),
+					...(sync ? { sync } : {}),
+				});
+			};
+			let verdict: PermissionDecision | Promise<PermissionDecision>;
+			this.asks.add(controller);
+			try {
+				verdict = this.config.permission(request, {
+					askId,
+					signal: controller.signal,
+					...(window
+						? { timeoutMs: window.timeoutMs, clamped: window.clamped }
+						: {}),
+				});
+			} catch (err) {
+				verdict = refused(err);
+			}
+			// The level answered at once: no ask is shown, so the board never says it waits (#673 w21).
+			if (
+				!(verdict instanceof Promise) &&
+				LEVEL_OUTCOMES.has(verdict.outcome)
+			) {
+				answer(verdict, true);
+				return;
+			}
 			this.push({
 				kind: "permission_asked",
 				askId,
 				request,
 				...(window ? { window } : {}),
 			});
-			Promise.resolve()
-				.then(() =>
-					this.config.permission(request, {
-						askId,
-						signal: controller.signal,
-						...(window
-							? { timeoutMs: window.timeoutMs, clamped: window.clamped }
-							: {}),
-					}),
-				)
-				.catch(
-					(err: unknown): PermissionDecision => ({
-						allow: false,
-						why: err instanceof Error ? err.message : String(err),
-						outcome: "denied",
-					}),
-				)
-				.then((decision) => {
-					this.asks.delete(controller);
-					if (this.closed) return;
-					const optionId =
-						decision.outcome === "stopped" ? undefined : decision.optionId;
-					this.send({
-						jsonrpc: "2.0",
-						id: msg.id,
-						result: optionId
-							? { outcome: { outcome: "selected", optionId } }
-							: { outcome: { outcome: "cancelled" } },
-					});
-					this.push({
-						kind: "permission",
-						askId,
-						request,
-						allowed: decision.allow,
-						outcome: decision.outcome,
-						...(decision.allow
-							? decision.warn
-								? { warn: decision.warn }
-								: {}
-							: { why: decision.why }),
-					});
-				});
+			Promise.resolve(verdict)
+				.catch(refused)
+				.then((decision) => answer(decision, false));
 			return;
 		}
 		if (method.startsWith("fs/")) {

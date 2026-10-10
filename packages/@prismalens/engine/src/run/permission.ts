@@ -2,11 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * PrismaLens never answers an agent's permission ask itself: the agent's own
- * mode decides what it asks, and every ask waits on the operator's Approve or
- * Deny (#673 w21, operator ruling 2026-10-09). Nobody answering denies it.
+ * The agent's own mode decides what it asks; the run's permission level
+ * answers it (#673 w21 ruling 2026-10-10). At Ask always every ask waits on
+ * the operator's Approve or Deny, and nobody answering denies it.
  */
 import { randomUUID } from "node:crypto";
+import type { AccessLevel, RunMode } from "@prismalens/config/harness";
 import {
 	ASK_TIMEOUT_MS,
 	type PermissionAskOutcome,
@@ -31,12 +32,17 @@ export interface PermissionRequest {
 }
 
 export type PermissionDecision =
-	| { allow: true; optionId: string; outcome: "approved"; warn?: string }
+	| {
+			allow: true;
+			optionId: string;
+			outcome: "approved" | "allowed";
+			warn?: string;
+	  }
 	| {
 			allow: false;
 			optionId?: string;
 			why: string;
-			outcome: Exclude<PermissionAskOutcome, "approved">;
+			outcome: Exclude<PermissionAskOutcome, "approved" | "allowed">;
 	  };
 
 /** One ask: `askId` names it in the conversation; `signal` aborts when the turn is cancelled. */
@@ -87,7 +93,7 @@ export function optionOf(
 /** A denial: the agent's own reject option when it offered one, else ACP's cancelled outcome. */
 export function deny(
 	req: PermissionRequest,
-	outcome: Exclude<PermissionAskOutcome, "approved">,
+	outcome: Exclude<PermissionAskOutcome, "approved" | "allowed">,
 	why: string,
 ): PermissionDecision {
 	const reject = optionOf(req, "reject");
@@ -102,6 +108,53 @@ export function deny(
 /** For a session no prompt ever reaches (the readiness check): every ask is refused. */
 export const denyAllPolicy: PermissionPolicy = (req) =>
 	deny(req, "denied", "no one can answer an ask here");
+
+const READS = new Set(["read", "search"]);
+const FILE_CHANGES = new Set(["edit", "delete", "move"]);
+
+/** The agent's allow option as PrismaLens's own answer; the card when it offered none. */
+function allowed(
+	req: PermissionRequest,
+	ctx: AskContext,
+	card: PermissionPolicy,
+): PermissionDecision | Promise<PermissionDecision> {
+	// Once-only first, so an approval never becomes a standing rule in the agent.
+	const allow = optionOf(req, "allow");
+	if (!allow) return card(req, ctx);
+	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
+}
+
+/**
+ * How the run's level answers an ask, in this order (#673 w21 ruling 2026-10-10):
+ * a request to switch mode is refused at every level; reads and searches run;
+ * Ask always shows the card; Auto-accept edits approves file changes and shows
+ * the rest; Auto and Full access approve. A sync verdict never shows a card.
+ */
+export function levelPolicy(
+	level: AccessLevel,
+	runMode: RunMode,
+	channel: { policy: PermissionPolicy },
+): PermissionPolicy {
+	const card = channel.policy;
+	return (req, ctx) => {
+		const kind = req.toolCall?.kind;
+		if (kind === "switch_mode")
+			return deny(
+				req,
+				runMode === "plan" ? "plan_kept" : "mode_kept",
+				runMode === "plan"
+					? "the run stays in Plan"
+					: "the run stays in Execute",
+			);
+		if (kind && READS.has(kind)) return allowed(req, ctx, card);
+		if (level === "supervised") return card(req, ctx);
+		if (level === "auto-edits")
+			return kind && FILE_CHANGES.has(kind)
+				? allowed(req, ctx, card)
+				: card(req, ctx);
+		return allowed(req, ctx, card);
+	};
+}
 
 /** What the conversation and the row show of an ask that waits. */
 export interface PendingAsk {

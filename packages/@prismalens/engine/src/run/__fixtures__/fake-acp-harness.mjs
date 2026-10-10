@@ -20,11 +20,21 @@
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
+// Access levels (#673 w21): FAKE_PROFILE=claude offers default, acceptEdits, auto, bypassPermissions
+// and plan over session/set_mode when FAKE_MODES is unset; FAKE_PROFILE=codex offers its modes as a
+// `mode` config option (read-only, agent, agent-full-access; FAKE_CODEX_V2=1 adds workspace-write)
+// beside a `collaboration_mode` option (default, plan). FAKE_ACP_MODE=plan writes a plan and asks to
+// leave Plan with a `switch_mode` ask (codex's "Implement this plan?" under FAKE_PROFILE=codex), then
+// waits for session/cancel when refused. argv flags: --clamp-auto answers a switch to `auto` with
+// `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
 const cwd = process.cwd();
+const clampAuto = process.argv.includes("--clamp-auto");
+const refuseMode = process.argv.includes("--refuse-mode");
+const profile = process.env.FAKE_PROFILE ?? "";
 
 if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
@@ -91,7 +101,63 @@ const current = {
 	model: process.env.FAKE_SERVED_MODEL ?? offered.model[0],
 	reasoning_effort: offered.reasoning_effort[0],
 };
+// The session's modes: FAKE_MODES (`id` or `id=Name`, first current), else the profile's.
+const CLAUDE_MODES =
+	"default=Manual,acceptEdits=Accept Edits,auto=Auto,bypassPermissions=Bypass Permissions,plan=Plan";
+const CODEX_MODES = `read-only=Ask for approval,${process.env.FAKE_CODEX_V2 ? "workspace-write=Workspace write," : ""}agent=Approve for me,agent-full-access=Full access`;
+const modeList = (
+	process.env.FAKE_MODES ??
+	(profile === "claude" ? CLAUDE_MODES : profile === "codex" ? CODEX_MODES : "")
+)
+	.split(",")
+	.filter(Boolean)
+	.map((m) => {
+		const [id, name] = m.split("=");
+		return { id, name: name ?? id };
+	});
+let currentMode = modeList[0]?.id;
+let collaboration = "default";
+const modeOptions = () =>
+	profile === "codex"
+		? [
+				{
+					id: "mode",
+					name: "Mode",
+					type: "select",
+					category: "mode",
+					currentValue: currentMode,
+					options: modeList.map((m) => ({ value: m.id, name: m.name })),
+				},
+				{
+					id: "collaboration_mode",
+					name: "Collaboration mode",
+					type: "select",
+					category: "collaboration_mode",
+					currentValue: collaboration,
+					options: [
+						{ value: "default", name: "Default" },
+						{ value: "plan", name: "Plan" },
+					],
+				},
+			]
+		: [];
+const sessionModes = () =>
+	profile !== "codex" && modeList.length
+		? { currentModeId: currentMode, availableModes: modeList }
+		: undefined;
+/** A mode switch as the agent takes it: refused, clamped, or as asked. */
+const switchMode = (sessionId, modeId) => {
+	if (refuseMode) return false;
+	currentMode = clampAuto && modeId === "auto" ? "acceptEdits" : modeId;
+	if (profile !== "codex")
+		notify(sessionId, {
+			sessionUpdate: "current_mode_update",
+			currentModeId: currentMode,
+		});
+	return true;
+};
 const configOptions = () => [
+	...modeOptions(),
 	...(offered.model.length
 		? [
 				{
@@ -169,6 +235,56 @@ async function turn(sessionId, promptText) {
 		return { stopReason: "end_turn" };
 	}
 	if (mode === "silent") {
+		await cancelled();
+		return { stopReason: "cancelled" };
+	}
+	if (mode === "plan") {
+		const plan =
+			"1. Read the handler. 2. Check the pool size. 3. Write the report.";
+		notify(sessionId, {
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "text", text: "Here is my plan." },
+		});
+		const codex = profile === "codex";
+		const answer = await ask({
+			sessionId,
+			toolCall: {
+				toolCallId: "t_plan",
+				title: codex ? "Implement this plan?" : "Approve Plan",
+				kind: "switch_mode",
+				rawInput: { plan },
+			},
+			options: codex
+				? [
+						{
+							optionId: "yes",
+							name: "Yes, implement this plan",
+							kind: "allow_once",
+						},
+						{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
+					]
+				: [
+						{
+							optionId: "auto",
+							name: "Yes, and use auto mode",
+							kind: "allow_always",
+						},
+						{
+							optionId: "bypass",
+							name: "Yes, and bypass permissions",
+							kind: "allow_always",
+						},
+						{
+							optionId: "manual",
+							name: "Yes, manually approve edits",
+							kind: "allow_once",
+						},
+						{ optionId: "no", name: "No, keep planning", kind: "reject_once" },
+					],
+		});
+		const left = answer.outcome?.optionId && answer.outcome.optionId !== "no";
+		process.stderr.write(`fake: plan ${left ? "LEFT" : "kept"}\n`);
+		if (left) return { stopReason: "end_turn" };
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
@@ -373,17 +489,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
 		const options = configOptions();
-		// FAKE_MODES: the session modes it advertises, comma-separated `id` or `id=Name`, the first current.
-		const offeredModes = (process.env.FAKE_MODES ?? "")
-			.split(",")
-			.filter(Boolean)
-			.map((m) => {
-				const [id, name] = m.split("=");
-				return { id, name: name ?? id };
-			});
-		const modes = offeredModes.length
-			? { currentModeId: offeredModes[0].id, availableModes: offeredModes }
-			: undefined;
+		const modes = sessionModes();
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
@@ -404,16 +510,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			content: { type: "text", text: "REPLAYED" },
 		});
 		const options = configOptions();
-		const offeredModes = (process.env.FAKE_MODES ?? "")
-			.split(",")
-			.filter(Boolean)
-			.map((m) => {
-				const [id, name] = m.split("=");
-				return { id, name: name ?? id };
-			});
-		const modes = offeredModes.length
-			? { currentModeId: offeredModes[0].id, availableModes: offeredModes }
-			: undefined;
+		const modes = sessionModes();
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
@@ -433,13 +530,42 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			});
 			return;
 		}
-		if (!process.env.FAKE_REFUSE_SET && offered[configId]?.includes(value))
+		if (profile === "codex" && configId === "mode") {
+			if (
+				!modeList.some((m) => m.id === value) ||
+				!switchMode(msg.params.sessionId, value)
+			) {
+				send({
+					jsonrpc: "2.0",
+					id: msg.id,
+					error: { code: -32602, message: `mode ${value} refused` },
+				});
+				return;
+			}
+		} else if (profile === "codex" && configId === "collaboration_mode") {
+			collaboration = value;
+		} else if (
+			!process.env.FAKE_REFUSE_SET &&
+			offered[configId]?.includes(value)
+		)
 			current[configId] = value;
 		send({
 			jsonrpc: "2.0",
 			id: msg.id,
 			result: { configOptions: configOptions() },
 		});
+	} else if (msg.method === "session/set_mode") {
+		const { sessionId, modeId } = msg.params ?? {};
+		if (!switchMode(sessionId, modeId)) {
+			send({
+				jsonrpc: "2.0",
+				id: msg.id,
+				error: { code: -32603, message: `mode ${modeId} refused` },
+			});
+			return;
+		}
+		process.stderr.write(`fake: mode ${currentMode}\n`);
+		send({ jsonrpc: "2.0", id: msg.id, result: {} });
 	} else if (msg.method === "session/prompt") {
 		const blocks = msg.params?.prompt ?? [];
 		for (const b of blocks)

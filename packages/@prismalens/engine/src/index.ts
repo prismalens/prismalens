@@ -13,6 +13,7 @@ export * from "./run/connectors.js";
 export * from "./run/fence.js";
 export * from "./run/harness-doctor.js";
 export * from "./run/investigate.js";
+export * from "./run/local-default.js";
 export * from "./run/permission.js";
 export * from "./run/prompt.js";
 export * from "./run/report.js";

@@ -21,7 +21,7 @@ export type InvestigationSink = (event: CanonicalEvent) => void | Promise<void>;
 export interface InvestigationStore {
 	create(): Promise<void>;
 	append(event: CanonicalEvent): Promise<void>;
-	/** `null`: a chat run ended its turn; it has no report (#673). */
+	/** `null`: a chat or a Plan run ended its turn; it has no report (#673). */
 	finish(report: InvestigationReport | null): Promise<void>;
 	fail(error: string): Promise<void>;
 	flush?(): Promise<void>;
@@ -67,7 +67,8 @@ export async function conductRun(
 		await io.store.flush?.();
 		return { runId, report: null, error: null, failureKind: "none" };
 	}
-	if (opts.kind === "chat" && lastError === null) {
+	// A chat ends its turn with no report, and so does a Plan run: its plan is in the conversation (#673 w21).
+	if ((opts.kind === "chat" || opts.runMode === "plan") && lastError === null) {
 		await io.store.finish(null);
 		return { runId, report: null, error: null, failureKind: "none" };
 	}

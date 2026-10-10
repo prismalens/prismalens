@@ -36,7 +36,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 
 		expect(prompt).toContain("- Prometheus    http://prometheus.internal:9090");
 		expect(prompt).toContain(
-			"Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.",
+			"Confirm the signal: which metric or expression fired and how far past threshold.",
 		);
 		expect(prompt).toContain(
 			"- Application SOURCE CODE is in your current working directory",
@@ -48,7 +48,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 
 		expect(prompt).not.toContain("- Prometheus");
 		expect(prompt).not.toContain(
-			"Confirm the alert's signal in Prometheus: which metric/expression fired and how far past threshold.",
+			"Confirm the signal: which metric or expression fired and how far past threshold.",
 		);
 		expect(prompt).toContain(
 			"- Application SOURCE CODE is in your current working directory",
@@ -154,15 +154,19 @@ describe("buildInvestigationPrompt (#633)", () => {
 				"curl -sG 'http://prometheus.internal:9090/api/v1/query' --data-urlencode 'query=<promql>'",
 			);
 			expect(prompt).toContain("curl -s 'http://am.internal:9093/api/v2/alerts'");
-			expect(prompt).toContain("Permission mode: Manual, the agent's own.");
-			expect(prompt).toContain("This is an investigation: report; do not deploy, restart or change infrastructure.");
+			expect(prompt).toContain("Mode: Execute. Permission: Ask always (Manual, the agent's own mode).");
+			expect(prompt).toContain(
+				"Your job ends at the report. Changing the system (deploys, restarts, config, scaling, data) is not part of it; if a fix is obvious, put it in nextSteps.",
+			);
 			expect(prompt).toContain("\nSURFACES\n");
 			expect(prompt).not.toContain("READ-ONLY SURFACES");
 			expect(prompt).not.toMatch(/Writes will be refused|Network: only|Never modify/);
 		});
 
 		it("says the agent's default when no mode name is known", () => {
-			expect(buildInvestigationPrompt(context)).toContain("Permission mode: the agent's default, the agent's own.");
+			expect(buildInvestigationPrompt(context)).toContain(
+				"Mode: Execute. Permission: Ask always (the agent's default, the agent's own mode).",
+			);
 		});
 
 		it("tells an agent whose sandbox has no network not to query, and to say so", () => {
@@ -177,7 +181,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 				{ noNetwork: true },
 			);
 			expect(prompt).not.toContain("curl");
-			expect(prompt).not.toContain("Confirm the alert's signal in Prometheus");
+			expect(prompt).not.toContain("Confirm the signal");
 			expect(prompt).not.toContain("query recent logs");
 			for (const address of ["http://prometheus.internal:9090", "http://am.internal:9093", "http://logs.internal"])
 				expect(prompt).toContain(address);
