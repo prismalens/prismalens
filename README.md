@@ -111,7 +111,9 @@ reports `ready` or the harness's own reason (for example "not logged in") — th
 same check Settings → Agent runs on demand. Before a run starts, PrismaLens
 reuses a passing check under a day old and otherwise checks again, so an agent
 that is not signed in gets no run until it is. PrismaLens never bundles,
-installs or authenticates a harness. Set `PRISMALENS_HARNESS=<id>` to pin one.
+installs or authenticates the agent itself; for Claude Code and Codex it ships
+only the ACP adapter, so `claude` or `codex` on PATH is enough. Set
+`PRISMALENS_HARNESS=<id>` to pin one.
 
 There is no Docker, no Redis and no separate frontend server: the tarball
 carries the built dashboard and the API serves it from the same origin. Use
@@ -225,7 +227,8 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
   never reads or stores one.
 - **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
   access each pick the agent's own mode and decide which of its permission
-  requests wait for you. PrismaLens adds no sandbox: the agent runs as your
+  requests wait for you. A run an alert starts waits for nobody: it runs at
+  Auto and refuses anything it would ask. PrismaLens adds no sandbox: the agent runs as your
   user on the machine that runs `pl up`, with an allowlisted environment and
   its working directory on a throwaway clone of the repo.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
