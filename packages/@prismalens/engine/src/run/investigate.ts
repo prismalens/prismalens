@@ -333,8 +333,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	const companionPath = descriptor.companionBinary
 		? resolveOnPath(descriptor.companionBinary)
 		: null;
-	// A row nobody installed spawns its binary as before, and fails to start.
-	const launch = harnessLaunch(descriptor) ?? {
+	// A swapped-in binary (tests, admission) runs as given; a row nobody installed fails to start.
+	const launch = (!opts.descriptor && harnessLaunch(descriptor)) || {
 		command: descriptor.binary,
 		args: [],
 		env: {},

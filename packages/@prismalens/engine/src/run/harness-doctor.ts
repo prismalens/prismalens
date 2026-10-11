@@ -171,7 +171,7 @@ export async function probeHarness(
 	try {
 		const { env, runEnv, launch } = prepareRunEnv({
 			harness,
-			descriptor,
+			...(opts.descriptor ? { descriptor: opts.descriptor } : {}),
 			cwd,
 			runDir,
 			env: getHarnessProviderKeys(harness, process.env),
