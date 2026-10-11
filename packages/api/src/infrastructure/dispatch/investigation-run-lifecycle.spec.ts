@@ -15,7 +15,8 @@ import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
-import type { RunPorts } from "./run-ports.js";
+import type { Snapshot } from "../../core/harness/repo-source.service.js";
+import type { RepoRef, RunPorts } from "./run-ports.js";
 
 const CANCELLED_MESSAGE = "investigation cancelled by request";
 
@@ -43,6 +44,19 @@ vi.mock("@prismalens/logger/standalone", () => ({
 // `createPrismaInvestigationStore` is exercised for real: it is a thin fold over
 // `ports.*`, and the fake ports below are what makes it hermetic — no separate
 // mock needed for it.
+
+const PUBLIC_CREDENTIAL = { source: "none" as const, label: "public", via: "none" };
+
+/** A `snapshotWith` double from what the clone returns; the credential is always public. */
+function cloneAs(
+	fn: (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => Promise<Snapshot>,
+) {
+	return vi.fn(async (ref: RepoRef, dest: string, signal?: AbortSignal, at?: string) => ({
+		snap: await fn(ref, dest, signal, at),
+		credential: PUBLIC_CREDENTIAL,
+	}));
+}
+
 const { default: runInvestigationJob } = await import("./investigation-run.js");
 
 function makeJob(investigationId: string, attempts = 1) {
@@ -83,8 +97,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		})),
 		getIncident: vi.fn(async () => ({ id: "inc-1", title: "Boom" })),
 		incidentRepos: vi.fn(async () => []),
-		repoToken: vi.fn(async () => null),
-		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		snapshotWith: cloneAs(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
 		...overrides,
@@ -214,7 +227,7 @@ describe("cancel during the snapshot (#605 edge 23)", () => {
 				incidentRepos: vi.fn(async () => [
 					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
-				snapshot: vi.fn(async (_src, _dest, signal?: AbortSignal) => {
+				snapshotWith: cloneAs(async (_src, _dest, signal?: AbortSignal) => {
 					controller.abort(new Error("aborted"));
 					throw signal?.reason;
 				}),
@@ -251,13 +264,13 @@ describe("#331 workspace record (in-process run)", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
 			const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
-			const snapshot = vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const }));
+			const snapshot = cloneAs(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const }));
 			const ports = makePorts({
 				createTimelineEntry,
 				incidentRepos: vi.fn(async () => [
 					{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 				]),
-				snapshot,
+				snapshotWith: snapshot,
 			});
 
 			await runInvestigationJob(
@@ -268,7 +281,7 @@ describe("#331 workspace record (in-process run)", () => {
 			);
 
 			expect(snapshot).toHaveBeenCalledWith(
-				expect.objectContaining({ kind: "url", source: "https://github.com/acme/api-gateway" }),
+				expect.objectContaining({ sourceKind: "url", url: "https://github.com/acme/api-gateway" }),
 				join(tmp, "runs", "inv-1", "repo"),
 				expect.any(AbortSignal),
 			);
@@ -318,7 +331,7 @@ describe("#331 workspace record (in-process run)", () => {
 			incidentRepos: vi.fn(async () => [
 				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
-			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
+			snapshotWith: cloneAs(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});
 
 		await runInvestigationJob(
@@ -346,7 +359,7 @@ describe("#331 workspace record (in-process run)", () => {
 			incidentRepos: vi.fn(async () => [
 				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: null, connectionId: null, serviceName: "checkout" },
 			]),
-			snapshot: vi.fn(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
+			snapshotWith: cloneAs(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const })),
 		});
 
 		const result = await runInvestigationJob(

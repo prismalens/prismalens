@@ -8,13 +8,13 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AddRepositorySourceSchema,
-	BatchCreateRepositoriesSchema,
 	IdParamSchema,
 	LinkRepositorySchema,
 	PaginationSchema,
 	RepositorySchema,
 	RepositoryWithServicesSchema,
 	ServiceRepositorySchema,
+	SetRepositoryCredentialSchema,
 } from "../schemas/index.js";
 
 export const repositoriesContract = {
@@ -34,23 +34,18 @@ export const repositoriesContract = {
 		.output(RepositorySchema),
 
 	/**
-	 * Batch create repositories from VCS import
-	 * POST /repositories/batch
+	 * Pin a saved git host token to a repository, or set it back to Auto, then validate again (#673)
+	 * PATCH /repositories/:id/credential
 	 */
-	batchCreate: oc
+	setCredential: oc
 		.route({
-			method: "POST",
-			path: "/repositories/batch",
-			summary: "Batch create repositories from VCS import",
+			method: "PATCH",
+			path: "/repositories/{id}/credential",
+			summary: "Choose the saved token a repository clones with, or Auto",
 			tags: ["repositories"],
 		})
-		.input(BatchCreateRepositoriesSchema)
-		.output(
-			z.object({
-				created: z.number().int(),
-				repositories: z.array(RepositorySchema),
-			}),
-		),
+		.input(SetRepositoryCredentialSchema)
+		.output(RepositorySchema),
 
 	/**
 	 * List all repositories

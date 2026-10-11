@@ -549,18 +549,18 @@ Then(
 );
 
 Then(
-	'"Export" and "Post to GitHub" are at the top right of the report\'s header',
+	'"Export" is at the top right of the report\'s header',
 	async ({ page }) => {
 		const header = await box(page.getByTestId("report-header"));
-		for (const id of ["export-report-markdown", "post-report-github"]) {
-			const b = await box(shown(page.getByTestId(id)));
-			expect(b.x, `${id} sits in the header's right half`).toBeGreaterThan(
-				header.x + header.width / 2,
-			);
-			expect(b.y + b.height, `${id} is on the first screen`).toBeLessThan(
-				page.viewportSize()?.height ?? 720,
-			);
-		}
+		const id = "export-report-markdown";
+		const b = await box(shown(page.getByTestId(id)));
+		expect(b.x, `${id} sits in the header's right half`).toBeGreaterThan(
+			header.x + header.width / 2,
+		);
+		expect(b.y + b.height, `${id} is on the first screen`).toBeLessThan(
+			page.viewportSize()?.height ?? 720,
+		);
+		await expect(page.getByTestId("post-report-github")).toHaveCount(0);
 	},
 );
 
@@ -770,11 +770,10 @@ Then(
 );
 
 Then(
-	'"Export" and "Post to GitHub" sit in the report\'s header, beside the run',
+	'"Export" sits in the report\'s header, beside the run',
 	async ({ page }) => {
 		const header = page.getByTestId("report-header");
-		for (const id of ["export-report-markdown", "post-report-github"])
-			await expect(header.getByTestId(id)).toBeVisible();
+		await expect(header.getByTestId("export-report-markdown")).toBeVisible();
 		const answer = await box(page.getByTestId("report-answer"));
 		const h = await box(header);
 		expect(h.y + h.height).toBeLessThanOrEqual(answer.y + 1);

@@ -463,6 +463,7 @@ async function runFollowUp(
 			investigationId: id,
 			incidentId: data.incidentId,
 			runId: id,
+			workspace: JSON.stringify(toRunWorkspace(workspace)),
 			resume: { note: workspace.note, continuing },
 			...(kind === "chat" ? { chat: true } : {}),
 		});
@@ -947,15 +948,12 @@ export async function resolveWorkspace(
 	for (const [i, { repo, services }] of repos.entries()) {
 		const name = names[i] as string;
 		try {
-			const token = repo.connectionId
-				? await ports.repoToken(repo.connectionId).catch(() => null)
-				: null;
-			const snap = await ports.snapshot(
+			const { snap, credential } = await ports.snapshotWith(
 				{
-					kind: repo.sourceKind,
-					source: repo.url,
+					sourceKind: repo.sourceKind,
+					url: repo.url,
+					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
-					token,
 				},
 				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
 				signal,
@@ -971,6 +969,7 @@ export async function resolveWorkspace(
 				head: snap.head,
 				branch: snap.branch,
 				services,
+				credential,
 			});
 		} catch (e) {
 			// The primary service's repo is the run; another alert's broken link is not.
@@ -1009,6 +1008,7 @@ export async function resolveWorkspace(
 /**
  * The first run's workspace again, at the same paths and commits: harness
  * session stores are keyed by directory (anthropics/claude-code#58591, #747).
+ * Each repo carries the credential this rebuild used, which may differ from the first run's (#673).
  */
 export async function rebuildWorkspace(
 	ws: RunWorkspace,
@@ -1020,19 +1020,22 @@ export async function rebuildWorkspace(
 	const runDir = runDirFor(investigationId);
 	// Paths come back from the row; nothing outside this run's dir is ever replaced.
 	inside(runDir, relative(runDir, ws.cwd));
+	const repos: RunWorkspaceRepo[] = [];
 	for (const repo of ws.repos) {
 		inside(runDir, relative(runDir, repo.dir));
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const token = repo.connectionId
-			? await ports.repoToken(repo.connectionId).catch(() => null)
-			: null;
-		await ports.snapshot(
-			{ kind: repo.sourceKind, source: repo.url, token },
+		const { credential } = await ports.snapshotWith(
+			{
+				sourceKind: repo.sourceKind,
+				url: repo.url,
+				connectionId: repo.connectionId,
+			},
 			repo.dir,
 			signal,
 			repo.head,
 		);
+		repos.push({ ...repo, credential });
 	}
 	mkdirSync(ws.cwd, { recursive: true });
 	const pinned =
@@ -1041,6 +1044,7 @@ export async function rebuildWorkspace(
 			: ws.repos.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
 	return {
 		...ws,
+		repos,
 		note: ws.repos.length
 			? `Continuing the same ${harnessLabel} session in a fresh workspace pinned to ${pinned}.`
 			: `Continuing the same ${harnessLabel} session; this run had no repository.`,

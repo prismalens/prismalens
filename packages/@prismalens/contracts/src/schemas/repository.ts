@@ -13,6 +13,43 @@ import { DateStringSchema } from "./common.js";
 
 export const RepositorySourceKindSchema = z.enum(["folder", "url"]);
 
+/** Which credential git uses for a repository (#673). Never holds a secret. */
+export const RunCredentialSchema = z.object({
+	source: z.enum(["connection", "machine", "none"]),
+	/** The `Code:` text: "machine git (gh, sumit)", "token A", "public", "folder". */
+	label: z.string(),
+	/** The tooltip: the helper value, "ssh keys" or the template id, plus "fp <8 hex>" for a token. */
+	via: z.string(),
+	connectionId: z.string().optional(),
+	fingerprint: z.string().optional(),
+	/** The machine's credential was refused and the one matching saved token was used. */
+	fallback: z.literal(true).optional(),
+});
+export type RunCredential = z.infer<typeof RunCredentialSchema>;
+
+export const GitCredentialCandidateSchema = z.object({
+	connectionId: z.string(),
+	label: z.string(),
+	fingerprint: z.string(),
+});
+
+/** A service row's credential: a run's, plus why the row cannot resolve by itself. */
+export const GitCredentialDisplaySchema = RunCredentialSchema.extend({
+	problem: z
+		.object({
+			code: z.enum([
+				"ambiguous",
+				"pinned-unusable",
+				"probe-timeout",
+				"legacy-link",
+			]),
+			message: z.string(),
+			candidates: z.array(GitCredentialCandidateSchema).optional(),
+		})
+		.optional(),
+});
+export type GitCredentialDisplay = z.infer<typeof GitCredentialDisplaySchema>;
+
 export const RepositorySchema = z.object({
 	id: z.string().uuid(),
 	/** Null for a folder or URL the operator typed; set when a VCS connection discovered it. */
@@ -33,6 +70,8 @@ export const RepositorySchema = z.object({
 	syncedAt: DateStringSchema.nullable(),
 	createdAt: DateStringSchema,
 	updatedAt: DateStringSchema,
+	/** The credential the next git call would use, worked out when the row is read (#673). */
+	credential: GitCredentialDisplaySchema.optional(),
 });
 
 /** Relative to the repository root; the run joins it onto the snapshot, so it must stay inside. */
@@ -52,19 +91,10 @@ export const AddRepositorySourceSchema = z.object({
 	subPath: SubPathSchema.optional(),
 });
 
-export const CreateRepositorySchema = z.object({
-	connectionId: z.string().uuid(),
-	fullName: z.string(),
-	url: z.string(),
-	description: z.string().optional(),
-	language: z.string().optional(),
-	defaultBranch: z.string().optional(),
-	isPrivate: z.boolean().optional(),
-	metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
-export const BatchCreateRepositoriesSchema = z.object({
-	repositories: z.array(CreateRepositorySchema).min(1),
+/** Pin a saved token to a repository, or null for Auto. */
+export const SetRepositoryCredentialSchema = z.object({
+	id: z.string().uuid(),
+	connectionId: z.string().uuid().nullable(),
 });
 
 // =============================================================================
@@ -99,9 +129,8 @@ export type RepositorySourceKind = z.infer<typeof RepositorySourceKindSchema>;
 export type AddRepositorySourceInput = z.infer<
 	typeof AddRepositorySourceSchema
 >;
-export type CreateRepositoryInput = z.infer<typeof CreateRepositorySchema>;
-export type BatchCreateRepositoriesInput = z.infer<
-	typeof BatchCreateRepositoriesSchema
+export type SetRepositoryCredentialInput = z.infer<
+	typeof SetRepositoryCredentialSchema
 >;
 export type ServiceRepository = z.infer<typeof ServiceRepositorySchema>;
 export type LinkRepositoryInput = z.infer<typeof LinkRepositorySchema>;

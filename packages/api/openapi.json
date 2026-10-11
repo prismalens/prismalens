@@ -8759,6 +8759,39 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -9822,6 +9855,39 @@
                                           "items": {
                                             "type": "string"
                                           }
+                                        },
+                                        "credential": {
+                                          "type": "object",
+                                          "properties": {
+                                            "source": {
+                                              "enum": [
+                                                "connection",
+                                                "machine",
+                                                "none"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            },
+                                            "via": {
+                                              "type": "string"
+                                            },
+                                            "connectionId": {
+                                              "type": "string"
+                                            },
+                                            "fingerprint": {
+                                              "type": "string"
+                                            },
+                                            "fallback": {
+                                              "const": true
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "label",
+                                            "via"
+                                          ]
                                         }
                                       },
                                       "required": [
@@ -10904,6 +10970,39 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -11953,6 +12052,39 @@
                                         "items": {
                                           "type": "string"
                                         }
+                                      },
+                                      "credential": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "via": {
+                                            "type": "string"
+                                          },
+                                          "connectionId": {
+                                            "type": "string"
+                                          },
+                                          "fingerprint": {
+                                            "type": "string"
+                                          },
+                                          "fallback": {
+                                            "const": true
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "via"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -13068,6 +13200,39 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -15298,6 +15463,39 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -17084,6 +17282,39 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -17255,67 +17486,6 @@
                   "required": [
                     "filename",
                     "markdown"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/investigations/{id}/report/github": {
-      "post": {
-        "operationId": "investigations.postToGitHub",
-        "summary": "Post the report as a comment on a GitHub issue or PR",
-        "description": "Post the report as a comment on a GitHub issue or PR (github.com only in v1; GitHub Enterprise Server has no integration template today).",
-        "tags": [
-          "investigations"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "target": {
-                    "type": "string",
-                    "pattern": "^https:\\/\\/github\\.com\\/([A-Za-z0-9_.-]+)\\/([A-Za-z0-9_.-]+)\\/(issues|pull)\\/(\\d+)$"
-                  }
-                },
-                "required": [
-                  "target"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "commentUrl": {
-                      "type": "string",
-                      "format": "uri"
-                    }
-                  },
-                  "required": [
-                    "commentUrl"
                   ]
                 }
               }
@@ -18638,6 +18808,82 @@
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "credential": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "connection",
+                            "machine",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "via": {
+                          "type": "string"
+                        },
+                        "connectionId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "fallback": {
+                          "const": true
+                        },
+                        "problem": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ambiguous",
+                                "pinned-unusable",
+                                "probe-timeout",
+                                "legacy-link"
+                              ],
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "candidates": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "connectionId",
+                                  "label",
+                                  "fingerprint"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "label",
+                        "via"
+                      ]
                     }
                   },
                   "required": [
@@ -18665,12 +18911,23 @@
         }
       }
     },
-    "/repositories/batch": {
-      "post": {
-        "operationId": "repositories.batchCreate",
-        "summary": "Batch create repositories from VCS import",
+    "/repositories/{id}/credential": {
+      "patch": {
+        "operationId": "repositories.setCredential",
+        "summary": "Choose the saved token a repository clones with, or Auto",
         "tags": [
           "repositories"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -18679,52 +18936,20 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "repositories": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "connectionId": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        "fullName": {
-                          "type": "string"
-                        },
-                        "url": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "language": {
-                          "type": "string"
-                        },
-                        "defaultBranch": {
-                          "type": "string"
-                        },
-                        "isPrivate": {
-                          "type": "boolean"
-                        },
-                        "metadata": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {}
-                        }
+                  "connectionId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid"
                       },
-                      "required": [
-                        "connectionId",
-                        "fullName",
-                        "url"
-                      ]
-                    }
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
-                  "repositories"
+                  "connectionId"
                 ]
               }
             }
@@ -18738,158 +18963,217 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "created": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
                     },
-                    "repositories": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "connectionId": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "uuid"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "sourceKind": {
-                            "enum": [
-                              "folder",
-                              "url"
-                            ],
-                            "type": "string"
-                          },
-                          "fullName": {
-                            "type": "string"
-                          },
-                          "url": {
-                            "type": "string"
-                          },
-                          "description": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "language": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "defaultBranch": {
-                            "type": "string"
-                          },
-                          "isPrivate": {
-                            "type": "boolean"
-                          },
-                          "metadata": {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "propertyNames": {
-                                  "type": "string"
-                                },
-                                "additionalProperties": {}
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "syncBranch": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "syncHead": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "syncError": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "syncedAt": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "updatedAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
+                    "connectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
                         },
-                        "required": [
-                          "id",
-                          "connectionId",
-                          "sourceKind",
-                          "fullName",
-                          "url",
-                          "description",
-                          "language",
-                          "defaultBranch",
-                          "isPrivate",
-                          "metadata",
-                          "syncBranch",
-                          "syncHead",
-                          "syncError",
-                          "syncedAt",
-                          "createdAt",
-                          "updatedAt"
-                        ]
-                      }
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "folder",
+                        "url"
+                      ],
+                      "type": "string"
+                    },
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "defaultBranch": {
+                      "type": "string"
+                    },
+                    "isPrivate": {
+                      "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncBranch": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncHead": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "credential": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "connection",
+                            "machine",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "via": {
+                          "type": "string"
+                        },
+                        "connectionId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "fallback": {
+                          "const": true
+                        },
+                        "problem": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ambiguous",
+                                "pinned-unusable",
+                                "probe-timeout",
+                                "legacy-link"
+                              ],
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "candidates": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "connectionId",
+                                  "label",
+                                  "fingerprint"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "label",
+                        "via"
+                      ]
                     }
                   },
                   "required": [
-                    "created",
-                    "repositories"
+                    "id",
+                    "connectionId",
+                    "sourceKind",
+                    "fullName",
+                    "url",
+                    "description",
+                    "language",
+                    "defaultBranch",
+                    "isPrivate",
+                    "metadata",
+                    "syncBranch",
+                    "syncHead",
+                    "syncError",
+                    "syncedAt",
+                    "createdAt",
+                    "updatedAt"
                   ]
                 }
               }
@@ -19079,6 +19363,82 @@
                           "updatedAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "credential": {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "connection",
+                                  "machine",
+                                  "none"
+                                ],
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "via": {
+                                "type": "string"
+                              },
+                              "connectionId": {
+                                "type": "string"
+                              },
+                              "fingerprint": {
+                                "type": "string"
+                              },
+                              "fallback": {
+                                "const": true
+                              },
+                              "problem": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "enum": [
+                                      "ambiguous",
+                                      "pinned-unusable",
+                                      "probe-timeout",
+                                      "legacy-link"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "candidates": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "connectionId": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "fingerprint": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "connectionId",
+                                        "label",
+                                        "fingerprint"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "code",
+                                  "message"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "label",
+                              "via"
+                            ]
                           },
                           "services": {
                             "type": "array",
@@ -19337,6 +19697,82 @@
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "credential": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "connection",
+                            "machine",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "via": {
+                          "type": "string"
+                        },
+                        "connectionId": {
+                          "type": "string"
+                        },
+                        "fingerprint": {
+                          "type": "string"
+                        },
+                        "fallback": {
+                          "const": true
+                        },
+                        "problem": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ambiguous",
+                                "pinned-unusable",
+                                "probe-timeout",
+                                "legacy-link"
+                              ],
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "candidates": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "connectionId",
+                                  "label",
+                                  "fingerprint"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "label",
+                        "via"
+                      ]
                     },
                     "services": {
                       "type": "array",
@@ -20245,6 +20681,82 @@
                                     "updatedAt": {
                                       "type": "string",
                                       "format": "date-time"
+                                    },
+                                    "credential": {
+                                      "type": "object",
+                                      "properties": {
+                                        "source": {
+                                          "enum": [
+                                            "connection",
+                                            "machine",
+                                            "none"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "via": {
+                                          "type": "string"
+                                        },
+                                        "connectionId": {
+                                          "type": "string"
+                                        },
+                                        "fingerprint": {
+                                          "type": "string"
+                                        },
+                                        "fallback": {
+                                          "const": true
+                                        },
+                                        "problem": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "enum": [
+                                                "ambiguous",
+                                                "pinned-unusable",
+                                                "probe-timeout",
+                                                "legacy-link"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "message": {
+                                              "type": "string"
+                                            },
+                                            "candidates": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                  "connectionId": {
+                                                    "type": "string"
+                                                  },
+                                                  "label": {
+                                                    "type": "string"
+                                                  },
+                                                  "fingerprint": {
+                                                    "type": "string"
+                                                  }
+                                                },
+                                                "required": [
+                                                  "connectionId",
+                                                  "label",
+                                                  "fingerprint"
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          "required": [
+                                            "code",
+                                            "message"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "source",
+                                        "label",
+                                        "via"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -20734,6 +21246,82 @@
                               "updatedAt": {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              "credential": {
+                                "type": "object",
+                                "properties": {
+                                  "source": {
+                                    "enum": [
+                                      "connection",
+                                      "machine",
+                                      "none"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "via": {
+                                    "type": "string"
+                                  },
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  },
+                                  "fallback": {
+                                    "const": true
+                                  },
+                                  "problem": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "enum": [
+                                          "ambiguous",
+                                          "pinned-unusable",
+                                          "probe-timeout",
+                                          "legacy-link"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      },
+                                      "candidates": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "connectionId": {
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            },
+                                            "fingerprint": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "connectionId",
+                                            "label",
+                                            "fingerprint"
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "message"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "source",
+                                  "label",
+                                  "via"
+                                ]
                               }
                             },
                             "required": [
@@ -21696,6 +22284,82 @@
                                   "updatedAt": {
                                     "type": "string",
                                     "format": "date-time"
+                                  },
+                                  "credential": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "via": {
+                                        "type": "string"
+                                      },
+                                      "connectionId": {
+                                        "type": "string"
+                                      },
+                                      "fingerprint": {
+                                        "type": "string"
+                                      },
+                                      "fallback": {
+                                        "const": true
+                                      },
+                                      "problem": {
+                                        "type": "object",
+                                        "properties": {
+                                          "code": {
+                                            "enum": [
+                                              "ambiguous",
+                                              "pinned-unusable",
+                                              "probe-timeout",
+                                              "legacy-link"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "message": {
+                                            "type": "string"
+                                          },
+                                          "candidates": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "object",
+                                              "properties": {
+                                                "connectionId": {
+                                                  "type": "string"
+                                                },
+                                                "label": {
+                                                  "type": "string"
+                                                },
+                                                "fingerprint": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "connectionId",
+                                                "label",
+                                                "fingerprint"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "code",
+                                          "message"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "via"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -23540,8 +24204,7 @@
                         "enum": [
                           "api_key",
                           "basic",
-                          "oauth2",
-                          "github_app"
+                          "oauth2"
                         ],
                         "type": "string"
                       },
@@ -23802,6 +24465,12 @@
                       },
                       "postCreationNavigateTo": {
                         "type": "string"
+                      },
+                      "gitHost": {
+                        "type": "boolean"
+                      },
+                      "listed": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -23864,8 +24533,7 @@
                       "enum": [
                         "api_key",
                         "basic",
-                        "oauth2",
-                        "github_app"
+                        "oauth2"
                       ],
                       "type": "string"
                     },
@@ -24126,6 +24794,12 @@
                     },
                     "postCreationNavigateTo": {
                       "type": "string"
+                    },
+                    "gitHost": {
+                      "type": "boolean"
+                    },
+                    "listed": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -24822,8 +25496,7 @@
                                 "enum": [
                                   "api_key",
                                   "basic",
-                                  "oauth2",
-                                  "github_app"
+                                  "oauth2"
                                 ],
                                 "type": "string"
                               },
@@ -25084,6 +25757,12 @@
                               },
                               "postCreationNavigateTo": {
                                 "type": "string"
+                              },
+                              "gitHost": {
+                                "type": "boolean"
+                              },
+                              "listed": {
+                                "type": "boolean"
                               }
                             },
                             "required": [
@@ -25102,6 +25781,15 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "legacy": {
+                        "const": true
+                      },
+                      "host": {
+                        "type": "string"
+                      },
+                      "fingerprint": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -25337,8 +26025,7 @@
                               "enum": [
                                 "api_key",
                                 "basic",
-                                "oauth2",
-                                "github_app"
+                                "oauth2"
                               ],
                               "type": "string"
                             },
@@ -25599,6 +26286,12 @@
                             },
                             "postCreationNavigateTo": {
                               "type": "string"
+                            },
+                            "gitHost": {
+                              "type": "boolean"
+                            },
+                            "listed": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -25617,6 +26310,15 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "legacy": {
+                      "const": true
+                    },
+                    "host": {
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -25896,164 +26598,20 @@
                     },
                     "error": {
                       "type": "string"
+                    },
+                    "details": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "untested": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "success"
                   ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/connections/{id}/git/organizations": {
-      "get": {
-        "operationId": "integrations.getGitOrganizations",
-        "summary": "Get organizations from git provider",
-        "tags": [
-          "integrations",
-          "git"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "displayName": {
-                        "type": "string"
-                      },
-                      "avatarUrl": {
-                        "type": "string"
-                      },
-                      "repoCount": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "description": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "displayName"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/connections/{id}/git/repositories": {
-      "get": {
-        "operationId": "integrations.getGitRepositories",
-        "summary": "Get repositories from git provider",
-        "tags": [
-          "integrations",
-          "git"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "org",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "fullName": {
-                        "type": "string"
-                      },
-                      "description": {
-                        "type": "string"
-                      },
-                      "language": {
-                        "type": "string"
-                      },
-                      "stars": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      "defaultBranch": {
-                        "type": "string"
-                      },
-                      "isPrivate": {
-                        "type": "boolean"
-                      },
-                      "url": {
-                        "type": "string"
-                      },
-                      "cloneUrl": {
-                        "type": "string"
-                      },
-                      "updatedAt": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "fullName",
-                      "defaultBranch",
-                      "isPrivate",
-                      "url"
-                    ]
-                  }
                 }
               }
             }
@@ -26096,277 +26654,6 @@
                 },
                 "required": [
                   "config"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "integrationId": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "label": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "enum": [
-                        "ACTIVE",
-                        "TOKEN_EXPIRED",
-                        "REFRESH_FAILED",
-                        "CREDENTIALS_INVALID",
-                        "REVOKED",
-                        "ERROR"
-                      ],
-                      "type": "string"
-                    },
-                    "tokenExpiresAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "grantedScopes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "lastUsedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "lastRefreshedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "lastErrorMessage": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "lastErrorAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "consecutiveErrors": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "createdAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "integrationId",
-                    "label",
-                    "status",
-                    "tokenExpiresAt",
-                    "grantedScopes",
-                    "lastUsedAt",
-                    "lastRefreshedAt",
-                    "lastErrorMessage",
-                    "lastErrorAt",
-                    "consecutiveErrors",
-                    "createdAt",
-                    "updatedAt"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/{id}/github/installations": {
-      "get": {
-        "operationId": "integrations.listGitHubInstallations",
-        "summary": "List available GitHub App installations",
-        "tags": [
-          "integrations",
-          "github"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "number"
-                      },
-                      "account": {
-                        "type": "object",
-                        "properties": {
-                          "login": {
-                            "type": "string"
-                          },
-                          "id": {
-                            "type": "number"
-                          },
-                          "type": {
-                            "type": "string"
-                          },
-                          "avatarUrl": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "login",
-                          "id",
-                          "type"
-                        ]
-                      },
-                      "appId": {
-                        "type": "number"
-                      },
-                      "targetType": {
-                        "type": "string"
-                      },
-                      "permissions": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {
-                          "type": "string"
-                        }
-                      },
-                      "events": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "repositorySelection": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "account",
-                      "appId",
-                      "targetType",
-                      "permissions",
-                      "events",
-                      "repositorySelection"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/{id}/github/installations/connect": {
-      "post": {
-        "operationId": "integrations.connectGitHubInstallation",
-        "summary": "Create connection for a GitHub App installation",
-        "tags": [
-          "integrations",
-          "github"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "installationId": {
-                    "type": "string"
-                  },
-                  "organization": {
-                    "type": "string"
-                  },
-                  "permissionOverrides": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "installationId"
                 ]
               }
             }
@@ -27326,113 +27613,6 @@
                     "connections",
                     "repositories",
                     "affectedServices"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/oauth/{integrationId}/authorize": {
-      "post": {
-        "operationId": "oauth.start",
-        "summary": "Start OAuth authorization flow",
-        "tags": [
-          "oauth"
-        ],
-        "parameters": [
-          {
-            "name": "integrationId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "redirectUrl": {
-                      "type": "string",
-                      "format": "uri"
-                    }
-                  },
-                  "required": [
-                    "redirectUrl"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/integrations/oauth/callback": {
-      "get": {
-        "operationId": "oauth.callback",
-        "summary": "Handle OAuth callback",
-        "tags": [
-          "oauth"
-        ],
-        "parameters": [
-          {
-            "name": "code",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          },
-          {
-            "name": "error",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          },
-          {
-            "name": "error_description",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "not": {}
-                    },
-                    {
-                      "not": {}
-                    }
                   ]
                 }
               }

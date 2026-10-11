@@ -15,6 +15,10 @@ import type {
 	TopologyEdge,
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
+import {
+	GitCredentialService,
+	pickOf,
+} from "../integrations/git-credential.service.js";
 import { serializeRepository } from "../repositories/serialize-repository.js";
 import type {
 	AddDependencyDto,
@@ -44,7 +48,10 @@ function refuseBadInvestigationMetadata(
 
 @Controller()
 export class ServicesController {
-	constructor(private readonly servicesService: ServicesService) {}
+	constructor(
+		private readonly servicesService: ServicesService,
+		private readonly gitCredentials: GitCredentialService,
+	) {}
 
 	@Implement(servicesContract)
 	services() {
@@ -77,7 +84,9 @@ export class ServicesController {
 					offset: input.offset,
 				});
 				return {
-					data: data.map((s) => this.serializeServiceWithRelations(s)),
+					data: await Promise.all(
+						data.map((s) => this.serializeServiceWithRelations(s)),
+					),
 					total,
 				};
 			}),
@@ -226,7 +235,7 @@ export class ServicesController {
 						}));
 
 					return {
-						service: this.serializeServiceWithRelations(service),
+						service: await this.serializeServiceWithRelations(service),
 						upstream,
 						downstream,
 					};
@@ -245,9 +254,9 @@ export class ServicesController {
 		} as Service;
 	}
 
-	private serializeServiceWithRelations(
+	private async serializeServiceWithRelations(
 		service: ServiceWithDependencies | PrismaService,
-	): ServiceWithRelations {
+	): Promise<ServiceWithRelations> {
 		const serialized = this.serializeService(service);
 
 		const withDeps = service as ServiceWithDependencies;
@@ -255,17 +264,29 @@ export class ServicesController {
 
 		// Serialize nested repositories (ServiceRepository + Repository)
 		const repositories = Array.isArray(withRelations.repositories)
-			? (withRelations.repositories as Array<Record<string, unknown>>).map(
-					(sr) => ({
-						...sr,
-						createdAt:
-							sr.createdAt instanceof Date
-								? sr.createdAt.toISOString()
-								: sr.createdAt,
-						repository: sr.repository
-							? serializeRepository(sr.repository as PrismaRepository)
-							: undefined,
-					}),
+			? await Promise.all(
+					(withRelations.repositories as Array<Record<string, unknown>>).map(
+						async (sr) => ({
+							...sr,
+							createdAt:
+								sr.createdAt instanceof Date
+									? sr.createdAt.toISOString()
+									: sr.createdAt,
+							repository: sr.repository
+								? await serializeRepository(
+										sr.repository as PrismaRepository,
+										(r) =>
+											this.gitCredentials.preview({
+												sourceKind:
+													r.sourceKind === "folder" ? "folder" : "url",
+												url: r.url,
+												connectionId: r.connectionId,
+												pick: pickOf(r.metadata),
+											}),
+									)
+								: undefined,
+						}),
+					),
 				)
 			: [];
 

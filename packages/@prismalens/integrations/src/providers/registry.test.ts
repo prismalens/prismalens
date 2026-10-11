@@ -19,17 +19,15 @@ import {
 } from "./index.js";
 
 describe("Exact-templateId Adapter Registry (#446)", () => {
-	it("resolves both github-app and github-token to GitHubAdapter", () => {
-		const appAdapter = createAdapter("github-app");
+	it("resolves github-token to GitHubAdapter and the removed GitHub App to nothing", () => {
 		const tokenAdapter = createAdapter("github-token");
 
-		expect(appAdapter).toBeInstanceOf(GitHubAdapter);
 		expect(tokenAdapter).toBeInstanceOf(GitHubAdapter);
-		expect(appAdapter?.name).toBe("github");
 		expect(tokenAdapter?.name).toBe("github");
 
-		expect(isAdapterSupported("github-app")).toBe(true);
 		expect(isAdapterSupported("github-token")).toBe(true);
+		expect(createAdapter("github-app")).toBeNull();
+		expect(createAdapter("git-host-token")).toBeNull();
 	});
 
 	it("resolves render to its adapter", () => {
@@ -76,8 +74,8 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		// templatesForSegment
 		expect(getTemplatesForSegment("deployment")).toEqual(["render"]);
 		expect(templatesForSegment("deployment")).toEqual(["render"]);
-		expect(getTemplatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
-		expect(templatesForSegment("vcs")).toEqual(["github-app", "github-token"]);
+		expect(getTemplatesForSegment("vcs")).toEqual(["github-token"]);
+		expect(templatesForSegment("vcs")).toEqual(["github-token"]);
 		expect(getTemplatesForSegment("metrics")).toEqual(["prometheus"]);
 		expect(templatesForSegment("metrics")).toEqual(["prometheus"]);
 
@@ -86,14 +84,12 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 			"render",
 		]);
 		expect(getTemplatesForCapability("vcs:read_file")).toEqual([
-			"github-app",
 			"github-token",
 		]);
 		expect(getTemplatesForCapability("vcs:list_orgs")).toEqual([
 			"github-token",
 		]);
 		expect(getTemplatesForCapability("vcs:list_repos")).toEqual([
-			"github-app",
 			"github-token",
 		]);
 		expect(getTemplatesForCapability("monitoring:read")).toEqual([
@@ -101,11 +97,8 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		]);
 
 		// Template-level capability asymmetry
-		const appTemplate = getTemplate("github-app");
 		const tokenTemplate = getTemplate("github-token");
-		expect(appTemplate).toBeDefined();
 		expect(tokenTemplate).toBeDefined();
-		expect(getCapabilities(appTemplate!)).not.toContain("vcs:list_orgs");
 		expect(getCapabilities(tokenTemplate!)).toContain("vcs:list_orgs");
 
 		const renderTemplate = getTemplate("render");

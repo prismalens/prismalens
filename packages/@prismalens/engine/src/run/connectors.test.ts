@@ -10,9 +10,9 @@ describe("telemetryEndpointsFrom (#633)", () => {
 
 		const otherConnectors: ResolvedConnector[] = [
 			{
-				templateId: "github-app",
+				templateId: "github-token",
 				connectionId: "conn-1",
-				label: "GitHub App",
+				label: "GitHub token",
 				baseUrl: "https://api.github.com",
 				segments: ["vcs"],
 			},

@@ -695,6 +695,8 @@ describe("buckets and classes", () => {
 	it("reduces an integration template to its vendor", () => {
 		expect(integrationKindFor("github-app")).toBe("github");
 		expect(integrationKindFor("github-token")).toBe("github");
+		expect(integrationKindFor("git-host-token", "github.com")).toBe("github");
+		expect(integrationKindFor("git-host-token", "gitlab.com")).toBe("other");
 		expect(integrationKindFor("render")).toBe("render");
 		expect(integrationKindFor("slack-webhook")).toBe("slack");
 		expect(integrationKindFor("some-vendor-nobody-shipped")).toBe("other");

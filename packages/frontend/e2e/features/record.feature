@@ -52,7 +52,7 @@ Feature: The incident record and its report
       And "What we could not check" lists each gap as a sentence
       And "Do now" is a checklist with one sentence saying PrismaLens did not run the steps
       And below the fold: "Ruled out" and "Grounded in" as a list of paths one per line, and no "Event log"
-      And "Export" and "Post to GitHub" are at the top right of the report's header
+      And "Export" is at the top right of the report's header
 
     Scenario: A report with no cause
       Given the run finished with no root cause and one supported finding
@@ -75,7 +75,7 @@ Feature: The incident record and its report
       Given a phone at 390 px and INC-1's report names a cause
       When I open the Report tab
       Then without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert
-      And "Export" and "Post to GitHub" sit in the report's header, beside the run
+      And "Export" sits in the report's header, beside the run
 
     Scenario: Hand the fix to my own agent
       When I press "Copy fix brief" in the report's menu

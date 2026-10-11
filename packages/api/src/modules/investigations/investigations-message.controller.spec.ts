@@ -13,7 +13,6 @@ import { ORPCError } from "@orpc/nest";
 import { DispatchService, FollowUpRefused } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
-import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -69,7 +68,6 @@ describe("InvestigationsController.message (#743)", () => {
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
-				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: {} },
 			],
@@ -244,7 +242,6 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
-				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
 				{ provide: HarnessService, useValue: {} },
 			],

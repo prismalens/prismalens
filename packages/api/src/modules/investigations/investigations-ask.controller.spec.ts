@@ -10,7 +10,6 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { GitHubCommentService } from "../delivery/github-comment.service.js";
 import { AttachmentsService } from "./attachments.service.js";
 import { InvestigationsController } from "./investigations.controller.js";
 import { InvestigationsService } from "./investigations.service.js";
@@ -34,7 +33,6 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 				{ provide: InvestigationsService, useValue: mockInvestigationsService },
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
-				{ provide: GitHubCommentService, useValue: { post: vi.fn() } },
 				{
 					provide: AttachmentsService,
 					useValue: { forJob: vi.fn(async () => []) },

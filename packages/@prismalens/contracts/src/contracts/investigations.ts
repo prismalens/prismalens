@@ -17,8 +17,6 @@ import {
 	InvestigationSchema,
 	InvestigationStatusSchema,
 	InvestigationWithRelationsSchema,
-	PostReportToGitHubResultSchema,
-	PostReportToGitHubSchema,
 	paginatedResponseSchema,
 	SendInvestigationMessageResultSchema,
 	SendInvestigationMessageSchema,
@@ -195,21 +193,4 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(InvestigationReportMarkdownSchema),
-
-	/**
-	 * Post the report as a comment on a GitHub issue or PR
-	 * POST /investigations/:id/report/github
-	 * github.com only in v1 (GHES has no template today); say so.
-	 */
-	postToGitHub: oc
-		.route({
-			method: "POST",
-			path: "/investigations/{id}/report/github",
-			summary: "Post the report as a comment on a GitHub issue or PR",
-			description:
-				"Post the report as a comment on a GitHub issue or PR (github.com only in v1; GitHub Enterprise Server has no integration template today).",
-			tags: ["investigations"],
-		})
-		.input(PostReportToGitHubSchema)
-		.output(PostReportToGitHubResultSchema),
 };

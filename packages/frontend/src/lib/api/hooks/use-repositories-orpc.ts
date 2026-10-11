@@ -61,15 +61,16 @@ export function useRepository(id: string) {
 }
 
 /**
- * Batch create repositories
+ * Pin a saved git host token to a repository, or set Auto with null (#673)
  */
-export function useBatchCreateRepositories() {
+export function useSetRepositoryCredential() {
 	const queryClient = useQueryClient();
 
 	return useMutation({
-		...orpc.repositories.batchCreate.mutationOptions(),
+		...orpc.repositories.setCredential.mutationOptions(),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: repositoryKeys.lists() });
+			queryClient.invalidateQueries({ queryKey: repositoryKeys.all() });
+			queryClient.invalidateQueries({ queryKey: serviceKeys.all() });
 		},
 	});
 }

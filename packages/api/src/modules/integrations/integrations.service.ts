@@ -8,11 +8,7 @@ import {
 	NotFoundException,
 	type OnModuleInit,
 } from "@nestjs/common";
-import type {
-	GitOrganization,
-	GitRepository,
-	ServiceIntegrationWithStatus,
-} from "@prismalens/contracts";
+import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import type {
 	Connection,
 	Integration,
@@ -23,17 +19,27 @@ import {
 	AuthManager,
 	type AuthManagerDeps,
 	type AuthTemplate,
-	assertCapability,
-	CapabilityNotSupportedError,
-	checkGitHubAppPermissions,
 	createAdapter,
-	GitHubAppFlow,
-	type GitHubInstallation,
 	getAllTemplates,
 	getTemplate,
-	hasCapability,
+	isLegacyTemplateId,
 	urlOnlyRequestFn,
 } from "@prismalens/integrations";
+import {
+	GIT_HOST_RULE,
+	GitCredential,
+	normalizeGitHost,
+	repoPath,
+	urlHost,
+} from "../../core/harness/git-credential.js";
+import { diagnoseGitFailure } from "../../core/harness/git-failure.js";
+import {
+	effectiveGitUrl,
+	GIT_LS_REMOTE_TIMEOUT_MS,
+	GitSpawnError,
+	remoteGitEnv,
+	spawnGit,
+} from "../../core/harness/git-spawn.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	integrationKindFor,
@@ -49,6 +55,7 @@ import type {
 	UpdateConnectionDto,
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
+import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 
 export interface ConnectionWithIntegration extends Connection {
 	integration: Integration;
@@ -65,6 +72,38 @@ export interface IntegrationContext {
 
 /** Upper bound for connection queries — prevents unbounded result sets in single-tenant deployments */
 const MAX_CONNECTIONS_PER_QUERY = 1000;
+
+export interface TestConnectionResult {
+	success: boolean;
+	error?: string;
+	details?: string[];
+	untested?: boolean;
+}
+
+/** Repositories a git host token's Test tries, and how many at once (a proxied request must not outlive them). */
+const TEST_REPO_LIMIT = 10;
+const TEST_CONCURRENCY = 3;
+
+const EXPIRY_HEADER = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):(\d{2}) UTC$/;
+
+/** GitHub's `github-authentication-token-expiration` header, e.g. `2026-10-17 09:30:00 UTC`; null when absent or another shape. */
+export function parseTokenExpiration(raw: string | null): Date | null {
+	const m = raw ? EXPIRY_HEADER.exec(raw.trim()) : null;
+	if (!m) return null;
+	const at = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+	return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** `host` of a git host token form, normalised; the API stores `host[:port]` only. */
+function normalizedConfig(
+	templateId: string,
+	config: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+	if (templateId !== "git-host-token" || !config) return config;
+	const host = normalizeGitHost(config.host ?? "");
+	if (!host) throw new BadRequestException(GIT_HOST_RULE);
+	return { ...config, host };
+}
 
 @Injectable()
 export class IntegrationsService implements OnModuleInit {
@@ -200,32 +239,12 @@ export class IntegrationsService implements OnModuleInit {
 			throw new NotFoundException(`Template '${dto.templateId}' not found`);
 		}
 
-		let clientIdEnc: Uint8Array<ArrayBuffer> | null = null;
-		let clientSecretEnc: Uint8Array<ArrayBuffer> | null = null;
-
-		if (template.githubApp) {
-			// For GitHub App: appId → clientIdEnc, { privateKey, webhookSecret } → clientSecretEnc
-			// clientId/clientSecret are plain strings — use vault.encrypt directly
-			// (not encryptJSON, which would double-serialize the already-JSON clientSecret)
-			const vault = this.credentialsService.getVault();
-			if (dto.clientId) {
-				clientIdEnc = new Uint8Array(
-					vault.encrypt(dto.clientId),
-				) as Uint8Array<ArrayBuffer>;
-			}
-			if (dto.clientSecret) {
-				clientSecretEnc = new Uint8Array(
-					vault.encrypt(dto.clientSecret),
-				) as Uint8Array<ArrayBuffer>;
-			}
-		} else {
-			clientIdEnc = dto.clientId
-				? this.credentialsService.encrypt(dto.clientId)
-				: null;
-			clientSecretEnc = dto.clientSecret
-				? this.credentialsService.encrypt(dto.clientSecret)
-				: null;
-		}
+		const clientIdEnc = dto.clientId
+			? this.credentialsService.encrypt(dto.clientId)
+			: null;
+		const clientSecretEnc = dto.clientSecret
+			? this.credentialsService.encrypt(dto.clientSecret)
+			: null;
 
 		// For api_key/basic templates: only one integration per template allowed
 		// (multiple connections go under the single integration)
@@ -240,7 +259,7 @@ export class IntegrationsService implements OnModuleInit {
 			}
 		}
 
-		// Enforce unique label per template (for multi-integration providers like GitHub App)
+		// Enforce unique label per template
 		const existingLabel = await this.prisma.integration.findFirst({
 			where: { templateId: dto.templateId, label: dto.label },
 		});
@@ -310,7 +329,17 @@ export class IntegrationsService implements OnModuleInit {
 
 	async deleteIntegration(id: string): Promise<boolean> {
 		try {
-			await this.prisma.integration.delete({ where: { id } });
+			await this.prisma.$transaction(async (tx) => {
+				const connections = await tx.connection.findMany({
+					where: { integrationId: id },
+					select: { id: true },
+				});
+				await releaseRepositories(
+					tx,
+					connections.map((c) => c.id),
+				);
+				await tx.integration.delete({ where: { id } });
+			});
 			return true;
 		} catch {
 			return false;
@@ -353,20 +382,24 @@ export class IntegrationsService implements OnModuleInit {
 			);
 		}
 
+		const connectionConfig = normalizedConfig(
+			integration.templateId,
+			dto.connectionConfig,
+		);
 		const connection = await this.prisma.connection.create({
 			data: {
 				integrationId: dto.integrationId,
 				label: dto.label,
 				credentialsEnc: this.credentialsService.encrypt(dto.credentials),
-				connectionConfigEnc: dto.connectionConfig
-					? this.credentialsService.encrypt(dto.connectionConfig)
+				connectionConfigEnc: connectionConfig
+					? this.credentialsService.encrypt(connectionConfig)
 					: null,
 				status: "ACTIVE",
 			},
 		});
 		// The vendor only. Not the label, the template id, or anything encrypted.
 		await this.telemetry.capture("integration_configured", {
-			kind: integrationKindFor(integration.templateId),
+			kind: integrationKindFor(integration.templateId, connectionConfig?.host),
 		});
 		return connection;
 	}
@@ -413,7 +446,10 @@ export class IntegrationsService implements OnModuleInit {
 		}
 		if (dto.connectionConfig) {
 			updateData.connectionConfigEnc = this.credentialsService.encrypt(
-				dto.connectionConfig,
+				normalizedConfig(
+					connection.integration.templateId,
+					dto.connectionConfig,
+				),
 			);
 		}
 
@@ -423,16 +459,68 @@ export class IntegrationsService implements OnModuleInit {
 		});
 	}
 
+	/**
+	 * Repositories found through the connection keep their URL and resolve Auto, and
+	 * picks of it are cleared, in one transaction; nothing a user typed is deleted (#673).
+	 * A removed template's Integration row goes too: it holds that app's private key.
+	 */
 	async deleteConnection(id: string): Promise<boolean> {
 		const connection = await this.findConnectionById(id);
 		if (!connection) return false;
 
 		try {
-			await this.prisma.connection.delete({ where: { id } });
+			await this.prisma.$transaction(async (tx) => {
+				await releaseRepositories(tx, [id]);
+				await tx.connection.delete({ where: { id } });
+				if (isLegacyTemplateId(connection.integration.templateId)) {
+					const others = await tx.connection.count({
+						where: { integrationId: connection.integrationId },
+					});
+					if (others === 0)
+						await tx.integration.delete({
+							where: { id: connection.integrationId },
+						});
+				}
+			});
 			return true;
 		} catch {
 			return false;
 		}
+	}
+
+	/** A git host connection's host and fingerprint, for Settings; null for any other connection. */
+	gitHostInfo(
+		conn: ConnectionWithIntegration,
+	): { host: string; fingerprint: string } | null {
+		const t = readHostToken(conn, this.credentialsService);
+		return t ? { host: t.host, fingerprint: t.fingerprint } : null;
+	}
+
+	/**
+	 * A token git refused (or found expired) during a save, a run or a follow-up: the
+	 * connection shows it in Settings. Written once per distinct message.
+	 */
+	async recordGitFailure(
+		connectionId: string,
+		failure: { code: string; message: string },
+	): Promise<void> {
+		const status = failure.code === "token-expired" ? "TOKEN_EXPIRED" : "ERROR";
+		const message = failure.message.slice(0, 500);
+		const conn = await this.prisma.connection.findUnique({
+			where: { id: connectionId },
+			select: { status: true, lastErrorMessage: true },
+		});
+		if (!conn || (conn.status === status && conn.lastErrorMessage === message))
+			return;
+		await this.prisma.connection.update({
+			where: { id: connectionId },
+			data: {
+				status,
+				lastErrorMessage: message,
+				lastErrorAt: new Date(),
+				consecutiveErrors: { increment: 1 },
+			},
+		});
 	}
 
 	async connectionBaseUrl(connectionId: string): Promise<string | null> {
@@ -458,19 +546,26 @@ export class IntegrationsService implements OnModuleInit {
 		}
 	}
 
-	async testConnection(
-		id: string,
-	): Promise<{ success: boolean; error?: string }> {
+	async testConnection(id: string): Promise<TestConnectionResult> {
 		const connection = await this.findConnectionById(id);
 		if (!connection) {
 			throw new NotFoundException("Connection not found");
 		}
+		if (isLegacyTemplateId(connection.integration.templateId))
+			return {
+				success: false,
+				error:
+					"This connection no longer works: GitHub App connections were removed. Delete it.",
+			};
 
 		try {
 			const template = getTemplate(connection.integration.templateId);
-			let testResult: { success: boolean; error?: string };
+			let testResult: TestConnectionResult;
 
-			if (template?.urlOnly && template.verify) {
+			if (template?.gitHost) {
+				testResult = await this.testGitHostToken(connection);
+				if (testResult.untested) return testResult;
+			} else if (template?.urlOnly && template.verify) {
 				const base = await this.connectionBaseUrl(id);
 				if (!base) {
 					testResult = { success: false, error: "Connection has no baseUrl" };
@@ -495,7 +590,9 @@ export class IntegrationsService implements OnModuleInit {
 				data: {
 					status: testResult.success ? "ACTIVE" : "ERROR",
 					lastUsedAt: new Date(),
-					lastErrorMessage: testResult.error ?? null,
+					lastErrorMessage: testResult.success
+						? null
+						: (testResult.error ?? null),
 					lastErrorAt: testResult.success ? null : new Date(),
 					consecutiveErrors: testResult.success
 						? 0
@@ -521,219 +618,137 @@ export class IntegrationsService implements OnModuleInit {
 		}
 	}
 
+	/**
+	 * A git host token's Test: `git ls-remote` against each saved repository on its host,
+	 * three at a time, and for github.com its expiry and a 401 check. With no repository
+	 * to try it says so and leaves the status alone, rather than showing a mistyped token green.
+	 */
+	private async testGitHostToken(
+		connection: ConnectionWithIntegration,
+	): Promise<TestConnectionResult> {
+		const token = readHostToken(connection, this.credentialsService);
+		if (!token)
+			return { success: false, error: "This connection has no host or token." };
+		const details = await this.lsRemoteMatching(token);
+		const api =
+			token.host === "github.com" ? await this.githubUser(token) : null;
+		if (api?.expiresAt !== undefined)
+			await this.prisma.connection.update({
+				where: { id: connection.id },
+				data: { tokenExpiresAt: api.expiresAt },
+			});
+		if (api?.rejected) {
+			const message = `github.com rejected token "${token.label}" (fp ${token.fingerprint}). It was revoked or mistyped; replace it.`;
+			return { success: false, error: message, details: [message, ...details] };
+		}
+		if (details.length === 0)
+			return {
+				success: false,
+				untested: true,
+				details: [
+					`No repository on ${token.host} yet. Add one to a service, then test again.`,
+				],
+			};
+		const failed = details.find((d) => !d.startsWith("ok "));
+		return failed
+			? { success: false, error: failed, details }
+			: { success: true, details };
+	}
+
+	private async lsRemoteMatching(token: HostToken): Promise<string[]> {
+		const rows = await this.prisma.repository.findMany({
+			where: { sourceKind: "url" },
+			select: { url: true },
+			orderBy: { updatedAt: "desc" },
+		});
+		const targets: string[] = [];
+		for (const { url } of rows) {
+			if (targets.length >= TEST_REPO_LIMIT) break;
+			const effective = await effectiveGitUrl(url);
+			if (/^https:\/\//i.test(effective) && urlHost(effective) === token.host)
+				targets.push(effective);
+		}
+		const display = {
+			source: "connection" as const,
+			label: `token ${token.label}`,
+			via: token.templateId,
+			fingerprint: token.fingerprint,
+		};
+		const cred = new GitCredential(display, token.token, { host: token.host });
+		const details: string[] = [];
+		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
+			const batch = targets.slice(i, i + TEST_CONCURRENCY);
+			details.push(
+				...(await Promise.all(
+					batch.map(async (url) => {
+						try {
+							await spawnGit(
+								["ls-remote", "--exit-code", "--heads", "--", url],
+								{
+									env: await remoteGitEnv(cred.envInput(url)),
+									timeoutMs: GIT_LS_REMOTE_TIMEOUT_MS,
+								},
+							);
+							return `ok ${repoPath(url)}`;
+						} catch (err) {
+							// --exit-code answers 2 for a reachable repository with no branches yet.
+							if (
+								err instanceof GitSpawnError &&
+								err.exitCode === 2 &&
+								!err.stderr.trim()
+							)
+								return `ok ${repoPath(url)}`;
+							return diagnoseGitFailure({
+								stderr:
+									err instanceof GitSpawnError
+										? err.stderr || err.message
+										: String(err),
+								credential: display,
+								host: token.host,
+								repo: repoPath(url),
+								tokenExpiresAt: token.tokenExpiresAt,
+								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
+							}).message;
+						}
+					}),
+				)),
+			);
+		}
+		return details;
+	}
+
+	/** github.com's view of the token: refused, or when it expires (undefined when the call failed). */
+	private async githubUser(
+		token: HostToken,
+	): Promise<{ rejected: boolean; expiresAt?: Date | null }> {
+		try {
+			const res = await fetch("https://api.github.com/user", {
+				headers: {
+					Authorization: `Bearer ${token.token}`,
+					Accept: "application/vnd.github+json",
+				},
+				signal: AbortSignal.timeout(10_000),
+			});
+			if (res.status === 401) return { rejected: true };
+			const raw = res.headers.get("github-authentication-token-expiration");
+			const expiresAt = parseTokenExpiration(raw);
+			if (raw && !expiresAt)
+				this.logger.debug(`Unparsed token expiration header: ${raw}`);
+			return { rejected: false, expiresAt };
+		} catch (err) {
+			this.logger.debug(
+				`github.com token check failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			return { rejected: false };
+		}
+	}
+
 	// =========================================================================
 	// TOKEN RESOLUTION (auth-mode-aware)
 	// =========================================================================
 
 	async resolveAccessToken(connectionId: string): Promise<string> {
 		return this.getAuthManager().resolveAccessToken(connectionId);
-	}
-
-	// =========================================================================
-	// GITHUB APP OPERATIONS
-	// =========================================================================
-
-	async listGitHubInstallations(
-		integrationId: string,
-	): Promise<GitHubInstallation[]> {
-		const integration = await this.findIntegrationById(integrationId);
-		if (!integration) {
-			throw new NotFoundException("Integration not found");
-		}
-
-		const { appId, privateKey } = this.getGitHubAppCredentials(integration);
-
-		const jwt = GitHubAppFlow.generateJWT(appId, privateKey);
-		return GitHubAppFlow.listInstallations(jwt);
-	}
-
-	async connectGitHubInstallation(
-		integrationId: string,
-		installationId: string,
-		organization?: string,
-		permissionOverrides?: Record<string, string>,
-	): Promise<Connection> {
-		const integration = await this.findIntegrationById(integrationId);
-		if (!integration) {
-			throw new NotFoundException("Integration not found");
-		}
-
-		const template = getTemplate(integration.templateId);
-		if (!template || !template.githubApp) {
-			throw new BadRequestException(
-				"Integration is not a GitHub App integration",
-			);
-		}
-
-		const { appId, privateKey } = this.getGitHubAppCredentials(integration);
-
-		// Generate first installation token
-		const jwt = GitHubAppFlow.generateJWT(appId, privateKey);
-		const permissions =
-			permissionOverrides ?? template.githubApp?.defaultPermissions;
-
-		const tokenResult = await GitHubAppFlow.getInstallationToken(
-			jwt,
-			installationId,
-			permissions,
-		);
-
-		// Verify granted permissions against template requirements
-		const permCheck =
-			template.requiredPermissions && tokenResult.permissions
-				? checkGitHubAppPermissions(template, tokenResult.permissions)
-				: null;
-
-		if (permCheck && !permCheck.satisfied) {
-			const missingKeys = permCheck.missing.map((m) => m.key).join(", ");
-			this.logger.warn(
-				`GitHub App installation ${installationId} missing permissions: ${missingKeys}`,
-			);
-		}
-
-		const credentials: Record<string, unknown> = {
-			installationId,
-			accessToken: tokenResult.token,
-			installationToken: tokenResult.token,
-			permissions: tokenResult.permissions,
-			repositorySelection: tokenResult.repositorySelection,
-			missingPermissions:
-				permCheck && !permCheck.satisfied
-					? permCheck.missing.map((m) => m.key)
-					: [],
-		};
-		if (permissionOverrides) {
-			credentials.permissionOverrides = permissionOverrides;
-		}
-
-		const connectionConfig: Record<string, string> = {};
-		if (organization) {
-			connectionConfig.organization = organization;
-		}
-
-		return this.prisma.connection.create({
-			data: {
-				integrationId,
-				label: organization
-					? `GitHub App (${organization})`
-					: `GitHub App (${installationId})`,
-				credentialsEnc: this.credentialsService.encrypt(credentials),
-				connectionConfigEnc:
-					Object.keys(connectionConfig).length > 0
-						? this.credentialsService.encrypt(connectionConfig)
-						: null,
-				tokenExpiresAt: tokenResult.expiresAt,
-				lastRefreshedAt: new Date(),
-				status: "ACTIVE",
-			},
-		});
-	}
-
-	private getGitHubAppCredentials(integration: Integration): {
-		appId: string;
-		privateKey: string;
-		webhookSecret?: string;
-	} {
-		const vault = this.credentialsService.getVault();
-		if (!integration.clientIdEnc || !integration.clientSecretEnc) {
-			throw new BadRequestException(
-				"Integration does not have GitHub App credentials configured",
-			);
-		}
-		const appId = vault.decrypt(Buffer.from(integration.clientIdEnc));
-		const secretJson = vault.decrypt(Buffer.from(integration.clientSecretEnc));
-
-		// clientSecret stores JSON string of { privateKey, webhookSecret }
-		let parsed: { privateKey: string; webhookSecret?: string };
-		try {
-			parsed = JSON.parse(secretJson) as {
-				privateKey: string;
-				webhookSecret?: string;
-			};
-		} catch {
-			// Fallback: if stored as raw string, treat entire value as privateKey
-			parsed = { privateKey: secretJson };
-		}
-
-		return { appId, ...parsed };
-	}
-
-	// =========================================================================
-	// GIT PROVIDER OPERATIONS
-	// =========================================================================
-
-	async getGitOrganizations(connectionId: string): Promise<GitOrganization[]> {
-		const connection = await this.findConnectionById(connectionId);
-		if (!connection) {
-			throw new NotFoundException("Connection not found");
-		}
-
-		const template = getTemplate(connection.integration.templateId);
-		const adapter = createAdapter(connection.integration.templateId);
-		if (!adapter?.vcs) {
-			throw new BadRequestException("Not a supported git provider");
-		}
-
-		const requestFn = this.createRequestFn(connectionId);
-		const ctx = { authMode: template?.authMode };
-
-		if (template && !hasCapability(template, "vcs:list_orgs")) {
-			// Fallback: derive orgs from repo listing (e.g. GitHub App installation tokens)
-			this.logger.log(
-				`Template "${template.id}" lacks vcs:list_orgs — deriving orgs from repositories`,
-			);
-			const repos = await adapter.vcs.getRepositories(
-				requestFn,
-				undefined,
-				ctx,
-			);
-			const ownerMap = new Map<string, GitOrganization>();
-			for (const repo of repos) {
-				const ownerName = repo.fullName.split("/")[0];
-				if (ownerName && !ownerMap.has(ownerName)) {
-					ownerMap.set(ownerName, {
-						id: ownerName,
-						name: ownerName,
-						displayName: ownerName,
-					});
-				}
-			}
-			return Array.from(ownerMap.values());
-		}
-
-		return adapter.vcs.getOrganizations(requestFn, ctx);
-	}
-
-	async getGitRepositories(
-		connectionId: string,
-		org?: string,
-	): Promise<GitRepository[]> {
-		const connection = await this.findConnectionById(connectionId);
-		if (!connection) {
-			throw new NotFoundException("Connection not found");
-		}
-
-		const template = getTemplate(connection.integration.templateId);
-		if (template) {
-			try {
-				assertCapability(template, "vcs:list_repos");
-			} catch (e) {
-				if (e instanceof CapabilityNotSupportedError) {
-					throw new BadRequestException(e.message);
-				}
-				throw e;
-			}
-		}
-
-		const adapter = createAdapter(connection.integration.templateId);
-		if (!adapter?.vcs) {
-			throw new BadRequestException("Not a supported git provider");
-		}
-
-		const requestFn = this.createRequestFn(connectionId);
-		return adapter.vcs.getRepositories(requestFn, org, {
-			authMode: template?.authMode,
-		});
 	}
 
 	async updateConnectionConfig(
@@ -936,24 +951,11 @@ export class IntegrationsService implements OnModuleInit {
 
 		for (const conn of activeConnections) {
 			const template = getTemplate(conn.integration.templateId);
-			let credentials: Record<string, unknown>;
 
-			// For GitHub App, resolve a fresh installation token
-			if (template?.githubApp) {
-				try {
-					const token = await this.resolveAccessToken(conn.id);
-					credentials = { accessToken: token };
-				} catch (error) {
-					this.logger.warn(
-						`Failed to resolve token for connection ${conn.id}: ${error instanceof Error ? error.message : "Unknown"}`,
-					);
-					continue;
-				}
-			} else {
-				credentials = this.credentialsService.decrypt<Record<string, unknown>>(
-					Buffer.from(conn.credentialsEnc),
-				);
-			}
+			if (!template) continue;
+			const credentials = this.credentialsService.decrypt<
+				Record<string, unknown>
+			>(Buffer.from(conn.credentialsEnc));
 
 			const config = conn.connectionConfigEnc
 				? this.credentialsService.decrypt<Record<string, unknown>>(
@@ -1021,35 +1023,6 @@ export class IntegrationsService implements OnModuleInit {
 		return contexts;
 	}
 
-	/** The git token a VCS connection holds, for cloning a repo it discovered. */
-	async gitToken(connectionId: string): Promise<string | null> {
-		const row = await this.prisma.connection.findUnique({
-			where: { id: connectionId },
-			select: { integration: { select: { templateId: true } } },
-		});
-		if (row && getTemplate(row.integration.templateId)?.githubApp) {
-			// Installation tokens expire; the stored one may be stale.
-			return this.resolveAccessToken(connectionId).catch((error: unknown) => {
-				this.logger.warn(
-					`Failed to resolve token for connection ${connectionId}: ${error instanceof Error ? error.message : "Unknown"}`,
-				);
-				return null;
-			});
-		}
-		const [conn] = await this.getIntegrationsByConnectionIds([connectionId]);
-		const creds = conn?.credentials ?? {};
-		for (const key of [
-			"token",
-			"accessToken",
-			"access_token",
-			"personalAccessToken",
-		]) {
-			const value = creds[key];
-			if (typeof value === "string" && value) return value;
-		}
-		return null;
-	}
-
 	async getIntegrationsByConnectionIds(
 		connectionIds: string[],
 	): Promise<IntegrationContext[]> {
@@ -1094,9 +1067,7 @@ export class IntegrationsService implements OnModuleInit {
 			include: {
 				connections: {
 					include: {
-						repositories: {
-							include: { services: { include: { service: true } } },
-						},
+						repositories: { select: { id: true, fullName: true } },
 						serviceMappings: { include: { service: true } },
 					},
 				},
@@ -1112,9 +1083,7 @@ export class IntegrationsService implements OnModuleInit {
 		const connection = await this.prisma.connection.findFirst({
 			where: { id: connectionId },
 			include: {
-				repositories: {
-					include: { services: { include: { service: true } } },
-				},
+				repositories: { select: { id: true, fullName: true } },
 				serviceMappings: { include: { service: true } },
 			},
 		});
@@ -1124,40 +1093,30 @@ export class IntegrationsService implements OnModuleInit {
 		return this.buildDeletionImpact([connection]);
 	}
 
-	private buildDeletionImpact(
+	/** Repositories found through or pinned to the connections: after a delete they keep their URL and use Auto. */
+	private async buildDeletionImpact(
 		connections: Array<{
 			id: string;
 			integration?: { label: string } | null;
-			repositories: Array<{
-				id: string;
-				fullName: string;
-				services: Array<{ service: { id: string; name: string } }>;
-			}>;
+			repositories: Array<{ id: string; fullName: string }>;
 			serviceMappings: Array<{
 				service: { id: string; name: string };
 			}>;
 		}>,
 	) {
-		const repos: Array<{ id: string; fullName: string }> = [];
-		type ImpactType = "repo_link_lost" | "integration_override_lost";
+		const repos = new Map<string, { id: string; fullName: string }>();
+		type ImpactType = "integration_override_lost";
 		const affectedMap = new Map<
 			string,
 			{ id: string; name: string; impact: ImpactType }
 		>();
 
 		for (const conn of connections) {
-			for (const repo of conn.repositories) {
-				repos.push({ id: repo.id, fullName: repo.fullName });
-				for (const sr of repo.services) {
-					if (!affectedMap.has(`${sr.service.id}:repo_link_lost`)) {
-						affectedMap.set(`${sr.service.id}:repo_link_lost`, {
-							id: sr.service.id,
-							name: sr.service.name,
-							impact: "repo_link_lost",
-						});
-					}
-				}
-			}
+			for (const repo of [
+				...conn.repositories,
+				...(await pinnedRepositories(this.prisma, conn.id)),
+			])
+				repos.set(repo.id, { id: repo.id, fullName: repo.fullName });
 
 			for (const sm of conn.serviceMappings) {
 				if (!affectedMap.has(`${sm.service.id}:integration_override_lost`)) {
@@ -1175,8 +1134,46 @@ export class IntegrationsService implements OnModuleInit {
 				id: c.id,
 				label: c.integration?.label ?? String(c.id).slice(0, 8),
 			})),
-			repositories: repos,
+			repositories: [...repos.values()],
 			affectedServices: Array.from(affectedMap.values()),
 		};
 	}
+}
+
+type RepositoryClient = Pick<PrismaService, "repository">;
+
+/** Repositories whose `metadata.credentialConnectionId` is this connection. */
+async function pinnedRepositories(
+	db: RepositoryClient,
+	connectionId: string,
+): Promise<Array<{ id: string; fullName: string; metadata: string | null }>> {
+	const rows = await db.repository.findMany({
+		where: { metadata: { contains: connectionId } },
+		select: { id: true, fullName: true, metadata: true },
+	});
+	return rows.filter((r) => pickOf(r.metadata) === connectionId);
+}
+
+/** Before connections go: their discovered repositories become typed URL rows, and picks of them are cleared. */
+async function releaseRepositories(
+	tx: RepositoryClient,
+	connectionIds: string[],
+): Promise<void> {
+	if (connectionIds.length === 0) return;
+	await tx.repository.updateMany({
+		where: { connectionId: { in: connectionIds } },
+		data: { connectionId: null },
+	});
+	for (const id of connectionIds)
+		for (const row of await pinnedRepositories(tx, id)) {
+			const meta = JSON.parse(row.metadata as string) as Record<
+				string,
+				unknown
+			>;
+			delete meta.credentialConnectionId;
+			await tx.repository.update({
+				where: { id: row.id },
+				data: { metadata: JSON.stringify(meta) },
+			});
+		}
 }

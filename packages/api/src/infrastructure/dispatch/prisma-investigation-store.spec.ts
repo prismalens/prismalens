@@ -70,8 +70,10 @@ function makePorts(
 		})),
 		getIncident: vi.fn(async () => null),
 		incidentRepos: vi.fn(async () => []),
-		repoToken: vi.fn(async () => null),
-		snapshot: vi.fn(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
+		snapshotWith: vi.fn(async () => ({
+			snap: { path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const },
+			credential: { source: "none" as const, label: "public", via: "none" },
+		})),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
 		...overrides,
@@ -330,6 +332,51 @@ describe("createPrismaInvestigationStore — a follow-up (#747)", () => {
 		expect(appendEvents).toHaveBeenCalledTimes(1);
 		expect(ports.updateStatus).not.toHaveBeenCalled();
 		expect(ports.writeResult).not.toHaveBeenCalled();
+	});
+});
+
+describe("createPrismaInvestigationStore — a follow-up's rebuilt workspace (#810)", () => {
+	const make = () => {
+		const ports = makePorts(vi.fn(async () => {}));
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			workspace: '{"cwd":"/w","repos":[]}',
+			resume: { note: "Continuing." },
+		});
+		return { ports, store };
+	};
+	const message = (delivered: boolean): CanonicalEvent => ({
+		kind: "operator_message",
+		runId: RUN_ID,
+		branchId: "branch-1",
+		path: [],
+		ts: "2026-10-11T00:00:00.000Z",
+		seq: 1,
+		text: "why?",
+		mode: "queue",
+		delivered,
+	});
+
+	it("an undelivered follow-up never writes the rebuilt workspace, so the put-back row keeps the first run's", async () => {
+		const { ports, store } = make();
+		await store.create();
+		await store.append(message(false));
+		await store.fail("clone refused");
+		expect(vi.mocked(ports.followUpStatus).mock.calls).toEqual([[INVESTIGATION_ID, { status: "running" }]]);
+	});
+
+	it("writes the rebuilt workspace once, when the message reaches the agent", async () => {
+		const { ports, store } = make();
+		await store.create();
+		await store.append(message(true));
+		await store.append({ ...message(true), seq: 2 });
+		expect(vi.mocked(ports.followUpStatus).mock.calls).toEqual([
+			[INVESTIGATION_ID, { status: "running" }],
+			[INVESTIGATION_ID, { workspace: '{"cwd":"/w","repos":[]}' }],
+		]);
+		expect(store.delivered()).toBe(true);
 	});
 });
 

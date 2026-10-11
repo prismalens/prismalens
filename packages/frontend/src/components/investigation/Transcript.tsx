@@ -62,6 +62,7 @@ export function Transcript({
 	cwd,
 	agent,
 	lead,
+	code,
 	onRecheck,
 }: {
 	items: TranscriptItem[];
@@ -75,6 +76,8 @@ export function Transcript({
 	agent: string;
 	/** What the run started with, the transcript's first line (#673). */
 	lead?: string;
+	/** Which credential cloned the code, beside the first line; the source and fingerprint on hover (#673). */
+	code?: { text: string; title: string } | null;
 	/** `Investigate again` under a report: + New run prefilled (#673 w59). */
 	onRecheck?: () => void;
 }) {
@@ -99,6 +102,15 @@ export function Transcript({
 								data-testid="transcript-gather"
 							>
 								{lead}
+								{code && (
+									<span
+										className="ml-3 text-text-3"
+										title={code.title}
+										data-testid="transcript-code"
+									>
+										{code.text}
+									</span>
+								)}
 							</p>
 						)}
 						{items.map((item) => (

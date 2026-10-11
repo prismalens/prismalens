@@ -8,7 +8,6 @@ import { CredentialsService } from "../integrations/crypto/credentials.service.j
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { TimelineModule } from "../timeline/timeline.module.js";
 import { TimelineService } from "../timeline/timeline.service.js";
-import { GitHubCommentService } from "./github-comment.service.js";
 import { ReportDeliveryController } from "./report-delivery.controller.js";
 import { ReportDeliveryService } from "./report-delivery.service.js";
 
@@ -31,8 +30,7 @@ import { ReportDeliveryService } from "./report-delivery.service.js";
 				TelemetryService,
 			],
 		},
-		GitHubCommentService,
 	],
-	exports: [ReportDeliveryService, GitHubCommentService],
+	exports: [ReportDeliveryService],
 })
 export class ReportDeliveryModule {}

@@ -18,11 +18,6 @@ export {
 	TokenExpiredError,
 	TokenRefreshError,
 } from "./errors.js";
-export type {
-	GitHubInstallation,
-	InstallationTokenResult,
-} from "./github-app-flow.js";
-export { GitHubAppFlow } from "./github-app-flow.js";
 export {
 	interpolate,
 	interpolateRecord,
@@ -34,10 +29,7 @@ export type {
 } from "./oauth2-flow.js";
 export { OAuth2Flow } from "./oauth2-flow.js";
 export type { PermissionCheckResult } from "./permission-check.js";
-export {
-	checkGitHubAppPermissions,
-	checkOAuthScopes,
-} from "./permission-check.js";
+export { checkOAuthScopes } from "./permission-check.js";
 export {
 	httpStatusDiagnostic,
 	providerHttpError,

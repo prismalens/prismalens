@@ -147,10 +147,15 @@ export function triggerFor(
 /**
  * An integration template id reduced to its vendor. `other` keeps the property
  * a closed enum when a template this build does not know about is configured —
- * the id itself is never sent.
+ * the id itself is never sent. A git host token is `github` only for github.com.
  */
-export function integrationKindFor(templateId: string): IntegrationKind {
+export function integrationKindFor(
+	templateId: string,
+	host?: string,
+): IntegrationKind {
 	const id = templateId.toLowerCase();
+	if (id === "git-host-token")
+		return host?.toLowerCase() === "github.com" ? "github" : "other";
 	if (id.startsWith("github")) return "github";
 	if (id.startsWith("slack")) return "slack";
 	if (id.startsWith("render")) return "render";

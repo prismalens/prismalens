@@ -4,8 +4,6 @@
 // Types
 export type {
 	AuthManagerDeps,
-	GitHubInstallation,
-	InstallationTokenResult,
 	OAuth2StoreDeps,
 	PermissionCheckResult,
 	RefreshableConnection,
@@ -19,9 +17,7 @@ export {
 	assertCapability,
 	CapabilityNotSupportedError,
 	CredentialsInvalidError,
-	checkGitHubAppPermissions,
 	checkOAuthScopes,
-	GitHubAppFlow,
 	getCapabilities,
 	getTemplatesForCapability,
 	hasCapability,
@@ -80,15 +76,16 @@ export {
 	getTemplate,
 	getTemplatesByAuthMode,
 	getTemplatesByCategory,
-	githubApp,
+	gitHostToken,
 	githubToken,
+	isLegacyTemplateId,
+	LEGACY_TEMPLATE_IDS,
 	prometheus,
 	render,
 } from "./templates/index.js";
 export type {
 	AuthMode,
 	AuthTemplate,
-	GitHubAppConfig,
 	OAuth2Config,
 	OAuthStateData,
 	TemplateField,

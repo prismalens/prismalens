@@ -4,11 +4,10 @@
 "use client";
 
 import type {
-	AuthTemplateResponse,
 	ConnectionWithIntegration,
 	Integration,
+	TestConnectionResponse,
 } from "@prismalens/contracts/schemas";
-import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Pool } from "@/components/shared/Row";
@@ -29,12 +28,18 @@ import {
 	useTestConnection,
 } from "@/lib/api/hooks";
 import { formatDate } from "@/lib/format-time";
+import { cn } from "@/lib/utils";
 import { ConnectionFormDialog } from "./ConnectionFormDialog";
 import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
 import { IntegrationFormDialog } from "./IntegrationFormDialog";
 import { ConnectionStatusBadge } from "./integration-utils";
 import { PULL_TEMPLATES } from "./SettingsFrame";
+
+const GIT_HOST_TOKEN = "git-host-token";
+const LEGACY_LABEL = "GitHub App (removed in 0.5.1)";
+const LEGACY_COPY =
+	"This connection no longer works. Delete it here, then delete the app or its private key on GitHub (Settings → Developer settings → GitHub Apps).";
 
 /** Edit and Remove for a row: two items, so a menu (a one-item menu is a button). */
 function RowMenu({
@@ -61,20 +66,47 @@ function RowMenu({
 	);
 }
 
+/** What a Test answered: each repository tried, or why it could not try yet (neutral, not a failure). */
+function TestAnswer({ result }: { result: TestConnectionResponse }) {
+	const lines = result.details?.length
+		? result.details
+		: [result.success ? "Answered just now" : (result.error ?? "Failed")];
+	return (
+		<span
+			className={cn(
+				"block",
+				!result.success && !result.untested && "text-danger",
+			)}
+			data-testid={result.untested ? "test-untested" : "test-answer"}
+		>
+			{lines.join("; ")}
+		</span>
+	);
+}
+
+/** Where a token row says what it is: its host and fingerprint, never the token. */
+function tokenFacts(c: ConnectionWithIntegration): string {
+	const facts = [
+		c.host,
+		c.fingerprint ? `fp ${c.fingerprint}` : null,
+		`added ${formatDate(c.createdAt)}`,
+	].filter(Boolean);
+	return facts.join(", ");
+}
+
 /**
- * The integrations that are not alert sources (GitHub and the like), each
- * with the accounts behind it as rows, so there is no Connections tab.
+ * Git host tokens and any other integration that is not an alert source,
+ * each with its saved accounts as rows. A run clones with this machine's own
+ * git login until a token is added for a host it cannot reach (#673).
  */
 export function IntegrationsTab() {
 	const { data: integrations } = useIntegrations();
 	const { data: connections } = useConnections();
 	const { data: templates } = useTemplates();
-	const navigate = useNavigate();
 	const deleteIntegration = useDeleteIntegration();
 	const deleteConnection = useDeleteConnection();
 	const test = useTestConnection();
 
-	const [adding, setAdding] = useState(false);
 	const [editing, setEditing] = useState<Integration | null>(null);
 	const [connectFor, setConnectFor] = useState<string | null>(null);
 	const [editConnection, setEditConnection] =
@@ -89,42 +121,9 @@ export function IntegrationsTab() {
 	);
 	const accounts = (id: string) =>
 		(connections ?? []).filter((c) => c.integrationId === id);
-
-	const handleCreated = async (
-		integrationId: string,
-		template: AuthTemplateResponse,
-	) => {
-		if (
-			template.postCreationAction === "navigate" &&
-			template.postCreationNavigateTo
-		) {
-			await navigate({
-				to: template.postCreationNavigateTo,
-				search: {
-					integrationId,
-					provider: template.id.split("-")[0],
-					mode: template.id,
-				},
-			});
-		}
-		if (template.postCreationAction === "oauth_redirect") {
-			try {
-				const res = await fetch(
-					`/api/integrations/oauth/${integrationId}/authorize`,
-					{
-						method: "POST",
-						credentials: "include",
-						headers: { "Content-Type": "application/json" },
-					},
-				);
-				if (!res.ok) throw new Error(`OAuth authorize failed: ${res.status}`);
-				const { redirectUrl } = await res.json();
-				window.location.href = redirectUrl;
-			} catch {
-				// The integration is saved; its account can be connected from its row.
-			}
-		}
-	};
+	const tokenIntegration = shown.find((i) => i.templateId === GIT_HOST_TOKEN);
+	const addToken = () =>
+		setConnectFor(tokenIntegration?.id ?? `new:${GIT_HOST_TOKEN}`);
 
 	return (
 		<SettingGroup
@@ -135,15 +134,15 @@ export function IntegrationsTab() {
 				<Button
 					variant="text"
 					size="sm"
-					onClick={() => setAdding(true)}
+					onClick={addToken}
 					data-testid="add-integration"
 				>
-					Add an integration
+					Add a token
 				</Button>
 			}
 			description={
 				shown.length === 0
-					? "None yet. A git host lets a service name its code by URL."
+					? "None yet. Runs clone with this machine's own git login until you add a token for a host it can't reach."
 					: undefined
 			}
 		>
@@ -154,59 +153,109 @@ export function IntegrationsTab() {
 							(t) => t.id === integration.templateId,
 						);
 						const rows = accounts(integration.id);
+						// A template this build no longer ships: its rows only offer Delete.
+						const legacy = !!templates && !template;
+						const addable =
+							template?.gitHost === true && template.listed !== false;
 						return (
 							<Fragment key={integration.id}>
 								<SettingRow
 									testId="integration-row"
-									label={integration.label}
+									label={legacy ? LEGACY_LABEL : integration.label}
 									description={
-										template?.authModeLabel ??
-										template?.name ??
-										integration.templateId
+										legacy
+											? LEGACY_COPY
+											: (template?.authModeLabel ??
+												template?.name ??
+												integration.templateId)
 									}
 								>
-									<Button
-										variant="text"
-										size="sm"
-										onClick={() => setConnectFor(integration.id)}
-									>
-										Connect an account
-									</Button>
-									<RowMenu
-										onEdit={() => setEditing(integration)}
-										onRemove={() => setRemoveIntegration(integration.id)}
-									/>
+									{legacy ? (
+										<Button
+											variant="danger"
+											size="sm"
+											onClick={() => setRemoveIntegration(integration.id)}
+										>
+											Delete
+										</Button>
+									) : (
+										<>
+											{addable && (
+												<Button
+													variant="text"
+													size="sm"
+													onClick={() => setConnectFor(integration.id)}
+												>
+													Add a token
+												</Button>
+											)}
+											<RowMenu
+												onEdit={() => setEditing(integration)}
+												onRemove={() => setRemoveIntegration(integration.id)}
+											/>
+										</>
+									)}
 								</SettingRow>
 								{rows.map((c) => (
 									<SettingRow
 										key={c.id}
 										className="pl-4"
+										testId="connection-row"
 										label={
 											<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-												{c.label}
-												<ConnectionStatusBadge status={c.status} />
+												{c.legacy ? `${LEGACY_LABEL}: ${c.label}` : c.label}
+												{!c.legacy && (
+													<ConnectionStatusBadge status={c.status} />
+												)}
 											</span>
 										}
 										description={
-											test.variables?.id === c.id && test.data
-												? test.data.success
-													? "Answered just now"
-													: test.data.error
-												: `Connected ${formatDate(c.createdAt)}`
+											c.legacy ? (
+												LEGACY_COPY
+											) : test.variables?.id === c.id && test.data ? (
+												<TestAnswer result={test.data} />
+											) : (
+												<>
+													<span className="block">
+														{c.host
+															? tokenFacts(c)
+															: `Connected ${formatDate(c.createdAt)}`}
+													</span>
+													{c.host &&
+														c.status !== "ACTIVE" &&
+														c.lastErrorMessage && (
+															<span className="block text-danger">
+																{c.lastErrorMessage}
+															</span>
+														)}
+												</>
+											)
 										}
 									>
-										<Button
-											variant="text"
-											size="sm"
-											disabled={test.isPending}
-											onClick={() => test.mutate({ id: c.id })}
-										>
-											Test
-										</Button>
-										<RowMenu
-											onEdit={() => setEditConnection(c)}
-											onRemove={() => setRemoveConnection(c.id)}
-										/>
+										{c.legacy ? (
+											<Button
+												variant="danger"
+												size="sm"
+												onClick={() => setRemoveConnection(c.id)}
+											>
+												Delete
+											</Button>
+										) : (
+											<>
+												<Button
+													variant="text"
+													size="sm"
+													disabled={test.isPending}
+													onClick={() => test.mutate({ id: c.id })}
+												>
+													Test
+												</Button>
+												<RowMenu
+													onEdit={() => setEditConnection(c)}
+													onRemove={() => setRemoveConnection(c.id)}
+												/>
+											</>
+										)}
 									</SettingRow>
 								))}
 							</Fragment>
@@ -215,12 +264,6 @@ export function IntegrationsTab() {
 				</Pool>
 			)}
 
-			<IntegrationFormDialog
-				open={adding}
-				onOpenChange={setAdding}
-				mode="create"
-				onCreated={handleCreated}
-			/>
 			<IntegrationFormDialog
 				open={!!editing}
 				onOpenChange={(open) => !open && setEditing(null)}

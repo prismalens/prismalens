@@ -35,7 +35,6 @@ export {
 export {
 	integrationsKeys,
 	serviceIntegrationsKeys,
-	useConnectGitHubInstallation,
 	useConnection,
 	useConnectionDeletionImpact,
 	useConnections,
@@ -45,11 +44,6 @@ export {
 	useDeleteConnection,
 	useDeleteIntegration,
 	useDeleteServiceIntegration,
-	// GitHub App hooks
-	useGitHubInstallations,
-	// Git / Service integration hooks
-	useGitOrganizations,
-	useGitRepositories,
 	useIntegrationDeletionImpact,
 	useIntegrations,
 	// Service integration hooks
@@ -89,11 +83,11 @@ export {
 export {
 	repositoryKeys,
 	useAddRepositorySource,
-	useBatchCreateRepositories,
 	useDeleteRepository,
 	useLinkRepository,
 	useRepositories,
 	useRepository,
+	useSetRepositoryCredential,
 	useUnlinkedRepositoryCount,
 	useUnlinkRepository,
 } from "./use-repositories-orpc";

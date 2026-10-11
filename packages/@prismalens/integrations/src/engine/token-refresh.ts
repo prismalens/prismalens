@@ -3,10 +3,9 @@
 
 /**
  * Concurrent-safe token refresh with in-memory locking.
- * Uses a strategy pattern to support multiple auth modes (OAuth2, GitHub App, etc.).
+ * Uses a strategy pattern so another auth mode can add its own refresh.
  */
 import type { AuthMode, AuthTemplate } from "../types.js";
-import { GitHubAppFlow } from "./github-app-flow.js";
 import { interpolate } from "./interpolate.js";
 import { providerJsonParseError } from "./provider-http-error.js";
 import type { TokenVault } from "./token-vault.js";
@@ -192,84 +191,10 @@ class OAuth2RefreshStrategy implements RefreshStrategy {
 }
 
 // =============================================================================
-// GITHUB APP REFRESH STRATEGY
-// =============================================================================
-
-class GitHubAppRefreshStrategy implements RefreshStrategy {
-	canRefresh(authMode: AuthMode): boolean {
-		return authMode === "github_app";
-	}
-
-	async refresh(
-		connection: RefreshableConnection,
-		credentials: Record<string, unknown>,
-		templateInfo: {
-			template: AuthTemplate;
-			clientId: string;
-			clientSecret: string;
-		},
-		vault: TokenVault,
-	) {
-		// For GitHub App, clientId stores appId and clientSecret stores JSON { privateKey, webhookSecret }
-		const appId = templateInfo.clientId;
-		let secretPayload: { privateKey: string; webhookSecret?: string };
-		try {
-			secretPayload = JSON.parse(templateInfo.clientSecret) as {
-				privateKey: string;
-				webhookSecret?: string;
-			};
-		} catch {
-			// Fallback: raw PEM string (e.g., from seed script)
-			secretPayload = { privateKey: templateInfo.clientSecret };
-		}
-
-		const installationId = credentials.installationId as string;
-		if (!installationId) {
-			throw new Error(
-				`Connection ${connection.id}: missing installationId in credentials`,
-			);
-		}
-
-		const jwt = GitHubAppFlow.generateJWT(appId, secretPayload.privateKey);
-
-		// Use permission overrides if stored, otherwise use template defaults
-		const permissionOverrides = credentials.permissionOverrides as
-			| Record<string, string>
-			| undefined;
-		const permissions =
-			permissionOverrides ??
-			templateInfo.template.githubApp?.defaultPermissions;
-
-		const tokenResult = await GitHubAppFlow.getInstallationToken(
-			jwt,
-			installationId,
-			permissions,
-		);
-
-		const newCredentials = {
-			...credentials,
-			accessToken: tokenResult.token,
-			installationToken: tokenResult.token,
-			permissions: tokenResult.permissions,
-			repositorySelection: tokenResult.repositorySelection,
-		};
-
-		return {
-			accessToken: tokenResult.token,
-			credentialsEnc: vault.encryptJSON(newCredentials),
-			tokenExpiresAt: tokenResult.expiresAt,
-		};
-	}
-}
-
-// =============================================================================
 // TOKEN REFRESHER
 // =============================================================================
 
-const STRATEGIES: RefreshStrategy[] = [
-	new OAuth2RefreshStrategy(),
-	new GitHubAppRefreshStrategy(),
-];
+const STRATEGIES: RefreshStrategy[] = [new OAuth2RefreshStrategy()];
 
 export class TokenRefresher {
 	private readonly refreshLocks = new Map<string, Promise<string>>();

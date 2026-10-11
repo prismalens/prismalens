@@ -52,7 +52,10 @@ import {
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
-import { IntegrationsService } from "../../modules/integrations/integrations.service.js";
+import {
+	GitCredentialService,
+	pickOf,
+} from "../../modules/integrations/git-credential.service.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
@@ -154,7 +157,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly harnessService: HarnessService,
 		private readonly repoSource: RepoSourceService,
 		private readonly prisma: PrismaService,
-		private readonly integrationsService: IntegrationsService,
+		private readonly gitCredentials: GitCredentialService,
 		private readonly connectorResolver: ConnectorResolverService,
 		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
@@ -220,6 +223,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							? { completedAt: state.completedAt }
 							: {}),
 						...(state.error !== undefined ? { error: state.error } : {}),
+						...(state.workspace !== undefined
+							? { workspace: state.workspace }
+							: {}),
 					},
 				});
 			},
@@ -342,10 +348,38 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					})),
 				);
 			},
-			repoToken: (connectionId) =>
-				this.integrationsService.gitToken(connectionId),
-			snapshot: (src, dest, signal, at) =>
-				this.repoSource.snapshot(src, dest, signal, at),
+			snapshotWith: async (ref, dest, signal, at) => {
+				const row =
+					ref.sourceKind === "url"
+						? await this.prisma.repository.findFirst({
+								where: { url: ref.url },
+								select: { metadata: true },
+							})
+						: null;
+				const { result: snap, credential } =
+					await this.gitCredentials.withCredential(
+						{
+							sourceKind: ref.sourceKind,
+							url: ref.url,
+							connectionId: ref.connectionId,
+							pick: pickOf(row?.metadata),
+						},
+						(cred) =>
+							this.repoSource.snapshot(
+								{
+									kind: ref.sourceKind,
+									source: ref.url,
+									defaultBranch: ref.defaultBranch,
+									credential: cred,
+								},
+								dest,
+								signal,
+								at,
+							),
+					);
+				const { problem: _problem, ...run } = credential;
+				return { snap, credential: run };
+			},
 			getIncident: async (id) => {
 				const incident = await this.incidentsService.findById(id);
 				return incident as unknown as Record<string, unknown> | null;

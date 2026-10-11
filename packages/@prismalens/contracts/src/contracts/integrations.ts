@@ -8,23 +8,17 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	AuthTemplateResponseSchema,
-	ConnectInstallationSchema,
 	ConnectionSchema,
 	ConnectionWithIntegrationSchema,
 	CreateConnectionSchema,
 	CreateIntegrationSchema,
 	CreateServiceIntegrationSchema,
 	DeletionImpactSchema,
-	GitHubInstallationSchema,
-	GitOrganizationSchema,
-	GitRepositorySchema,
 	IdParamSchema,
 	IntegrationQuerySchema,
 	IntegrationSchema,
-	OAuthStartResponseSchema,
 	ServiceIntegrationSchema,
 	ServiceIntegrationWithStatusSchema,
-	SuccessResponseSchema,
 	TestConnectionResponseSchema,
 	UpdateConnectionSchema,
 	UpdateIntegrationSchema,
@@ -149,30 +143,6 @@ export const integrationsContract = {
 	// GIT PROVIDER ENDPOINTS
 	// =========================================================================
 
-	getGitOrganizations: oc
-		.route({
-			method: "GET",
-			path: "/integrations/connections/{id}/git/organizations",
-			summary: "Get organizations from git provider",
-			tags: ["integrations", "git"],
-		})
-		.input(IdParamSchema)
-		.output(z.array(GitOrganizationSchema)),
-
-	getGitRepositories: oc
-		.route({
-			method: "GET",
-			path: "/integrations/connections/{id}/git/repositories",
-			summary: "Get repositories from git provider",
-			tags: ["integrations", "git"],
-		})
-		.input(
-			IdParamSchema.extend({
-				org: z.string().optional(),
-			}),
-		)
-		.output(z.array(GitRepositorySchema)),
-
 	updateConnectionConfig: oc
 		.route({
 			method: "PATCH",
@@ -185,30 +155,6 @@ export const integrationsContract = {
 				config: z.record(z.string(), z.unknown()),
 			}),
 		)
-		.output(ConnectionSchema),
-
-	// =========================================================================
-	// GITHUB APP ENDPOINTS
-	// =========================================================================
-
-	listGitHubInstallations: oc
-		.route({
-			method: "GET",
-			path: "/integrations/{id}/github/installations",
-			summary: "List available GitHub App installations",
-			tags: ["integrations", "github"],
-		})
-		.input(IdParamSchema)
-		.output(z.array(GitHubInstallationSchema)),
-
-	connectGitHubInstallation: oc
-		.route({
-			method: "POST",
-			path: "/integrations/{id}/github/installations/connect",
-			summary: "Create connection for a GitHub App installation",
-			tags: ["integrations", "github"],
-		})
-		.input(IdParamSchema.merge(ConnectInstallationSchema))
 		.output(ConnectionSchema),
 
 	// =========================================================================
@@ -313,33 +259,4 @@ export const integrationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(DeletionImpactSchema),
-};
-
-export const oauthContract = {
-	start: oc
-		.route({
-			method: "POST",
-			path: "/integrations/oauth/{integrationId}/authorize",
-			summary: "Start OAuth authorization flow",
-			tags: ["oauth"],
-		})
-		.input(z.object({ integrationId: z.string().uuid() }))
-		.output(OAuthStartResponseSchema),
-
-	callback: oc
-		.route({
-			method: "GET",
-			path: "/integrations/oauth/callback",
-			summary: "Handle OAuth callback",
-			tags: ["oauth"],
-		})
-		.input(
-			z.object({
-				code: z.string().optional(),
-				state: z.string().optional(),
-				error: z.string().optional(),
-				error_description: z.string().optional(),
-			}),
-		)
-		.output(z.void()),
 };

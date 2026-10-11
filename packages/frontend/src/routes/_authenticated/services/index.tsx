@@ -32,7 +32,6 @@ import {
 import { markFirstOpened, useFirstOpen } from "@/hooks/use-first-open";
 import { usePageTitle } from "@/hooks/use-page-title";
 import {
-	useBatchCreateRepositories,
 	useConnections,
 	useCreateService,
 	useDeleteRepository,
@@ -41,7 +40,7 @@ import {
 	useServices,
 	useServiceTeams,
 } from "@/lib/api/hooks";
-import { client, orpc } from "@/lib/api/orpc-client";
+import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -64,17 +63,13 @@ export const Route = createFileRoute("/_authenticated/services/")({
 	component: ServicesPage,
 });
 
+/** A repository already saved that no service names (a 0.5.0 import may have left some). */
 interface ReviewItem {
 	key: string;
-	id?: string; // DB repo id if already exists
+	id: string;
 	fullName: string;
 	name: string;
-	url?: string;
 	description?: string | null;
-	language?: string | null;
-	isPrivate?: boolean;
-	connectionId?: string;
-	source: "github" | "gitlab" | "unlinked";
 }
 
 function toKebabCase(str: string): string {
@@ -120,8 +115,6 @@ function ServicesPage() {
 	}, [searchParams.search]);
 
 	// Review queue state
-	const [vcsScannedRepos, setVcsScannedRepos] = useState<ReviewItem[]>([]);
-	const [isFetchingVcs, setIsFetchingVcs] = useState(false);
 	const [selectedServiceForRepo, setSelectedServiceForRepo] = useState<
 		Record<string, string>
 	>({});
@@ -148,20 +141,8 @@ function ServicesPage() {
 		return () => clearTimeout(t);
 	}, [q, searchParams.search, updateSearch]);
 
-	// Connections for VCS scanning, and the telemetry every run is told about
+	// The telemetry every run is told about
 	const { data: allConnections = [] } = useConnections();
-	const vcsConnections = useMemo(
-		() =>
-			allConnections.filter(
-				(c) =>
-					c.template?.category === "vcs" ||
-					c.templateId?.startsWith("github") ||
-					c.templateId?.startsWith("gitlab") ||
-					c.integration?.templateId?.startsWith("github") ||
-					c.integration?.templateId?.startsWith("gitlab"),
-			),
-		[allConnections],
-	);
 	const telemetry = allConnections
 		.filter((c) => PULL_TEMPLATES.has(c.templateId ?? ""))
 		.map((c) => c.label);
@@ -233,94 +214,17 @@ function ServicesPage() {
 	const linkRepository = useLinkRepository();
 	const createService = useCreateService();
 	const deleteRepository = useDeleteRepository();
-	const batchCreateRepositories = useBatchCreateRepositories();
-	// Combine unlinked DB repos and scanned VCS repos into reviewItems
-	const reviewItems = useMemo<ReviewItem[]>(() => {
-		const items: ReviewItem[] = [];
-		const seenNames = new Set<string>();
-
-		// 1. Unlinked repositories already in DB
-		for (const r of unlinkedDbRepos) {
-			seenNames.add(r.fullName);
-			const source: "github" | "gitlab" | "unlinked" = r.url?.includes("github")
-				? "github"
-				: r.url?.includes("gitlab")
-					? "gitlab"
-					: "unlinked";
-			items.push({
+	const reviewItems = useMemo<ReviewItem[]>(
+		() =>
+			unlinkedDbRepos.map((r) => ({
 				key: `db:${r.id}`,
 				id: r.id,
 				fullName: r.fullName,
 				name: r.fullName.split("/").pop() ?? r.fullName,
-				url: r.url ?? undefined,
 				description: r.description,
-				language: r.language,
-				source,
-			});
-		}
-
-		// 2. Scanned VCS repos not yet in DB or without service
-		for (const v of vcsScannedRepos) {
-			if (!seenNames.has(v.fullName)) {
-				seenNames.add(v.fullName);
-				items.push(v);
-			}
-		}
-
-		return items;
-	}, [unlinkedDbRepos, vcsScannedRepos]);
-
-	// Fetch from VCS handler
-	const handleFetchVcs = async () => {
-		setIsFetchingVcs(true);
-		try {
-			const scanned: ReviewItem[] = [];
-			for (const conn of vcsConnections) {
-				try {
-					const gitRepos = await client.integrations.getGitRepositories({
-						id: conn.id,
-					});
-					const templateId =
-						conn.templateId || conn.integration?.templateId || "";
-					const source: "github" | "gitlab" | "unlinked" =
-						templateId.startsWith("gitlab")
-							? "gitlab"
-							: templateId.startsWith("github")
-								? "github"
-								: "unlinked";
-
-					for (const gr of gitRepos) {
-						// Check if repo already belongs to a service
-						const isImported = (repoResponse?.data ?? []).some(
-							(r) =>
-								r.fullName === gr.fullName &&
-								r.services &&
-								r.services.length > 0,
-						);
-						if (!isImported) {
-							scanned.push({
-								key: `vcs:${gr.fullName}`,
-								fullName: gr.fullName,
-								name: gr.name,
-								url: gr.url,
-								description: gr.description,
-								language: gr.language,
-								isPrivate: gr.isPrivate,
-								connectionId: conn.id,
-								source,
-							});
-						}
-					}
-				} catch {
-					// Continue to next connection
-				}
-			}
-			setVcsScannedRepos(scanned);
-			await refetchRepos();
-		} finally {
-			setIsFetchingVcs(false);
-		}
-	};
+			})),
+		[unlinkedDbRepos],
+	);
 
 	// Review queue inline actions
 	const handleLinkToService = async (
@@ -328,31 +232,12 @@ function ServicesPage() {
 		targetServiceId: string,
 	) => {
 		try {
-			let repoId = item.id;
-			if (!repoId && item.connectionId) {
-				const batch = await batchCreateRepositories.mutateAsync({
-					repositories: [
-						{
-							connectionId: item.connectionId,
-							fullName: item.fullName,
-							url: item.url ?? `https://${item.source}.com/${item.fullName}`,
-							description: item.description ?? undefined,
-							language: item.language ?? undefined,
-							isPrivate: item.isPrivate ?? false,
-						},
-					],
-				});
-				repoId = batch.repositories[0].id;
-			}
-			if (repoId) {
-				await linkRepository.mutateAsync({
-					id: repoId,
-					serviceId: targetServiceId,
-					isPrimary: true,
-				});
-				setVcsScannedRepos((prev) => prev.filter((r) => r.key !== item.key));
-				await Promise.all([refetchRepos(), refetchServices()]);
-			}
+			await linkRepository.mutateAsync({
+				id: item.id,
+				serviceId: targetServiceId,
+				isPrimary: true,
+			});
+			await Promise.all([refetchRepos(), refetchServices()]);
 		} catch {
 			// error surfaced in UI
 		}
@@ -369,32 +254,11 @@ function ServicesPage() {
 				tier: "tier_3",
 			});
 
-			let repoId = item.id;
-			if (!repoId && item.connectionId) {
-				const batch = await batchCreateRepositories.mutateAsync({
-					repositories: [
-						{
-							connectionId: item.connectionId,
-							fullName: item.fullName,
-							url: item.url ?? `https://${item.source}.com/${item.fullName}`,
-							description: item.description ?? undefined,
-							language: item.language ?? undefined,
-							isPrivate: item.isPrivate ?? false,
-						},
-					],
-				});
-				repoId = batch.repositories[0].id;
-			}
-
-			if (repoId) {
-				await linkRepository.mutateAsync({
-					id: repoId,
-					serviceId: newService.id,
-					isPrimary: true,
-				});
-			}
-
-			setVcsScannedRepos((prev) => prev.filter((r) => r.key !== item.key));
+			await linkRepository.mutateAsync({
+				id: item.id,
+				serviceId: newService.id,
+				isPrimary: true,
+			});
 			await Promise.all([refetchRepos(), refetchServices()]);
 		} catch {
 			// error surfaced in UI
@@ -403,12 +267,7 @@ function ServicesPage() {
 
 	const handleConfirmDelete = async () => {
 		if (!itemToDelete) return;
-		if (itemToDelete.id) {
-			await deleteRepository.mutateAsync({ id: itemToDelete.id });
-		}
-		setVcsScannedRepos((prev) =>
-			prev.filter((r) => r.key !== itemToDelete.key),
-		);
+		await deleteRepository.mutateAsync({ id: itemToDelete.id });
 		await refetchRepos();
 	};
 
@@ -534,96 +393,75 @@ function ServicesPage() {
 						</div>
 					)}
 
-					{(reviewItems.length > 0 || vcsConnections.length > 0) && (
+					{reviewItems.length > 0 && (
 						<RecordSection
 							id="review-queue"
 							className="mt-10"
 							title="Repositories no service names"
-							count={reviewItems.length || undefined}
-							actions={
-								vcsConnections.length > 0 && (
-									<Button
-										variant="text"
-										size="sm"
-										onClick={handleFetchVcs}
-										disabled={isFetchingVcs}
-									>
-										{isFetchingVcs ? "Fetching" : "Fetch from the git host"}
-									</Button>
-								)
-							}
+							count={reviewItems.length}
 						>
-							{reviewItems.length === 0 ? (
-								<p
-									className="text-body text-text-2"
-									data-testid="review-queue-empty"
-								>
-									None waiting.
-								</p>
-							) : (
-								<ul className="divide-y divide-hairline">
-									{reviewItems.map((item) => {
-										const selected = selectedServiceForRepo[item.key] ?? "";
-										return (
-											<li
-												key={item.key}
-												className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
-											>
-												<div className="min-w-0 flex-1">
-													<Mono className="block truncate text-text-1">
-														{item.fullName}
-													</Mono>
-													{item.description && (
-														<p className="truncate text-meta text-text-3">
-															{item.description}
-														</p>
-													)}
-												</div>
-												<div className="flex flex-wrap items-center gap-2">
-													<Button
-														variant="secondary"
-														size="sm"
-														onClick={() => handleImportAsService(item)}
+							<ul className="divide-y divide-hairline">
+								{reviewItems.map((item) => {
+									const selected = selectedServiceForRepo[item.key] ?? "";
+									return (
+										<li
+											key={item.key}
+											className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center"
+										>
+											<div className="min-w-0 flex-1">
+												<Mono className="block truncate text-text-1">
+													{item.fullName}
+												</Mono>
+												{item.description && (
+													<p className="truncate text-meta text-text-3">
+														{item.description}
+													</p>
+												)}
+											</div>
+											<div className="flex flex-wrap items-center gap-2">
+												<Button
+													variant="secondary"
+													size="sm"
+													onClick={() => handleImportAsService(item)}
+												>
+													Make it a service
+												</Button>
+												<Select
+													value={selected}
+													onValueChange={(v) => {
+														setSelectedServiceForRepo((prev) => ({
+															...prev,
+															[item.key]: v,
+														}));
+														void handleLinkToService(item, v);
+													}}
+												>
+													<SelectTrigger
+														className="h-7 w-auto min-w-32"
+														aria-label={`Give ${item.fullName} to a service`}
 													>
-														Make it a service
-													</Button>
-													<Select
-														value={selected}
-														onValueChange={(v) => {
-															setSelectedServiceForRepo((prev) => ({
-																...prev,
-																[item.key]: v,
-															}));
-															void handleLinkToService(item, v);
-														}}
-													>
-														<SelectTrigger
-															className="h-7 w-auto min-w-32"
-															aria-label={`Give ${item.fullName} to a service`}
-														>
-															<SelectValue placeholder="Give it to" />
-														</SelectTrigger>
-														<SelectContent>
-															{allServices.map((svc) => (
-																<SelectItem key={svc.id} value={svc.id}>
-																	{svc.name}
-																</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-													<Button
-														variant="danger"
-														size="sm"
-														onClick={() => setItemToDelete(item)}
-													>
-														Remove
-													</Button>
-												</div>
-											</li>
-										);
-									})}
-								</ul>
-							)}
+														<SelectValue placeholder="Give it to" />
+													</SelectTrigger>
+													<SelectContent>
+														{allServices.map((svc) => (
+															<SelectItem key={svc.id} value={svc.id}>
+																{svc.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+												<Button
+													variant="danger"
+													size="sm"
+													onClick={() => setItemToDelete(item)}
+												>
+													Remove
+												</Button>
+											</div>
+										</li>
+									);
+								})}
+							</ul>
 						</RecordSection>
 					)}
 				</div>
@@ -643,7 +481,7 @@ function ServicesPage() {
 				description={
 					<p>
 						<strong>{itemToDelete?.fullName}</strong> leaves PrismaLens. The
-						repository on GitHub or GitLab is untouched.
+						repository on its git host is untouched.
 					</p>
 				}
 				confirmLabel="Remove"

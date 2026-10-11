@@ -10,6 +10,7 @@
  *  - Node version
  *  - the workspace directory (created by `pl up` itself); `--workspace` and
  *    PRISMALENS_WORKSPACE_DIR are honoured the way `pl up` honours them
+ *  - git and the credential helpers this shell would use
  *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4),
  *    and the model a run would ask it for
  *  - the port/host `pl up` will bind, informational only
@@ -357,6 +358,76 @@ export function checkService(
 	};
 }
 
+type GitRun = (args: string[]) => {
+	status: number | null;
+	stdout: string;
+	error?: Error;
+};
+
+const runGit: GitRun = (args) => {
+	const r = spawnSync("git", args, {
+		encoding: "utf8",
+		timeout: 5_000,
+		env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+	});
+	return { status: r.status, stdout: r.stdout ?? "", error: r.error };
+};
+
+/**
+ * git and the credential helpers this shell would use (#673). A helper value is
+ * config, never a secret. The background service has its own environment, so
+ * what this shell sees is not proof the service sees it.
+ */
+export function checkGit(
+	run: GitRun = runGit,
+	service = installedService(),
+): Check[] {
+	const version = run(["--version"]);
+	if (version.error || version.status !== 0)
+		return [
+			{
+				name: "Git",
+				pass: false,
+				detail:
+					"git missing: PrismaLens reads a service's code with git. Install it and run pl doctor again",
+				hard: true,
+			},
+		];
+	const helpers = run(["config", "--get-regexp", "credential\\..*helper"]);
+	const lines =
+		helpers.status === 0
+			? helpers.stdout
+					.split("\n")
+					.filter((l) => l.trim())
+					.map((l) => {
+						const [key = "", ...value] = l.trim().split(/\s+/);
+						const host = key
+							.replace(/^credential\.?/i, "")
+							.replace(/\.?helper$/i, "")
+							.replace(/^https?:\/\//i, "")
+							.replace(/\/$/, "");
+						return `${host || "all hosts"}: ${value.join(" ")}`;
+					})
+			: [];
+	const checks: Check[] = [
+		{
+			name: "Git",
+			pass: true,
+			detail: `git ${version.stdout.trim().replace(/^git version\s+/, "")} (for this shell); ${lines.length ? `credential helpers: ${lines.join("; ")}` : "no credential helper"}`,
+			hard: true,
+		},
+	];
+	if (service)
+		checks.push({
+			name: "Git in the background service",
+			pass: true,
+			detail:
+				"The background service runs with its own environment; helpers that need a desktop keyring or an SSH agent may not work there.",
+			hard: false,
+		});
+	return checks;
+}
+
 /** What `pl up` would pick, without creating the instance file the doctor only reports on. */
 function workspacePort(): number {
 	const workspace = getAppDataDir();
@@ -444,6 +515,7 @@ export default defineCommand({
 				checkAppDataDir(),
 				checkPath(),
 				checkInstalls(),
+				...checkGit(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakeChecks,

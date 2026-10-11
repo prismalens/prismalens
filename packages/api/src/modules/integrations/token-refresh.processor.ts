@@ -4,8 +4,7 @@
 /**
  * Proactive token refresh.
  *
- * Refreshes tokens expiring within 10 minutes. Generic — handles all auth modes (OAuth2,
- * GitHub App, etc.).
+ * Refreshes tokens expiring within 10 minutes, for the templates that can refresh (OAuth2).
  *
  * This used to be a BullMQ repeatable job, which meant a broker had to be running before
  * OAuth connections could stay alive. It is a fixed-interval sweep over a table in the
@@ -20,6 +19,7 @@ import {
 	type OnModuleDestroy,
 	type OnModuleInit,
 } from "@nestjs/common";
+import { getAllTemplates } from "@prismalens/integrations";
 // Constructor-injected — Nest's reflection-based DI needs the runtime class
 // reference from a value import to populate emitDecoratorMetadata. `import
 // type` here breaks boot with UnknownDependenciesException.
@@ -39,6 +39,14 @@ const MAX_CONSECUTIVE_ERRORS = 3;
 
 /** Max connections to refresh per cycle (prevents unbounded queries) */
 const BATCH_SIZE = 100;
+
+/**
+ * Only these can refresh. A pasted token's expiry, or a removed template's row,
+ * would otherwise be retried every sweep and warn forever (#673).
+ */
+const OAUTH2_TEMPLATE_IDS = getAllTemplates()
+	.filter((t) => t.authMode === "oauth2")
+	.map((t) => t.id);
 
 @Injectable()
 export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
@@ -97,6 +105,7 @@ export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
 			where: {
 				status: "ACTIVE",
 				tokenExpiresAt: { lt: cutoff },
+				integration: { templateId: { in: OAUTH2_TEMPLATE_IDS } },
 			},
 			select: { id: true },
 			orderBy: { tokenExpiresAt: "asc" },

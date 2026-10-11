@@ -5,7 +5,12 @@
  * AES-256-GCM credential encryption vault.
  * Outputs Buffer (for Prisma Bytes) instead of base64 strings.
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+	createCipheriv,
+	createDecipheriv,
+	createHmac,
+	randomBytes,
+} from "node:crypto";
 
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
@@ -52,6 +57,11 @@ export class TokenVault {
 		return (
 			decipher.update(ciphertext).toString("utf8") + decipher.final("utf8")
 		);
+	}
+
+	/** HMAC-SHA256 under the vault key, hex: a stable fingerprint that reveals nothing without the key. */
+	hmacHex(data: string): string {
+		return createHmac("sha256", this.key).update(data).digest("hex");
 	}
 
 	encryptJSON<T>(data: T): Buffer {

@@ -186,8 +186,18 @@ export function createPrismaInvestigationStore(
 		},
 
 		async append(event: CanonicalEvent) {
-			if (event.kind === "operator_message" && event.delivered)
+			if (event.kind === "operator_message" && event.delivered && !delivered) {
 				delivered = true;
+				// The rebuild's credentials replace the first run's only once the message lands: X1 puts back an undelivered follow-up (#810).
+				if (resume && workspace)
+					await ports
+						.followUpStatus(investigationId, { workspace })
+						.catch((e) =>
+							logger.warn(
+								`Could not record the rebuilt workspace: ${String(e)}`,
+							),
+						);
+			}
 			buffer.push(event);
 			if (buffer.length >= BATCH_SIZE) {
 				await flush();

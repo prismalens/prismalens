@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Token refresh (#253): the OAuth2 and GitHub-App refresh strategies plus the
+ * Token refresh (#253): the OAuth2 refresh strategy plus the
  * per-connection refresh lock. The race tests fire genuinely concurrent
  * getValidToken() calls with Promise.all — N callers must collapse to ONE
  * provider round-trip and ONE stored credential, with no lost update and no
@@ -44,7 +44,6 @@
  *
  * Everything outside the COVERED box is #385's, not this file's.
  */
-import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthTemplate } from "../types.js";
 import {
@@ -55,12 +54,6 @@ import {
 import { TokenVault } from "./token-vault.js";
 
 const VAULT = new TokenVault(Buffer.alloc(32, 0x33));
-
-const { privateKey: RSA_PRIVATE_KEY } = generateKeyPairSync("rsa", {
-	modulusLength: 2048,
-	publicKeyEncoding: { type: "spki", format: "pem" },
-	privateKeyEncoding: { type: "pkcs8", format: "pem" },
-});
 
 type OAuth2Config = NonNullable<AuthTemplate["oauth2"]>;
 
@@ -82,15 +75,6 @@ const OAUTH_TEMPLATE: AuthTemplate = {
 	connectionCreation: { mode: "oauth_redirect" },
 	postIntegrationCreation: { action: "oauth_redirect" },
 	display: { authModeLabel: "OAuth2" },
-};
-
-const GITHUB_APP_TEMPLATE: AuthTemplate = {
-	...OAUTH_TEMPLATE,
-	id: "github-app",
-	name: "GitHub (App)",
-	authMode: "github_app",
-	oauth2: undefined,
-	githubApp: { defaultPermissions: { contents: "read" } },
 };
 
 const API_KEY_TEMPLATE: AuthTemplate = {
@@ -555,123 +539,6 @@ describe("TokenRefresher — OAuth2 refresh strategy", () => {
 			/access_token/,
 		);
 		expect(deps.updates).toHaveLength(0);
-	});
-});
-
-describe("TokenRefresher — GitHub App refresh strategy", () => {
-	let fetchMock: ReturnType<typeof vi.fn>;
-
-	beforeEach(() => {
-		fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-	});
-
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	function seedGitHubApp(
-		deps: MemoryRefreshDeps,
-		clientSecret: string,
-		credentials: Record<string, unknown> = { installationId: "42" },
-	) {
-		return seed(deps, {
-			credentials,
-			templateInfo: {
-				template: GITHUB_APP_TEMPLATE,
-				clientId: "123456",
-				clientSecret,
-			},
-		});
-	}
-
-	it("mints a JWT and swaps it for an installation token", async () => {
-		const deps = new MemoryRefreshDeps();
-		seedGitHubApp(deps, JSON.stringify({ privateKey: RSA_PRIVATE_KEY }));
-		const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
-		fetchMock.mockResolvedValue(
-			jsonResponse({
-				token: "ghs_new",
-				expires_at: expiresAt,
-				permissions: { contents: "read" },
-				repository_selection: "selected",
-			}),
-		);
-
-		const token = await new TokenRefresher(VAULT, deps).getValidToken("conn_1");
-
-		expect(token).toBe("ghs_new");
-		expect(deps.updates[0].credentials).toMatchObject({
-			accessToken: "ghs_new",
-			installationToken: "ghs_new",
-			installationId: "42",
-			permissions: { contents: "read" },
-			repositorySelection: "selected",
-		});
-		expect(deps.updates[0].tokenExpiresAt?.toISOString()).toBe(expiresAt);
-
-		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(url).toBe(
-			"https://api.github.com/app/installations/42/access_tokens",
-		);
-		const authorization = (init.headers as Record<string, string>).Authorization;
-		expect(authorization.startsWith("Bearer ")).toBe(true);
-		const jwt = authorization.slice("Bearer ".length);
-		const header = JSON.parse(
-			Buffer.from(jwt.split(".")[0], "base64url").toString("utf8"),
-		);
-		expect(header.alg).toBe("RS256");
-	});
-
-	it("accepts a raw PEM client secret as well as the JSON envelope", async () => {
-		const deps = new MemoryRefreshDeps();
-		seedGitHubApp(deps, RSA_PRIVATE_KEY);
-		fetchMock.mockResolvedValue(
-			jsonResponse({
-				token: "ghs_new",
-				expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-				permissions: {},
-				repository_selection: "all",
-			}),
-		);
-
-		await expect(
-			new TokenRefresher(VAULT, deps).getValidToken("conn_1"),
-		).resolves.toBe("ghs_new");
-	});
-
-	it("prefers stored permission overrides over the template defaults", async () => {
-		const deps = new MemoryRefreshDeps();
-		seedGitHubApp(deps, RSA_PRIVATE_KEY, {
-			installationId: "42",
-			permissionOverrides: { issues: "write" },
-		});
-		fetchMock.mockResolvedValue(
-			jsonResponse({
-				token: "ghs_new",
-				expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-				permissions: { issues: "write" },
-				repository_selection: "all",
-			}),
-		);
-
-		await new TokenRefresher(VAULT, deps).getValidToken("conn_1");
-
-		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-		expect(JSON.parse(init.body as string)).toEqual({
-			permissions: { issues: "write" },
-		});
-	});
-
-	it("fails when the credential has no installationId", async () => {
-		const deps = new MemoryRefreshDeps();
-		seedGitHubApp(deps, RSA_PRIVATE_KEY, { accessToken: "at_old" });
-
-		await expect(
-			new TokenRefresher(VAULT, deps).getValidToken("conn_1"),
-		).rejects.toThrow("missing installationId in credentials");
-		expect(deps.errors[0].status).toBe("REFRESH_FAILED");
-		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
 
