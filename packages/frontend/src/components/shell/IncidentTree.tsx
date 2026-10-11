@@ -68,14 +68,16 @@ function healthOf(items: IncidentWithRelations[], now: number): Health {
 
 /** Where the route puts you: the incident, and the run when on a transcript. */
 function useHere(): { incidentId: string | null; runId: string | null } {
-	const { pathname } = useLocation();
-	const incident = /^\/incidents\/([^/]+)/.exec(pathname)?.[1] ?? null;
-	const runId = /^\/investigations\/([^/]+)/.exec(pathname)?.[1] ?? null;
-	const run = useQuery({
-		...orpc.investigations.get.queryOptions({ input: { id: runId ?? "" } }),
-		enabled: !!runId,
-	});
-	return { incidentId: incident ?? run.data?.incidentId ?? null, runId };
+	const { pathname, search } = useLocation();
+	const incidentId = /^\/incidents\/([^/]+)/.exec(pathname)?.[1] ?? null;
+	const investigation = (search as { investigation?: unknown }).investigation;
+	const runId =
+		incidentId &&
+		pathname.endsWith("/conversation") &&
+		typeof investigation === "string"
+			? investigation
+			: null;
+	return { incidentId, runId };
 }
 
 /**

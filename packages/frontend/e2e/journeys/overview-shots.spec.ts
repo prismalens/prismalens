@@ -459,6 +459,10 @@ test("overview shots", async ({
 	await visit(page, `/incidents/${ready.id}`);
 	await page.getByTestId("next-copy").click();
 	await expect(page.getByTestId("next-applied")).toBeVisible();
+	// The fix leaves as text the operator can hand to their own agent.
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+		"kubectl rollout undo deployment/booklogr-api --to-revision=41",
+	);
 	await shot(page, "overview-copied-1440-dark");
 	await page.getByTestId("next-applied").click();
 	await expect(page.getByTestId("fix-undo")).toBeVisible();

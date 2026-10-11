@@ -45,7 +45,7 @@ Feature: Shell and Back
   Scenario: Settings opened by a deep link
     Given a fresh tab opens Settings, Devices
     When I press "Back"
-    Then I am on the board
+    Then I am on the inbox
 
   Scenario: Acknowledging is the incident's
     When I open an alert that opened INC-1

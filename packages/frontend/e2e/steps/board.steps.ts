@@ -1100,11 +1100,11 @@ When(
 );
 
 Then(
-	'within 2 seconds a new incident is in "Needs you" and its Overview reads {string}',
-	async ({ page }, words: string) => {
+	"within 2 seconds a new incident for the same alert is under {string}",
+	async ({ page }, label: string) => {
 		const made = inc(page);
 		await openBoard(page);
-		const rows = cardOf(page.getByTestId("needs-you"), made.title).filter({
+		const rows = cardOf(group(page, label), made.title).filter({
 			hasNot: page.getByText(`INC-${made.number}`, { exact: true }),
 		});
 		await expect(rows.first()).toBeVisible({ timeout: 2_000 });
@@ -1116,24 +1116,41 @@ Then(
 			title: made.title,
 			labels: made.labels,
 		};
-		await visit(page, `/incidents/${refire?.id}`);
-		await expect(page.getByTestId("incident-lineage")).toHaveText(
-			words.replace("INC-1", `INC-${made.number}`),
-		);
 	},
 );
 
 Then(
-	'INC-1 stays Resolved, and INC-1\'s Overview reads "Fired again as INC-11, <time>"',
-	async ({ page }) => {
-		const made = inc(page);
-		const refire = w(page).refire;
-		const line = new RegExp(
-			`^Fired again as INC-${refire?.number}, \\d\\d:\\d\\d$`,
-		);
-		await visit(page, `/incidents/${made.id}`);
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
-		await expect(page.getByTestId("incident-lineage")).toHaveText(line);
+	"the new incident's Overview reads {string} as {string}",
+	async ({ page }, term: string, value: string) => {
+		await visit(page, `/incidents/${w(page).refire?.id}`);
+		const impact = page.getByTestId("impact-no-source");
+		await expect(impact.locator("dt", { hasText: term })).toBeVisible();
+		await expect(
+			impact
+				.locator("div", { has: page.locator("dt", { hasText: term }) })
+				.locator("dd"),
+		).toHaveText(value);
+	},
+);
+
+// The refire carries INC-1's title, so INC-1 is told apart by its number.
+Then(
+	"INC-1 stays Resolved, in Recently resolved reading {string}",
+	async ({ page }, word: string) => {
+		const ours = page.getByText(`INC-${inc(page).number}`, { exact: true });
+		await openBoard(page);
+		await expect(
+			page
+				.getByTestId("recently-resolved")
+				.getByTestId("recent-row")
+				.filter({ has: ours }),
+		).toContainText(word);
+		await expect(
+			page
+				.getByTestId("needs-you")
+				.getByTestId("inbox-row")
+				.filter({ has: ours }),
+		).toHaveCount(0);
 	},
 );
 

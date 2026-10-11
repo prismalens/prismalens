@@ -4,8 +4,6 @@
 import { expect, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
-	deliver,
-	eventFactory,
 	hideQueryDevtools,
 	INVESTIGATION_ID,
 	installStreamDouble,
@@ -89,10 +87,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 	test("#step-N deep link via /investigations/<id>#step-1", async ({
 		page,
 	}) => {
-		test.fixme(
-			true,
-			"deep link via /investigations/<id> redirects to /incidents in router beforeLoad",
-		);
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
 			status: "completed",
 		});

@@ -10,7 +10,7 @@
  */
 
 import { join } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import type { FakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { investigateButton } from "../journeys/verb";
 import { Given, Then, When } from "./fixtures";
@@ -391,10 +391,6 @@ Then(
 );
 
 Given("the box has no focus", async ({ page }) => {
-	test.fixme(
-		true,
-		"Escape when box has no focus does not navigate back to board",
-	);
 	await box(page).blur();
 	await expect(box(page)).not.toBeFocused();
 });

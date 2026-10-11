@@ -9,9 +9,9 @@ import {
 	type Severity,
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
@@ -37,6 +37,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useEscapeBack } from "@/hooks/use-escape-back";
 import { useNow } from "@/hooks/use-now";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,10 @@ export function IncidentHeader({
 	controlsSpace?: boolean;
 }) {
 	usePageTitle(`INC-${incident.number} ${incident.title} / ${view}`);
+	const navigate = useNavigate();
+	useEscapeBack(
+		useCallback(() => void navigate({ to: "/incidents" }), [navigate]),
+	);
 	const now = useNow(30_000);
 	const { toast } = useToast();
 	const queryClient = useQueryClient();

@@ -406,7 +406,7 @@ Given("a fresh tab opens Settings, Devices", async ({ page }) => {
 	world(page).page = tab;
 });
 
-Then("I am on the board", async ({ page }) => {
+Then("I am on the inbox", async ({ page }) => {
 	await expect.poll(() => pathOf(here(page))).toBe("/incidents");
 });
 
