@@ -129,7 +129,7 @@ function AskPanel({
 	const mcp = mcpTool(ask.title);
 	// `Write /tmp/x` keeps its verb; a title that is not the command gives way to the command.
 	const body = mcp
-		? ask.input
+		? (ask.input ?? ask.detail)
 		: ask.detail && !ask.title.includes(ask.detail)
 			? ask.detail
 			: ask.title;

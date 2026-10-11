@@ -480,6 +480,7 @@ export async function* runInvestigation(
 					yield ev;
 				}
 			} else if (item.kind === "permission_asked") {
+				openAsks.add(item.askId);
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
 				const window = item.window ?? {
@@ -509,19 +510,14 @@ export async function* runInvestigation(
 					const flushed = adapter.flushText();
 					if (flushed) yield flushed;
 				}
+				openAsks.delete(item.askId);
 				yield adapter.permissionAnswer(
 					item.askId,
 					item.outcome,
 					item.sync ? item.request.toolCall : undefined,
 				);
 			} else if (item.kind === "nudge") {
-				for (const line of opts.steer?.queued?.() ?? [])
-					if (line.id)
-						yield adapter.messageQueued(
-							line.id,
-							line.text,
-							refsOf(line.attachments),
-						);
+				yield* recordQueued();
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -536,6 +532,37 @@ export async function* runInvestigation(
 	};
 
 	const sendNow: SteerLine[] = [];
+	const openAsks = new Set<string>();
+	const recordQueued = function* (): Generator<CanonicalEvent> {
+		for (const line of opts.steer?.queued?.() ?? [])
+			if (line.id)
+				yield adapter.messageQueued(
+					line.id,
+					line.text,
+					refsOf(line.attachments),
+				);
+	};
+	/**
+	 * What the run leaves behind on any end (#820): an ask it never heard back on
+	 * reads stopped, and a message it never read, not delivered.
+	 */
+	const leftovers = function* (): Generator<CanonicalEvent> {
+		for (const askId of openAsks)
+			yield adapter.permissionAnswer(askId, "stopped");
+		openAsks.clear();
+		unsubscribe?.();
+		unQueued?.();
+		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
+			yield adapter.operatorMessage(
+				line.text,
+				"queue",
+				false,
+				undefined,
+				refsOf(line.attachments),
+				undefined,
+				line.id,
+			);
+	};
 	const unsubscribe = opts.steer?.onNow((line) => {
 		sendNow.push(line);
 		session.cancel();
@@ -565,6 +592,7 @@ export async function* runInvestigation(
 				fallback: access.fallbackMode,
 			});
 			if (refused) {
+				yield* leftovers();
 				yield adapter.error(refused);
 				return;
 			}
@@ -615,6 +643,7 @@ export async function* runInvestigation(
 						? `${label} would not switch to ${chosenModel}; it offered ${offered || "no models"}`
 						: `${label} offers no model option, so it cannot take ${chosenModel}`,
 				);
+				yield* leftovers();
 				return;
 			}
 		}
@@ -633,6 +662,7 @@ export async function* runInvestigation(
 				yield adapter.error(
 					`${label} would not take ${opts.effort} effort; it offered ${session.effort?.values.join(", ") || "none"}`,
 				);
+				yield* leftovers();
 				return;
 			}
 			fidelity = { ...fidelity, effort: opts.effort };
@@ -644,6 +674,8 @@ export async function* runInvestigation(
 		): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
 			// A stop during startup found no turn to cancel; prompting now would wait out the prompt timeout.
 			if (opts.signal?.aborted) return { stop: "cancelled" };
+			// A line queued while the run started is recorded before the turn that may read it (#820).
+			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
 			return yield* consume(session.prompt(parts));
@@ -732,19 +764,7 @@ export async function* runInvestigation(
 				),
 			);
 		}
-		unsubscribe?.();
-		unQueued?.();
-		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
-			yield adapter.operatorMessage(
-				line.text,
-				"queue",
-				false,
-				undefined,
-				refsOf(line.attachments),
-				undefined,
-				line.id,
-			);
-		}
+		yield* leftovers();
 
 		if ("error" in outcome) {
 			yield adapter.error(
@@ -809,6 +829,7 @@ export async function* runInvestigation(
 			),
 		);
 	} catch (err) {
+		yield* leftovers();
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
 		unsubscribe?.();

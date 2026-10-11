@@ -366,15 +366,23 @@ describe("ACP status semantics (#820, #673 w5-2)", () => {
 				},
 			],
 		});
-		// The same input again, still no status: nothing new.
+		// A field streamed in later fills the step in too; the same input again is nothing new.
+		const fuller = {
+			command: "curl -s http://localhost:9093/api/v2/alerts",
+			description: "Read alerts",
+		};
 		expect(
 			adapter.events({
 				sessionUpdate: "tool_call_update",
 				toolCallId: "toolu_1",
-				rawInput: {
-					command: "curl -s http://localhost:9093/api/v2/alerts",
-					description: "Read alerts",
-				},
+				rawInput: fuller,
+			}),
+		).toMatchObject([{ kind: "agent_step", toolCalls: [{ args: fuller }] }]);
+		expect(
+			adapter.events({
+				sessionUpdate: "tool_call_update",
+				toolCallId: "toolu_1",
+				rawInput: fuller,
 			}),
 		).toEqual([]);
 		const done = adapter.events({

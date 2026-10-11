@@ -472,6 +472,33 @@ describe("deriveTranscript", () => {
 		).toEqual(["delivered"]);
 	});
 
+	it("reads a queued message on an ended run as never delivered (#820)", () => {
+		const queued = {
+			kind: "message_queued",
+			...base(5),
+			messageId: "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c12",
+			text: "still there?",
+		} as CanonicalEvent;
+		const items = deriveTranscript([step(0, "Working."), queued], T0 + 6000, {
+			run: ended,
+		});
+		expect(items.find((i) => i.kind === "operator")).toMatchObject({
+			state: "not_delivered",
+		});
+	});
+
+	it("keeps a delegation one line when its call is re-announced", () => {
+		const items = deriveTranscript(
+			[
+				step(0, "", [{ id: "t1", name: "Task" }]),
+				step(1, "", [{ id: "t1", name: "Check the pool", args: { description: "Check the pool" } }]),
+			],
+			T0 + 2000,
+			{ run: ended },
+		);
+		expect(kinds(items)).toEqual(["line"]);
+	});
+
 	it("names the model the way the picker does (#673 w5-3)", () => {
 		const config = {
 			kind: "session_config",
@@ -507,6 +534,20 @@ describe("runStepText", () => {
 			stale: true,
 		});
 		expect(runStepText(thinking, T0, { streamLost: true })?.stale).toBe(true);
+	});
+
+	it("ages the agent's quiet from its own last event, not your queued message (#820)", () => {
+		const events = [
+			step(0, "", [{ id: "a", name: "Read x" }]),
+			result(1, "a", "file"),
+			{
+				kind: "message_queued",
+				...base(170),
+				messageId: "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c13",
+				text: "are you stuck?",
+			} as CanonicalEvent,
+		];
+		expect(runStepText(events, T0 + 181_000)?.stale).toBe(true);
 	});
 
 	it("is not stale for a 10-minute-old permission_ask (#673 w21)", () => {

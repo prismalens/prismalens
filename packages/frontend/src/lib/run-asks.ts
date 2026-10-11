@@ -63,8 +63,20 @@ export function deriveAsks(
 	opts: { live: boolean; cwd?: string | null },
 ): AskRecord[] {
 	const asks = new Map<string, AskRecord & { call?: string }>();
+	const endTurn = () => {
+		for (const ask of Array.from(asks.values()))
+			if (ask.state === "waiting") ask.state = "ended";
+	};
 	for (const e of events) {
-		if (e.kind === "permission_ask")
+		// The turn an ask waited in ended without its answer: a follow-up must not revive it.
+		if (
+			e.kind === "error" ||
+			e.kind === "report" ||
+			e.kind === "branch_done" ||
+			(e.kind === "operator_message" && e.resumed)
+		)
+			endTurn();
+		else if (e.kind === "permission_ask")
 			asks.set(e.askId, {
 				askId: e.askId,
 				title: e.title,

@@ -632,6 +632,7 @@ export function deriveTranscript(
 	const asks = new Map<string, boolean>();
 	/** Which group lists each call: a late result or a re-announced call joins it (#673 w5-1). */
 	const callGroup = new Map<string, OpenGroup>();
+	const delegated = new Set<string>();
 	const queued = new Map<
 		string,
 		Extract<CanonicalEvent, { kind: "message_queued" }>
@@ -717,8 +718,10 @@ export function deriveTranscript(
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
-					if (callGroup.has(call.toolCallId)) continue;
+					if (callGroup.has(call.toolCallId) || delegated.has(call.toolCallId))
+						continue;
 					if (DELEGATE_TOOL.test(call.name)) {
+						delegated.add(call.toolCallId);
 						closeGroup();
 						items.push({
 							kind: "line",
@@ -910,7 +913,8 @@ export function deriveTranscript(
 			at: q.ts,
 			mode: "queue",
 			attachments: q.attachments ?? [],
-			state: "queued",
+			// The run ended without reading it, and no record says so: it never arrived.
+			state: run && !run.live ? "not_delivered" : "queued",
 		});
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
@@ -1009,7 +1013,7 @@ export function runStepText(
 ): { text: string; stale: boolean } | null {
 	if (opts.streamLost)
 		return { text: "live stream lost, polling", stale: true };
-	const last = events[events.length - 1];
+	const last = events.findLast((e) => e.kind !== "message_queued");
 	if (!last) return null;
 	// The agent waits on you; that quiet is not a stall (#673 w21).
 	if (last.kind === "permission_ask")

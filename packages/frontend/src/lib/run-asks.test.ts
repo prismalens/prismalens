@@ -65,6 +65,11 @@ describe("deriveAsks (#820)", () => {
 		expect(a?.state).toBe(outcome);
 	});
 
+	it("ends an ask whose turn ended unanswered, so a follow-up never revives it", () => {
+		const error = { kind: "error", ...base(3), message: "prompt timed out" } as CanonicalEvent;
+		expect(deriveAsks([ask(1), error], [], { live: true })[0]?.state).toBe("ended");
+	});
+
 	it("waits while the run is live, and reads ended once it is not", () => {
 		expect(deriveAsks([ask(1)], [], { live: true })[0]?.state).toBe("waiting");
 		expect(deriveAsks([ask(1)], [], { live: false })[0]?.state).toBe("ended");

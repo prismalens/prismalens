@@ -228,13 +228,15 @@ export class AcpAdapter {
 				? toolCall?.rawInput
 				: meta?.rawInput;
 		const detail = askDetail(input, toolCall?.locations);
-		const shown = detail ? null : askInput(input);
+		const title = toolCall?.title?.trim() || meta?.name || "A tool call";
+		// An MCP tool's arguments are what it does, whatever command or path one names (#820).
+		const shown = detail && !title.startsWith("mcp__") ? null : askInput(input);
 		const server = mcpServerOf(toolCall?._meta);
 		return {
 			kind: "permission_ask",
 			...this.base(),
 			askId,
-			title: toolCall?.title?.trim() || meta?.name || "A tool call",
+			title,
 			detail,
 			toolKind: toolCall?.kind ?? meta?.kind ?? null,
 			expiresAt: expiresAt.toISOString(),
@@ -347,14 +349,14 @@ export class AcpAdapter {
 	private mergeToolMeta(toolCallId: string, u: AcpUpdate): boolean {
 		const meta = this.toolMeta.get(toolCallId);
 		if (!meta) return false;
-		const hadInput = Object.keys(toArgs(meta.rawInput)).length > 0;
-		const input = Object.keys(toArgs(u.rawInput)).length > 0;
-		if (input) meta.rawInput = u.rawInput;
+		const had = Object.keys(toArgs(meta.rawInput)).length;
+		const now = Object.keys(toArgs(u.rawInput)).length;
+		if (now > 0) meta.rawInput = u.rawInput;
 		const title = typeof u.title === "string" ? u.title.trim() : "";
 		const renamed = !!title && title !== meta.name;
 		if (title) meta.name = title;
-		// Only the first input is news; a call that repeats its input is no new step.
-		return (input && !hadInput) || (renamed && !hadInput);
+		// An input streamed field by field grows; each new field is news, a repeat is not.
+		return now > had || (renamed && had === 0);
 	}
 
 	/** Common per-event fields shared by every branch-scoped event. */

@@ -126,7 +126,7 @@ export function deriveSteps(
 		return {
 			n: i + 1,
 			callId,
-			input: inputOf(call.args),
+			input: inputOf(call.name, call.args),
 			title: describe(call.args) ?? command,
 			command,
 			kind:
@@ -149,12 +149,17 @@ export function deriveSteps(
 }
 
 /** A tool's arguments as indented JSON when they name no command or path. */
-function inputOf(args: Record<string, unknown>): string | null {
+function inputOf(name: string, args: Record<string, unknown>): string | null {
 	if (Object.keys(args).length === 0) return null;
+	if (/^`?mcp__/.test(name)) return json(args);
 	const command = args.command ?? args.cmd;
 	const path = args.path ?? args.filePath ?? args.file_path;
 	if (typeof command === "string" || Array.isArray(command)) return null;
 	if (typeof path === "string") return null;
+	return json(args);
+}
+
+function json(args: Record<string, unknown>): string | null {
 	try {
 		return JSON.stringify(args, null, 2).slice(0, 2000);
 	} catch {
