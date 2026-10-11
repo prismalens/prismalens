@@ -123,6 +123,8 @@ export const RunFidelitySchema = z.object({
 	/** The level the run asked for, and the one the reported mode is (#673 w21 ruling 2026-10-10). */
 	access: AccessLevelSchema.optional(),
 	ranAccess: AccessLevelSchema.optional(),
+	/** An alert started the run: past reads, every ask was refused at once (#818 w5-29). */
+	unattended: z.boolean().optional(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */

@@ -121,7 +121,7 @@ try {
 		process.exit(1);
 	}, timeoutMs);
 
-	// Unattended like an alert-started run, so asks are answered at Auto (#673).
+	// At Auto, which approves the agent's asks; an alert-started run would refuse them (#818).
 	for await (const ev of runInvestigation({
 		runId: "00000000-0000-4000-8000-000000000001",
 		context,

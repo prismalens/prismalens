@@ -565,6 +565,7 @@ export async function* runInvestigation(
 			fidelity: modeFidelity(sandbox[ranMode]),
 			...(keepMode ? {} : { access: level }),
 			...(ran ? { ranAccess: ran } : {}),
+			...(opts.unattended ? { unattended: true } : {}),
 		};
 		const noNetwork = fidelity.fidelity === "enforced";
 		const modeName =

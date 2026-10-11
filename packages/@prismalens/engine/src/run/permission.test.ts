@@ -514,8 +514,8 @@ describe("levelPolicy", () => {
 			],
 		});
 
-		it("Given unattended run, When an execute ask arrives at auto and full-access, Then it denies without calling channel policy", () => {
-			for (const level of ["auto", "full-access"] as const) {
+		it("Given unattended run, When an execute ask arrives at any level, Then it denies without calling channel policy", () => {
+			for (const level of ["supervised", "auto-edits", "auto", "full-access"] as const) {
 				const channelPolicy = vi.fn();
 				const channel = { policy: channelPolicy };
 				const policy = levelPolicy(level, channel, { unattended: true });

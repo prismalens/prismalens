@@ -535,9 +535,9 @@ function summaryFacts(
 							? `Asked for ${ACCESS_LEVEL_LABEL[asked]}; the agent ran ${ACCESS_LEVEL_LABEL[ran]}.`
 							: ACCESS_LEVEL_LINE[level],
 						// #818 w5-29: how the run started decides its level.
-						startedBy(inv.triggerType) === "you"
-							? null
-							: "An alert started it, so nobody was there to answer: past reading files, anything the agent asked was refused. Your follow-ups keep this level.",
+						f?.unattended
+							? "An alert started it, so nobody was there to answer: past reading files, anything the agent asked was refused. A follow-up you send runs at your Permission setting."
+							: null,
 						sandboxLine(levelSandbox(ctx.harness, level)),
 					]
 						.filter(Boolean)

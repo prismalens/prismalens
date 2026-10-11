@@ -118,6 +118,11 @@ function jobResume(payload: string): InvestigationJobData["resume"] {
  * a model never gets here with one set: the selection refused it first
  * (`refuseModel`, #639 rec 4), and it never claims a `modelSource`.
  */
+/** PrismaLens started the run on its own (the trigger service's types); a person's is `manual` or none. */
+function startedByAlert(triggerType: string | null): boolean {
+	return !!triggerType && triggerType !== "manual";
+}
+
 export function resolveHarnessRunModel(
 	harnessId: HarnessId,
 	operatorModel: string | undefined,
@@ -764,6 +769,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				accessLevel: true,
 				kind: true,
 				report: true,
+				triggerType: true,
+				harness: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
@@ -782,7 +789,13 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				);
 		}
 		// The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
-		const accessLevel = AccessLevelSchema.safeParse(row.accessLevel).data;
+		// A person's follow-up on an alert-started run takes the person's level, not its Auto (#818).
+		const alertHarness =
+			startedByAlert(row.triggerType) &&
+			HARNESS_IDS.find((h) => h === row.harness);
+		const accessLevel = alertHarness
+			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
+			: AccessLevelSchema.safeParse(row.accessLevel).data;
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
