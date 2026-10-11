@@ -8,6 +8,7 @@ const ITEMS = "[data-rove]:not(:disabled)";
 /**
  * Arrow-key roving inside a chip's popover (#811): Up and Down move between
  * its `data-rove` rows and wrap, Home and End jump; disabled rows are skipped.
+ * The focused row becomes the single tab stop, so Tab leaves the menu from it.
  */
 export function roveKeys(e: KeyboardEvent<HTMLElement>): void {
 	if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
@@ -26,6 +27,9 @@ export function roveKeys(e: KeyboardEvent<HTMLElement>): void {
 				: e.key === "ArrowDown"
 					? (at + 1) % n
 					: (at - 1 + n) % n;
+	items.forEach((el, i) => {
+		el.tabIndex = i === next ? 0 : -1;
+	});
 	items[next]?.focus();
 }
 

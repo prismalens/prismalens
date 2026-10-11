@@ -180,6 +180,15 @@ export function threadActions(t: {
 	};
 }
 
+/** The destructive toast for a Stop that never reached the agent; the run strip's Stop shares it. */
+export const stopFailed =
+	(toast: ReturnType<typeof useToast>["toast"]) => (error: unknown) =>
+		toast({
+			title: "Stop did not reach the agent",
+			description: getErrorMessage(error),
+			variant: "destructive",
+		});
+
 /**
  * The box under a transcript (#811): a draft starts a run or an Ask, a live
  * run takes messages, a finished one continues. On a run the chips read
@@ -343,6 +352,15 @@ export function DockedComposer({
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
 
+	const recheck = async (text: string, attachments: string[]) => {
+		if (!inv?.report) return;
+		return record.investigate({
+			text: recheckBrief(inv.report, runNumber(runs, inv.id), text),
+			accessLevel,
+			attachments,
+		});
+	};
+
 	const onSend = async ({ text, files }: ComposerSend, now: boolean) => {
 		const attachments = await upload(files);
 		const ids = attachments.map((a) => a.id);
@@ -357,12 +375,7 @@ export function DockedComposer({
 			case "ask":
 				return record.chat({ text, accessLevel, ...sent, attachments: ids });
 			case "recheck":
-				if (!inv?.report) return;
-				return record.investigate({
-					text: recheckBrief(inv.report, runNumber(runs, inv.id), text),
-					accessLevel,
-					attachments: ids,
-				});
+				return recheck(text, ids);
 			default: {
 				// Every message says what it asks for; a live one, the turn it joins (#673 w59).
 				const kind: FollowUpKind | undefined = live
@@ -417,7 +430,23 @@ export function DockedComposer({
 					chips={chips}
 					onSend={onSend}
 					live={live}
-					ended={ended ? { onNewRun: () => record.newRun() } : undefined}
+					ended={
+						ended
+							? {
+									onNewRun: () => record.newRun(),
+									...(inv?.report && {
+										onRecheck: () =>
+											recheck("", []).catch((error: unknown) =>
+												toast({
+													title: "Run not started",
+													description: getErrorMessage(error),
+													variant: "destructive",
+												}),
+											),
+									}),
+								}
+							: undefined
+					}
 					placeholder={thread.placeholder}
 					initialFiles={draft ? record.draftFiles : undefined}
 					onFilesChange={draft ? record.setDraftFiles : undefined}
@@ -436,16 +465,7 @@ export function DockedComposer({
 					isPending={record.isStarting}
 					stopping={run.stopRequested}
 					blockedReason={blockedReason}
-					onStop={() =>
-						run.stop({
-							onError: (error) =>
-								toast({
-									title: "Stop did not reach the agent",
-									description: getErrorMessage(error),
-									variant: "destructive",
-								}),
-						})
-					}
+					onStop={() => run.stop({ onError: stopFailed(toast) })}
 					undeliverable={run.undeliverable}
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}
 					above={above}

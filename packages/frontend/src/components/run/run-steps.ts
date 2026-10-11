@@ -76,15 +76,18 @@ export function deriveSteps(
 	>();
 	const order: string[] = [];
 	const results = new Map<string, { result: StreamToolResult; at: string }>();
+	const delegated = new Set<string>();
 	for (const e of events) {
 		if (e.kind === "agent_step") {
 			for (const c of e.toolCalls) {
-				if (DELEGATE_TOOL.test(c.name) || calls.has(c.toolCallId)) continue;
+				if (DELEGATE_TOOL.test(c.name)) delegated.add(c.toolCallId);
+				if (delegated.has(c.toolCallId) || calls.has(c.toolCallId)) continue;
 				calls.set(c.toolCallId, { name: c.name, args: c.args, at: e.ts });
 				order.push(c.toolCallId);
 			}
 		} else if (e.kind === "tool_result") {
 			const id = e.result.toolCallId;
+			if (delegated.has(id) || DELEGATE_TOOL.test(e.result.name)) continue;
 			results.set(id, { result: e.result, at: e.ts });
 			if (!calls.has(id)) {
 				calls.set(id, { name: e.result.name, args: {}, at: e.ts });

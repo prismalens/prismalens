@@ -4,7 +4,7 @@
 import type { CanonicalEvent, HarnessStatus } from "@prismalens/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { RunRef } from "./record-context";
-import { newerRunOf, runAccessLine, turnElapsed } from "./run-facts";
+import { newerRunOf, runAccessLine, runName, turnElapsed } from "./run-facts";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: () => null,
@@ -118,6 +118,15 @@ describe("newerRunOf", () => {
 		const runs = [newest, older];
 
 		expect(newerRunOf(runs, "unknown-run")).toBeNull();
+	});
+});
+
+describe("runName (#811)", () => {
+	it("names an untitled Ask `Ask`, never a run number", () => {
+		const inv = makeRun("run-1", "2026-10-09T12:00:00.000Z");
+		const ask = { ...inv, id: "ask-1", kind: "chat", title: null } as unknown as RunRef;
+		expect(runName([ask, inv], ask)).toBe("Ask");
+		expect(runName([ask, inv], inv)).toBe("Run 1");
 	});
 });
 

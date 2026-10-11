@@ -251,6 +251,13 @@ describe("the box: one chip row, one Send (#811)", () => {
 		await act(async () => q<HTMLButtonElement>("composer-new-run").click());
 		expect(onNewRun).toHaveBeenCalledTimes(1);
 	});
+
+	it("a reported run with no session also offers Investigate again", async () => {
+		const onRecheck = vi.fn();
+		await render({ ended: { onNewRun: vi.fn(), onRecheck } });
+		await act(async () => q<HTMLButtonElement>("composer-recheck").click());
+		expect(onRecheck).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("DockedComposer sends (#673 w59, #811)", () => {

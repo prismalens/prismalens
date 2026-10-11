@@ -44,6 +44,15 @@ describe("roveKeys (#811)", () => {
 		expect(document.activeElement?.id).toBe("d");
 	});
 
+	it("makes the focused row the only tab stop", () => {
+		const root = menu();
+		const tab = (id: string) => (document.getElementById(id) as HTMLElement).tabIndex;
+		focusChosen({ currentTarget: root, preventDefault: () => {} } as unknown as Event);
+		press(root, "ArrowUp");
+		expect(document.activeElement?.id).toBe("a");
+		expect([tab("a"), tab("b"), tab("d")]).toEqual([0, -1, -1]);
+	});
+
 	it("leaves other keys alone", () => {
 		expect(press(menu(), "Enter")).toBe(false);
 	});
