@@ -216,6 +216,7 @@ Given(
 );
 
 When("I expand {string}", async ({ page }, _label: string) => {
+	await expect(page.getByTestId("step-toggle").first()).toBeVisible();
 	if (await page.getByTestId("steps-unfold").isVisible()) {
 		await page.getByTestId("steps-unfold").click();
 	}
