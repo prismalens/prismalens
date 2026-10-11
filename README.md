@@ -7,7 +7,7 @@
 
 PrismaLens is a self-hosted incident investigator. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
-read-only policy, and writes an **ordered-evidence report**: hypotheses ranked from most to least
+permission level you pick, and writes an **ordered-evidence report**: hypotheses ranked from most to least
 plausible, each backed by evidence the agent gathered, with no numeric
 confidence scores. The run, the evidence and the cause stay on the incident.
 
@@ -20,6 +20,30 @@ run it on your machine, read
 > PrismaLens is **alpha**. Any 0.x release may change behaviour or break a
 > workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
 > before you upgrade. See [VERSIONING.md](VERSIONING.md).
+
+## What it looks like
+
+The Inbox groups open incidents by what each one needs from you, with one next
+action per row:
+
+<!-- Invalidated by: a change to the Inbox layout or copy (packages/frontend/src/components/inbox/). Regenerate: DESIGN_SHOTS=1 playwright test e2e/journeys/inbox-shots.spec.ts, files inbox-1440-{dark,light}.png. -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/inbox-dark.png">
+  <img alt="The Inbox: tiles for what is getting worse, alerts and services, then incidents grouped as Finding ready, Run failed or stopped, No cause found and Alerts cleared" src=".github/assets/inbox-light.png" width="830">
+</picture>
+
+Each incident has one overview: the situation and the next step, the alert's
+own query on Prometheus, the fix to stop the impact with its command, why, and
+what changed:
+
+<!-- Invalidated by: a change to the overview layout or copy (packages/frontend/src/components/overview/). Regenerate: DESIGN_SHOTS=1 playwright test e2e/journeys/overview-shots.spec.ts, files overview-1440-{dark,light}.png. -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/overview-dark.png">
+  <img alt="An incident overview: the brief and a Next strip offering Copy command, the Impact chart with its threshold and deploy marker, Stop the impact with a rollback command, Why with its evidence, and What changed" src=".github/assets/overview-light.png" width="830">
+</picture>
+
+How the pages fit together is on
+[Incidents and the Inbox](https://docs.prismalens.io/guides/incidents/).
 
 ## Install
 
@@ -120,15 +144,18 @@ You do not need an Alertmanager to see it work:
 2. **Point a service at its code.** Services, then Add Service, then set
    **Repository** to a folder (`~/code/payments`) or a git URL
    (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
-   on the service: `main at 3f2c9a1b04de`, or git's error word for word. A URL
-   is mirrored under `~/.prismalens/repos/` with your own git credentials.
+   on the service: `main at 3f2c9a1b04de`, or what failed and what to do. A URL
+   is mirrored under `~/.prismalens/repos/` with this machine's git login or
+   a git host token you add; see
+   [Git credentials](https://docs.prismalens.io/guides/git-credentials/).
 3. **Write the incident.** Incidents, then Create Incident. A title is the only
    required field; pick the service, or the run has no repository to read and
    the timeline says it ran unmapped.
 4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
    into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
    checkout is never the working directory, and uncommitted changes are not
-   read. The stream and then the report render on the incident.
+   read. The run's page streams it as it works, and the finding lands on the
+   incident's overview.
 
 That is the same `incidents.create` and `incidents.investigate` path the
 correlation engine uses, so nothing about the run is a mock.
@@ -196,9 +223,11 @@ PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructi
   `PRISMALENS_HARNESS=<id>` or in Settings → Agent, which shows what is
   installed and the version each was tested with. The harness's own login or API key is its business; PrismaLens
   never reads or stores one.
-- **Runtime gate, not read-only.** Every ACP permission request is answered in
-  PrismaLens code: edit, delete and move tools and mutating shell commands are
-  refused. It is a guardrail; `Bash` walks through text rules. There is no sandbox: the agent runs as your user on the machine that runs `pl up`, with an allowlisted environment and its working directory on a throwaway clone of the repo.
+- **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
+  access each pick the agent's own mode and decide which of its permission
+  requests wait for you. PrismaLens adds no sandbox: the agent runs as your
+  user on the machine that runs `pl up`, with an allowlisted environment and
+  its working directory on a throwaway clone of the repo.
 - **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
   with supporting/contradicting evidence per hypothesis — never a numeric
   confidence number.
