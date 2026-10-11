@@ -31,14 +31,6 @@ interface InvestigationWithApproval extends Investigation {
 	accessLevel?: string | null;
 }
 
-/** An auto-started run is Auto unless Settings says otherwise; these walks need Ask always. */
-async function autoStartAt(level: string) {
-	await pl.api("/settings/harness", {
-		method: "PATCH",
-		body: { autoAccessLevels: { opencode: level } },
-	});
-}
-
 describe("Walk: an ask answered end to end (#673 w21)", () => {
 	it("Given an alert with fake-session:ask and no auto-start setting, When the run starts, Then it records accessLevel auto and runs on without an approval (#673)", async () => {
 		await pl.serviceWithRepo("ledger");
@@ -76,13 +68,12 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 	}, 60_000);
 
 	it("Given an alert with fake-session:ask, When the agent asks permission and operator approves, Then the run completes with a report and a second answer returns 409", async () => {
-		await autoStartAt("supervised");
 		await pl.serviceWithRepo("books");
 		const alert = am.fire({
 			labels: {
 				alertname: "BooksListSlow fake-session:ask",
 				service: "books",
-				severity: "critical",
+				severity: "medium",
 			},
 			annotations: { summary: "p99 of GET /books above 2s" },
 		});
@@ -95,10 +86,14 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 			(found) => found.length === 1,
 			"an incident carrying the alert",
 		);
+		await pl.api(`/incidents/${incident.id}/investigate`, {
+			method: "POST",
+			body: { accessLevel: "supervised" },
+		});
 		const [run] = await eventually(
 			() => pl.investigations(incident.id),
 			(runs) => runs.length === 1,
-			"the run the alert started",
+			"the run started",
 		);
 
 		const waiting = await eventually(
@@ -153,13 +148,12 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 	}, 60_000);
 
 	it("Given an alert with fake-session:ask, When the operator denies permission, Then permission_answer outcome is denied and the run still completes", async () => {
-		await autoStartAt("supervised");
 		await pl.serviceWithRepo("billing");
 		const alert = am.fire({
 			labels: {
 				alertname: "BillingSlow fake-session:ask",
 				service: "billing",
-				severity: "critical",
+				severity: "medium",
 			},
 			annotations: { summary: "billing latency" },
 		});
@@ -172,10 +166,14 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 			(found) => found.length === 1,
 			"an incident carrying the alert",
 		);
+		await pl.api(`/incidents/${incident.id}/investigate`, {
+			method: "POST",
+			body: { accessLevel: "supervised" },
+		});
 		const [run] = await eventually(
 			() => pl.investigations(incident.id),
 			(runs) => runs.length === 1,
-			"the run the alert started",
+			"the run started",
 		);
 
 		await eventually(
@@ -231,14 +229,7 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 		expect(answerEvent.outcome).toBe("denied");
 	}, 60_000);
 
-	it("Given an alert with fake-session:ask and autoAccessLevels auto-edits, When the run starts, Then it completes with permission_answer outcome allowed and no awaitingApprovalAt (#673 w21)", async () => {
-		await pl.api("/settings/harness", {
-			method: "PATCH",
-			body: {
-				autoAccessLevels: { opencode: "auto-edits" },
-			},
-		});
-
+	it("Given a critical fake-session:ask alert, When the run it starts asks, Then the run completes, awaitingApprovalAt stays null, accessLevel is auto, and its events include a permission answer with outcome denied", async () => {
 		await pl.serviceWithRepo("payments");
 		const alert = am.fire({
 			labels: {
@@ -270,20 +261,18 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 			30_000,
 		);
 		expect(done.awaitingApprovalAt).toBeNull();
+		expect(done.accessLevel).toBe("auto");
 		expect(done.report?.rootCause).toContain("d37d888");
 
 		const eventsPage = await pl.api<{ events: CanonicalEvent[] }>(
 			`/investigations/${run.id}/events`,
 		);
-		const askEvent = eventsPage.events.find((e) => e.kind === "permission_ask");
-		expect(askEvent).toBeUndefined();
-
 		const answerEvent = eventsPage.events.find(
 			(e) => e.kind === "permission_answer",
 		);
 		if (!answerEvent || answerEvent.kind !== "permission_answer") {
 			throw new Error("expected permission_answer event");
 		}
-		expect(answerEvent.outcome).toBe("allowed");
+		expect(answerEvent.outcome).toBe("denied");
 	}, 60_000);
 });
