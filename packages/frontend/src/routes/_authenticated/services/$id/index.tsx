@@ -141,7 +141,7 @@ function ServicePage() {
 			data-testid="service-page"
 		>
 			<header
-				className="flex min-h-(--header-h) shrink-0 items-center gap-2 px-3 md:px-4 desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
+				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4 desktop:pr-[calc(var(--controls-w)+12px)] desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
 				data-testid="service-band"
 			>
 				<Button variant="text" size="icon" className="shrink-0" asChild>

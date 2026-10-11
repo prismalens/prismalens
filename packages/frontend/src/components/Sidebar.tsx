@@ -2,13 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The shell's left bar (study-v3 §2, study-v2 §2.5 rule 1): four doors, the
- * one you are in lit by a 2-px accent bar, and under them the list of that
- * area. Below 1280 it folds to a 56-px icon rail; on the phone the doors are
- * strip of icons across the top. Settings swaps the whole bar for its
- * sections with Back above them. Hidden on pairing, where nothing leads away.
+ * The shell's left bar, one for every page (#811): three doors, the incidents
+ * under their services (the Alerts and Services areas keep their own lists),
+ * and Settings beside the theme toggle at the foot. Below 1280 it folds to an
+ * icon rail; on the phone the doors are a strip of icons across the top.
+ * Settings swaps the bar for its sections with Back above them. Hidden on
+ * pairing, where nothing leads away.
  */
-import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
 import {
 	Bell,
@@ -20,7 +20,7 @@ import {
 import { type ReactNode, useEffect } from "react";
 import { AlertListPane } from "@/components/alerts/AlertListPane";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
-import { IncidentListPane } from "@/components/incidents/IncidentListPane";
+import { useNeedsYouCount } from "@/components/inbox/use-inbox-data";
 import { tierWord } from "@/components/services/service-detail.utils";
 import { useAbout } from "@/components/settings";
 import {
@@ -28,6 +28,7 @@ import {
 	useSettingsSections,
 } from "@/components/settings/SettingsFrame";
 import { Hint } from "@/components/shared/Hint";
+import { IncidentTree } from "@/components/shell/IncidentTree";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { inSettings, useBack } from "@/hooks/use-back";
 import { useBreathePhase } from "@/hooks/use-breathe-phase";
@@ -36,8 +37,6 @@ import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
 import { PHONE, SIDEBAR_FULL, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useServices } from "@/lib/api/hooks";
-import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
-import { orpc } from "@/lib/api/orpc-client";
 import { cn } from "@/lib/utils";
 
 type DoorTo = "/incidents" | "/alerts" | "/services" | "/settings";
@@ -47,6 +46,8 @@ interface Door {
 	label: string;
 	icon: ReactNode;
 	count?: number;
+	/** Read with the count by assistive tech: `Incidents, 7 need you`. */
+	countLabel?: string;
 	/** A newer release is out (#717). */
 	dot?: boolean;
 }
@@ -54,31 +55,17 @@ interface Door {
 const ICON = "size-4 shrink-0 stroke-[1.5]";
 
 function useDoors(signedIn: boolean): Door[] {
-	const interval = useLiveRefreshInterval();
-	const incidents = useQuery({
-		...orpc.incidents.getStats.queryOptions({ input: {} }),
-		enabled: signedIn,
-		refetchInterval: interval,
-	});
-	const alerts = useQuery({
-		...orpc.alerts.getStats.queryOptions({ input: {} }),
-		enabled: signedIn,
-		refetchInterval: interval,
-	});
+	const needs = useNeedsYouCount(signedIn);
 	const about = useAbout(signedIn);
 	return [
 		{
 			to: "/incidents",
 			label: "Incidents",
 			icon: <Inbox className={ICON} />,
-			count: incidents.data?.open || undefined,
+			count: needs || undefined,
+			countLabel: needs ? `${needs} need you` : undefined,
 		},
-		{
-			to: "/alerts",
-			label: "Alerts",
-			icon: <Bell className={ICON} />,
-			count: alerts.data?.byStatus.triggered || undefined,
-		},
+		{ to: "/alerts", label: "Alerts", icon: <Bell className={ICON} /> },
 		{ to: "/services", label: "Services", icon: <Boxes className={ICON} /> },
 		{
 			to: "/settings",
@@ -111,9 +98,14 @@ function Shell({ pathname }: { pathname: string }) {
 	return (
 		<>
 			<aside
-				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-canvas pt-(--titlebar-h) md:flex"
+				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
 				data-testid="sidebar"
 			>
+				{/* macOS draws its traffic lights here (x14 y13). */}
+				<div
+					aria-hidden
+					className="hidden h-[30px] shrink-0 app-drag mac:block"
+				/>
 				{settings ? (
 					<SettingsBar onBack={back} />
 				) : (
@@ -142,6 +134,7 @@ function MainBar({
 }) {
 	const { sidebarFolded, toggleSidebar } = useLayoutPrefs();
 	const full = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
+	const settingsDoor = doors.find((d) => d.to === "/settings");
 	useFoldKey(toggleSidebar);
 	return (
 		<>
@@ -156,20 +149,22 @@ function MainBar({
 				</Link>
 			</div>
 			<nav className="grid gap-0.5 px-2" aria-label="Areas">
-				{doors.map((door) => (
-					<DoorLink
-						key={door.to}
-						door={door}
-						on={isOn(pathname, door.to)}
-						labelled={full}
-					/>
-				))}
+				{doors
+					.filter((d) => d.to !== "/settings")
+					.map((door) => (
+						<DoorLink
+							key={door.to}
+							door={door}
+							on={isOn(pathname, door.to)}
+							labelled={full}
+						/>
+					))}
 			</nav>
-			{/* The list scrolls under a 28 px fade; the theme toggle is a fixed foot. */}
-			<div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pb-2 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
+			<div className="mt-3.5 min-h-0 flex-1 overflow-y-auto pb-2">
 				{signedIn && full && <AreaList pathname={pathname} />}
 			</div>
-			<div className="flex shrink-0 items-center px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
+			<div className="flex shrink-0 flex-wrap items-center gap-0.5 px-2 py-2 max-xl:justify-center [[data-sidebar-folded]_&]:justify-center">
+				{settingsDoor && <SettingsIcon door={settingsDoor} />}
 				<ThemeToggle />
 			</div>
 		</>
@@ -216,12 +211,13 @@ function DoorLink({
 			<Link
 				to={door.to}
 				aria-current={on ? "page" : undefined}
-				aria-label={door.label}
+				aria-label={
+					door.countLabel ? `${door.label}, ${door.countLabel}` : door.label
+				}
 				data-testid={`nav-${door.label.toLowerCase()}`}
 				className={cn(
-					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
-					on &&
-						"bg-surface-2 font-medium text-text-1 before:absolute before:top-2 before:bottom-2 before:-left-2 before:w-0.5 before:rounded-full before:bg-accent",
+					"relative flex h-8 items-center gap-2.5 rounded-control px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0",
+					on && "bg-surface-3 font-medium text-text-1",
 				)}
 			>
 				<span className="relative">
@@ -239,7 +235,7 @@ function DoorLink({
 				{door.count !== undefined && (
 					<span
 						className={cn(
-							"ml-auto text-meta font-normal text-text-3 tabular-nums",
+							"ml-auto text-meta font-normal text-warn tabular-nums",
 							FULL_ONLY,
 						)}
 						data-testid={`nav-${door.label.toLowerCase()}-count`}
@@ -254,30 +250,48 @@ function DoorLink({
 
 /** Under the doors, the list of the area you are in. */
 function AreaList({ pathname }: { pathname: string }) {
-	const incident = useMatch({
-		from: "/_authenticated/incidents/$id",
-		shouldThrow: false,
-	});
 	const alert = useMatch({
 		from: "/_authenticated/alerts/$id/",
 		shouldThrow: false,
 	});
-	if (isOn(pathname, "/incidents")) {
-		return (
-			<IncidentListPane
-				variant="sidebar"
-				selectedId={incident?.params.id ?? null}
-				keyboard
-			/>
-		);
-	}
 	if (isOn(pathname, "/alerts")) {
 		return (
 			<AlertListPane variant="sidebar" selectedId={alert?.params.id ?? null} />
 		);
 	}
 	if (isOn(pathname, "/services")) return <ServiceList />;
-	return null;
+	return <IncidentTree />;
+}
+
+/** Settings at the foot, an icon beside the theme toggle (spec §1). */
+function SettingsIcon({ door }: { door: Door }) {
+	return (
+		<Hint
+			label="Settings"
+			keys={
+				goKey("Settings")
+					? ["G", (goKey("Settings") ?? "").toUpperCase()]
+					: undefined
+			}
+			side="right"
+		>
+			<Link
+				to="/settings"
+				aria-label={door.dot ? "Settings, update available" : "Settings"}
+				className="relative flex size-8 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+				data-testid="nav-settings"
+			>
+				{door.icon}
+				{door.dot && (
+					<span
+						aria-hidden
+						className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent"
+						data-testid="nav-settings-dot"
+					/>
+				)}
+			</Link>
+		</Hint>
+	);
 }
 
 function ServiceList() {

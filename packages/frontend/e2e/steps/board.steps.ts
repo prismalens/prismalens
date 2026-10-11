@@ -14,7 +14,6 @@ import {
 	acknowledge,
 	cardOf,
 	detail,
-	drag,
 	ensureService,
 	fireIncident,
 	LIVE,
@@ -38,6 +37,7 @@ interface World {
 	startedAt?: number;
 	refire?: Made;
 	boundary?: number;
+	runs?: number;
 }
 const worlds = new WeakMap<Page, World>();
 const w = (page: Page): World => {
@@ -54,12 +54,202 @@ const inc = (page: Page): Made => {
 	return i;
 };
 const here = (page: Page) => w(page).page ?? page;
-const column = (page: Page, label: string) =>
-	page.getByTestId(
-		`board-column-${{ "Needs you": "needs_you", Working: "working", Concluded: "concluded", Resolved: "resolved" }[label]}`,
-	);
 
 // --- Board ------------------------------------------------------------------
+
+const NEED: Record<string, string> = {
+	"Waiting for your approval": "approval",
+	"Finding ready": "ready",
+	"Run failed or stopped": "failed",
+	"No cause found": "nocause",
+	"Alerts cleared": "cleared",
+};
+/** An inbox group by its heading (spec §1, #811). */
+const group = (page: Page, label: string) => {
+	const need = NEED[label];
+	if (!need) throw new Error(`no inbox group "${label}"`);
+	return page.locator(`[data-testid="needs-group"][data-need="${need}"]`);
+};
+const rowOf = (page: Page) =>
+	cardOf(page.getByTestId("needs-you"), inc(page).title);
+
+Then(
+	"INC-1 is under {string} with {string} and the cause",
+	async ({ page }, label: string, lead: string) => {
+		await openBoard(page);
+		const row = cardOf(group(page, label), inc(page).title);
+		await expect(row.getByTestId("inbox-row-reason")).toContainText(lead);
+		await expect(row.getByTestId("inbox-row-reason")).toContainText("d37d888");
+	},
+);
+
+Then(
+	"INC-1 is under {string} reading {string}",
+	async ({ page }, label: string, word: string) => {
+		await openBoard(page);
+		const row = cardOf(group(page, label), inc(page).title);
+		await expect(row.getByTestId("inbox-row-reason")).toContainText(word);
+	},
+);
+
+Then("INC-1 is under Working, and in no Needs you group", async ({ page }) => {
+	await openBoard(page);
+	const row = cardOf(page.getByTestId("inbox-working"), inc(page).title);
+	await expect(row).toContainText("No finding yet");
+	await expect(rowOf(page)).toHaveCount(0);
+});
+
+Then("INC-1 is not under Working", async ({ page }) => {
+	await expect(
+		cardOf(page.getByTestId("inbox"), inc(page).title).and(
+			page.getByTestId("working-row"),
+		),
+	).toHaveCount(0);
+});
+
+Then(
+	"INC-1 is in Recently resolved reading {string}",
+	async ({ page }, word: string) => {
+		await openBoard(page);
+		const row = cardOf(page.getByTestId("recently-resolved"), inc(page).title);
+		await expect(row).toContainText(word);
+		await expect(rowOf(page)).toHaveCount(0);
+	},
+);
+
+Then(
+	"no group or row says {string} or {string}",
+	async ({ page }, a: string, b: string) => {
+		// Titles and services are the alert's words, not the inbox's: another
+		// scenario's incident may be titled "Closed without a cause".
+		const words = () =>
+			page.getByTestId("inbox").evaluate((inbox) => {
+				const copy = inbox.cloneNode(true) as HTMLElement;
+				copy.querySelectorAll('[dir="auto"]').forEach((el) => {
+					el.remove();
+				});
+				return copy.textContent ?? "";
+			});
+		await expect.poll(words).not.toContain(a);
+		await expect.poll(words).not.toContain(b);
+	},
+);
+
+Then(
+	"within 2 seconds the row is in the inbox and the sidebar's Incidents count went up by one",
+	async ({ page }) => {
+		await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
+		await expect(
+			page.getByTestId("sidebar").getByTestId("nav-incidents-count"),
+		).toHaveText(String((w(page).before ?? 0) + 1), { timeout: 2_000 });
+	},
+);
+
+Then(
+	"the row is marked new, and a second arrival a second later is marked new while the first one's mark ends",
+	async ({ page, alertmanager, deliverWebhook, unique, $test }) => {
+		$test.slow();
+		const first = cardOf(page, inc(page).title);
+		await expect(first).toHaveAttribute("data-new", "");
+		await page.waitForTimeout(1_000);
+		const title = unique("BoardSecondArrival");
+		const listed = alertmanager.fire({
+			labels: { alertname: title, severity: "critical", service: QUIET.name },
+		});
+		await deliverWebhook([listed.fingerprint]);
+		const second = cardOf(page, title);
+		await expect(second).toHaveAttribute("data-new", "", { timeout: 3_000 });
+		// The second arrival's refetch must not cancel the first row's mark.
+		await expect(first).not.toHaveAttribute("data-new", "", { timeout: 4_000 });
+	},
+);
+
+Then(
+	"every row's title is readable, none cut to one letter",
+	async ({ page }) => {
+		const titles = page.getByTestId("inbox-row-title");
+		await expect(titles.first()).toBeVisible();
+		for (const title of (await titles.all()).slice(0, 12)) {
+			const box = await title.boundingBox();
+			expect(box?.width ?? 0).toBeGreaterThan(80);
+		}
+	},
+);
+
+Then("nothing scrolls sideways", async ({ page }) => {
+	await expect(page.getByTestId("inbox")).toBeVisible();
+	expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
+});
+
+Given(
+	"the agent is ready and INC-1 is under {string}",
+	async ({ page, release }, label: string) => {
+		const ready = await page.request.get("/api/settings/harnesses");
+		expect(
+			((await ready.json()) as { selection: { runnable: boolean } }).selection
+				.runnable,
+		).toBe(true);
+		release(inc(page).title);
+		await waitForRun(
+			page,
+			inc(page).id,
+			(r) => r.status === "completed",
+			"the report",
+		);
+		await openBoard(page);
+		await expect(cardOf(group(page, label), inc(page).title)).toBeVisible();
+	},
+);
+
+When(
+	"I pick {string} in INC-1's row menu",
+	async ({ page, hold }, item: string) => {
+		hold(inc(page).title);
+		w(page).runs =
+			(await detail(page, inc(page).id)).investigations?.length ?? 0;
+		await openBoard(page);
+		await rowOf(page).getByTestId("inbox-row-menu").click();
+		await page.getByRole("menuitem", { name: item }).click();
+	},
+);
+
+Then("a run starts at once, with no form on the page", async ({ page }) => {
+	const before = w(page).runs ?? 0;
+	await waitFor(
+		async () =>
+			((await detail(page, inc(page).id)).investigations?.length ?? 0) > before
+				? true
+				: undefined,
+		"a new run",
+	);
+	await expect(page.getByRole("dialog")).toHaveCount(0);
+	await expect(page.getByTestId("composer-input")).toHaveCount(0);
+});
+
+When(
+	"I resolve INC-1 from its row menu and confirm a cause",
+	async ({ page }) => {
+		await openBoard(page);
+		await rowOf(page).getByTestId("inbox-row-menu").click();
+		await page.getByRole("menuitem", { name: "Resolve" }).click();
+		const dialog = page.getByTestId("resolve-dialog");
+		await expect(dialog).toBeVisible();
+		await dialog
+			.getByTestId("resolve-cause")
+			.fill("the live turn was stopped first");
+		await dialog.getByTestId("confirm-resolve").click();
+	},
+);
+
+Then(
+	`INC-1 is under "No cause found", a chat is not a run working on it`,
+	async ({ page }) => {
+		await openBoard(page);
+		await expect(
+			cardOf(group(page, "No cause found"), inc(page).title),
+		).toBeVisible();
+	},
+);
 
 Given(
 	"a paired browser at {int} px on a workspace with INC-1 open and a run in progress",
@@ -81,202 +271,6 @@ Given(
 	},
 );
 
-Then(
-	"INC-1's card shows one severity dot, {string}, the service and age on the first line, the title on its own line, and the run's current step with a ticking elapsed time",
-	async ({ page }, _id: string) => {
-		const made = inc(page);
-		await openBoard(page);
-		const card = cardOf(page, made.title);
-		await expect(card).toBeVisible();
-		await expect(card.getByTestId("card-dot")).toHaveCount(1);
-		await expect(card.getByTestId("card-id")).toHaveText(`INC-${made.number}`);
-		await expect(card.getByTestId("card-age")).toHaveText(/^\d+[smhd]$/);
-		await expect(card.getByTestId("card-service")).toHaveText(LIVE.displayName);
-		await expect(card.getByTestId("card-title")).toHaveText(made.title);
-		const step = card.getByTestId("card-step");
-		await expect(step).toContainText("Reading worker/consumer.py");
-		const first = await step.innerText();
-		await expect
-			.poll(() => step.innerText(), { timeout: 5_000 })
-			.not.toBe(first);
-	},
-);
-
-Then("no card shows a second dot or a severity word", async ({ page }) => {
-	for (const card of await page.getByTestId("board-card").all()) {
-		await expect(card.getByTestId("card-dot")).toHaveCount(1);
-		await expect(
-			card.getByText(/^(Critical|High|Medium|Low|Info)$/),
-		).toHaveCount(0);
-	}
-});
-
-Given(
-	"INC-1 is Triggered and its run is working",
-	async ({ page, alertmanager, deliverWebhook, unique }) => {
-		const made = await fireIncident(page, alertmanager, deliverWebhook, {
-			name: unique("BooklogrWorkerStalled"),
-			service: LIVE,
-			session: "live",
-		});
-		await waitForRun(page, made.id, (r) => !!r.lastEventAt, "a working run");
-		expect((await detail(page, made.id)).status).toBe("triggered");
-		w(page).inc = made;
-	},
-);
-
-Then(
-	"INC-1's card is in {string} reading {string} with the run's step under it and an {string} button on the card",
-	async ({ page }, col: string, word: string, button: string) => {
-		await openBoard(page);
-		const card = cardOf(column(page, col), inc(page).title);
-		await expect(card).toBeVisible();
-		await expect(card.getByTestId("card-word")).toHaveText(word);
-		await expect(card.getByTestId("card-step")).toContainText(
-			"Reading worker/consumer.py",
-		);
-		await expect(card.getByRole("button", { name: button })).toBeVisible();
-	},
-);
-
-When("I press {string} on the card", async ({ page }, button: string) => {
-	const p = here(page);
-	await p.evaluate(() => {
-		(window as unknown as { __noReload: boolean }).__noReload = true;
-	});
-	await cardOf(p, inc(page).title)
-		.getByRole("button", { name: button })
-		.click();
-});
-
-Then(
-	"the card moves to {string} without a reload",
-	async ({ page }, col: string) => {
-		const p = here(page);
-		await expect(cardOf(column(p, col), inc(page).title)).toBeVisible();
-		expect(
-			await p.evaluate(
-				() => (window as unknown as { __noReload?: boolean }).__noReload,
-			),
-		).toBe(true);
-	},
-);
-
-Given(
-	"one Triggered incident, one whose run failed, one reopened by me and one whose alerts cleared",
-	async ({ page, alertmanager, deliverWebhook, unique }) => {
-		const quiet = (n: string) =>
-			fireIncident(page, alertmanager, deliverWebhook, {
-				name: unique(n),
-				service: QUIET,
-				quiet: true,
-			});
-		const cleared = await quiet("OrderCleared");
-		alertmanager.clear(
-			alertmanager.alerts().find((a) => a.labels.alertname === cleared.title)
-				?.fingerprint ?? "",
-		);
-		await deliverWebhook();
-		await waitFor(
-			async () =>
-				(await detail(page, cleared.id)).status === "resolved"
-					? true
-					: undefined,
-			"alerts cleared",
-		);
-		const reopened = await quiet("OrderReopened");
-		await resolveIncident(page, reopened.id, { actualCause: "a guess" });
-		await page.request.patch(`/api/incidents/${reopened.id}`, {
-			data: { status: "investigating" },
-		});
-		const failed = await fireIncident(page, alertmanager, deliverWebhook, {
-			name: unique("OrderFailed"),
-			service: LIVE,
-			session: "failure",
-		});
-		await waitForRun(
-			page,
-			failed.id,
-			(r) => r.status === "failed",
-			"a failed run",
-		);
-		const triggered = await quiet("OrderTriggered");
-		w(page).named = { triggered, failed, reopened, cleared };
-	},
-);
-
-Then(
-	'"Needs you" lists them in that order, with the cleared one under a quiet "To wrap up" heading',
-	async ({ page }) => {
-		await openBoard(page);
-		const needs = column(page, "Needs you");
-		const titles = await needs.getByTestId("card-title").allInnerTexts();
-		const { triggered, failed, reopened, cleared } = w(page).named;
-		const order = [triggered, failed, reopened].map((m) =>
-			titles.indexOf(m.title),
-		);
-		expect(
-			order.every((i) => i >= 0),
-			titles.join(" | "),
-		).toBe(true);
-		expect([...order].sort((a, b) => a - b)).toEqual(order);
-		const wrap = needs.getByTestId("board-wrap-up");
-		await expect(wrap).toContainText("To wrap up");
-		await expect(cardOf(wrap, cleared.title)).toBeVisible();
-		await expect(cardOf(wrap, triggered.title)).toHaveCount(0);
-		const heading = wrap.getByText("To wrap up", { exact: true }).first();
-		expect(
-			await heading.evaluate((el) => getComputedStyle(el).fontWeight),
-		).toBe("400");
-	},
-);
-
-Given(
-	'an incident in "Needs you"',
-	async ({ page, alertmanager, deliverWebhook, unique }) => {
-		const needs = await fireIncident(page, alertmanager, deliverWebhook, {
-			name: unique("SidebarNeeds"),
-			service: QUIET,
-			quiet: true,
-		});
-		const done = await fireIncident(page, alertmanager, deliverWebhook, {
-			name: unique("SidebarResolved"),
-			service: QUIET,
-			quiet: true,
-		});
-		await resolveIncident(page, done.id);
-		w(page).named = { needs, done };
-	},
-);
-
-When("I open any screen", async ({ page }) => {
-	await openBoard(page);
-});
-
-Then(
-	"its sidebar row carries the red mark, a working run's row the teal mark, and a resolved incident's row no mark",
-	async ({ page }) => {
-		const { needs, done } = w(page).named;
-		const row = (title: string) =>
-			page
-				.getByTestId("sidebar")
-				.getByTestId("incident-row")
-				.filter({ hasText: title });
-		const glyph = (title: string) =>
-			row(title).locator("[data-glyph]").getAttribute("data-glyph");
-		for (const where of ["board", "record"]) {
-			if (where === "record") await visit(page, `/incidents/${needs.id}`);
-			await expect(row(needs.title)).toBeVisible();
-			expect(await glyph(needs.title)).toBe("attention");
-			expect(await glyph(inc(page).title)).toBe("live");
-			// Resolved rows fold into Settled; open it to read the row.
-			if ((await row(done.title).count()) === 0)
-				await page.getByTestId("sidebar").getByText("Settled").click();
-			expect(await glyph(done.title)).toBe("ended");
-		}
-	},
-);
-
 When("the run finishes with a report", async ({ page, release }) => {
 	release(inc(page).title);
 	await waitForRun(
@@ -286,19 +280,6 @@ When("the run finishes with a report", async ({ page, release }) => {
 		"the report",
 	);
 });
-
-Then(
-	"the card is in {string} with {string} and the cause",
-	async ({ page }, col: string, lead: string) => {
-		await openBoard(page);
-		const card = cardOf(column(page, col), inc(page).title);
-		await expect(card).toBeVisible();
-		await expect(card.getByTestId("board-card-headline")).toContainText(lead);
-		await expect(card.getByTestId("board-card-headline")).toContainText(
-			"d37d888",
-		);
-	},
-);
 
 When(
 	"the alert clears in Alertmanager",
@@ -318,17 +299,6 @@ When(
 	},
 );
 
-Then(
-	"the card is in {string} reading {string}",
-	async ({ page }, col: string, word: string) => {
-		const p = here(page);
-		if (!new URL(p.url()).pathname.endsWith("/incidents")) await openBoard(p);
-		const card = cardOf(column(p, col), (w(page).refire ?? inc(page)).title);
-		await expect(card).toBeVisible();
-		await expect(card).toContainText(word);
-	},
-);
-
 When("I resolve INC-1 with a cause", async ({ page }) => {
 	await openBoard(page);
 	await visit(page, `/incidents/${inc(page).id}`);
@@ -338,39 +308,6 @@ When("I resolve INC-1 with a cause", async ({ page }) => {
 	await dialog.getByTestId("confirm-resolve").click();
 	await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 });
-
-Then(
-	"the card is in {string} with {string} and the text",
-	async ({ page }, col: string, lead: string) => {
-		await openBoard(page);
-		const card = cardOf(column(page, col), inc(page).title);
-		await expect(card.getByTestId("board-card-headline")).toHaveText(
-			`${lead} the index d37d888 dropped`,
-		);
-	},
-);
-
-Then(
-	"no column or card says {string} or {string}",
-	async ({ page }, a: string, b: string) => {
-		// Titles and services are the alert's words, not the board's: another
-		// scenario's incident may be titled "Closed without a cause".
-		const words = () =>
-			page.getByTestId("incident-board").evaluate((board) => {
-				const copy = board.cloneNode(true) as HTMLElement;
-				copy
-					.querySelectorAll(
-						'[data-testid="card-title"], [data-testid="card-service"]',
-					)
-					.forEach((el) => {
-						el.remove();
-					});
-				return copy.textContent ?? "";
-			});
-		await expect.poll(words).not.toContain(a);
-		await expect.poll(words).not.toContain(b);
-	},
-);
 
 When(
 	"an Alertmanager delivery for a new alert arrives",
@@ -397,273 +334,10 @@ When(
 	},
 );
 
-Then(
-	"within 2 seconds the card is on the board and the sidebar's Incidents count went up by one",
-	async ({ page }) => {
-		await expect(cardOf(page, inc(page).title)).toBeVisible({ timeout: 2_000 });
-		await expect(
-			page.getByTestId("sidebar").getByTestId("nav-incidents-count"),
-		).toHaveText(String((w(page).before ?? 0) + 1), { timeout: 2_000 });
-	},
-);
-
-Then(
-	"the card is marked new, and a second arrival a second later starts its own glow at once and leaves the first one's to end",
-	async ({ page, alertmanager, deliverWebhook, unique, $test }) => {
-		// After the arrival step's wait for the live stream this runs ~24 s locally.
-		$test.slow();
-		const first = cardOf(page, inc(page).title);
-		await expect(first).toHaveAttribute("data-new", "");
-		await page.waitForTimeout(1_000);
-		const title = unique("BoardSecondArrival");
-		const listed = alertmanager.fire({
-			labels: { alertname: title, severity: "critical", service: QUIET.name },
-		});
-		await deliverWebhook([listed.fingerprint]);
-		const second = cardOf(page, title);
-		await expect(second).toHaveAttribute("data-new", "", { timeout: 3_000 });
-		// A later batch is not queued behind marks still showing (ruling §3.2: 300 ms within a batch).
-		// Inline: reduced motion (this suite's default) resets the computed delay.
-		await expect(second).toHaveAttribute("style", /animation-delay: 0ms/);
-		// The second arrival's refetch must not cancel the first card's 3 s mark.
-		await expect(first).not.toHaveAttribute("data-new", "", { timeout: 4_000 });
-	},
-);
-
-Given("the run has sent nothing for 5 minutes", async ({ page }) => {
-	const run = await waitForRun(
-		page,
-		inc(page).id,
-		(r) => !!r.lastEventAt,
-		"a step",
-	);
-	const last = Date.parse(run.lastEventAt ?? "");
-	// The browser's clock moves on; the server's record of the run stays put.
-	await page.clock.setFixedTime(last + 5 * 60_000 + 30_000);
-	w(page).boundary = Date.parse(run.createdAt);
-});
-
-Then(
-	"the card's step line reads {string} in the warning colour",
-	async ({ page }, _example: string) => {
-		await openBoard(page);
-		const step = cardOf(page, inc(page).title).getByTestId("card-step");
-		const now = await page.evaluate(() => Date.now());
-		const run = (await detail(page, inc(page).id)).investigations?.[0];
-		const minutes = Math.floor(
-			(now - Date.parse(run?.createdAt ?? "")) / 60_000,
-		);
-		const quiet = Math.floor(
-			(now - Date.parse(run?.lastEventAt ?? "")) / 60_000,
-		);
-		await expect(step).toHaveText(
-			`Working ${minutes}m, quiet for ${quiet} min`,
-		);
-		expect(quiet).toBe(5);
-		const color = await step.evaluate((el) => getComputedStyle(el).color);
-		const warn = await page.evaluate(() => {
-			const probe = document.createElement("span");
-			probe.style.color = "var(--warn)";
-			document.body.append(probe);
-			const c = getComputedStyle(probe).color;
-			probe.remove();
-			return c;
-		});
-		expect(color).toBe(warn);
-	},
-);
-
 Given("the viewport is {int} px wide", async ({ page }, width: number) => {
 	await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
 	await openBoard(page);
 });
-
-Then(
-	"the sidebar is a rail of icons and every card's title and service are readable, none cut to one letter",
-	async ({ page }) => {
-		const sidebar = page.getByTestId("sidebar");
-		expect((await sidebar.boundingBox())?.width).toBeLessThanOrEqual(64);
-		await expect(sidebar.getByText("Incidents", { exact: true })).toBeHidden();
-		for (const card of (await page.getByTestId("board-card").all()).slice(
-			0,
-			12,
-		)) {
-			for (const id of ["card-title", "card-service"]) {
-				const el = card.getByTestId(id);
-				if ((await el.count()) === 0) continue;
-				const box = await el.boundingBox();
-				expect(box?.width ?? 0).toBeGreaterThan(80);
-			}
-		}
-	},
-);
-
-Then(
-	"the columns stack with their headings and nothing scrolls sideways",
-	async ({ page }) => {
-		const heads = page.getByTestId("board-column-heading");
-		await expect(heads).toHaveCount(4);
-		const boxes = await Promise.all(
-			(await heads.all()).map((h) => h.boundingBox()),
-		);
-		const xs = new Set(boxes.map((b) => Math.round(b?.x ?? -1)));
-		expect(xs.size).toBe(1);
-		const ys = boxes.map((b) => b?.y ?? 0);
-		expect([...ys].sort((a, b) => a - b)).toEqual(ys);
-		expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(0);
-	},
-);
-
-Given(
-	'the agent is ready and INC-1 is in "Concluded"',
-	async ({ page, release }) => {
-		const ready = await page.request.get("/api/settings/harnesses");
-		expect(
-			((await ready.json()) as { selection: { runnable: boolean } }).selection
-				.runnable,
-		).toBe(true);
-		release(inc(page).title);
-		await waitForRun(
-			page,
-			inc(page).id,
-			(r) => r.status === "completed",
-			"the report",
-		);
-		await openBoard(page);
-		await expect(
-			cardOf(column(page, "Concluded"), inc(page).title),
-		).toBeVisible();
-	},
-);
-
-When(
-	/^I drag (?:INC-1's|its) card to "([^"]+)"$/,
-	async ({ page, hold }, col: string) => {
-		hold(inc(page).title);
-		await openBoard(page);
-		await drag(page, cardOf(page, inc(page).title), column(page, col));
-		// Read at once, not retried: the drop animation's copy lives ~250ms (#780).
-		expect(await cardOf(page, inc(page).title).count()).toBe(1);
-	},
-);
-
-Then(
-	"a run starts at once and the card shows its step, with no form under the card",
-	async ({ page }) => {
-		const card = cardOf(column(page, "Working"), inc(page).title);
-		await expect(card).toBeVisible({ timeout: 10_000 });
-		await expect(card.getByTestId("card-step")).toBeVisible({
-			timeout: 10_000,
-		});
-		await expect(page.getByRole("dialog")).toHaveCount(0);
-		await expect(page.getByTestId("composer-input")).toHaveCount(0);
-	},
-);
-
-When("I focus INC-1's card and press Space", async ({ page, hold }) => {
-	hold(inc(page).title);
-	await openBoard(page);
-	await cardOf(page, inc(page).title).getByTestId("board-card-link").focus();
-	await page.keyboard.press("Space");
-});
-
-Then("the board announces that INC-1 was picked up", async ({ page }) => {
-	const made = inc(page);
-	const liveRegion = page.locator('[id^="DndLiveRegion"]');
-	await expect(liveRegion).toContainText(
-		`Picked up INC-${made.number}, ${made.title}`,
-	);
-	await expect(liveRegion).toContainText(
-		"Left and Right arrows carry it between columns, Space drops it, Escape puts it back.",
-	);
-});
-
-When(
-	/^I press (ArrowLeft|ArrowRight|Space)$/,
-	async ({ page }, key: string) => {
-		await page.keyboard.press(key);
-	},
-);
-
-Then("the board announces {string}", async ({ page }, text: string) => {
-	await expect(page.locator('[id^="DndLiveRegion"]')).toHaveText(text);
-});
-
-Then(
-	"the board announcement starts with {string}",
-	async ({ page }, prefix: string) => {
-		const expected = prefix.replace("INC-1", `INC-${inc(page).number}`);
-		const live = page.locator('[id^="DndLiveRegion"]');
-		await expect(live).toContainText(expected);
-		const text = ((await live.textContent()) ?? "").trim();
-		expect(text.startsWith(expected)).toBe(true);
-	},
-);
-
-Then(
-	/^(?:the|INC-1's) card is still in (?:its column|"([^"]+)")$/,
-	async ({ page }, col?: string) => {
-		await expect(
-			cardOf(column(page, col ?? "Concluded"), inc(page).title),
-		).toBeVisible();
-	},
-);
-
-Given("INC-1 is Resolved", async ({ page }) => {
-	const made = inc(page);
-	const run = (await detail(page, made.id)).investigations?.[0];
-	if (run && (run.status === "running" || run.status === "pending"))
-		await page.request.post(`/api/investigations/${run.id}/cancel`);
-	await waitForRun(
-		page,
-		made.id,
-		(r) => r.status !== "running" && r.status !== "pending",
-		"the run to end",
-	);
-	await resolveIncident(page, made.id, { actualCause: "pool capped at 10" });
-});
-
-Then("a dialog asks {string}", async ({ page }, question: string) => {
-	const dialog = page.getByTestId("reopen-dialog");
-	await expect(dialog).toBeVisible();
-	await expect(dialog).toContainText(
-		question.replace("INC-1", `INC-${inc(page).number}`),
-	);
-});
-
-When("I confirm the reopen", async ({ page }) => {
-	await page.getByTestId("confirm-reopen-incident").click();
-});
-
-Then(
-	'INC-1 reads "Acknowledged", its card has left "Resolved", and no run started',
-	async ({ page }) => {
-		const made = inc(page);
-		const before = (await detail(page, made.id)).investigations?.length ?? 0;
-		await waitFor(
-			async () =>
-				(await detail(page, made.id)).status === "investigating"
-					? true
-					: undefined,
-			"the reopen",
-		);
-		await expect(cardOf(column(page, "Resolved"), made.title)).toHaveCount(0);
-		await expect(cardOf(page, made.title)).toBeVisible();
-		expect((await detail(page, made.id)).investigations?.length ?? 0).toBe(
-			before,
-		);
-	},
-);
-
-Then(
-	'a toast reads "No run started" and the card no longer reads "Reopening"',
-	async ({ page }) => {
-		await expect(page.getByText("No run started").first()).toBeVisible();
-		const card = cardOf(page, inc(page).title);
-		await expect(card).toBeVisible();
-		await expect(card).not.toContainText("Reopening", { timeout: 10_000 });
-	},
-);
 
 // --- Phone --------------------------------------------------------------------
 
@@ -691,13 +365,16 @@ When('I press "Acknowledge" in the band', async ({ page }) => {
 });
 
 Then(
-	'the band reads "Acknowledged" and the list shows INC-4 under Working',
+	'the band reads "Acknowledged" and the list leaves INC-4 out of Needs you while its run works',
 	async ({ page }) => {
 		const p = here(page);
 		await expect(p.getByTestId("band-status")).toHaveText("Acknowledged");
 		await p.getByTestId("incident-back").click();
 		await expect.poll(() => new URL(p.url()).pathname).toBe("/incidents");
-		await expect(cardOf(column(p, "Working"), inc(page).title)).toBeVisible();
+		await expect(p.getByTestId("needs-you")).toBeVisible();
+		await expect(
+			cardOf(p.getByTestId("needs-you"), inc(page).title),
+		).toHaveCount(0);
 	},
 );
 
@@ -871,7 +548,7 @@ When(
 );
 
 Then(
-	'the board shows the card and one line above the columns reading "Setup, 3 of 4 done" with "Add a service"',
+	'the inbox shows the row and one line above Needs you reading "Setup, 3 of 4 done" with "Add a service"',
 	async ({ page }) => {
 		await expect(cardOf(page, inc(page).title)).toBeVisible();
 		const line = page.getByTestId("setup-line");
@@ -880,7 +557,7 @@ Then(
 			line.getByRole("link", { name: "Add a service" }),
 		).toBeVisible();
 		const lineBox = await line.boundingBox();
-		const board = await page.getByTestId("incident-board").boundingBox();
+		const board = await page.getByTestId("needs-you").boundingBox();
 		expect(lineBox?.y ?? 0).toBeLessThan(board?.y ?? 0);
 	},
 );
@@ -956,7 +633,7 @@ Then(
 
 async function analyticsFor(page: Page) {
 	await visit(page, "/incidents?view=analytics");
-	await page.getByTestId("board-search").fill(w(page).prefix ?? "");
+	await page.getByTestId("incidents-filter").fill(w(page).prefix ?? "");
 	await expect(page.getByTestId("analytics-answer")).toBeVisible();
 }
 
@@ -990,9 +667,9 @@ Then(
 );
 
 When(
-	"I pick 24 hours on the board and switch to Analytics",
+	"I pick 24 hours in All incidents and switch to Analytics",
 	async ({ page }) => {
-		await visit(page, "/incidents");
+		await visit(page, "/incidents?view=all");
 		await page.getByTestId("board-window").click();
 		await page.getByRole("option", { name: "24 hours" }).click();
 		await page.getByTestId("incidents-view-analytics").click();
@@ -1086,7 +763,7 @@ Then(
 		await expect(link).toHaveText("3 need you now");
 		await link.click();
 		await expect(page).toHaveURL(/\/incidents$/);
-		await expect(column(page, "Needs you")).toBeVisible();
+		await expect(page.getByTestId("needs-you")).toBeVisible();
 	},
 );
 
@@ -1366,14 +1043,14 @@ When(
 );
 
 Then(
-	'the band reads "Alerts cleared" with "Resolve" as its action and the card sits in "Needs you"',
+	'the band reads "Alerts cleared" with "Resolve" as its action and INC-1 sits under "Alerts cleared"',
 	async ({ page }) => {
 		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("band-status")).toHaveText("Alerts cleared");
 		await expect(page.getByTestId("band-resolve")).toHaveText("Resolve");
 		await openBoard(page);
 		await expect(
-			cardOf(column(page, "Needs you"), inc(page).title),
+			cardOf(group(page, "Alerts cleared"), inc(page).title),
 		).toBeVisible();
 	},
 );
@@ -1404,17 +1081,14 @@ When(
 );
 
 Then(
-	"within 2 seconds a new incident's card is in {string} reading {string}",
-	async ({ page }, col: string, words: string) => {
+	'within 2 seconds a new incident is in "Needs you" and its Overview reads {string}',
+	async ({ page }, words: string) => {
 		const made = inc(page);
 		await openBoard(page);
-		const cards = cardOf(column(page, col), made.title).filter({
+		const rows = cardOf(page.getByTestId("needs-you"), made.title).filter({
 			hasNot: page.getByText(`INC-${made.number}`, { exact: true }),
 		});
-		await expect(cards.first()).toBeVisible({ timeout: 2_000 });
-		await expect(cards.first().getByTestId("card-lineage")).toHaveText(
-			words.replace("INC-1", `INC-${made.number}`),
-		);
+		await expect(rows.first()).toBeVisible({ timeout: 2_000 });
 		const refire = (await detail(page, made.id)).refiredAs;
 		expect(refire).toBeTruthy();
 		w(page).refire = {
@@ -1423,23 +1097,21 @@ Then(
 			title: made.title,
 			labels: made.labels,
 		};
+		await visit(page, `/incidents/${refire?.id}`);
+		await expect(page.getByTestId("incident-lineage")).toHaveText(
+			words.replace("INC-1", `INC-${made.number}`),
+		);
 	},
 );
 
 Then(
-	'INC-1 stays Resolved, and INC-1\'s card and Overview read "Fired again as INC-11, <time>"',
+	'INC-1 stays Resolved, and INC-1\'s Overview reads "Fired again as INC-11, <time>"',
 	async ({ page }) => {
 		const made = inc(page);
 		const refire = w(page).refire;
-		const old = cardOf(column(page, "Resolved"), made.title).filter({
-			has: page
-				.getByTestId("card-id")
-				.getByText(`INC-${made.number}`, { exact: true }),
-		});
 		const line = new RegExp(
 			`^Fired again as INC-${refire?.number}, \\d\\d:\\d\\d$`,
 		);
-		await expect(old.getByTestId("card-lineage")).toHaveText(line);
 		await visit(page, `/incidents/${made.id}`);
 		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
 		await expect(page.getByTestId("incident-lineage")).toHaveText(line);
@@ -1469,8 +1141,8 @@ Given(
 );
 
 Then(
-	"INC-1's card is in {string} reading {string} and the band reads {string}",
-	async ({ page }, col: string, word: string, band: string) => {
+	"INC-1 is under {string} reading {string} and the band reads {string}",
+	async ({ page }, label: string, word: string, band: string) => {
 		await waitFor(
 			async () =>
 				(await detail(page, inc(page).id)).status === "triggered"
@@ -1480,8 +1152,10 @@ Then(
 		);
 		await openBoard(page);
 		await expect(
-			cardOf(column(page, col), inc(page).title).getByTestId("card-word"),
-		).toHaveText(word);
+			cardOf(group(page, label), inc(page).title).getByTestId(
+				"inbox-row-reason",
+			),
+		).toContainText(word);
 		await visit(page, `/incidents/${inc(page).id}`);
 		await expect(page.getByTestId("band-status")).toHaveText(band);
 	},
@@ -1494,7 +1168,7 @@ When('I press "Reopen" and confirm', async ({ page }) => {
 });
 
 Then(
-	'the band reads "Acknowledged", the Overview shows "Previous cause", and the card is in "Needs you" reading "Reopened by you, cause not confirmed"',
+	'the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "No cause found"',
 	async ({ page }) => {
 		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
 		await expect(page.getByTestId("previous-cause")).toContainText(
@@ -1502,10 +1176,8 @@ Then(
 		);
 		await openBoard(page);
 		await expect(
-			cardOf(column(page, "Needs you"), inc(page).title).getByTestId(
-				"card-word",
-			),
-		).toHaveText("Reopened by you, cause not confirmed");
+			cardOf(group(page, "No cause found"), inc(page).title),
+		).toBeVisible();
 	},
 );
 
@@ -1526,9 +1198,14 @@ When("I start a run from the box", async ({ page }) => {
 	);
 });
 
-Then('the card moves to "Working"', async ({ page }) => {
+Then("INC-1 leaves Needs you while the run works", async ({ page }) => {
 	await openBoard(page);
-	await expect(cardOf(column(page, "Working"), inc(page).title)).toBeVisible();
+	await expect(rowOf(page)).toHaveCount(0);
+	await expect(
+		page
+			.getByTestId("tree-incident")
+			.filter({ hasText: `INC-${inc(page).number}` }),
+	).toBeVisible();
 });
 
 // #673 w37: Merge into…
@@ -1596,15 +1273,13 @@ Then(
 );
 
 Then(
-	'INC-2\'s card is in "Resolved" reading "Merged into INC-1", and its band offers neither "Reopen" nor "New run"',
+	'INC-2 is in Recently resolved reading "Merged into INC-1", and its band offers neither "Reopen" nor "New run"',
 	async ({ page }) => {
 		const { source, target } = w(page).named;
 		await openBoard(page);
 		await expect(
-			cardOf(column(page, "Resolved"), source.title).getByTestId(
-				"card-lineage",
-			),
-		).toHaveText(`Merged into INC-${target.number}`);
+			cardOf(page.getByTestId("recently-resolved"), source.title),
+		).toContainText(`Merged into INC-${target.number}`);
 		await visit(page, `/incidents/${source.id}`);
 		await expect(page.getByTestId("band-merged")).toHaveText(
 			`Merged into INC-${target.number}`,
@@ -1686,25 +1361,6 @@ Given("INC-1's live run is a chat answering a question", async ({ page }) => {
 			i === 0 ? { ...r, kind: "chat", liveTurn: "answer" } : r,
 		),
 	);
-});
-
-Then('INC-1\'s card stays out of "Working"', async ({ page }) => {
-	await openBoard(page);
-	await expect(
-		cardOf(column(page, "Concluded"), inc(page).title),
-	).toBeVisible();
-	await expect(cardOf(column(page, "Working"), inc(page).title)).toHaveCount(0);
-});
-
-When('I drag its card to "Resolved" and confirm a cause', async ({ page }) => {
-	await openBoard(page);
-	await drag(page, cardOf(page, inc(page).title), column(page, "Resolved"));
-	const dialog = page.getByTestId("resolve-dialog");
-	await expect(dialog).toBeVisible();
-	await dialog
-		.getByTestId("resolve-cause")
-		.fill("the live turn was stopped first");
-	await dialog.getByTestId("confirm-resolve").click();
 });
 
 Then(

@@ -88,7 +88,6 @@ function RootLayout() {
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
 							<NewIncidentProvider>
 								<div className="min-h-dvh bg-canvas text-text-1">
-									<TitleBarStrip />
 									<Sidebar />
 									<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
 										<ReconnectLine />
@@ -112,12 +111,13 @@ function RootLayout() {
 function NotFound() {
 	return (
 		<div className="flex flex-col items-center justify-center gap-4 py-16">
+			<TitleBarStrip />
 			<h1 className="text-display">Nothing here</h1>
 			<p className="max-w-md text-center text-body text-text-2">
 				This address does not match a page. It may have moved.
 			</p>
 			<Button asChild>
-				<Link to="/">Open the board</Link>
+				<Link to="/">Open the inbox</Link>
 			</Button>
 		</div>
 	);
