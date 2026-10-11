@@ -11,7 +11,6 @@ import {
 	isWorkflowLive,
 	liveRun,
 	latestRun as newestRun,
-	REFIRE_LABEL,
 	RUN_STATE_LABEL,
 	type RunState,
 	runState,
@@ -298,35 +297,6 @@ export function incidentHeadline(incident: IncidentWithRelations): Headline {
 		default:
 			return { text: run.status };
 	}
-}
-
-/**
- * Where this incident sits relative to its refires (R1a d5, d6): the incident
- * it fired again after, or the one that fired again after it.
- */
-export function incidentLineage(
-	incident: IncidentWithRelations,
-): Headline | null {
-	if (incident.mergedInto)
-		return { lead: "Merged into", text: `INC-${incident.mergedInto.number}` };
-	const after = incident.refiredAs;
-	if (after && !isIncidentOpen(incident.status))
-		return {
-			lead: `${REFIRE_LABEL} as`,
-			text: `INC-${after.number}, ${formatClock(after.createdAt)}`,
-		};
-	const prior = incident.priorIncident;
-	if (prior && isIncidentOpen(incident.status)) {
-		const ended =
-			prior.status === "closed"
-				? `after INC-${prior.number} was resolved`
-				: `after INC-${prior.number}'s alerts cleared`;
-		return {
-			lead: `${REFIRE_LABEL}:`,
-			text: prior.actualCause ? `${ended}, cause: ${prior.actualCause}` : ended,
-		};
-	}
-	return null;
 }
 
 export type RowGlyph = "live" | "attention" | "open" | "ended";

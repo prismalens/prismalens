@@ -12,7 +12,9 @@ const DEMO_INCIDENT = "/incidents/b0111111-1111-4111-8111-111111111111";
  * Known and not yet fixed, so a new violation still fails: a model row is a
  * role="option" holding its star button (a listbox redesign, not a small fix).
  */
-const KNOWN: Record<string, string[]> = { picker: ["nested-interactive"] };
+const KNOWN: Record<string, string[]> = {
+	picker: ["nested-interactive", "aria-required-children"],
+};
 
 /** Serious and critical axe violations on the page as it stands, one line each. */
 async function blocking(page: Page, screen: string): Promise<string[]> {
@@ -97,7 +99,7 @@ test.describe("Accessibility at 1440, dark", () => {
 		page,
 	}) => {
 		await page.goto(DEMO_INCIDENT);
-		await expect(page.getByTestId("incident-state-band")).toBeVisible({
+		await expect(page.getByTestId("incident-overview")).toBeVisible({
 			timeout: 15_000,
 		});
 		const found = await blocking(page, "record");

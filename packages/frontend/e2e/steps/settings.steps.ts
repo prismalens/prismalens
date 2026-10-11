@@ -789,7 +789,7 @@ Then(
 Then(
 	/^the box still reads "(.+)" and "(.+)" after I open Alerts and come back$/,
 	async ({ page }, model, level) => {
-		await page.getByTestId("tab-alerts").click();
+		await page.getByTestId("nav-alerts").click();
 		await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/alerts$/);
 		await page.goBack();
 		await expect(page.getByTestId("docked-composer")).toBeVisible();

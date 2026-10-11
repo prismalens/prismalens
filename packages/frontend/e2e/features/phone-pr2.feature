@@ -6,10 +6,6 @@ Feature: Phone
   Background:
     Given a paired phone at 390 px
 
-  Scenario: Acknowledge in two taps from a push link
-    Given a push link opens INC-4
-    When I press "Acknowledge" in the band
-    Then the band reads "Acknowledged" and the list leaves INC-4 out of Needs you while its run works
 
   Scenario: Analytics on the phone
     When I open Incidents, Analytics

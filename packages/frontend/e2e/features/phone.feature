@@ -14,7 +14,7 @@ Feature: Phone
 
   Scenario: Deep link from Slack to a report, no history
     Given a fresh tab opens INC-1's Report from a Slack link
-    Then the incident opens on its Report tab
+    Then the incident opens on its Overview
     When I press the chevron at the left of the band
     Then I am on the incident list
 

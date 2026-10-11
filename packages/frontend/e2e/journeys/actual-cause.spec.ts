@@ -11,10 +11,9 @@ import { expect, type Page, test } from "@playwright/test";
  * spec drives, through the real API.
  */
 
-/** Resolve is the band's one action once the incident is acknowledged (R1a d7). */
-async function resolveFromBand(page: Page): Promise<void> {
-	await page.getByTestId("band-acknowledge").click();
-	await page.getByTestId("band-resolve").click();
+/** Resolve is the header's one action for an open incident (R1a d7). */
+async function resolveFromHeader(page: Page): Promise<void> {
+	await page.getByTestId("header-resolve").click();
 }
 
 async function createFromHeader(page: Page, title: string): Promise<void> {
@@ -35,21 +34,36 @@ test.describe("#338 — the actual cause is recorded on Resolve", () => {
 		const title = `Connection pool exhausted ${Date.now()}`;
 		const cause = "deploy 41 dropped DB_POOL_SIZE from 50 to 5";
 		await createFromHeader(page, title);
+		const id = new URL(page.url()).pathname.split("/").pop();
 
-		await resolveFromBand(page);
+		await resolveFromHeader(page);
 		const dialog = page.getByTestId("resolve-dialog");
 		await dialog.getByTestId("resolve-cause").fill(cause);
 		await dialog.getByTestId("resolve-category").click();
 		await page.getByRole("option", { name: "Configuration" }).click();
 		await dialog.getByTestId("confirm-resolve").click();
 
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved", {
+		await expect(page.getByTestId("header-reopen")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("actual-cause")).toContainText(
-			`Configuration: ${cause}`,
+		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
+
+		// Cause is editable via header menu after resolve
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("header-edit-cause").click();
+		await expect(dialog.getByTestId("resolve-cause")).toHaveValue(cause);
+		await expect(dialog.getByTestId("resolve-category")).toContainText(
+			"Configuration",
 		);
-		await expect(page.getByTestId("band-resolve")).toHaveCount(0);
+		await dialog.getByRole("button", { name: "Cancel" }).click();
+
+		const res = await page.request.get(`/api/incidents/${id}`);
+		const stored = (await res.json()) as {
+			actualCause: string | null;
+			actualCauseCategory: string | null;
+		};
+		expect(stored.actualCause).toBe(cause);
+		expect(stored.actualCauseCategory).toBe("config");
 	});
 
 	test("resolving with an empty cause records nothing", async ({ page }) => {
@@ -57,15 +71,14 @@ test.describe("#338 — the actual cause is recorded on Resolve", () => {
 		await createFromHeader(page, title);
 		const id = new URL(page.url()).pathname.split("/").pop();
 
-		await resolveFromBand(page);
+		await resolveFromHeader(page);
 		await page.getByTestId("confirm-resolve").click();
 
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved", {
+		await expect(page.getByTestId("header-reopen")).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("cause-text")).toHaveText(
-			"No cause recorded",
-		);
+		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
+
 		const res = await page.request.get(`/api/incidents/${id}`);
 		const stored = (await res.json()) as {
 			actualCause: string | null;

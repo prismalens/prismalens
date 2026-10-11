@@ -141,6 +141,12 @@ export const test = base.extend<Fixtures>({
 					favourites: [],
 				},
 			});
+			// The server keeps the last check's model list; re-check so the next test
+			// reads the restored fake's, not this one's.
+			for (const id of ["opencode", "claude-code"])
+				await page.request.post("/api/settings/harness/check", {
+					data: { id },
+				});
 		}
 	},
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright reads a fixture's dependencies from this pattern.

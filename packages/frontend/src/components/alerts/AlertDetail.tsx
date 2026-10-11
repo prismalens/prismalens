@@ -12,7 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
 	alertSince,
 	alertWord,
@@ -36,6 +36,7 @@ import {
 	inAlertRecord,
 	useBack,
 } from "@/hooks/use-back";
+import { useEscapeBack } from "@/hooks/use-escape-back";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import { alertDotColor } from "@/lib/alert-groups";
@@ -487,30 +488,4 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 			</div>
 		</div>
 	);
-}
-
-/** Esc is the chevron on a record (study-v2 §5.1), unless a field or a dialog has it. */
-function useEscapeBack(back: () => void) {
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.defaultPrevented) return;
-			const t = e.target as HTMLElement | null;
-			if (
-				t?.tagName === "INPUT" ||
-				t?.tagName === "TEXTAREA" ||
-				t?.tagName === "SELECT" ||
-				t?.isContentEditable
-			)
-				return;
-			if (
-				document.querySelector(
-					"[role=dialog], [role=alertdialog], [role=menu], [data-radix-popper-content-wrapper]",
-				)
-			)
-				return;
-			back();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [back]);
 }

@@ -6,8 +6,6 @@ Feature: Incident page
     Given a paired browser at 1440 px
     And INC-1 is Triggered with no run yet
 
-  Scenario: One primary action, the same on every tab
-    When I open INC-1 and each of its tabs in turn
-    Then the band reads "Acknowledge" on each
-    When I acknowledge
-    Then the band reads "Resolve" on every tab and never "Investigate"
+  Scenario: One primary action on the overview
+    When I view INC-1's Overview
+    Then the header shows "Resolve" and never "Investigate"

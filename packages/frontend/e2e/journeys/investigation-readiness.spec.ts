@@ -151,16 +151,13 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		await serveUnrunnableSelection(page);
 		const id = await createIncident(page, `Readiness probe ${Date.now()}`);
 
-		await page.goto(`/incidents/${id}/conversation`);
+		// On the overview page, overview-composer investigate button is disabled with the reason
+		await page.goto(`/incidents/${id}`);
 		await expect(
-			page
-				.getByTestId("incident-state-band")
-				.getByRole("heading", { name: /Readiness probe/ }),
+			page.getByTestId("crumb-incident").filter({ hasText: /Readiness probe/ }),
 		).toBeVisible({
 			timeout: 15_000,
 		});
-
-		// The draft's box: disabled, with the reason rendered under it.
 		await expect(await boxInvestigateButton(page)).toBeDisabled({
 			timeout: 15_000,
 		});
@@ -168,11 +165,8 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 			PROTOCOL_MISMATCH_REASON,
 		);
 
-		// From a tab without the box, the band's New run lands on the same
-		// draft with the same reason (#673: the gate lives in the box).
-		await page.getByTestId("tab-alerts").click();
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-new-run").click();
+		// On the conversation draft, the box is also disabled with the same reason
+		await page.goto(`/incidents/${id}/conversation?investigation=new`);
 		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await expect(page.getByTestId("composer-blocked")).toContainText(
 			PROTOCOL_MISMATCH_REASON,
@@ -184,14 +178,14 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const title = `Runnable probe ${Date.now()}`;
 		const id = await createIncident(page, title);
 
-		await page.goto(`/incidents/${id}/conversation`);
+		await page.goto(`/incidents/${id}`);
 		await expect(await boxInvestigateButton(page)).toBeEnabled({
 			timeout: 15_000,
 		});
-		await page.getByTestId("tab-alerts").click();
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-new-run").click();
-		await expect(await boxInvestigateButton(page)).toBeEnabled();
+		await page.goto(`/incidents/${id}/conversation?investigation=new`);
+		await expect(await boxInvestigateButton(page)).toBeEnabled({
+			timeout: 15_000,
+		});
 	});
 
 	test("a failed harness probe blocks the affordance rather than opening it", async ({
@@ -220,9 +214,7 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 		const id = await createIncident(page, title);
 		await page.goto(`/incidents/${id}/conversation`);
 		await expect(
-			page
-				.getByTestId("incident-state-band")
-				.getByRole("heading", { name: new RegExp(title) }),
+			page.getByTestId("crumb-incident").filter({ hasText: new RegExp(title) }),
 		).toBeVisible({ timeout: 15_000 });
 		await setTheme(page, "light");
 		await expect(await boxInvestigateButton(page)).toBeDisabled({
@@ -239,20 +231,20 @@ test.describe("#521 — the investigation affordance follows the server's gate",
 	});
 
 	test("design evidence: empty", async ({ page }) => {
-		// The incident has no run, so the Report pool says so and the blocked
+		// The incident has no run, so the overview says so and the blocked
 		// draft is the only way to start one.
 		await serveUnrunnableSelection(page);
 		const id = await createIncident(page, `Readiness empty ${Date.now()}`);
-		await page.goto(`/incidents/${id}/conversation`);
+		await page.goto(`/incidents/${id}`);
 		await setTheme(page, "light");
-		await page.getByTestId("tab-overview").click();
-		await expect(page.getByTestId("overview-report")).toContainText(
-			"No run yet. Start one with + New run.",
+		await expect(page.getByTestId("latest-run-strip")).toContainText(
+			"No run yet",
 			{
 				timeout: 15_000,
 			},
 		);
-		await page.getByTestId("tab-conversation").click();
+		await expect(await boxInvestigateButton(page)).toBeDisabled();
+		await page.goto(`/incidents/${id}/conversation?investigation=new`);
 		await expect(await boxInvestigateButton(page)).toBeDisabled();
 		await settled(page);
 	});

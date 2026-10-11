@@ -1,7 +1,7 @@
 /**
- * The incident's layout: the band and the tab row stay pinned over every tab;
- * each tab is one 52rem column with nothing beside it (#673 w29). The run
- * the tabs show is the one in the URL, else the one just started, else the newest.
+ * The incident's layout (#811): no band or tabs of its own; the overview and
+ * the run pages each draw their header. It holds the record they share and
+ * the dialogs. The run is the one in the URL, else the one just started, else the newest.
  */
 import { isWorkflowLive } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,9 +12,6 @@ import {
 	useLocation,
 } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { IncidentStateBand } from "@/components/incidents/IncidentStateBand";
-import type { RecordRoute } from "@/components/incidents/RecordLayout";
-import { RecordTabs } from "@/components/incidents/RecordTabs";
 import { ReopenDialog } from "@/components/incidents/ReopenDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import {
@@ -52,13 +49,6 @@ export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	component: IncidentLayout,
 });
 
-const SUB_ROUTES: RecordRoute[] = [
-	"conversation",
-	"report",
-	"alerts",
-	"timeline",
-];
-
 function IncidentLayout() {
 	const { id } = Route.useParams();
 	const search = Route.useSearch();
@@ -95,11 +85,11 @@ function IncidentLayout() {
 	const runs = incident?.investigations ?? [];
 	const started =
 		startedId && runs.some((r) => r.id === startedId) ? startedId : null;
-	const here = SUB_ROUTES.find((r) => pathname.endsWith(`/${r}`)) ?? null;
-	const newest = openRun(runs, here === "report");
+	const onConversation = pathname.endsWith("/conversation");
+	const newest = openRun(runs, false);
 	const draft =
 		search.investigation === DRAFT ||
-		(here === "conversation" && !search.investigation && runs.length === 0);
+		(onConversation && !search.investigation && runs.length === 0);
 	const investigationId = draft
 		? null
 		: (search.investigation ?? started ?? newest?.id ?? null);
@@ -111,9 +101,10 @@ function IncidentLayout() {
 			queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
 			queryClient.invalidateQueries({ queryKey: timelineKeys.all() }),
 		]);
-	const onStarted = (runId: string | undefined) => {
+	const onStarted = (runId: string | undefined, stay?: boolean) => {
 		invalidateIncident();
 		queryClient.invalidateQueries({ queryKey: investigationKeys.all() });
+		if (stay) return;
 		setDraft({ text: "", choice: undefined, verb: undefined, files: [] });
 		if (!runId) return;
 		setStartedId(runId);
@@ -128,14 +119,10 @@ function IncidentLayout() {
 		...orpc.incidents.update.mutationOptions(),
 		onSuccess: invalidateIncident,
 	});
-	const investigateMutation = useMutation({
-		...orpc.incidents.investigate.mutationOptions(),
-		onSuccess: (data) => onStarted(data.investigationId),
-	});
-	const chatMutation = useMutation({
-		...orpc.incidents.chat.mutationOptions(),
-		onSuccess: (data) => onStarted(data.investigationId),
-	});
+	const investigateMutation = useMutation(
+		orpc.incidents.investigate.mutationOptions(),
+	);
+	const chatMutation = useMutation(orpc.incidents.chat.mutationOptions());
 	const resolveMutation = useMutation({
 		...orpc.incidents.resolve.mutationOptions(),
 		onSuccess: invalidateIncident,
@@ -154,6 +141,12 @@ function IncidentLayout() {
 			return invalidateIncident();
 		},
 		onError: failed("Not resolved"),
+	});
+	const cancelMutation = useMutation({
+		...orpc.investigations.cancel.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: investigationKeys.all() }),
+		onError: failed("Stop did not reach the investigation"),
 	});
 	const [editOpen, setEditOpen] = useState(false);
 	const editCause = useMutation({
@@ -227,18 +220,20 @@ function IncidentLayout() {
 			liveRun,
 			investigateBlocked: agentReady ? undefined : blockedReason,
 			investigate: async (start = {}) => {
-				await investigateMutation.mutateAsync({
+				const data = await investigateMutation.mutateAsync({
 					id,
 					...(start.text ? { brief: start.text } : {}),
 					...startInput(start),
 				});
+				onStarted(data.investigationId, start.stay);
 			},
 			chat: async (start) => {
-				await chatMutation.mutateAsync({
+				const data = await chatMutation.mutateAsync({
 					id,
 					text: start.text,
 					...startInput(start),
 				});
+				onStarted(data.investigationId, start.stay);
 			},
 			isStarting: investigateMutation.isPending || chatMutation.isPending,
 			acknowledge: () => updateMutation.mutate({ id, status: "investigating" }),
@@ -246,12 +241,15 @@ function IncidentLayout() {
 			openClose: () => setCloseOpen(true),
 			openEditCause: () => setEditOpen(true),
 			openReopen: () => setReopenOpen(true),
-			addNote: (text: string, onDone?: () => void) =>
+			addNote: (text, onDone, onError) =>
 				createNote.mutate(
 					{ incidentId: id, title: text, type: "comment", source: "user" },
 					{
 						onSuccess: () => onDone?.(),
-						onError: failed("Note not saved"),
+						onError: (error) => {
+							failed("Note not saved")(error);
+							onError?.(error);
+						},
 					},
 				),
 			isSavingNote: createNote.isPending,
@@ -284,7 +282,7 @@ function IncidentLayout() {
 	if (!incident || !record) {
 		const back = (
 			<Button variant="text" size="sm" asChild>
-				<Link to="/incidents">Back to the board</Link>
+				<Link to="/incidents">Back to the inbox</Link>
 			</Button>
 		);
 		return (
@@ -308,19 +306,6 @@ function IncidentLayout() {
 				className="flex h-full min-h-0 flex-col"
 				data-testid="incident-record-frame"
 			>
-				<IncidentStateBand
-					incident={incident}
-					onAcknowledge={record.acknowledge}
-					onNewRun={() => record.newRun()}
-					onClose={record.openClose}
-					onReopen={record.openReopen}
-					onEditCause={record.openEditCause}
-				/>
-				<RecordTabs
-					incidentId={id}
-					here={here}
-					counts={{ alerts: incident.alertCount, timeline: timeline.length }}
-				/>
 				<div className="min-h-0 flex-1">
 					<Outlet />
 				</div>
@@ -337,8 +322,13 @@ function IncidentLayout() {
 					open={closeOpen}
 					onOpenChange={setCloseOpen}
 					incident={incident}
-					isPending={closeMutation.isPending}
-					onConfirm={(cause) => closeMutation.mutate({ id, ...cause })}
+					isPending={closeMutation.isPending || cancelMutation.isPending}
+					onConfirm={(cause) => {
+						const closeIt = () => closeMutation.mutate({ id, ...cause });
+						// Stop the live turn first, as the inbox does (#811, #673 w59).
+						if (!liveRun) return closeIt();
+						cancelMutation.mutate({ id: liveRun.id }, { onSuccess: closeIt });
+					}}
 				/>
 				<ResolveDialog
 					mode="edit"
@@ -362,7 +352,7 @@ function IncidentLayout() {
 function IncidentSkeleton() {
 	return (
 		<div className="flex h-full flex-col">
-			<div className="h-20 shrink-0" />
+			<div className="h-(--header-h) shrink-0 bg-surface-1" />
 			<div className="mx-auto w-full max-w-(--reading-w) px-4 pt-6">
 				<Loading rows={5} />
 			</div>

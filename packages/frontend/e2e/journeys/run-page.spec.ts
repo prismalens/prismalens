@@ -4,8 +4,6 @@
 import { expect, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
-	deliver,
-	eventFactory,
 	hideQueryDevtools,
 	INVESTIGATION_ID,
 	installStreamDouble,
@@ -72,29 +70,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 	test("#step-N opens [data-testid=step][data-step=N] with data-highlight", async ({
 		page,
 	}) => {
-		await page.route(
-			(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}`,
-			async (route) => {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						id: INVESTIGATION_ID,
-						incidentId: INCIDENT_ID,
-						status: "completed",
-						triggerType: "manual",
-						startedAt: new Date().toISOString(),
-						completedAt: new Date().toISOString(),
-						summary: null,
-						rootCause: null,
-						rootCauseCategory: null,
-						error: null,
-						createdAt: new Date().toISOString(),
-						updatedAt: new Date().toISOString(),
-					}),
-				});
-			},
-		);
+		await serveInvestigationAs(page, INVESTIGATION_ID, {
+			status: "completed",
+		});
 		await serveEventsHistory(page, INVESTIGATION_ID, makeToolStepEvents(3));
 
 		await page.goto(
@@ -109,31 +87,12 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 	test("#step-N deep link via /investigations/<id>#step-1", async ({
 		page,
 	}) => {
-		await page.route(
-			(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}`,
-			async (route) => {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						id: INVESTIGATION_ID,
-						incidentId: INCIDENT_ID,
-						status: "completed",
-						triggerType: "manual",
-						startedAt: new Date().toISOString(),
-						completedAt: new Date().toISOString(),
-						summary: null,
-						rootCause: null,
-						rootCauseCategory: null,
-						error: null,
-						createdAt: new Date().toISOString(),
-						updatedAt: new Date().toISOString(),
-					}),
-				});
-			},
-		);
+		await serveInvestigationAs(page, INVESTIGATION_ID, {
+			status: "completed",
+		});
 		await serveEventsHistory(page, INVESTIGATION_ID, makeToolStepEvents(3));
-		await page.goto(`/investigations/${INVESTIGATION_ID}#step-1`);
+
+		await page.goto(`/investigations/${INVESTIGATION_ID}/#step-1`);
 		await expect(page).toHaveURL(
 			new RegExp(
 				`/incidents/${INCIDENT_ID}/conversation\\?investigation=${INVESTIGATION_ID}#step-1$`,

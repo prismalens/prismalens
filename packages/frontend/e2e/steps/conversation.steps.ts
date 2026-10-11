@@ -525,8 +525,8 @@ When("the run finishes", async ({ page }) => {
 });
 
 Then("the Report tab shows a report", async ({ page }) => {
-	await page.getByTestId("tab-report").click();
-	await expect(page.getByTestId("report-answer")).toBeVisible();
+	await visit(page, `/incidents/${inc(page).id}`);
+	await expect(page.getByTestId("why-cause")).toBeVisible();
 });
 
 Given("INC-1's run finished with a report", async ({ page, release }) => {
@@ -641,8 +641,8 @@ Then(
 	async ({ page }, model: string) => {
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(run?.status).toBe("completed");
-		await visit(page, `/incidents/${inc(page).id}/report`);
-		const header = page.getByTestId("report-header");
+		await visit(page, `/incidents/${inc(page).id}`);
+		const header = page.getByTestId("incident-header");
 		await expect(header).toBeVisible();
 		await expect(header).not.toContainText(model);
 		await expect(header).not.toContainText("Ran on");
@@ -817,8 +817,8 @@ Then(
 				.getByTestId("transcript-prose")
 				.filter({ hasText: "Reading what you attached: app.log." }),
 		).toBeVisible();
-		await visit(page, `/incidents/${inc(page).id}/report`);
-		await expect(page.getByTestId("report-route")).toContainText(
+		await visit(page, `/incidents/${inc(page).id}`);
+		await expect(page.getByTestId("why-card")).toContainText(
 			"attachment: app.log",
 		);
 	},
@@ -945,15 +945,11 @@ Given("an answer to a question is running on it", async ({ page }) => {
 Then(
 	"the Report tab shows the report and the Overview's report pool shows it, the answer working under it",
 	async ({ page }) => {
-		await visit(page, `/incidents/${inc(page).id}/report`);
-		await expect(page.getByTestId("report-answer")).toBeVisible();
-		await expect(page.getByTestId("report-empty")).toHaveCount(0);
 		await visit(page, `/incidents/${inc(page).id}`);
-		const pool = page.getByTestId("overview-report");
-		await expect(pool).toBeVisible();
-		await expect(pool).toContainText("Likely");
-		await expect(pool).toContainText(/Run #\d+ working on an answer/);
-		await expect(pool).not.toContainText("No report");
+		await expect(page.getByTestId("why-card")).toBeVisible();
+		await expect(page.getByTestId("why-tag")).toHaveText("Likely");
+		await expect(page.getByTestId("why-live")).toBeVisible();
+		await expect(page.getByTestId("why-cause")).toBeVisible();
 	},
 );
 
@@ -1169,9 +1165,9 @@ Given(
 Then(
 	/^(?:the band shows|the band reads) "Waiting for your approval"$/,
 	async ({ page }) => {
-		const band = page.getByTestId("band-awaiting-approval");
-		await expect(band).toBeVisible();
-		await expect(band).toHaveText("Waiting for your approval");
+		await expect(page.getByTestId("transcript-ask")).toContainText(
+			"Waiting for your approval",
+		);
 	},
 );
 
@@ -1206,7 +1202,9 @@ Then(
 Then(
 	/^(?:the band text goes away|the band no longer shows "Waiting for your approval")$/,
 	async ({ page }) => {
-		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
+		await expect(page.getByTestId("transcript-ask")).not.toContainText(
+			"Waiting for your approval",
+		);
 	},
 );
 

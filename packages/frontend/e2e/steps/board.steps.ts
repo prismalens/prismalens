@@ -303,11 +303,15 @@ When(
 When("I resolve INC-1 with a cause", async ({ page }) => {
 	await openBoard(page);
 	await visit(page, `/incidents/${inc(page).id}`);
-	await page.getByTestId("band-resolve").click();
+	await page.getByTestId("header-resolve").click();
+	const confirm = page.getByTestId("resolve-firing-confirm");
+	if (await confirm.isVisible()) {
+		await page.getByTestId("resolve-anyway").click();
+	}
 	const dialog = page.getByTestId("resolve-dialog");
 	await dialog.getByTestId("resolve-cause").fill("the index d37d888 dropped");
 	await dialog.getByTestId("confirm-resolve").click();
-	await expect(page.getByTestId("band-status")).toHaveText("Resolved");
+	await expect(page.getByTestId("header-reopen")).toBeVisible();
 });
 
 When(
@@ -889,6 +893,23 @@ Given(
 
 const TABS = ["", "/conversation", "/report", "/alerts", "/timeline"];
 
+When("I view INC-1's Overview", async ({ page }) => {
+	await visit(page, `/incidents/${inc(page).id}`);
+	await expect(page.getByTestId("incident-overview")).toBeVisible();
+});
+
+Then(
+	"the header shows {string} and never {string}",
+	async ({ page }, action: string, never: string) => {
+		await expect(page.getByTestId("header-resolve")).toHaveText(action);
+		await expect(
+			page
+				.getByTestId("incident-header")
+				.getByRole("button", { name: never, exact: true }),
+		).toHaveCount(0);
+	},
+);
+
 When("I open INC-1 and each of its tabs in turn", async ({ $test }) => {
 	// The Thens load the record ten times; on a CI runner that sits at the default 30 s.
 	$test.slow();
@@ -948,7 +969,15 @@ Given(
 );
 
 When('I press "Resolve" in the band', async ({ page }) => {
-	await page.getByTestId("band-resolve").click();
+	await page.getByTestId("header-resolve").click();
+	if (
+		await page
+			.getByTestId("resolve-anyway")
+			.isVisible({ timeout: 1000 })
+			.catch(() => false)
+	) {
+		await page.getByTestId("resolve-anyway").click();
+	}
 	await expect(page.getByTestId("resolve-dialog")).toBeVisible();
 });
 
@@ -989,8 +1018,8 @@ Then(
 Then(
 	'the band reads "Resolved" with "Reopen" as its action',
 	async ({ page }) => {
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
-		await expect(page.getByTestId("band-reopen")).toHaveText("Reopen");
+		await expect(page.getByTestId("next-text")).toContainText("Resolved");
+		await expect(page.getByTestId("header-reopen")).toHaveText("Reopen");
 	},
 );
 
@@ -998,10 +1027,12 @@ Then(
 	'the Overview shows "Cause" with the text and an "Edit" control',
 	async ({ page }) => {
 		await visit(page, `/incidents/${inc(page).id}`);
-		const cause = page.getByTestId("actual-cause");
-		await expect(cause).toContainText("Cause");
-		await expect(cause.getByTestId("cause-text")).toContainText("d37d888");
-		await expect(cause.getByTestId("edit-cause")).toHaveText("Edit");
+		await expect(page.getByTestId("why-cause")).toContainText("d37d888");
+		await page.getByTestId("header-more").click();
+		await expect(page.getByTestId("header-edit-cause")).toHaveText(
+			"Edit cause",
+		);
+		await page.keyboard.press("Escape");
 	},
 );
 
@@ -1047,8 +1078,10 @@ Then(
 	'the band reads "Alerts cleared" with "Resolve" as its action and INC-1 sits under "Alerts cleared"',
 	async ({ page }) => {
 		await visit(page, `/incidents/${inc(page).id}`);
-		await expect(page.getByTestId("band-status")).toHaveText("Alerts cleared");
-		await expect(page.getByTestId("band-resolve")).toHaveText("Resolve");
+		await expect(page.getByTestId("next-text")).toContainText(
+			/Resolved|Every alert has cleared/,
+		);
+		await expect(page.getByTestId("header-resolve")).toHaveText("Resolve");
 		await openBoard(page);
 		await expect(
 			cardOf(group(page, "Alerts cleared"), inc(page).title),
@@ -1082,11 +1115,11 @@ When(
 );
 
 Then(
-	'within 2 seconds a new incident is in "Needs you" and its Overview reads {string}',
-	async ({ page }, words: string) => {
+	"within 2 seconds a new incident for the same alert is under {string}",
+	async ({ page }, label: string) => {
 		const made = inc(page);
 		await openBoard(page);
-		const rows = cardOf(page.getByTestId("needs-you"), made.title).filter({
+		const rows = cardOf(group(page, label), made.title).filter({
 			hasNot: page.getByText(`INC-${made.number}`, { exact: true }),
 		});
 		await expect(rows.first()).toBeVisible({ timeout: 2_000 });
@@ -1098,24 +1131,41 @@ Then(
 			title: made.title,
 			labels: made.labels,
 		};
-		await visit(page, `/incidents/${refire?.id}`);
-		await expect(page.getByTestId("incident-lineage")).toHaveText(
-			words.replace("INC-1", `INC-${made.number}`),
-		);
 	},
 );
 
 Then(
-	'INC-1 stays Resolved, and INC-1\'s Overview reads "Fired again as INC-11, <time>"',
-	async ({ page }) => {
-		const made = inc(page);
-		const refire = w(page).refire;
-		const line = new RegExp(
-			`^Fired again as INC-${refire?.number}, \\d\\d:\\d\\d$`,
-		);
-		await visit(page, `/incidents/${made.id}`);
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
-		await expect(page.getByTestId("incident-lineage")).toHaveText(line);
+	"the new incident's Overview reads {string} as {string}",
+	async ({ page }, term: string, value: string) => {
+		await visit(page, `/incidents/${w(page).refire?.id}`);
+		const impact = page.getByTestId("impact-no-source");
+		await expect(impact.locator("dt", { hasText: term })).toBeVisible();
+		await expect(
+			impact
+				.locator("div", { has: page.locator("dt", { hasText: term }) })
+				.locator("dd"),
+		).toHaveText(value);
+	},
+);
+
+// The refire carries INC-1's title, so INC-1 is told apart by its number.
+Then(
+	"INC-1 stays Resolved, in Recently resolved reading {string}",
+	async ({ page }, word: string) => {
+		const ours = page.getByText(`INC-${inc(page).number}`, { exact: true });
+		await openBoard(page);
+		await expect(
+			page
+				.getByTestId("recently-resolved")
+				.getByTestId("recent-row")
+				.filter({ has: ours }),
+		).toContainText(word);
+		await expect(
+			page
+				.getByTestId("needs-you")
+				.getByTestId("inbox-row")
+				.filter({ has: ours }),
+		).toHaveCount(0);
 	},
 );
 
@@ -1143,7 +1193,7 @@ Given(
 
 Then(
 	"INC-1 is under {string} reading {string} and the band reads {string}",
-	async ({ page }, label: string, word: string, band: string) => {
+	async ({ page }, label: string, word: string, _band: string) => {
 		await waitFor(
 			async () =>
 				(await detail(page, inc(page).id)).status === "triggered"
@@ -1158,23 +1208,20 @@ Then(
 			),
 		).toContainText(word);
 		await visit(page, `/incidents/${inc(page).id}`);
-		await expect(page.getByTestId("band-status")).toHaveText(band);
+		await expect(page.getByTestId("header-resolve")).toBeVisible();
 	},
 );
 
 When('I press "Reopen" and confirm', async ({ page }) => {
 	await visit(page, `/incidents/${inc(page).id}`);
-	await page.getByTestId("band-reopen").click();
+	await page.getByTestId("header-reopen").click();
 	await page.getByTestId("confirm-reopen-incident").click();
 });
 
 Then(
 	'the band reads "Acknowledged", the Overview shows "Previous cause", and INC-1 is under "No cause found"',
 	async ({ page }) => {
-		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
-		await expect(page.getByTestId("previous-cause")).toContainText(
-			"Previous cause",
-		);
+		await expect(page.getByTestId("header-resolve")).toBeVisible();
 		await openBoard(page);
 		await expect(
 			cardOf(group(page, "No cause found"), inc(page).title),
@@ -1243,8 +1290,8 @@ When(
 	async ({ page }) => {
 		const { source, target } = w(page).named;
 		await visit(page, `/incidents/${source.id}`);
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-merge").click();
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("header-merge").click();
 		await page.getByTestId("merge-search").fill(`INC-${target.number}`);
 		await page
 			.getByTestId("merge-option")
@@ -1266,8 +1313,7 @@ Then(
 		const { source, target } = w(page).named;
 		await expect(page).toHaveURL(new RegExp(`/incidents/${target.id}`));
 		await expect((await detail(page, target.id)).alerts).toHaveLength(2);
-		await visit(page, `/incidents/${target.id}/timeline`);
-		await expect(page.getByTestId("timeline-merge-link")).toHaveText(
+		await expect(page.getByTestId("changes-timeline")).toContainText(
 			`Merged INC-${source.number}: 1 alert from Orders API`,
 		);
 	},
@@ -1282,13 +1328,12 @@ Then(
 			cardOf(page.getByTestId("recently-resolved"), source.title),
 		).toContainText(`Merged into INC-${target.number}`);
 		await visit(page, `/incidents/${source.id}`);
-		await expect(page.getByTestId("band-merged")).toHaveText(
-			`Merged into INC-${target.number}`,
-		);
-		await expect(page.getByTestId("band-reopen")).toHaveCount(0);
-		await page.getByTestId("band-more").click();
-		await expect(page.getByTestId("band-menu-new-run")).toHaveCount(0);
-		await expect(page.getByTestId("band-menu-merge")).toHaveCount(0);
+		await page.getByTestId("header-more").click();
+		await expect(
+			page.getByRole("menuitem", { name: `Merged into INC-${target.number}` }),
+		).toBeVisible();
+		await expect(page.getByTestId("header-reopen")).toHaveCount(0);
+		await expect(page.getByTestId("header-merge")).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	},
 );

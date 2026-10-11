@@ -578,7 +578,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
 	});
 
-	test("reopens a resolved incident from the band behind confirm dialog", async ({
+	test("reopens a resolved incident from the header behind confirm dialog", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -592,7 +592,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await resolveIncident(page, inc.id);
 
 		await visit(page, `/incidents/${inc.id}`);
-		const reopenBtn = page.getByTestId("band-reopen");
+		const reopenBtn = page.getByTestId("header-reopen");
 		await expect(reopenBtn).toBeVisible({ timeout: 15_000 });
 		await reopenBtn.click();
 
@@ -606,7 +606,8 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 				return d.status;
 			})
 			.toBe("investigating");
-		await expect(page.getByTestId("band-status")).toHaveText("Acknowledged");
+		await expect(page.getByTestId("header-resolve")).toBeVisible();
+		await expect(page.getByTestId("header-reopen")).toHaveCount(0);
 	});
 
 	test("retrying a run from inbox row shows refusal toast when server rejects it", async ({

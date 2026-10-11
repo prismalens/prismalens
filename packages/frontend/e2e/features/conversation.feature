@@ -45,7 +45,7 @@ Feature: The conversation and the box
       Then the status line reads "Stopped by you" and I am still on the Conversation
       Given the box has no focus
       When I press Escape
-      Then I am on the board
+      Then I am on the inbox
 
     Scenario: The conversation is the whole record, with no event log
       Then the Conversation header shows no "Transcript / Ledger" control

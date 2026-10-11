@@ -29,33 +29,22 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/, {
 			timeout: 15_000,
 		});
-		await expect(
-			page
-				.getByTestId("incident-state-band")
-				.getByRole("heading", { name: title }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
+		await expect(page.getByTestId("crumb-incident")).toHaveText(title);
 
-		// The band's one action follows the status: Acknowledge, then Resolve
-		// (R1a d7). Nothing reads "Close" any more.
-		const resolve = page.getByTestId("band-resolve");
-		await expect(resolve).toHaveCount(0);
-		await page.getByTestId("band-acknowledge").click();
+		// The header's action: Resolve
+		const resolve = page.getByTestId("header-resolve");
 		await expect(resolve).toBeVisible({ timeout: 15_000 });
 
 		// #338's question rides on Resolve; both fields blank is allowed.
 		await resolve.click();
 		await page.getByTestId("confirm-resolve").click();
 		await expect(resolve).toHaveCount(0, { timeout: 15_000 });
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
-		await expect(page.getByTestId("band-reopen")).toBeVisible();
+		await expect(page.getByTestId("header-reopen")).toBeVisible();
+
 		// A resolved incident can still take a new run (#673, gate step 9): the
-		// band's menu opens the draft, and its status stays Resolved.
-		await page.getByTestId("band-more").click();
-		await page.getByTestId("band-menu-new-run").click();
+		// overview composer offers investigate, and its status stays resolved.
 		await expect(await investigateButton(page)).toBeVisible();
-		await expect(page.getByTestId("band-status")).toHaveText("Resolved");
+		await expect(page.getByTestId("header-reopen")).toBeVisible();
 	});
 
 	test("offers no Markdown export while the incident has no report", async ({
@@ -72,6 +61,8 @@ test.describe("#606 — closing an incident and exporting its report", () => {
 			timeout: 15_000,
 		});
 
-		await expect(page.getByTestId("export-report-markdown")).toHaveCount(0);
+		// Export as Markdown is in the header menu (header-more → header-export); absent without a report
+		await page.getByTestId("header-more").click();
+		await expect(page.getByTestId("header-export")).toHaveCount(0);
 	});
 });

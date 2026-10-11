@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	INCIDENT_ATTENTION_LABEL,
-	isWorkflowLive,
-	type RunState,
-} from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useRouterState, useSearch } from "@tanstack/react-router";
-import { MessageSquare, Search } from "lucide-react";
-import { runAge, runLabel } from "@/components/run/run-labels";
-import { useNow } from "@/hooks/use-now";
-import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
-import { orpc } from "@/lib/api/orpc-client";
+import type { RunState } from "@prismalens/contracts";
 import { cn } from "@/lib/utils";
-import { DRAFT } from "./record-context";
-import { openRun, refState, runDot } from "./run-facts";
+import { runDot } from "./run-facts";
 
+/** A run's state as a dot: breathing while live (#811). The sidebar's tree is IncidentTree now. */
 export function RunDot({
 	state,
 	draft,
@@ -42,104 +31,5 @@ export function RunDot({
 			)}
 			data-dot={draft ? "draft" : (tone ?? undefined)}
 		/>
-	);
-}
-
-/** A thread's kind (#673 w59): a search for an investigation, a bubble for a chat. */
-export function KindIcon({ kind }: { kind?: string | null }) {
-	const Icon = kind === "chat" ? MessageSquare : Search;
-	return (
-		<Icon
-			className="size-3 shrink-0 text-text-3"
-			aria-label={kind === "chat" ? "Chat" : "Investigation"}
-			data-kind={kind === "chat" ? "chat" : "investigation"}
-		/>
-	);
-}
-
-const ROW =
-	"relative flex h-[26px] min-w-0 items-center gap-2 rounded-control pr-2 pl-[30px] text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1";
-
-/**
- * The open incident's runs as its children in the sidebar (#673): newest
- * first, a state dot, the runs menu's own label (`Run 2, likely cause`,
- * `Ask: …`) and age (#811); then `New conversation`.
- */
-export function RunTree({ incidentId }: { incidentId: string }) {
-	const { data } = useQuery({
-		...orpc.incidents.get.queryOptions({ input: { id: incidentId } }),
-		refetchInterval: useLiveRefreshInterval(),
-	});
-	const search = useSearch({ strict: false }) as { investigation?: string };
-	const now = useNow(1000);
-	const runs = data?.investigations ?? [];
-	const draft = search.investigation === DRAFT;
-	const onReport = useRouterState({
-		select: (st) => st.location.pathname.endsWith("/report"),
-	});
-	const selected =
-		search.investigation ?? (draft ? null : openRun(runs, onReport)?.id);
-	const dot = "absolute top-[10px] left-4";
-	return (
-		<div className="grid gap-px pt-0.5 pb-1" data-testid="run-tree">
-			{draft && (
-				<span
-					className={cn(ROW, "bg-surface-3 text-text-1")}
-					data-testid="run-tree-draft"
-				>
-					<RunDot draft className={dot} />
-					<span className="min-w-0 flex-1 truncate">Draft</span>
-					<span className="shrink-0 text-text-2">Not sent</span>
-				</span>
-			)}
-			{runs.map((r) => {
-				const on = !draft && r.id === selected;
-				return (
-					<Link
-						key={r.id}
-						to="/incidents/$id/conversation"
-						params={{ id: incidentId }}
-						search={{ investigation: r.id }}
-						aria-current={on ? "true" : undefined}
-						className={cn(
-							ROW,
-							on && "bg-surface-3 text-text-1 hover:bg-surface-3",
-						)}
-						data-testid="run-tree-row"
-						data-run={r.id}
-						title={r.kind === "chat" ? undefined : (r.title ?? undefined)}
-					>
-						<RunDot state={refState(r)} className={dot} />
-						<span className="min-w-0 flex-1 truncate">{runLabel(runs, r)}</span>
-						{r.awaitingApprovalAt && isWorkflowLive(r.status) ? (
-							<span
-								className="shrink-0 text-danger"
-								data-testid="run-tree-awaiting-approval"
-							>
-								{INCIDENT_ATTENTION_LABEL.awaiting_approval}
-							</span>
-						) : (
-							<span
-								className={cn(
-									"shrink-0 tabular-nums",
-									on ? "text-text-2" : "text-text-3",
-								)}
-							>
-								{runAge(r, now)}
-							</span>
-						)}
-					</Link>
-				);
-			})}
-			<Link
-				to="/incidents/$id/conversation"
-				params={{ id: incidentId }}
-				search={{ investigation: DRAFT }}
-				className={cn(ROW, "text-text-3")}
-				data-testid="run-tree-new"
-			>
-				<span>New conversation</span>
-			</Link>
-		</div>
 	);
 }
