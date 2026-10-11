@@ -1239,4 +1239,28 @@ describe("the agent's own mode (#673 w21)", () => {
 		}
 		expect(events.some((e) => e.kind === "permission_ask")).toBe(false);
 	});
+
+	it("Given Claude Code with offered modes, When an investigation runs, Then session/set_mode is sent before the first session/prompt (w5-5)", async () => {
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODES: "plan=Plan,default=Manual",
+			},
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const sentMethods = wire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => (JSON.parse(e.m) as { method?: string }).method)
+			.filter(Boolean);
+		const setModeIdx = sentMethods.indexOf("session/set_mode");
+		const promptIdx = sentMethods.indexOf("session/prompt");
+		expect(setModeIdx).toBeGreaterThanOrEqual(0);
+		expect(promptIdx).toBeGreaterThan(setModeIdx);
+	});
 });
+

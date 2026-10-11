@@ -500,4 +500,61 @@ describe("levelPolicy", () => {
 			expect(cardVerdict2).toBeInstanceOf(Promise);
 		});
 	});
+
+	describe("unattended policy", () => {
+		const makeReq = (kind?: string): PermissionRequest => ({
+			toolCall: {
+				title: `Run ${kind ?? "unknown"}`,
+				toolCallId: "tc_1",
+				kind,
+			},
+			options: [
+				{ optionId: "allow_1", kind: "allow_once" },
+				{ optionId: "reject_1", kind: "reject_once" },
+			],
+		});
+
+		it("Given unattended run, When an execute ask arrives at auto and full-access, Then it denies without calling channel policy", () => {
+			for (const level of ["auto", "full-access"] as const) {
+				const channelPolicy = vi.fn();
+				const channel = { policy: channelPolicy };
+				const policy = levelPolicy(level, channel, { unattended: true });
+				const verdict = policy(makeReq("execute"), ctx);
+				expect(verdict).toEqual({
+					allow: false,
+					optionId: "reject_1",
+					outcome: "denied",
+					why: "an alert started this run and nobody was there to answer",
+				});
+				expect(channelPolicy).not.toHaveBeenCalled();
+			}
+		});
+
+		it("Given unattended run, When a read ask with an allow option arrives, Then it is allowed", () => {
+			const channelPolicy = vi.fn();
+			const channel = { policy: channelPolicy };
+			const policy = levelPolicy("auto", channel, { unattended: true });
+			const verdict = policy(makeReq("read"), ctx);
+			expect(verdict).toEqual({
+				allow: true,
+				optionId: "allow_1",
+				outcome: "allowed",
+			});
+			expect(channelPolicy).not.toHaveBeenCalled();
+		});
+
+		it("Given unattended run, When switch_mode ask arrives, Then it answers with mode_kept", () => {
+			const channelPolicy = vi.fn();
+			const channel = { policy: channelPolicy };
+			const policy = levelPolicy("auto", channel, { unattended: true });
+			const verdict = policy(claudeSwitchReq, ctx);
+			expect(verdict).toEqual({
+				allow: false,
+				optionId: "no",
+				outcome: "mode_kept",
+				why: "the run stays in its mode",
+			});
+			expect(channelPolicy).not.toHaveBeenCalled();
+		});
+	});
 });
