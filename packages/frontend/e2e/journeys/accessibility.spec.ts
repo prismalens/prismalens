@@ -65,7 +65,7 @@ test.describe("Accessibility at 1440, dark", () => {
 		await expect(page.getByTestId("inbox")).toBeVisible({
 			timeout: 15_000,
 		});
-		found.board = await blocking(page, "board");
+		found.inbox = await blocking(page, "inbox");
 
 		// The box and its chips live on Conversation (#673); a draft shows all three.
 		await page.goto(`${DEMO_INCIDENT}/conversation?investigation=new`);
