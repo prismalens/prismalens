@@ -622,11 +622,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * conversation says so and the row stops waiting, before the run itself is settled.
 	 */
 	private async denyAsksLeftWaiting(): Promise<void> {
+		// A shutdown clears awaitingApprovalAt as it closes the asks, so live rows are read too (#820).
 		const rows = await this.prisma.investigation.findMany({
-			where: { awaitingApprovalAt: { not: null } },
-			select: { id: true },
+			where: {
+				OR: [
+					{ awaitingApprovalAt: { not: null } },
+					{ status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+				],
+			},
+			select: { id: true, awaitingApprovalAt: true },
 		});
-		for (const { id } of rows) {
+		let denied = 0;
+		for (const { id, awaitingApprovalAt } of rows) {
 			const events = await this.prisma.investigationEvent.findMany({
 				where: {
 					investigationId: id,
@@ -642,6 +649,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (e?.kind === "permission_ask") open.set(e.askId, e.branchId);
 				else if (e?.kind === "permission_answer") open.delete(e.askId);
 			}
+			if (open.size === 0 && !awaitingApprovalAt) continue;
+			if (open.size > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
 			await this.investigationsService.appendEvents(
@@ -663,9 +672,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				data: { awaitingApprovalAt: null },
 			});
 		}
-		if (rows.length)
+		if (denied)
 			this.logger.warn(
-				`Denied the asks of ${rows.length} run(s) left waiting by a previous process`,
+				`Denied the asks of ${denied} run(s) left waiting by a previous process`,
 			);
 	}
 
