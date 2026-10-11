@@ -41,6 +41,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@prismalens/agent-adapters": "workspace:*",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

@@ -28,3 +28,8 @@ onlyBuiltDependencies:
 # better-sqlite3 13 loads a prebuild from its own tarball; its binding.gyp is a source fallback only.
 ignoredBuiltDependencies:
   - better-sqlite3
+
+# The shipped ACP adapters run the user's own claude / codex; their native copies are never used (#818).
+ignoredOptionalDependencies:
+  - '@anthropic-ai/claude-agent-sdk-*'
+  - '@openai/codex-*'

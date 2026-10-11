@@ -36,10 +36,12 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import {
+	harnessLaunch,
 	installHints,
 	type PathScanOptions,
 	resolveHarnessSelection,
 	resolveOnPath,
+	shippedAdapter,
 	windowsInstallOnPath,
 } from "@prismalens/config/harness-selection";
 import {
@@ -106,23 +108,35 @@ export function checkHarnessesOnPath(
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
 	).map((descriptor) => {
 		const resolved = resolveOnPath(descriptor.binary, path, scan);
-		const windowsOnly = resolved
-			? null
-			: windowsInstallOnPath(descriptor.binary, path, scan);
-		const companion =
-			!resolved && descriptor.companionBinary
-				? resolveOnPath(descriptor.companionBinary, path, scan)
+		const companion = descriptor.companionBinary
+			? resolveOnPath(descriptor.companionBinary, path, scan)
+			: null;
+		const shipped =
+			!resolved && companion && descriptor.adapterPackage
+				? harnessLaunch(descriptor, {
+						isOnPath: () => true,
+						shippedAdapter,
+					})
 				: null;
+		const windowsOnly =
+			resolved || shipped
+				? null
+				: (windowsInstallOnPath(descriptor.binary, path, scan) ??
+					(descriptor.companionBinary
+						? windowsInstallOnPath(descriptor.companionBinary, path, scan)
+						: null));
 		return {
 			name: `Harness: ${descriptor.label}`,
-			pass: resolved !== null,
+			pass: resolved !== null || shipped !== null,
 			detail: resolved
 				? `${descriptor.binary} found at ${resolved}`
-				: windowsOnly
-					? `${descriptor.binary}: ${windowsOnly} is the Windows install; it can't run inside WSL. Install it in this distro: ${descriptor.install}`
-					: companion
-						? `${descriptor.label} found at ${companion}, adapter missing. Install: ${descriptor.install}`
-						: `${descriptor.binary} not found on PATH`,
+				: shipped
+					? `${descriptor.label} found at ${companion}; runs through the ${descriptor.binary} PrismaLens ships`
+					: windowsOnly
+						? `${windowsOnly} is the Windows install; it can't run inside WSL. Install it in this distro: ${descriptor.install}`
+						: companion
+							? `${descriptor.label} found at ${companion}, but this install has no ${descriptor.binary}. Install: ${descriptor.install}`
+							: `${descriptor.label} not found on PATH. Install: ${descriptor.install}`,
 			hard: false,
 		};
 	});
@@ -255,7 +269,12 @@ export async function checkHarnessHandshake(
 	// A Windows install under WSL is not "on PATH", so it is never probed (#673 w8).
 	const installed = (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
-	).filter((descriptor) => resolveOnPath(descriptor.binary, path, scan));
+	).filter((descriptor) =>
+		harnessLaunch(descriptor, {
+			isOnPath: (bin) => resolveOnPath(bin, path, scan) !== null,
+			shippedAdapter,
+		}),
+	);
 	const results: Check[] = [];
 	for (const descriptor of installed) {
 		const probe = await probeHarness(descriptor.id);

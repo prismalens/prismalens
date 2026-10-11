@@ -71,7 +71,6 @@ export function useAgentChoice() {
 		efforts: settingsQuery.data?.efforts ?? {},
 		axes: {
 			accessLevels: settingsQuery.data?.accessLevels ?? {},
-			autoAccessLevels: settingsQuery.data?.autoAccessLevels ?? {},
 		},
 		customModels: settingsQuery.data?.customModels ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,

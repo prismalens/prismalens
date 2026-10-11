@@ -941,6 +941,8 @@ export const InvestigationJobDataSchema = z.object({
 	brief: z.string().max(4000).optional(),
 	/** The run's permission level (#673 w21); Settings, else the agent's own default, when absent. A resume without one keeps the session's mode. */
 	accessLevel: AccessLevelSchema.optional(),
+	/** An alert started the run: nobody is there to answer an ask (#818 w5-29). */
+	unattended: z.boolean().optional(),
 	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),

@@ -205,7 +205,10 @@ export function IntegrationsTab() {
 											<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
 												{c.legacy ? `${LEGACY_LABEL}: ${c.label}` : c.label}
 												{!c.legacy && (
-													<ConnectionStatusBadge status={c.status} />
+													<ConnectionStatusBadge
+														status={c.status}
+														untested={!!c.host && !c.lastUsedAt}
+													/>
 												)}
 											</span>
 										}

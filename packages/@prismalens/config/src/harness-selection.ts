@@ -2,16 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Detect and report (ADR 0003 §9): the harness is the first registry row on
- * PATH, in HARNESS_AUTO_ORDER, unless PRISMALENS_HARNESS pins one. Nothing
- * on PATH is a refusal with the install hints, never a bundled fallback.
+ * Detect and report (ADR 0003 §9): the harness is the first installed registry
+ * row, in HARNESS_AUTO_ORDER, unless PRISMALENS_HARNESS pins one. Installed
+ * means the agent itself is on PATH; PrismaLens never ships the agent, only
+ * the ACP adapter some agents need (#818).
  */
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, join } from "node:path";
+import { shippedAdapter } from "@prismalens/agent-adapters";
 import {
 	HARNESS_AUTO_ORDER,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
+	type HarnessDescriptor,
 	type HarnessId,
 	type HarnessSelectionFailure,
 	harnessEnvModel,
@@ -21,6 +24,7 @@ import { isWindowsMountPath, isWsl } from "./utils/wsl.js";
 // Re-exported so the union stays importable from the module that produces it,
 // even though it is now declared beside the registry.
 export type { HarnessSelectionFailure };
+export { shippedAdapter };
 
 export function isOnPath(
 	bin: string,
@@ -91,6 +95,48 @@ export function windowsInstallOnPath(
 	return scanPath(bin, pathEnv, options).windowsOnly;
 }
 
+/** What to spawn for a row, and whether it is the adapter PrismaLens ships. */
+export interface HarnessLaunch {
+	command: string;
+	/** Goes before the row's `acpArgs`. */
+	args: string[];
+	env: Record<string, string>;
+	shipped: boolean;
+}
+
+export interface LaunchProbe {
+	isOnPath?: (bin: string) => boolean;
+	/** The shipped adapter's script; none when `isOnPath` is injected, as for `windowsInstall`. */
+	shippedAdapter?: (pkg: string) => string | null;
+}
+
+/**
+ * How a row starts (#818): its binary on PATH, the user's own install, wins;
+ * else the adapter PrismaLens ships, once its companion (the agent) is on PATH.
+ * Null: not installed.
+ */
+export function harnessLaunch(
+	d: Pick<HarnessDescriptor, "binary" | "companionBinary" | "adapterPackage">,
+	probe: LaunchProbe = {},
+): HarnessLaunch | null {
+	const onPath = probe.isOnPath ?? isOnPath;
+	if (onPath(d.binary))
+		return { command: d.binary, args: [], env: {}, shipped: false };
+	if (!d.adapterPackage || !d.companionBinary || !onPath(d.companionBinary))
+		return null;
+	const shipped =
+		probe.shippedAdapter ?? (probe.isOnPath ? () => null : shippedAdapter);
+	const script = shipped(d.adapterPackage);
+	if (!script) return null;
+	return {
+		command: process.execPath,
+		args: [script],
+		// The desktop's backend is Electron-as-Node; its child must be too.
+		env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {},
+		shipped: true,
+	};
+}
+
 /** Who pinned the harness: the env var, or the persisted Settings → Agent choice. */
 export type PinSource = "env" | "settings";
 
@@ -115,6 +161,7 @@ export interface HarnessSelectionInput {
 	/** Which of the two pinned it; the refusal names that one (#337 run e, G15). */
 	pinSource?: PinSource;
 	isOnPath?: (bin: string) => boolean;
+	shippedAdapter?: (pkg: string) => string | null;
 	/** The Windows install WSL skipped; `windowsInstallOnPath`, or none when `isOnPath` is injected. */
 	windowsInstall?: (bin: string) => string | null;
 	/** The host env a run inherits its model from; process.env when absent. */
@@ -133,7 +180,7 @@ export interface HarnessStatus {
 	binary: string;
 	installed: boolean;
 	/** The version a compatibility run passed on; null when none has run. */
-	tested: { version: string; date: string } | null;
+	tested: { version: string; date: string; companion?: string } | null;
 	install: string;
 	/** The model prismalens asks for when the operator set none; null means the harness's own default. */
 	defaultModel: string | null;
@@ -147,22 +194,31 @@ export interface HarnessStatus {
 	windowsOnlyPath: string | null;
 }
 
+function probeOf(input: HarnessSelectionInput): LaunchProbe {
+	return {
+		...(input.isOnPath ? { isOnPath: input.isOnPath } : {}),
+		...(input.shippedAdapter ? { shippedAdapter: input.shippedAdapter } : {}),
+	};
+}
+
 export function listHarnessStatus(
 	input: HarnessSelectionInput = {},
 ): HarnessStatus[] {
-	const check = input.isOnPath ?? isOnPath;
 	const windowsInstall =
 		input.windowsInstall ??
 		(input.isOnPath ? () => null : (bin: string) => windowsInstallOnPath(bin));
 	return HARNESS_IDS.map((id) => {
 		const d = HARNESS_REGISTRY[id];
-		const installed = check(d.binary);
+		const installed = !!harnessLaunch(d, probeOf(input));
 		return {
 			id,
 			label: d.label,
 			binary: d.binary,
 			installed,
-			windowsOnlyPath: installed ? null : windowsInstall(d.binary),
+			windowsOnlyPath: installed
+				? null
+				: (windowsInstall(d.binary) ??
+					(d.companionBinary ? windowsInstall(d.companionBinary) : null)),
 			tested: d.tested ?? null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,
@@ -183,7 +239,8 @@ export function installHints(): string {
 export function resolveHarnessSelection(
 	input: HarnessSelectionInput = {},
 ): HarnessSelection {
-	const check = input.isOnPath ?? isOnPath;
+	const present = (id: HarnessId) =>
+		!!harnessLaunch(HARNESS_REGISTRY[id], probeOf(input));
 	const pin = input.envHarness?.trim();
 	if (pin) {
 		const source = input.pinSource ?? "env";
@@ -197,11 +254,11 @@ export function resolveHarnessSelection(
 		}
 		const id = pin as HarnessId;
 		const d = HARNESS_REGISTRY[id];
-		if (!check(d.binary)) {
+		if (!present(id)) {
 			return {
 				runnable: false,
 				failure: "pinned-harness-missing",
-				reason: `${pinLabel(source, id)} but ${d.binary} is not on PATH. Install: ${d.install}`,
+				reason: `${pinLabel(source, id)} but ${d.label} is not installed. Install: ${d.install}`,
 				harness: id,
 				pinnedBy: source,
 			};
@@ -214,7 +271,7 @@ export function resolveHarnessSelection(
 		};
 	}
 	for (const id of HARNESS_AUTO_ORDER) {
-		if (check(HARNESS_REGISTRY[id].binary)) {
+		if (present(id)) {
 			return { runnable: true, harness: id, auto: true };
 		}
 	}

@@ -337,7 +337,7 @@ export class InvestigationTriggerService {
 				orderBy: { triggeredAt: "desc" },
 			});
 
-			// An auto-started run takes its own Settings row, else Auto (#673).
+			// An alert-started run is Auto and refuses what it would ask (#818 w5-29).
 			const choice = selection.runnable
 				? await this.harnessService.effectiveChoice(selection.harness, true)
 				: null;
@@ -346,6 +346,7 @@ export class InvestigationTriggerService {
 				incidentId: incident.id,
 				investigationId: investigation.id,
 				...(choice ?? {}),
+				unattended: true,
 				priority: this.mapSeverityToPriority(incident.severity),
 				context: {
 					title: incident.title,

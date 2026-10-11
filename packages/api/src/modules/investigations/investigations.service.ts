@@ -9,7 +9,7 @@ import {
 	type HarnessId,
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
-import { resolveOnPath } from "@prismalens/config/harness-selection";
+import { harnessLaunch } from "@prismalens/config/harness-selection";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
@@ -76,7 +76,7 @@ export function followUpBlockedReason(
 	if (!harness || !inv.acpSessionId)
 		return "This run's agent kept no session to reopen.";
 	const row = HARNESS_REGISTRY[harness];
-	if (!resolveOnPath(row.binary)) return `${row.label} is no longer installed.`;
+	if (!harnessLaunch(row)) return `${row.label} is no longer installed.`;
 	if (!inv.workspace) return "This run recorded no workspace.";
 	return null;
 }

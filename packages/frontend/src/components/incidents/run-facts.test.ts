@@ -149,6 +149,8 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 			at: "",
 			outcome: "answers-acp",
 			detail: "",
+			version: null,
+			companionVersion: null,
 			servedModel: null,
 			effort: null,
 			modes: [
@@ -181,6 +183,8 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 			at: "",
 			outcome: "answers-acp",
 			detail: "",
+			version: null,
+			companionVersion: null,
 			servedModel: null,
 			effort: null,
 			modes: [

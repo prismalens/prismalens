@@ -109,6 +109,14 @@ export function deny(
 export const denyAllPolicy: PermissionPolicy = (req) =>
 	deny(req, "denied", "no one can answer an ask here");
 
+/** An alert-started run: nobody is there, so an ask is refused at once, never approved (#818 w5-29). */
+export const unattendedPolicy: PermissionPolicy = (req) =>
+	deny(
+		req,
+		"denied",
+		"an alert started this run and nobody was there to answer",
+	);
+
 const READS = new Set(["read", "search"]);
 const FILE_CHANGES = new Set(["edit", "delete", "move"]);
 
@@ -133,14 +141,15 @@ function allowed(
 export function levelPolicy(
 	level: AccessLevel,
 	channel: { policy: PermissionPolicy },
+	opts: { unattended?: boolean } = {},
 ): PermissionPolicy {
-	const card = channel.policy;
+	const card = opts.unattended ? unattendedPolicy : channel.policy;
 	return (req, ctx) => {
 		const kind = req.toolCall?.kind;
 		if (kind === "switch_mode")
 			return deny(req, "mode_kept", "the run stays in its mode");
 		if (kind && READS.has(kind)) return allowed(req, ctx, card);
-		if (level === "supervised") return card(req, ctx);
+		if (opts.unattended || level === "supervised") return card(req, ctx);
 		if (level === "auto-edits")
 			return kind && FILE_CHANGES.has(kind)
 				? allowed(req, ctx, card)
