@@ -9,6 +9,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { LAUNCHER_STOP_MESSAGE } from "@prismalens/config";
 import type { BackendSpawn } from "./supervisor.js";
 
 /**
@@ -35,7 +36,8 @@ export function resolveBackendMain(input: {
 export function startBackend(plan: BackendSpawn): ChildProcess {
 	return spawn(plan.command, plan.args, {
 		env: plan.env,
-		stdio: ["ignore", "ignore", "pipe"],
+		// The IPC channel carries the stop request; see stopBackend.
+		stdio: ["ignore", "ignore", "pipe", "ipc"],
 		windowsHide: true,
 	});
 }
@@ -63,9 +65,21 @@ export async function waitForHealth(
 	return false;
 }
 
+/** Past the backend's own 10s forced-exit deadline (`armForcedExitOnSecondSignal`). */
+const KILL_AFTER_MS = 12_000;
+
+/**
+ * Ask over IPC rather than signal: on Windows `kill` is TerminateProcess, which
+ * skips the shutdown that releases the workspace lock (#819).
+ */
 export function stopBackend(child: ChildProcess): void {
 	if (child.exitCode !== null || child.signalCode !== null) return;
-	child.kill("SIGTERM");
-	const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+	if (child.connected)
+		child.send(
+			LAUNCHER_STOP_MESSAGE,
+			(error) => error && child.kill("SIGTERM"),
+		);
+	else child.kill("SIGTERM");
+	const timer = setTimeout(() => child.kill("SIGKILL"), KILL_AFTER_MS);
 	child.once("exit", () => clearTimeout(timer));
 }
