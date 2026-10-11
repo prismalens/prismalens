@@ -167,4 +167,9 @@ Feature: The conversation and the box
       Then the conversation shows "Mode switch refused: Enter Plan Mode"
       And the run ends with "Report ready"
 
+    Scenario: An alert-started run refuses the ask
+      Given an alert-started run on "ask"
+      Then no card waits
+      And the run ends with "Report ready"
+
 

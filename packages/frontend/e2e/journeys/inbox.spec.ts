@@ -49,22 +49,15 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 	}) => {
 		test.slow();
 
-		// Configure supervised harness so fake-session:ask enters awaiting approval
-		await page.request.patch("/api/settings/harness", {
-			data: {
-				autoAccessLevels: {
-					opencode: "supervised",
-					"claude-code": "supervised",
-					codex: "supervised",
-				},
-			},
-		});
-
 		// 1. Approval run
 		const approvalInc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("NeedsApproval"),
-			service: LIVE,
+			service: QUIET,
+			quiet: true,
 			session: "ask",
+		});
+		await page.request.post(`/api/incidents/${approvalInc.id}/investigate`, {
+			data: { accessLevel: "supervised" },
 		});
 		const approvalRun = await waitFor(async () => {
 			const d = await detail(page, approvalInc.id);
