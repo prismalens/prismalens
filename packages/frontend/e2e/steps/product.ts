@@ -215,7 +215,7 @@ export const cardOf = (scope: Page | Locator, title: string) => {
 	const page = "goto" in scope ? scope : scope.page();
 	return scope
 		.locator(
-			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"]',
+			'[data-testid="inbox-row"], [data-testid="recent-row"], [data-testid="all-row"], [data-testid="working-row"]',
 		)
 		.filter({ has: page.getByText(title, { exact: true }) });
 };

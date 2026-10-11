@@ -6,8 +6,10 @@ Feature: Inbox
     Given a paired browser at 1440 px on a workspace with INC-1 open and a run in progress
 
   Scenario: Group words say what is left to do
+    Then INC-1 is under Working, and in no Needs you group
     When the run finishes with a report
     Then INC-1 is under "Finding ready" with "Likely:" and the cause
+    And INC-1 is not under Working
     When the alert clears in Alertmanager
     Then INC-1 is under "Alerts cleared" reading "Cleared"
     When I resolve INC-1 with a cause

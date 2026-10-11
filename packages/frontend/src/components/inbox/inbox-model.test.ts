@@ -12,6 +12,7 @@ import {
 	needOf,
 	reasonOf,
 	sparkPoints,
+	workingOf,
 } from "./inbox-model";
 
 const NOW = Date.parse("2026-10-10T12:00:00Z");
@@ -142,6 +143,47 @@ describe("needOf", () => {
 
 	it("keeps resolved incidents out of the inbox", () => {
 		expect(needOf(incident({ status: "closed" }))).toBeNull();
+	});
+});
+
+describe("workingOf", () => {
+	it("lists a working run with no finding, which no Needs you group holds", () => {
+		const live = run({ status: "running", completedAt: null });
+		const i = incident({ investigations: [live] });
+		expect(groupNeeds([i])).toEqual([]);
+		expect(workingOf([i])).toEqual([{ incident: i, run: live }]);
+	});
+
+	it("leaves out a follow-up on a finding, a run waiting on you, a chat and a resolved one", () => {
+		const followUp = incident({
+			investigations: [
+				run({ status: "running", createdAt: at(0.1), completedAt: null }),
+				run({ rootCause: "v1.42 sorts notes in Python" }),
+			],
+		});
+		const approval = incident({
+			investigations: [
+				run({
+					status: "running",
+					completedAt: null,
+					awaitingApprovalAt: at(0.1),
+				}),
+			],
+		});
+		const chat = incident({
+			investigations: [
+				run({ kind: "chat", status: "running", completedAt: null }),
+			],
+		});
+		const closed = incident({
+			status: "closed",
+			investigations: [run({ status: "running", completedAt: null })],
+		});
+		expect(workingOf([followUp, approval, chat, closed])).toEqual([]);
+	});
+
+	it("is empty when nothing is working", () => {
+		expect(workingOf([incident({})])).toEqual([]);
 	});
 });
 
