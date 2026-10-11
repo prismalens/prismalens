@@ -61,7 +61,7 @@ describe("InvestigationTriggerService", () => {
 	const mockHarnessService = {
 		resolveSelection: vi.fn(),
 		ensureReady: vi.fn(),
-		effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised" })),
+		effectiveChoice: vi.fn(async () => ({ accessLevel: "auto" })),
 	};
 
 	beforeEach(async () => {
@@ -72,7 +72,7 @@ describe("InvestigationTriggerService", () => {
 			auto: true,
 		});
 		mockHarnessService.ensureReady.mockResolvedValue({ ready: true });
-		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "supervised" });
+		mockHarnessService.effectiveChoice.mockResolvedValue({ accessLevel: "auto" });
 		vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
 		vi.spyOn(Logger.prototype, "debug").mockImplementation(() => {});
@@ -387,15 +387,11 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
-		it("auto_critical trigger stores auto rows' values when set and Auto when not (#673)", async () => {
+		it("the job it adds carries unattended: true and accessLevel: auto", async () => {
 			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-auto" }, created: true });
 			mockIntegrationsService.getIntegrationsForService.mockResolvedValue([]);
 			mockPrisma.alert.findMany.mockResolvedValue([]);
 			mockDispatchService.addInvestigationJob.mockResolvedValue("job-auto");
-
-			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
-				accessLevel: "auto-edits",
-			});
 
 			const criticalDecision = {
 				shouldTrigger: true,
@@ -409,21 +405,8 @@ describe("InvestigationTriggerService", () => {
 			expect(mockDispatchService.addInvestigationJob).toHaveBeenCalledWith(
 				expect.objectContaining({
 					investigationId: "inv-auto",
-					accessLevel: "auto-edits",
-				}),
-			);
-
-			// When auto rows are not set, effectiveChoice resolves Auto
-			mockHarnessService.effectiveChoice.mockResolvedValueOnce({
-				accessLevel: "auto",
-			});
-
-			await service.triggerInvestigation(incident, criticalDecision);
-
-			expect(mockDispatchService.addInvestigationJob).toHaveBeenLastCalledWith(
-				expect.objectContaining({
-					investigationId: "inv-auto",
 					accessLevel: "auto",
+					unattended: true,
 				}),
 			);
 		});

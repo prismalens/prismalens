@@ -7,7 +7,7 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HarnessSettings } from "./HarnessSettings";
+import { HarnessSettings, versionText } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
 const mutateAsyncSpy = vi.fn();
@@ -98,7 +98,6 @@ let mockChoice = {
 	efforts: {} as Record<string, string | null>,
 	axes: {
 		accessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
-		autoAccessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
 	},
 	setting: "claude-code",
 	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
@@ -157,7 +156,6 @@ beforeEach(() => {
 		efforts: {},
 		axes: {
 			accessLevels: {},
-			autoAccessLevels: {},
 		},
 		setting: "claude-code",
 		customModels: { "claude-code": ["gw-a"] },
@@ -373,6 +371,15 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 			"Your ~/.claude/settings.json allow and deny rules",
 		);
 
+		// Verify alert runs line is displayed
+		const alertRunsLine = container.querySelector(
+			'[data-testid="harness-alert-runs"]',
+		);
+		expect(alertRunsLine).not.toBeNull();
+		expect(alertRunsLine?.textContent).toContain(
+			"Runs an alert starts don't use this: nobody is there to answer, so they run at Auto and refuse anything they would ask you.",
+		);
+
 		// Select elements exist
 		const accessSelect = container.querySelector(
 			'[data-testid="harness-access-select"]',
@@ -380,40 +387,11 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 		expect(accessSelect).not.toBeNull();
 	});
 
-	it("renders Auto-started runs group with Auto as its default (#673)", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const autoGroup = container.querySelector(
-			'[data-testid="harness-auto-start"]',
-		);
-		expect(autoGroup).not.toBeNull();
-		expect(autoGroup?.textContent).toContain("Auto-started runs");
-
-		expect(
-			container.querySelector('[data-testid="harness-auto-run-mode"]'),
-		).toBeNull();
-
-		const autoAccessRow = container.querySelector(
-			'[data-testid="harness-auto-access"]',
-		);
-		expect(autoAccessRow).not.toBeNull();
-		expect(autoAccessRow?.textContent).toContain("Auto, the default.");
-		expect(autoAccessRow?.textContent).not.toContain("Same as next run");
-
-		const autoAccessSelect = container.querySelector(
-			'[data-testid="harness-auto-access-select"]',
-		);
-		expect(autoAccessSelect?.textContent).toBe("Auto (default)");
-	});
-
-	it("renders set here lines when axes are set in settings", async () => {
+	it("renders set here line when accessLevels is set in settings", async () => {
 		mockChoice = {
 			...mockChoice,
 			axes: {
 				accessLevels: { "claude-code": "auto" },
-				autoAccessLevels: { "claude-code": "full-access" },
 			},
 		};
 
@@ -423,10 +401,88 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 
 		const accessRow = container.querySelector('[data-testid="harness-access"]');
 		expect(accessRow?.textContent).toContain("Auto, set here.");
+	});
+});
 
-		const autoAccessRow = container.querySelector(
-			'[data-testid="harness-auto-access"]',
-		);
-		expect(autoAccessRow?.textContent).toContain("Full access, set here.");
+describe("versionText", () => {
+	it("returns '1.18.32, tested with 1.18.30' when checked.version differs from tested.version", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: {
+				at: "",
+				outcome: "answers-acp" as const,
+				detail: "",
+				version: "1.18.32",
+				companionVersion: null,
+				servedModel: null,
+				effort: null,
+				modes: [],
+				efforts: [],
+				images: false,
+				sandbox: null,
+			},
+			tested: { version: "1.18.30", date: "2026-10-01" },
+		};
+		expect(versionText(h)).toBe("1.18.32, tested with 1.18.30");
+	});
+
+	it("returns '1.18.30, tested' when equal", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: {
+				at: "",
+				outcome: "answers-acp" as const,
+				detail: "",
+				version: "1.18.30",
+				companionVersion: null,
+				servedModel: null,
+				effort: null,
+				modes: [],
+				efforts: [],
+				images: false,
+				sandbox: null,
+			},
+			tested: { version: "1.18.30", date: "2026-10-01" },
+		};
+		expect(versionText(h)).toBe("1.18.30, tested");
+	});
+
+	it("returns 'tested with 1.18.30' with no check", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: null,
+			tested: { version: "1.18.30", date: "2026-10-01" },
+		};
+		expect(versionText(h)).toBe("tested with 1.18.30");
+	});
+
+	it("returns '2.1.296, tested' when checked.companionVersion is 2.1.296 and tested.companion is 2.1.296", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: {
+				at: "",
+				outcome: "answers-acp" as const,
+				detail: "",
+				version: "0.81.1",
+				companionVersion: "2.1.296",
+				servedModel: null,
+				effort: null,
+				modes: [],
+				efforts: [],
+				images: false,
+				sandbox: null,
+			},
+			tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
+		};
+		expect(versionText(h)).toBe("2.1.296, tested");
+	});
+
+	it("returns null with neither", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: null,
+			tested: null,
+		};
+		expect(versionText(h)).toBeNull();
 	});
 });

@@ -78,7 +78,6 @@ describe("defaultTag", () => {
 		expect(defaultTag("agent")).toBe("Your default");
 		expect(defaultTag("prismalens")).toBe("PrismaLens default");
 		expect(defaultTag("settings")).toBe("From Settings");
-		expect(defaultTag("auto-settings")).toBe("From Settings");
 	});
 });
 

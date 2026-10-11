@@ -157,27 +157,6 @@ describe("HarnessService", () => {
 			).resolves.toEqual({ harness: "auto", accessLevels: { codex: "auto", "claude-code": "auto-edits" } });
 		});
 
-		it("merges both level maps and null clears them (#673 w21)", async () => {
-			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({
-					harness: "auto",
-					accessLevels: { codex: "auto", opencode: "full-access" },
-					autoAccessLevels: { codex: "auto-edits", gemini: "supervised" },
-				}),
-			);
-
-			const updated = await service().updateSettings({
-				accessLevels: { opencode: null, gemini: "auto" },
-				autoAccessLevels: { gemini: null, "claude-code": "auto" },
-			});
-
-			expect(updated).toEqual({
-				harness: "auto",
-				accessLevels: { codex: "auto", gemini: "auto" },
-				autoAccessLevels: { codex: "auto-edits", "claude-code": "auto" },
-			});
-		});
-
 		it("keeps starred models across agents, replacing the list and dropping duplicates and unknown agents (R4.2)", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
@@ -422,7 +401,7 @@ describe("HarnessService", () => {
 			permission: { level: "supervised" as const, file: "f", value: "default" },
 		};
 
-		it("gives an auto-started run Auto when no auto-start row is stored, whatever the next-run chain says", async () => {
+		it("gives an auto-started run Auto whatever the next-run chain says", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({ harness: "auto", accessLevels: { opencode: "supervised" } }),
 			);
@@ -430,16 +409,6 @@ describe("HarnessService", () => {
 			s.localDefaultOf = vi.fn().mockReturnValue(agentSaysAskAlways);
 
 			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "auto" });
-		});
-
-		it("gives an auto-started run its stored auto-start row", async () => {
-			mockPrismaService.setting.findUnique.mockResolvedValue(
-				settingRow({ harness: "auto", autoAccessLevels: { opencode: "supervised" } }),
-			);
-			const s = service();
-			s.localDefaultOf = vi.fn().mockReturnValue({ permission: null });
-
-			await expect(s.effectiveChoice("opencode", true)).resolves.toEqual({ accessLevel: "supervised" });
 		});
 
 		it("leaves an interactive run on the next-run chain: the agent's own default here", async () => {
@@ -527,7 +496,7 @@ describe("HarnessService", () => {
 				harness: "opencode",
 				pinned: true,
 			});
-			expect(status.selection.blockedReason).toMatch(/not on PATH/i);
+			expect(status.selection.blockedReason).toMatch(/not installed/i);
 		});
 
 		it("reports an unknown env pin as pinned with the known ids in the reason", async () => {

@@ -21,7 +21,7 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		effective: undefined,
 		model: "",
 		efforts: {},
-		axes: { accessLevels: {}, autoAccessLevels: {} },
+		axes: { accessLevels: {} },
 	}),
 }));
 

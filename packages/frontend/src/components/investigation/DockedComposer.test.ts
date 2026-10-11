@@ -66,7 +66,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 			model: "vendor/a",
 			models: { opencode: "vendor/a", codex: "gpt-x" },
 			efforts: { opencode: "low" },
-			axes: { accessLevels: {}, autoAccessLevels: {} },
+			axes: { accessLevels: {} },
 		}),
 	};
 });
