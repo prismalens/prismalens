@@ -229,7 +229,7 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 		expect(answerEvent.outcome).toBe("denied");
 	}, 60_000);
 
-	it("Given a critical fake-session:ask alert, When the run it starts asks, Then the run completes, awaitingApprovalAt stays null, accessLevel is auto, and its events include a permission answer with outcome denied", async () => {
+	it("Given a critical fake-session:ask alert, When the run it starts asks, Then the run completes, awaitingApprovalAt stays null, accessLevel is auto, and its events include a permission answer with outcome unattended", async () => {
 		await pl.serviceWithRepo("payments");
 		const alert = am.fire({
 			labels: {
@@ -273,6 +273,6 @@ describe("Walk: an ask answered end to end (#673 w21)", () => {
 		if (!answerEvent || answerEvent.kind !== "permission_answer") {
 			throw new Error("expected permission_answer event");
 		}
-		expect(answerEvent.outcome).toBe("denied");
+		expect(answerEvent.outcome).toBe("unattended");
 	}, 60_000);
 });

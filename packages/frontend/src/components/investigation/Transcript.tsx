@@ -36,6 +36,7 @@ const ENTER =
 const LEVEL_TEST_ID = {
 	allowed: "transcript-allowed",
 	mode_kept: "transcript-mode-kept",
+	unattended: "transcript-unattended",
 } as const;
 
 /** A group longer than this shows its ends and folds the middle (#811, very long step lists). */
@@ -407,6 +408,7 @@ const ASK_END: Record<Exclude<AskState, "waiting">, string> = {
 	ended: "Not answered before the run ended",
 	allowed: "Allowed by the run's permission level",
 	mode_kept: "Refused: the run keeps its mode",
+	unattended: "Refused: an alert started this run and nobody was there",
 };
 
 /**

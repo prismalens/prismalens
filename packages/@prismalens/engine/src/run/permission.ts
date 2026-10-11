@@ -113,7 +113,7 @@ export const denyAllPolicy: PermissionPolicy = (req) =>
 export const unattendedPolicy: PermissionPolicy = (req) =>
 	deny(
 		req,
-		"denied",
+		"unattended",
 		"an alert started this run and nobody was there to answer",
 	);
 

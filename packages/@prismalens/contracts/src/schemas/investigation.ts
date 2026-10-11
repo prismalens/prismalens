@@ -551,6 +551,8 @@ export const PERMISSION_ASK_OUTCOMES = [
 	"restarted",
 	"allowed",
 	"mode_kept",
+	// An alert-started run refused it: nobody was there to answer (#818 w5-29).
+	"unattended",
 ] as const;
 export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
 

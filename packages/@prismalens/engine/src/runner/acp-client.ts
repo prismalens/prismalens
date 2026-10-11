@@ -168,6 +168,7 @@ export interface AcpSessionConfig {
 const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 	"allowed",
 	"mode_kept",
+	"unattended",
 ]);
 
 // ACP v2 folds load into session/resume; one constant to move (#747).

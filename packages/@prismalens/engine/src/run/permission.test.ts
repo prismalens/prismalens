@@ -523,7 +523,7 @@ describe("levelPolicy", () => {
 				expect(verdict).toEqual({
 					allow: false,
 					optionId: "reject_1",
-					outcome: "denied",
+					outcome: "unattended",
 					why: "an alert started this run and nobody was there to answer",
 				});
 				expect(channelPolicy).not.toHaveBeenCalled();
