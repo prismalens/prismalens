@@ -621,7 +621,9 @@ export class IncidentsService {
 								entryTitle ??
 								(statusNote?.reason === "alertmanager-absence"
 									? "Alerts cleared: no Alertmanager still lists it"
-									: undefined) ??
+									: statusNote?.reason === "catch-up"
+										? "Alerts cleared while PrismaLens was offline"
+										: undefined) ??
 								(ending === "incident-closed"
 									? "Resolved"
 									: reopened

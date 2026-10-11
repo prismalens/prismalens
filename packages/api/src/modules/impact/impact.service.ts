@@ -339,8 +339,17 @@ export class ImpactService {
 			capturedAt: end.toISOString(),
 		};
 		const target = await this.target(serviceId, graph?.base);
-		if (!target || !alert) return chart;
+		if (!target) return chart;
 		chart.connection = { id: target.connectionId, label: target.label };
+		// Connected, but nothing to chart: a merged or hand-made incident has no alert (#673 w5-18).
+		if (!alert) {
+			chart.state = "expression_unknown";
+			chart.expression = {
+				state: "expression_unknown",
+				reason: "this incident has no alert of its own",
+			};
+			return chart;
+		}
 		const signal = AbortSignal.timeout(this.deadlineMs);
 		try {
 			await this.limiter.run(target.connectionId, signal, async () => {

@@ -162,6 +162,31 @@ export class AlertPullService implements OnApplicationBootstrap {
 		return { startsAt: key.slice(prefix.length), idempotencyKey: key };
 	}
 
+	/**
+	 * The store already holds this ended episode's end: the fingerprint's alert
+	 * cleared after the episode began. The operator's Resolve stamps that time too.
+	 */
+	private async endAlreadyKnown(
+		fingerprint: string,
+		startsAt: string,
+	): Promise<boolean> {
+		const member = await this.prisma.alertSourceAlert.findFirst({
+			where: { sourceAlertId: fingerprint },
+			orderBy: { lastSeenAt: "desc" },
+			select: { alertId: true },
+		});
+		const alert = await this.prisma.alert.findFirst({
+			where: member ? { id: member.alertId } : { externalId: fingerprint },
+			orderBy: { triggeredAt: "desc" },
+			select: { status: true, resolvedAt: true },
+		});
+		return (
+			alert?.status === "resolved" &&
+			!!alert.resolvedAt &&
+			alert.resolvedAt.getTime() >= Date.parse(startsAt)
+		);
+	}
+
 	async pull(now: Date = new Date()): Promise<PullResult> {
 		const result: PullResult = {
 			sources: 0,
@@ -313,6 +338,42 @@ export class AlertPullService implements OnApplicationBootstrap {
 					);
 				}
 
+				// Samples that stop may mean a Prometheus that slept, not an alert that
+				// cleared: an ended episode needs its rule evaluated after it (#673 w5-26).
+				// Without a rules API the gap alone decides, as before.
+				const evaluations = new Map<string, Promise<number | null>>();
+				const lastStepMs =
+					since.getTime() +
+					Math.floor((now.getTime() - since.getTime()) / (stepSeconds * 1000)) *
+						stepSeconds *
+						1000;
+				/** "ended", "unknown" (a gap Prometheus has not evaluated past), or "gap" (no rules API: the gap decides). */
+				const evaluatedSince = async (
+					alertname: string | undefined,
+					afterMs: number,
+				): Promise<"ended" | "unknown" | "gap"> => {
+					if (!alertname) return "gap";
+					let at = evaluations.get(alertname);
+					if (!at) {
+						at = metricsSegment
+							.alertRules(requestFn, alertname)
+							.then((rules) => {
+								const times = rules
+									.map((r) => Date.parse(r.lastEvaluation ?? ""))
+									.filter((t) => Number.isFinite(t));
+								return times.length > 0 ? Math.max(...times) : null;
+							})
+							.catch(() => null);
+						evaluations.set(alertname, at);
+					}
+					const last = await at;
+					if (last === null) return "gap";
+					// An evaluation after the range's last step could have fired again unseen.
+					return last > afterMs + stepSeconds * 1000 && last <= lastStepMs
+						? "ended"
+						: "unknown";
+				};
+
 				const alertsForStateByFp = new Map<string, RangeSeries>();
 				for (const s of alertsForStateList) {
 					const sLabels: Record<string, string> = {};
@@ -356,9 +417,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 					}
 					episodes.push(currentEpisode);
 
-					for (let epIdx = 0; epIdx < episodes.length; epIdx++) {
-						const episode = episodes[epIdx];
-						const isLastEpisode = epIdx === episodes.length - 1;
+					// Only the newest episode can change what is true now; replaying the
+					// older ones through the live path ended or reopened the wrong row (#673 w5-26).
+					{
+						const episode = episodes[episodes.length - 1];
 
 						const firstSample = episode[0];
 						const lastSample = episode[episode.length - 1];
@@ -417,7 +479,22 @@ export class AlertPullService implements OnApplicationBootstrap {
 							fingerprint,
 						};
 
+						const lastSampleTimeMs = lastSampleSec * 1000;
 						try {
+							const gap =
+								lastSampleTimeMs < now.getTime() - 2 * stepSeconds * 1000;
+							const seen = gap
+								? await evaluatedSince(labels.alertname, lastSampleTimeMs)
+								: null;
+							// Unknown: neither replayed nor resolved; the webhook and absence paths decide.
+							if (seen === "unknown") {
+								stillFiring.add(fingerprint);
+								continue;
+							}
+							const ended = gap;
+							if (ended && (await this.endAlreadyKnown(fingerprint, startsAt)))
+								continue;
+
 							const { isNew } =
 								await this.webhooksService.processPrometheusAlert(
 									prometheusAlert,
@@ -432,20 +509,19 @@ export class AlertPullService implements OnApplicationBootstrap {
 							}
 							result.caughtUp++;
 
-							// Resolution handling:
-							// All but the last episode are resolved;
-							// The last is resolved if its last sample is older than now − 2 × step.
-							const lastSampleTimeMs = lastSampleSec * 1000;
-							const endedThresholdMs = now.getTime() - 2 * stepSeconds * 1000;
-							const shouldResolve =
-								!isLastEpisode || lastSampleTimeMs < endedThresholdMs;
-
-							if (!shouldResolve) stillFiring.add(fingerprint);
-							if (shouldResolve) {
+							if (!ended) stillFiring.add(fingerprint);
+							else {
 								await this.webhooksService.resolvePrometheusAlert(
 									fingerprint,
 									`${idempotencyKey}:resolved`,
 									startsAt,
+									{
+										source: "prometheus",
+										note: {
+											text: `caught up from Prometheus after PrismaLens was offline; the alert stopped firing at ${new Date(lastSampleTimeMs).toISOString()}`,
+											reason: "catch-up",
+										},
+									},
 								);
 							}
 						} catch (alertErr) {

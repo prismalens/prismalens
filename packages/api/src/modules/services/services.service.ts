@@ -6,6 +6,11 @@ import type { Service, ServiceDependency } from "@prismalens/database";
 import { Prisma } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
+	IncidentStatus,
+	TimelineEntryType,
+	TimelineSource,
+} from "../../shared/enums/index.js";
+import {
 	AddDependencyDto,
 	CreateServiceDto,
 	UpdateServiceDto,
@@ -43,7 +48,78 @@ export class ServicesService {
 		});
 
 		this.logger.log(`Created service ${service.id}: ${service.name}`);
+		await this.claimAdvisory(service);
 		return service;
+	}
+
+	/** The claim never fails the save it follows. */
+	private async claimAdvisory(service: Pick<Service, "id" | "name">) {
+		await this.claimWaiting(service).catch((err: unknown) =>
+			this.logger.warn(
+				`Service ${service.name} could not claim waiting incidents: ${err}`,
+			),
+		);
+	}
+
+	/**
+	 * The label mapping, applied late (#673 w5-10): an incident still waiting
+	 * with no service, whose alerts' `service` label names this one, joins it.
+	 * Resolved and merged incidents keep their history; no run starts.
+	 */
+	async claimWaiting(service: Pick<Service, "id" | "name">): Promise<number> {
+		const incidents = await this.prisma.incident.findMany({
+			where: {
+				serviceId: null,
+				mergedIntoId: null,
+				status: { not: IncidentStatus.closed },
+				alerts: {
+					some: { serviceId: null, labels: { contains: service.name } },
+				},
+			},
+			select: { id: true, alerts: { select: { id: true, labels: true } } },
+		});
+		let claimed = 0;
+		for (const incident of incidents) {
+			const named = incident.alerts.map((a) => serviceLabel(a.labels));
+			if (!named.includes(service.name)) continue;
+			if (named.some((n) => n !== null && n !== service.name)) continue;
+			await this.prisma.$transaction([
+				this.prisma.incident.update({
+					where: { id: incident.id },
+					data: { serviceId: service.id },
+				}),
+				this.prisma.alert.updateMany({
+					where: {
+						id: {
+							in: incident.alerts
+								.filter((_, i) => named[i] === service.name)
+								.map((a) => a.id),
+						},
+						serviceId: null,
+					},
+					data: { serviceId: service.id },
+				}),
+				this.prisma.timelineEntry.create({
+					data: {
+						incidentId: incident.id,
+						type: TimelineEntryType.custom,
+						title: `Moved to ${service.name}: its alert's service label names it`,
+						description: `The service ${service.name} was added after this incident opened.`,
+						source: TimelineSource.system,
+						metadata: JSON.stringify({
+							reason: "service-claimed",
+							serviceId: service.id,
+						}),
+					},
+				}),
+			]);
+			claimed++;
+		}
+		if (claimed > 0)
+			this.logger.log(
+				`Service ${service.name} claimed ${claimed} waiting incident(s) by their alerts' service label`,
+			);
+		return claimed;
 	}
 
 	/**
@@ -179,6 +255,7 @@ export class ServicesService {
 			});
 
 			this.logger.log(`Updated service ${id}`);
+			if ("name" in dto) await this.claimAdvisory(service);
 			return service;
 		} catch (error) {
 			if (
@@ -313,5 +390,17 @@ export class ServicesService {
 				...(options?.tier && { tier: options.tier }),
 			},
 		});
+	}
+}
+
+/** The alert's `service` label, the one the label mapping reads; null without one. */
+function serviceLabel(labels: string | null): string | null {
+	if (!labels) return null;
+	try {
+		const parsed = JSON.parse(labels) as Record<string, unknown>;
+		const v = parsed.service;
+		return typeof v === "string" && v ? v : null;
+	} catch {
+		return null;
 	}
 }

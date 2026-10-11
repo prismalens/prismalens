@@ -87,6 +87,20 @@ describe("needOf", () => {
 		expect(needOf(i)).toBe("failed");
 	});
 
+	it("keeps an earlier finding standing after a later run stops, as the overview does (#673 w5-22)", () => {
+		const i = incident({
+			investigations: [
+				run({ status: "cancelled", createdAt: at(0.5), completedAt: at(0.4) }),
+				run({ rootCause: "commit 097fc82 caps the pool at one connection" }),
+			],
+		});
+		expect(needOf(i)).toBe("ready");
+		expect(reasonOf(i, "ready", NOW)).toMatchObject({
+			tag: "Likely:",
+			text: expect.stringContaining("097fc82"),
+		});
+	});
+
 	it("groups failed and stopped runs together, Retry first", () => {
 		const stopped = incident({
 			alerts: [alert({ status: "resolved", resolvedAt: at(1) })],

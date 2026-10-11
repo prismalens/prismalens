@@ -24,6 +24,7 @@ interface PrometheusRulesResult {
 				name?: string;
 				query?: string;
 				labels?: Record<string, string>;
+				lastEvaluation?: string;
 			}>;
 		}>;
 	};
@@ -151,7 +152,14 @@ export class PrometheusMetricsSegment implements MetricsQueries {
 		return (body.data?.groups ?? []).flatMap((g) =>
 			(g.rules ?? []).flatMap((r) =>
 				r.type === "alerting" && r.name === name && typeof r.query === "string"
-					? [{ name: r.name, query: r.query, labels: r.labels ?? {} }]
+					? [
+							{
+								name: r.name,
+								query: r.query,
+								labels: r.labels ?? {},
+								...(r.lastEvaluation && { lastEvaluation: r.lastEvaluation }),
+							},
+						]
 					: [],
 			),
 		);

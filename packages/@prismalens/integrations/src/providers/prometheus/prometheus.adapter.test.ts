@@ -190,7 +190,13 @@ describe("budgeted queries (#811)", () => {
 				groups: [
 					{
 						rules: [
-							{ type: "alerting", name: "Slow", query: "x > 1", labels: { severity: "page" } },
+							{
+								type: "alerting",
+								name: "Slow",
+								query: "x > 1",
+								labels: { severity: "page" },
+								lastEvaluation: "2026-09-20T08:59:30Z",
+							},
 							{ type: "recording", name: "Slow", query: "x" },
 							{ type: "alerting", name: "Other", query: "y > 1" },
 						],
@@ -199,7 +205,12 @@ describe("budgeted queries (#811)", () => {
 			}),
 		);
 		expect(await segment.alertRules(request, "Slow")).toEqual([
-			{ name: "Slow", query: "x > 1", labels: { severity: "page" } },
+			{
+				name: "Slow",
+				query: "x > 1",
+				labels: { severity: "page" },
+				lastEvaluation: "2026-09-20T08:59:30Z",
+			},
 		]);
 		expect(request.mock.calls[0]?.[1]).toBe(
 			"/api/v1/rules?type=alert&rule_name%5B%5D=Slow",

@@ -140,9 +140,11 @@ export function retryBudgetKey(
 	return failure.reason === "schema" ? "schema" : "extraction";
 }
 
+/** Restates the schema: a compacted session may no longer hold the first prompt's copy (#673 w5-18). */
 export function retryPrompt(failure: ReportFailure): string {
 	return `Your final message did not carry a valid report (${failure.reason}: ${failure.detail}).
-Reply with ONLY one fenced \`\`\`json block that validates against the schema you were given, and nothing else. Do not run more tools.`;
+Reply with ONLY one fenced \`\`\`json block that validates against this JSON schema, and nothing else. Do not run more tools.
+${reportJsonSchema()}`;
 }
 
 /** The prefix a report's evidence `source` carries for a fact the host supplied. */

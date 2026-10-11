@@ -5,6 +5,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import {
 	ENDED_INCIDENT_STATUSES,
+	isIncidentOpen,
 	OPEN_ALERT_STATUSES,
 	OPEN_INCIDENT_STATUSES,
 } from "@prismalens/contracts";
@@ -205,14 +206,22 @@ export class IncidentCorrelationService {
 		incidentId: string,
 		note?: StatusNote,
 	): Promise<void> {
+		// Only an open incident ends this way: a late resolved delivery must not
+		// turn the operator's Resolve (`closed`) into Alerts cleared (#673 w5-28).
+		const incident = await this.prisma.incident.findUnique({
+			where: { id: incidentId },
+			select: { status: true },
+		});
+		if (!incident || !isIncidentOpen(incident.status)) return;
 		const firing = await this.prisma.alert.count({
 			where: { incidentId, status: { in: [...OPEN_ALERT_STATUSES] } },
 		});
 		if (firing === 0) {
-			await this.incidentsService.resolve(incidentId, note);
-			this.logger.log(
-				`Resolved incident ${incidentId}: no firing alerts remain`,
-			);
+			const resolved = await this.incidentsService.resolve(incidentId, note);
+			if (resolved)
+				this.logger.log(
+					`Alerts cleared on incident ${incidentId}: no firing alerts remain`,
+				);
 		}
 	}
 }
