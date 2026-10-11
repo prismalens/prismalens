@@ -21,7 +21,9 @@ export function urlOnlyRequestFn(
 			method,
 			headers: options?.headers,
 			body: options?.body,
-			signal: AbortSignal.timeout(10_000),
+			signal: options?.signal
+				? AbortSignal.any([AbortSignal.timeout(10_000), options.signal])
+				: AbortSignal.timeout(10_000),
 		});
 	};
 }

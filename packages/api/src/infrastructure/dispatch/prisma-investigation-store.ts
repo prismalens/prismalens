@@ -22,6 +22,7 @@
  * `cancelled` outcome calls neither finish nor fail, so it invokes {@link flush}
  * directly to drain the same buffered tail before it resolves.
  */
+import { randomUUID } from "node:crypto";
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
@@ -150,11 +151,7 @@ export function createPrismaInvestigationStore(
 		async create() {
 			const turn = payloadTurn({ chat, resume });
 			if (resume) {
-				// The rebuild's credentials replace the first run's on the row (#673).
-				await ports.followUpStatus(investigationId, {
-					status: "running",
-					...(workspace ? { workspace } : {}),
-				});
+				await ports.followUpStatus(investigationId, { status: "running" });
 				await ports.initLiveTurn(investigationId, turn);
 				await ports.createTimelineEntry({
 					incidentId,
@@ -190,8 +187,18 @@ export function createPrismaInvestigationStore(
 		},
 
 		async append(event: CanonicalEvent) {
-			if (event.kind === "operator_message" && event.delivered)
+			if (event.kind === "operator_message" && event.delivered && !delivered) {
 				delivered = true;
+				// The rebuild's credentials replace the first run's only once the message lands: X1 puts back an undelivered follow-up (#810).
+				if (resume && workspace)
+					await ports
+						.followUpStatus(investigationId, { workspace })
+						.catch((e) =>
+							logger.warn(
+								`Could not record the rebuilt workspace: ${String(e)}`,
+							),
+						);
+			}
 			buffer.push(event);
 			if (buffer.length >= BATCH_SIZE) {
 				await flush();
@@ -225,6 +232,14 @@ export function createPrismaInvestigationStore(
 				}));
 				return;
 			}
+			// One id per option, shared with its Recommendation row: applied, Undo and checks bind by it (#811).
+			const stamped = {
+				...report,
+				nextSteps: report.nextSteps.map((step) => ({
+					...step,
+					id: randomUUID(),
+				})),
+			};
 			refused = !(await ports.writeResult(investigationId, {
 				status: "completed",
 				incidentId,
@@ -232,8 +247,9 @@ export function createPrismaInvestigationStore(
 				summary: report.summary,
 				rootCause: report.rootCause ?? undefined,
 				rootCauseCategory: report.rootCauseCategory ?? undefined,
-				report,
-				recommendations: report.nextSteps.map((step) => ({
+				report: stamped,
+				recommendations: stamped.nextSteps.map((step) => ({
+					id: step.id,
 					title: step.title,
 					description: step.detail,
 					priority: step.priority ?? undefined,

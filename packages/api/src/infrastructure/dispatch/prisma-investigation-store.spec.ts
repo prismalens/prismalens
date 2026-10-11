@@ -170,6 +170,27 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 		);
 	});
 
+	it("stamps one id per option into the report and onto its row (#811)", async () => {
+		const writeResult = vi.fn(async (_id: string, _dto: unknown) => true);
+		const { store } = makeStore(vi.fn(async () => {}), { writeResult });
+		await store.finish({
+			...REPORT,
+			nextSteps: [
+				{ title: "Roll back", detail: "v1.41", kind: "stop-impact", command: "kubectl rollout undo deploy/api" },
+				{ title: "Check pool", detail: "size" },
+			],
+		});
+		const dto = writeResult.mock.calls[0]?.[1] as {
+			report: { nextSteps: Array<{ id?: string; command?: string }> };
+			recommendations: Array<{ id?: string; title: string }>;
+		};
+		const ids = dto.report.nextSteps.map((s) => s.id);
+		expect(ids.every((id) => typeof id === "string")).toBe(true);
+		expect(new Set(ids).size).toBe(2);
+		expect(dto.recommendations.map((r) => r.id)).toEqual(ids);
+		expect(dto.report.nextSteps[0]?.command).toBe("kubectl rollout undo deploy/api");
+	});
+
 	it("drains buffered events on fail BEFORE writing the failed status", async () => {
 		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {});
 		const updateStatus = vi.fn(async () => true);
@@ -332,6 +353,51 @@ describe("createPrismaInvestigationStore — a follow-up (#747)", () => {
 		expect(appendEvents).toHaveBeenCalledTimes(1);
 		expect(ports.updateStatus).not.toHaveBeenCalled();
 		expect(ports.writeResult).not.toHaveBeenCalled();
+	});
+});
+
+describe("createPrismaInvestigationStore — a follow-up's rebuilt workspace (#810)", () => {
+	const make = () => {
+		const ports = makePorts(vi.fn(async () => {}));
+		const store = createPrismaInvestigationStore(ports, {
+			investigationId: INVESTIGATION_ID,
+			incidentId: INCIDENT_ID,
+			runId: RUN_ID,
+			workspace: '{"cwd":"/w","repos":[]}',
+			resume: { note: "Continuing." },
+		});
+		return { ports, store };
+	};
+	const message = (delivered: boolean): CanonicalEvent => ({
+		kind: "operator_message",
+		runId: RUN_ID,
+		branchId: "branch-1",
+		path: [],
+		ts: "2026-10-11T00:00:00.000Z",
+		seq: 1,
+		text: "why?",
+		mode: "queue",
+		delivered,
+	});
+
+	it("an undelivered follow-up never writes the rebuilt workspace, so the put-back row keeps the first run's", async () => {
+		const { ports, store } = make();
+		await store.create();
+		await store.append(message(false));
+		await store.fail("clone refused");
+		expect(vi.mocked(ports.followUpStatus).mock.calls).toEqual([[INVESTIGATION_ID, { status: "running" }]]);
+	});
+
+	it("writes the rebuilt workspace once, when the message reaches the agent", async () => {
+		const { ports, store } = make();
+		await store.create();
+		await store.append(message(true));
+		await store.append({ ...message(true), seq: 2 });
+		expect(vi.mocked(ports.followUpStatus).mock.calls).toEqual([
+			[INVESTIGATION_ID, { status: "running" }],
+			[INVESTIGATION_ID, { workspace: '{"cwd":"/w","repos":[]}' }],
+		]);
+		expect(store.delivered()).toBe(true);
 	});
 });
 

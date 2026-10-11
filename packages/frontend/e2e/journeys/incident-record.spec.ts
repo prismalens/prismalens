@@ -68,7 +68,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(band.getByTestId("band-status")).toBeVisible();
 
 		// The runs are the incident's children in the sidebar; Overview has no box.
-		await expect(page.getByTestId("run-tree-row").first()).toBeVisible();
+		await expect(page.getByTestId("tree-run").first()).toBeVisible();
 		await expect(page.getByTestId("docked-composer")).toHaveCount(0);
 
 		// The sections, in the order an SRE asks, in one column.
@@ -109,7 +109,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(page.getByTestId("report-route")).toBeVisible();
 		await expect(page.getByTestId("report-answer")).toBeVisible();
 		await expect(page.getByTestId("do-now")).toBeVisible();
-		await expect(page.getByTestId("run-tree")).toBeVisible();
+		await expect(page.getByTestId("tree-runs")).toBeVisible();
 		await expect(page.getByTestId("record-tabs")).toBeVisible();
 
 		// The conversation: prose, the tool call folded to one line, the end.
@@ -140,7 +140,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("incident-state-band")).toBeVisible();
-		await expect(page.getByTestId("run-tree")).toBeVisible();
+		await expect(page.getByTestId("tree-runs")).toBeVisible();
 
 		await page.getByTestId("tab-timeline").click();
 		await expect(page.getByTestId("timeline-route")).toBeVisible();
@@ -157,10 +157,10 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await expect(page.getByTestId("run-page")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).not.toBeFocused();
 		await page.keyboard.press("Escape");
-		await expect(page.getByTestId("incident-board")).toBeVisible();
+		await expect(page.getByTestId("inbox")).toBeVisible();
 		await page.goto(`/incidents/${INCIDENT_ID}`);
 		await page.getByRole("link", { name: "Back to the board" }).click();
-		await expect(page.getByTestId("incident-board")).toBeVisible();
+		await expect(page.getByTestId("inbox")).toBeVisible();
 		await settled(page);
 	});
 
@@ -182,7 +182,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			{ timeout: 15_000 },
 		);
 		await setTheme(page, "light");
-		await expect(page.getByTestId("run-tree-row")).toHaveCount(0);
+		await expect(page.getByTestId("tree-run")).toHaveCount(0);
 		// With no run, Conversation opens on the draft.
 		await page.getByTestId("tab-conversation").click();
 		await expect(page.getByTestId("crumb-view")).toHaveText("New conversation");

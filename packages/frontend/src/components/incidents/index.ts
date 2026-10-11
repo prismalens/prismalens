@@ -11,12 +11,6 @@ export {
 	type CreateIncidentDialogProps,
 } from "./CreateIncidentDialog";
 export { FirstRunPanel } from "./FirstRunPanel";
-export { IncidentFilters, type IncidentFiltersProps } from "./IncidentFilters";
-export {
-	IncidentListPane,
-	type IncidentListPaneProps,
-	useIncidentWindow,
-} from "./IncidentListPane";
 export {
 	IncidentStateBand,
 	type IncidentStateBandProps,

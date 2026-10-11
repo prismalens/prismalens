@@ -270,7 +270,7 @@ test("design shots D2", async ({
 		data: { noticed: true, dismissed: true },
 	});
 
-	await shots("board", "/incidents", "incident-board");
+	await shots("board", "/incidents", "inbox");
 	await shots("services", "/services", "services-page");
 	await shots("service-detail", `/services/${service}`, "service-page");
 	await shots("settings-agent", "/settings?tab=harness", "harness-settings");

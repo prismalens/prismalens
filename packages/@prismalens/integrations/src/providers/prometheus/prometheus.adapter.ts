@@ -2,19 +2,35 @@
 // Copyright 2026 Sumit Patel
 
 import { providerHttpError } from "../../engine/provider-http-error.js";
-import type { MetricsQueries, RangeSeries } from "../metrics.interface.js";
+import {
+	type AlertRule,
+	type InstantSample,
+	type MetricsQueries,
+	type QueryBudget,
+	QueryBudgetExceededError,
+	type RangeSeries,
+} from "../metrics.interface.js";
 import type { AuthenticatedRequestFn, ProviderAdapter } from "../types.js";
 
-interface PrometheusRangeQueryResult {
+interface PrometheusQueryResult<V> {
+	data?: { result?: Array<{ metric?: Record<string, string> } & V> };
+}
+
+interface PrometheusRulesResult {
 	data?: {
-		result?: Array<{
-			metric?: Record<string, string>;
-			values?: Array<[number, string]>;
+		groups?: Array<{
+			rules?: Array<{
+				type?: string;
+				name?: string;
+				query?: string;
+				labels?: Record<string, string>;
+			}>;
 		}>;
 	};
 }
 
-async function json<T>(response: Response): Promise<T> {
+/** The body as JSON, read as a stream and abandoned past `maxBytes` (#811). */
+async function json<T>(response: Response, maxBytes?: number): Promise<T> {
 	if (!response.ok) {
 		throw providerHttpError({
 			operation: "Prometheus API request",
@@ -22,7 +38,41 @@ async function json<T>(response: Response): Promise<T> {
 			response,
 		});
 	}
-	return response.json() as Promise<T>;
+	if (!maxBytes || !response.body) return response.json() as Promise<T>;
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		size += value.byteLength;
+		if (size > maxBytes) {
+			await reader.cancel();
+			throw new QueryBudgetExceededError(
+				`Prometheus answered with more than ${maxBytes} bytes`,
+			);
+		}
+		chunks.push(value);
+	}
+	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+}
+
+function query(params: Record<string, string | number | undefined>): string {
+	return Object.entries(params)
+		.filter((e): e is [string, string | number] => e[1] !== undefined)
+		.map(
+			([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+		)
+		.join("&");
+}
+
+/** More series than the budget allows is too broad: a truncated answer may have dropped the one that matters. */
+function capSeries<T>(rows: T[], budget?: QueryBudget): T[] {
+	if (budget?.limit !== undefined && rows.length > budget.limit)
+		throw new QueryBudgetExceededError(
+			`Prometheus returned ${rows.length} series, over the limit of ${budget.limit}`,
+		);
+	return rows;
 }
 
 export class PrometheusMetricsSegment implements MetricsQueries {
@@ -40,18 +90,71 @@ export class PrometheusMetricsSegment implements MetricsQueries {
 	async rangeQuery(
 		request: AuthenticatedRequestFn,
 		q: { expr: string; start: Date; end: Date; stepSeconds: number },
+		budget?: QueryBudget,
 	): Promise<RangeSeries[]> {
-		const startSec = Math.floor(q.start.getTime() / 1000);
-		const endSec = Math.floor(q.end.getTime() / 1000);
-		const path = `/api/v1/query_range?query=${encodeURIComponent(q.expr)}&start=${encodeURIComponent(String(startSec))}&end=${encodeURIComponent(String(endSec))}&step=${encodeURIComponent(String(q.stepSeconds))}`;
+		const path = `/api/v1/query_range?${query({
+			query: q.expr,
+			start: Math.floor(q.start.getTime() / 1000),
+			end: Math.floor(q.end.getTime() / 1000),
+			step: q.stepSeconds,
+			timeout: budget?.timeout,
+			limit: budget?.limit,
+		})}`;
+		const response = await request("GET", path, { signal: budget?.signal });
+		const body = await json<
+			PrometheusQueryResult<{ values?: Array<[number, string]> }>
+		>(response, budget?.maxBytes);
+		return capSeries(
+			(body.data?.result ?? []).map((r) => ({
+				labels: r.metric ?? {},
+				values: r.values ?? [],
+			})),
+			budget,
+		);
+	}
 
-		const response = await request("GET", path);
-		const body = await json<PrometheusRangeQueryResult>(response);
+	async instantQuery(
+		request: AuthenticatedRequestFn,
+		q: { expr: string; time: Date; lookbackDeltaSeconds?: number },
+		budget?: QueryBudget,
+	): Promise<InstantSample[]> {
+		const path = `/api/v1/query?${query({
+			query: q.expr,
+			time: q.time.getTime() / 1000,
+			lookback_delta:
+				q.lookbackDeltaSeconds === undefined
+					? undefined
+					: `${q.lookbackDeltaSeconds}s`,
+			timeout: budget?.timeout,
+			limit: budget?.limit,
+		})}`;
+		const response = await request("GET", path, { signal: budget?.signal });
+		const body = await json<
+			PrometheusQueryResult<{ value?: [number, string] }>
+		>(response, budget?.maxBytes);
+		return capSeries(
+			(body.data?.result ?? []).flatMap((r) =>
+				r.value ? [{ labels: r.metric ?? {}, value: r.value }] : [],
+			),
+			budget,
+		);
+	}
 
-		return (body.data?.result ?? []).map((r) => ({
-			labels: r.metric ?? {},
-			values: r.values ?? [],
-		}));
+	async alertRules(
+		request: AuthenticatedRequestFn,
+		name: string,
+		budget?: QueryBudget,
+	): Promise<AlertRule[]> {
+		const path = `/api/v1/rules?${query({ type: "alert", "rule_name[]": name })}`;
+		const response = await request("GET", path, { signal: budget?.signal });
+		const body = await json<PrometheusRulesResult>(response, budget?.maxBytes);
+		return (body.data?.groups ?? []).flatMap((g) =>
+			(g.rules ?? []).flatMap((r) =>
+				r.type === "alerting" && r.name === name && typeof r.query === "string"
+					? [{ name: r.name, query: r.query, labels: r.labels ?? {} }]
+					: [],
+			),
+		);
 	}
 }
 

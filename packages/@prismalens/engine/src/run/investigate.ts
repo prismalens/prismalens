@@ -48,6 +48,7 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import { opencodeUserConfig } from "./local-default.js";
 import {
 	askWindow,
 	denyAllPolicy,
@@ -332,9 +333,12 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 	};
-	const patch = opts.accessLevel
+	const overlay = opts.accessLevel
 		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
 		: undefined;
+	const patch = overlay?.(
+		opts.harness === "opencode" ? opencodeUserConfig(opts.env) : {},
+	);
 	for (const [rel, content] of Object.entries(
 		levelConfigFiles(descriptor.configFiles?.(runEnv) ?? {}, patch),
 	)) {

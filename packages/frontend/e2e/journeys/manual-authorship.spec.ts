@@ -65,7 +65,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.goto("/incidents");
 		await expect(
 			page
-				.getByTestId("incident-list-pane")
+				.getByTestId("page-header")
 				.getByRole("heading", { name: "Incidents", exact: true }),
 		).toBeVisible({
 			timeout: 15_000,
@@ -252,12 +252,10 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		// incidents, so a future `from` filter is what makes the table empty
 		// deterministically.
 		const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
-		await page.goto(`/incidents?from=${encodeURIComponent(tomorrow)}`);
-		await expect(page.getByTestId("incidents-empty-state")).toBeVisible({
+		await page.goto(`/incidents?view=all&from=${encodeURIComponent(tomorrow)}`);
+		await expect(page.getByTestId("all-empty")).toBeVisible({
 			timeout: 15_000,
 		});
-		// The header's New is the one manual entry (decision 4), empty or not.
-		await expect(page.getByTestId("incidents-empty-create")).toHaveCount(0);
 	});
 
 	/**
@@ -310,7 +308,7 @@ test.describe("C10 — manual authorship without an alert source", () => {
 		await page.goto("/incidents");
 		await expect(
 			page
-				.getByTestId("incident-list-pane")
+				.getByTestId("page-header")
 				.getByRole("heading", { name: "Incidents", exact: true }),
 		).toBeVisible({
 			timeout: 15_000,

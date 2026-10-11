@@ -196,14 +196,14 @@ test.describe("Tabs", () => {
 });
 
 test.describe("Segmented", () => {
-	test("a labelled group of two buttons, one pressed; a click moves the pressed state", async ({
+	test("a labelled group of buttons, one pressed; a click moves the pressed state", async ({
 		page,
 	}) => {
 		await page.goto("/incidents");
 		const view = page.getByTestId("incidents-view");
 		await expect(view).toBeVisible();
 		await expect(view).toHaveAccessibleName("View");
-		const board = page.getByTestId("incidents-view-board");
+		const board = page.getByTestId("incidents-view-inbox");
 		const analytics = page.getByTestId("incidents-view-analytics");
 		await expect(board).toHaveAttribute("aria-pressed", "true");
 		await expect(analytics).toHaveAttribute("aria-pressed", "false");
@@ -216,7 +216,7 @@ test.describe("Segmented", () => {
 		await page.keyboard.press("Enter");
 		await expect(board).toHaveAttribute("aria-pressed", "true");
 		await page.keyboard.press("Tab");
-		await expect(analytics).toBeFocused();
+		await expect(page.getByTestId("incidents-view-all")).toBeFocused();
 	});
 });
 
@@ -336,10 +336,10 @@ for (const theme of ["dark", "light"] as const) {
 			probe.remove();
 			return c;
 		});
-		await page.getByTestId("incidents-view-board").focus();
+		await page.getByTestId("incidents-view-inbox").focus();
 		await page.keyboard.press("Tab");
 		await page.keyboard.press("Shift+Tab");
-		const board = page.getByTestId("incidents-view-board");
+		const board = page.getByTestId("incidents-view-inbox");
 		await expect(board).toHaveCSS("outline-style", "solid");
 		await expect(board).toHaveCSS("outline-width", "2px");
 		// The colour eases in over a transition; wait for it.

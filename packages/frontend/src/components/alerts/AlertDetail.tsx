@@ -158,7 +158,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 
 	const band = (
 		<div
-			className="flex h-(--header-h) shrink-0 items-center gap-2.5 bg-canvas pr-4 pl-3 desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
+			className="flex h-(--header-h) shrink-0 items-center gap-2.5 bg-surface-1 pr-4 pl-3 desktop:pr-[calc(var(--controls-w)+16px)] desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
 			data-testid="alert-band"
 		>
 			<Hint label={backLabel} keys={["Esc"]}>
