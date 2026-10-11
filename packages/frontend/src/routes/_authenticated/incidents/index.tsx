@@ -19,6 +19,7 @@ import {
 	useActiveIncidents,
 	useRecentlyResolved,
 } from "@/components/inbox/use-inbox-data";
+import { Working } from "@/components/inbox/Working";
 import { IncidentAnalytics } from "@/components/incidents/analytics/IncidentAnalytics";
 import {
 	FirstRunPanel,
@@ -198,7 +199,7 @@ function IncidentsLanding() {
 	);
 }
 
-/** The inbox (spec §1): tiles, Needs you, Recently resolved. */
+/** The inbox (spec §1): tiles, Needs you, Working, Recently resolved. */
 function Inbox({ filter, now }: { filter: string; now: number | null }) {
 	const active = useActiveIncidents();
 	const recent = useRecentlyResolved();
@@ -255,6 +256,12 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 						</section>
 					)}
 				</>
+			)}
+			{!loading && setup.steps.agent && (
+				<Working
+					incidents={active.incidents.filter((i) => matches(i, filter))}
+					now={now ?? 0}
+				/>
 			)}
 			{now !== null && (
 				<RecentlyResolved

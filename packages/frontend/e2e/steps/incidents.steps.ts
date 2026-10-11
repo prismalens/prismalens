@@ -6,7 +6,7 @@ import { Given, Then, When } from "./fixtures";
 
 let navigations = 0;
 
-Given("the incidents board is open", async ({ page }) => {
+Given("the Inbox is open", async ({ page }) => {
 	const liveStream = page.waitForResponse((r) =>
 		r.url().includes("/api/live/changes"),
 	);

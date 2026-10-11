@@ -81,8 +81,8 @@ function useHere(): { incidentId: string | null; runId: string | null } {
 }
 
 /**
- * The sidebar's incidents (spec §1, #811): every incident not yet resolved,
- * under its service with the service's type and health; a chevron lists the
+ * The sidebar's incidents (spec §1, #811): every incident you have not
+ * resolved (closed), cleared ones included, under its service with the service's type and health; a chevron lists the
  * runs and questions, the name opens the overview.
  */
 export function IncidentTree() {
