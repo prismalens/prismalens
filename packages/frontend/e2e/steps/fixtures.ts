@@ -63,11 +63,6 @@ export const test = base.extend<Fixtures>({
 			.patch("/api/settings/harness", {
 				data: {
 					accessLevels: { opencode: null, "claude-code": null, codex: null },
-					autoAccessLevels: {
-						opencode: null,
-						"claude-code": null,
-						codex: null,
-					},
 				},
 			})
 			.catch(() => null);
@@ -133,11 +128,6 @@ export const test = base.extend<Fixtures>({
 					harness: "auto",
 					models: { opencode: null, "claude-code": null, codex: null },
 					accessLevels: { opencode: null, "claude-code": null, codex: null },
-					autoAccessLevels: {
-						opencode: null,
-						"claude-code": null,
-						codex: null,
-					},
 					favourites: [],
 				},
 			});
