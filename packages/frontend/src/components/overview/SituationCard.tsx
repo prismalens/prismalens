@@ -107,6 +107,7 @@ export function SituationCard({
 		stage: o.stage,
 		checkable: o.checkable,
 		hasNextOption: o.others.length > 0,
+		unit: o.impact.impact?.metric?.unit,
 	});
 
 	return (

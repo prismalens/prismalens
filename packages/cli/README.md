@@ -2,7 +2,7 @@
 
 PrismaLens is a self-hosted incident investigator. When an alert arrives, the
 coding agent you already use investigates a snapshot of the service's code,
-under a read-only policy. The run, the evidence and an ordered-evidence report (hypotheses ranked by
+at the permission level you pick. The run, the evidence and an ordered-evidence report (hypotheses ranked by
 the evidence behind them, with no numeric confidence scores) stay on the
 incident. This package is the `pl` command: it starts the app, checks a
 machine, pairs devices and manages a background service.

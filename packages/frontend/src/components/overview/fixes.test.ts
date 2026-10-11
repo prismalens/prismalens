@@ -176,6 +176,16 @@ describe("nextStrip", () => {
 			},
 		});
 		expect(notYet.text).toMatch(/^Not yet: 2.1 at .*, 3 minutes after/);
+		const inSeconds = nextStrip({
+			...base,
+			unit: "s",
+			stage: {
+				stage: "checked",
+				appliedAt: at,
+				check: { verdict: "not_yet", at: "2026-10-11T12:23:00Z", value: 0.31 },
+			},
+		});
+		expect(inSeconds.text).toMatch(/^Not yet: 310ms at /);
 		expect(notYet.secondary?.id).toBe("next-option");
 		const below = nextStrip({
 			...base,

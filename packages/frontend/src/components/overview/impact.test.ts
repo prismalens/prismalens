@@ -52,6 +52,20 @@ describe("chart", () => {
 		expect(formatValue(2.4, null)).toBe("2.4");
 	});
 
+	it("charts more points than a call can take as arguments", () => {
+		const points = Array.from(
+			{ length: 500_000 },
+			(_, i): [number, number] => [(NOW - 24 * H) / 1000 + i, i === 7 ? 9 : 1],
+		);
+		const g = chartGeometry({
+			window: { start: iso(NOW - 24 * H), end: iso(NOW) },
+			series: [{ labels: {}, points }],
+			metric: null,
+			deploys: [],
+		});
+		expect(g.ticks.at(-1)?.value).toBeGreaterThanOrEqual(9);
+	});
+
 	it("draws the threshold inside the box, skips gaps and puts the deploy at its time", () => {
 		const g = chartGeometry({
 			window: { start: iso(NOW - 24 * H), end: iso(NOW) },

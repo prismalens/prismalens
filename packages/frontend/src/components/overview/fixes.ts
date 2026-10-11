@@ -7,6 +7,7 @@ import type {
 	Fixes,
 	FixOption,
 	FixVerdict,
+	MetricUnit,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
 import { formatClock } from "@/lib/format-time";
@@ -145,6 +146,8 @@ export function nextStrip(input: {
 	/** A check can run: a metrics source answers for this alert. */
 	checkable: boolean;
 	hasNextOption: boolean;
+	/** The charted metric's unit, so a check's value reads as the Impact card does. */
+	unit?: MetricUnit | null;
 }): NextStrip {
 	const { option, stage } = input;
 	if (input.ended)
@@ -210,7 +213,7 @@ export function nextStrip(input: {
 				return { tone: "live", text: "Asking the metrics source." };
 			case "checked": {
 				const c = stage.check;
-				const value = c.value != null ? formatValue(c.value) : null;
+				const value = c.value != null ? formatValue(c.value, input.unit) : null;
 				if (c.verdict === "not_yet")
 					return {
 						tone: "warn",

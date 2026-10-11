@@ -106,12 +106,11 @@ export function chartGeometry(
 	const t1 = Date.parse(impact.window.end);
 	const span = Math.max(1, t1 - t0);
 	const threshold = impact.metric?.threshold?.value ?? null;
-	const values = impact.series.flatMap((s) =>
-		s.points.flatMap((p) =>
-			p[1] !== null && Number.isFinite(p[1]) ? [p[1]] : [],
-		),
-	);
-	const top = Math.max(0, ...values, threshold ?? 0) * 1.15 || 1;
+	let peak = Math.max(0, threshold ?? 0);
+	for (const s of impact.series)
+		for (const [, v] of s.points)
+			if (v !== null && Number.isFinite(v) && v > peak) peak = v;
+	const top = peak * 1.15 || 1;
 	const ticks = yTicks(top);
 	const max = Math.max(top, ticks.at(-1) ?? top);
 	const x = (ms: number) => ((ms - t0) / span) * CHART_W;
