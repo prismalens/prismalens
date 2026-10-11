@@ -185,3 +185,72 @@ export function stepFromHash(hash: string): number | null {
 	const m = /^#?step-(\d+)$/.exec(hash);
 	return m ? Number(m[1]) : null;
 }
+
+const cite = (s: string) =>
+	s
+		.toLowerCase()
+		.replace(/[`'"“”]/g, "")
+		.replace(/\brepo\//g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+
+/** A file (`config.py`) or a slashed path (`/api/v1/rules`) a source names. */
+const PATH =
+	/[\w.-]+(?:\/[\w.-]+)*\.[a-z][a-z0-9]{0,5}\b|\/?[\w.-]+(?:\/[\w.-]+){2,}/g;
+/** Below this, a shared run of characters is chance, not the same command. */
+const SHARED_MIN = 24;
+
+function shared(a: string, b: string): number {
+	let best = 0;
+	const prev = new Array<number>(b.length + 1).fill(0);
+	for (let i = 1; i <= a.length; i++) {
+		let diag = 0;
+		for (let j = 1; j <= b.length; j++) {
+			const up = prev[j] ?? 0;
+			prev[j] = a[i - 1] === b[j - 1] ? diag + 1 : 0;
+			best = Math.max(best, prev[j] ?? 0);
+			diag = up;
+		}
+	}
+	return best;
+}
+
+/**
+ * The step an evidence item came from (#673 w5-16): its own call id, else the
+ * step whose command or file its `source` names. The agent cannot see call ids,
+ * so most items arrive with none.
+ */
+export function evidenceStep(
+	e: { toolCallId?: string | null; source: string },
+	steps: readonly RunStep[],
+): number | undefined {
+	const own = e.toolCallId
+		? steps.find((s) => s.callId === e.toolCallId)
+		: undefined;
+	if (own) return own.n;
+	const src = cite(e.source);
+	const paths = src.match(PATH) ?? [];
+	// `api/config.py:28 (git show 097fc82)`: each clause can name a command on its own.
+	const clauses = src
+		.split(/[;,()]| and /)
+		.map((c) => c.trim())
+		.filter((c) => c.length >= 10 && c.includes(" "));
+	let best: { n: number; score: number } | undefined;
+	for (const s of steps) {
+		if (s.ok === false) continue;
+		const cmd = cite(s.command);
+		let score = 0;
+		if (cmd.length >= 4 && src.includes(cmd)) score = cmd.length + 3000;
+		else if (src.length >= 8 && cmd.includes(src)) score = src.length + 3000;
+		for (const c of clauses)
+			if (cmd.includes(c)) score = Math.max(score, c.length + 2000);
+		for (const p of paths)
+			if (cmd.includes(p)) score = Math.max(score, p.length + 1000);
+		if (!score) {
+			const run = shared(src, cmd);
+			if (run >= SHARED_MIN) score = run;
+		}
+		if (score > (best?.score ?? 0)) best = { n: s.n, score };
+	}
+	return best?.n;
+}

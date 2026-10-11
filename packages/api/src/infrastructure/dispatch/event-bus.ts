@@ -75,6 +75,8 @@ export interface RunMessageRequest {
 	attachments?: JobAttachment[];
 	/** What the message asks for; the turn that receives it checks it (#804 OBJ-032). */
 	kind?: FollowUpKind;
+	/** A queued message's id, which its events carry (#820). */
+	id?: string;
 	reply(state: MessageState): void;
 }
 

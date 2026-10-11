@@ -58,6 +58,7 @@ import {
 } from "./run-labels";
 import {
 	deriveSteps,
+	evidenceStep,
 	flaggedSteps,
 	stepFromHash,
 	stepOfCall,
@@ -324,7 +325,7 @@ export function RunPage() {
 							harness,
 						}),
 					)}
-					evidence={evidenceSections(inv, byCall, {
+					evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
 						live,
 						standing: standingRun(record, inv.id),
 					})}

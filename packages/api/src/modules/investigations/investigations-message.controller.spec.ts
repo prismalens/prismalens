@@ -92,8 +92,9 @@ describe("InvestigationsController.message (#743)", () => {
 
 		const result = await messageHandler()({ input: { id: "inv-1", text: "check the TTL", mode: "queue" } });
 
-		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", [], undefined);
-		expect(result).toEqual({ state: "queued" });
+		expect(mockDispatchService.sendMessage).toHaveBeenCalledWith("inv-1", "check the TTL", "queue", [], undefined, expect.any(String));
+		// The id its message_queued and operator_message events carry (#820).
+		expect(result).toEqual({ state: "queued", messageId: expect.any(String) });
 	});
 
 	it("refuses a finished run without touching the bus", async () => {
@@ -290,10 +291,10 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 	it("a matching kind, or no kind at all, steers the live turn", async () => {
 		mockDispatchService.sendMessage.mockReturnValue("queued");
 		mockInvestigationsService.findById.mockResolvedValue(live("answer"));
-		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue", kind: "chat" })).resolves.toEqual({ state: "queued" });
+		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue", kind: "chat" })).resolves.toEqual({ state: "queued", messageId: expect.any(String) });
 
 		mockInvestigationsService.findById.mockResolvedValue(live(null));
-		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue" })).resolves.toEqual({ state: "queued" });
+		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue" })).resolves.toEqual({ state: "queued", messageId: expect.any(String) });
 		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
 	});
 });

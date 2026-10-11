@@ -9,12 +9,35 @@ describe("failureSentence", () => {
 		expect(
 			failureSentence(
 				"Claude Code",
+				"harness exited early (code=1 signal=null): permission denied on /tmp/x",
+			),
+		).toMatchObject({
+			said: 'Claude Code answered "permission denied on /tmp/x".',
+			words: "permission denied on /tmp/x",
+		});
+	});
+
+	it("says a signed-out agent plainly and names it (#673 w5-39)", () => {
+		expect(
+			failureSentence(
+				"Claude Code",
 				"harness exited early (code=1 signal=null): Not logged in. Run claude /login",
 			),
 		).toEqual({
-			said: 'Claude Code answered "Not logged in. Run claude /login".',
-			words: "Not logged in. Run claude /login",
-			next: "Sign the agent in, then try again.",
+			said: "Claude Code is not signed in to its model provider.",
+			words: null,
+			next: "Sign in to Claude Code, then try again.",
+			detail: "Not logged in. Run claude /login",
+		});
+		expect(
+			failureSentence(
+				"Claude Code",
+				"Internal error: Failed to authenticate: OAuth session expired and could not be refreshed",
+			),
+		).toMatchObject({
+			said: "Claude Code's sign-in has expired.",
+			words: null,
+			next: "Sign in to Claude Code again, then start a new run.",
 		});
 	});
 

@@ -113,10 +113,10 @@ export function createInProcessRunner(ports: RunPorts): JobRunner {
 			cancel: () => controller.abort(),
 			kill: () => controller.abort(),
 			// The turn this job runs answers only what it owes (#804 OBJ-032).
-			message: (text, mode, attachments, kind) =>
+			message: (text, mode, attachments, kind, id) =>
 				kind && kind !== owes
 					? "conflict"
-					: steer.send(text, mode, attachments),
+					: steer.send(text, mode, attachments, id),
 			answer: (askId, approve) => asks.answer(askId, approve),
 		};
 	};

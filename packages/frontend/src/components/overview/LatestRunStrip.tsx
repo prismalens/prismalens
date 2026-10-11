@@ -44,7 +44,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 		: live
 			? (run.latestText ?? "Working")
 			: state === "failed"
-				? failureWords(inv?.error ?? latest.error).what
+				? failureWords(inv?.error ?? latest.error, who.agent).what
 				: latest.hasReport
 					? latest.rootCause
 						? "Likely cause found"

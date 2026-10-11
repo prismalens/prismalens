@@ -107,22 +107,38 @@ export class AcpAdapter {
 	}
 
 	/**
-	 * Map one ACP `update` to zero-or-one canonical event. Returns null for updates
-	 * we don't surface (thought chunks, plan, mode/command updates) and for
-	 * non-terminal tool progress frames (text deltas are accumulated, not emitted).
+	 * Map one ACP `update` to the canonical events it means: none for what we
+	 * don't surface (thought chunks, plan, mode updates, progress frames), one
+	 * for most, two for a call announced already finished.
 	 */
-	normalize(u: AcpUpdate): CanonicalEvent | null {
+	events(u: AcpUpdate): CanonicalEvent[] {
 		switch (u.sessionUpdate) {
 			case "agent_message_chunk":
 				this.pendingText += flattenAcpContent(u.content);
-				return null;
-			case "tool_call":
-				return this.toolCall(u);
-			case "tool_call_update":
-				return this.toolResult(u);
+				return [];
+			case "tool_call": {
+				const step = this.toolCall(u);
+				const done = isTerminal(u.status) ? this.toolResult(u) : null;
+				return done ? [step, done] : [step];
+			}
+			case "tool_call_update": {
+				const toolCallId = u.toolCallId ?? "";
+				const filled = this.mergeToolMeta(toolCallId, u);
+				// ACP sends only changed fields: no status means the call still runs (#820).
+				if (isTerminal(u.status)) {
+					const done = this.toolResult(u);
+					return done ? [done] : [];
+				}
+				return filled ? [this.reannounce(toolCallId)] : [];
+			}
 			default:
-				return null;
+				return [];
 		}
+	}
+
+	/** {@link events}, first event only: kept for callers that map one update to one event. */
+	normalize(u: AcpUpdate): CanonicalEvent | null {
+		return this.events(u)[0] ?? null;
 	}
 
 	/**
@@ -149,6 +165,7 @@ export class AcpAdapter {
 		resumed?: { name: string; head: string }[],
 		attachments?: AttachmentRef[],
 		followUp?: FollowUpKind,
+		messageId?: string,
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -158,6 +175,22 @@ export class AcpAdapter {
 			delivered,
 			...(resumed ? { resumed } : {}),
 			...(followUp ? { followUp } : {}),
+			...(attachments?.length ? { attachments } : {}),
+			...(messageId ? { messageId } : {}),
+		};
+	}
+
+	/** A message now waits for the agent's next pause (#820). */
+	messageQueued(
+		messageId: string,
+		text: string,
+		attachments?: AttachmentRef[],
+	): CanonicalEvent {
+		return {
+			kind: "message_queued",
+			...this.base(),
+			messageId,
+			text,
 			...(attachments?.length ? { attachments } : {}),
 		};
 	}
@@ -181,6 +214,7 @@ export class AcpAdapter {
 					kind?: string;
 					rawInput?: unknown;
 					locations?: { path?: string }[];
+					_meta?: unknown;
 			  }
 			| undefined,
 		expiresAt: Date,
@@ -193,15 +227,21 @@ export class AcpAdapter {
 			Object.keys(toArgs(toolCall?.rawInput)).length > 0
 				? toolCall?.rawInput
 				: meta?.rawInput;
+		const detail = askDetail(input, toolCall?.locations);
+		const shown = detail ? null : askInput(input);
+		const server = mcpServerOf(toolCall?._meta);
 		return {
 			kind: "permission_ask",
 			...this.base(),
 			askId,
 			title: toolCall?.title?.trim() || meta?.name || "A tool call",
-			detail: askDetail(input, toolCall?.locations),
+			detail,
 			toolKind: toolCall?.kind ?? meta?.kind ?? null,
 			expiresAt: expiresAt.toISOString(),
 			...(clamped ? { clamped } : {}),
+			...(toolCall?.toolCallId ? { toolCallId: toolCall.toolCallId } : {}),
+			...(shown ? { input: shown } : {}),
+			...(server ? { server } : {}),
 		};
 	}
 
@@ -261,16 +301,29 @@ export class AcpAdapter {
 		};
 	}
 
+	/** The call again, with the command a later update filled in (#820): the step shows it before its result. */
+	private reannounce(toolCallId: string): CanonicalEvent {
+		const meta = this.toolMeta.get(toolCallId);
+		return {
+			kind: "agent_step",
+			...this.base(),
+			text: "",
+			toolCalls: [
+				{
+					toolCallId,
+					name: meta?.name ?? "tool",
+					args: toArgs(meta?.rawInput),
+				},
+			],
+		};
+	}
+
 	private toolResult(u: AcpUpdate): CanonicalEvent | null {
 		const toolCallId = u.toolCallId ?? "";
-		this.mergeToolMeta(toolCallId, u);
-		const status = u.status ?? "completed";
-		// Emit only on a terminal update; ignore pending/in_progress progress frames
-		// (they would otherwise produce duplicate, partial tool_results).
-		if (status !== "completed" && status !== "failed") return null;
+		if (!isTerminal(u.status)) return null;
 		const meta = this.toolMeta.get(toolCallId);
 		const name = meta?.name ?? pickName(u);
-		const ok = status !== "failed";
+		const ok = u.status !== "failed";
 		const preview = truncate(flattenAcpContent(u.content), this.previewLimit);
 		return {
 			kind: "tool_result",
@@ -291,12 +344,17 @@ export class AcpAdapter {
 	 * Claude Code opens a call with an empty rawInput and a generic title ("Terminal")
 	 * and sends the command in a later update; keep the fuller one (walk f16).
 	 */
-	private mergeToolMeta(toolCallId: string, u: AcpUpdate): void {
+	private mergeToolMeta(toolCallId: string, u: AcpUpdate): boolean {
 		const meta = this.toolMeta.get(toolCallId);
-		if (!meta) return;
-		if (Object.keys(toArgs(u.rawInput)).length > 0) meta.rawInput = u.rawInput;
+		if (!meta) return false;
+		const hadInput = Object.keys(toArgs(meta.rawInput)).length > 0;
+		const input = Object.keys(toArgs(u.rawInput)).length > 0;
+		if (input) meta.rawInput = u.rawInput;
 		const title = typeof u.title === "string" ? u.title.trim() : "";
+		const renamed = !!title && title !== meta.name;
 		if (title) meta.name = title;
+		// Only the first input is news; a call that repeats its input is no new step.
+		return (input && !hadInput) || (renamed && !hadInput);
 	}
 
 	/** Common per-event fields shared by every branch-scoped event. */
@@ -452,6 +510,31 @@ function truncate(s: string, limit: number): string {
 }
 
 const ASK_DETAIL_LIMIT = 2000;
+
+function isTerminal(status: string | undefined): boolean {
+	return status === "completed" || status === "failed";
+}
+
+/** A call's input as indented JSON, for a tool that names no command or path (#820). */
+export function askInput(rawInput: unknown): string | null {
+	const args = toArgs(rawInput);
+	if (Object.keys(args).length === 0) return null;
+	let text: string;
+	try {
+		text = JSON.stringify(args, null, 2);
+	} catch {
+		return null;
+	}
+	return text.slice(0, ASK_DETAIL_LIMIT);
+}
+
+/** The MCP server an ask's tool comes from, from Claude Code's `_meta` (#820). */
+export function mcpServerOf(meta: unknown): string | null {
+	const server = (
+		meta as { claudeCode?: { mcpServer?: { name?: unknown } } } | undefined
+	)?.claudeCode?.mcpServer?.name;
+	return typeof server === "string" && server.trim() ? server.trim() : null;
+}
 
 /** The command an ask names, else the path; null when it names neither. */
 export function askDetail(

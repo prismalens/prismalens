@@ -161,12 +161,18 @@ export interface RunInvestigationOptions {
 export interface SteerPort {
 	next(): SteerLine | null;
 	onNow(deliver: (line: SteerLine) => void): () => void;
+	/** Lines queued since the last call and not yet taken, to record as waiting (#820). */
+	queued?(): SteerLine[];
+	/** Told when a line is queued, so a turn waiting on an ask records it at once (#820). */
+	onQueued?(listener: () => void): () => void;
 }
 
 /** One operator message and the files that go with it (R4.3). */
 export interface SteerLine {
 	text: string;
 	attachments?: JobAttachment[];
+	/** The id the API gave a queued line; its events carry it (#820). */
+	id?: string;
 }
 
 /**
@@ -179,14 +185,21 @@ export function createSteerChannel(): {
 		text: string,
 		mode: OperatorMessageMode,
 		attachments?: JobAttachment[],
+		id?: string,
 	): "queued" | "sent" | null;
 } {
 	const queue: SteerLine[] = [];
+	const unrecorded = new Set<SteerLine>();
 	let deliverNow: ((line: SteerLine) => void) | null = null;
+	let onQueued: (() => void) | null = null;
 	let open = true;
 	return {
 		port: {
-			next: () => queue.shift() ?? null,
+			next: () => {
+				const line = queue.shift() ?? null;
+				if (line) unrecorded.delete(line);
+				return line;
+			},
 			onNow(deliver) {
 				deliverNow = deliver;
 				return () => {
@@ -194,15 +207,34 @@ export function createSteerChannel(): {
 					open = false;
 				};
 			},
+			queued: () => {
+				const lines = queue.filter((l) => unrecorded.has(l));
+				unrecorded.clear();
+				return lines;
+			},
+			onQueued(listener) {
+				onQueued = listener;
+				return () => {
+					onQueued = null;
+				};
+			},
 		},
-		send(text, mode, attachments) {
+		send(text, mode, attachments, id) {
 			if (!open) return null;
-			const line = attachments?.length ? { text, attachments } : { text };
+			const line: SteerLine = {
+				text,
+				...(attachments?.length ? { attachments } : {}),
+				...(id ? { id } : {}),
+			};
 			if (mode === "now" && deliverNow) {
 				deliverNow(line);
 				return "sent";
 			}
 			queue.push(line);
+			if (id) {
+				unrecorded.add(line);
+				onQueued?.();
+			}
 			return "queued";
 		},
 	};
@@ -443,8 +475,7 @@ export async function* runInvestigation(
 							? chunk
 							: ((chunk as { text?: string } | undefined)?.text ?? "");
 				}
-				const ev = adapter.normalize(u);
-				if (ev) {
+				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
 				}
@@ -483,6 +514,14 @@ export async function* runInvestigation(
 					item.outcome,
 					item.sync ? item.request.toolCall : undefined,
 				);
+			} else if (item.kind === "nudge") {
+				for (const line of opts.steer?.queued?.() ?? [])
+					if (line.id)
+						yield adapter.messageQueued(
+							line.id,
+							line.text,
+							refsOf(line.attachments),
+						);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -501,6 +540,7 @@ export async function* runInvestigation(
 		sendNow.push(line);
 		session.cancel();
 	});
+	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
@@ -680,6 +720,8 @@ export async function* runInvestigation(
 					true,
 					undefined,
 					refsOf(line.attachments),
+					undefined,
+					line.id,
 				);
 			}
 			text = "";
@@ -691,6 +733,7 @@ export async function* runInvestigation(
 			);
 		}
 		unsubscribe?.();
+		unQueued?.();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)]) {
 			yield adapter.operatorMessage(
 				line.text,
@@ -698,6 +741,8 @@ export async function* runInvestigation(
 				false,
 				undefined,
 				refsOf(line.attachments),
+				undefined,
+				line.id,
 			);
 		}
 
@@ -767,6 +812,7 @@ export async function* runInvestigation(
 		yield adapter.error(err instanceof Error ? err.message : String(err));
 	} finally {
 		unsubscribe?.();
+		unQueued?.();
 		opts.signal?.removeEventListener("abort", onAbort);
 		await session.close();
 	}

@@ -5,7 +5,9 @@ import type { CanonicalEvent } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
 	deriveSteps,
+	evidenceStep,
 	flaggedSteps,
+	type RunStep,
 	stepFromHash,
 	stepOfCall,
 	stepTook,
@@ -125,5 +127,55 @@ describe("step helpers", () => {
 		expect(stepTook(12.4)).toBe("12s");
 		expect(stepTook(125)).toBe("2m 05s");
 		expect(stepTook(null)).toBe("");
+	});
+});
+
+describe("evidenceStep (#673 w5-16)", () => {
+	// The commands and evidence sources of a walk run on Claude Code (Haiku), as stored.
+	const commands = [
+		`curl -sG 'http://localhost:9090/api/v1/query' --data-urlencode 'query=histogram_quantile(0.99, sum by (le, handler, method) (rate(http_request_duration_seconds_bucket[5m])))' ; echo; ls -la`,
+		`curl -sG 'http://localhost:9090/api/v1/query' --data-urlencode 'query=histogram_quantile(0.99, sum by (le, method, path) (rate(flask_http_request_duration_seconds_bucket{job="booklogr-api"}[5m])))' ; echo; curl -s 'http://localhost:9090/api/v1/rules' | head -c 2500; echo; git log --oneline -15`,
+		"git show 097fc82 --stat && git show 097fc82 -- . | head -150; echo ======; git show bd27e9f --stat",
+		`grep -rn "pool\\|max_overflow\\|pool_size" api --include=*.py | head -30`,
+		"cat gunicorn.conf.py; echo ====; sed -n 186,282p repo/api/routes/books.py; echo ====; cat Dockerfile entrypoint.sh",
+	];
+	const steps: RunStep[] = commands.map((command, i) => ({
+		n: i + 1,
+		callId: `call-${i + 1}`,
+		title: command,
+		command,
+		kind: "command",
+		verb: "Ran",
+		ok: true,
+		unfinished: false,
+		output: null,
+		at: "2026-10-11T16:00:00Z",
+		took: 1,
+	}));
+	const at = (source: string, toolCallId?: string | null) =>
+		evidenceStep({ source, toolCallId }, steps);
+
+	it("keeps a call id the run knows", () => {
+		expect(at("anything", "call-4")).toBe(4);
+	});
+
+	it("finds the step a source names by command, clause, file or query", () => {
+		expect(at("api/config.py:28 (git show 097fc82)")).toBe(3);
+		expect(at("git show 097fc82 (author date +0530 21:49:42)")).toBe(3);
+		expect(at("gunicorn.conf.py and entrypoint.sh:41")).toBe(5);
+		expect(
+			at("api/routes/books.py:186-282; migrations/versions/b7c3_add_index.py"),
+		).toBe(5);
+		expect(
+			at(
+				`prometheus query histogram_quantile(0.99, ...flask_http_request_duration_seconds_bucket{job="booklogr-api"}[5m]) by path`,
+			),
+		).toBe(2);
+		expect(at("prometheus /api/v1/rules, book-metadata group")).toBe(2);
+	});
+
+	it("links nothing when the source names no step", () => {
+		expect(at("no tool output")).toBeUndefined();
+		expect(at("anything", "call-unknown")).toBeUndefined();
 	});
 });
