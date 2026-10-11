@@ -87,6 +87,19 @@ describe("graph links", () => {
 		expect(graphExpr(url)).toEqual({ expr: "x > 1", base: "http://prom.local:9090/prometheus" });
 	});
 
+	it("finds /graph in the path only, as the last whole segment", () => {
+		expect(graphExpr("http://graph.example.com/graph?g0.expr=x")?.base).toBe(
+			"http://graph.example.com",
+		);
+		expect(graphExpr("https://h.local/graphite-prom/graph?g0.expr=x")?.base).toBe(
+			"https://h.local/graphite-prom",
+		);
+		expect(graphExpr("https://h.local/graph/x/graph?g0.expr=x")?.base).toBe(
+			"https://h.local/graph/x",
+		);
+		expect(graphExpr("https://h.local/q?g0.expr=x")?.base).toBe("https://h.local");
+	});
+
 	it("gives none for a link without an expression or a non-web scheme", () => {
 		expect(graphExpr("https://grafana.local/alerting/1afz/edit")).toBeNull();
 		expect(graphExpr("file:///etc/passwd?g0.expr=x")).toBeNull();

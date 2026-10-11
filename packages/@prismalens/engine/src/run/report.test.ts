@@ -39,9 +39,22 @@ describe("parseReport", () => {
 		expect(reportJsonSchema()).not.toMatch(/"id":\{"type":"string","format":"uuid"/);
 	});
 
-	it("refuses a fourth fact", () => {
-		const step = { title: "t", detail: "d", facts: ["a", "b", "c", "d"] };
+	it("drops an option's extras that break their limits, not the report", () => {
+		const step = {
+			title: "t",
+			detail: "d",
+			kind: "rollback",
+			command: "x".repeat(2001),
+			facts: ["a", "", "b", "c", "d".repeat(400), "e"],
+		};
 		const r = parseReport(`\`\`\`json\n${JSON.stringify({ ...VALID, nextSteps: [step] })}\n\`\`\``);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.report.nextSteps[0]).toEqual({ title: "t", detail: "d", facts: ["a", "b", "c"] });
+		expect(reportJsonSchema()).toContain('"maxItems":3');
+	});
+
+	it("still refuses an option with no title", () => {
+		const r = parseReport(`\`\`\`json\n${JSON.stringify({ ...VALID, nextSteps: [{ detail: "d" }] })}\n\`\`\``);
 		expect(r).toMatchObject({ ok: false, reason: "schema" });
 	});
 
