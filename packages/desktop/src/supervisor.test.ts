@@ -15,7 +15,6 @@ import {
 	portFree,
 	portTakenDialog,
 	refusalIcon,
-	resetWorkspaceSpawn,
 	serviceStartCommands,
 	stopDialog,
 	withoutLogFields,
@@ -23,29 +22,6 @@ import {
 import { portTakenByWslDialog } from "./wsl.js";
 
 describe("supervisor", () => {
-	describe("resetWorkspaceSpawn", () => {
-		it("runs `pl reset --yes` on the launcher's workspace, as Node", () => {
-			expect(
-				resetWorkspaceSpawn({
-					execPath: "/app/PrismaLens",
-					backendMain: "/app/resources/backend/cli.js",
-					workspaceDir: "/home/u/.prismalens",
-					env: { PATH: "/usr/bin" },
-				}),
-			).toEqual({
-				command: "/app/PrismaLens",
-				args: [
-					"/app/resources/backend/cli.js",
-					"reset",
-					"--yes",
-					"--workspace",
-					"/home/u/.prismalens",
-				],
-				env: { PATH: "/usr/bin", ELECTRON_RUN_AS_NODE: "1" },
-			});
-		});
-	});
-
 	describe("planLaunch", () => {
 		const owner = { pid: 4321, port: 3005, startedAt: "2026-09-22T12:00:00.000Z" };
 		const service = { unitPath: "/u", workspace: "/w", port: 7000, host: "0.0.0.0" };

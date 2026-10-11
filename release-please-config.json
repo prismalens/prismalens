@@ -13,6 +13,11 @@
 					"type": "json",
 					"path": "packages/cli/package.json",
 					"jsonpath": "$.version"
+				},
+				{
+					"type": "json",
+					"path": "packages/desktop/package.json",
+					"jsonpath": "$.version"
 				}
 			],
 			"changelog-path": "packages/cli/CHANGELOG.md"

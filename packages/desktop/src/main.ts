@@ -84,7 +84,6 @@ import {
 	portFree,
 	portTakenDialog,
 	refusalIcon,
-	resetWorkspaceSpawn,
 	type StopDialog,
 	serviceStartCommands,
 	stopDialog,
@@ -796,13 +795,6 @@ function buildTray(): void {
 				},
 				...wslTrayItems(),
 				{ type: "separator" },
-				{
-					label: owned
-						? "Reset workspace…"
-						: "Reset workspace… (stop `pl up` first)",
-					enabled: owned && !inWsl,
-					click: () => void confirmReset(),
-				},
 				{ label: "Quit", click: () => app.quit() },
 			]),
 		);
@@ -817,47 +809,6 @@ function buildTray(): void {
 		});
 	}
 	tray.on("click", () => openWindow());
-}
-
-/**
- * Delete the workspace (`pl reset`) and start again from setup. Only when this
- * launcher owns the backend: a `pl up` in a terminal holds the workspace, and
- * the reset must not pull it from under that process.
- */
-async function confirmReset(): Promise<void> {
-	const dir = workspaceDir();
-	const { response } = await dialog.showMessageBox({
-		title: TITLE,
-		type: "warning",
-		buttons: ["Cancel", "Delete and restart"],
-		defaultId: 0,
-		cancelId: 0,
-		message: "Reset the workspace?",
-		detail: `This deletes ${dir}: every incident, investigation, integration, paired device and secret. It cannot be undone.`,
-	});
-	if (response !== 1) return;
-	quitting = true;
-	const backend = child;
-	if (backend && backend.exitCode === null && backend.signalCode === null) {
-		await new Promise<void>((resolve) => {
-			backend.once("exit", () => resolve());
-			stopBackend(backend);
-		});
-	}
-	try {
-		await runForStdout(
-			resetWorkspaceSpawn({
-				execPath: process.execPath,
-				backendMain: backendMainPath,
-				workspaceDir: dir,
-				env: process.env,
-			}),
-		);
-	} catch (error) {
-		dialog.showErrorBox("Reset failed", String(error));
-	}
-	app.relaunch();
-	app.exit(0);
 }
 
 // `assets/` ships inside the app (build.files); electron-builder's `build/` does not (#745).
