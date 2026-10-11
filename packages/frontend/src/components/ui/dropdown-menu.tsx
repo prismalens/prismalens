@@ -7,6 +7,7 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type * as React from "react";
 
+import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
 function DropdownMenu({
@@ -45,6 +46,7 @@ function DropdownMenuContent({
 				data-slot="dropdown-menu-content"
 				data-float="pop"
 				sideOffset={sideOffset}
+				collisionPadding={{ top: titleRowHeight() }}
 				className={cn(
 					"z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-pool floating p-1 text-text-1",
 					className,

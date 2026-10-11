@@ -198,7 +198,6 @@ export function RunPage() {
 			onResolve={record.openClose}
 			onReopen={record.openReopen}
 			onEditCause={record.openEditCause}
-			controlsSpace={!panel}
 			trailing={
 				inv && !draft ? (
 					<DetailsToggle

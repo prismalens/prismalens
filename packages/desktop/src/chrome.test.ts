@@ -10,7 +10,7 @@ describe("frameOptions", () => {
 			expect(frameOptions(platform, "light")).toEqual({
 				titleBarStyle: "hidden",
 				backgroundColor: "#fafafa",
-				titleBarOverlay: { color: "#eeeef0", symbolColor: "#09090b", height: 40 },
+				titleBarOverlay: { color: "#eeeef0", symbolColor: "#09090b", height: 32 },
 			});
 		}
 	});
@@ -18,7 +18,7 @@ describe("frameOptions", () => {
 	it("keeps the traffic lights on macOS, with no overlay", () => {
 		const options = frameOptions("darwin", "dark");
 		expect(options.titleBarOverlay).toBeUndefined();
-		expect(options.trafficLightPosition).toEqual({ x: 14, y: 13 });
+		expect(options.trafficLightPosition).toEqual({ x: 14, y: 9 });
 		expect(options.backgroundColor).toBe("#09090b");
 	});
 });
