@@ -35,6 +35,8 @@ When(
 Then(
 	"an incident for {string} appears within 5 seconds without a reload",
 	async ({ page, unique }, name: string) => {
+		// Needs you shows five rows a group and the sidebar elides titles (#811), so narrow to it.
+		await page.getByTestId("incidents-filter").fill(unique(name));
 		await expect(page.getByText(unique(name)).first()).toBeVisible({
 			timeout: 5_000,
 		});
