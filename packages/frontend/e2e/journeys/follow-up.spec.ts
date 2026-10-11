@@ -136,7 +136,9 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			"Resumed in the same session, code at 1a2b3c4",
 		);
 		await expect(
-			page.getByText("The deploy at 14:00 halved the pool size."),
+			page
+				.getByTestId("transcript")
+				.getByText("The deploy at 14:00 halved the pool size."),
 		).toBeVisible();
 
 		status = "completed";

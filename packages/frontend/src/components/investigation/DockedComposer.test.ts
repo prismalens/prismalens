@@ -35,6 +35,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 	const button = (testId: string, onClick: () => void) =>
 		el("button", { type: "button", "data-testid": testId, onClick });
 	return {
+		CHIP: "chip",
 		ModelChip: (p: { onPick: (a: unknown, m: string) => void }) =>
 			el(
 				"span",
@@ -99,6 +100,7 @@ function setRecord(over: Record<string, unknown>) {
 		run: {
 			state: over.draft ? null : "completed",
 			events: [],
+			pending: [],
 			investigation: over.draft
 				? null
 				: {
@@ -191,7 +193,7 @@ describe("DockedComposer chips (#673 w52)", () => {
 		});
 		await render();
 		expect(q("mode").dataset.value).toBe("full-access");
-		await click("composer-investigate");
+		await click("composer-send");
 		expect(h.record.investigate).toHaveBeenCalledWith(
 			expect.objectContaining({ harness: "codex", model: "", effort: null, accessLevel: "full-access" }),
 		);
@@ -200,7 +202,7 @@ describe("DockedComposer chips (#673 w52)", () => {
 		root = createRoot(container);
 		setRecord({ draft: true, draftText: "look" });
 		await render();
-		await click("composer-investigate");
+		await click("composer-send");
 		const [start] = (h.record.investigate as ReturnType<typeof vi.fn>).mock.calls[0];
 		expect(start).not.toHaveProperty("harness");
 		expect(start).not.toHaveProperty("model");

@@ -9,6 +9,7 @@
 
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
+import { investigateButton } from "../journeys/verb";
 import { Given, Then, When } from "./fixtures";
 import {
 	acknowledge,
@@ -625,7 +626,7 @@ Then(
 		const box = page.getByTestId("docked-composer");
 		await expect(box).toContainText("No coding agent on this machine");
 		await expect(box).toContainText("Install one:");
-		await expect(box.getByTestId("composer-investigate")).toBeDisabled();
+		await expect(box.getByTestId("composer-send")).toBeDisabled();
 	},
 );
 
@@ -1189,7 +1190,7 @@ When("I start a run from the box", async ({ page }) => {
 	await page
 		.getByTestId("composer-input")
 		.fill("fake-session:live check the pool");
-	await page.getByTestId("composer-investigate").click();
+	await (await investigateButton(page)).click();
 	await waitForRun(
 		page,
 		inc(page).id,
