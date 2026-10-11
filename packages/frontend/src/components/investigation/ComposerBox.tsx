@@ -56,7 +56,7 @@ export interface ComposerBoxProps {
 	onStop?: () => void;
 	stopping?: boolean;
 	/** The run kept no session: one way on instead of the box. */
-	ended?: { onNewRun: () => void };
+	ended?: { onNewRun: () => void; onRecheck?: () => void };
 	placeholder: string;
 	/** Files a prefilled draft starts with. */
 	initialFiles?: File[];
@@ -234,6 +234,15 @@ export function ComposerBox({
 						This run kept no agent session, so it can't continue. Start a new
 						run.
 					</span>
+					{ended.onRecheck && (
+						<Button
+							variant="secondary"
+							onClick={ended.onRecheck}
+							data-testid="composer-recheck"
+						>
+							Investigate again
+						</Button>
+					)}
 					<Button
 						variant="secondary"
 						onClick={ended.onNewRun}

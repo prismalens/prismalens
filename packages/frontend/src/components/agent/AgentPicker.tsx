@@ -442,7 +442,16 @@ export function ModelChip({
 						ref={search}
 						onKeyDown={(e) => {
 							// Left at the start of the search goes back to the rail, as Right came from it.
-							if (e.key !== "ArrowLeft" || e.currentTarget.selectionStart)
+							const { selectionStart, selectionEnd } = e.currentTarget;
+							if (
+								e.key !== "ArrowLeft" ||
+								e.shiftKey ||
+								e.altKey ||
+								e.ctrlKey ||
+								e.metaKey ||
+								selectionStart ||
+								selectionEnd
+							)
 								return;
 							e.preventDefault();
 							rail.current

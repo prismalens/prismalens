@@ -145,8 +145,8 @@ export function newerRunOf(runs: RunRef[], selected: string): RunRef | null {
 
 /** A thread's name (#673 w59, #811): an investigation is always `Run N`, a chat its first message. */
 export function runName(runs: RunRef[], run: RunRef): string {
-	const title = run.kind === "chat" ? run.title?.trim() : null;
-	return title || `Run ${runNumber(runs, run.id)}`;
+	if (run.kind === "chat") return run.title?.trim() || "Ask";
+	return `Run ${runNumber(runs, run.id)}`;
 }
 
 export function refState(run: RunRef): RunState {

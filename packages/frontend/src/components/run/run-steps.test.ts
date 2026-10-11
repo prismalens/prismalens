@@ -62,6 +62,7 @@ const events: CanonicalEvent[] = [
 	call(6, 4, "c", "`kubectl top pods`"),
 	result(7, 5, "c", "`kubectl top pods`", "", { ok: false }),
 	call(8, 6, "d", "`git log`"),
+	result(9, 7, "t", "Task", "done"),
 ];
 
 describe("deriveSteps (#811)", () => {

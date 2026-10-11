@@ -141,6 +141,15 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
+	test("an old investigation link lands on the conversation", async ({
+		page,
+	}) => {
+		await page.goto(`/investigations/${INVESTIGATION_ID}`);
+		await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}\/conversation/, {
+			timeout: 15_000,
+		});
+	});
+
 	test("empty — an incident with no run", async ({ page }) => {
 		const id = await createIncident(page, `No investigation yet ${Date.now()}`);
 

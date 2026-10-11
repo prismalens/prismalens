@@ -55,7 +55,7 @@ test.describe("Accessibility at 1440, dark", () => {
 		await setTheme(page, "dark");
 	});
 
-	test("the board, conversation, Settings and the picker have no serious or critical axe violations", async ({
+	test("the inbox, conversation, Settings and the picker have no serious or critical axe violations", async ({
 		page,
 	}) => {
 		test.slow();
@@ -88,7 +88,7 @@ test.describe("Accessibility at 1440, dark", () => {
 		found.settings = await blocking(page, "settings");
 
 		expect(found).toEqual({
-			board: [],
+			inbox: [],
 			conversation: [],
 			picker: [],
 			settings: [],

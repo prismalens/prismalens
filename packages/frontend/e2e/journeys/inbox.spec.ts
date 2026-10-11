@@ -563,7 +563,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(treeRun).toBeVisible();
 		await expect(treeRun).toHaveAttribute(
 			"href",
-			`/investigations/${completedRun.id}`,
+			`/incidents/${liveRunInc.id}/conversation?investigation=${completedRun.id}`,
 		);
 
 		// nav-incidents-count in sidebar equals Needs-you total

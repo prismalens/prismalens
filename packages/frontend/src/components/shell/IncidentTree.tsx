@@ -66,18 +66,14 @@ function healthOf(items: IncidentWithRelations[], now: number): Health {
 	return h;
 }
 
-/** Where the route puts you: the incident, and the run when on a transcript. */
+/** Where the route puts you: the incident, and the run when on its conversation. */
 function useHere(): { incidentId: string | null; runId: string | null } {
 	const { pathname, search } = useLocation();
 	const incidentId = /^\/incidents\/([^/]+)/.exec(pathname)?.[1] ?? null;
-	const investigation = (search as { investigation?: unknown }).investigation;
-	const runId =
-		incidentId &&
-		pathname.endsWith("/conversation") &&
-		typeof investigation === "string"
-			? investigation
-			: null;
-	return { incidentId, runId };
+	const run = /^\/incidents\/[^/]+\/conversation/.test(pathname)
+		? search.investigation
+		: undefined;
+	return { incidentId, runId: run && run !== DRAFT ? run : null };
 }
 
 /**
@@ -282,8 +278,9 @@ function RunList({
 				return (
 					<Link
 						key={r.id}
-						to="/investigations/$id"
-						params={{ id: r.id }}
+						to="/incidents/$id/conversation"
+						params={{ id: incidentId }}
+						search={{ investigation: r.id }}
 						aria-current={on ? "page" : undefined}
 						className={cn(row, on && "bg-surface-3 text-text-1")}
 						data-testid="tree-run"

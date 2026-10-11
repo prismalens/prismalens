@@ -25,11 +25,15 @@ import {
 	turnElapsed,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import { DockedComposer } from "@/components/investigation/DockedComposer";
+import {
+	DockedComposer,
+	stopFailed,
+} from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
+import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
@@ -69,6 +73,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  */
 export function RunPage() {
 	const record = useIncidentRecord();
+	const { toast } = useToast();
 	const { incident, run, runs, draft } = record;
 	const now = useNow(1000);
 	const search = useSearch({
@@ -255,7 +260,7 @@ export function RunPage() {
 					model={modelChip}
 					code={panel ? null : code}
 					onStop={
-						live ? () => run.stop({ onError: () => undefined }) : undefined
+						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
 					}
 					stopping={run.stopRequested}
 					incidentId={incident.id}
