@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	commitUrl,
 	describeChange,
 	type GitChange,
 	parseHistory,
+	readHistory,
 } from "./git-history.js";
 
 const change = (over: Partial<GitChange>): GitChange => ({
@@ -94,10 +99,10 @@ describe("parseHistory", () => {
 			[
 				"\x1e",
 				["b".repeat(40), "p1 p2", "2026-10-09T23:12:00+00:00", "Dev", "tag: v1.42, tag: latest", "Merge", "Body line"].join("\x1f"),
-				"\x1d\n\napi/a.py\nweb/b.js\n",
+				"\x1d\0\napi/a.py\0web/caf\u00e9.js\0",
 				"\x1e",
 				["c".repeat(40), "p1", "2026-10-09T20:00:00+00:00", "Dev", "", "fix", ""].join("\x1f"),
-				"\x1d\n",
+				"\x1d\0",
 			].join(""),
 		);
 		expect(out).toHaveLength(2);
@@ -105,8 +110,33 @@ describe("parseHistory", () => {
 			parents: 2,
 			tag: "v1.42",
 			body: "Body line",
-			files: ["api/a.py", "web/b.js"],
+			files: ["api/a.py", "web/caf\u00e9.js"],
 		});
 		expect(out[1]).toMatchObject({ parents: 1, tag: null, files: [] });
+	});
+});
+
+describe("readHistory", () => {
+	it("keeps a non-ASCII path, and one that starts with a newline, as written", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "git-history-"));
+		try {
+			const git = (...a: string[]) =>
+				execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir });
+			git("init", "-q");
+			writeFileSync(join(dir, "caf\u00e9.py"), "x");
+			writeFileSync(join(dir, "\nlead"), "y");
+			git("add", ".");
+			git("commit", "-q", "-m", "add");
+			const out = await readHistory({
+				gitDir: dir,
+				ref: "HEAD",
+				since: new Date(Date.now() - 3_600_000),
+				until: new Date(Date.now() + 60_000),
+				max: 5,
+			});
+			expect(out.map((c) => c.files.sort())).toEqual([["\nlead", "caf\u00e9.py"].sort()]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

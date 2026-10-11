@@ -146,6 +146,10 @@ export function graphExpr(
 	const url = new URL(link);
 	const expr = url.searchParams.get("g0.expr");
 	if (!expr?.trim()) return null;
-	const at = link.indexOf("/graph");
-	return { expr, base: at >= 0 ? link.slice(0, at) : url.origin };
+	const at = [...url.pathname.matchAll(/\/graph(?=\/|$)/g)].at(-1)?.index;
+	return {
+		expr,
+		base:
+			at === undefined ? url.origin : url.origin + url.pathname.slice(0, at),
+	};
 }

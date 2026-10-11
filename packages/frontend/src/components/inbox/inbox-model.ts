@@ -364,6 +364,18 @@ export function groupNeeds(incidents: IncidentWithRelations[]): Grouped[] {
 	});
 }
 
+/** Incidents a run is working on with no finding yet: in no group, so Working lists them. */
+export function workingOf(
+	incidents: IncidentWithRelations[],
+): { incident: IncidentWithRelations; run: Run }[] {
+	return incidents.flatMap((incident) => {
+		const run = liveInvestigation(incident);
+		return run && incident.status !== "closed" && needOf(incident) === null
+			? [{ incident, run }]
+			: [];
+	});
+}
+
 /** The incident most clearly getting worse, for the first tile. */
 export function gettingWorse(
 	incidents: IncidentWithRelations[],

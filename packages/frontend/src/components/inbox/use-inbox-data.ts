@@ -1,12 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { IncidentWithRelations } from "@prismalens/contracts";
+import type {
+	IncidentQuery,
+	IncidentWithRelations,
+} from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useLiveRefreshInterval } from "@/lib/api/live-refresh";
-import { orpc } from "@/lib/api/orpc-client";
+import { client, orpc } from "@/lib/api/orpc-client";
 import { groupNeeds } from "./inbox-model";
+
+type ListInput = Partial<IncidentQuery>;
+
+/** One list query, every page: the API caps a page at 100 rows, not the list. */
+function allPages(input: ListInput) {
+	return {
+		...orpc.incidents.list.queryOptions({ input }),
+		queryFn: async ({ signal }: { signal?: AbortSignal }) => {
+			const first = await client.incidents.list(input, { signal });
+			const data = [...first.data];
+			let page = first;
+			while (page.pagination.hasMore) {
+				page = await client.incidents.list(
+					{ ...input, offset: data.length },
+					{ signal },
+				);
+				if (page.data.length === 0) break;
+				data.push(...page.data);
+			}
+			return { ...first, data };
+		},
+	};
+}
 
 /**
  * Every incident that is not resolved by you: the open ones and those whose
@@ -15,14 +41,12 @@ import { groupNeeds } from "./inbox-model";
 export function useActiveIncidents(enabled = true) {
 	const interval = useLiveRefreshInterval();
 	const open = useQuery({
-		...orpc.incidents.list.queryOptions({ input: { open: true, limit: 100 } }),
+		...allPages({ open: true, limit: 100 }),
 		refetchInterval: interval,
 		enabled,
 	});
 	const cleared = useQuery({
-		...orpc.incidents.list.queryOptions({
-			input: { status: "resolved", limit: 100 },
-		}),
+		...allPages({ status: "resolved", limit: 100 }),
 		refetchInterval: interval,
 		enabled,
 	});

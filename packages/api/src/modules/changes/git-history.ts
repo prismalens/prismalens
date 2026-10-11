@@ -44,6 +44,7 @@ export interface HistoryQuery {
 export async function readHistory(q: HistoryQuery): Promise<GitChange[]> {
 	const args = [
 		"log",
+		"-z",
 		"--first-parent",
 		"--diff-merges=first-parent",
 		"--name-only",
@@ -82,10 +83,11 @@ export function parseHistory(stdout: string): GitChange[] {
 			subject: subject ?? "",
 			body: (body ?? "").trim(),
 			tag: tagOf(refs ?? ""),
+			// -z: paths arrive unquoted, each ended by NUL, after END "\0\n".
 			files: record
 				.slice(end + 1)
-				.split("\n")
-				.map((l) => l.trim())
+				.replace(/^\0\n?/, "")
+				.split("\0")
 				.filter(Boolean),
 		});
 	}

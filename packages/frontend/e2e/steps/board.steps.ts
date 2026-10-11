@@ -93,6 +93,21 @@ Then(
 	},
 );
 
+Then("INC-1 is under Working, and in no Needs you group", async ({ page }) => {
+	await openBoard(page);
+	const row = cardOf(page.getByTestId("inbox-working"), inc(page).title);
+	await expect(row).toContainText("No finding yet");
+	await expect(rowOf(page)).toHaveCount(0);
+});
+
+Then("INC-1 is not under Working", async ({ page }) => {
+	await expect(
+		cardOf(page.getByTestId("inbox"), inc(page).title).and(
+			page.getByTestId("working-row"),
+		),
+	).toHaveCount(0);
+});
+
 Then(
 	"INC-1 is in Recently resolved reading {string}",
 	async ({ page }, word: string) => {
