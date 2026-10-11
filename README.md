@@ -29,7 +29,7 @@ action per row:
 <!-- Invalidated by: a change to the Inbox layout or copy (packages/frontend/src/components/inbox/). Regenerate: DESIGN_SHOTS=1 playwright test e2e/journeys/inbox-shots.spec.ts, files inbox-1440-{dark,light}.png. -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/inbox-dark.png">
-  <img alt="The Inbox: tiles for what is getting worse, alerts and services, then incidents grouped as Finding ready, Run failed or stopped, No cause found and Alerts cleared" src=".github/assets/inbox-light.png" width="830">
+  <img alt="The Inbox: tiles for what is getting worse, alerts and services, then incidents grouped as Finding ready, Run failed or stopped, No cause found and Alerts cleared, and the incidents a run is working on" src=".github/assets/inbox-light.png" width="830">
 </picture>
 
 Each incident has one overview: the situation and the next step, the alert's
