@@ -9,7 +9,6 @@ import {
 	clockElapsed,
 	headlineAddsInfo,
 	incidentHeadline,
-	incidentLineage,
 	mergeSentence,
 	orderNeedsYou,
 	rowGlyph,
@@ -368,39 +367,6 @@ describe("incidentHeadline", () => {
 	});
 });
 
-describe("incidentLineage (R1a d5, d6)", () => {
-	it("names the incident a new one fired again after, with its cause", () => {
-		expect(
-			incidentLineage(
-				incident("triggered", undefined, {
-					priorIncident: {
-						number: 1,
-						status: "closed",
-						actualCause: "pool capped at 10",
-					},
-				}),
-			),
-		).toEqual({
-			lead: "Fired again:",
-			text: "after INC-1 was resolved, cause: pool capped at 10",
-		});
-	});
-
-	it("points a Resolved incident at the one that fired again after it", () => {
-		const line = incidentLineage(
-			incident("closed", undefined, {
-				refiredAs: {
-					id: "00000000-0000-0000-0000-000000000011",
-					number: 11,
-					createdAt: "2026-09-30T17:40:00Z",
-				},
-			}),
-		);
-		expect(line?.lead).toBe("Fired again as");
-		expect(line?.text).toMatch(/^INC-11, \d\d:\d\d$/);
-	});
-});
-
 describe("runWord (study-v3 §3.1)", () => {
 	const now = Date.parse("2026-09-30T14:04:30Z");
 
@@ -494,10 +460,6 @@ describe("merge (#673 w37)", () => {
 			mergedInto: { id: target, number: 4 },
 		});
 		expect(boardColumn(merged)).toBe("resolved");
-		expect(incidentLineage(merged)).toEqual({
-			lead: "Merged into",
-			text: "INC-4",
-		});
 	});
 
 	it("says what moves, and what the target's working run will not see", () => {

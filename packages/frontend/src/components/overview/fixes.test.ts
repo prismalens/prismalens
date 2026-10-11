@@ -3,7 +3,13 @@
 
 import type { Fixes } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { type FixOption, fixStage, nextStrip, splitOptions } from "./fixes";
+import {
+	type FixOption,
+	fixStage,
+	liveCheck,
+	nextStrip,
+	splitOptions,
+} from "./fixes";
 
 const opt: FixOption = {
 	id: "a",
@@ -197,6 +203,49 @@ describe("nextStrip", () => {
 			stage: { stage: "worked", appliedAt: at, clearedAt: at },
 		});
 		expect(worked.primary?.id).toBe("resolve");
+	});
+
+	it("reads a live check the same as the verdict a reload keeps", () => {
+		const appliedAt = "2026-10-11T12:20:00Z";
+		const at = "2026-10-11T12:23:00Z";
+		for (const verdict of ["not_yet", "below_threshold"] as const) {
+			const strip = (check: Parameters<typeof liveCheck>[0] | null) =>
+				nextStrip({
+					...base,
+					stage: {
+						stage: "checked",
+						appliedAt,
+						check: check ? liveCheck(check) : { verdict, at },
+					},
+				}).text;
+			const live = strip({
+				stepId: "00000000-0000-4000-8000-000000000001",
+				verdict,
+				checkedAt: at,
+				value: null,
+				threshold: null,
+				reason: null,
+				message: verdict === "not_yet" ? "Not yet." : "Below the alert threshold.",
+				retryable: false,
+			});
+			expect(live).toBe(strip(null));
+			expect(live).not.toMatch(/^(Not yet|Below the alert threshold)\.$/);
+		}
+	});
+
+	it("links the incident a Resolved one fired again as, else says it will", () => {
+		const resolved = { ...base, ended: true, option: null, stage: null };
+		expect(nextStrip(resolved).link).toBeUndefined();
+		expect(nextStrip(resolved).text).toMatch(/links it here/);
+		const refired = nextStrip({
+			...resolved,
+			refiredAs: { id: "00000000-0000-4000-8000-000000000011", number: 11 },
+		});
+		expect(refired.text).toBe("Resolved.");
+		expect(refired.link).toEqual({
+			incidentId: "00000000-0000-4000-8000-000000000011",
+			label: "Fired again as INC-11",
+		});
 	});
 
 	it("falls back to the run when there is no option", () => {

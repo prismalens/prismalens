@@ -91,6 +91,7 @@ export function SituationCard({
 	const latestState = o.latestRun.state;
 	const strip = nextStrip({
 		ended: isIncidentEnded(incident.status),
+		refiredAs: incident.refiredAs,
 		cleared: o.cleared,
 		runs: runs.filter((r) => r.kind !== "chat").length,
 		live: o.live ? { name: viewName(runs, o.live) } : null,
@@ -166,6 +167,19 @@ export function SituationCard({
 					data-testid="next-text"
 				>
 					{strip.text}
+					{strip.link && (
+						<>
+							{" "}
+							<Link
+								to="/incidents/$id"
+								params={{ id: strip.link.incidentId }}
+								className="font-medium underline-offset-2 hover:underline"
+								data-testid="next-refire"
+							>
+								{strip.link.label}
+							</Link>
+						</>
+					)}
 				</span>
 				{strip.secondary && (
 					<Button

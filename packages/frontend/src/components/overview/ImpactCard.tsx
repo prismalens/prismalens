@@ -420,7 +420,7 @@ function Reason({ impact }: { impact: ImpactChart }) {
 				>
 					<Link
 						to="/settings"
-						search={{ tab: "integrations" }}
+						search={{ tab: "sources" }}
 						data-testid="impact-connect"
 					>
 						Connect Prometheus

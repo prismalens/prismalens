@@ -620,7 +620,10 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await checkBtn.click();
 		await expect.poll(() => checkCalled).toBe(true);
 		await expect(page.getByTestId("fix-state")).toHaveText("Not working yet");
-		await expect(page.getByTestId("next-text")).toContainText("Not yet");
+		// The strip's own sentence, the one a reload shows, not the server's words.
+		await expect(page.getByTestId("next-text")).toContainText(
+			/^Not yet: .+ Some fixes take a few minutes to settle\.$/,
+		);
 
 		// 4. Check again with it_worked verdict -> shows next-resolve
 		checkVerdict = "it_worked";
@@ -701,6 +704,11 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
+		// Prometheus is added under Alert sources; Integrations filters it out.
+		await expect(page.getByTestId("impact-connect")).toHaveAttribute(
+			"href",
+			"/settings?tab=sources",
+		);
 
 		// 5. Expression-unknown reason + linkOut -> "Open the query"
 		await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -870,26 +878,26 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		alertmanager,
 		deliverWebhook,
 		unique,
+		release,
+		hold,
 	}) => {
 		test.setTimeout(120_000);
+		// Released, Run 1 and the Ask finish; held again, Run 2 stays live for step 3.
 		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("OverviewComposer"),
 			service: LIVE,
 			severity: "high",
 			session: "live",
 		});
-		release,
-		hold,
+		release(inc.title);
 		await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
 
-		// Released, Run 1 and the Ask finish; held again, Run 2 stays live for step 3.
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await visit(page, `/incidents/${inc.id}`);
 
 		const composerInput = page.getByTestId("composer-input");
 		const actionChip = page.getByTestId("action-chip");
 		await expect(actionChip).toBeVisible();
-		release(inc.title);
 
 		// 1. Ask action stays on the page and fills you-asked (Ask is default initial action)
 		await composerInput.fill("What is the current sort mechanism?");
@@ -901,6 +909,8 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await expect(page.getByTestId("you-asked-question")).toHaveText(
 			"What is the current sort mechanism?",
 		);
+		await waitForRun(page, inc.id, (r) => r.status === "completed", "the Ask");
+		hold(inc.title);
 
 		// 2. Investigate again starts a live run, page stays
 		await actionChip.click();
@@ -909,8 +919,6 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await composerInput.press("Enter");
 
 		await expect(page).toHaveURL(new RegExp(`/incidents/${inc.id}$`));
-		await waitForRun(page, inc.id, (r) => r.status === "completed", "the Ask");
-		hold(inc.title);
 		const stripStop = page.getByTestId("latest-run-stop");
 		await expect(stripStop).toBeVisible({ timeout: 15_000 });
 

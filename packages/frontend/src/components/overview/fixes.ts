@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import type {
+	FixCheck as CheckResult,
 	FixCheckReason,
 	Fixes,
 	FixOption,
 	FixVerdict,
 } from "@prismalens/contracts";
-import { isAlertFiring } from "@prismalens/contracts";
+import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
 import { formatClock } from "@/lib/format-time";
 import { formatValue } from "./impact";
 
@@ -26,15 +27,23 @@ export function splitOptions(fixes: Fixes | undefined): {
 	};
 }
 
-/** One check result: the live answer has its value and words; after a reload only the verdict and time. */
+/** One check result: the live answer has its value; after a reload only the verdict and time. */
 export interface FixCheck {
 	verdict: FixVerdict;
 	at: string;
 	value?: number | null;
-	message?: string | null;
 	retryable?: boolean;
 	reason?: FixCheckReason | null;
 }
+
+/** A live check as the strip keeps it: the server's words are dropped so a reload reads the same. */
+export const liveCheck = (r: CheckResult): FixCheck => ({
+	verdict: r.verdict,
+	at: r.checkedAt,
+	value: r.value,
+	retryable: r.retryable,
+	reason: r.reason,
+});
 
 export type FixStage =
 	| { stage: "ready"; copied: boolean; copyFailed: boolean }
@@ -105,6 +114,8 @@ export interface NextStrip {
 	text: string;
 	primary?: { id: NextActionId; label: string };
 	secondary?: { id: NextActionId; label: string };
+	/** The incident the alert fired again as, linked after the text. */
+	link?: { incidentId: string; label: string };
 }
 
 const minutes = (from: string, to: string) => {
@@ -121,6 +132,8 @@ const minutes = (from: string, to: string) => {
  */
 export function nextStrip(input: {
 	ended: boolean;
+	/** The incident this one's alert fired again as (the detail's `refiredAs`). */
+	refiredAs?: { id: string; number: number } | null;
 	/** Every alert cleared and nobody resolved it yet. */
 	cleared: boolean;
 	runs: number;
@@ -135,10 +148,19 @@ export function nextStrip(input: {
 }): NextStrip {
 	const { option, stage } = input;
 	if (input.ended)
-		return {
-			tone: "plain",
-			text: "Resolved. If the alert fires again, PrismaLens opens a new incident and links it here.",
-		};
+		return input.refiredAs
+			? {
+					tone: "plain",
+					text: "Resolved.",
+					link: {
+						incidentId: input.refiredAs.id,
+						label: `${REFIRE_LABEL} as INC-${input.refiredAs.number}`,
+					},
+				}
+			: {
+					tone: "plain",
+					text: "Resolved. If the alert fires again, PrismaLens opens a new incident and links it here.",
+				};
 	if (option && stage) {
 		const prefix = input.live
 			? `${input.live.name} is checking this again; you can still apply it. `
@@ -192,9 +214,7 @@ export function nextStrip(input: {
 				if (c.verdict === "not_yet")
 					return {
 						tone: "warn",
-						text:
-							c.message ??
-							`Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `still over the alert threshold at ${formatClock(c.at)}`}, ${minutes(stage.appliedAt, c.at)} after you applied it. Some fixes take a few minutes to settle.`,
+						text: `Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `still over the alert threshold at ${formatClock(c.at)}`}, ${minutes(stage.appliedAt, c.at)} after you applied it. Some fixes take a few minutes to settle.`,
 						primary: { id: "check", label: "Check again" },
 						...(input.hasNextOption
 							? {
@@ -208,17 +228,13 @@ export function nextStrip(input: {
 				if (c.verdict === "below_threshold")
 					return {
 						tone: "plain",
-						text:
-							c.message ??
-							`Below the alert threshold${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
+						text: `Below the alert threshold${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
 						primary: { id: "check", label: "Check again" },
 					};
 				return c.retryable !== false
 					? {
 							tone: "warn",
-							text:
-								c.message ??
-								`Could not check at ${formatClock(c.at)}. The fix may still have worked.`,
+							text: `Could not check at ${formatClock(c.at)}. The fix may still have worked.`,
 							primary: { id: "check", label: "Try again" },
 						}
 					: {

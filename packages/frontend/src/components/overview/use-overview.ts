@@ -20,6 +20,7 @@ import {
 	type FixOption,
 	type FixStage,
 	fixStage,
+	liveCheck,
 	splitOptions,
 } from "./fixes";
 
@@ -164,22 +165,14 @@ export function useOverview() {
 			const r = await client.fixes.check({ id: o.id });
 			setFresh((f) => ({
 				...f,
-				[key]: {
-					verdict: r.verdict,
-					at: r.checkedAt,
-					value: r.value,
-					message: r.message,
-					retryable: r.retryable,
-					reason: r.reason,
-				},
+				[key]: liveCheck(r),
 			}));
-		} catch (error) {
+		} catch {
 			setFresh((f) => ({
 				...f,
 				[key]: {
 					verdict: "could_not_check",
 					at: new Date().toISOString(),
-					message: `Could not check: ${getErrorMessage(error)}`,
 					retryable: true,
 				},
 			}));
