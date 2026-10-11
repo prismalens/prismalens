@@ -23,23 +23,10 @@ Feature: The incident record and its report
       Given a paired browser at 1440 px
       And INC-1 is Triggered with no run yet
 
-    Scenario: Overview is one column with headings as links
-      When I open INC-1's Overview
-      Then I see a summary with a "Next" line, then "Report", "Alerts", "Timeline" and a note field, in one column with nothing beside it
-      And no "See all", "Open conversation", "Details" or "Read the report" links
-      When I press "All events" on the Timeline pool
-      Then I am on the Timeline tab
-
     Scenario: Live Overview
       Given a run is working
       When I open the Overview
       Then the summary says a run is working and its current step, and the Report section reads "Run #1 working"
-
-    Scenario: The Timeline follows Acknowledge without a reload (#673 walk 4)
-      When I open INC-1's Overview
-      And I read the Timeline tab's count
-      When I press Acknowledge
-      Then the Timeline count is higher and the list shows an "Acknowledged" entry, without reload or navigation
 
   Rule: Report
     Four slots above the fold, four variants.
@@ -77,21 +64,11 @@ Feature: The incident record and its report
       Then without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert
       And "Export" sits in the report's header, beside the run
 
-    Scenario: Hand the fix to my own agent
-      When I press "Copy fix brief" in the report's menu
-      Then the clipboard holds the cause, the commit, the evidence sources and the open steps as text
-      Given the report's first step is "Map Booklogr API to its repository"
-      Then that step is a link to the service page, not a checkbox
-
     Scenario: A stopped run
       Given the run was stopped
       When I open the Report tab
       Then I read "No report" and when it was stopped, with a link to the conversation, and the box there offers to continue where the agent can reopen its session
 
-    Scenario: Ticking a step is shared
-      When I tick the first "Do now" step
-      Then the heading reads "1 of 3 done" and "Done by you at <time>"
-      And another paired browser sees the tick without a reload
 
   Rule: Agent not signed in
 

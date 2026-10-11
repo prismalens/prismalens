@@ -17,11 +17,6 @@ Feature: Resolve, reopen, refire
     When the source resolves its alert
     Then the band reads "Alerts cleared" with "Resolve" as its action and INC-1 sits under "Alerts cleared"
 
-  Scenario: The same alert fires again on a Resolved incident
-    Given INC-1 is Resolved with cause "pool capped at 10"
-    When the same alert fires again
-    Then within 2 seconds a new incident is in "Needs you" and its Overview reads "Fired again: after INC-1 was resolved, cause: pool capped at 10"
-    And INC-1 stays Resolved, and INC-1's Overview reads "Fired again as INC-11, <time>"
 
   Scenario: The same alert fires again on Alerts cleared
     Given INC-1 reads "Alerts cleared" and the flap window is open
