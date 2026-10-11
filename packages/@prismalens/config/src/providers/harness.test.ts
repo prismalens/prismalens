@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	refuseModel,
@@ -391,5 +394,25 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 			}
 		}
 	});
+
+	it("Given agent-adapters package.json, When checking dependencies, Then each exact version equals the registry row's tested version", () => {
+		const pkgPath = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"../../../agent-adapters/package.json",
+		);
+		const manifest = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+			dependencies?: Record<string, string>;
+		};
+		const deps = Object.entries(manifest.dependencies ?? {});
+		expect(deps.length).toBeGreaterThan(0);
+		for (const [pkg, version] of deps) {
+			const row = Object.values(HARNESS_REGISTRY).find(
+				(r) => r.adapterPackage === pkg,
+			);
+			expect(row, `missing registry row for adapter package ${pkg}`).toBeDefined();
+			expect(version).toBe(row?.tested?.version);
+		}
+	});
 });
+
 

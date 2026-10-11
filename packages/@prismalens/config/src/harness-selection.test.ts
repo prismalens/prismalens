@@ -6,11 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	harnessLaunch,
 	listHarnessStatus,
 	resolveHarnessSelection,
 	resolveOnPath,
 	windowsInstallOnPath,
 } from "./harness-selection.js";
+import { HARNESS_REGISTRY } from "./providers/harness.js";
 
 const onPath = (present: string[]) => (bin: string) => present.includes(bin);
 
@@ -78,7 +80,7 @@ describe("resolveHarnessSelection", () => {
 		});
 		expect(rows[1]).toMatchObject({
 			installed: false,
-			tested: { version: "0.81.1", date: "2026-09-23" },
+			tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
 			defaultModel: null,
 		});
 		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", "1.13.1", null, "0.1.75"]);
@@ -131,3 +133,60 @@ describe.skipIf(process.platform === "win32")("resolveOnPath", () => {
 		expect(listHarnessStatus({ isOnPath: onPath(["gemini"]) }).every((r) => r.windowsOnlyPath === null)).toBe(true);
 	});
 });
+
+describe("harnessLaunch", () => {
+	it("Given both binary and companion on PATH, When harnessLaunch is called, Then it returns the PATH binary", () => {
+		const probe = {
+			isOnPath: (bin: string) => bin === "claude-agent-acp" || bin === "claude",
+			shippedAdapter: () => "/shipped/adapter.js",
+		};
+		expect(harnessLaunch(HARNESS_REGISTRY["claude-code"], probe)).toEqual({
+			command: "claude-agent-acp",
+			args: [],
+			env: {},
+			shipped: false,
+		});
+	});
+
+	it("Given only the companion is on PATH, When harnessLaunch is called, Then it returns the shipped script with process.execPath", () => {
+		const probe = {
+			isOnPath: (bin: string) => bin === "claude",
+			shippedAdapter: () => "/shipped/claude-adapter.js",
+		};
+		expect(harnessLaunch(HARNESS_REGISTRY["claude-code"], probe)).toEqual({
+			command: process.execPath,
+			args: ["/shipped/claude-adapter.js"],
+			env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {},
+			shipped: true,
+		});
+	});
+
+	it("Given the companion is missing from PATH, When harnessLaunch is called, Then it returns null", () => {
+		const probe = {
+			isOnPath: () => false,
+			shippedAdapter: () => "/shipped/claude-adapter.js",
+		};
+		expect(harnessLaunch(HARNESS_REGISTRY["claude-code"], probe)).toBeNull();
+	});
+
+	it("Given a row without adapterPackage when its binary is missing, When harnessLaunch is called, Then it returns null", () => {
+		const probe = {
+			isOnPath: () => false,
+			shippedAdapter: () => "/shipped/adapter.js",
+		};
+		expect(harnessLaunch(HARNESS_REGISTRY.opencode, probe)).toBeNull();
+	});
+
+	it("Given only claude on PATH and shippedAdapter injected, When listHarnessStatus is called, Then it marks claude-code installed", () => {
+		const rows = listHarnessStatus({
+			isOnPath: (bin: string) => bin === "claude",
+			shippedAdapter: (pkg: string) =>
+				pkg === "@agentclientprotocol/claude-agent-acp"
+					? "/shipped/claude-adapter.js"
+					: null,
+		});
+		const claudeCode = rows.find((r) => r.id === "claude-code");
+		expect(claudeCode?.installed).toBe(true);
+	});
+});
+
