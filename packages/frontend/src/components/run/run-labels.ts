@@ -3,6 +3,7 @@
 
 import {
 	isAlertFiring,
+	isRunStateLive,
 	type RunCredential,
 	type RunState,
 	runState,
@@ -20,12 +21,23 @@ export function viewName(
 	return run.kind === "chat" ? "Ask" : `Run ${runNumber(runs, run.id)}`;
 }
 
+/** A live run whose agent waits on your Approve or Deny (#673 w5-14). */
+export function waitsOnYou(run: {
+	status: string;
+	awaitingApprovalAt?: string | Date | null;
+}): boolean {
+	return isRunStateLive(runState(run.status)) && !!run.awaitingApprovalAt;
+}
+
 /** What a run came to, in two or three words. */
 export function runOutcome(
-	run: Pick<RunRef, "status" | "kind" | "hasReport" | "rootCause">,
+	run: Pick<RunRef, "status" | "kind" | "hasReport" | "rootCause"> & {
+		awaitingApprovalAt?: string | Date | null;
+	},
 ): string {
 	const state = runState(run.status, { hasEvents: true });
 	const chat = run.kind === "chat";
+	if (waitsOnYou(run)) return "waiting for you";
 	if (state === "starting") return "starting";
 	if (state === "working") return chat ? "answering" : "investigating";
 	if (state === "stopping") return "stopping";

@@ -30,6 +30,8 @@ export interface RunStep {
 	at: string;
 	/** Seconds from the call to its result. */
 	took: number | null;
+	/** The call's input, for a tool that names no command or path (an MCP tool, #673 w5-41). */
+	input: string | null;
 }
 
 const FILE_WORD = {
@@ -81,7 +83,14 @@ export function deriveSteps(
 		if (e.kind === "agent_step") {
 			for (const c of e.toolCalls) {
 				if (DELEGATE_TOOL.test(c.name)) delegated.add(c.toolCallId);
-				if (delegated.has(c.toolCallId) || calls.has(c.toolCallId)) continue;
+				if (delegated.has(c.toolCallId)) continue;
+				const known = calls.get(c.toolCallId);
+				// The call again with the command it opened without (#820): same step, now named.
+				if (known) {
+					if (Object.keys(c.args).length > 0)
+						calls.set(c.toolCallId, { ...known, name: c.name, args: c.args });
+					continue;
+				}
 				calls.set(c.toolCallId, { name: c.name, args: c.args, at: e.ts });
 				order.push(c.toolCallId);
 			}
@@ -117,6 +126,7 @@ export function deriveSteps(
 		return {
 			n: i + 1,
 			callId,
+			input: inputOf(call.args),
 			title: describe(call.args) ?? command,
 			command,
 			kind:
@@ -136,6 +146,20 @@ export function deriveSteps(
 				: null,
 		};
 	});
+}
+
+/** A tool's arguments as indented JSON when they name no command or path. */
+function inputOf(args: Record<string, unknown>): string | null {
+	if (Object.keys(args).length === 0) return null;
+	const command = args.command ?? args.cmd;
+	const path = args.path ?? args.filePath ?? args.file_path;
+	if (typeof command === "string" || Array.isArray(command)) return null;
+	if (typeof path === "string") return null;
+	try {
+		return JSON.stringify(args, null, 2).slice(0, 2000);
+	} catch {
+		return null;
+	}
 }
 
 /** `0.4s`, `12s`, `2m 05s`: a step is usually under a second. */

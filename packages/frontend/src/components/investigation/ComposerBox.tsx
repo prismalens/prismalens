@@ -67,8 +67,11 @@ export interface ComposerBoxProps {
 	text: string;
 	setText: (text: string) => void;
 	agent: { label: string; images: boolean | null };
-	/** Messages queued for the agent's next pause. */
-	waiting?: number;
+	/**
+	 * What waits on you, docked on top of the box (#820): the agent's asks and
+	 * your queued messages. The files going with the next message join it.
+	 */
+	dock?: ReactNode;
 	isPending?: boolean;
 	/** Why nothing can be sent now: chips and Send are withheld with it. */
 	blockedReason?: string;
@@ -115,7 +118,7 @@ export function ComposerBox({
 	text,
 	setText,
 	agent,
-	waiting = 0,
+	dock,
 	isPending,
 	blockedReason,
 	undeliverable,
@@ -262,137 +265,142 @@ export function ComposerBox({
 				? `${agent.label} can't take images. Text files only.`
 				: "Images: not checked yet. Text files only.";
 
+	const docked = !!dock || drafts.length > 0;
 	return (
 		<div className="flex flex-col gap-1" data-testid="composer-box">
 			{above}
-			<PromptInput
-				data-live={live ? "" : undefined}
+			<div
 				className={cn(
-					"rounded-[10px] bg-surface-2 [&>[data-slot=input-group]]:bg-transparent",
+					"overflow-hidden rounded-[10px] bg-surface-2",
 					floating && "shadow-float",
 				)}
-				onSubmit={() => void submit(false)}
-				onDragOver={(e) => e.preventDefault()}
-				onDrop={onDrop}
 			>
-				<PromptInputBody>
-					{drafts.length > 0 && (
-						<ul
-							className="mb-2 flex flex-wrap gap-1.5"
-							data-testid="composer-files"
-						>
-							{drafts.map((d) => (
-								<li
-									key={d.key}
-									className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-control bg-surface-3 pr-1 pl-1 text-meta text-text-1"
-									data-testid="composer-file"
-								>
-									{d.preview ? (
-										<img
-											src={d.preview}
-											alt=""
-											className="size-6 rounded-[4px] object-cover"
-											data-testid="composer-thumb"
-										/>
-									) : (
-										<FileText className="ml-1 size-3.5 shrink-0 text-text-3" />
-									)}
-									<span className="truncate">{d.file.name}</span>
-									<button
-										type="button"
-										aria-label={`Remove ${d.file.name}`}
-										onClick={() => {
-											release([d]);
-											setDrafts((all) => all.filter((x) => x !== d));
-										}}
-										className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-4 hover:text-text-1"
-									>
-										<X className="size-3" />
-									</button>
-								</li>
-							))}
-						</ul>
-					)}
-					<PromptInputTextarea
-						ref={ref}
-						value={text}
-						onChange={(e) => setText(e.target.value)}
-						onKeyDown={onKeyDown}
-						onPaste={onPaste}
-						disabled={blocked}
-						placeholder={placeholder}
-						aria-label={placeholder}
-						className="min-h-6"
-						data-testid="composer-input"
-					/>
-				</PromptInputBody>
-				<PromptInputFooter className="-ml-1.5 max-sm:flex-wrap">
-					{/* Narrow, the chips wrap: a hidden-scrollbar row clipped a chip's label (#673 walk 4, QA-06). */}
-					<PromptInputTools
-						className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1"
-						data-testid="composer-chips"
+				{docked && (
+					<div
+						className="flex flex-col gap-2.5 bg-surface-3 px-3 pt-2.5 pb-2"
+						data-testid="composer-dock"
 					>
-						<ActionChip
-							actions={actions}
-							value={current?.id ?? ""}
-							onChange={onAction}
-							disabled={blocked}
-						/>
-						{chips}
-					</PromptInputTools>
-					<div className="ml-auto flex shrink-0 items-center gap-0.5">
-						{live && waiting > 0 && (
-							<span
-								className="px-1 text-meta text-warn tabular-nums"
-								data-testid="composer-waiting"
+						{dock}
+						{drafts.length > 0 && (
+							<ul
+								className="flex flex-wrap gap-1.5"
+								data-testid="composer-files"
 							>
-								{waiting} waiting
-							</span>
+								{drafts.map((d) => (
+									<li
+										key={d.key}
+										className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-control bg-surface-4 pr-1 pl-1 text-meta text-text-1"
+										data-testid="composer-file"
+									>
+										{d.preview ? (
+											<img
+												src={d.preview}
+												alt=""
+												className="size-6 rounded-[4px] object-cover"
+												data-testid="composer-thumb"
+											/>
+										) : (
+											<FileText className="ml-1 size-3.5 shrink-0 text-text-3" />
+										)}
+										<span className="truncate">{d.file.name}</span>
+										<button
+											type="button"
+											aria-label={`Remove ${d.file.name}`}
+											onClick={() => {
+												release([d]);
+												setDrafts((all) => all.filter((x) => x !== d));
+											}}
+											className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-3 hover:text-text-1"
+										>
+											<X className="size-3" />
+										</button>
+									</li>
+								))}
+							</ul>
 						)}
-						<Hint label={clipHint} side="top">
-							<PromptInputButton
-								aria-label="Attach a file"
-								disabled={blocked}
-								onClick={() => picker.current?.click()}
-								className="w-8 text-text-3"
-								data-testid="composer-attach"
-							>
-								<Paperclip className="size-3.5" />
-							</PromptInputButton>
-						</Hint>
-						<input
-							ref={picker}
-							type="file"
-							multiple
-							hidden
-							accept={
-								agent.images === true
-									? "image/png,image/jpeg,image/webp,image/gif,text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
-									: "text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
-							}
-							onChange={(e) => {
-								if (e.target.files) add(Array.from(e.target.files));
-								e.target.value = "";
-							}}
-							data-testid="composer-file-input"
-						/>
-						<Hint
-							label={current ? current.label : "Send"}
-							keys={["Enter"]}
-							side="top"
-						>
-							<span className="inline-flex">
-								<PromptInputSubmit
-									status={busy ? "submitted" : undefined}
-									disabled={!canSend}
-									aria-label={current ? current.label : "Send"}
-									data-testid="composer-send"
-								/>
-							</span>
-						</Hint>
 					</div>
-				</PromptInputFooter>
-			</PromptInput>
+				)}
+				<PromptInput
+					data-live={live ? "" : undefined}
+					className="[&>[data-slot=input-group]]:bg-transparent"
+					onSubmit={() => void submit(false)}
+					onDragOver={(e) => e.preventDefault()}
+					onDrop={onDrop}
+				>
+					<PromptInputBody>
+						<PromptInputTextarea
+							ref={ref}
+							value={text}
+							onChange={(e) => setText(e.target.value)}
+							onKeyDown={onKeyDown}
+							onPaste={onPaste}
+							disabled={blocked}
+							placeholder={placeholder}
+							aria-label={placeholder}
+							className="min-h-6"
+							data-testid="composer-input"
+						/>
+					</PromptInputBody>
+					<PromptInputFooter className="-ml-1.5 max-sm:flex-wrap">
+						{/* Narrow, the chips wrap: a hidden-scrollbar row clipped a chip's label (#673 walk 4, QA-06). */}
+						<PromptInputTools
+							className="min-w-0 flex-1 flex-wrap gap-0.5 gap-y-1"
+							data-testid="composer-chips"
+						>
+							<ActionChip
+								actions={actions}
+								value={current?.id ?? ""}
+								onChange={onAction}
+								disabled={blocked}
+							/>
+							{chips}
+						</PromptInputTools>
+						<div className="ml-auto flex shrink-0 items-center gap-0.5">
+							<Hint label={clipHint} side="top">
+								<PromptInputButton
+									aria-label="Attach a file"
+									disabled={blocked}
+									onClick={() => picker.current?.click()}
+									className="w-8 text-text-3"
+									data-testid="composer-attach"
+								>
+									<Paperclip className="size-3.5" />
+								</PromptInputButton>
+							</Hint>
+							<input
+								ref={picker}
+								type="file"
+								multiple
+								hidden
+								accept={
+									agent.images === true
+										? "image/png,image/jpeg,image/webp,image/gif,text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
+										: "text/*,.log,.json,.csv,.md,.txt,.yaml,.yml"
+								}
+								onChange={(e) => {
+									if (e.target.files) add(Array.from(e.target.files));
+									e.target.value = "";
+								}}
+								data-testid="composer-file-input"
+							/>
+							<Hint
+								label={current ? current.label : "Send"}
+								keys={["Enter"]}
+								side="top"
+							>
+								<span className="inline-flex">
+									<PromptInputSubmit
+										status={busy ? "submitted" : undefined}
+										disabled={!canSend}
+										aria-label={current ? current.label : "Send"}
+										data-testid="composer-send"
+									/>
+								</span>
+							</Hint>
+						</div>
+					</PromptInputFooter>
+				</PromptInput>
+			</div>
 			{(blocked || refusal) && (
 				<p
 					className={cn(

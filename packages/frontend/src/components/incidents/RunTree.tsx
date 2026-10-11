@@ -9,13 +9,16 @@ import { runDot } from "./run-facts";
 export function RunDot({
 	state,
 	draft,
+	waiting,
 	className,
 }: {
 	state?: RunState;
 	draft?: boolean;
+	/** The live run waits on your answer: amber (#673 w5-14). */
+	waiting?: boolean;
 	className?: string;
 }) {
-	const tone = state ? runDot(state) : null;
+	const tone = waiting ? "warn" : state ? runDot(state) : null;
 	return (
 		<span
 			aria-hidden
@@ -24,6 +27,7 @@ export function RunDot({
 				draft &&
 					"outline-[1.5px] -outline-offset-[1.5px] outline-text-3 outline-solid",
 				tone === "live" && "breathe bg-live",
+				tone === "warn" && "breathe bg-warn",
 				tone === "ok" && "bg-ok",
 				tone === "danger" && "bg-danger",
 				tone === "quiet" && "bg-text-3",

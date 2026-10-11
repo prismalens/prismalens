@@ -151,6 +151,7 @@ describe("evidenceStep (#673 w5-16)", () => {
 		output: null,
 		at: "2026-10-11T16:00:00Z",
 		took: 1,
+		input: null,
 	}));
 	const at = (source: string, toolCallId?: string | null) =>
 		evidenceStep({ source, toolCallId }, steps);
