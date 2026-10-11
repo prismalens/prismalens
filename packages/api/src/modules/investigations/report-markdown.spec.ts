@@ -106,6 +106,28 @@ describe("reportToMarkdown", () => {
 		expect(md.startsWith("# INC-9: Orders 500s\n\nMerged into INC-4.\n")).toBe(true);
 	});
 
+	it("writes an option's command verbatim in a fence it cannot close, and its facts (#811)", () => {
+		const md = reportToMarkdown({
+			incident: { number: 7, title: "t" },
+			report: {
+				...REPORT,
+				nextSteps: [
+					{
+						title: "Roll back",
+						detail: "v1.41",
+						kind: "stop-impact",
+						command: "echo ```\nkubectl rollout undo deploy/api",
+						facts: ["Undo: deploy v1.42 again"],
+					},
+				],
+			},
+			completedAt: new Date("2026-09-19T10:00:00Z"),
+		});
+		expect(md).toContain("- Stop the impact: **Roll back**: v1.41");
+		expect(md).toContain("  ````sh\n  echo ```\n  kubectl rollout undo deploy/api\n  ````");
+		expect(md).toContain("  - Undo: deploy v1.42 again");
+	});
+
 	it("has no actual-cause section when none was recorded", () => {
 		const md = reportToMarkdown({
 			incident: { number: 7, title: "Checkout 500s", actualCause: null },

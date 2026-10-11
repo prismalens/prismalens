@@ -170,6 +170,27 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 		);
 	});
 
+	it("stamps one id per option into the report and onto its row (#811)", async () => {
+		const writeResult = vi.fn(async (_id: string, _dto: unknown) => true);
+		const { store } = makeStore(vi.fn(async () => {}), { writeResult });
+		await store.finish({
+			...REPORT,
+			nextSteps: [
+				{ title: "Roll back", detail: "v1.41", kind: "stop-impact", command: "kubectl rollout undo deploy/api" },
+				{ title: "Check pool", detail: "size" },
+			],
+		});
+		const dto = writeResult.mock.calls[0]?.[1] as {
+			report: { nextSteps: Array<{ id?: string; command?: string }> };
+			recommendations: Array<{ id?: string; title: string }>;
+		};
+		const ids = dto.report.nextSteps.map((s) => s.id);
+		expect(ids.every((id) => typeof id === "string")).toBe(true);
+		expect(new Set(ids).size).toBe(2);
+		expect(dto.recommendations.map((r) => r.id)).toEqual(ids);
+		expect(dto.report.nextSteps[0]?.command).toBe("kubectl rollout undo deploy/api");
+	});
+
 	it("drains buffered events on fail BEFORE writing the failed status", async () => {
 		const appendEvents = vi.fn(async (_id: string, _events: CanonicalEvent[]) => {});
 		const updateStatus = vi.fn(async () => true);

@@ -13,6 +13,7 @@ export * from "./common.js";
 // The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
 export * from "./context-pack.js";
 export * from "./event.js";
+export * from "./impact.js";
 export * from "./incident.js";
 export * from "./incident-similarity.js";
 export * from "./integration.js";

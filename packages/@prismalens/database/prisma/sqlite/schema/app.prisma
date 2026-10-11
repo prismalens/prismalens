@@ -396,6 +396,7 @@ model ChangeEvent {
   serviceId   String?
   description String?
   metadata    String? // JSON: { version, environment, author, url, etc. }
+  dedupeKey   String?  @unique // git: "<host>/<repo>@<sha>#<serviceId>", so a re-read never doubles a commit (#811)
 
   createdAt DateTime @default(now())
 

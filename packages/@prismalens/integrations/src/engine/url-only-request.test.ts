@@ -73,4 +73,19 @@ describe("urlOnlyRequestFn (#633)", () => {
 		});
 		expect(capturedBody).toBe("query=up");
 	});
+
+	it("aborts on the caller's signal as well as its own deadline (#811)", async () => {
+		const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+			expect(init?.signal?.aborted).toBe(true);
+			return new Response("ok", { status: 200 });
+		});
+		const caller = new AbortController();
+		caller.abort();
+		await urlOnlyRequestFn("http://127.0.0.1:9090", fetchMock as unknown as typeof fetch)(
+			"GET",
+			"/-/ready",
+			{ signal: caller.signal },
+		);
+		expect(fetchMock).toHaveBeenCalledOnce();
+	});
 });
