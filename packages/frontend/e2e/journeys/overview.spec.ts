@@ -876,16 +876,20 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			name: unique("OverviewComposer"),
 			service: LIVE,
 			severity: "high",
-			session: "success",
+			session: "live",
 		});
+		release,
+		hold,
 		await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
 
+		// Released, Run 1 and the Ask finish; held again, Run 2 stays live for step 3.
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await visit(page, `/incidents/${inc.id}`);
 
 		const composerInput = page.getByTestId("composer-input");
 		const actionChip = page.getByTestId("action-chip");
 		await expect(actionChip).toBeVisible();
+		release(inc.title);
 
 		// 1. Ask action stays on the page and fills you-asked (Ask is default initial action)
 		await composerInput.fill("What is the current sort mechanism?");
@@ -905,6 +909,8 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await composerInput.press("Enter");
 
 		await expect(page).toHaveURL(new RegExp(`/incidents/${inc.id}$`));
+		await waitForRun(page, inc.id, (r) => r.status === "completed", "the Ask");
+		hold(inc.title);
 		const stripStop = page.getByTestId("latest-run-stop");
 		await expect(stripStop).toBeVisible({ timeout: 15_000 });
 
