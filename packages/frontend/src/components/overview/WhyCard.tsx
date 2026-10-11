@@ -121,7 +121,10 @@ export function WhyCard({
 							className="breathe size-1.5 shrink-0 rounded-full bg-live"
 						/>
 						<span className="min-w-0 flex-1 truncate">
-							{viewName(runs, o.live)} is investigating.
+							{viewName(runs, o.live)}{" "}
+							{o.latestRun.awaiting || o.live.awaitingApprovalAt
+								? "waits for your approval in the box below."
+								: "is investigating."}
 							{report
 								? " This finding stands until it reports."
 								: " Its finding lands here when it reports."}

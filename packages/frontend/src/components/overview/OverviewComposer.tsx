@@ -239,7 +239,10 @@ export function OverviewComposer({
 				asks={asks}
 				queued={latest.queued}
 				runId={latest.investigation?.id}
-				agent={harness?.label ?? "The agent"}
+				agent={
+					choice.harnesses.find((h) => h.id === latest.investigation?.harness)
+						?.label ?? "The agent"
+				}
 				cwd={latest.investigation?.workspace?.cwd}
 			/>
 		) : null;

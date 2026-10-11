@@ -118,6 +118,26 @@ describe("fixStage", () => {
 });
 
 describe("nextStrip", () => {
+	it("says a live run waits for your approval, with no other action (#673 w5-14)", () => {
+		const strip = nextStrip({
+			ended: false,
+			cleared: false,
+			runs: 1,
+			live: { name: "Run 2", waiting: true },
+			failed: null,
+			reported: false,
+			option: null,
+			stage: null,
+			checkable: false,
+			hasNextOption: false,
+		});
+		expect(strip).toMatchObject({
+			tone: "warn",
+			text: "Run 2 waits for your approval. Approve or deny it in the box below.",
+		});
+		expect(strip.primary).toBeUndefined();
+	});
+
 	it("walks copy, I applied it, Check now", () => {
 		const ready = nextStrip({
 			...base,
