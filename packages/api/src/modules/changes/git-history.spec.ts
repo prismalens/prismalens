@@ -117,13 +117,14 @@ describe("parseHistory", () => {
 });
 
 describe("readHistory", () => {
-	it("keeps a non-ASCII path as written, not C-quoted", async () => {
+	it("keeps a non-ASCII path, and one that starts with a newline, as written", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "git-history-"));
 		try {
 			const git = (...a: string[]) =>
 				execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir });
 			git("init", "-q");
 			writeFileSync(join(dir, "caf\u00e9.py"), "x");
+			writeFileSync(join(dir, "\nlead"), "y");
 			git("add", ".");
 			git("commit", "-q", "-m", "add");
 			const out = await readHistory({
@@ -133,7 +134,7 @@ describe("readHistory", () => {
 				until: new Date(Date.now() + 60_000),
 				max: 5,
 			});
-			expect(out.map((c) => c.files)).toEqual([["caf\u00e9.py"]]);
+			expect(out.map((c) => c.files.sort())).toEqual([["\nlead", "caf\u00e9.py"].sort()]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

@@ -86,8 +86,8 @@ export function parseHistory(stdout: string): GitChange[] {
 			// -z: paths arrive unquoted, each ended by NUL, after END "\0\n".
 			files: record
 				.slice(end + 1)
+				.replace(/^\0\n?/, "")
 				.split("\0")
-				.map((l) => l.replace(/^\n/, ""))
 				.filter(Boolean),
 		});
 	}
