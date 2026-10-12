@@ -264,6 +264,33 @@ describe("nextStrip", () => {
 		}
 	});
 
+	it("keeps the no-retry wording after a reload (#673 w7-8)", () => {
+		const appliedAt = "2026-10-11T12:20:00Z";
+		const at = "2026-10-11T12:22:00Z";
+		const saved = (lastCheck: FixOption["lastCheck"], checkable: boolean) =>
+			nextStrip({
+				...base,
+				checkable,
+				stage: fixStage({
+					option: { appliedAt, lastCheck },
+					copied: false,
+					alerts: firing,
+					checking: false,
+					check: null,
+				}),
+			});
+		const noRetry =
+			"Could not check; the alert clears on its own once its rule sees the recovery.";
+		const kept = saved({ verdict: "could_not_check", at, retryable: false }, true);
+		expect(kept.text).toBe(noRetry);
+		expect(kept.primary).toBeUndefined();
+		const older = saved({ verdict: "could_not_check", at }, false);
+		expect(older.text).toBe(noRetry);
+		expect(older.primary).toBeUndefined();
+		const timedOut = saved({ verdict: "could_not_check", at }, true);
+		expect(timedOut.primary).toEqual({ id: "check", label: "Try again" });
+	});
+
 	it("links the incident a Resolved one fired again as, else says it will", () => {
 		const resolved = { ...base, ended: true, option: null, stage: null };
 		expect(nextStrip(resolved).link).toBeUndefined();

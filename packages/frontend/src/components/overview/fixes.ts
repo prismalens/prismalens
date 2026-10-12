@@ -163,7 +163,7 @@ export function nextStrip(input: {
 	reported: boolean;
 	option: FixOption | null;
 	stage: FixStage | null;
-	/** A check can run: a metrics source answers for this alert. */
+	/** Check now can judge this alert (Q1c A); also stands in for a check saved without `retryable`. */
 	checkable: boolean;
 	hasNextOption: boolean;
 	/** The charted metric's unit, so a check's value reads as the Impact card does. */
@@ -275,7 +275,7 @@ export function nextStrip(input: {
 						text: `Below the alert threshold${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
 						primary: { id: "check", label: "Check again" },
 					};
-				return c.retryable !== false
+				return (c.retryable ?? input.checkable)
 					? {
 							tone: "warn",
 							text: `Could not check at ${formatClock(c.at)}. The fix may still have worked.`,

@@ -93,7 +93,7 @@ export function useOverview() {
 		return () => window.clearTimeout(t);
 	}, [fetching]);
 	const impact = impactQuery.data ?? null;
-	const checkable = impact?.expression.state === "recovered";
+	const checkable = impact?.checkable ?? false;
 
 	const [allChanges, setAllChanges] = useState(false);
 	const changes = useQuery({

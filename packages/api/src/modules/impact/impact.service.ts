@@ -324,6 +324,7 @@ export class ImpactService {
 			alertId: alert?.id ?? null,
 			state: "not_configured",
 			expression: { state: "not_configured", reason: null },
+			checkable: false,
 			metric: null,
 			scope: { state: "unscoped", matched: 0 },
 			series: [],
@@ -373,8 +374,10 @@ export class ImpactService {
 				}
 				const shape =
 					source === "service"
-						? { series: query, threshold: null }
+						? { series: query, threshold: null, uncheckable: null }
 						: expressionShape(query);
+				chart.checkable =
+					source === "alert" && !!shape.threshold && !shape.uncheckable;
 				chart.metric = {
 					source,
 					query: shape.series,
