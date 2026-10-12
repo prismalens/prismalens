@@ -39,27 +39,26 @@ export const LocalDefaultSchema = z.object({
 export type LocalDefault = z.infer<typeof LocalDefaultSchema>;
 
 /** Where a run's level came from, for the default row's tag. */
-export type AxisSource = "auto-settings" | "settings" | "agent" | "prismalens";
+export type AxisSource = "settings" | "agent" | "prismalens";
 
 type AxisSettings<K extends string, V> = Partial<
 	Record<K, Partial<Record<HarnessId, V>> | undefined>
 >;
 
-/** An auto-started run's level when Settings names none: nobody is there to approve an ask (#673). */
+/**
+ * A run an alert starts has nobody to answer an ask: the agent runs its Auto mode and
+ * PrismaLens refuses whatever it still asks, as headless agent runs do (#818 w5-29).
+ */
 export const AUTO_START_ACCESS_LEVEL: AccessLevel = "auto";
 
-/** An auto-started run: its Settings row, else Auto. Otherwise Settings, then the agent's own default, then PrismaLens's. */
+/** An alert-started run: Auto. A run you start: Settings, then the agent's own default, then PrismaLens's. */
 export function effectiveAccess(
-	s: AxisSettings<"accessLevels" | "autoAccessLevels", AccessLevel>,
+	s: AxisSettings<"accessLevels", AccessLevel>,
 	harness: HarnessId,
 	local: LocalDefault["permission"] | undefined,
 	autoStart = false,
 ): { level: AccessLevel; from: AxisSource } {
-	if (autoStart) {
-		const auto = s.autoAccessLevels?.[harness];
-		if (auto) return { level: auto, from: "auto-settings" };
-		return { level: AUTO_START_ACCESS_LEVEL, from: "prismalens" };
-	}
+	if (autoStart) return { level: AUTO_START_ACCESS_LEVEL, from: "prismalens" };
 	const set = s.accessLevels?.[harness];
 	if (set) return { level: set, from: "settings" };
 	if (local?.level) return { level: local.level, from: "agent" };
@@ -135,6 +134,8 @@ export const HarnessStatusSchema = z.object({
 		.object({
 			version: z.string(),
 			date: z.string(),
+			/** The agent CLI the adapter drove in that run (#818). */
+			companion: z.string().optional(),
 		})
 		.nullable(),
 	/** One-line install hint, shown when not installed. */
@@ -181,6 +182,10 @@ export const HarnessStatusSchema = z.object({
 			outcome: HarnessProbeOutcomeSchema,
 			/** The check's one line, as `pl doctor` prints it. */
 			detail: z.string(),
+			/** The version the agent reported; null when it reported none (#818 w5-31). */
+			version: z.string().nullable().default(null),
+			/** The agent CLI's own version behind a shipped adapter, from `--version` (#818). */
+			companionVersion: z.string().nullable().default(null),
 			/** The model it reported as current: the agent's own model row names this, never a PrismaLens choice. */
 			servedModel: z.string().nullable(),
 			effort: EffortOptionSchema.nullable(),
@@ -229,10 +234,6 @@ export const HarnessSettingsSchema = z.object({
 	accessLevels: z
 		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
 		.optional(),
-	/** Permission level per agent for runs PrismaLens starts from an alert; unset is Auto (`AUTO_START_ACCESS_LEVEL`). */
-	autoAccessLevels: z
-		.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema)
-		.optional(),
 	/** Model ids the operator added per agent, shown in the picker beside the agent's own list (#673 w57). */
 	customModels: z
 		.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema)
@@ -255,9 +256,6 @@ export const UpdateHarnessSettingsSchema = z
 			.optional(),
 		/** Each merges per harness; `null` goes back to the default. */
 		accessLevels: z
-			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
-			.optional(),
-		autoAccessLevels: z
 			.partialRecord(z.enum(HARNESS_IDS), AccessLevelSchema.nullable())
 			.optional(),
 		/** Replaces that agent's list; `null` clears it. */
@@ -286,6 +284,8 @@ export const HarnessProbeResultSchema = z.object({
 	outcome: HarnessProbeOutcomeSchema,
 	detail: z.string(),
 	hard: z.literal(false),
+	version: z.string().nullable().optional(),
+	companionVersion: z.string().nullable().optional(),
 	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
 	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 	servedModel: z.string().nullable().optional(),

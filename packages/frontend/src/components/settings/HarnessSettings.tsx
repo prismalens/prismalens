@@ -18,7 +18,6 @@
 import { ACCESS_LEVELS, type HarnessId } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
-	AUTO_START_ACCESS_LEVEL,
 	type HarnessProbeResult,
 	type HarnessStatus,
 } from "@prismalens/contracts";
@@ -116,8 +115,6 @@ export function HarnessSettings() {
 					<AutoRow />
 				</Pool>
 			</SettingGroup>
-
-			<AutoStartedRuns />
 
 			<CustomModels harnesses={harnesses} />
 
@@ -231,6 +228,13 @@ function AccessRows() {
 			description={
 				<>
 					{permissionLine(effective, axes.accessLevels[id])}
+					<span
+						className="mt-1 block text-text-3"
+						data-testid="harness-alert-runs"
+					>
+						Runs an alert starts don't use this: nobody is there to answer, so
+						they run at Auto and refuse anything they would ask you.
+					</span>
 					{note && (
 						<span
 							className="mt-1 block text-text-3"
@@ -252,44 +256,6 @@ function AccessRows() {
 				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
 			/>
 		</SettingRow>
-	);
-}
-
-/** Runs PrismaLens starts from an alert: their own level, else Auto (#673). */
-function AutoStartedRuns() {
-	const { effective, axes } = useAgentChoice();
-	const update = useUpdateHarnessSettings();
-	if (!effective) return null;
-	const id = effective.id as HarnessId;
-	const autoLevel = axes.autoAccessLevels[id];
-	const defaultLabel = ACCESS_LEVEL_LABEL[AUTO_START_ACCESS_LEVEL];
-	return (
-		<SettingGroup
-			title="Auto-started runs"
-			description="Runs PrismaLens starts from an alert. They start on Auto unless you pick another level here. At Ask always an unattended run waits for your approval of its first command."
-			testId="harness-auto-start"
-		>
-			<Pool>
-				<SettingRow
-					label="Permission"
-					description={
-						autoLevel
-							? `${ACCESS_LEVEL_LABEL[autoLevel]}, set here.`
-							: `${defaultLabel}, the default.`
-					}
-					testId="harness-auto-access"
-				>
-					<AxisSelect
-						value={autoLevel}
-						options={LEVEL_OPTIONS}
-						unsetLabel={`${defaultLabel} (default)`}
-						label={`Permission for auto-started runs on ${effective.label}`}
-						testId="harness-auto-access"
-						onChange={(v) => update.mutate({ autoAccessLevels: { [id]: v } })}
-					/>
-				</SettingRow>
-			</Pool>
-		</SettingGroup>
 	);
 }
 
@@ -475,16 +441,23 @@ function AgentRow({
 			label={
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
 					{harness.label}
-					{harness.installed && harness.tested ? (
+					{inUse && (
+						<span className="text-meta font-medium text-ok">in use</span>
+					)}
+					{harness.installed && versionText(harness) ? (
 						<Hint
-							label={`Tested with ${harness.tested.version}`}
-							meta={harness.tested.date}
+							label={
+								harness.tested
+									? `PrismaLens was tested with ${harness.tested.version}`
+									: "No compatibility run yet"
+							}
+							meta={harness.tested?.date}
 						>
 							<span
 								className="font-mono text-meta font-normal text-text-3"
 								data-testid={`harness-tested-${harness.id}`}
 							>
-								tested {harness.tested.version}
+								{versionText(harness)}
 							</span>
 						</Hint>
 					) : (
@@ -494,9 +467,6 @@ function AgentRow({
 								not installed
 							</span>
 						)
-					)}
-					{inUse && (
-						<span className="text-meta font-medium text-ok">in use</span>
 					)}
 				</span>
 			}
@@ -549,6 +519,22 @@ function AgentRow({
 			}
 		/>
 	);
+}
+
+/**
+ * The version the last check read beside the tested one, so neither reads as the
+ * other (#818 w5-31). Behind a shipped adapter, the agent CLI's own version.
+ */
+export function versionText(h: HarnessStatus): string | null {
+	const cli = h.checked?.companionVersion ?? null;
+	const ran = cli ?? h.checked?.version ?? null;
+	const tested = cli
+		? (h.tested?.companion ?? null)
+		: (h.tested?.version ?? null);
+	if (ran && tested)
+		return ran === tested ? `${ran}, tested` : `${ran}, tested with ${tested}`;
+	if (ran) return ran;
+	return tested ? `tested with ${tested}` : null;
 }
 
 /** A check's verdict as a word (look ruling §1.3, agent row). */

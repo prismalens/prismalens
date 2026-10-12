@@ -193,7 +193,6 @@ type SettingsFixture = {
 	models?: Record<string, string | null>;
 	efforts?: Record<string, string | null>;
 	accessLevels?: Record<string, string | null>;
-	autoAccessLevels?: Record<string, string | null>;
 	favourites?: { harness: string; model: string }[];
 };
 
@@ -223,12 +222,6 @@ async function serveHarnessSettings(
 				accessLevels: {
 					...current.accessLevels,
 					...(body.accessLevels as Record<string, string | null> | undefined),
-				},
-				autoAccessLevels: {
-					...current.autoAccessLevels,
-					...(body.autoAccessLevels as
-						| Record<string, string | null>
-						| undefined),
 				},
 			} as typeof current;
 			await route.fulfill({
@@ -306,7 +299,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		const registry = page.getByTestId("harness-registry");
 		await expect(registry.getByTestId("harness-tested-opencode")).toHaveText(
-			"tested 1.18.30",
+			"tested with 1.18.30",
 		);
 		await expect(
 			registry.getByTestId("harness-tested-claude-code"),
@@ -832,115 +825,23 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(patches[1]).toEqual({ accessLevels: { "claude-code": null } });
 	});
 
-	test("shows Auto-started runs row, Auto by default whatever the agent's own default, and saves overrides (#673)", async ({
+	test("Permission row states the alert-run rule under Settings > Agent (#818)", async ({
 		page,
 	}) => {
-		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
-			...CLAUDE_INSTALLED,
-			localDefault: {
-				permission: {
-					level: "supervised",
-					file: "~/.claude/settings.json",
-					value: "default",
-				},
-			},
-		};
-		await serveHarnesses(
-			page,
-			[
-				OPENCODE_INSTALLED,
-				CLAUDE_WITH_DEFAULTS,
-				CODEX_INSTALLED,
-				DEEPAGENTS_MISSING,
-			],
-			{
-				runnable: true,
-				harness: "claude-code",
-				pinned: false,
-				pinnedBy: null,
-				blockedReason: null,
-			},
-		);
-
-		const patches: Record<string, unknown>[] = [];
-		let current: {
-			harness: string;
-			autoAccessLevels?: Record<string, string | null>;
-		} = {
-			harness: "claude-code",
-		};
-
-		await page.route(isHarnessSettingsUrl, async (route) => {
-			if (route.request().method() === "PATCH") {
-				const body = route.request().postDataJSON() as Record<string, unknown>;
-				patches.push(body);
-				current = {
-					...current,
-					...body,
-					...(body.autoAccessLevels
-						? {
-								autoAccessLevels: {
-									...current.autoAccessLevels,
-									...(body.autoAccessLevels as Record<string, string | null>),
-								},
-							}
-						: {}),
-				};
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			await route.fallback();
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
 		});
+		await openHarnessSettings(page);
 
-		await page.goto("/settings?tab=harness");
-		await expect(
-			page.getByRole("heading", { name: "Agent", exact: true }),
-		).toBeVisible({ timeout: 15_000 });
-
-		const autoGroup = page.getByTestId("harness-auto-start");
-		await expect(autoGroup).toBeVisible();
-		await expect(autoGroup).toContainText(
-			"Runs PrismaLens starts from an alert",
+		const alertRuns = page.getByTestId("harness-alert-runs");
+		await expect(alertRuns).toBeVisible();
+		await expect(alertRuns).toHaveText(
+			"Runs an alert starts don't use this: nobody is there to answer, so they run at Auto and refuse anything they would ask you.",
 		);
-
-		// Unset is Auto, not the agent's own Ask always
-		const autoAccessRow = page.getByTestId("harness-auto-access");
-		await expect(autoAccessRow).toContainText("Auto, the default.");
-		await expect(page.getByTestId("harness-auto-access-select")).toHaveText(
-			"Auto (default)",
-		);
-
-		// Override Auto Permission to Auto-accept edits
-		await page.getByTestId("harness-auto-access-select").click();
-		await page
-			.getByRole("option", { name: "Auto-accept edits", exact: true })
-			.click();
-		await expect.poll(() => patches.length).toBe(1);
-		expect(patches[0]).toEqual({
-			autoAccessLevels: { "claude-code": "auto-edits" },
-		});
-		await expect(autoAccessRow).toContainText("Auto-accept edits, set here.");
-
-		// Clear it back to the default
-		await page.getByTestId("harness-auto-access-select").click();
-		await page
-			.getByRole("option", { name: "Auto (default)", exact: true })
-			.click();
-		await expect.poll(() => patches.length).toBe(2);
-		expect(patches[1]).toEqual({ autoAccessLevels: { "claude-code": null } });
-		await expect(autoAccessRow).toContainText("Auto, the default.");
 	});
 
 	test("renders description line variants for Permission across harnesses (#673 w21)", async ({

@@ -78,7 +78,6 @@ describe("defaultTag", () => {
 		expect(defaultTag("agent")).toBe("Your default");
 		expect(defaultTag("prismalens")).toBe("PrismaLens default");
 		expect(defaultTag("settings")).toBe("From Settings");
-		expect(defaultTag("auto-settings")).toBe("From Settings");
 	});
 });
 
@@ -164,6 +163,8 @@ describe("agentNote variants (the four agent notes)", () => {
 				at: "",
 				outcome: "answers-acp",
 				detail: "",
+				version: null,
+				companionVersion: null,
 				servedModel: null,
 				effort: null,
 				modes: [{ id: "read-only", name: "Ask for approval" }],
@@ -181,6 +182,8 @@ describe("agentNote variants (the four agent notes)", () => {
 				at: "",
 				outcome: "answers-acp",
 				detail: "",
+				version: null,
+				companionVersion: null,
 				servedModel: null,
 				effort: null,
 				modes: [
@@ -229,6 +232,8 @@ describe("levelRowLine, levelModeId, and levelSandbox", () => {
 				at: "",
 				outcome: "answers-acp",
 				detail: "",
+				version: null,
+				companionVersion: null,
 				servedModel: null,
 				effort: null,
 				modes: [],

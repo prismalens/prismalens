@@ -81,15 +81,16 @@ describe("doctor — harness detection", () => {
 		}
 	});
 
-	it("names Claude Code when the claude binary is present and its ACP adapter is not (#650)", () => {
+	it("names Claude Code when the claude companion is present and runs through the shipped adapter", () => {
 		writeFileSync(join(tempPathDir, "claude"), "#!/bin/sh\n");
 		chmodSync(join(tempPathDir, "claude"), 0o755);
 		process.env.PATH = tempPathDir;
 
 		const row = checkHarnessesOnPath().find((c) => c.name === "Harness: Claude Code");
-		expect(row?.pass).toBe(false);
-		expect(row?.detail).toContain(`Claude Code found at ${join(tempPathDir, "claude")}, adapter missing`);
-		expect(row?.detail).toContain("claude /login");
+		expect(row?.pass).toBe(true);
+		expect(row?.detail).toBe(
+			`Claude Code found at ${join(tempPathDir, "claude")}; runs through the claude-agent-acp PrismaLens ships`,
+		);
 	});
 
 	it("passes when a registry harness binary is on PATH", () => {
@@ -273,7 +274,7 @@ describe("doctor — WSL Windows install hint", () => {
 		expect(row).toEqual({
 			name: `Harness: ${HARNESS_REGISTRY.gemini.label}`,
 			pass: false,
-			detail: `gemini: ${shim} is the Windows install; it can't run inside WSL. Install it in this distro: ${HARNESS_REGISTRY.gemini.install}`,
+			detail: `${shim} is the Windows install; it can't run inside WSL. Install it in this distro: ${HARNESS_REGISTRY.gemini.install}`,
 			hard: false,
 		});
 		expect(await checkHarnessHandshake(dir, scan)).toEqual([]);

@@ -29,16 +29,19 @@ describe("UpdateHarnessSettingsSchema", () => {
 		expect(res.success).toBe(false);
 	});
 
-	it("accepts null per key and rejects agentModes and runModes (strict)", () => {
+	it("accepts null per key and rejects agentModes, runModes, and autoAccessLevels (strict)", () => {
 		const parsed = UpdateHarnessSettingsSchema.parse({
 			accessLevels: { "claude-code": null },
-			autoAccessLevels: { gemini: null },
 		});
 		expect(parsed).toEqual({
 			accessLevels: { "claude-code": null },
-			autoAccessLevels: { gemini: null },
 		});
 
+		expect(
+			UpdateHarnessSettingsSchema.safeParse({
+				autoAccessLevels: { gemini: null },
+			}).success,
+		).toBe(false);
 		expect(
 			UpdateHarnessSettingsSchema.safeParse({
 				agentModes: { "claude-code": "default" },
@@ -52,7 +55,7 @@ describe("UpdateHarnessSettingsSchema", () => {
 });
 
 describe("HarnessSettingsSchema", () => {
-	it("accepts both level maps and strips agentModes and legacy run modes", () => {
+	it("accepts level maps and strips agentModes, legacy run modes, and autoAccessLevels", () => {
 		const raw = {
 			harness: "claude-code" as const,
 			accessLevels: { "claude-code": "supervised" as const },
@@ -63,7 +66,7 @@ describe("HarnessSettingsSchema", () => {
 		};
 		const parsed = HarnessSettingsSchema.parse(raw);
 		expect(parsed.accessLevels).toEqual({ "claude-code": "supervised" });
-		expect(parsed.autoAccessLevels).toEqual({ gemini: "auto" });
+		expect("autoAccessLevels" in parsed).toBe(false);
 		expect("agentModes" in parsed).toBe(false);
 		expect("runModes" in parsed).toBe(false);
 		expect("autoRunModes" in parsed).toBe(false);
@@ -71,10 +74,9 @@ describe("HarnessSettingsSchema", () => {
 });
 
 describe("effectiveAccess precedence", () => {
-	it("follows autoStart true precedence: autoAccessLevels -> Auto (ignores accessLevels and local.level)", () => {
+	it("follows autoStart true precedence: always yields Auto from prismalens (ignores accessLevels and local.level)", () => {
 		const s = {
 			accessLevels: { "claude-code": "auto-edits" as const },
-			autoAccessLevels: { "claude-code": "full-access" as const },
 		};
 		const local = {
 			level: "supervised" as const,
@@ -82,13 +84,11 @@ describe("effectiveAccess precedence", () => {
 			value: "default",
 		};
 
-		// 1. autoStart true with autoAccessLevels set
+		// autoStart true is always Auto from prismalens, whatever the next-run chain says
 		expect(effectiveAccess(s, "claude-code", local, true)).toEqual({
-			level: "full-access",
-			from: "auto-settings",
+			level: "auto",
+			from: "prismalens",
 		});
-
-		// 2. autoStart true without autoAccessLevels is Auto, whatever the next-run chain says
 		expect(
 			effectiveAccess(
 				{ accessLevels: s.accessLevels },
@@ -107,10 +107,9 @@ describe("effectiveAccess precedence", () => {
 		});
 	});
 
-	it("follows autoStart false precedence: accessLevels -> local.level -> DEFAULT_ACCESS_LEVEL (ignores autoAccessLevels)", () => {
+	it("follows autoStart false precedence: accessLevels -> local.level -> DEFAULT_ACCESS_LEVEL", () => {
 		const s = {
 			accessLevels: { "claude-code": "auto-edits" as const },
-			autoAccessLevels: { "claude-code": "full-access" as const },
 		};
 		const local = {
 			level: "auto" as const,
@@ -118,14 +117,14 @@ describe("effectiveAccess precedence", () => {
 			value: "auto",
 		};
 
-		// 1. accessLevels wins over autoAccessLevels and local
+		// 1. accessLevels wins over local
 		expect(effectiveAccess(s, "claude-code", local, false)).toEqual({
 			level: "auto-edits",
 			from: "settings",
 		});
 
 		// 2. without accessLevels, local.level wins
-		expect(effectiveAccess({ autoAccessLevels: s.autoAccessLevels }, "claude-code", local, false)).toEqual({
+		expect(effectiveAccess({}, "claude-code", local, false)).toEqual({
 			level: "auto",
 			from: "agent",
 		});

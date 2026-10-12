@@ -1,0 +1,38 @@
+{
+	"name": "@prismalens/agent-adapters",
+	"version": "0.0.1",
+	"license": "Apache-2.0",
+	"private": true,
+	"description": "The ACP adapters PrismaLens ships for agents that do not speak ACP themselves, pinned to the versions the registry tested",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"clean": "rm -rf dist && rm -rf node_modules",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@agentclientprotocol/claude-agent-acp": "0.81.1",
+		"@agentclientprotocol/codex-acp": "1.13.1"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"files": [
+		"dist"
+	]
+}

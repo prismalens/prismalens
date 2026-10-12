@@ -17,10 +17,12 @@ import { Given, Then, When } from "./fixtures";
 import {
 	detail,
 	ensureService,
+	fireIncident,
 	firstPaint,
 	incidentByTitle,
 	LIVE,
 	type Made,
+	QUIET,
 	sidewaysOverflow,
 	visit,
 	waitFor,
@@ -81,17 +83,32 @@ async function runOn(page: Page, f: Fire, name: string, session: string) {
 	return made;
 }
 
-/** Auto-started runs default to Auto (#673); an ask walk needs one that waits for you. */
-async function autoStartAskAlways(page: Page) {
-	await page.request.patch("/api/settings/harness", {
-		data: {
-			autoAccessLevels: {
-				opencode: "supervised",
-				"claude-code": "supervised",
-				codex: "supervised",
-			},
-		},
+/** A run started by a person on an incident whose service trigger is never. */
+async function runAsPerson(
+	page: Page,
+	f: Fire,
+	name: string,
+	session: string,
+	accessLevel: "supervised" | "auto-edits" = "supervised",
+) {
+	const made = await fireIncident(page, f.alertmanager, f.deliverWebhook, {
+		name: f.unique(name),
+		service: QUIET,
+		quiet: true,
+		session,
 	});
+	w(page).inc = made;
+	const res = await page.request.post(`/api/incidents/${made.id}/investigate`, {
+		data: { accessLevel },
+	});
+	expect(res.ok(), await res.text()).toBe(true);
+	await waitForRun(
+		page,
+		made.id,
+		(r) => r.status === "running" || r.status === "completed",
+		"the run",
+	);
+	return made;
 }
 
 async function runId(page: Page): Promise<string> {
@@ -1128,13 +1145,13 @@ Then(
 Given(
 	/^(?:INC-1 has a run started on|INC-1 has a run in progress on) "(.+)"$/,
 	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
-		await autoStartAskAlways(page);
 		const s = session.replace(/^fake-session:/, "");
-		await runOn(
+		await runAsPerson(
 			page,
 			{ alertmanager, deliverWebhook, unique },
 			"BooklogrAskProbe",
 			s,
+			"supervised",
 		);
 		await openConversation(page);
 		await expect(page.getByTestId("dock-ask")).toBeVisible();
@@ -1149,13 +1166,13 @@ Given(
 		session: string,
 	) => {
 		await page.setViewportSize({ width, height: 900 });
-		await autoStartAskAlways(page);
 		const s = session.replace(/^fake-session:/, "");
-		await runOn(
+		await runAsPerson(
 			page,
 			{ alertmanager, deliverWebhook, unique },
 			"BooklogrAskProbe",
 			s,
+			"supervised",
 		);
 		await openConversation(page);
 		await expect(page.getByTestId("dock-ask")).toBeVisible();
@@ -1248,28 +1265,27 @@ Given(
 			}
 		}
 
-		await page.request.patch("/api/settings/harness", {
-			data: {
-				autoAccessLevels: {
-					opencode: "auto-edits",
-					"claude-code": "auto-edits",
-					codex: "auto-edits",
-				},
-				accessLevels: {
-					opencode: "auto-edits",
-					"claude-code": "auto-edits",
-					codex: "auto-edits",
-				},
-			},
-		});
 		const s = session.replace(/^fake-session:/, "");
-		await runOn(
+		await runAsPerson(
 			page,
 			{ alertmanager, deliverWebhook, unique },
 			"BooklogrAutoEditsProbe",
 			s,
+			"auto-edits",
 		);
 		await openConversation(page);
+	},
+);
+
+Then(
+	"no card waits and the transcript says nobody was there",
+	async ({ page }) => {
+		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
+		await expect(page.getByTestId("transcript-ask")).toHaveCount(0);
+		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
+		await expect(page.getByTestId("transcript-unattended")).toContainText(
+			"Refused, nobody was there to approve: Write /tmp/pl-ask-probe.txt",
+		);
 	},
 );
 
@@ -1281,6 +1297,32 @@ Then(
 		const allowed = page.getByTestId("transcript-allowed");
 		await expect(allowed).toBeVisible();
 		await expect(allowed).toContainText(text);
+	},
+);
+
+Given(
+	/^(?:an alert starts a run on|an alert-started run on) "(.+)"$/,
+	async ({ page, alertmanager, deliverWebhook, unique }, session: string) => {
+		const oldRuns = await page.request
+			.get("/api/investigations?status=running&limit=100")
+			.catch(() => null);
+		if (oldRuns?.ok()) {
+			const { data } = (await oldRuns.json()) as { data: { id: string }[] };
+			for (const r of data) {
+				await page.request
+					.post(`/api/investigations/${r.id}/cancel`)
+					.catch(() => null);
+			}
+		}
+
+		const s = session.replace(/^fake-session:/, "");
+		await runOn(
+			page,
+			{ alertmanager, deliverWebhook, unique },
+			"BooklogrAlertAskProbe",
+			s,
+		);
+		await openConversation(page);
 	},
 );
 

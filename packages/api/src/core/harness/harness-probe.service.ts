@@ -32,6 +32,8 @@ export class HarnessProbeService {
 		this.models.rememberCheck(id, {
 			outcome: result.outcome,
 			detail: result.detail,
+			version: result.version ?? null,
+			companionVersion: result.companionVersion ?? null,
 			servedModel: result.servedModel ?? null,
 			effort,
 			modes: result.modes ?? null,
@@ -44,6 +46,8 @@ export class HarnessProbeService {
 			outcome: result.outcome,
 			detail: result.detail,
 			hard: result.hard,
+			version: result.version ?? null,
+			companionVersion: result.companionVersion ?? null,
 			...(result.models?.length ? { models: result.models } : {}),
 			...(result.outcome === "answers-acp"
 				? {

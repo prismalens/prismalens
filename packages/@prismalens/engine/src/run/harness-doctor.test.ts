@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpSession } from "../runner/acp-client.js";
-import { classify, probeHarness } from "./harness-doctor.js";
+import { classify, probeHarness, versionOf } from "./harness-doctor.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -36,6 +38,8 @@ describe("probeHarness", () => {
 			outcome: "answers-acp",
 			detail: "answers ACP, fake 0",
 			hard: false,
+			version: "0",
+			companionVersion: null,
 			// What it reported of itself, for the picker (R4.2, R4.3): nothing here.
 			servedModel: null,
 			effort: null,
@@ -165,4 +169,24 @@ describe("probeHarness", () => {
 		expect(Date.now() - started).toBeLessThan(600);
 	});
 });
+
+describe("versionOf", () => {
+	it("Given an executable script, When versionOf runs, Then it returns 1.2.3 for a script printing 'tool 1.2.3 (x)' and null for one that exits 1", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-version-test-"));
+		const scriptOk = join(dir, "tool-ok.sh");
+		const scriptFail = join(dir, "tool-fail.sh");
+		try {
+			writeFileSync(scriptOk, '#!/bin/sh\necho "tool 1.2.3 (x)"\n');
+			chmodSync(scriptOk, 0o755);
+			writeFileSync(scriptFail, "#!/bin/sh\nexit 1\n");
+			chmodSync(scriptFail, 0o755);
+
+			expect(await versionOf(scriptOk)).toBe("1.2.3");
+			expect(await versionOf(scriptFail)).toBeNull();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
 

@@ -10,6 +10,7 @@
  * needs no provider for `session/new`, and claude-agent-acp checks credentials
  * only at turn start. So a pass means "answers ACP", nothing more.
  */
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,6 +48,10 @@ export interface HarnessProbeResult {
 	/** The outcome's fixed words, plus the auth method names or the harness's stderr tail when there are any. One line. */
 	detail: string;
 	hard: false;
+	/** The version the agent reported in `initialize`; null when it reported none. */
+	version?: string | null;
+	/** `<companion> --version` for a row whose adapter drives a separate CLI (#818). */
+	companionVersion?: string | null;
 	/** The models the harness itself offered on `session/new`; absent when it did not answer. */
 	models?: AcpOfferedModel[];
 	/** What it reported as its current model, its effort option and whether it takes images (R4.2, R4.3). */
@@ -69,6 +74,21 @@ function effortLevels(
 
 function oneLine(message: string): string {
 	return message.replace(/\s*\r?\n\s*/g, " ").trim();
+}
+
+/** The first x.y.z in `<bin> --version`, or null; never longer than 5 s. */
+export function versionOf(bin: string): Promise<string | null> {
+	return new Promise((resolve) => {
+		execFile(
+			bin,
+			["--version"],
+			{ timeout: 5_000, shell: process.platform === "win32" },
+			(err, stdout) =>
+				resolve(
+					err ? null : (/\d+\.\d+\.\d+[\w.-]*/.exec(stdout)?.[0] ?? null),
+				),
+		);
+	});
 }
 
 export function classify(
@@ -136,6 +156,7 @@ export async function probeHarness(
 			| "configFiles"
 			| "sessionMeta"
 			| "companionBinary"
+			| "adapterPackage"
 		>;
 		timeoutMs?: number;
 		sandbox?: typeof checkSandbox;
@@ -148,16 +169,16 @@ export async function probeHarness(
 	mkdirSync(cwd, { recursive: true });
 
 	try {
-		const { env, runEnv } = prepareRunEnv({
+		const { env, runEnv, launch } = prepareRunEnv({
 			harness,
-			descriptor,
+			...(opts.descriptor ? { descriptor: opts.descriptor } : {}),
 			cwd,
 			runDir,
 			env: getHarnessProviderKeys(harness, process.env),
 		});
 		const session = new AcpSession({
-			command: descriptor.binary,
-			args: descriptor.acpArgs(runEnv),
+			command: launch.command,
+			args: [...launch.args, ...descriptor.acpArgs(runEnv)],
 			cwd,
 			env,
 			// open() sends no prompt turn, so no ask can arrive; nobody could answer one.
@@ -185,6 +206,15 @@ export async function probeHarness(
 				outcome: "answers-acp",
 				detail,
 				hard: false,
+				version: agent.version ?? null,
+				// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
+				companionVersion:
+					runEnv.companionPath &&
+					Object.values(descriptor.acpEnv(runEnv)).includes(
+						runEnv.companionPath,
+					)
+						? await versionOf(runEnv.companionPath)
+						: null,
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,

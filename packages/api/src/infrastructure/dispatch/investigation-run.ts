@@ -20,7 +20,7 @@ import {
 	resolveAccess,
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
-import { resolveOnPath } from "@prismalens/config/harness-selection";
+import { harnessLaunch } from "@prismalens/config/harness-selection";
 import { INVESTIGATION_DEFAULTS } from "@prismalens/config/investigation";
 import {
 	type CanonicalEvent,
@@ -244,6 +244,7 @@ async function runJobInternal(
 				...(customModel ? { customModel } : {}),
 				...(effort ? { effort } : {}),
 				accessLevel,
+				...(data.unattended ? { unattended: true } : {}),
 				...(attachments?.length ? { attachments } : {}),
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the child gets only the launcher's allowlist (layered on by buildChildEnv) plus this harness's own provider keys, never prismalens's own PRISMALENS_* secrets (ADR 0004 §5).
@@ -416,7 +417,7 @@ async function runFollowUp(
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
-		if (!resolveOnPath(row.binary))
+		if (!harnessLaunch(row))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
 		// ADR 0004 §2 keeps the pinned commit; the agent is told when a newer run saw others (#673 w27).

@@ -62,17 +62,14 @@ export interface HarnessSettings {
 	efforts?: Partial<Record<HarnessId, string>>;
 	/** Permission level per harness for the next run (#673 w21); absent follows the agent's own default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel>>;
-	/** The same for runs PrismaLens starts from an alert; absent is Auto. */
-	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel>>;
 	/** Model ids the operator added per harness (#673 w57). */
 	customModels?: Partial<Record<HarnessId, string[]>>;
 }
 
-const AXES = ["accessLevels", "autoAccessLevels"] as const;
+const AXES = ["accessLevels"] as const;
 type Axis = (typeof AXES)[number];
 const AXIS_VALUES: Record<Axis, readonly string[]> = {
 	accessLevels: ACCESS_LEVELS,
-	autoAccessLevels: ACCESS_LEVELS,
 };
 
 export interface HarnessSettingsPatch {
@@ -85,7 +82,6 @@ export interface HarnessSettingsPatch {
 	efforts?: Partial<Record<HarnessId, string | null>>;
 	/** Each merged per harness; `null` goes back to the default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
-	autoAccessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
 	/** Replaces that harness's list; `null` clears it. */
 	customModels?: Partial<Record<HarnessId, string[] | null>>;
 }
@@ -235,9 +231,8 @@ export class HarnessService implements OnApplicationBootstrap {
 		});
 
 	/**
-	 * A run's level where the request named none (#673 w21): an
-	 * auto-started run's own Settings row, else Auto; any other run Settings,
-	 * then the agent's own default, then PrismaLens's.
+	 * A run's level where the request named none (#673 w21): an alert-started
+	 * run Auto (#818); any other run Settings, then the agent's own default, then PrismaLens's.
 	 */
 	async effectiveChoice(
 		id: HarnessId,

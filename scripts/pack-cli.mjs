@@ -138,6 +138,15 @@ const PINNED = {
  */
 const VENDORED = ["@prisma/adapter-better-sqlite3"];
 
+/**
+ * First-party packages whose pinned dependencies are installed inside them with
+ * `--omit=optional`, never hoisted: the ACP adapters run the user's own claude /
+ * codex, and their optional native copies are ~620 MB nobody runs (#818).
+ */
+const NESTED = ["@prismalens/agent-adapters"];
+const NATIVE_COPIES =
+	/node_modules\/(@anthropic-ai\/claude-agent-sdk-|@openai\/codex-)[a-z]/;
+
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const opt = (name, fallback) => {
@@ -302,6 +311,7 @@ function computeUnion(copied, workspace, catalog, cliManifest) {
 		add(name, spec, "prismalens");
 	}
 	for (const name of copied) {
+		if (NESTED.includes(name)) continue;
 		const { manifest } = workspace.get(name);
 		for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
 			add(dep, spec, name);
@@ -462,7 +472,10 @@ function scanImports(stagedModules, union, copiedNames, optional) {
 		// The SPA under api/public is a finished browser bundle: its imports were
 		// already resolved by Vite and its minified output trips any source-level
 		// regex. Node never resolves anything in there.
-		if (relative(stagedModules, file).split(sep).includes("public")) continue;
+		const parts = relative(stagedModules, file).split(sep);
+		if (parts.includes("public")) continue;
+		// A NESTED package's own install resolves its imports, not the union.
+		if (parts.includes("node_modules")) continue;
 		const source = readFileSync(file, "utf8");
 		IMPORT_RE.lastIndex = 0;
 		let match = IMPORT_RE.exec(source);
@@ -587,6 +600,24 @@ function assertTarball(tarball, copiedNames) {
 		fail(
 			"the tarball has no API entry at node_modules/@prismalens/api/dist/src/main.js",
 		);
+	}
+	for (const name of NESTED) {
+		const short = name.replace("@prismalens/", "");
+		const nested = JSON.parse(
+			tar(tarball, [
+				"-xzOf",
+				`package/node_modules/@prismalens/${short}/package.json`,
+			]),
+		);
+		for (const dep of Object.keys(nested.dependencies ?? {})) {
+			const entry = `package/node_modules/@prismalens/${short}/node_modules/${dep}/package.json`;
+			if (!has((e) => e === entry))
+				fail(`the tarball has no ${dep} inside ${name}`);
+		}
+	}
+	const natives = entries.filter((e) => NATIVE_COPIES.test(e));
+	if (natives.length > 0) {
+		fail(`the tarball carries adapter native copies: ${natives[0]}`);
 	}
 	const noise = entries.filter((e) => /\.tsbuildinfo$|\.map$/.test(e));
 	if (noise.length > 0) {
@@ -745,8 +776,39 @@ export function packCli() {
 
 		writeFileSync(
 			join(target, "package.json"),
-			`${JSON.stringify(stagedManifest(manifest), null, "\t")}\n`,
+			`${JSON.stringify(
+				NESTED.includes(name)
+					? { ...stagedManifest(manifest), dependencies: manifest.dependencies }
+					: stagedManifest(manifest),
+				null,
+				"\t",
+			)}\n`,
 		);
+		if (NESTED.includes(name)) {
+			for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
+				if (!/^\d+\.\d+\.\d+$/.test(spec))
+					fail(`${name} must pin ${dep} exactly, not ${spec}`);
+			}
+			console.log(`==> installing ${name}'s pins without optional deps`);
+			run(
+				"npm",
+				[
+					"install",
+					"--omit=optional",
+					"--omit=dev",
+					"--ignore-scripts",
+					"--no-package-lock",
+					"--no-audit",
+					"--no-fund",
+					"--loglevel",
+					"warn",
+				],
+				target,
+			);
+			for (const file of walkFiles(join(target, "node_modules"))) {
+				if (isNoise(file)) rmSync(file);
+			}
+		}
 
 		if (name === "@prismalens/database") {
 			// Migration SQL + schema, applied at first boot through the

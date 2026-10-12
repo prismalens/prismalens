@@ -39,6 +39,7 @@ export const ASK_END: Record<Exclude<AskState, "waiting">, string> = {
 	ended: "Not answered before the run ended",
 	allowed: "Allowed by the run's permission level",
 	mode_kept: "Refused: the run keeps its mode",
+	unattended: "Refused: an alert started this run and nobody was there",
 };
 
 export function askEnd(ask: Pick<AskRecord, "state" | "clamped">): string {

@@ -316,7 +316,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the packages the engine imports
-        run: pnpm --filter @prismalens/config --filter @prismalens/contracts build
+        run: pnpm --filter "@prismalens/contracts..." build
 
       - name: Install the pinned OpenCode
         run: npm install -g opencode-ai@1.18.30 && opencode --version

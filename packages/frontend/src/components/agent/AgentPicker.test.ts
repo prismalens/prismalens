@@ -53,6 +53,8 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 		at: "",
 		outcome: "answers-acp",
 		detail: "answers ACP",
+		version: null,
+		companionVersion: null,
 		servedModel: "claude-sonnet-5-5",
 		effort: null,
 		modes: [

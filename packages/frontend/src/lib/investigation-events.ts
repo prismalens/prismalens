@@ -368,7 +368,7 @@ export type TranscriptItem =
 	| {
 			kind: "level";
 			key: string;
-			outcome: "allowed" | "mode_kept";
+			outcome: "allowed" | "mode_kept" | "unattended";
 			text: string;
 	  }
 	| {
@@ -571,7 +571,7 @@ function stoppedLine(
 	};
 }
 
-const LEVEL_OUTCOMES = new Set(["allowed", "mode_kept"]);
+const LEVEL_OUTCOMES = new Set(["allowed", "mode_kept", "unattended"]);
 const READS = new Set(["read", "search"]);
 
 /** The one line an ask the level answered leaves; reads and searches leave none (#673 w21). */
@@ -580,7 +580,7 @@ function levelLine(
 	level: AccessLevel | null | undefined,
 ): Omit<Extract<TranscriptItem, { kind: "level" }>, "key"> | null {
 	if (!LEVEL_OUTCOMES.has(event.outcome)) return null;
-	const outcome = event.outcome as "allowed" | "mode_kept";
+	const outcome = event.outcome as "allowed" | "mode_kept" | "unattended";
 	const title = event.title ?? "A tool call";
 	if (outcome === "allowed") {
 		if (event.toolKind && READS.has(event.toolKind)) return null;
@@ -592,6 +592,12 @@ function levelLine(
 				: `Allowed: ${title}`,
 		};
 	}
+	if (outcome === "unattended")
+		return {
+			kind: "level",
+			outcome,
+			text: `Refused, nobody was there to approve: ${title}`,
+		};
 	return {
 		kind: "level",
 		outcome,

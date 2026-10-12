@@ -123,6 +123,8 @@ export const RunFidelitySchema = z.object({
 	/** The level the run asked for, and the one the reported mode is (#673 w21 ruling 2026-10-10). */
 	access: AccessLevelSchema.optional(),
 	ranAccess: AccessLevelSchema.optional(),
+	/** An alert started the run: past reads, every ask was refused at once (#818 w5-29). */
+	unattended: z.boolean().optional(),
 	/** The model id the run asked the harness for; absent when the harness chose its own. */
 	model: z.string().optional(),
 	/** Where that id came from (#337 run e, G11). Additive; older records have none. */
@@ -551,6 +553,8 @@ export const PERMISSION_ASK_OUTCOMES = [
 	"restarted",
 	"allowed",
 	"mode_kept",
+	// An alert-started run refused it: nobody was there to answer (#818 w5-29).
+	"unattended",
 ] as const;
 export type PermissionAskOutcome = (typeof PERMISSION_ASK_OUTCOMES)[number];
 
@@ -962,6 +966,8 @@ export const InvestigationJobDataSchema = z.object({
 	brief: z.string().max(4000).optional(),
 	/** The run's permission level (#673 w21); Settings, else the agent's own default, when absent. A resume without one keeps the session's mode. */
 	accessLevel: AccessLevelSchema.optional(),
+	/** An alert started the run: nobody is there to answer an ask (#818 w5-29). */
+	unattended: z.boolean().optional(),
 	...RunChoiceSchema.shape,
 	/** Files that go with the brief, as the host stored them (R4.3). */
 	attachments: z.array(JobAttachmentSchema).optional(),

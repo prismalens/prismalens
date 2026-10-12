@@ -184,7 +184,11 @@ function realDispatch() {
 		investigations,
 		{ findById: vi.fn(async () => null) } as never,
 		timeline as never,
-		{ resolveSelection: vi.fn(async () => ({ runnable: false })), getSettings: vi.fn(async () => ({})) } as never,
+		{
+			resolveSelection: vi.fn(async () => ({ runnable: false })),
+			getSettings: vi.fn(async () => ({})),
+			effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised" })),
+		} as never,
 		{} as never,
 		prisma,
 		{} as never,
@@ -425,6 +429,16 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		const dropped = await prisma.job.findUniqueOrThrow({ where: { investigationId: old.id } });
 		expect(JSON.parse(dropped.payload)).not.toHaveProperty("accessLevel");
 		expect(JSON.parse(dropped.payload)).not.toHaveProperty("agentMode");
+	});
+
+	it("gives a follow-up on an alert-started run your level, not its Auto (#818)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { triggerType: "auto_critical", accessLevel: "auto", agentMode: "build" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({ accessLevel: "supervised" });
+		expect(JSON.parse(rearmed.payload)).not.toHaveProperty("unattended");
 	});
 
 	it("admits one of two follow-ups sent together", async () => {

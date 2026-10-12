@@ -549,8 +549,14 @@ function summaryFacts(
 						asked && ran && asked !== ran
 							? `Asked for ${ACCESS_LEVEL_LABEL[asked]}; the agent ran ${ACCESS_LEVEL_LABEL[ran]}.`
 							: ACCESS_LEVEL_LINE[level],
+						// #818 w5-29: how the run started decides its level.
+						f?.unattended
+							? "An alert started it, so nobody was there to answer: past reading files, anything the agent asked was refused. A follow-up you send runs at your Permission setting."
+							: null,
 						sandboxLine(levelSandbox(ctx.harness, level)),
-					].join(" "),
+					]
+						.filter(Boolean)
+						.join(" "),
 				}
 			: null,
 		chat,

@@ -97,6 +97,8 @@ export interface HarnessRunEnv {
 	model?: string;
 	/** Absolute path of the row's `companionBinary` on PATH, when found. */
 	companionPath?: string;
+	/** The run starts the adapter PrismaLens ships, not one on PATH (#818). */
+	shipped?: boolean;
 }
 
 export interface HarnessDescriptor {
@@ -110,6 +112,11 @@ export interface HarnessDescriptor {
 	 * to the adapter so the adapter never ships a second one.
 	 */
 	companionBinary?: string;
+	/**
+	 * The npm package of the ACP adapter PrismaLens ships for this agent (#818): with
+	 * no `binary` on PATH, it runs on the companion, so the companion is the prerequisite.
+	 */
+	adapterPackage?: string;
 	/** argv for `binary` that starts an ACP server on stdio in `cwd`. */
 	acpArgs: (env: HarnessRunEnv) => string[];
 	/** Env vars that point the harness at prismalens's per-run config, never the user's. */
@@ -133,7 +140,7 @@ export interface HarnessDescriptor {
 	/** Modes the agent runs under its OS sandbox with no network, per its source; a probe still decides `enforced` (#673 w51). */
 	sandboxedModes?: readonly string[];
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
-	tested?: { version: string; date: string };
+	tested?: { version: string; date: string; companion?: string };
 	/**
 	 * How a chosen model reaches the harness (R4.2): `acp`, the session's own
 	 * `model` config option, verified by its answer; or `unsupported`, so an
@@ -350,6 +357,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Claude Code",
 		binary: "claude-agent-acp",
 		companionBinary: "claude",
+		adapterPackage: "@agentclientprotocol/claude-agent-acp",
 		acpArgs: () => [],
 		acpEnv: ({ companionPath }) => ({
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
@@ -378,7 +386,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// _meta settings.availableModels empties the list and set_config_option answers Invalid value.
 		customModelEnvKey: "ANTHROPIC_CUSTOM_MODEL_OPTION",
 		install:
-			"npm i -g @agentclientprotocol/claude-agent-acp --omit=optional  (then `claude /login`, or set ANTHROPIC_API_KEY)",
+			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
 		// claude-agent-acp 0.81.1 modes. It reports `acceptEdits` when the model has no `auto`, and
 		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
 		access: {
@@ -420,8 +428,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 		},
 		modeMechanism: "acp",
-		// scripts/acp-admission.ts, 3 of 3 on Ollama gemma4:31b-cloud (#634).
-		tested: { version: "0.81.1", date: "2026-09-23" },
+		// scripts/acp-admission.ts through the shipped adapter on claude 2.1.296, Haiku (#818). Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
 		modelVia: "acp",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		resume: true,
@@ -430,16 +438,20 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "codex",
 		label: "Codex",
 		binary: "codex-acp",
+		companionBinary: "codex",
+		adapterPackage: "@agentclientprotocol/codex-acp",
 		acpArgs: () => [],
-		acpEnv: () => ({
+		acpEnv: ({ companionPath, shipped }) => ({
 			// codex-acp reads an env key only once the client picks its api-key method;
 			// without this it answers -32000 when no login exists (codex-acp 1.13.1, #634).
 			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
+			// The shipped adapter has no codex of its own; a PATH install keeps its bundled one (#818).
+			...(shipped && companionPath ? { CODEX_PATH: companionPath } : {}),
 		}),
 		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
 		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
 		install:
-			"npm i -g @agentclientprotocol/codex-acp  (then `codex login`, or set OPENAI_API_KEY)",
+			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
 		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
 		// Set through its `mode` config option, the reply verified; 1.13.1 has no workspace-write (#673 w21).
 		access: {
@@ -477,7 +489,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634).
+		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634). Must equal @prismalens/agent-adapters' pin.
 		tested: { version: "1.13.1", date: "2026-09-24" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",

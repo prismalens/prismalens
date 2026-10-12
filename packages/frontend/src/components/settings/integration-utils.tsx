@@ -18,13 +18,24 @@ export function getTemplateIcon(templateId: string) {
 	return <Link2 className="h-5 w-5" />;
 }
 
-/** A connection's status as a word: connected ok, expired warn, broken danger (look ruling §1.3). */
-export function ConnectionStatusBadge({ status }: { status: string }) {
+/**
+ * A connection's status as a word: connected ok, expired warn, broken danger (look ruling §1.3).
+ * A git token that no Test or clone has used yet is "not tested", never "connected" (#818 w5-7).
+ */
+export function ConnectionStatusBadge({
+	status,
+	untested = false,
+}: {
+	status: string;
+	untested?: boolean;
+}) {
 	const s = status.toUpperCase();
 	let tone: StateTone = "neutral";
 	let label = status.replace(/_/g, " ").toLowerCase();
 
-	if (s === "ACTIVE") {
+	if (s === "ACTIVE" && untested) {
+		label = "not tested";
+	} else if (s === "ACTIVE") {
 		tone = "ok";
 		label = "connected";
 	} else if (

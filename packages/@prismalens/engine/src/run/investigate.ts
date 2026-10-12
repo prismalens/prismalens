@@ -28,7 +28,11 @@ import {
 	NO_MODE_KEY,
 	resolveAccess,
 } from "@prismalens/config/harness";
-import { resolveOnPath } from "@prismalens/config/harness-selection";
+import {
+	type HarnessLaunch,
+	harnessLaunch,
+	resolveOnPath,
+} from "@prismalens/config/harness-selection";
 import {
 	ASK_TIMEOUT_MS,
 	type AttachmentRef,
@@ -83,7 +87,7 @@ export interface RunInvestigationOptions {
 		| "sessionMeta"
 		| "companionBinary"
 	> &
-		Partial<Pick<HarnessDescriptor, "modelVia">>;
+		Partial<Pick<HarnessDescriptor, "modelVia" | "adapterPackage">>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
 	/** Per-run directory: harness config, data home, transcript. */
@@ -113,6 +117,8 @@ export interface RunInvestigationOptions {
 	permission?: PermissionPolicy;
 	/** How long the policy lets an ask wait; the conversation shows when it lapses. */
 	askTimeoutMs?: number;
+	/** An alert started the run: past reads, every ask is refused at once (#818 w5-29). */
+	unattended?: boolean;
 	/** Whether the agent's own sandbox holds the run's mode here; the report's `enforced` rests on it (#673 w51). */
 	sandboxCheck?: typeof checkSandbox;
 	/** Operator messages to the live session (#743). */
@@ -349,6 +355,7 @@ function levelConfigFiles(
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	env: NodeJS.ProcessEnv;
 	runEnv: HarnessRunEnv;
+	launch: HarnessLaunch;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const configDir = join(opts.runDir, "config");
@@ -358,12 +365,20 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	const companionPath = descriptor.companionBinary
 		? resolveOnPath(descriptor.companionBinary)
 		: null;
+	// A swapped-in binary (tests, admission) runs as given; a row nobody installed fails to start.
+	const launch = (!opts.descriptor && harnessLaunch(descriptor)) || {
+		command: descriptor.binary,
+		args: [],
+		env: {},
+		shipped: false,
+	};
 	const runEnv: HarnessRunEnv = {
 		configDir,
 		dataDir,
 		cwd: opts.cwd,
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
+		...(launch.shipped ? { shipped: true } : {}),
 	};
 	const overlay = opts.accessLevel
 		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
@@ -382,12 +397,14 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	return {
 		env: {
 			...(opts.env ?? {}),
+			...launch.env,
 			...descriptor.acpEnv(runEnv),
 			...(opts.customModel && opts.model && customKey
 				? { [customKey]: opts.model }
 				: {}),
 		},
 		runEnv,
+		launch,
 	};
 }
 
@@ -411,7 +428,7 @@ export async function* runInvestigation(
 		askedMode ?? NO_MODE_KEY,
 		access.mechanism,
 	);
-	const { env, runEnv } = prepareRunEnv({
+	const { env, runEnv, launch } = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -430,14 +447,16 @@ export async function* runInvestigation(
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
-		command: descriptor.binary,
-		args: descriptor.acpArgs(runEnv),
+		command: launch.command,
+		args: [...launch.args, ...descriptor.acpArgs(runEnv)],
 		cwd: opts.cwd,
 		env,
 		limits: opts.limits,
-		permission: levelPolicy(keepMode ? "supervised" : level, {
-			policy: opts.permission ?? denyAllPolicy,
-		}),
+		permission: levelPolicy(
+			keepMode ? "supervised" : level,
+			{ policy: opts.permission ?? denyAllPolicy },
+			{ unattended: !!opts.unattended },
+		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
 			askWindow(
@@ -614,6 +633,7 @@ export async function* runInvestigation(
 			fidelity: modeFidelity(sandbox[ranMode]),
 			...(keepMode ? {} : { access: level }),
 			...(ran ? { ranAccess: ran } : {}),
+			...(opts.unattended ? { unattended: true } : {}),
 		};
 		const noNetwork = fidelity.fidelity === "enforced";
 		const modeName =
