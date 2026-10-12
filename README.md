@@ -72,8 +72,8 @@ none; with no provider signed in, that is an OpenCode Zen model.
 
 ### Your first investigation
 
-- **On your own service.** In the dashboard, Services, then Add Service, with
-  **Repository** set to a folder or a git URL. Then Incidents, Create Incident,
+- **On your own service.** In the dashboard, Services, then New service, with
+  **Repository** set to a folder or a git URL. Then Incidents, New incident,
   pick the service and click **Investigate**. The agent works in a throwaway
   clone of the repository's last commit: your checkout is never its working
   directory, and uncommitted changes are not read. A run you start uses **Ask
