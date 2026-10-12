@@ -37,12 +37,14 @@ export const THIRD_PARTY = [
 	{ pkg: "@openai/codex", files: [], declared: "Apache-2.0" },
 ];
 
+// npm is a .cmd shim on Windows, which execFileSync cannot start directly.
 function run(cmd, args, cwd) {
-	return execFileSync(cmd, args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "inherit"],
-	});
+	const viaCmd = process.platform === "win32" && cmd === "npm";
+	return execFileSync(
+		viaCmd ? "cmd.exe" : cmd,
+		viaCmd ? ["/d", "/c", cmd, ...args] : args,
+		{ cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+	);
 }
 
 function fail(message) {
