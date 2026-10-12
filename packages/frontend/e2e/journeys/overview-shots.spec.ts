@@ -243,6 +243,7 @@ function impact(incidentId: string, mode: ImpactMode) {
 						: "recovered",
 			reason: mode === "service" ? "the rule is no longer loaded" : null,
 		},
+		checkable: mode !== "none" && mode !== "service",
 		metric:
 			mode === "none"
 				? null

@@ -3519,6 +3519,9 @@
                                   "at": {
                                     "type": "string",
                                     "format": "date-time"
+                                  },
+                                  "retryable": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "required": [
@@ -3683,6 +3686,9 @@
                             "at": {
                               "type": "string",
                               "format": "date-time"
+                            },
+                            "retryable": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -3837,6 +3843,9 @@
                             "at": {
                               "type": "string",
                               "format": "date-time"
+                            },
+                            "retryable": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -4083,6 +4092,9 @@
                         "state",
                         "reason"
                       ]
+                    },
+                    "checkable": {
+                      "type": "boolean"
                     },
                     "metric": {
                       "anyOf": [
@@ -4550,6 +4562,7 @@
                     "alertId",
                     "state",
                     "expression",
+                    "checkable",
                     "metric",
                     "scope",
                     "series",
