@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOperator } from "@/hooks/use-operator";
 import { orpc } from "@/lib/api/orpc-client";
-import { guessDeviceName } from "@/lib/device-name";
+import { guessDeviceName, namesBrowser } from "@/lib/device-name";
 import { formatClock, formatDate } from "@/lib/format-time";
 
 export function useDevices(enabled = true) {
@@ -35,8 +35,9 @@ export function useDevices(enabled = true) {
 
 /** A browser by name, else the client's own first word ("curl/8.5.0") so no row goes blank (#831 w6-1). */
 function clientName(userAgent: string): string | undefined {
+	// A system alone ("curl/8.5.0 Android 14" reads "Android") names no client.
 	return (
-		guessDeviceName(userAgent, false) ??
+		(namesBrowser(userAgent) ? guessDeviceName(userAgent, false) : undefined) ??
 		(userAgent.trim().split(/\s+/)[0] || undefined)
 	);
 }

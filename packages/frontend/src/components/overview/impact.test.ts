@@ -27,6 +27,15 @@ describe("noChartText", () => {
 		);
 		expect(unknown(null)).toBe("No chart: the alert's query is not known.");
 	});
+
+	it("names both causes of too_broad, for any query the card charts", () => {
+		const text = noChartText({
+			state: "too_broad",
+			expression: { state: "recovered", reason: null },
+		});
+		expect(text).toMatch(/50 series or more or over 2 MB/);
+		expect(text).not.toMatch(/alert/);
+	});
 });
 
 const NOW = Date.parse("2026-10-11T12:00:00Z");

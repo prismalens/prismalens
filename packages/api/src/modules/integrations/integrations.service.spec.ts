@@ -201,13 +201,15 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			type Token = { label: string; fingerprint: string };
 			vi.spyOn(
 				service as unknown as {
-					lsRemoteMatching: (t: Token) => Promise<string[]>;
+					lsRemoteMatching: (
+						t: Token,
+					) => Promise<{ details: string[]; rejected: string | null }>;
 				},
 				"lsRemoteMatching",
-			).mockImplementation(async (t) => [
-				`github.com rejected token "${t.label}" (fp ${t.fingerprint}). It was revoked or mistyped; replace it.`,
-				"ok org/other",
-			]);
+			).mockImplementation(async (t) => {
+				const message = `github.com rejected token "${t.label}" (fp ${t.fingerprint}). It was revoked or mistyped; replace it.`;
+				return { details: [message, "ok org/other"], rejected: message };
+			});
 
 			const result = await service.testConnection("conn-git-revoked");
 
@@ -221,6 +223,48 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 					status: "CREDENTIALS_INVALID",
 					lastErrorMessage: expect.stringContaining("github.com rejected token"),
 				}),
+			});
+		});
+	});
+
+	describe("T13d: a non-GitHub host refusing the token in ls-remote -> CREDENTIALS_INVALID", () => {
+		it("reads the refusal as rejected, not a plain error", async () => {
+			const conn = {
+				id: "conn-gitlab",
+				label: "GitLab Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				integration: { templateId: "git-host-token", label: "Git host token" },
+				credentialsEnc: credentialsService.encrypt({ token: "glpat_revoked" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "gitlab.com" }),
+			};
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{ url: "https://gitlab.com/org/repo.git" },
+			]);
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			vi.mocked(gitSpawnMod.spawnGit).mockRejectedValue(
+				new gitSpawnMod.GitSpawnError(
+					"git ls-remote failed",
+					128,
+					"remote: HTTP Basic: Access denied\nfatal: Authentication failed for 'https://gitlab.com/org/repo.git/'",
+					false,
+				),
+			);
+			globalThis.fetch = vi.fn(async () => {
+				throw new Error("no GitHub call for gitlab.com");
+			}) as typeof fetch;
+
+			const result = await service.testConnection("conn-gitlab");
+
+			expect(result).toMatchObject({ success: false, rejected: true });
+			expect(result.error).toMatch(/^gitlab\.com rejected token "GitLab Token"/);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-gitlab" },
+				data: expect.objectContaining({ status: "CREDENTIALS_INVALID" }),
 			});
 		});
 	});

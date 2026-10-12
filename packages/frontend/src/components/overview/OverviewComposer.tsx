@@ -103,10 +103,13 @@ export function useBoxChoice(record: Overview["record"]) {
 
 export function boxChoice(
 	choice: ReturnType<typeof useAgentChoice>,
-	own: DraftChoice,
+	draft: DraftChoice,
 ) {
-	const harness =
-		choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective;
+	const kept = choice.harnesses.find((h) => h.id === draft.harness);
+	// A draft's agent that is gone falls back to the shown default, with its model and effort.
+	const own: DraftChoice =
+		draft.harness && !kept ? { accessLevel: draft.accessLevel } : draft;
+	const harness = kept ?? choice.effective;
 	const hid = harness?.id as HarnessId;
 	const model =
 		own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "";
@@ -119,7 +122,7 @@ export function boxChoice(
 		: {};
 	const sent = {
 		accessLevel,
-		...(own.harness ? { harness: own.harness } : {}),
+		...(draft.harness && hid ? { harness: hid } : {}),
 		...(own.model !== undefined ? { model: own.model } : {}),
 		...(own.effort !== undefined ? { effort: own.effort } : {}),
 	};

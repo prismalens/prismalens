@@ -208,6 +208,8 @@ describe("ImpactService", () => {
 			expect(chart?.scope).toEqual({ state: "unscoped", matched: 0 });
 			expect(chart?.series).toHaveLength(2);
 			expect(chart?.now).toBeNull();
+			// check() refuses it as rule-not-matched, so the chart offers no check either.
+			expect(chart?.checkable).toBe(false);
 		});
 
 		it("uses the one rule loaded now for a catch-up alert, chart only and unscoped", async () => {

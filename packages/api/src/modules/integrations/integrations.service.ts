@@ -641,7 +641,7 @@ export class IntegrationsService implements OnModuleInit {
 		const token = readHostToken(connection, this.credentialsService);
 		if (!token)
 			return { success: false, error: "This connection has no host or token." };
-		const details = await this.lsRemoteMatching(token);
+		const { details, rejected } = await this.lsRemoteMatching(token);
 		const api =
 			token.host === "github.com" ? await this.githubUser(token) : null;
 		if (api?.expiresAt !== undefined)
@@ -668,13 +668,17 @@ export class IntegrationsService implements OnModuleInit {
 					`No repository on ${token.host} yet. Add one to a service, then test again.`,
 				],
 			};
+		if (rejected)
+			return { success: false, rejected: true, error: rejected, details };
 		const failed = details.find((d) => !d.startsWith("ok "));
 		return failed
 			? { success: false, error: failed, details }
 			: { success: true, details };
 	}
 
-	private async lsRemoteMatching(token: HostToken): Promise<string[]> {
+	private async lsRemoteMatching(
+		token: HostToken,
+	): Promise<{ details: string[]; rejected: string | null }> {
 		const rows = await this.prisma.repository.findMany({
 			where: { sourceKind: "url" },
 			select: { url: true },
@@ -695,6 +699,7 @@ export class IntegrationsService implements OnModuleInit {
 		};
 		const cred = new GitCredential(display, token.token, { host: token.host });
 		const details: string[] = [];
+		let rejected: string | null = null;
 		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
 			const batch = targets.slice(i, i + TEST_CONCURRENCY);
 			details.push(
@@ -717,7 +722,7 @@ export class IntegrationsService implements OnModuleInit {
 								!err.stderr.trim()
 							)
 								return `ok ${repoPath(url)}`;
-							return diagnoseGitFailure({
+							const failure = diagnoseGitFailure({
 								stderr:
 									err instanceof GitSpawnError
 										? err.stderr || err.message
@@ -727,13 +732,17 @@ export class IntegrationsService implements OnModuleInit {
 								repo: repoPath(url),
 								tokenExpiresAt: token.tokenExpiresAt,
 								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
-							}).message;
+							});
+							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
+							if (failure.code === "token-rejected")
+								rejected ??= failure.message;
+							return failure.message;
 						}
 					}),
 				)),
 			);
 		}
-		return details;
+		return { details, rejected };
 	}
 
 	/** github.com's view of the token: refused, or when it expires (undefined when the call failed). */

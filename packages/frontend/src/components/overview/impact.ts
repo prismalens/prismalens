@@ -18,7 +18,7 @@ export function noChartText(
 			return `No chart: ${reason}.`;
 		}
 		case "too_broad":
-			return "No chart: the alert's query matches 50 series or more, too many to show which one is this alert.";
+			return "No chart: the query's answer is too large to show, 50 series or more or over 2 MB.";
 		case "not_configured":
 			return "Connect Prometheus to see the trend and check a fix";
 		default:

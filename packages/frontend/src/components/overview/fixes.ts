@@ -8,6 +8,7 @@ import type {
 	FixOption,
 	FixVerdict,
 	MetricUnit,
+	Threshold,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
 import { failureWords } from "@/lib/failure-words";
@@ -126,6 +127,11 @@ export type NextActionId =
 	| "investigate"
 	| "watch";
 
+/** A Next action that starts a run, so it waits for the box's agent to load. */
+export function startsRun(id: NextActionId): boolean {
+	return id === "investigate" || id === "retry";
+}
+
 export interface NextStrip {
 	tone: "accent" | "plain" | "live" | "warn" | "ok" | "danger";
 	text: string;
@@ -135,13 +141,36 @@ export interface NextStrip {
 	link?: { incidentId: string; label: string };
 }
 
-const minutes = (from: string, to: string) => {
+/** `just after you applied it` inside a minute, never "0 minutes" (#673 w8-22). */
+export function afterApplied(from: string, to: string): string {
 	const m = Math.max(
 		0,
 		Math.round((Date.parse(to) - Date.parse(from)) / 60_000),
 	);
-	return m === 1 ? "1 minute" : `${m} minutes`;
-};
+	if (m === 0) return "just after you applied it";
+	return `${m === 1 ? "1 minute" : `${m} minutes`} after you applied it`;
+}
+
+/**
+ * Where the series stands against the rule, from its operator: `up == 0`
+ * is not "over" anything. A check's value is never stored (ADR 0006 §1).
+ */
+export function againstRule(
+	op: Threshold["op"] | undefined,
+	firing: boolean,
+): string {
+	if (op === undefined || op === ">" || op === ">=")
+		return firing
+			? "still over the alert threshold"
+			: "Below the alert threshold";
+	if (op === "<" || op === "<=")
+		return firing
+			? "still under the alert threshold"
+			: "Above the alert threshold";
+	return firing
+		? "still matching the alert's rule"
+		: "No longer matching the alert's rule";
+}
 
 /** A failed run on the Next strip; a signed-out agent names itself and the fix (#831 v5-39). */
 export function failedStrip(
@@ -162,6 +191,8 @@ export function failedStrip(
 export function nextStrip(input: {
 	/** The operator resolved it (stored `closed`); Alerts cleared is `cleared`, not this. */
 	ended: boolean;
+	/** The cause you recorded at Resolve, shown once it ended (#673 w8-21). */
+	cause?: string | null;
 	/** The incident this one was merged into. */
 	mergedInto?: { id: string; number: number } | null;
 	/** The incident this one's alert fired again as (the detail's `refiredAs`). */
@@ -183,6 +214,10 @@ export function nextStrip(input: {
 	hasNextOption: boolean;
 	/** The charted metric's unit, so a check's value reads as the Impact card does. */
 	unit?: MetricUnit | null;
+	/** The alert rule's threshold, so a check is worded by its operator (#673 w8-20). */
+	threshold?: Threshold | null;
+	/** The run flagged text that tried to instruct it: Copy happens beside the warning only (#673 w8-19). */
+	flagged?: boolean;
 }): NextStrip {
 	const { option, stage } = input;
 	if (input.mergedInto)
@@ -194,11 +229,14 @@ export function nextStrip(input: {
 				label: `INC-${input.mergedInto.number}`,
 			},
 		};
+	const resolved = input.cause?.trim()
+		? `Resolved. Your recorded cause: ${input.cause.trim().replace(/\.$/, "")}.`
+		: "Resolved.";
 	if (input.ended)
 		return input.refiredAs
 			? {
 					tone: "plain",
-					text: "Resolved.",
+					text: resolved,
 					link: {
 						incidentId: input.refiredAs.id,
 						label: `${REFIRE_LABEL} as INC-${input.refiredAs.number}`,
@@ -206,7 +244,7 @@ export function nextStrip(input: {
 				}
 			: {
 					tone: "plain",
-					text: "Resolved. If the alert fires again, PrismaLens opens a new incident and links it here.",
+					text: `${resolved} If the alert fires again, PrismaLens opens a new incident and links it here.`,
 				};
 	if (input.alertsCleared)
 		return input.refiredAs
@@ -252,7 +290,14 @@ export function nextStrip(input: {
 						tone: "accent",
 						text: `${prefix}Command copied. Run it, then tell PrismaLens so it can check the result.`,
 						primary: { id: "applied", label: "I applied it" },
-						secondary: { id: "copy", label: "Copy again" },
+						...(input.flagged
+							? {}
+							: { secondary: { id: "copy", label: "Copy again" } }),
+					};
+				if (input.flagged)
+					return {
+						tone: "warn",
+						text: `${prefix}${option.title}. The agent flagged text that tried to instruct it; read the command and its warning under Stop the impact before you copy it.`,
 					};
 				return {
 					tone: "accent",
@@ -278,7 +323,7 @@ export function nextStrip(input: {
 				if (c.verdict === "not_yet")
 					return {
 						tone: "warn",
-						text: `Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `still over the alert threshold at ${formatClock(c.at)}`}, ${minutes(stage.appliedAt, c.at)} after you applied it. Some fixes take a few minutes to settle.`,
+						text: `Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `${againstRule(input.threshold?.op, true)} at ${formatClock(c.at)}`}, ${afterApplied(stage.appliedAt, c.at)}. Some fixes take a few minutes to settle.`,
 						primary: { id: "check", label: "Check again" },
 						...(input.hasNextOption
 							? {
@@ -292,7 +337,7 @@ export function nextStrip(input: {
 				if (c.verdict === "below_threshold")
 					return {
 						tone: "plain",
-						text: `Below the alert threshold${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
+						text: `${againstRule(input.threshold?.op, false)}${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
 						primary: { id: "check", label: "Check again" },
 					};
 				return (c.retryable ?? input.checkable)

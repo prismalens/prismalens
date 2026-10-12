@@ -139,9 +139,12 @@ export type StepOf = (
 	e: Pick<Evidence, "toolCallId" | "source">,
 ) => number | undefined;
 
+/** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
+const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
+
 function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 	const step = steps(e);
-	const alert = !step && e.status === "inferred" && /\balert\b/i.test(e.source);
+	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
 		text: e.observation,
 		sub:

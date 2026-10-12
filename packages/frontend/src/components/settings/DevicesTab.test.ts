@@ -29,6 +29,10 @@ describe("deviceLine (#831 w6-1)", () => {
 		expect(deviceLine(device("curl/8.5.0"))).toMatch(/^curl\/8\.5\.0\. Paired /);
 	});
 
+	it("keeps the client's own word when the user agent names only a system (#834 review)", () => {
+		expect(deviceLine(device("curl/8.5.0 (Android 14)"))).toMatch(/^curl\/8\.5\.0\. Paired /);
+	});
+
 	it("says only when it paired with no user agent at all", () => {
 		expect(deviceLine(device(null))).toMatch(/^Paired /);
 	});

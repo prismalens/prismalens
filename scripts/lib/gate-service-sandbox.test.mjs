@@ -79,3 +79,19 @@ test("remove() takes the link, the drop-in and a runtime wants link away", () =>
 	assert.equal(existsSync(join(unitDir, `${UNIT}.d`)), false);
 	assert.equal(existsSync(join(unitDir, "default.target.wants", UNIT)), false);
 });
+
+test("a second check on the same runtime dir fails and leaves the first one's link (#834 review)", () => {
+	const { dir, tools, iso } = setup();
+	const link = join(dir, "run", "systemd", "user", UNIT);
+	assert.throws(
+		() =>
+			isolateService({
+				configHome: join(dir, "other-config"),
+				runtimeDir: join(dir, "run"),
+				tools,
+				systemctl: "/bin/true",
+			}),
+		/another gate check holds the service/,
+	);
+	assert.equal(readlinkSync(link), iso.unitPath);
+});

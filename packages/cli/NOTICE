@@ -19,9 +19,10 @@ The npm package bundles third-party software in two places:
      https://code.claude.com/docs/en/legal-and-compliance";
    - @openai/codex, the Codex CLI package codex-acp depends on (Apache-2.0,
      as its package.json declares), without its platform binaries;
-   - their dependencies (MIT and BSD-3-Clause).
+   - their dependencies (MIT, ISC, BSD-2-Clause, BSD-3-Clause and
+     Unlicense).
    Each keeps its own licence file in its package directory, except
-   @openai/codex, which ships none.
+   @openai/codex and standardwebhooks (MIT), which ship none.
 
 Everything else the package needs, npm installs next to it from the registry,
 each with its own licence file.

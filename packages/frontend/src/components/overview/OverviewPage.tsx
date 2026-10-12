@@ -79,7 +79,8 @@ export function OverviewPage() {
 			case "retry":
 			case "investigate":
 				// An agent the box can't run says why there instead of failing a start.
-				if (box.harness && unreadyReason(box.harness)) focusBox("investigate");
+				if (!box.harness) return;
+				if (unreadyReason(box.harness)) focusBox("investigate");
 				else start();
 				return;
 			case "watch":
@@ -113,7 +114,7 @@ export function OverviewPage() {
 				data-testid="overview-grid"
 			>
 				<div className="min-w-0 md:col-span-2">
-					<SituationCard o={o} onAction={onNext} />
+					<SituationCard o={o} onAction={onNext} canStart={!!box.harness} />
 				</div>
 				<ImpactCard view={o.impact} />
 				<StopImpactCard o={o} commandRef={commandRef} />

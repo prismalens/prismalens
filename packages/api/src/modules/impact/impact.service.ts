@@ -376,8 +376,12 @@ export class ImpactService {
 					source === "service"
 						? { series: query, threshold: null, uncheckable: null }
 						: expressionShape(query);
+				// Checkable only where `judge` can judge: it refuses an alert with no matched rule.
 				chart.checkable =
-					source === "alert" && !!shape.threshold && !shape.uncheckable;
+					source === "alert" &&
+					!!shape.threshold &&
+					!shape.uncheckable &&
+					!!expression.rule;
 				chart.metric = {
 					source,
 					query: shape.series,

@@ -149,6 +149,27 @@ describe("evidenceSections (#811 data mapping)", () => {
 		expect(rows.find((r) => r.text === "Over 200 notes is 2.9s")?.from).toBeUndefined();
 	});
 
+	it("needs the alert payload named, not any mention of an alert (#834 review)", () => {
+		const nearMiss = {
+			observation: "The rule waits 5m",
+			source: "alert rule documentation",
+			direction: "supports" as const,
+			status: "inferred" as const,
+			toolCallId: null,
+		};
+		const out = evidenceSections(
+			inv({
+				report: {
+					...report,
+					hypotheses: [{ statement: "The in-memory sort", status: "supported", evidence: [nearMiss] }],
+				},
+			}),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		expect(out[0]?.rows.find((r) => r.text === nearMiss.observation)?.from).toBeUndefined();
+	});
+
 	it("says a live run has no conclusion and whose finding stands", () => {
 		const [so] = evidenceSections(inv({ status: "running" }), stepOf, {
 			live: true,

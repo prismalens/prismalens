@@ -6,7 +6,13 @@
  * the user manager reaches it by a $XDG_RUNTIME_DIR link whose drop-in caps memory (the unit runs
  * outside the caller's scope), and a `systemctl` shim sends enable and disable to --runtime.
  */
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readlinkSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export const UNIT = "prismalens.service";
@@ -23,14 +29,29 @@ exec ${real} "$@"
 `;
 }
 
+function linkTarget(path) {
+	try {
+		return readlinkSync(path);
+	} catch {
+		return null;
+	}
+}
+
 export function isolateService({ configHome, runtimeDir, tools, systemctl }) {
 	const unitPath = join(configHome, "systemd", "user", UNIT);
 	const unitDir = join(runtimeDir, "systemd", "user");
 	const link = join(unitDir, UNIT);
 	const dropIns = join(unitDir, `${UNIT}.d`);
 	mkdirSync(dropIns, { recursive: true });
-	rmSync(link, { force: true });
-	symlinkSync(unitPath, link);
+	// The runtime dir is shared: another check's link is never replaced (#834 review).
+	try {
+		symlinkSync(unitPath, link);
+	} catch (err) {
+		if (err?.code !== "EEXIST") throw err;
+		throw new Error(
+			`${link} exists: another gate check holds the service. Remove it only if none runs.`,
+		);
+	}
 	writeFileSync(
 		join(dropIns, "50-gate-memory.conf"),
 		`[Service]\nMemoryMax=${UNIT_MEMORY_MAX}\nMemorySwapMax=0\n`,
@@ -41,6 +62,7 @@ export function isolateService({ configHome, runtimeDir, tools, systemctl }) {
 	return {
 		unitPath,
 		remove() {
+			if (linkTarget(link) !== unitPath) return;
 			rmSync(link, { force: true });
 			rmSync(dropIns, { recursive: true, force: true });
 			rmSync(join(unitDir, "default.target.wants", UNIT), { force: true });

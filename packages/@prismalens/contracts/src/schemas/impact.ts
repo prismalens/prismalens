@@ -80,7 +80,7 @@ export const ImpactChartSchema = z.object({
 		reason: z.string().nullable(),
 	}),
 	/** Check now can judge this alert: its own rule's single threshold with no range function (Q1c A). */
-	checkable: z.boolean(),
+	checkable: z.boolean().default(false),
 	/** What is charted; null when nothing is. A "service" metric is the service's, not this alert's. */
 	metric: z
 		.object({

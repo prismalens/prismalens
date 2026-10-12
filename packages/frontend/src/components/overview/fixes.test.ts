@@ -12,6 +12,7 @@ import {
 	nextStrip,
 	noteOf,
 	splitOptions,
+	startsRun,
 } from "./fixes";
 
 const opt: FixOption = {
@@ -117,6 +118,54 @@ describe("fixStage", () => {
 				alerts: [{ status: "resolved", resolvedAt: "2026-10-11T12:00:00Z" }],
 			}).stage,
 		).toBe("applied");
+	});
+});
+
+describe("walk 8 packet 3 on the Next strip", () => {
+	const at = "2026-10-11T12:20:00Z";
+	const notYet = (extra: object, value: number | null, checkedAt = "2026-10-11T12:20:20Z") =>
+		nextStrip({
+			...base,
+			...extra,
+			stage: { stage: "checked", appliedAt: at, check: { verdict: "not_yet", at: checkedAt, value } },
+		}).text;
+
+	it("never offers Copy for a flagged command away from its warning (w8-19)", () => {
+		const ready = nextStrip({ ...base, flagged: true, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(ready.primary).toBeUndefined();
+		expect(ready.text).toMatch(/flagged text that tried to instruct it; read the command and its warning under Stop the impact/);
+		const copied = nextStrip({ ...base, flagged: true, stage: { stage: "ready", copied: true, copyFailed: false } });
+		expect(copied.primary?.id).toBe("applied");
+		expect(copied.secondary).toBeUndefined();
+	});
+
+	it("words a reloaded check by the rule's operator, never 'over' for == 0 (w8-20)", () => {
+		expect(notYet({ threshold: { op: "==", value: 0 } }, null)).toMatch(/^Not yet: still matching the alert's rule at /);
+		expect(notYet({ threshold: { op: "<", value: 1 } }, null)).toMatch(/^Not yet: still under the alert threshold at /);
+		expect(notYet({ threshold: { op: ">", value: 1 } }, null)).toMatch(/^Not yet: still over the alert threshold at /);
+		expect(notYet({ threshold: { op: "==", value: 0 } }, 0)).toMatch(/^Not yet: 0 at /);
+	});
+
+	it("shows the cause you recorded at Resolve (w8-21)", () => {
+		const s = nextStrip({ ...base, ended: true, cause: "booklogr-api container stopped", option: null, stage: null });
+		expect(s.text).toBe(
+			"Resolved. Your recorded cause: booklogr-api container stopped. If the alert fires again, PrismaLens opens a new incident and links it here.",
+		);
+		expect(nextStrip({ ...base, ended: true, option: null, stage: null }).text).toMatch(/^Resolved\. If the alert/);
+	});
+
+	it("says just after you applied it inside a minute (w8-22)", () => {
+		expect(notYet({}, 0)).toMatch(/, just after you applied it\./);
+		expect(notYet({}, 0, "2026-10-11T12:21:10Z")).toMatch(/, 1 minute after you applied it\./);
+	});
+});
+
+describe("startsRun (#834 review)", () => {
+	it("holds only the Next actions that start a run until the box's agent loads", () => {
+		expect(startsRun("investigate")).toBe(true);
+		expect(startsRun("retry")).toBe(true);
+		for (const id of ["copy", "applied", "check", "resolve", "watch"] as const)
+			expect(startsRun(id)).toBe(false);
 	});
 });
 
