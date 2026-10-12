@@ -10109,6 +10109,9 @@
                                       ],
                                       "type": "string"
                                     },
+                                    "unattended": {
+                                      "type": "boolean"
+                                    },
                                     "model": {
                                       "type": "string"
                                     },
@@ -11230,6 +11233,9 @@
                                               "full-access"
                                             ],
                                             "type": "string"
+                                          },
+                                          "unattended": {
+                                            "type": "boolean"
                                           },
                                           "model": {
                                             "type": "string"
@@ -12372,6 +12378,9 @@
                                       ],
                                       "type": "string"
                                     },
+                                    "unattended": {
+                                      "type": "boolean"
+                                    },
                                     "model": {
                                       "type": "string"
                                     },
@@ -13479,6 +13488,9 @@
                                             "full-access"
                                           ],
                                           "type": "string"
+                                        },
+                                        "unattended": {
+                                          "type": "boolean"
                                         },
                                         "model": {
                                           "type": "string"
@@ -14653,6 +14665,9 @@
                                         "full-access"
                                       ],
                                       "type": "string"
+                                    },
+                                    "unattended": {
+                                      "type": "boolean"
                                     },
                                     "model": {
                                       "type": "string"
@@ -15949,7 +15964,8 @@
                                   "stopped",
                                   "restarted",
                                   "allowed",
-                                  "mode_kept"
+                                  "mode_kept",
+                                  "unattended"
                                 ],
                                 "type": "string"
                               },
@@ -16351,6 +16367,9 @@
                                               "full-access"
                                             ],
                                             "type": "string"
+                                          },
+                                          "unattended": {
+                                            "type": "boolean"
                                           },
                                           "model": {
                                             "type": "string"
@@ -16968,6 +16987,9 @@
                                         "full-access"
                                       ],
                                       "type": "string"
+                                    },
+                                    "unattended": {
+                                      "type": "boolean"
                                     },
                                     "model": {
                                       "type": "string"
@@ -18226,6 +18248,9 @@
                                 ],
                                 "type": "string"
                               },
+                              "unattended": {
+                                "type": "boolean"
+                              },
                               "model": {
                                 "type": "string"
                               },
@@ -18839,6 +18864,9 @@
                                         "full-access"
                                       ],
                                       "type": "string"
+                                    },
+                                    "unattended": {
+                                      "type": "boolean"
                                     },
                                     "model": {
                                       "type": "string"
@@ -30107,6 +30135,9 @@
                                   },
                                   "date": {
                                     "type": "string"
+                                  },
+                                  "companion": {
+                                    "type": "string"
                                   }
                                 },
                                 "required": [
@@ -30297,6 +30328,28 @@
                                   },
                                   "detail": {
                                     "type": "string"
+                                  },
+                                  "version": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "companionVersion": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
                                   },
                                   "servedModel": {
                                     "anyOf": [
@@ -30646,28 +30699,6 @@
                         "type": "string"
                       }
                     },
-                    "autoAccessLevels": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "supervised",
-                          "auto-edits",
-                          "auto",
-                          "full-access"
-                        ],
-                        "type": "string"
-                      }
-                    },
                     "customModels": {
                       "type": "object",
                       "propertyNames": {
@@ -30803,35 +30834,6 @@
                     }
                   },
                   "accessLevels": {
-                    "type": "object",
-                    "propertyNames": {
-                      "enum": [
-                        "opencode",
-                        "claude-code",
-                        "codex",
-                        "gemini",
-                        "deepagents"
-                      ],
-                      "type": "string"
-                    },
-                    "additionalProperties": {
-                      "anyOf": [
-                        {
-                          "enum": [
-                            "supervised",
-                            "auto-edits",
-                            "auto",
-                            "full-access"
-                          ],
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "autoAccessLevels": {
                     "type": "object",
                     "propertyNames": {
                       "enum": [
@@ -30999,28 +31001,6 @@
                         "type": "string"
                       }
                     },
-                    "autoAccessLevels": {
-                      "type": "object",
-                      "propertyNames": {
-                        "enum": [
-                          "opencode",
-                          "claude-code",
-                          "codex",
-                          "gemini",
-                          "deepagents"
-                        ],
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "enum": [
-                          "supervised",
-                          "auto-edits",
-                          "auto",
-                          "full-access"
-                        ],
-                        "type": "string"
-                      }
-                    },
                     "customModels": {
                       "type": "object",
                       "propertyNames": {
@@ -31118,6 +31098,26 @@
                     },
                     "hard": {
                       "const": false
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "companionVersion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "models": {
                       "type": "array",
