@@ -1,11 +1,12 @@
 # prismalens
 
 PrismaLens is a self-hosted incident investigator. When an alert arrives, the
-coding agent you already use investigates a snapshot of the service's code,
-under a read-only policy. The run, the evidence and an ordered-evidence report (hypotheses ranked by
-the evidence behind them, with no numeric confidence scores) stay on the
-incident. This package is the `pl` command: it starts the app, checks a
-machine, pairs devices and manages a background service.
+coding agent you already use reads a snapshot of the service's code, under a
+permission level you pick, and writes an ordered-evidence report: hypotheses
+ranked by the evidence behind them, with no numeric confidence scores. The run,
+the evidence and the cause stay on the incident. The agent runs as your user;
+PrismaLens adds no sandbox. This package is the `pl` command: it starts the
+app, checks a machine, pairs devices and manages a background service.
 
 ## Install
 
@@ -50,19 +51,24 @@ scoop install prismalens
 
 ## Quick start
 
-Check the environment, then start the web interface:
+Check the machine, then start the app:
 
 ```bash
-prismalens doctor
+pl doctor
 pl up
 ```
+
+`pl up` serves the dashboard on http://localhost:6473 and opens your browser
+on a one-time link that pairs it; there is no account. Investigations need a
+coding agent on PATH; `pl doctor` lists the ones PrismaLens knows and how to
+install each.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
 | `up` | Run PrismaLens as a single process serving the API and web dashboard (default port 6473); `--tailscale-serve` also publishes it on your tailnet over HTTPS. |
-| `doctor` | Preflight-check the environment: a harness binary on PATH, its ACP handshake (answers ACP, sign in needed, no answer in 10s, or failed to start), and Git. |
+| `doctor` | Preflight-check the environment: the coding agents on PATH, each one's ACP handshake (answers ACP, sign in needed, no answer in 10s, or failed to start; Claude Code checks its sign-in only when a run starts), the model a run gets, and Git. |
 | `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 | `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. A background service tries the new version first and goes back to the old one and its database if it fails. |
@@ -74,4 +80,5 @@ Complete documentation, guides, and configuration references are available at ht
 
 ## License
 
-Apache-2.0
+Apache-2.0. The package also bundles the agent adapters, including the Claude
+Agent SDK under Anthropic's own terms; `NOTICE` lists them and their licences.

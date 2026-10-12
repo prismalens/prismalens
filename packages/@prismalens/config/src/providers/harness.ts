@@ -149,6 +149,8 @@ export interface HarnessDescriptor {
 	modelVia: "acp" | "unsupported";
 	/** One line the picker and the doctor show: how to sign this harness in. */
 	loginHint: string;
+	/** Its handshake answers signed out: credentials are checked at the first prompt turn, so a doctor pass proves no sign-in. */
+	signInAtFirstTurn?: boolean;
 	/** The host env var naming the model the harness runs when PrismaLens sets none. */
 	envModelKey?: string;
 	/** The env var that adds one model id to the agent's own list, so its model option takes it (#673 w57). */
@@ -432,6 +434,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
 		modelVia: "acp",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
+		signInAtFirstTurn: true,
 		resume: true,
 	},
 	codex: {

@@ -4,5 +4,24 @@ Copyright 2026 Sumit Patel
 This product includes software developed as part of the PrismaLens project
 (https://prismalens.io).
 
-Releases bundle third-party software into the web dashboard. Its licences
-are listed in THIRD_PARTY_NOTICES.txt, next to this file in the npm package.
+The npm package bundles third-party software in two places:
+
+1. The web dashboard. Its third-party code and licences are listed in
+   THIRD_PARTY_NOTICES.txt, next to this file.
+
+2. The agent adapters, under node_modules/@prismalens/agent-adapters/. They
+   let an installed Claude Code or Codex answer the Agent Client Protocol:
+   - @agentclientprotocol/claude-agent-acp, @agentclientprotocol/codex-acp and
+     @agentclientprotocol/sdk (Apache-2.0);
+   - @anthropic-ai/claude-agent-sdk, under Anthropic's own terms rather than
+     an open-source licence. Its LICENSE.md reads: "© Anthropic PBC. All
+     rights reserved. Use is subject to the Legal Agreements outlined here:
+     https://code.claude.com/docs/en/legal-and-compliance";
+   - @openai/codex, the Codex CLI package codex-acp depends on (Apache-2.0,
+     as its package.json declares), without its platform binaries;
+   - their dependencies (MIT and BSD-3-Clause).
+   Each keeps its own licence file in its package directory, except
+   @openai/codex, which ships none.
+
+Everything else the package needs, npm installs next to it from the registry,
+each with its own licence file.

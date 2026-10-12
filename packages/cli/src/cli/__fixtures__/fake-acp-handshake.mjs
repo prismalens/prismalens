@@ -4,7 +4,7 @@
 //
 // Minimal ACP handshake stub for `doctor.test.ts`: `initialize` + `session/new`
 // only, no prompt turn — `checkHarnessReadiness` never sends one, so nothing
-// else needs to be faked. FAKE_ACP_MODE: "ok" or "unauthenticated" (exits
+// else needs to be faked. FAKE_ACP_MODE: "ok", "served" or "unauthenticated" (exits
 // immediately with a stderr line, the same shape a not-logged-in harness
 // exits with).
 import { createInterface } from "node:readline";
@@ -32,6 +32,24 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 			result: { protocolVersion: 1, agentInfo: { name: "fake", version: "0" } },
 		});
 	} else if (msg.method === "session/new") {
-		send({ jsonrpc: "2.0", id: msg.id, result: { sessionId: "s1" } });
+		// "served": the agent names its current model, as OpenCode does with no provider signed in.
+		const configOptions =
+			mode === "served"
+				? [
+						{
+							id: "model",
+							name: "Model",
+							category: "model",
+							type: "select",
+							currentValue: "opencode/big-pickle",
+							options: [{ value: "opencode/big-pickle", name: "Big Pickle" }],
+						},
+					]
+				: undefined;
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result: { sessionId: "s1", ...(configOptions ? { configOptions } : {}) },
+		});
 	}
 });

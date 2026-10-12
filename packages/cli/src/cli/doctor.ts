@@ -255,6 +255,16 @@ export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
 	};
 }
 
+/** One harness's handshake row, plus what the Model line and the summary need from it. */
+export interface Handshake {
+	id: HarnessId;
+	check: Check;
+	/** The model the agent reported as current on `session/new`; null when it named none. */
+	servedModel: string | null;
+	/** It answered, but it checks its sign-in only when a run starts. */
+	signInUnchecked: boolean;
+}
+
 /**
  * ACP handshake against every harness on PATH (#630, Unit D on #337): PATH
  * presence says a binary exists; a handshake says it speaks ACP, not that it is
@@ -265,7 +275,7 @@ export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
 export async function checkHarnessHandshake(
 	path = process.env.PATH ?? "",
 	scan: PathScanOptions = {},
-): Promise<Check[]> {
+): Promise<Handshake[]> {
 	// A Windows install under WSL is not "on PATH", so it is never probed (#673 w8).
 	const installed = (
 		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
@@ -275,14 +285,24 @@ export async function checkHarnessHandshake(
 			shippedAdapter,
 		}),
 	);
-	const results: Check[] = [];
+	const results: Handshake[] = [];
 	for (const descriptor of installed) {
 		const probe = await probeHarness(descriptor.id);
+		const answered = probe.outcome === "answers-acp";
+		const signInUnchecked = answered && descriptor.signInAtFirstTurn === true;
+		const signIn = signInUnchecked
+			? `sign-in not checked until a run starts: ${descriptor.loginHint}`
+			: `sign-in: ${descriptor.loginHint}`;
 		results.push({
-			name: `Harness ACP handshake: ${descriptor.label}`,
-			pass: probe.outcome === "answers-acp",
-			detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; sign-in: ${descriptor.loginHint}`,
-			hard: false,
+			id: descriptor.id,
+			servedModel: answered ? (probe.servedModel ?? null) : null,
+			signInUnchecked,
+			check: {
+				name: `Harness ACP handshake: ${descriptor.label}`,
+				pass: answered && !signInUnchecked,
+				detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; ${signIn}`,
+				hard: false,
+			},
 		});
 	}
 	return results;
@@ -309,7 +329,9 @@ export function sandboxSummary(sandbox: SandboxChecks | undefined): string {
  * it would ask for. The doctor cannot see the app's persisted Settings → Harness
  * choice, so it says so: a pin saved there wins over what is printed here.
  */
-export function checkAutoSelection(): Check[] {
+export function checkAutoSelection(
+	servedModels: Partial<Record<HarnessId, string | null>> = {},
+): Check[] {
 	const envHarness = process.env.PRISMALENS_HARNESS;
 	const selection = resolveHarnessSelection({ envHarness, pinSource: "env" });
 	if (!selection.runnable) {
@@ -323,6 +345,8 @@ export function checkAutoSelection(): Check[] {
 		];
 	}
 	const model = resolveHarnessModel(selection.harness, undefined, process.env);
+	const label = HARNESS_REGISTRY[selection.harness].label;
+	const served = servedModels[selection.harness];
 	return [
 		{
 			name: "Selected harness",
@@ -338,10 +362,19 @@ export function checkAutoSelection(): Check[] {
 					? `${model.model} (from ${HARNESS_REGISTRY[selection.harness].envModelKey}; Settings → Agent → Model overrides it)`
 					: model.source === "product-default"
 						? `${model.model} (tested default; Settings → Agent → Model overrides it)`
-						: `${HARNESS_REGISTRY[selection.harness].label} runs the model set in its own config, else its default, unless Settings → Agent → Model sets one`,
+						: served
+							? `${label} serves ${served}: the model set in its own config, else its default, unless Settings → Agent → Model sets one${zenNote(served)}`
+							: `${label} runs the model set in its own config, else its default, unless Settings → Agent → Model sets one`,
 			hard: false,
 		},
 	];
+}
+
+/** `opencode/` ids are OpenCode Zen, what OpenCode serves with no provider signed in (#673 S2). */
+function zenNote(model: string): string {
+	return model.startsWith("opencode/")
+		? ". That is an OpenCode Zen model, under OpenCode's terms; `opencode auth login` signs in another provider"
+		: "";
 }
 
 function testedOf(id: HarnessId): string {
@@ -494,6 +527,35 @@ export function checkWebhookUrl(
 	};
 }
 
+/** The closing line: an agent whose sign-in the doctor can't see turns a pass into a warning, never ✔ (#673 S1). */
+export function summary(
+	checks: Check[],
+	handshakes: Handshake[],
+): { level: "success" | "warn" | "error"; line: string } {
+	const hardFailures = checks.filter((c) => c.hard && !c.pass);
+	if (hardFailures.length > 0) {
+		const onlyHarness = hardFailures.every(
+			(c) => c.name === "Harness available",
+		);
+		return {
+			level: "error",
+			line: onlyHarness
+				? "No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed."
+				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
+		};
+	}
+	const unchecked = handshakes
+		.filter((h) => h.signInUnchecked)
+		.map((h) => HARNESS_REGISTRY[h.id].label);
+	if (unchecked.length > 0) {
+		return {
+			level: "warn",
+			line: `Required checks passed. ${unchecked.join(" and ")} ${unchecked.length > 1 ? "check their" : "checks its"} sign-in only when a run starts, so a run fails there if it is not signed in.`,
+		};
+	}
+	return { level: "success", line: "All required checks passed." };
+}
+
 export default defineCommand({
 	meta: {
 		name: "doctor",
@@ -527,7 +589,10 @@ export default defineCommand({
 			}
 
 			const harnessChecks = checkHarnessesOnPath();
-			const handshakeChecks = await checkHarnessHandshake();
+			const handshakes = await checkHarnessHandshake();
+			const servedModels = Object.fromEntries(
+				handshakes.map((h) => [h.id, h.servedModel]),
+			);
 
 			const checks: Check[] = [
 				checkNodeVersion(),
@@ -537,8 +602,8 @@ export default defineCommand({
 				...checkGit(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
-				...handshakeChecks,
-				...checkAutoSelection(),
+				...handshakes.map((h) => h.check),
+				...checkAutoSelection(servedModels),
 				checkWebhookToken(),
 				checkPortHost(),
 				checkWebhookUrl(),
@@ -554,19 +619,9 @@ export default defineCommand({
 			}
 			consola.log("");
 
-			const hardFailures = checks.filter((c) => c.hard && !c.pass);
-			if (hardFailures.length > 0) {
-				const onlyHarness = hardFailures.every(
-					(c) => c.name === "Harness available",
-				);
-				consola.error(
-					onlyHarness
-						? "No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed."
-						: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
-				);
-				process.exit(1);
-			}
-			consola.success("All required checks passed.");
+			const verdict = summary(checks, handshakes);
+			consola[verdict.level](verdict.line);
+			if (verdict.level === "error") process.exit(1);
 		} catch (err) {
 			consola.error(err instanceof Error ? err.message : String(err));
 			process.exit(1);

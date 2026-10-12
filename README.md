@@ -5,21 +5,90 @@
   </picture>
 </p>
 
+<!-- Demo video/GIF goes here: an alert arriving, the run streaming, the report on the incident. Added once it is recorded. -->
+
 PrismaLens is a self-hosted incident investigator. When an alert arrives, the
 coding agent you already use reads a snapshot of the service's code, under a
-permission level you pick, and writes an **ordered-evidence report**: hypotheses ranked from most to least
-plausible, each backed by evidence the agent gathered, with no numeric
-confidence scores. The run, the evidence and the cause stay on the incident.
+permission level you pick, and writes an **ordered-evidence report**:
+hypotheses ranked from most to least plausible, each backed by evidence the
+agent gathered, with no numeric confidence scores. The run, the evidence and
+the cause stay on the incident.
+
+**Who it's for:** engineers on call for services whose code they can read, who
+already use a coding agent in the terminal. Alerts come from Prometheus
+Alertmanager, or you write the incident yourself.
 
 It is open source (Apache-2.0). There is no PrismaLens account, no subscription
-and no model bill from us: the agent signs in with its own provider. Before you
-run it on your machine, read
+and no model bill from us: the agent signs in with its own provider, and
+PrismaLens never calls a model itself. Before you run it on your machine, read
 **[what PrismaLens reads and never does](https://docs.prismalens.io/trust/)**.
 
 > [!WARNING]
 > PrismaLens is **alpha**. Any 0.x release may change behaviour or break a
 > workflow; read the [release notes](https://github.com/prismalens/prismalens/releases)
 > before you upgrade. See [VERSIONING.md](VERSIONING.md).
+
+## Quick start
+
+You need git and a coding agent on PATH; `pl doctor` lists the agents
+PrismaLens knows and how to install each.
+
+```bash
+npm install -g prismalens   # needs Node.js 24+
+# or, on macOS and Linux without Node:
+curl -fsSL https://prismalens.io/install.sh | sh
+
+pl doctor                   # checks this machine; needs nothing running
+pl up                       # http://localhost:6473
+```
+
+Windows, Homebrew, Scoop and the desktop app (all preview) are on
+[Install, upgrade and uninstall](https://docs.prismalens.io/install/).
+
+### What happens on first run
+
+- `pl up` creates its workspace in `~/.prismalens`: a SQLite database, a
+  webhook token and logs. There is nothing else to run: no Docker, no database
+  server.
+- It serves the API and the dashboard on one port, reachable from this machine
+  only.
+- It opens your browser on a one-time link that pairs it, and prints the link.
+  The link works once, for 15 minutes. There is no account: every browser
+  pairs, this machine's included.
+- With no coding agent on PATH it says so. The app runs, but Investigate stays
+  off until one is installed.
+- It prints a usage-data notice. PrismaLens counts feature use under a random
+  install id, never an alert, code, a repo or a report. Nothing is sent before
+  the next start; turn it off in Settings, or with `PRISMALENS_TELEMETRY=off`
+  or `DO_NOT_TRACK=1`.
+- Once a day it checks GitHub Releases for a newer version and prints one line
+  (`PRISMALENS_UPDATE_CHECK=off` turns that off).
+
+`pl doctor` opens an ACP handshake with each agent on PATH and reports whether
+it answers, or why not. An answer is not proof of sign-in: Claude Code checks
+its sign-in only when a run starts, so the doctor warns rather than passing it.
+For OpenCode it names the model OpenCode serves when Settings → Agent sets
+none; with no provider signed in, that is an OpenCode Zen model.
+
+### Your first investigation
+
+- **On your own service.** In the dashboard, Services, then Add Service, with
+  **Repository** set to a folder or a git URL. Then Incidents, Create Incident,
+  pick the service and click **Investigate**. The agent works in a throwaway
+  clone of the repository's last commit: your checkout is never its working
+  directory, and uncommitted changes are not read. A run you start uses **Ask
+  always** unless Settings or the agent's own config sets another level, so
+  each command the agent wants to run waits for your Approve or Deny on the
+  run.
+- **[Try it on a broken app](https://docs.prismalens.io/guides/try-it/)**, with
+  no repository or monitoring of your own. A small app runs with its monitoring
+  in docker compose; you switch a fault on, and a real alert starts the
+  investigation. It needs docker, Node 24, pnpm, git and a coding agent.
+
+To have alerts open incidents on their own, point an Alertmanager receiver at
+`/api/webhooks/prometheus` with the workspace's webhook token; a critical or
+high alert on a known service starts an investigation on arrival. See
+[Sending alerts](https://docs.prismalens.io/guides/alerts/).
 
 ## What it looks like
 
@@ -42,237 +111,54 @@ what changed:
   <img alt="An incident overview: the brief and a Next strip offering Copy command, the Impact chart with its threshold and deploy marker, Stop the impact with a rollback command, Why with its evidence, and What changed" src=".github/assets/overview-light.png" width="830">
 </picture>
 
-How the pages fit together is on
-[Incidents and the Inbox](https://docs.prismalens.io/guides/incidents/).
-
-## Install
-
-### npm
-
-Needs Node.js 24+.
-
-```bash
-npm install -g prismalens
-```
-
-To try it once without installing, run `npx prismalens@latest up`.
-
-### macOS and Linux, without Node
-
-```bash
-curl -fsSL https://prismalens.io/install.sh | sh
-```
-
-### Windows, without Node (preview)
-
-```powershell
-irm https://prismalens.io/install.ps1 | iex
-```
-
-Both installers bring their own Node, check the download against the
-release's `SHA256SUMS`, and put `pl` on your PATH.
-
-### Homebrew, and Scoop (preview)
-
-```bash
-brew install prismalens/tap/prismalens
-```
-
-```powershell
-scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
-scoop install prismalens
-```
-
-### Desktop app (preview)
-
-Unsigned zips for macOS, Windows and Linux are attached to each
-[GitHub Release](https://github.com/prismalens/prismalens/releases); your OS
-will warn before opening one. Signed installers are planned.
-
-## Quick start
-
-One package, one process, no external services. `pl up` runs the API and the
-dashboard on a single port, creates a SQLite database in `~/.prismalens` on
-first run, and applies its own migrations:
-
-```bash
-pl up                 # http://localhost:6473
-pl up --port 8080     # or wherever you like
-```
-
-`pl up` opens your browser on a one-time link that pairs it as this machine's
-session, and prints the link too; there is no account. Every browser pairs, this
-machine's included, so nothing gets in by being local. Everything else is
-configured in the dashboard. A coding agent must be installed on the machine for
-investigations to run; `pl doctor` lists the ones PrismaLens knows, which are on
-PATH, and how to install one (OpenCode, `curl -fsSL https://opencode.ai/install | bash`,
-is first in the pick order). For each one on PATH it also opens an ACP handshake and
-reports `ready` or the harness's own reason (for example "not logged in") — the
-same check Settings → Agent runs on demand. Before a run starts, PrismaLens
-reuses a passing check under a day old and otherwise checks again, so an agent
-that is not signed in gets no run until it is. PrismaLens never bundles,
-installs or authenticates the agent itself; for Claude Code and Codex it ships
-only the ACP adapter, so `claude` or `codex` on PATH is enough. Set
-`PRISMALENS_HARNESS=<id>` to pin one.
-
-There is no Docker, no Redis and no separate frontend server: the tarball
-carries the built dashboard and the API serves it from the same origin. Use
-`--workspace <dir>` to put the database and secrets somewhere other than
-`~/.prismalens`. Logs are in `<workspace>/logs/`, the newest is `prismalens.<highest N>.log`;
-`--verbose` streams them to the terminal. Webhook deliveries need the token in
-`<workspace>/PRISMALENS_WEBHOOK_SECRET_FILE`: send it as
-`Authorization: Bearer <token>` or as the basic auth password, or use it as the
-HMAC-SHA256 key over the raw body and send `X-Hub-Signature-256: sha256=<hex digest>`.
-Alertmanager: set `authorization: { credentials: <token> }` on the receiver. One alert by hand:
-
-```bash
-curl -X POST http://localhost:6473/api/webhooks/prometheus \
-  -H "Authorization: Bearer $(cat ~/.prismalens/PRISMALENS_WEBHOOK_SECRET_FILE)" \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"HighErrorRate","severity":"critical","service":"payments"},"annotations":{"summary":"5xx above 5% for 10 minutes"},"startsAt":"2026-09-18T12:00:00Z"}]}'
-```
-
-### Your first investigation
-
-A fresh install has nothing pointed at it, so no incidents arrive on their own.
-You do not need an Alertmanager to see it work:
-
-1. **Install and start.** `npm install -g prismalens`, then `pl up`; it opens
-   your browser on the link that pairs it, no account. `pl doctor` says
-   whether a coding agent is on PATH and which model a run will ask it for.
-   PrismaLens sets no model of its own: the agent runs the model set in its
-   own config, else its default, unless you set one under Settings → Agent →
-   Model.
-2. **Point a service at its code.** Services, then Add Service, then set
-   **Repository** to a folder (`~/code/payments`) or a git URL
-   (`git@github.com:acme/payments.git`). Saving asks git and shows the answer
-   on the service: `main at 3f2c9a1b04de`, or what failed and what to do. A URL
-   is mirrored under `~/.prismalens/repos/` with this machine's git login or
-   a git host token you add; see
-   [Git credentials](https://docs.prismalens.io/guides/git-credentials/).
-3. **Write the incident.** Incidents, then Create Incident. A title is the only
-   required field; pick the service, or the run has no repository to read and
-   the timeline says it ran unmapped.
-4. **Run.** Investigate takes a fresh snapshot of the repository's last commit
-   into `~/.prismalens/runs/<id>/repo` and runs one agent session there. Your
-   checkout is never the working directory, and uncommitted changes are not
-   read. The run's page streams it as it works, and the finding lands on the
-   incident's overview.
-
-That is the same `incidents.create` and `incidents.investigate` path the
-correlation engine uses, so nothing about the run is a mock.
-
-### Alerts on their own
-
-Once a receiver posts to `/api/webhooks/prometheus`, nobody has to click. An alert
-reaches a service through its `service` label: the value must equal a service's
-name exactly. An alert that repeats the title and text of one already on an open
-incident joins that incident; otherwise it opens a new one, and only the alert
-that opens an incident decides whether an investigation starts. A new incident
-with no service runs nothing, and the timeline says so. A critical or high alert
-on a service starts an investigation on arrival; change that on the service's
-Investigation tab (open the service from an incident, or from Settings →
-Services): always, critical and high, critical only, never. When the policy says
-no, the incident's timeline names the policy and where to change it.
-
-### Check a machine first
-
-`pl doctor` needs nothing running. It reports the Node version, the
-workspace, which coding agents are on PATH and whether each answers an ACP
-handshake, the model a run will ask for, and the webhook URL:
-
-```bash
-npx prismalens doctor
-```
-
-Both `prismalens` and the shorter `pl` alias point at the same binary. Full
-setup (providers, harnesses, configuration, commands) lives at
-**[docs.prismalens.io](https://docs.prismalens.io)**.
-
-### Keep it running in the background
-
-```bash
-pl service install
-```
-
-On Linux (systemd) and macOS (launchd) this runs PrismaLens as a service for your
-user: it starts at login, restarts if it crashes, and `pl upgrade` restarts it on
-the new version. `pl service status` shows where it runs; `pl service uninstall`
-removes it and keeps your data. See
-[Run in the background](https://docs.prismalens.io/guides/background-service/).
-
-### Upgrading
-
-```bash
-pl upgrade
-```
-
-It upgrades the way you installed: npm, the installer, Homebrew or Scoop. `pl up`
-says when a newer release is out. To uninstall, see
-[Install, upgrade and uninstall](https://docs.prismalens.io/install/).
-
-PrismaLens keeps data and run artifacts under `~/.prismalens`. Upgrade instructions and database migration details are documented at **[docs.prismalens.io](https://docs.prismalens.io)**.
-
 ## How it works
 
 - **One run, no model call.** An investigation is one coding-agent session in a
-  snapshot of the service's repo, driven over the Agent Client Protocol (ACP).
-  PrismaLens assembles the prompt, answers the agent's permission requests,
-  records the stream and validates the report. It never calls a model itself.
-- **Bring your own harness.** Any ACP agent on PATH is a registry row:
-  `opencode`, `claude-code`, `codex`, `gemini`, `deepagents`. With nothing
-  pinned, the first one on PATH in that order runs; pin another with
-  `PRISMALENS_HARNESS=<id>` or in Settings → Agent, which shows what is
-  installed and the version each was tested with. The harness's own login or API key is its business; PrismaLens
-  never reads or stores one.
+  clone of the service's repo, driven over the Agent Client Protocol (ACP).
+  PrismaLens assembles the prompt, routes the agent's permission requests,
+  records the stream and validates the report.
+- **Your agent, its own sign-in.** Any ACP agent PrismaLens knows can run;
+  with none pinned, the first one on PATH runs, and Settings → Agent picks
+  another. PrismaLens never reads or stores the agent's login or API key.
 - **Four permission levels.** Ask always, Auto-accept edits, Auto and Full
-  access each pick the agent's own mode and decide which of its permission
-  requests wait for you. A run an alert starts waits for nobody: it runs at
-  Auto and refuses anything it would ask. PrismaLens adds no sandbox: the agent runs as your
-  user on the machine that runs `pl up`, with an allowlisted environment and
-  its working directory on a throwaway clone of the repo.
-- **Ordered evidence, not scores.** Reports rank hypotheses by plausibility
-  with supporting/contradicting evidence per hypothesis — never a numeric
-  confidence number.
-- **Every run is durable.** Events, session metadata and the final report
-  are written to `~/.prismalens/runs/<runId>/`, and the report can be
-  exported as Markdown from the incident.
+  access each pick the agent's own mode and decide which of its requests wait
+  for you. A run an alert starts waits for nobody: it runs at Auto and refuses
+  anything the agent asks. PrismaLens adds no sandbox: the agent runs as your
+  user, with an allowlisted environment.
+- **Every run is durable.** Events, session metadata and the report are written
+  to `~/.prismalens/runs/<runId>/`, and the report exports as Markdown.
+
+To keep it running in the background, `pl service install` (Linux and macOS);
+to upgrade, `pl upgrade`, which upgrades the way you installed. Everything
+else, from configuration to commands, is on
+**[docs.prismalens.io](https://docs.prismalens.io)**.
 
 ## Monorepo layout
 
 | Package | What it is |
 | --- | --- |
-| `packages/cli` | The `prismalens`/`pl` binary — the released engine CLI. |
-| `packages/@prismalens/engine` | The investigation run: ACP session, permission policy, stream adapter, report validation, child launch. |
-| `packages/@prismalens/contracts` | Shared Zod schemas and canonical event/report types. |
-| `packages/@prismalens/config` | Shared config and environment-variable resolution. |
-| `packages/@prismalens/auth` | Device pairing and sessions (Better Auth). |
-| `packages/@prismalens/database` | SQLite database via Prisma — client, schema and the shipped migration runner. |
-| `packages/@prismalens/integrations` | Integration templates, OAuth2 flows and credential encryption. |
-| `packages/@prismalens/logger` | Pino-based structured logging with log rotation and secret redaction, shared across packages. |
-| `packages/api` | NestJS API server — shipped inside the `prismalens` tarball, booted by `pl up`. |
-| `packages/frontend` | TanStack Start dashboard — built to static assets and served by the API on the same origin. |
-| `packages/desktop` | The desktop app (preview): an Electron window on the same server `pl up` runs. |
+| `packages/cli` | The `prismalens`/`pl` binary, published to npm as `prismalens`. |
+| `packages/api` | NestJS API server, booted by `pl up`. |
+| `packages/frontend` | The dashboard, built to static assets the API serves. |
+| `packages/desktop` | The desktop app (preview): an Electron window on the same server. |
+| `packages/@prismalens/engine` | The investigation run: ACP session, permission asks, report validation. |
+| `packages/@prismalens/agent-adapters` | The ACP adapters shipped for agents that don't speak ACP themselves. |
+| `packages/@prismalens/*` | Shared contracts, config, auth, database, integrations and logger. |
 
-Only `packages/cli` is published to npm, under the name `prismalens`. The
-other packages are private and travel inside that one tarball, except the
-desktop app, which is released as its own zips.
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, testing workflows, and contribution guidelines.
+Only `packages/cli` is published to npm; the other packages travel inside its
+tarball, except the desktop app, which is released as its own zips. For
+development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 
 - Site: [prismalens.io](https://prismalens.io)
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [VERSIONING.md](VERSIONING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [SECURITY.md](SECURITY.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [VERSIONING.md](VERSIONING.md) ·
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [SECURITY.md](SECURITY.md)
 
 ## License
 
-[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). Each release
-carries `THIRD_PARTY_NOTICES.txt` with the licences of the third-party code
-bundled into the dashboard.
+[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). The npm package also
+bundles the agent adapters, including the Claude Agent SDK under Anthropic's
+own terms; NOTICE lists them and their licences, and each release carries
+`THIRD_PARTY_NOTICES.txt` for the code bundled into the dashboard.
