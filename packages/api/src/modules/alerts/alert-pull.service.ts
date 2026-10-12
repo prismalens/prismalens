@@ -62,6 +62,8 @@ export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
  */
 export const ALERTMANAGER_MIN_UPTIME_MS = 10 * 60 * 1000;
 const STAMP_CHUNK = 500;
+/** Statuses that say the backend has no rules API (an old Prometheus, a proxy without it). */
+const NO_RULES_API = new Set([404, 405, 501]);
 
 @Injectable()
 export class AlertPullService implements OnApplicationBootstrap {
@@ -341,7 +343,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 				// Samples that stop may mean a Prometheus that slept, not an alert that
 				// cleared: an ended episode needs its rule evaluated after it (#673 w5-26).
 				// Without a rules API the gap alone decides, as before.
-				const evaluations = new Map<string, Promise<number | null>>();
+				const evaluations = new Map<
+					string,
+					Promise<number | null | "failed">
+				>();
 				const lastStepMs =
 					since.getTime() +
 					Math.floor((now.getTime() - since.getTime()) / (stepSeconds * 1000)) *
@@ -355,18 +360,30 @@ export class AlertPullService implements OnApplicationBootstrap {
 					if (!alertname) return "gap";
 					let at = evaluations.get(alertname);
 					if (!at) {
+						let status: number | undefined;
+						const probe: typeof requestFn = async (...args) => {
+							const response = await requestFn(...args);
+							status = response.status;
+							return response;
+						};
 						at = metricsSegment
-							.alertRules(requestFn, alertname)
+							.alertRules(probe, alertname)
 							.then((rules) => {
 								const times = rules
 									.map((r) => Date.parse(r.lastEvaluation ?? ""))
 									.filter((t) => Number.isFinite(t));
 								return times.length > 0 ? Math.max(...times) : null;
 							})
-							.catch(() => null);
+							// Only a missing rules endpoint means "no rules API"; any other failure proves nothing.
+							.catch(() =>
+								status !== undefined && NO_RULES_API.has(status)
+									? null
+									: "failed",
+							);
 						evaluations.set(alertname, at);
 					}
 					const last = await at;
+					if (last === "failed") return "unknown";
 					if (last === null) return "gap";
 					// An evaluation after the range's last step could have fired again unseen.
 					return last > afterMs + stepSeconds * 1000 && last <= lastStepMs

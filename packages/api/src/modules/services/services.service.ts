@@ -83,12 +83,14 @@ export class ServicesService {
 			const named = incident.alerts.map((a) => serviceLabel(a.labels));
 			if (!named.includes(service.name)) continue;
 			if (named.some((n) => n !== null && n !== service.name)) continue;
-			await this.prisma.$transaction([
-				this.prisma.incident.update({
-					where: { id: incident.id },
+			// Conditional on still waiting: a concurrent claim or correlation may have won since the read.
+			const won = await this.prisma.$transaction(async (tx) => {
+				const { count } = await tx.incident.updateMany({
+					where: { id: incident.id, serviceId: null, mergedIntoId: null },
 					data: { serviceId: service.id },
-				}),
-				this.prisma.alert.updateMany({
+				});
+				if (count !== 1) return false;
+				await tx.alert.updateMany({
 					where: {
 						id: {
 							in: incident.alerts
@@ -98,8 +100,8 @@ export class ServicesService {
 						serviceId: null,
 					},
 					data: { serviceId: service.id },
-				}),
-				this.prisma.timelineEntry.create({
+				});
+				await tx.timelineEntry.create({
 					data: {
 						incidentId: incident.id,
 						type: TimelineEntryType.custom,
@@ -111,9 +113,10 @@ export class ServicesService {
 							serviceId: service.id,
 						}),
 					},
-				}),
-			]);
-			claimed++;
+				});
+				return true;
+			});
+			if (won) claimed++;
 		}
 		if (claimed > 0)
 			this.logger.log(

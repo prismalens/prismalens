@@ -472,6 +472,8 @@ describe("AlertPullService (#605)", () => {
 				values: series2Values,
 			};
 
+			// No rules API on this backend: the gap alone decides.
+			fetchSpy.mockImplementation(async () => new Response("{}", { status: 404 }));
 			fetchSpy.mockResolvedValueOnce(
 				new Response(
 					JSON.stringify({
@@ -1088,6 +1090,28 @@ describe("AlertPullService (#605)", () => {
 			await service.pull(new Date("2026-09-20T09:00:30.000Z"));
 
 			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("neither replays nor resolves when the rules API fails rather than being absent", async () => {
+			promOnly();
+			routeFetch(
+				matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels),
+				new Response("{}", { status: 503 }),
+			);
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("lets the gap decide when the backend has no rules API", async () => {
+			promOnly();
+			routeFetch(matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels));
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
 		});
 
 		it("calls it ended once the rule was evaluated after the last firing sample", async () => {

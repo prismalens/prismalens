@@ -110,12 +110,13 @@ describe("ServicesController metadata.investigation.notes validation (#673 w21)"
 describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 	function claimWith(
 		incidents: Array<{ id: string; alerts: Array<{ id: string; labels: string | null }> }>,
+		stillWaiting = 1,
 	) {
 		const prisma = {
-			incident: { findMany: vi.fn(async () => incidents), update: vi.fn(async (a: unknown) => a) },
+			incident: { findMany: vi.fn(async () => incidents), updateMany: vi.fn(async () => ({ count: stillWaiting })) },
 			alert: { updateMany: vi.fn(async (a: unknown) => a) },
 			timelineEntry: { create: vi.fn(async (a: unknown) => a) },
-			$transaction: vi.fn(async (ops: unknown[]) => ops),
+			$transaction: vi.fn(async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(prisma)),
 		};
 		return { prisma, service: new ServicesService(prisma as unknown as PrismaService) };
 	}
@@ -133,7 +134,10 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 				where: expect.objectContaining({ serviceId: null, mergedIntoId: null, status: { not: "closed" } }),
 			}),
 		);
-		expect(prisma.incident.update).toHaveBeenCalledWith({ where: { id: "inc-1" }, data: { serviceId: "svc-1" } });
+		expect(prisma.incident.updateMany).toHaveBeenCalledWith({
+			where: { id: "inc-1", serviceId: null, mergedIntoId: null },
+			data: { serviceId: "svc-1" },
+		});
 		expect(prisma.alert.updateMany).toHaveBeenCalledWith({
 			where: { id: { in: ["a1"] }, serviceId: null },
 			data: { serviceId: "svc-1" },
@@ -154,6 +158,17 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 
 		expect(await service.claimWaiting(svc)).toBe(0);
 		expect(prisma.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("writes nothing when another claim or correlation took the incident since the read", async () => {
+		const { prisma, service } = claimWith(
+			[{ id: "inc-1", alerts: [{ id: "a1", labels: '{"service":"booklogr-api"}' }] }],
+			0,
+		);
+
+		expect(await service.claimWaiting(svc)).toBe(0);
+		expect(prisma.alert.updateMany).not.toHaveBeenCalled();
+		expect(prisma.timelineEntry.create).not.toHaveBeenCalled();
 	});
 
 	it("never fails the service save it follows", async () => {
