@@ -77,6 +77,12 @@ import {
 import { join } from "node:path";
 
 export const WORKSPACE_LOCK_FILE = "prismalens.lock";
+/**
+ * What a launcher sends over the IPC channel to stop the backend it spawned.
+ * Windows has no catchable stop signal (`kill` is TerminateProcess), so this is
+ * the only way an owned backend runs its shutdown and releases the lock (#819).
+ */
+export const LAUNCHER_STOP_MESSAGE = "prismalens:stop";
 const STEAL_SUFFIX = ".steal";
 /**
  * How long an unreadable lock is left alone. With the link protocol above a

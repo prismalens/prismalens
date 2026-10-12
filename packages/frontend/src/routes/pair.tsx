@@ -187,7 +187,7 @@ function Shell({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="fixed inset-0 overflow-y-auto bg-canvas px-6">
+		<div className="fixed inset-x-0 bottom-0 top-(--titlebar-h) overflow-y-auto bg-canvas px-6">
 			<div className="mx-auto flex min-h-full w-full max-w-sm flex-col justify-center py-8">
 				<div className="mb-6 flex items-center gap-2.5 text-body font-semibold">
 					<PrismaLensMark className="size-[18px]" />

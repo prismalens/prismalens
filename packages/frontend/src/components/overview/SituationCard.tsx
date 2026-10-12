@@ -96,7 +96,12 @@ export function SituationCard({
 		cleared: o.cleared,
 		alertsCleared: incident.status === "resolved",
 		runs: runs.filter((r) => r.kind !== "chat").length,
-		live: o.live ? { name: viewName(runs, o.live) } : null,
+		live: o.live
+			? {
+					name: viewName(runs, o.live),
+					waiting: o.latestRun.awaiting || !!o.live.awaitingApprovalAt,
+				}
+			: null,
 		failed:
 			latest && latestState === "failed"
 				? {

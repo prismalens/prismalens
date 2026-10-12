@@ -23,6 +23,7 @@ export interface StripChip {
  */
 export function RunStrip({
 	state,
+	waiting,
 	label,
 	detail,
 	model,
@@ -34,6 +35,8 @@ export function RunStrip({
 	current,
 }: {
 	state: RunState | null;
+	/** The agent waits on your answer in the dock (#673 w5-14). */
+	waiting?: boolean;
 	label: string;
 	detail: string;
 	model?: StripChip | null;
@@ -52,7 +55,7 @@ export function RunStrip({
 			data-testid="run-strip"
 		>
 			{state ? (
-				<RunDot state={state} className="size-[7px]" />
+				<RunDot state={state} waiting={waiting} className="size-[7px]" />
 			) : (
 				<span
 					aria-hidden
@@ -63,7 +66,10 @@ export function RunStrip({
 				{label}
 			</span>
 			<span
-				className="min-w-[100px] flex-1 truncate text-text-2"
+				className={cn(
+					"min-w-[100px] flex-1 truncate",
+					waiting ? "text-warn" : "text-text-2",
+				)}
 				data-testid="run-strip-detail"
 			>
 				{detail}

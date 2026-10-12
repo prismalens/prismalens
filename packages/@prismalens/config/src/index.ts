@@ -103,6 +103,7 @@ export {
 	acquireWorkspaceLock,
 	armForcedExitOnSecondSignal,
 	disarmForcedExit,
+	LAUNCHER_STOP_MESSAGE,
 	readWorkspaceLock,
 	readWorkspaceLockState,
 	releaseWorkspaceLock,

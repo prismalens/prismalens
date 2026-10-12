@@ -336,3 +336,119 @@ describe("AcpAdapter.normalize", () => {
 		expect(CanonicalEventSchema.safeParse(event).success).toBe(true);
 	});
 });
+
+describe("ACP status semantics (#820, #673 w5-2)", () => {
+	const open: AcpUpdate = {
+		sessionUpdate: "tool_call",
+		toolCallId: "toolu_1",
+		kind: "execute",
+		title: "Terminal",
+		rawInput: {},
+	};
+
+	it("reads a status-less update as the call still running, and shows the command it fills in", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events(open);
+		const filled = adapter.events({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "toolu_1",
+			title: "curl -s http://localhost:9093/api/v2/alerts",
+			rawInput: { command: "curl -s http://localhost:9093/api/v2/alerts" },
+		});
+		expect(filled).toHaveLength(1);
+		expect(filled[0]).toMatchObject({
+			kind: "agent_step",
+			text: "",
+			toolCalls: [
+				{
+					toolCallId: "toolu_1",
+					args: { command: "curl -s http://localhost:9093/api/v2/alerts" },
+				},
+			],
+		});
+		// A field streamed in later fills the step in too; the same input again is nothing new.
+		const fuller = {
+			command: "curl -s http://localhost:9093/api/v2/alerts",
+			description: "Read alerts",
+		};
+		expect(
+			adapter.events({
+				sessionUpdate: "tool_call_update",
+				toolCallId: "toolu_1",
+				rawInput: fuller,
+			}),
+		).toMatchObject([{ kind: "agent_step", toolCalls: [{ args: fuller }] }]);
+		expect(
+			adapter.events({
+				sessionUpdate: "tool_call_update",
+				toolCallId: "toolu_1",
+				rawInput: fuller,
+			}),
+		).toEqual([]);
+		const done = adapter.events({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "toolu_1",
+			status: "failed",
+			content: [{ type: "content", content: { type: "text", text: "denied" } }],
+		});
+		expect(done).toHaveLength(1);
+		expect(done[0]).toMatchObject({ kind: "tool_result", result: { ok: false } });
+	});
+
+	it("ends a call announced already finished", () => {
+		const adapter = new AcpAdapter(ctx);
+		const out = adapter.events({
+			sessionUpdate: "tool_call",
+			toolCallId: "img_1",
+			kind: "read",
+			title: "View image",
+			status: "completed",
+		});
+		expect(out.map((e) => e.kind)).toEqual(["agent_step", "tool_result"]);
+		for (const e of out) expect(CanonicalEventSchema.safeParse(e).success).toBe(true);
+	});
+
+	it("puts the call id, the input and the MCP server on an ask for a tool with no command (#673 w5-41)", () => {
+		const adapter = new AcpAdapter(ctx);
+		const ask = adapter.permissionAsk(
+			"5f1d7a52-7a43-4f43-9f43-6a1a4b5c2d10",
+			{
+				toolCallId: "toolu_9",
+				title: "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+				kind: "other",
+				rawInput: { commands: ["git log -5"], queries: ["pool size"] },
+				_meta: { claudeCode: { mcpServer: { name: "context-mode", source: "plugin" } } },
+			},
+			FIXED,
+		);
+		expect(ask).toMatchObject({
+			kind: "permission_ask",
+			toolCallId: "toolu_9",
+			detail: null,
+			server: "context-mode",
+		});
+		expect(ask.kind === "permission_ask" && JSON.parse(ask.input ?? "")).toEqual({
+			commands: ["git log -5"],
+			queries: ["pool size"],
+		});
+		expect(CanonicalEventSchema.safeParse(ask).success).toBe(true);
+	});
+
+	it("records a queued message and carries its id onto the delivery", () => {
+		const adapter = new AcpAdapter(ctx);
+		const id = "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c11";
+		const queued = adapter.messageQueued(id, "check the pool");
+		const delivered = adapter.operatorMessage(
+			"check the pool",
+			"queue",
+			true,
+			undefined,
+			undefined,
+			undefined,
+			id,
+		);
+		expect(queued).toMatchObject({ kind: "message_queued", messageId: id });
+		expect(delivered).toMatchObject({ kind: "operator_message", messageId: id });
+		expect(CanonicalEventSchema.safeParse(queued).success).toBe(true);
+	});
+});

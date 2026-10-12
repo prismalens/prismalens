@@ -530,6 +530,8 @@ export type SendInvestigationMessageInput = z.infer<
 export const SendInvestigationMessageResultSchema = z.object({
 	/** `resumed`: the run had finished and a follow-up reopened its session (#747). */
 	state: z.enum(["queued", "sent", "resumed"]),
+	/** A queued message's id: its `message_queued` and `operator_message` events carry it (#820). */
+	messageId: z.string().uuid().optional(),
 });
 export type SendInvestigationMessageResult = z.infer<
 	typeof SendInvestigationMessageResultSchema
@@ -631,6 +633,19 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		followUp: FollowUpKindSchema.optional(),
 		/** Files that went with the message (R4.3). */
 		attachments: z.array(AttachmentRefSchema).optional(),
+		/** The `message_queued` this delivers or gives up on; absent before #820. */
+		messageId: z.string().uuid().optional(),
+	}),
+	z.object({
+		/**
+		 * A message waits for the agent's next pause (#820): recorded when it is
+		 * queued, so a reload or a restart still shows it until its `operator_message`.
+		 */
+		kind: z.literal("message_queued"),
+		...StreamBaseShape,
+		messageId: z.string().uuid(),
+		text: z.string(),
+		attachments: z.array(AttachmentRefSchema).optional(),
 	}),
 	z.object({
 		/** The harness answered `session/set_config_option` before the first prompt (R4.2). */
@@ -652,6 +667,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		expiresAt: z.string().datetime(),
 		/** The run's wall clock ends before ASK_TIMEOUT_MS would: the ask lapses sooner (#673 w21). */
 		clamped: z.boolean().optional(),
+		/** The tool call the ask is about, when the agent named one (#820). */
+		toolCallId: z.string().optional(),
+		/** The call's input as JSON when it names no command or path, e.g. an MCP tool (#820). */
+		input: z.string().optional(),
+		/** The MCP server the tool comes from, when the agent says (#820). */
+		server: z.string().optional(),
 	}),
 	z.object({
 		kind: z.literal("permission_answer"),

@@ -68,6 +68,15 @@ export function shortPath(text: string, cwd: string | null | undefined) {
 	return text.split(`${base}/`).join("repo/").split(base).join("repo");
 }
 
+/** `ctx_batch_execute` and `context-mode` from `mcp__plugin_context-mode_context-mode__ctx_batch_execute`. */
+export function mcpTool(name: string): { tool: string; server: string } | null {
+	const m = /^mcp__(.+?)__(.+)$/.exec(name.trim());
+	if (!m?.[1] || !m[2]) return null;
+	// A plugin's server reads `plugin_<plugin>_<server>`; the server is what a person named.
+	const server = m[1].replace(/^plugin_(.+)_\1$/, "$1").replace(/^plugin_/, "");
+	return { tool: m[2], server };
+}
+
 /**
  * What ran, as a command or a path, from the engine's `name(args)` source
  * (acp-adapter.ts deriveSource): `git show e87ad72`, `read api/books.py`.
@@ -75,6 +84,8 @@ export function shortPath(text: string, cwd: string | null | undefined) {
 export function commandText(source: string, cwd?: string | null): string {
 	const m = /^(.*?)\((\{[\s\S]*\})\)$/.exec(source.trim());
 	const name = (m?.[1] ?? source).replace(/^`(.*)`$/, "$1").trim();
+	const mcp = mcpTool(name);
+	if (mcp) return `${mcp.tool} (${mcp.server})`;
 	if (!m?.[2]) return shortPath(name, cwd);
 	try {
 		const args = JSON.parse(m[2]) as Record<string, unknown>;

@@ -79,10 +79,12 @@ const steps = new Map([
 	["b", 2],
 	["c", 3],
 ]);
+const stepOf = (e: { toolCallId?: string | null }) =>
+	steps.get(e.toolCallId ?? "");
 
 describe("evidenceSections (#811 data mapping)", () => {
 	it("links each evidence item and ruled-out cause to its step", () => {
-		const out = evidenceSections(inv({ report }), steps, {
+		const out = evidenceSections(inv({ report }), stepOf, {
 			live: false,
 			standing: null,
 		});
@@ -98,7 +100,7 @@ describe("evidenceSections (#811 data mapping)", () => {
 	});
 
 	it("says a live run has no conclusion and whose finding stands", () => {
-		const [so] = evidenceSections(inv({ status: "running" }), steps, {
+		const [so] = evidenceSections(inv({ status: "running" }), stepOf, {
 			live: true,
 			standing: { runId: "r2", name: "Run 2" },
 		});
@@ -110,7 +112,7 @@ describe("evidenceSections (#811 data mapping)", () => {
 	});
 
 	it("says a failed run failed before it reported", () => {
-		const [none] = evidenceSections(inv({ status: "failed" }), steps, {
+		const [none] = evidenceSections(inv({ status: "failed" }), stepOf, {
 			live: false,
 			standing: null,
 		});

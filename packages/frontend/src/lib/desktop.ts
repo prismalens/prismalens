@@ -13,6 +13,11 @@ declare global {
 	}
 }
 
+/** `--titlebar-h` in the desktop window (#819): floating menus keep below the window controls. */
+export function titleRowHeight(): number {
+	return desktopBridge() ? 32 : 0;
+}
+
 export function desktopBridge(): DesktopBridge | undefined {
 	return typeof window === "undefined" ? undefined : window.prismalensDesktop;
 }

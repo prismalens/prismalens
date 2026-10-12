@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The window frame (#736): no OS title bar, the native controls drawn over the
- * app's own 40px strip in the app's colours. The frontend's `--titlebar-h`
- * token must equal `TITLEBAR_HEIGHT`.
+ * The window frame (#736): no OS title bar; the native controls sit in the
+ * app's own empty title row in the app's colours (#819). The frontend's
+ * `--titlebar-h` token must equal `TITLEBAR_HEIGHT`.
  */
 
 import type { BrowserWindowConstructorOptions } from "electron";
@@ -13,12 +13,12 @@ export type Theme = "light" | "dark";
 
 export const THEME_CHANNEL = "prismalens:theme";
 export const THEME_COOKIE = "prismalens-theme";
-export const TITLEBAR_HEIGHT = 40;
+export const TITLEBAR_HEIGHT = 32;
 
 /** The frontend's `--background` per theme, as hex. */
 const BACKGROUND: Record<Theme, string> = { dark: "#09090b", light: "#fafafa" };
 const SYMBOL: Record<Theme, string> = { dark: "#fafafa", light: "#09090b" };
-/** The page header the controls sit on: the frontend's `--surface-1`, as hex (#811). */
+/** The title row the controls sit on: the frontend's `--surface-1`, as hex. */
 const STRIP: Record<Theme, string> = { dark: "#161618", light: "#eeeef0" };
 
 /** Same rule as the frontend's pre-paint script: anything but `light` is dark. */
@@ -50,9 +50,12 @@ export function frameOptions(
 		titleBarStyle: "hidden" as const,
 		backgroundColor: backgroundColor(theme),
 	};
-	// macOS keeps its traffic lights, centred in the strip; the others get the
-	// overlay controls, which also keep Windows snap layouts on maximize.
+	// macOS keeps its traffic lights (14px tall), centred in the row; the others
+	// get the overlay controls, which also keep Windows snap layouts on maximize.
 	return platform === "darwin"
-		? { ...shared, trafficLightPosition: { x: 14, y: 13 } }
+		? {
+				...shared,
+				trafficLightPosition: { x: 14, y: (TITLEBAR_HEIGHT - 14) / 2 },
+			}
 		: { ...shared, titleBarOverlay: titleBarOverlay(theme) };
 }

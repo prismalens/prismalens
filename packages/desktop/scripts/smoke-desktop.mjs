@@ -5,14 +5,21 @@
 /**
  * Launch the unpacked app from `electron-builder --dir` on an empty workspace,
  * let it boot its backend, pair its window and render, and assert the capture
- * it writes (PRISMALENS_DESKTOP_SMOKE). The CI desktop job runs this on every
+ * it writes (PRISMALENS_DESKTOP_SMOKE), then that its quit released the
+ * workspace lock. The CI desktop job runs this on every
  * OS, under xvfb on Linux.
  *
  *   node scripts/smoke-desktop.mjs <out.png>
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, statSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +29,8 @@ const release = resolve(here, "../release");
 const out = resolve(process.argv[2] ?? "desktop-smoke.png");
 const TIMEOUT_MS = 180_000;
 const MIN_PNG_BYTES = 10_000;
+/** From the capture (the app quits right after it) to exit: under the backend's 10s forced-exit deadline. */
+const QUIT_BUDGET_MS = 8_000;
 
 /** The unpacked app's executable, whatever electron-builder named the directory. */
 function executable() {
@@ -70,5 +79,18 @@ child.on("exit", (code, signal) => {
 		console.error(`${out} is ${bytes} bytes: a blank window, not the app`);
 		process.exit(1);
 	}
-	console.log(`ok: ${out} (${bytes} bytes), app exited with ${code}`);
+	// The app's own quit must stop its backend cleanly, and promptly, on every OS (#819).
+	const quitMs = Date.now() - statSync(out).mtimeMs;
+	if (quitMs > QUIT_BUDGET_MS) {
+		console.error(`quit took ${Math.round(quitMs)}ms after the capture`);
+		process.exit(1);
+	}
+	const lock = join(workspace, "prismalens.lock");
+	if (existsSync(lock)) {
+		console.error(`quit left ${lock} behind: ${readFileSync(lock, "utf8")}`);
+		process.exit(1);
+	}
+	console.log(
+		`ok: ${out} (${bytes} bytes), app quit in ${Math.round(quitMs)}ms with ${code}, lock released`,
+	);
 });

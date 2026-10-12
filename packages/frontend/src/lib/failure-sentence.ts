@@ -21,8 +21,8 @@ export function failureSentence(
 ): { said: string; words: string | null; next?: string; detail?: string } {
 	if (!error) return { said: "No error was recorded.", words: null };
 	const line = harnessWords(error).split("\n")[0]?.trim() ?? "";
-	const known = failureWords(error);
-	if (known.ours) {
+	const known = failureWords(error, agent);
+	if (known.ours || known.plain) {
 		return {
 			said: known.what,
 			words: null,

@@ -143,7 +143,8 @@ export function nextStrip(input: {
 	/** Stored `resolved`: the source ended it; it reads Alerts cleared before any fix step. */
 	alertsCleared?: boolean;
 	runs: number;
-	live: { name: string } | null;
+	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
+	live: { name: string; waiting?: boolean } | null;
 	failed: { name: string; reason: string } | null;
 	reported: boolean;
 	option: FixOption | null;
@@ -280,6 +281,11 @@ export function nextStrip(input: {
 		}
 	}
 	if (input.cleared) return CLEARED;
+	if (input.live?.waiting)
+		return {
+			tone: "warn",
+			text: `${input.live.name} waits for your approval. Approve or deny it in the box below.`,
+		};
 	if (input.live)
 		return {
 			tone: "live",

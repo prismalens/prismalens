@@ -98,14 +98,9 @@ function Shell({ pathname }: { pathname: string }) {
 	return (
 		<>
 			<aside
-				className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
+				className="fixed bottom-0 left-0 top-(--titlebar-h) z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 md:flex"
 				data-testid="sidebar"
 			>
-				{/* macOS draws its traffic lights here (x14 y13). */}
-				<div
-					aria-hidden
-					className="hidden h-[30px] shrink-0 app-drag mac:block"
-				/>
 				{settings ? (
 					<SettingsBar onBack={back} />
 				) : (
@@ -138,10 +133,10 @@ function MainBar({
 	useFoldKey(toggleSidebar);
 	return (
 		<>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0 desktop:app-drag">
+			<div className="flex h-(--header-h) shrink-0 items-center gap-2.5 px-4 max-xl:justify-center max-xl:px-0 [[data-sidebar-folded]_&]:justify-center [[data-sidebar-folded]_&]:px-0">
 				<Link
 					to="/incidents"
-					className="flex items-center gap-2.5 rounded-control text-body font-semibold desktop:app-no-drag"
+					className="flex items-center gap-2.5 rounded-control text-body font-semibold"
 					aria-label="PrismaLens"
 				>
 					<PrismaLensMark className="size-[18px] shrink-0" />
@@ -369,7 +364,7 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 			<button
 				type="button"
 				onClick={onBack}
-				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1 desktop:app-no-drag"
+				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1"
 				data-testid="settings-back"
 			>
 				<ChevronLeft className="size-4 text-text-2" />

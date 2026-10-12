@@ -416,48 +416,103 @@ describe("deriveTranscript", () => {
 		});
 	});
 
-	it("keeps card state waiting on a live run and suppresses thinking item (#673 w21)", () => {
+	it("keeps the ask's place and no thinking line while it waits (#820)", () => {
 		const items = deriveTranscript([step(0, "Working."), ask(10)], T0 + 15_000, {
 			run: { status: "running", live: true },
 		});
-		const asks = items.filter((i) => i.kind === "ask");
-		expect(asks).toHaveLength(1);
-		expect(asks[0]).toMatchObject({
-			kind: "ask",
-			state: "waiting",
-		});
+		expect(items.filter((i) => i.kind === "ask")).toEqual([
+			expect.objectContaining({ kind: "ask", askId: "00000000-0000-0000-0000-000000000010" }),
+		]);
 		expect(items.some((i) => i.kind === "thinking")).toBe(false);
 	});
 
-	it.each([
-		"approved",
-		"denied",
-		"timed_out",
-		"stopped",
-		"restarted",
-	] as const)("sets ask state to %s when answered (#673 w21)", (outcome) => {
-		const items = deriveTranscript(
-			[step(0, "Working."), ask(10, "ask-1"), answer(20, "ask-1", outcome)],
-			T0 + 25_000,
+	it("lists a call once though an ask and late results come between (#673 w5-1, w5-42)", () => {
+		// As stored for a walk run: the call, two early updates, the ask, its denial, the refusal.
+		const call = { id: "toolu_1", name: "Terminal" };
+		const events = [
+			step(0, "", [call]),
+			ask(1, "00000000-0000-0000-0000-000000000011", "curl -s x", "curl -s x"),
+			answer(600, "00000000-0000-0000-0000-000000000011", "timed_out"),
+			step(601, "", [{ ...call, args: { command: "curl -s x" } }]),
+			result(601, "toolu_1", null, false),
+			step(602, "The query was denied.", [{ id: "toolu_2", name: "Terminal" }]),
+			result(603, "toolu_2", null),
+		];
+		const items = deriveTranscript(events, T0 + 700_000, { run: ended });
+		const calls = items.flatMap((i) => (i.kind === "tools" ? i.callIds : []));
+		expect(calls).toEqual(["toolu_1", "toolu_2"]);
+	});
+
+	it("shows a queued message from its event until it is delivered (#673 w5-15)", () => {
+		const id = "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c11";
+		const queued = {
+			kind: "message_queued",
+			...base(5),
+			messageId: id,
+			text: "check the pool",
+		} as CanonicalEvent;
+		const waiting = deriveTranscript([step(0, "Working."), queued], T0 + 6000, {
+			run: { status: "running", live: true },
+		});
+		expect(waiting.find((i) => i.kind === "operator")).toMatchObject({
+			text: "check the pool",
+			state: "queued",
+		});
+		const delivered = deriveTranscript(
+			[
+				step(0, "Working."),
+				queued,
+				{ ...operator(9, "check the pool"), messageId: id } as CanonicalEvent,
+			],
+			T0 + 10_000,
 			{ run: { status: "running", live: true } },
 		);
-		const asks = items.filter((i) => i.kind === "ask");
-		expect(asks).toHaveLength(1);
-		expect(asks[0]).toMatchObject({
-			kind: "ask",
-			state: outcome,
+		expect(
+			delivered.filter((i) => i.kind === "operator").map((i) => i.kind === "operator" && i.state),
+		).toEqual(["delivered"]);
+	});
+
+	it("reads a queued message on an ended run as never delivered (#820)", () => {
+		const queued = {
+			kind: "message_queued",
+			...base(5),
+			messageId: "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c12",
+			text: "still there?",
+		} as CanonicalEvent;
+		const items = deriveTranscript([step(0, "Working."), queued], T0 + 6000, {
+			run: ended,
+		});
+		expect(items.find((i) => i.kind === "operator")).toMatchObject({
+			state: "not_delivered",
 		});
 	});
 
-	it("marks an unanswered ask as ended when the run is not live (#673 w21)", () => {
-		const items = deriveTranscript([step(0, "Working."), ask(10)], T0 + 20_000, {
+	it("keeps a delegation one line when its call is re-announced", () => {
+		const items = deriveTranscript(
+			[
+				step(0, "", [{ id: "t1", name: "Task" }]),
+				step(1, "", [{ id: "t1", name: "Check the pool", args: { description: "Check the pool" } }]),
+			],
+			T0 + 2000,
+			{ run: ended },
+		);
+		expect(kinds(items)).toEqual(["line"]);
+	});
+
+	it("names the model the way the picker does (#673 w5-3)", () => {
+		const config = {
+			kind: "session_config",
+			...base(0),
+			option: "model",
+			value: "haiku",
+			accepted: true,
+		} as CanonicalEvent;
+		const items = deriveTranscript([config], T0, {
 			run: ended,
+			modelName: (id) => (id === "haiku" ? "Haiku 5.5" : id),
 		});
-		const asks = items.filter((i) => i.kind === "ask");
-		expect(asks).toHaveLength(1);
-		expect(asks[0]).toMatchObject({
-			kind: "ask",
-			state: "ended",
+		expect(items[0]).toMatchObject({
+			text: "The agent took model Haiku 5.5 before the first prompt",
 		});
 	});
 });
@@ -479,6 +534,20 @@ describe("runStepText", () => {
 			stale: true,
 		});
 		expect(runStepText(thinking, T0, { streamLost: true })?.stale).toBe(true);
+	});
+
+	it("ages the agent's quiet from its own last event, not your queued message (#820)", () => {
+		const events = [
+			step(0, "", [{ id: "a", name: "Read x" }]),
+			result(1, "a", "file"),
+			{
+				kind: "message_queued",
+				...base(170),
+				messageId: "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c13",
+				text: "are you stuck?",
+			} as CanonicalEvent,
+		];
+		expect(runStepText(events, T0 + 181_000)?.stale).toBe(true);
 	});
 
 	it("is not stale for a 10-minute-old permission_ask (#673 w21)", () => {

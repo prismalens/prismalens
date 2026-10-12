@@ -235,7 +235,9 @@ export function runLabel(runs: Run[], run: Run): string {
 		);
 	const n = investigations.findIndex((r) => r.id === run.id) + 1;
 	const word = isWorkflowLive(run.status)
-		? "working"
+		? run.awaitingApprovalAt
+			? "waiting for you"
+			: "working"
 		: run.status === "completed"
 			? run.rootCause?.trim()
 				? "likely cause"
@@ -273,6 +275,7 @@ function RunList({
 			)}
 			{runs.map((r) => {
 				const live = isWorkflowLive(r.status);
+				const waiting = live && !!r.awaitingApprovalAt;
 				const on = r.id === runId;
 				const label = runLabel(runs, r);
 				return (
@@ -290,15 +293,17 @@ function RunList({
 							aria-hidden
 							className={cn(
 								"size-1.5 shrink-0 rounded-full",
-								r.kind === "chat"
-									? "bg-text-3"
-									: live
-										? "breathe bg-live"
-										: r.status === "completed"
-											? "bg-ok"
-											: r.status === "failed"
-												? "bg-danger"
-												: "bg-text-3",
+								waiting
+									? "breathe bg-warn"
+									: r.kind === "chat"
+										? "bg-text-3"
+										: live
+											? "breathe bg-live"
+											: r.status === "completed"
+												? "bg-ok"
+												: r.status === "failed"
+													? "bg-danger"
+													: "bg-text-3",
 							)}
 						/>
 						<span dir="auto" className="min-w-0 flex-1 truncate">

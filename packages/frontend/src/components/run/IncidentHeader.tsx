@@ -54,16 +54,6 @@ import { StatusUpdateDialog } from "./StatusUpdateDialog";
 
 const SEVERITIES = Object.keys(SEVERITY_LABEL) as Severity[];
 
-/** The 132 px the Windows window controls draw over (#811); nothing interactive under them. */
-export function WindowControlsSpace() {
-	return (
-		<span
-			aria-hidden
-			className="hidden w-[132px] shrink-0 desktop:block mac:hidden"
-		/>
-	);
-}
-
 /**
  * The breadcrumb header (#811): back to the inbox, `INC-1 WalkGrouped / Run 2`,
  * service, severity, firing; then the page's own control, Resolve and the menu.
@@ -77,7 +67,6 @@ export function IncidentHeader({
 	onReopen,
 	onEditCause,
 	trailing,
-	controlsSpace = true,
 }: {
 	incident: IncidentWithRelations;
 	view: string;
@@ -88,8 +77,6 @@ export function IncidentHeader({
 	onEditCause: () => void;
 	/** The page's own control before Resolve, e.g. the details toggle. */
 	trailing?: ReactNode;
-	/** False while a side panel holds the window controls' corner. */
-	controlsSpace?: boolean;
 }) {
 	usePageTitle(`INC-${incident.number} ${incident.title} / ${view}`);
 	const navigate = useNavigate();
@@ -135,7 +122,7 @@ export function IncidentHeader({
 
 	return (
 		<header
-			className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap desktop:app-drag desktop:[&_a]:app-no-drag desktop:[&_button]:app-no-drag"
+			className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
 			data-testid="incident-header"
 		>
 			<Hint label="Back to the inbox">
@@ -324,7 +311,6 @@ export function IncidentHeader({
 					)}
 				</DropdownMenuContent>
 			</DropdownMenu>
-			{controlsSpace && <WindowControlsSpace />}
 			<StatusUpdateDialog
 				open={updateOpen}
 				onOpenChange={setUpdateOpen}

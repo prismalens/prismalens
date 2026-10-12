@@ -73,9 +73,9 @@ describe("workerCount", () => {
 		expect(n).toBeGreaterThanOrEqual(1);
 	});
 
-	it("falls back to at most 4 outside CI with no explicit value", () => {
+	it("falls back to at most 2 outside CI with no explicit value", () => {
 		const n = workerCount([], false);
-		expect(n).toBeLessThanOrEqual(4);
+		expect(n).toBeLessThanOrEqual(2);
 		expect(n).toBeGreaterThanOrEqual(1);
 	});
 

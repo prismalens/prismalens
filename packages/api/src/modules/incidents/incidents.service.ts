@@ -481,9 +481,13 @@ export class IncidentsService {
 			Promise.all(
 				live.map((id) =>
 					this.prisma.investigationEvent.findFirst({
+						// A step with no prose (a tool call, or its command filled in) says nothing new (#820).
 						where: {
 							investigationId: id,
-							event: { contains: '"kind":"agent_step"' },
+							AND: [
+								{ event: { contains: '"kind":"agent_step"' } },
+								{ NOT: { event: { contains: '"text":""' } } },
+							],
 						},
 						orderBy: { seq: "desc" },
 						select: { investigationId: true, event: true },

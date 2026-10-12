@@ -44,6 +44,12 @@ describe("buildInvestigationPrompt (#633)", () => {
 		);
 	});
 
+	it("tells the agent not to name the report's fields in its prose (#673 w5-25)", () => {
+		expect(buildInvestigationPrompt(baseContext)).toContain(
+			"never name the block's fields there (nextSteps, rootCause, ruledOut)",
+		);
+	});
+
 	it("without telemetry neither appears and the source-code line still does", () => {
 		const prompt = buildInvestigationPrompt(baseContext);
 
