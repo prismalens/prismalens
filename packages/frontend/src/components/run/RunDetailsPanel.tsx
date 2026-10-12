@@ -7,7 +7,6 @@ import { X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { WindowControlsSpace } from "./IncidentHeader";
 import {
 	type DetailLink,
 	type DetailRow,
@@ -112,7 +111,7 @@ export function RunDetailsPanel({
 			className="flex h-full w-[380px] shrink-0 flex-col bg-surface-1 shadow-[-1px_0_0_var(--hairline)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4 motion-safe:duration-200"
 			data-testid="run-details"
 		>
-			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2 desktop:app-drag desktop:[&_button]:app-no-drag">
+			<div className="flex h-(--header-h) shrink-0 items-center gap-1.5 px-2">
 				<Button
 					variant="text"
 					size="icon"
@@ -124,7 +123,6 @@ export function RunDetailsPanel({
 					<X className="size-3.5" />
 				</Button>
 				<h2 className="min-w-0 flex-1 truncate text-heading">{title}</h2>
-				<WindowControlsSpace />
 			</div>
 			<TabsPrimitive.Root
 				value={tab}
