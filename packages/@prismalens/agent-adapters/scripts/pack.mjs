@@ -29,12 +29,18 @@ export const NATIVE_COPIES =
 	/node_modules\/(@anthropic-ai\/claude-agent-sdk-|@openai\/codex-)[a-z]/;
 
 // Every licence text the bundled adapters and their agent libraries carry.
-// @openai/codex ships no LICENSE file, so its declared licence is written out.
+// @openai/codex ships no LICENSE or NOTICE: its declared licence is written out, and its
+// NOTICE is kept verbatim in notices/ from github.com/openai/codex.
 export const THIRD_PARTY = [
 	{ pkg: "@agentclientprotocol/claude-agent-acp", files: ["LICENSE"] },
 	{ pkg: "@anthropic-ai/claude-agent-sdk", files: ["LICENSE.md", "README.md"] },
 	{ pkg: "@agentclientprotocol/codex-acp", files: ["LICENSE"] },
-	{ pkg: "@openai/codex", files: [], declared: "Apache-2.0" },
+	{
+		pkg: "@openai/codex",
+		files: [],
+		declared: "Apache-2.0",
+		vendored: ["NOTICE"],
+	},
 ];
 
 // npm is a .cmd shim on Windows, which execFileSync cannot start directly.
@@ -120,7 +126,7 @@ export function stageAdapters(staging) {
 	}
 
 	const licences = join(staging, "THIRD_PARTY_LICENSES");
-	for (const { pkg, files, declared } of THIRD_PARTY) {
+	for (const { pkg, files, declared, vendored = [] } of THIRD_PARTY) {
 		const from = join(staging, "node_modules", pkg);
 		if (!existsSync(join(from, "package.json")))
 			fail(`${pkg} is not in the bundled tree`);
@@ -129,6 +135,9 @@ export function stageAdapters(staging) {
 		for (const file of files) {
 			if (!existsSync(join(from, file))) fail(`${pkg} has no ${file}`);
 			copyFileSync(join(from, file), join(to, file));
+		}
+		for (const file of vendored) {
+			copyFileSync(join(PKG_DIR, "notices", pkg, file), join(to, file));
 		}
 		if (declared) {
 			const { version, license } = JSON.parse(

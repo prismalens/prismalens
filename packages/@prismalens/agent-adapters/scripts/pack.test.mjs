@@ -56,8 +56,8 @@ test("the packed tarball bundles the adapters, no native copy, and every licence
 	assert.equal(entries.filter((e) => NATIVE_COPIES.test(e)).length, 0);
 	assert.ok(entries.includes("package/LICENSE"));
 	assert.ok(entries.includes("package/dist/index.js"));
-	for (const { pkg, files } of THIRD_PARTY) {
-		for (const file of files.length ? files : ["LICENSE"]) {
+	for (const { pkg, files, vendored = [] } of THIRD_PARTY) {
+		for (const file of [...(files.length ? files : ["LICENSE"]), ...vendored]) {
 			assert.ok(
 				entries.includes(`package/THIRD_PARTY_LICENSES/${pkg}/${file}`),
 				`${pkg}/${file}`,
