@@ -31,23 +31,14 @@ interface InvestigationWithApproval extends Investigation {
 	accessLevel?: string | null;
 }
 
-/** An auto-started run is Auto unless Settings says otherwise; these walks need Ask always. */
-async function autoStartAt(level: string) {
-	await pl.api("/settings/harness", {
-		method: "PATCH",
-		body: { autoAccessLevels: { opencode: level } },
-	});
-}
-
 describe("Walk: a queued message survives a restart as \"not delivered\" (#820)", () => {
-	it("Given an alert with fake-session:ask and a queued message, When PrismaLens restarts, Then the message is not delivered and the ask is answered (#820)", async () => {
-		await autoStartAt("supervised");
+	it("Given a run you started at Ask always that waits on an ask, with a queued message, When PrismaLens restarts, Then the message is not delivered and the ask is answered (#820)", async () => {
 		await pl.serviceWithRepo("books");
 		const alert = am.fire({
 			labels: {
 				alertname: "BooksListSlow fake-session:ask",
 				service: "books",
-				severity: "critical",
+				severity: "medium",
 			},
 			annotations: { summary: "p99 of GET /books above 2s" },
 		});
@@ -60,10 +51,14 @@ describe("Walk: a queued message survives a restart as \"not delivered\" (#820)"
 			(found) => found.length === 1,
 			"an incident carrying the alert",
 		);
+		await pl.api(`/incidents/${incident.id}/investigate`, {
+			method: "POST",
+			body: { accessLevel: "supervised" },
+		});
 		const [run] = await eventually(
 			() => pl.investigations(incident.id),
 			(runs) => runs.length === 1,
-			"the run the alert started",
+			"the run started",
 		);
 
 		await eventually(

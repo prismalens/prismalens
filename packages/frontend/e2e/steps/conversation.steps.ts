@@ -1280,6 +1280,7 @@ Given(
 Then(
 	"no card waits and the transcript says nobody was there",
 	async ({ page }) => {
+		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
 		await expect(page.getByTestId("transcript-ask")).toHaveCount(0);
 		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
 		await expect(page.getByTestId("transcript-unattended")).toContainText(
