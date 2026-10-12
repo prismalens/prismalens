@@ -59,6 +59,14 @@
 			"@prisma/config>deepmerge-ts": "Dependabot #161 (deepmerge-ts <8.0.0, stack exhaustion on recursive graphs). @prisma/config 7.10.0 — the latest release — pins `deepmerge-ts: 7.1.5` EXACTLY. REMOVE once @prisma/config pins >=8.0.0.",
 			"@prisma/adapter-better-sqlite3>better-sqlite3": "@prisma/adapter-better-sqlite3 7.10.0 — the latest release — declares `better-sqlite3: ^12.6.0`, whose 12.x line ships prebuilds only through an install script that npm 12 no longer runs. 13.x carries N-API prebuilds inside its tarball and the adapter passes the database suite on it, so it shares the workspace's 13.x copy. REMOVE once the adapter's range admits ^13."
 		},
+		"//auditConfig": {
+			"GHSA-vfj7-8cjw-p6xm": "braces <=3.0.3 regex stack exhaustion; no patched version exists (3.0.3 is latest). Only path is packages/desktop > electronmon (latest 2.0.4) > watchboy > micromatch, a dev-only file watcher that is never shipped. REMOVE once braces ships a fix or electronmon drops watchboy."
+		},
+		"auditConfig": {
+			"ignoreGhsas": [
+				"GHSA-vfj7-8cjw-p6xm"
+			]
+		},
 		"overrides": {
 			"http-cache-semantics": "^4.3.0",
 			"@prisma/config>deepmerge-ts": "^8.0.2",
