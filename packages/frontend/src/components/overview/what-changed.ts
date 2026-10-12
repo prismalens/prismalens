@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	IncidentChange,
-	IncidentChanges,
-	TimelineEntryWithRelations,
+import {
+	type IncidentChange,
+	type IncidentChanges,
+	isRunStateLive,
+	type TimelineEntryWithRelations,
 } from "@prismalens/contracts";
 import type { RunRef } from "@/components/incidents/record-context";
 import { entryTitle } from "@/components/incidents/TimelineList";
-import { refRunState, runOutcome, viewName } from "@/components/run/run-labels";
+import {
+	refRunState,
+	reportOutcome,
+	runOutcome,
+	viewName,
+} from "@/components/run/run-labels";
 
 export type RowTone = "danger" | "accent" | "live" | "ok" | "plain";
 
@@ -46,6 +52,19 @@ export function changeName(c: IncidentChange): string {
 		default:
 			return ref ? `Commit ${ref}` : "Commit";
 	}
+}
+
+/** How long before the alert a change shipped; a manual incident's has no alert, so its opening (#673 w8-17). */
+export function beforeAlert(
+	at: string,
+	started: string,
+	hasAlert: boolean,
+): string {
+	const m = Math.round((Date.parse(started) - Date.parse(at)) / 60_000);
+	const what = hasAlert ? "the alert" : "the incident opened";
+	if (m < 0) return "after the incident opened";
+	if (m < 120) return `${m} ${m === 1 ? "minute" : "minutes"} before ${what}`;
+	return `${Math.round(m / 60)} hours before ${what}`;
 }
 
 /** What the change touched, or its title when the host gave no files. */
@@ -102,8 +121,21 @@ function entryRow(
 	}
 	if (run && e.type === "investigation_completed") {
 		if (run.kind === "chat") return null;
-		const state = refRunState(run);
-		const outcome = runOutcome(run);
+		const now = refRunState(run);
+		// During a Continue the row is the end before it, read like the report heading (#673 w8-12, #831 w6-21).
+		const state = !isRunStateLive(now)
+			? now
+			: run.hasReport
+				? "done"
+				: /stopped/i.test(e.title)
+					? "stopped"
+					: "failed";
+		const outcome =
+			state === now
+				? runOutcome(run)
+				: state === "done"
+					? reportOutcome(run.rootCause)
+					: state;
 		return {
 			...base,
 			text:

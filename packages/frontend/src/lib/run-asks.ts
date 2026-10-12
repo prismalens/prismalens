@@ -49,6 +49,15 @@ export function askEnd(ask: Pick<AskRecord, "state" | "clamped">): string {
 	return ASK_END[ask.state];
 }
 
+/** The verb of a step its ask refused, in place of "Failed" (#673 w8-18); null when the ask let it run. */
+export function refusedVerb(state: AskState): string | null {
+	if (state === "denied") return "Denied by you";
+	if (state === "timed_out" || state === "stopped" || state === "restarted")
+		return "Denied";
+	if (state === "mode_kept" || state === "unattended") return "Refused";
+	return null;
+}
+
 const same = (s: string, cwd?: string | null) =>
 	shortPath(s, cwd).replace(/\s+/g, " ").trim().toLowerCase();
 

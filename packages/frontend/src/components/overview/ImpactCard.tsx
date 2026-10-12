@@ -73,7 +73,9 @@ export function ImpactCard({ view }: { view: ImpactView }) {
 			? "Asking the metrics source"
 			: timedOut || broken
 				? "The metrics source did not answer"
-				: "From the alert alone";
+				: impact?.history.alertCount === 0
+					? "No alert on this incident"
+					: "From the alert alone";
 	return (
 		<Card
 			title="Impact"
@@ -329,6 +331,13 @@ function NoSource({ impact, firing }: { impact: ImpactChart; firing: number }) {
 	const h = impact.history;
 	const firingFor =
 		h.firingSince && !h.resolvedAt ? now - Date.parse(h.firingSince) : null;
+	// A manual incident has no alert to time or chart; only the reason stands (#673 w8-17).
+	if (h.alertCount === 0)
+		return (
+			<div className="flex h-full flex-col" data-testid="impact-no-alert">
+				<Reason impact={impact} />
+			</div>
+		);
 	return (
 		<div
 			className="flex h-full flex-col gap-3.5"

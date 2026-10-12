@@ -16,6 +16,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { copyOrSelect } from "./clipboard";
 import {
 	AUTO_CHECK_MS,
+	commandOf,
 	type FixCheck,
 	type FixOption,
 	type FixStage,
@@ -210,8 +211,9 @@ export function useOverview() {
 	}, [dueAt, current]);
 
 	const copy = async (o: FixOption, el: HTMLElement | null) => {
-		if (!o.command) return false;
-		const ok = await copyOrSelect(o.command, el);
+		const command = commandOf(o);
+		if (!command) return false;
+		const ok = await copyOrSelect(command, el);
 		setCopied((c) => ({ ...c, [keyOf(o)]: ok ? "ok" : "failed" }));
 		return ok;
 	};

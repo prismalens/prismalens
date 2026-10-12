@@ -77,9 +77,9 @@ none; with no provider signed in, that is an OpenCode Zen model.
   pick the service and click **Investigate**. The agent works in a throwaway
   clone of the repository's last commit: your checkout is never its working
   directory, and uncommitted changes are not read. A run you start uses **Ask
-  always** unless Settings or the agent's own config sets another level, so
-  each command the agent wants to run waits for your Approve or Deny on the
-  run.
+  always** unless Settings or the agent's own config sets another level. Reads
+  and searches run; every other action the agent asks about waits for your
+  Approve or Deny on the run.
 - **[Try it on a broken app](https://docs.prismalens.io/guides/try-it/)**, with
   no repository or monitoring of your own. A small app runs with its monitoring
   in docker compose; you switch a fault on, and a real alert starts the

@@ -4,7 +4,7 @@
 import { ChevronDown, FileText, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
-import { type AskRecord, askEnd } from "@/lib/run-asks";
+import { type AskRecord, askEnd, refusedVerb } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import { type RunStep, stepTook } from "./run-steps";
 
@@ -35,6 +35,7 @@ export function StepCard({
 	const waiting = ask?.state === "waiting";
 	const refused =
 		step.ok === false ? refusalReason(step.output ?? undefined) : null;
+	const denied = step.ok === false && ask ? refusedVerb(ask.state) : null;
 	return (
 		<li
 			id={`step-${step.n}`}
@@ -63,12 +64,12 @@ export function StepCard({
 						className={cn(
 							"shrink-0",
 							waiting && "text-warn",
-							!waiting && step.ok === false && "text-danger",
+							!waiting && step.ok === false && !denied && "text-danger",
 							!waiting && step.ok === null && !step.unfinished && "text-live",
 						)}
 						data-testid="step-verb"
 					>
-						{waiting ? "Waiting" : step.verb}
+						{waiting ? "Waiting" : (denied ?? step.verb)}
 					</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
 						{step.command}

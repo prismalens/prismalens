@@ -4,11 +4,13 @@
 import type { Fixes } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	commandOf,
 	failedStrip,
 	type FixOption,
 	fixStage,
 	liveCheck,
 	nextStrip,
+	noteOf,
 	splitOptions,
 } from "./fixes";
 
@@ -115,6 +117,33 @@ describe("fixStage", () => {
 				alerts: [{ status: "resolved", resolvedAt: "2026-10-11T12:00:00Z" }],
 			}).stage,
 		).toBe("applied");
+	});
+});
+
+describe("a sentence where the command goes (#673 w8-15)", () => {
+	// Walk 8, Run 4: "Hold off on rolling back 8a99430" carried this as its command.
+	const hold = { ...opt, title: "Hold off on rolling back 8a99430", command: "None confirmed on current evidence." };
+
+	it("reads it as text, not a command", () => {
+		expect(commandOf(hold)).toBeNull();
+		expect(noteOf(hold)).toBe("None confirmed on current evidence.");
+		expect(commandOf({ command: "Restart the api pod" })).toBeNull();
+		for (const command of [
+			"kubectl rollout undo deployment/booklogr-api",
+			"Restart-Service booklogr",
+			"SELECT pg_cancel_backend(42);",
+			"git revert 8a99430\ngit push",
+		]) {
+			expect(commandOf({ command })).toBe(command);
+			expect(noteOf({ command })).toBeNull();
+		}
+	});
+
+	it("offers no Copy and no I applied it on the Next strip", () => {
+		const s = nextStrip({ ...base, option: hold, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(s.text).toBe("Hold off on rolling back 8a99430. There is nothing to run; the reason is under Stop the impact.");
+		expect(s.primary).toBeUndefined();
+		expect(s.secondary).toBeUndefined();
 	});
 });
 

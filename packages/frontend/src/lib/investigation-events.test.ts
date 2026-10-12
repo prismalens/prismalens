@@ -9,7 +9,10 @@ import {
 	deriveTranscript,
 	latestAgentText,
 	pinnedTo,
+	splitAgentText,
+	type TranscriptItem,
 } from "./investigation-events";
+import walk8 from "./__fixtures__/walk8-report-drafts.json";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -163,19 +166,19 @@ describe("deriveStreamView", () => {
 	 * report schema rejects — was silently replaced by "Report drafted" and the
 	 * agent's text was lost.
 	 */
-	it("keeps an object that merely LOOKS report-shaped visible", () => {
+	it("folds an object that merely LOOKS report-shaped, never losing it (#673 w8-14)", () => {
 		const lookalike = JSON.stringify({
 			summary: "what I am about to do",
 			hypotheses: ["check the pool", "check the workers"],
 		});
 		const fenced = `\`\`\`json\n${lookalike}\n\`\`\``;
-		const view = deriveStreamView([
-			agentStep("main", 1, lookalike),
-			agentStep("main", 2, fenced),
-		]);
-		expect(view.flatRows.map((row) => row.message)).toEqual([
-			lookalike,
-			fenced,
+		const items = deriveTranscript(
+			[agentStep("main", 1, lookalike), agentStep("main", 2, fenced)],
+			0,
+		);
+		expect(items).toMatchObject([
+			{ kind: "prose", text: "", draft: lookalike },
+			{ kind: "prose", text: "", draft: lookalike },
 		]);
 	});
 
@@ -274,6 +277,58 @@ describe("deriveStreamView", () => {
 			expect(view.branches).toHaveLength(1);
 			expect(view.isMultiBranch).toBe(false);
 		}
+	});
+});
+
+describe("report drafts from walk 8 (#673 w8-14)", () => {
+	const answers = [
+		walk8.run1Answer,
+		walk8.run2Answer,
+		walk8.run3Draft,
+		walk8.run4Draft,
+		walk8.run5Answer,
+	];
+
+	it("takes every draft the engine retried out of the text, into the fold", () => {
+		for (const raw of answers) {
+			const { text, draft } = splitAgentText(raw.trim());
+			expect(text).not.toMatch(/```|"rootCause"\s*:/);
+			expect(draft).toMatch(/^\{[\s\S]*\}$/);
+			expect(JSON.parse(draft ?? "")).toBeTypeOf("object");
+		}
+	});
+
+	it("keeps the answer's prose above the fold", () => {
+		const { text } = splitAgentText(walk8.run2Answer.trim());
+		expect(text).toMatch(/^The alert is not explained yet\./);
+		expect(text).toMatch(/Compare pool-wait time with the p99 .*\.$/);
+	});
+
+	it("reads Run 2 as prose, its draft folded, then Report drafted", () => {
+		const items = deriveTranscript(
+			[
+				agentStep("main", 1, walk8.run2Answer),
+				agentStep("main", 2, walk8.run2Report),
+			],
+			0,
+		);
+		expect(items.map((i) => i.kind)).toEqual(["prose", "line"]);
+		const prose = items[0] as Extract<TranscriptItem, { kind: "prose" }>;
+		expect(prose.draft).toContain('"flaggedContent"');
+		expect(items[1]).toMatchObject({ text: "Report drafted" });
+	});
+
+	it("a step that is only a draft shows the fold and no text", () => {
+		const items = deriveTranscript(
+			[
+				agentStep("main", 1, walk8.run4Draft),
+				agentStep("main", 2, walk8.run4Report),
+			],
+			0,
+		);
+		expect(items[0]).toMatchObject({ kind: "prose", text: "" });
+		expect(items[1]).toMatchObject({ text: "Report drafted" });
+		expect(latestAgentText([agentStep("main", 1, walk8.run4Draft)])).toBeNull();
 	});
 });
 

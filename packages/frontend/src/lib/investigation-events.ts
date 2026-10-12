@@ -78,13 +78,75 @@ function isReportJson(body: string): boolean {
 /**
  * The agent's last text is the report itself, as JSON: bare, fenced, or after
  * a line of prose (#659). The panel names that step instead of printing the
- * document; every other text shows as written. A fence closes only on its own
+ * document; a draft that fails the schema is cut from the text (see
+ * {@link splitAgentText}). A fence closes only on its own
  * line, so a backtick run inside a JSON string does not end the block early.
  *
  * A message sent mid-turn flushes the text so far, so a report can arrive cut
  * off: an unclosed ```json block opening with `"summary"` reads as a line (#673 walk 4).
  */
 export function agentStepMessage(text: string): string {
+	return splitAgentText(text).text;
+}
+
+const REPORT_KEYS = new Set(Object.keys(ModelReportSchema.shape));
+
+/** JSON carrying two or more of the report's own fields: a draft, whether it validates or not (#673 w8-14). */
+function isReportShaped(body: string): boolean {
+	const trimmed = body.trim();
+	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+	let keys: string[];
+	try {
+		const value: unknown = JSON.parse(trimmed);
+		keys = value && typeof value === "object" ? Object.keys(value) : [];
+	} catch {
+		keys = Array.from(trimmed.matchAll(/"(\w+)"\s*:/g), (m) => m[1] ?? "");
+	}
+	return new Set(keys.filter((k) => REPORT_KEYS.has(k))).size >= 2;
+}
+
+/**
+ * The agent's text with every report-shaped JSON block taken out. The engine
+ * retries a draft that fails the schema; the draft folds instead of printing.
+ */
+export function splitAgentText(text: string): {
+	text: string;
+	draft?: string;
+} {
+	const whole = wholeReport(text);
+	if (whole) return { text: whole };
+	const drafts: string[] = [];
+	let rest = "";
+	let from = 0;
+	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
+		const at = open.index ?? 0;
+		if (at < from) continue;
+		const start = at + open[0].length;
+		for (const close of Array.from(
+			text.slice(start).matchAll(/^```[ \t]*$/gm),
+		)) {
+			const end = start + (close.index ?? 0);
+			if (!isReportShaped(text.slice(start, end))) continue;
+			drafts.push(text.slice(start, end).trim());
+			rest += text.slice(from, at);
+			from = end + close[0].length;
+			break;
+		}
+	}
+	rest += text.slice(from);
+	if (drafts.length === 0)
+		for (const line of Array.from(rest.matchAll(/^[ \t]*\{/gm))) {
+			if (!isReportShaped(rest.slice(line.index))) continue;
+			drafts.push(rest.slice(line.index).trim());
+			rest = rest.slice(0, line.index);
+			break;
+		}
+	if (drafts.length === 0) return { text };
+	return { text: rest.trim(), draft: drafts.join("\n\n") };
+}
+
+/** The whole step as one line: a report the engine takes, or one cut off mid-block. */
+function wholeReport(text: string): string | null {
 	for (const open of Array.from(text.matchAll(/```(?:json)?[ \t]*\r?\n/gi))) {
 		const start = (open.index ?? 0) + open[0].length;
 		for (const close of Array.from(
@@ -104,7 +166,7 @@ export function agentStepMessage(text: string): string {
 		if (/^\s*\{\s*"summary"\s*:/.test(rest) && !/^```[ \t]*$/m.test(rest))
 			return REPORT_CUT;
 	}
-	return text;
+	return null;
 }
 
 /** Map one canonical event to a row, or null when it shouldn't be shown. */
@@ -358,7 +420,14 @@ export interface TranscriptRun {
 export type { AskState } from "./run-asks";
 
 export type TranscriptItem =
-	| { kind: "prose"; key: string; text: string; at?: string }
+	| {
+			kind: "prose";
+			key: string;
+			text: string;
+			at?: string;
+			/** Report JSON the agent wrote here, folded under the text (#673 w8-14). */
+			draft?: string;
+	  }
 	/** Where an ask was; it shows only when no step of the run carries it (#820). */
 	| { kind: "ask"; key: string; askId: string }
 	| { kind: "line"; key: string; text: string }
@@ -712,13 +781,19 @@ export function deriveTranscript(
 		switch (event.kind) {
 			case "agent_step": {
 				sawAgent = true;
-				const text = agentStepMessage(event.text.trim());
+				const { text, draft } = splitAgentText(event.text.trim());
 				if (text === REPORT_DRAFTED || text === REPORT_CUT) {
 					closeGroup();
 					items.push({ kind: "line", key, text });
-				} else if (text) {
+				} else if (text || draft) {
 					closeGroup();
-					items.push({ kind: "prose", key, text, at: event.ts });
+					items.push({
+						kind: "prose",
+						key,
+						text,
+						at: event.ts,
+						...(draft ? { draft } : {}),
+					});
 					answerPending();
 				}
 				for (const call of event.toolCalls) {

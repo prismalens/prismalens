@@ -29,6 +29,21 @@ export function splitOptions(fixes: Fixes | undefined): {
 	};
 }
 
+/** A capitalised word, then a sentence's end or no shell characters at all: prose, not a command. */
+const SENTENCE = /^[A-Z][a-z]+[ ,](?:[^\n]*[.!]|[^\n|$=;&<>`/\\-]*)$/;
+
+/** The option's command, or null when its `command` is a sentence: that reads as text, never Copy or apply (#673 w8-15). */
+export function commandOf(option: Pick<FixOption, "command">): string | null {
+	const c = option.command?.trim();
+	return c && !SENTENCE.test(c) ? c : null;
+}
+
+/** The sentence an agent wrote where a command goes. */
+export function noteOf(option: Pick<FixOption, "command">): string | null {
+	const c = option.command?.trim();
+	return c && SENTENCE.test(c) ? c : null;
+}
+
 /** One check result: the live answer has its value; after a reload only the verdict and time. */
 export interface FixCheck {
 	verdict: FixVerdict;
@@ -218,6 +233,11 @@ export function nextStrip(input: {
 						...(option.readOnly
 							? {}
 							: { primary: { id: "applied", label: "I applied it" } }),
+					};
+				if (noteOf(option))
+					return {
+						tone: "plain",
+						text: `${prefix}${option.title}. There is nothing to run; the reason is under Stop the impact.`,
 					};
 				if (!option.command)
 					return {

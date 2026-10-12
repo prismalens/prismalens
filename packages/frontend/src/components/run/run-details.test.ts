@@ -99,6 +99,22 @@ describe("evidenceSections (#811 data mapping)", () => {
 		expect(out[1]?.rows[0]).toMatchObject({ text: "A slow database", step: 3 });
 	});
 
+	it("heads a run that named no cause with the no-cause words (#673 w8-13)", () => {
+		const out = evidenceSections(inv({ report: { ...report, rootCause: null } }), stepOf, {
+			live: false,
+			standing: null,
+		});
+		expect(out[0]?.title).toBe("No cause named");
+		expect(out[0]?.rows[0]).toMatchObject({ text: "The in-memory sort" });
+		const bare = evidenceSections(
+			inv({ report: { ...report, rootCause: null, hypotheses: [] } }),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		expect(bare[0]).toMatchObject({ title: "No cause named", rows: [{ text: "This run named no cause." }] });
+		expect(out.map((s) => s.title)).not.toContain("Likely cause");
+	});
+
 	it("says an item taken from the alert came from the alert, where a step would sit (#831 w6-18)", () => {
 		const fromAlert = {
 			observation: "Alert p99 is 995.6ms",

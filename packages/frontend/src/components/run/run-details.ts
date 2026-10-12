@@ -193,9 +193,11 @@ function reportSections(
 	const [top, ...others] = report.hypotheses.filter(
 		(h) => h.status !== "refuted",
 	);
+	// A run that named no cause heads its leading idea the way its status reads (#673 w8-13).
+	const title = report.rootCause ? "Likely cause" : "No cause named";
 	if (top)
 		out.push({
-			title: "Likely cause",
+			title,
 			rows: [
 				{ text: report.rootCause ?? top.statement, strong: true },
 				...top.evidence
@@ -205,8 +207,10 @@ function reportSections(
 		});
 	else
 		out.push({
-			title: "Likely cause",
-			rows: [{ text: "This run named no cause.", sub: report.summary }],
+			title,
+			rows: report.rootCause
+				? [{ text: report.rootCause, strong: true }]
+				: [{ text: "This run named no cause.", sub: report.summary }],
 		});
 	if (others.length)
 		out.push({

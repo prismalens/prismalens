@@ -151,3 +151,92 @@ describe("Transcript level lines (#673 w21)", () => {
 		expect(modeKept?.textContent).toBe("Mode switch refused: Enter Plan Mode");
 	});
 });
+
+describe("Transcript report drafts (#673 w8-14)", () => {
+	const draft = '{\n  "rootCause": null,\n  "nextSteps": []\n}';
+
+	it("folds the draft under the answer, closed, instead of printing it", async () => {
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[{ kind: "prose", key: "p", text: "No cause yet.", draft }]}
+					incidentId="inc-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
+		const fold = container.querySelector<HTMLDetailsElement>(
+			'[data-testid="transcript-report-draft"]',
+		);
+		expect(fold?.open).toBe(false);
+		expect(fold?.querySelector("summary")?.textContent).toBe(
+			"Report draft as the agent wrote it",
+		);
+		expect(
+			container.querySelector('[data-testid="transcript-prose"]')?.textContent,
+		).not.toContain("rootCause");
+	});
+});
+
+describe("a step you denied (#673 w8-18)", () => {
+	it("reads Denied by you, not Failed", async () => {
+		const denied: AskRecord = {
+			askId: "a1",
+			title: "docker ps",
+			detail: "docker ps",
+			input: null,
+			server: null,
+			at: "2026-10-13T04:30:00Z",
+			expiresAt: "2026-10-13T04:40:00Z",
+			clamped: false,
+			state: "denied",
+			step: 1,
+		};
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
+						{
+							kind: "tools",
+							key: "t",
+							count: 1,
+							summary: "",
+							failed: 1,
+							running: 0,
+							rows: [],
+							callIds: ["c1"],
+						},
+					]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={{
+						all: [
+							{
+								n: 1,
+								callId: "c1",
+								title: "docker ps",
+								command: "docker ps",
+								kind: "command",
+								verb: "Failed",
+								ok: false,
+								unfinished: false,
+								output: "denied",
+								at: "2026-10-13T04:30:00Z",
+								took: 1,
+								input: null,
+							},
+						],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [denied],
+					}}
+				/>,
+			);
+		});
+		expect(
+			container.querySelector('[data-testid="step-verb"]')?.textContent,
+		).toBe("Denied by you");
+	});
+});
