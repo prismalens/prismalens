@@ -81,7 +81,7 @@ PRISMALENS_FRONTEND_PORT=3480 PRISMALENS_PORT=3481 \
 pnpm --filter @prismalens/frontend test:e2e --workers=1          # one stack, serial
 ```
 
-The default is 4 workers locally (fewer on a smaller machine) and one per CPU in CI. The harness
+The default is 2 workers locally (fewer on a smaller machine) and one per CPU in CI. The harness
 refuses a workspace inside `~/.prismalens`.
 
 ## Agents on PATH
