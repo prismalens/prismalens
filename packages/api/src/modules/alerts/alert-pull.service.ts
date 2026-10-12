@@ -198,6 +198,8 @@ export class AlertPullService implements OnApplicationBootstrap {
 			errors: [],
 		};
 		const catchupErrors: string[] = [];
+		// An episode left undecided holds the cursor, so the next pull re-reads its samples (#822).
+		let undecided = false;
 
 		const since = await this.getCatchupSince(now);
 
@@ -506,6 +508,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 							// Unknown: neither replayed nor resolved; the webhook and absence paths decide.
 							if (seen === "unknown") {
 								stillFiring.add(fingerprint);
+								undecided = true;
 								continue;
 							}
 							const ended = gap;
@@ -568,8 +571,8 @@ export class AlertPullService implements OnApplicationBootstrap {
 			return 0;
 		});
 
-		// 6. Update ALERT_PULL setting only after catch-up completed without catch-up errors
-		if (catchupErrors.length === 0) {
+		// 6. Update ALERT_PULL setting only after catch-up completed without errors or undecided episodes
+		if (catchupErrors.length === 0 && !undecided) {
 			try {
 				await this.updateLastPulledAt(now);
 			} catch (err) {

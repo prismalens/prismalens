@@ -1103,6 +1103,8 @@ describe("AlertPullService (#605)", () => {
 
 			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
 			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+			// The cursor holds, so the next pull re-reads this episode.
+			expect(prisma.setting.upsert).not.toHaveBeenCalled();
 		});
 
 		it("lets the gap decide when the backend has no rules API", async () => {
@@ -1124,6 +1126,7 @@ describe("AlertPullService (#605)", () => {
 			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
 
 			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+			expect(prisma.setting.upsert).toHaveBeenCalledTimes(1);
 		});
 	});
 

@@ -86,7 +86,12 @@ export class ServicesService {
 			// Conditional on still waiting: a concurrent claim or correlation may have won since the read.
 			const won = await this.prisma.$transaction(async (tx) => {
 				const { count } = await tx.incident.updateMany({
-					where: { id: incident.id, serviceId: null, mergedIntoId: null },
+					where: {
+						id: incident.id,
+						serviceId: null,
+						mergedIntoId: null,
+						status: { not: IncidentStatus.closed },
+					},
 					data: { serviceId: service.id },
 				});
 				if (count !== 1) return false;

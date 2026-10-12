@@ -135,7 +135,7 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 			}),
 		);
 		expect(prisma.incident.updateMany).toHaveBeenCalledWith({
-			where: { id: "inc-1", serviceId: null, mergedIntoId: null },
+			where: { id: "inc-1", serviceId: null, mergedIntoId: null, status: { not: "closed" } },
 			data: { serviceId: "svc-1" },
 		});
 		expect(prisma.alert.updateMany).toHaveBeenCalledWith({
@@ -160,7 +160,7 @@ describe("ServicesService.claimWaiting (#673 w5-10)", () => {
 		expect(prisma.$transaction).not.toHaveBeenCalled();
 	});
 
-	it("writes nothing when another claim or correlation took the incident since the read", async () => {
+	it("writes nothing when another claim, a correlation or a close took the incident since the read", async () => {
 		const { prisma, service } = claimWith(
 			[{ id: "inc-1", alerts: [{ id: "a1", labels: '{"service":"booklogr-api"}' }] }],
 			0,
