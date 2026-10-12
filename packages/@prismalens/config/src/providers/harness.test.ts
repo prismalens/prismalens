@@ -154,9 +154,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		).toBeUndefined();
 	});
 
-	it("claude-code loads the user's settings, never the snapshot's", () => {
+	it("claude-code loads the user's settings, never the snapshot's, and has no plan-mode tools (#673 w7-4)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
-			claudeCode: { options: { settingSources: ["user"] } },
+			claudeCode: {
+				options: {
+					settingSources: ["user"],
+					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+				},
+			},
 		});
 	});
 

@@ -367,8 +367,14 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		}),
 		// The user's own settings (allow/deny rules, sandbox, availableModels), never the
 		// snapshot's: `project` and `local` would read the repo's CLAUDE.md (ADR 0004 §1; #673 w21).
+		// Without the plan-mode tools the agent cannot leave the run's mode at all (#673 w7-4).
 		sessionMeta: () => ({
-			claudeCode: { options: { settingSources: ["user"] } },
+			claudeCode: {
+				options: {
+					settingSources: ["user"],
+					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+				},
+			},
 		}),
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).

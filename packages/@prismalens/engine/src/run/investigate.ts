@@ -484,23 +484,23 @@ export async function* runInvestigation(
 	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
 	let heldMode: string | null = null;
 	let lastCall: { title?: string; toolCallId?: string } | null = null;
-	/** Puts the agent back in the run's mode and shows the refusal; an error when it will not go back. */
+	/** A mode the agent would not leave: refused once, not again on every update. */
+	let stuckIn: string | null = null;
+	/** Asks the agent back into the run's mode and shows the refusal; the run goes on either way. */
 	const holdMode = async function* (
 		held: string,
-	): AsyncGenerator<CanonicalEvent, string | null> {
+	): AsyncGenerator<CanonicalEvent> {
 		const left = session.currentMode;
 		const flushed = adapter.flushText();
 		if (flushed) yield flushed;
 		const back = (await session.setMode(held)) && session.currentMode === held;
+		stuckIn = back ? null : left;
 		wire("in", JSON.stringify({ modeHeld: held, left, back }));
 		yield adapter.permissionAnswer(newAskId(), "mode_kept", {
 			title: lastCall?.title ?? `Switch to ${left}`,
 			...(lastCall?.toolCallId ? { toolCallId: lastCall.toolCallId } : {}),
 			kind: "switch_mode",
 		});
-		return back
-			? null
-			: `The agent switched itself to ${left} and would not switch back`;
 	};
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
@@ -522,19 +522,15 @@ export async function* runInvestigation(
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
 				}
-				// Claude Code enters plan mode with no ask, so the mode update is the only sign (#673 w7-4).
+				// An agent can switch with no ask, so the mode update is the only sign (#673 w7-4).
 				if (
 					heldMode &&
 					(u.sessionUpdate === "current_mode_update" ||
 						u.sessionUpdate === "config_option_update") &&
-					session.currentMode !== heldMode
-				) {
-					const refused = yield* holdMode(heldMode);
-					if (refused) {
-						session.cancel();
-						return { error: refused };
-					}
-				}
+					session.currentMode !== heldMode &&
+					session.currentMode !== stuckIn
+				)
+					yield* holdMode(heldMode);
 			} else if (item.kind === "permission_asked") {
 				openAsks.add(item.askId);
 				const flushed = adapter.flushText();

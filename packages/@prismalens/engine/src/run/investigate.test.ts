@@ -1252,10 +1252,13 @@ describe("the agent's own mode (#673 w21)", () => {
 			permission: autoApprovePolicy,
 			env: { ...env, FAKE_REFUSE_MODES: "default" },
 		});
-		expect(stuck.events.at(-1)).toMatchObject({
-			kind: "error",
-			message: "The agent switched itself to plan and would not switch back",
-		});
+		// An agent that will not go back gets one refusal row, and the run still reports.
+		expect(
+			stuck.events.filter(
+				(e) => e.kind === "permission_answer" && e.outcome === "mode_kept",
+			),
+		).toMatchObject([{ title: "EnterPlanMode" }]);
+		expect(stuck.events.at(-1)?.kind).toBe("report");
 	});
 
 	it("resumed run keeps the stored mode and re-sets only when different (#673 w21)", async () => {
