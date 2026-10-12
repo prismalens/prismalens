@@ -169,7 +169,7 @@ Feature: The conversation and the box
 
     Scenario: An alert-started run refuses the ask
       Given an alert-started run on "ask"
-      Then no card waits
+      Then no card waits and the transcript says nobody was there
       And the run ends with "Report ready"
 
 
