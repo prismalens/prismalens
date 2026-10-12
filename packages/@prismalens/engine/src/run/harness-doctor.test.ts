@@ -51,6 +51,40 @@ describe("probeHarness", () => {
 		expect(result.detail).not.toMatch(/ready/i);
 	});
 
+	describe("sign-in pushed on _auth/status_update (#831)", () => {
+		const withAuth = (env: Record<string, string>) => ({
+			...descriptor("ok"),
+			acpEnv: () => ({ FAKE_ACP_MODE: "ok", ...env }),
+		});
+
+		it("reports signed out when the push says kind none, even after session/new", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "none", FAKE_AUTH_DELAY_MS: "300" }),
+				sandbox: async () => ({}),
+			});
+			expect(result.outcome).toBe("answers-acp");
+			expect(result.signedOut).toBe(true);
+		});
+
+		it("reports signed in for any other kind", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "account" }),
+				sandbox: async () => ({}),
+			});
+			expect(result.signedOut).toBe(false);
+		});
+
+		it("says nothing when the agent advertises the extension but pushes nothing in time", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "silent" }),
+				sandbox: async () => ({}),
+				authWaitMs: 100,
+			});
+			expect(result.outcome).toBe("answers-acp");
+			expect(result).not.toHaveProperty("signedOut");
+		});
+	});
+
 	it("checks the sandbox once per offered mode, with the run's env (#673 w51)", async () => {
 		const calls: { harness: string; modes: readonly string[]; env?: NodeJS.ProcessEnv }[] = [];
 		const result = await probeHarness("codex", {

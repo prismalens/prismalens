@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import {
 	type Ask,
@@ -9,11 +10,14 @@ import {
 	type InvestigationSummary,
 	askNotificationText,
 	askSnapshot,
+	holdUntilClicked,
 	newlyAsking,
 	newlyFinished,
 	notificationText,
+	reveal,
 	runningCount,
 	runningLabel,
+	runPath,
 	snapshot,
 } from "./notifications.js";
 
@@ -368,6 +372,63 @@ describe("notifications", () => {
 			expect(result).toBeInstanceOf(Map);
 			expect(result.size).toBe(1);
 			expect(result.get("inv-1")).toBe("2026-10-09T10:00:00Z");
+		});
+	});
+
+	describe("runPath", () => {
+		it("opens the run in its incident's conversation", () => {
+			expect(runPath({ id: "inv-1", incidentId: "inc-1" })).toBe(
+				"/incidents/inc-1/conversation?investigation=inv-1",
+			);
+		});
+
+		it("falls back to the run's own address, which finds its incident", () => {
+			expect(runPath({ id: "inv-1" })).toBe("/investigations/inv-1");
+		});
+	});
+
+	describe("holdUntilClicked", () => {
+		class FakeNotification extends EventEmitter {}
+
+		it("holds a notification until it is clicked", () => {
+			const held = new Set<FakeNotification>();
+			const n = new FakeNotification();
+			holdUntilClicked(held, n);
+			expect(held.has(n)).toBe(true);
+			n.emit("click");
+			expect(held.has(n)).toBe(false);
+		});
+
+		it("lets the oldest go past the cap", () => {
+			const held = new Set<FakeNotification>();
+			const all = Array.from({ length: 4 }, () => new FakeNotification());
+			for (const n of all) holdUntilClicked(held, n, 3);
+			expect([...held]).toEqual(all.slice(1));
+		});
+	});
+
+	describe("reveal", () => {
+		const win = (minimized: boolean) => {
+			const calls: string[] = [];
+			return {
+				calls,
+				isMinimized: () => minimized,
+				restore: () => calls.push("restore"),
+				show: () => calls.push("show"),
+				focus: () => calls.push("focus"),
+			};
+		};
+
+		it("restores a minimized window before showing and focusing it", () => {
+			const w = win(true);
+			reveal(w);
+			expect(w.calls).toEqual(["restore", "show", "focus"]);
+		});
+
+		it("shows and focuses a window that is not minimized", () => {
+			const w = win(false);
+			reveal(w);
+			expect(w.calls).toEqual(["show", "focus"]);
 		});
 	});
 });

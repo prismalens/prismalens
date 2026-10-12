@@ -154,6 +154,7 @@ describe("doctor — harness ACP handshake", () => {
 			id: "opencode",
 			servedModel: null,
 			signInUnchecked: false,
+			signedOut: false,
 			check: {
 				name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
 				pass: true,
@@ -207,6 +208,41 @@ describe("doctor — harness ACP handshake", () => {
 		expect(verdict.line).toBe(
 			"Required checks passed. Claude Code checks its sign-in only when a run starts, so a run fails there if it is not signed in.",
 		);
+	});
+
+	function installFakeClaude(mode: string): void {
+		const binPath = join(tempPathDir, HARNESS_REGISTRY["claude-code"].binary);
+		writeFileSync(
+			binPath,
+			`#!/bin/sh\nFAKE_ACP_MODE=${mode} exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
+		);
+		chmodSync(binPath, 0o755);
+	}
+
+	it("warns, never fails, when Claude Code pushes kind none on the handshake (#831)", async () => {
+		installFakeClaude("signed-out");
+		const results = await checkHarnessHandshake();
+		const claude = results.find((h) => h.id === "claude-code");
+		expect(claude).toMatchObject({ signedOut: true, signInUnchecked: false });
+		expect(claude?.check).toMatchObject({ pass: false, hard: false });
+		expect(claude?.check.detail).toMatch(
+			/^answers ACP, fake 0;.*; not signed in: `claude \/login`/,
+		);
+		const verdict = summary([claude!.check], results);
+		expect(verdict).toEqual({
+			level: "warn",
+			line: "Required checks passed. Claude Code is not signed in, so a run fails until it is.",
+		});
+	});
+
+	it("passes when Claude Code pushes a signed-in kind on the handshake (#831)", async () => {
+		installFakeClaude("signed-in");
+		const results = await checkHarnessHandshake();
+		const claude = results.find((h) => h.id === "claude-code");
+		expect(claude).toMatchObject({ signedOut: false, signInUnchecked: false });
+		expect(claude?.check).toMatchObject({ pass: true, hard: false });
+		expect(claude?.check.detail).toMatch(/; signed in$/);
+		expect(summary([claude!.check], results).level).toBe("success");
 	});
 
 	it("ends in an error, not the sign-in warning, when a required check fails", () => {

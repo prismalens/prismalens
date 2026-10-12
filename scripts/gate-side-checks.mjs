@@ -24,7 +24,8 @@
  *   upgrade    Verdaccio serves the tarball and a next-patch copy that exits
  *              on `up`; `pl upgrade --trial-seconds 60` under `pl service`
  *              rolls back and the reason holds no token. Needs a systemd user
- *              manager and no existing prismalens.service, else SKIP.
+ *              manager and no loaded prismalens.service, else SKIP. The unit
+ *              stays in the sandbox, linked from $XDG_RUNTIME_DIR, memory-capped.
  *
  * PostHog and the GitHub releases endpoint are never reached: a preload
  * (NODE_OPTIONS=--import) points fetch() for those hosts at a local stub,
@@ -46,11 +47,12 @@ import {
 } from "node:fs";
 import http from "node:http";
 import net from "node:net";
-import { homedir, hostname, tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
+import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
 
 // pnpm's npm_config_* would reach the npm we spawn as unknown-config warnings.
 const CLEAN_ENV = Object.fromEntries(
@@ -755,12 +757,17 @@ async function checkUpgrade() {
 		throw new Skip(
 			`no systemd user manager (systemctl --user: ${sysd.out.trim().split("\n")[0]}); pl upgrade only trials and rolls back under pl service, which needs one (sudo loginctl enable-linger $USER, then a login session)`,
 		);
-	const realConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-	const unit = join(realConfig, "systemd", "user", "prismalens.service");
-	if (existsSync(unit))
+	const loaded = await run(
+		"systemctl",
+		["--user", "show", "-p", "LoadState", "--value", UNIT],
+		CLEAN_ENV,
+	);
+	if (loaded.out.trim() !== "not-found")
 		throw new Skip(
-			`${unit} exists; refusing to replace the operator's service`,
+			`${UNIT} is ${loaded.out.trim() || "unreadable"}; refusing to replace the operator's service`,
 		);
+	const systemctl = resolveOnPath("systemctl", process.env.PATH ?? "");
+	if (!systemctl) throw new Skip("systemctl is not on PATH");
 	const verdaccioOk = await run(
 		"npx",
 		["-y", "verdaccio@6", "--version"],
@@ -770,11 +777,11 @@ async function checkUpgrade() {
 		throw new Skip(`npx verdaccio unavailable: ${verdaccioOk.out.slice(-200)}`);
 
 	const sb = await sandbox("upgrade");
-	// The user manager reads units from the real config dir; everything else stays throwaway.
+	const runtimeDir =
+		process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
 	const env = {
 		...sb.env,
-		XDG_CONFIG_HOME: realConfig,
-		XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR ?? "",
+		XDG_RUNTIME_DIR: runtimeDir,
 		DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS ?? "",
 		PRISMALENS_TELEMETRY: "off",
 		PRISMALENS_UPDATE_CHECK: "off",
@@ -876,6 +883,12 @@ console.log("${next}");
 	);
 	const pl = join(npmEnv.NPM_CONFIG_PREFIX, "bin", "pl");
 	const port = await freePort();
+	const service = isolateService({
+		configHome: sb.env.XDG_CONFIG_HOME,
+		runtimeDir,
+		tools: join(sb.dir, "tools"),
+		systemctl,
+	});
 	try {
 		const inst = await run(
 			pl,
@@ -930,15 +943,9 @@ console.log("${next}");
 	} finally {
 		await run(pl, ["service", "uninstall"], npmEnv);
 		// A pl left at the broken version can't uninstall; the walk left the unit running (#673 w54).
-		if (existsSync(unit)) {
-			await run(
-				"systemctl",
-				["--user", "disable", "--now", "prismalens.service"],
-				env,
-			);
-			rmSync(unit, { force: true });
-			await run("systemctl", ["--user", "daemon-reload"], env);
-		}
+		await run(systemctl, ["--user", "stop", UNIT], env);
+		service.remove();
+		await run(systemctl, ["--user", "daemon-reload"], env);
 	}
 }
 

@@ -26,6 +26,8 @@
 // FAKE_ACP_MODE=switch-mode first asks to enter its own plan mode with a `switch_mode` ask, then runs
 // as "ok". argv flags: --clamp-auto answers a switch to `auto` with
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
+// FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
+// FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -445,12 +447,26 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 					...(process.env.FAKE_IMAGES
 						? { promptCapabilities: { image: true } }
 						: {}),
+					...(process.env.FAKE_AUTH_STATUS
+						? { _meta: { authStatus: {} } }
+						: {}),
 				},
 				...(mode === "auth-required"
 					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
 					: {}),
 			},
 		});
+		const kind = process.env.FAKE_AUTH_STATUS;
+		if (kind && kind !== "silent")
+			setTimeout(
+				() =>
+					send({
+						jsonrpc: "2.0",
+						method: "_auth/status_update",
+						params: { authStatus: { kind, label: "fake" } },
+					}),
+				Number(process.env.FAKE_AUTH_DELAY_MS ?? 0),
+			);
 	} else if (msg.method === "session/new" && mode === "auth-required") {
 		send({
 			jsonrpc: "2.0",

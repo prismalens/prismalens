@@ -33,6 +33,8 @@ import { denyAllPolicy } from "./permission.js";
 import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
+/** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
+const AUTH_STATUS_WAIT_MS = 3_000;
 /** ACP's auth_required error code. */
 const AUTH_REQUIRED = -32000;
 
@@ -63,6 +65,8 @@ export interface HarnessProbeResult {
 	images?: boolean;
 	/** Per offered mode (or `agent-default`): does the agent's own sandbox hold it on this machine (#673 w51). */
 	sandbox?: SandboxChecks;
+	/** The agent pushed its sign-in: true when it says signed out; absent when it pushed none (#831). */
+	signedOut?: boolean;
 }
 
 function effortLevels(
@@ -160,6 +164,7 @@ export async function probeHarness(
 		>;
 		timeoutMs?: number;
 		sandbox?: typeof checkSandbox;
+		authWaitMs?: number;
 	} = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
@@ -199,6 +204,9 @@ export async function probeHarness(
 		let answered: HarnessProbeResult;
 		try {
 			await Promise.race([opening, deadline]);
+			const authKind = await session.authStatus(
+				opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
+			);
 			const agent = session.agent;
 			const detail = `answers ACP${agent.version ? `, ${agent.name ?? harness} ${agent.version}` : ""}`;
 			answered = {
@@ -221,6 +229,7 @@ export async function probeHarness(
 				modes: session.offeredModes.length ? session.offeredModes : null,
 				efforts: effortLevels(session.effort),
 				images: session.takesImages,
+				...(authKind !== null ? { signedOut: authKind === "none" } : {}),
 			};
 		} catch (err) {
 			return { id: harness, ...classify(err, session, timeoutMs), hard: false };

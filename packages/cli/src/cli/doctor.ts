@@ -263,6 +263,8 @@ export interface Handshake {
 	servedModel: string | null;
 	/** It answered, but it checks its sign-in only when a run starts. */
 	signInUnchecked: boolean;
+	/** It answered and said it is not signed in (#831). */
+	signedOut: boolean;
 }
 
 /**
@@ -289,17 +291,26 @@ export async function checkHarnessHandshake(
 	for (const descriptor of installed) {
 		const probe = await probeHarness(descriptor.id);
 		const answered = probe.outcome === "answers-acp";
-		const signInUnchecked = answered && descriptor.signInAtFirstTurn === true;
-		const signIn = signInUnchecked
-			? `sign-in not checked until a run starts: ${descriptor.loginHint}`
-			: `sign-in: ${descriptor.loginHint}`;
+		const signedOut = answered && probe.signedOut === true;
+		const signInUnchecked =
+			answered &&
+			probe.signedOut === undefined &&
+			descriptor.signInAtFirstTurn === true;
+		const signIn = signedOut
+			? `not signed in: ${descriptor.loginHint}`
+			: probe.signedOut === false
+				? "signed in"
+				: signInUnchecked
+					? `sign-in not checked until a run starts: ${descriptor.loginHint}`
+					: `sign-in: ${descriptor.loginHint}`;
 		results.push({
 			id: descriptor.id,
 			servedModel: answered ? (probe.servedModel ?? null) : null,
 			signInUnchecked,
+			signedOut,
 			check: {
 				name: `Harness ACP handshake: ${descriptor.label}`,
-				pass: answered && !signInUnchecked,
+				pass: answered && !signInUnchecked && !signedOut,
 				detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; ${signIn}`,
 				hard: false,
 			},
@@ -544,13 +555,26 @@ export function summary(
 				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 		};
 	}
-	const unchecked = handshakes
-		.filter((h) => h.signInUnchecked)
-		.map((h) => HARNESS_REGISTRY[h.id].label);
-	if (unchecked.length > 0) {
+	const labels = (pick: (h: Handshake) => boolean) =>
+		handshakes.filter(pick).map((h) => HARNESS_REGISTRY[h.id].label);
+	const signedOut = labels((h) => h.signedOut);
+	const unchecked = labels((h) => h.signInUnchecked);
+	const notes = [
+		...(signedOut.length > 0
+			? [
+					`${signedOut.join(" and ")} ${signedOut.length > 1 ? "are" : "is"} not signed in, so a run fails until ${signedOut.length > 1 ? "they are" : "it is"}.`,
+				]
+			: []),
+		...(unchecked.length > 0
+			? [
+					`${unchecked.join(" and ")} ${unchecked.length > 1 ? "check their" : "checks its"} sign-in only when a run starts, so a run fails there if it is not signed in.`,
+				]
+			: []),
+	];
+	if (notes.length > 0) {
 		return {
 			level: "warn",
-			line: `Required checks passed. ${unchecked.join(" and ")} ${unchecked.length > 1 ? "check their" : "checks its"} sign-in only when a run starts, so a run fails there if it is not signed in.`,
+			line: `Required checks passed. ${notes.join(" ")}`,
 		};
 	}
 	return { level: "success", line: "All required checks passed." };
