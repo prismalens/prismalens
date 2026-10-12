@@ -15746,6 +15746,10 @@
                                     "size"
                                   ]
                                 }
+                              },
+                              "messageId": {
+                                "type": "string",
+                                "format": "uuid"
                               }
                             },
                             "required": [
@@ -15758,6 +15762,93 @@
                               "text",
                               "mode",
                               "delivered"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "message_queued"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "messageId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "attachments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "mimeType": {
+                                      "type": "string"
+                                    },
+                                    "size": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name",
+                                    "mimeType",
+                                    "size"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "messageId",
+                              "text"
                             ]
                           },
                           {
@@ -15897,6 +15988,15 @@
                               },
                               "clamped": {
                                 "type": "boolean"
+                              },
+                              "toolCallId": {
+                                "type": "string"
+                              },
+                              "input": {
+                                "type": "string"
+                              },
+                              "server": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -17642,6 +17742,10 @@
                         "resumed"
                       ],
                       "type": "string"
+                    },
+                    "messageId": {
+                      "type": "string",
+                      "format": "uuid"
                     }
                   },
                   "required": [

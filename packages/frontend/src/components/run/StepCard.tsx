@@ -4,6 +4,7 @@
 import { ChevronDown, FileText, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
+import { type AskRecord, askEnd } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import { type RunStep, stepTook } from "./run-steps";
 
@@ -19,6 +20,7 @@ export function StepCard({
 	highlight,
 	flagged,
 	onSeeFlag,
+	ask,
 }: {
 	step: RunStep;
 	open: boolean;
@@ -26,8 +28,11 @@ export function StepCard({
 	highlight?: boolean;
 	flagged?: boolean;
 	onSeeFlag?: () => void;
+	/** The agent asked before this call; the ask itself waits in the dock (#820). */
+	ask?: AskRecord;
 }) {
 	const Icon = step.kind === "file" ? FileText : Terminal;
+	const waiting = ask?.state === "waiting";
 	const refused =
 		step.ok === false ? refusalReason(step.output ?? undefined) : null;
 	return (
@@ -57,18 +62,19 @@ export function StepCard({
 					<span
 						className={cn(
 							"shrink-0",
-							step.ok === false && "text-danger",
-							step.ok === null && !step.unfinished && "text-live",
+							waiting && "text-warn",
+							!waiting && step.ok === false && "text-danger",
+							!waiting && step.ok === null && !step.unfinished && "text-live",
 						)}
 						data-testid="step-verb"
 					>
-						{step.verb}
+						{waiting ? "Waiting" : step.verb}
 					</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
 						{step.command}
 					</span>
 					<span className="shrink-0 text-meta text-text-3 tabular-nums">
-						{stepTook(step.took)}
+						{waiting ? "" : stepTook(step.took)}
 					</span>
 					<ChevronDown
 						aria-hidden
@@ -87,6 +93,14 @@ export function StepCard({
 						<pre className="m-0 px-3 pt-2 pb-1 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
 							$ {step.command}
 						</pre>
+						{step.input && (
+							<pre
+								className="m-0 max-h-60 overflow-auto px-3 pb-1 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"
+								data-testid="step-input"
+							>
+								{step.input}
+							</pre>
+						)}
 						<pre
 							className={cn(
 								"m-0 px-3 pt-1 pb-2.5 font-mono text-mono whitespace-pre-wrap [overflow-wrap:anywhere]",
@@ -104,6 +118,18 @@ export function StepCard({
 					</div>
 				)}
 			</div>
+			{ask && (
+				<p
+					className={cn(
+						"mt-1 px-3 text-meta",
+						waiting ? "text-warn" : "text-text-3",
+					)}
+					data-testid="step-ask"
+					data-state={ask.state}
+				>
+					{askEnd(ask)}
+				</p>
+			)}
 			{flagged && (
 				<div
 					role="note"

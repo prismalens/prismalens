@@ -508,6 +508,23 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(channel.send("too late", "now")).toBeNull();
 	});
 
+	it("records a queued message while the turn waits, and gives the same id to its end (#820)", async () => {
+		const stop = new AbortController();
+		const channel = createSteerChannel();
+		const id = "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c11";
+		const events: CanonicalEvent[] = [];
+		setTimeout(() => {
+			expect(channel.send("Also check the TTL revert.", "queue", [], id)).toBe("queued");
+		}, 150);
+		setTimeout(() => stop.abort(), 400);
+		for await (const ev of runInvestigation(opts("silent", { signal: stop.signal, steer: channel.port }))) events.push(ev);
+		const queued = events.findIndex((e) => e.kind === "message_queued");
+		const ended = events.findIndex((e) => e.kind === "operator_message");
+		expect(events[queued]).toMatchObject({ messageId: id, text: "Also check the TTL revert." });
+		expect(events[ended]).toMatchObject({ messageId: id, delivered: false });
+		expect(queued).toBeLessThan(ended);
+	});
+
 	it("a stop that lands while the harness is still starting never sends the prompt (#743)", async () => {
 		const stop = new AbortController();
 		const channel = createSteerChannel();

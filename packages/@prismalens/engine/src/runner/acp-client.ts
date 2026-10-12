@@ -58,7 +58,9 @@ export type AcpStreamItem =
 			sync?: boolean;
 	  }
 	| { kind: "done"; stopReason: string }
-	| { kind: "error"; message: string };
+	| { kind: "error"; message: string }
+	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
+	| { kind: "nudge" };
 
 /**
  * Every value SDK 1.4.0's types allow, for the fields a harness drifts on
@@ -774,6 +776,11 @@ export class AcpSession {
 		this.pending.clear();
 		if (this.child && !this.child.killed) this.child.kill();
 		if (this.ownsLauncher) await this.launcher.destroy();
+	}
+
+	/** Wake the turn's reader with a `nudge`, e.g. while the agent waits on an ask (#820). */
+	nudge(): void {
+		this.push({ kind: "nudge" });
 	}
 
 	private push(item: AcpStreamItem): void {

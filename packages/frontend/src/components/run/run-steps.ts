@@ -30,6 +30,8 @@ export interface RunStep {
 	at: string;
 	/** Seconds from the call to its result. */
 	took: number | null;
+	/** The call's input, for a tool that names no command or path (an MCP tool, #673 w5-41). */
+	input: string | null;
 }
 
 const FILE_WORD = {
@@ -81,7 +83,14 @@ export function deriveSteps(
 		if (e.kind === "agent_step") {
 			for (const c of e.toolCalls) {
 				if (DELEGATE_TOOL.test(c.name)) delegated.add(c.toolCallId);
-				if (delegated.has(c.toolCallId) || calls.has(c.toolCallId)) continue;
+				if (delegated.has(c.toolCallId)) continue;
+				const known = calls.get(c.toolCallId);
+				// The call again with the command it opened without (#820): same step, now named.
+				if (known) {
+					if (Object.keys(c.args).length > 0)
+						calls.set(c.toolCallId, { ...known, name: c.name, args: c.args });
+					continue;
+				}
 				calls.set(c.toolCallId, { name: c.name, args: c.args, at: e.ts });
 				order.push(c.toolCallId);
 			}
@@ -117,6 +126,7 @@ export function deriveSteps(
 		return {
 			n: i + 1,
 			callId,
+			input: inputOf(call.name, call.args),
 			title: describe(call.args) ?? command,
 			command,
 			kind:
@@ -136,6 +146,25 @@ export function deriveSteps(
 				: null,
 		};
 	});
+}
+
+/** A tool's arguments as indented JSON when they name no command or path. */
+function inputOf(name: string, args: Record<string, unknown>): string | null {
+	if (Object.keys(args).length === 0) return null;
+	if (/^`?mcp__/.test(name)) return json(args);
+	const command = args.command ?? args.cmd;
+	const path = args.path ?? args.filePath ?? args.file_path;
+	if (typeof command === "string" || Array.isArray(command)) return null;
+	if (typeof path === "string") return null;
+	return json(args);
+}
+
+function json(args: Record<string, unknown>): string | null {
+	try {
+		return JSON.stringify(args, null, 2).slice(0, 2000);
+	} catch {
+		return null;
+	}
 }
 
 /** `0.4s`, `12s`, `2m 05s`: a step is usually under a second. */
@@ -184,4 +213,73 @@ export function stepOfCall(steps: readonly RunStep[]): Map<string, number> {
 export function stepFromHash(hash: string): number | null {
 	const m = /^#?step-(\d+)$/.exec(hash);
 	return m ? Number(m[1]) : null;
+}
+
+const cite = (s: string) =>
+	s
+		.toLowerCase()
+		.replace(/[`'"“”]/g, "")
+		.replace(/\brepo\//g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+
+/** A file (`config.py`) or a slashed path (`/api/v1/rules`) a source names. */
+const PATH =
+	/[\w.-]+(?:\/[\w.-]+)*\.[a-z][a-z0-9]{0,5}\b|\/?[\w.-]+(?:\/[\w.-]+){2,}/g;
+/** Below this, a shared run of characters is chance, not the same command. */
+const SHARED_MIN = 24;
+
+function shared(a: string, b: string): number {
+	let best = 0;
+	const prev = new Array<number>(b.length + 1).fill(0);
+	for (let i = 1; i <= a.length; i++) {
+		let diag = 0;
+		for (let j = 1; j <= b.length; j++) {
+			const up = prev[j] ?? 0;
+			prev[j] = a[i - 1] === b[j - 1] ? diag + 1 : 0;
+			best = Math.max(best, prev[j] ?? 0);
+			diag = up;
+		}
+	}
+	return best;
+}
+
+/**
+ * The step an evidence item came from (#673 w5-16): its own call id, else the
+ * step whose command or file its `source` names. The agent cannot see call ids,
+ * so most items arrive with none.
+ */
+export function evidenceStep(
+	e: { toolCallId?: string | null; source: string },
+	steps: readonly RunStep[],
+): number | undefined {
+	const own = e.toolCallId
+		? steps.find((s) => s.callId === e.toolCallId)
+		: undefined;
+	if (own) return own.n;
+	const src = cite(e.source);
+	const paths = src.match(PATH) ?? [];
+	// `api/config.py:28 (git show 097fc82)`: each clause can name a command on its own.
+	const clauses = src
+		.split(/[;,()]| and /)
+		.map((c) => c.trim())
+		.filter((c) => c.length >= 10 && c.includes(" "));
+	let best: { n: number; score: number } | undefined;
+	for (const s of steps) {
+		if (s.ok === false) continue;
+		const cmd = cite(s.command);
+		let score = 0;
+		if (cmd.length >= 4 && src.includes(cmd)) score = cmd.length + 3000;
+		else if (src.length >= 8 && cmd.includes(src)) score = src.length + 3000;
+		for (const c of clauses)
+			if (cmd.includes(c)) score = Math.max(score, c.length + 2000);
+		for (const p of paths)
+			if (cmd.includes(p)) score = Math.max(score, p.length + 1000);
+		if (!score) {
+			const run = shared(src, cmd);
+			if (run >= SHARED_MIN) score = run;
+		}
+		if (score > (best?.score ?? 0)) best = { n: s.n, score };
+	}
+	return best?.n;
 }

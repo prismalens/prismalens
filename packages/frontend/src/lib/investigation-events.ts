@@ -13,7 +13,6 @@
 import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
-	PermissionAskOutcome,
 	RunCredential,
 	StreamToolResult,
 } from "@prismalens/contracts";
@@ -331,6 +330,8 @@ export interface AttachmentView {
 /** A message the API accepted that has not come back as an event yet. */
 export interface PendingMessage {
 	id: string;
+	/** The id the API gave a queued message; its events carry it (#820). */
+	messageId?: string;
 	text: string;
 	mode: "queue" | "now";
 	at: string;
@@ -356,23 +357,12 @@ export interface TranscriptRun {
 	accessLevel?: AccessLevel | null;
 }
 
-/** An ask's standing: waiting on you, how it ended, or `ended` when the run ended first (#673 w21). */
-export type AskState = "waiting" | PermissionAskOutcome | "ended";
+export type { AskState } from "./run-asks";
 
 export type TranscriptItem =
 	| { kind: "prose"; key: string; text: string; at?: string }
-	| {
-			kind: "ask";
-			key: string;
-			askId: string;
-			title: string;
-			detail: string | null;
-			at: string;
-			expiresAt: string;
-			/** The run's time limit cut the ask's window short (#673 w21). */
-			clamped: boolean;
-			state: AskState;
-	  }
+	/** Where an ask was; it shows only when no step of the run carries it (#820). */
+	| { kind: "ask"; key: string; askId: string }
 	| { kind: "line"; key: string; text: string }
 	/** An ask the run's level answered: allowed, or a mode switch refused (#673 w21). */
 	| {
@@ -623,7 +613,12 @@ function levelLine(
 export function deriveTranscript(
 	events: CanonicalEvent[],
 	now: number,
-	opts: { run?: TranscriptRun; pending?: PendingMessage[] } = {},
+	opts: {
+		run?: TranscriptRun;
+		pending?: PendingMessage[];
+		/** The picker's name for a model id (`haiku` reads `Haiku 5.5`, #673 w5-3). */
+		modelName?: (id: string) => string;
+	} = {},
 ): TranscriptItem[] {
 	const { run, pending = [] } = opts;
 	const items: TranscriptItem[] = [];
@@ -640,7 +635,14 @@ export function deriveTranscript(
 		item: Extract<TranscriptItem, { kind: "operator" }>;
 		brief: boolean;
 	}[] = [];
-	const asks = new Map<string, Extract<TranscriptItem, { kind: "ask" }>>();
+	const asks = new Map<string, boolean>();
+	/** Which group lists each call: a late result or a re-announced call joins it (#673 w5-1). */
+	const callGroup = new Map<string, OpenGroup>();
+	const delegated = new Set<string>();
+	const queued = new Map<
+		string,
+		Extract<CanonicalEvent, { kind: "message_queued" }>
+	>();
 
 	const groups: OpenGroup[] = [];
 	const closeGroup = () => {
@@ -722,7 +724,10 @@ export function deriveTranscript(
 					answerPending();
 				}
 				for (const call of event.toolCalls) {
+					if (callGroup.has(call.toolCallId) || delegated.has(call.toolCallId))
+						continue;
 					if (DELEGATE_TOOL.test(call.name)) {
+						delegated.add(call.toolCallId);
 						closeGroup();
 						items.push({
 							kind: "line",
@@ -733,6 +738,7 @@ export function deriveTranscript(
 					}
 					const g = openGroup(key);
 					g.calls.set(call.toolCallId, null);
+					callGroup.set(call.toolCallId, g);
 					const row = canonicalEventToRow({ ...event, toolCalls: [call] });
 					if (row)
 						g.item.rows.push({
@@ -746,8 +752,10 @@ export function deriveTranscript(
 				break;
 			}
 			case "tool_result": {
-				const g: OpenGroup = group ?? openGroup(key);
-				g.calls.set(event.result.toolCallId, event.result);
+				const id = event.result.toolCallId;
+				const g: OpenGroup = callGroup.get(id) ?? group ?? openGroup(key);
+				callGroup.set(id, g);
+				g.calls.set(id, event.result);
 				const row = canonicalEventToRow(event);
 				if (row) g.item.rows.push(row);
 				refresh(g);
@@ -776,6 +784,7 @@ export function deriveTranscript(
 						});
 					}
 				}
+				if (event.messageId) queued.delete(event.messageId);
 				if (event.resumed)
 					items.push({
 						kind: "divider",
@@ -818,29 +827,27 @@ export function deriveTranscript(
 				break;
 			case "session_config":
 				closeGroup();
-				items.push({ kind: "line", key, text: sessionConfigLine(event) });
-				break;
-			case "permission_ask": {
-				closeGroup();
-				const item: Extract<TranscriptItem, { kind: "ask" }> = {
-					kind: "ask",
+				items.push({
+					kind: "line",
 					key,
-					askId: event.askId,
-					title: event.title,
-					detail: event.detail,
-					at: event.ts,
-					expiresAt: event.expiresAt,
-					clamped: event.clamped === true,
-					state: "waiting",
-				};
-				asks.set(event.askId, item);
-				items.push(item);
+					text: sessionConfigLine(
+						event.option === "model" && opts.modelName
+							? { ...event, value: opts.modelName(event.value) }
+							: event,
+					),
+				});
 				break;
-			}
+			case "message_queued":
+				queued.set(event.messageId, event);
+				break;
+			case "permission_ask":
+				// The ask itself waits in the dock on the box; its step carries how it ended (#820).
+				asks.set(event.askId, true);
+				items.push({ kind: "ask", key, askId: event.askId });
+				break;
 			case "permission_answer": {
-				const ask = asks.get(event.askId);
-				if (ask) {
-					ask.state = event.outcome;
+				if (asks.has(event.askId)) {
+					asks.set(event.askId, false);
 					break;
 				}
 				const line = levelLine(event, run?.accessLevel);
@@ -904,6 +911,17 @@ export function deriveTranscript(
 		}
 	}
 
+	for (const q of Array.from(queued.values()))
+		items.push({
+			kind: "operator",
+			key: `queued-${q.messageId}`,
+			text: q.text,
+			at: q.ts,
+			mode: "queue",
+			attachments: q.attachments ?? [],
+			// The run ended without reading it, and no record says so: it never arrived.
+			state: run && !run.live ? "not_delivered" : "queued",
+		});
 	for (const p of unmatchedPending(events, pending)) {
 		items.push({
 			kind: "operator",
@@ -920,11 +938,7 @@ export function deriveTranscript(
 		});
 	}
 
-	const waiting = Array.from(asks.values()).filter(
-		(a) => a.state === "waiting",
-	);
-	// An ask the run outlived was never answered; the agent got no yes (#673 w21).
-	if (!run?.live) for (const ask of waiting) ask.state = "ended";
+	const waiting = Array.from(asks.values()).filter(Boolean);
 	if (run && !run.live) endOpenCalls();
 
 	if (run?.live) {
@@ -1005,7 +1019,7 @@ export function runStepText(
 ): { text: string; stale: boolean } | null {
 	if (opts.streamLost)
 		return { text: "live stream lost, polling", stale: true };
-	const last = events[events.length - 1];
+	const last = events.findLast((e) => e.kind !== "message_queued");
 	if (!last) return null;
 	// The agent waits on you; that quiet is not a stall (#673 w21).
 	if (last.kind === "permission_ask")
@@ -1038,23 +1052,60 @@ export function latestAgentText(events: CanonicalEvent[]): string | null {
 	return null;
 }
 
-/** Pending messages no event has answered yet: each operator_message event answers one pending message with its text. */
+/**
+ * Pending messages no event has answered yet: one carrying the API's id is
+ * answered by any event with that id; an older one by an operator_message with its text.
+ */
 export function unmatchedPending(
 	events: ReadonlyArray<CanonicalEvent>,
 	pending: ReadonlyArray<PendingMessage>,
 ): PendingMessage[] {
+	const ids = new Set<string>();
 	const left = new Map<string, number>();
 	for (const e of events) {
+		if (e.kind === "message_queued") ids.add(e.messageId);
 		if (e.kind !== "operator_message") continue;
+		if (e.messageId) ids.add(e.messageId);
 		const t = e.text.trim();
 		left.set(t, (left.get(t) ?? 0) + 1);
 	}
 	return pending.filter((p) => {
 		if (p.undelivered) return true;
+		if (p.messageId) return !ids.has(p.messageId);
 		const t = p.text.trim();
 		const n = left.get(t) ?? 0;
 		if (n === 0) return true;
 		left.set(t, n - 1);
 		return false;
 	});
+}
+
+/** Messages waiting for the agent's next pause, recorded by the run or just sent (#820). */
+export function queuedMessages(
+	events: ReadonlyArray<CanonicalEvent>,
+	pending: ReadonlyArray<PendingMessage>,
+): { key: string; text: string; attachments: AttachmentView[] }[] {
+	const open = new Map<
+		string,
+		Extract<CanonicalEvent, { kind: "message_queued" }>
+	>();
+	for (const e of events) {
+		if (e.kind === "message_queued") open.set(e.messageId, e);
+		else if (e.kind === "operator_message" && e.messageId)
+			open.delete(e.messageId);
+	}
+	return [
+		...Array.from(open.values()).map((q) => ({
+			key: q.messageId,
+			text: q.text,
+			attachments: q.attachments ?? [],
+		})),
+		...unmatchedPending(events, pending)
+			.filter((m) => m.mode === "queue" && !m.undelivered)
+			.map((m) => ({
+				key: m.id,
+				text: m.text,
+				attachments: m.attachments ?? [],
+			})),
+	];
 }

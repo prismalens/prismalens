@@ -24,6 +24,7 @@ import {
 	resolveHarnessModel,
 } from "@prismalens/config/harness";
 import type {
+	CanonicalEvent,
 	FollowUpKind,
 	InvestigationJobData,
 	JobAttachment,
@@ -488,6 +489,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not settle asks left waiting at boot: ${(e as Error).message}`,
 			),
 		);
+		await this.markQueuedLeftWaiting().catch((e) =>
+			this.logger.warn(
+				`Could not settle messages left queued at boot: ${(e as Error).message}`,
+			),
+		);
 		const ids = await this.store.failRunning(RESTART_REASON);
 		if (ids.length > 0) {
 			this.logger.warn(
@@ -621,11 +627,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * conversation says so and the row stops waiting, before the run itself is settled.
 	 */
 	private async denyAsksLeftWaiting(): Promise<void> {
+		// A shutdown clears awaitingApprovalAt as it closes the asks, so live rows are read too (#820).
 		const rows = await this.prisma.investigation.findMany({
-			where: { awaitingApprovalAt: { not: null } },
-			select: { id: true },
+			where: {
+				OR: [
+					{ awaitingApprovalAt: { not: null } },
+					{ status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+				],
+			},
+			select: { id: true, awaitingApprovalAt: true },
 		});
-		for (const { id } of rows) {
+		let denied = 0;
+		for (const { id, awaitingApprovalAt } of rows) {
 			const events = await this.prisma.investigationEvent.findMany({
 				where: {
 					investigationId: id,
@@ -641,6 +654,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (e?.kind === "permission_ask") open.set(e.askId, e.branchId);
 				else if (e?.kind === "permission_answer") open.delete(e.askId);
 			}
+			if (open.size === 0 && !awaitingApprovalAt) continue;
+			if (open.size > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
 			const ts = new Date().toISOString();
 			await this.investigationsService.appendEvents(
@@ -662,10 +677,59 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				data: { awaitingApprovalAt: null },
 			});
 		}
-		if (rows.length)
+		if (denied)
 			this.logger.warn(
-				`Denied the asks of ${rows.length} run(s) left waiting by a previous process`,
+				`Denied the asks of ${denied} run(s) left waiting by a previous process`,
 			);
+	}
+
+	/**
+	 * A message queued on a run the last process held never reached it (#820):
+	 * the conversation says it was not delivered instead of showing it waiting.
+	 */
+	private async markQueuedLeftWaiting(): Promise<void> {
+		const rows = await this.prisma.investigation.findMany({
+			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
+			select: { id: true },
+		});
+		for (const { id } of rows) {
+			const events = await this.prisma.investigationEvent.findMany({
+				where: { investigationId: id, event: { contains: '"messageId"' } },
+				orderBy: { seq: "asc" },
+				select: { event: true },
+			});
+			const open = new Map<
+				string,
+				Extract<CanonicalEvent, { kind: "message_queued" }>
+			>();
+			for (const row of events) {
+				const parsed = CanonicalEventSchema.safeParse(JSON.parse(row.event));
+				const e = parsed.success ? parsed.data : null;
+				if (e?.kind === "message_queued") open.set(e.messageId, e);
+				else if (e?.kind === "operator_message" && e.messageId)
+					open.delete(e.messageId);
+			}
+			if (open.size === 0) continue;
+			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
+			const ts = new Date().toISOString();
+			await this.investigationsService.appendEvents(
+				id,
+				[...open.values()].map((q) => ({
+					kind: "operator_message" as const,
+					runId: id,
+					branchId: q.branchId,
+					path: [],
+					seq: seq++,
+					label: null,
+					ts,
+					text: q.text,
+					mode: "queue" as const,
+					delivered: false,
+					messageId: q.messageId,
+					...(q.attachments?.length ? { attachments: q.attachments } : {}),
+				})),
+			);
+		}
 	}
 
 	/**
@@ -883,6 +947,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		mode: "queue" | "now",
 		attachments: JobAttachment[] = [],
 		kind?: FollowUpKind,
+		id?: string,
 	): MessageState {
 		let state: MessageState = null;
 		this.bus.publish<RunMessageRequest>(runMessageTopic(investigationId), {
@@ -890,6 +955,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			mode,
 			attachments,
 			...(kind ? { kind } : {}),
+			...(id ? { id } : {}),
 			reply: (s) => {
 				state = s;
 			},

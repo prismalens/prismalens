@@ -4,6 +4,7 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 
+import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
 const Popover = PopoverPrimitive.Root;
@@ -21,6 +22,7 @@ const PopoverContent = React.forwardRef<
 			ref={ref}
 			align={align}
 			sideOffset={sideOffset}
+			collisionPadding={{ top: titleRowHeight() }}
 			data-float="pop"
 			className={cn(
 				"floating z-50 w-72 rounded-pool p-3 text-text-1 outline-none",

@@ -83,6 +83,7 @@ function RootLayout() {
 				<HeadContent />
 			</head>
 			<body className="font-sans">
+				<TitleBarStrip />
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
 						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
@@ -111,7 +112,6 @@ function RootLayout() {
 function NotFound() {
 	return (
 		<div className="flex flex-col items-center justify-center gap-4 py-16">
-			<TitleBarStrip />
 			<h1 className="text-display">Nothing here</h1>
 			<p className="max-w-md text-center text-body text-text-2">
 				This address does not match a page. It may have moved.

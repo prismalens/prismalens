@@ -4,22 +4,10 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatClock } from "@/lib/format-time";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TranscriptItem } from "@/lib/investigation-events";
+import type { AskRecord } from "@/lib/run-asks";
 import { Transcript } from "./Transcript";
-
-const mutateSpy = vi.fn();
-let answerError: { code: string } | null = null;
-
-vi.mock("@/lib/api/hooks/use-investigations-orpc", () => ({
-	useAnswerAsk: () => ({
-		mutate: mutateSpy,
-		isPending: false,
-		isError: answerError !== null,
-		error: answerError,
-	}),
-}));
 
 if (typeof globalThis.ResizeObserver === "undefined") {
 	globalThis.ResizeObserver = class ResizeObserver {
@@ -40,8 +28,6 @@ beforeEach(() => {
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
-	mutateSpy.mockClear();
-	answerError = null;
 });
 
 afterEach(async () => {
@@ -49,211 +35,79 @@ afterEach(async () => {
 	container.remove();
 });
 
-describe("Transcript AskCard", () => {
-	const askItem: TranscriptItem = {
-		kind: "ask",
-		key: "ask-1",
+describe("Transcript asks (#820)", () => {
+	const ask: AskRecord = {
 		askId: "00000000-0000-0000-0000-000000000001",
 		title: "rm -rf /tmp/test",
 		detail: "/tmp/test",
+		input: null,
+		server: null,
 		at: "2026-10-09T10:00:00Z",
 		expiresAt: "2026-10-09T10:10:00Z",
 		clamped: false,
-		state: "waiting",
+		state: "timed_out",
 	};
+	const steps = (asks: AskRecord[]) => ({
+		all: [],
+		open: new Set<number>(),
+		onToggle: () => {},
+		highlight: null,
+		flagged: new Set<number>(),
+		asks,
+	});
+	const item: TranscriptItem = { kind: "ask", key: "a", askId: ask.askId };
 
-	it("Approve click calls mutate with approve decision", async () => {
+	it("shows no card and no buttons: the ask answers in the dock", async () => {
 		await act(async () => {
 			root.render(
 				<Transcript
-					items={[askItem]}
+					items={[item]}
 					incidentId="inc-1"
-					runId="run-1"
 					agent="Claude Code"
+					steps={steps([{ ...ask, state: "waiting" }])}
 				/>,
 			);
 		});
-
-		const approveButton = container.querySelector(
-			'[data-testid="ask-approve"]',
-		) as HTMLButtonElement | null;
-		expect(approveButton).not.toBeNull();
-		await act(async () => {
-			approveButton?.click();
-		});
-
-		expect(mutateSpy).toHaveBeenCalledTimes(1);
-		expect(mutateSpy).toHaveBeenCalledWith({
-			id: "run-1",
-			askId: "00000000-0000-0000-0000-000000000001",
-			decision: "approve",
-		});
+		expect(container.querySelector('[data-testid="ask-approve"]')).toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-ask"]')?.textContent,
+		).toBe(
+			"Claude Code asked to run rm -rf /tmp/test: waiting for your approval",
+		);
 	});
 
-	it("Deny click calls mutate with deny decision", async () => {
+	it("keeps one line for an ask no step carries, saying how it ended", async () => {
 		await act(async () => {
 			root.render(
 				<Transcript
-					items={[askItem]}
+					items={[item]}
 					incidentId="inc-1"
-					runId="run-1"
 					agent="Claude Code"
+					steps={steps([{ ...ask, clamped: true }])}
 				/>,
 			);
 		});
-
-		const denyButton = container.querySelector(
-			'[data-testid="ask-deny"]',
-		) as HTMLButtonElement | null;
-		expect(denyButton).not.toBeNull();
-		await act(async () => {
-			denyButton?.click();
-		});
-
-		expect(mutateSpy).toHaveBeenCalledTimes(1);
-		expect(mutateSpy).toHaveBeenCalledWith({
-			id: "run-1",
-			askId: "00000000-0000-0000-0000-000000000001",
-			decision: "deny",
-		});
-	});
-
-	it("says the ask is gone only on CONFLICT; any other failure asks for a retry", async () => {
-		const render = async () =>
-			act(async () => {
-				root.render(
-					<Transcript
-						items={[askItem]}
-						incidentId="inc-1"
-						runId="run-1"
-						agent="Claude Code"
-					/>,
-				);
-			});
-		answerError = { code: "CONFLICT" };
-		await render();
-		expect(container.textContent).toContain("That ask is no longer waiting.");
-		answerError = { code: "TOO_MANY_REQUESTS" };
-		await render();
-		expect(container.textContent).not.toContain("no longer waiting");
-		expect(container.textContent).toContain(
-			"Your answer did not reach the run. Try again.",
+		expect(
+			container.querySelector('[data-testid="transcript-ask"]')?.textContent,
+		).toBe(
+			"Claude Code asked to run rm -rf /tmp/test: denied: the run's time limit was reached",
 		);
 	});
 
-	it("an ended item shows no buttons and the end line", async () => {
-		const endedItem: TranscriptItem = {
-			...askItem,
-			state: "ended",
-		};
-
+	it("leaves the line to the step when a step carries the ask", async () => {
 		await act(async () => {
 			root.render(
 				<Transcript
-					items={[endedItem]}
+					items={[item]}
 					incidentId="inc-1"
-					runId="run-1"
 					agent="Claude Code"
+					steps={steps([{ ...ask, step: 1 }])}
 				/>,
 			);
 		});
-
-		const approveButton = container.querySelector(
-			'[data-testid="ask-approve"]',
-		);
-		const denyButton = container.querySelector('[data-testid="ask-deny"]');
-		expect(approveButton).toBeNull();
-		expect(denyButton).toBeNull();
-
-		const endLine = container.querySelector(
-			'[data-testid="transcript-ask-end"]',
-		);
-		expect(endLine).not.toBeNull();
-		expect(endLine?.textContent).toBe("Not answered before the run ended");
-	});
-
-	it("shows unclamped waiting text with expiry clock", async () => {
-		await act(async () => {
-			root.render(
-				<Transcript
-					items={[askItem]}
-					incidentId="inc-1"
-					runId="run-1"
-					agent="Claude Code"
-				/>,
-			);
-		});
-		expect(container.textContent).toContain(
-			`Denied at ${formatClock(askItem.expiresAt)} if no one answers`,
-		);
-	});
-
-	it("shows clamped waiting text when the run time limit is near", async () => {
-		const clampedWaiting: TranscriptItem = {
-			...askItem,
-			clamped: true,
-		};
-		await act(async () => {
-			root.render(
-				<Transcript
-					items={[clampedWaiting]}
-					incidentId="inc-1"
-					runId="run-1"
-					agent="Claude Code"
-				/>,
-			);
-		});
-		expect(container.textContent).toContain(
-			`The run's time limit is near, so this ask expires at ${formatClock(askItem.expiresAt)}`,
-		);
-	});
-
-	it("shows unclamped timed_out text when no one answered in time", async () => {
-		const unclampedTimedOut: TranscriptItem = {
-			...askItem,
-			state: "timed_out",
-			clamped: false,
-		};
-		await act(async () => {
-			root.render(
-				<Transcript
-					items={[unclampedTimedOut]}
-					incidentId="inc-1"
-					runId="run-1"
-					agent="Claude Code"
-				/>,
-			);
-		});
-		const endLine = container.querySelector(
-			'[data-testid="transcript-ask-end"]',
-		);
-		expect(endLine?.textContent).toBe(
-			"No one answered in 10 minutes, so it was denied",
-		);
-	});
-
-	it("shows clamped timed_out text when the run's time limit was reached", async () => {
-		const clampedTimedOut: TranscriptItem = {
-			...askItem,
-			state: "timed_out",
-			clamped: true,
-		};
-		await act(async () => {
-			root.render(
-				<Transcript
-					items={[clampedTimedOut]}
-					incidentId="inc-1"
-					runId="run-1"
-					agent="Claude Code"
-				/>,
-			);
-		});
-		const endLine = container.querySelector(
-			'[data-testid="transcript-ask-end"]',
-		);
-		expect(endLine?.textContent).toBe(
-			"Denied: the run's time limit was reached",
-		);
+		expect(
+			container.querySelector('[data-testid="transcript-ask"]'),
+		).toBeNull();
 	});
 });
 
@@ -279,7 +133,6 @@ describe("Transcript level lines (#673 w21)", () => {
 				<Transcript
 					items={levelItems}
 					incidentId="inc-1"
-					runId="run-1"
 					agent="Claude Code"
 				/>,
 			);

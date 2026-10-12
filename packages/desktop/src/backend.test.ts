@@ -140,23 +140,43 @@ describe("backend", () => {
 	});
 
 	describe("stopBackend", () => {
-		it("sends SIGTERM and after exit does not send SIGKILL", () => {
+		const fakeChild = (connected: boolean) =>
+			Object.assign(new EventEmitter(), {
+				exitCode: null,
+				signalCode: null,
+				connected,
+				kill: vi.fn(),
+				send: vi.fn(),
+			}) as unknown as ChildProcess;
+
+		it("asks over IPC, the one stop Windows lets the backend handle", () => {
 			vi.useFakeTimers();
 			try {
-				const child = Object.assign(new EventEmitter(), {
-					exitCode: null,
-					signalCode: null,
-					kill: vi.fn(),
-				}) as unknown as ChildProcess;
+				const child = fakeChild(true);
+				stopBackend(child);
+				expect(child.send).toHaveBeenCalledWith(
+					"prismalens:stop",
+					expect.any(Function),
+				);
+				expect(child.kill).not.toHaveBeenCalled();
+				child.emit("exit", 0, null);
+				vi.advanceTimersByTime(20_000);
+				expect(child.kill).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 
+		it("signals when there is no channel, and kills one that outlives the backend's own deadline", () => {
+			vi.useFakeTimers();
+			try {
+				const child = fakeChild(false);
 				stopBackend(child);
 				expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+				vi.advanceTimersByTime(11_000);
 				expect(child.kill).not.toHaveBeenCalledWith("SIGKILL");
-
-				child.emit("exit", 0, null);
-				vi.advanceTimersByTime(6000);
-				expect(child.kill).toHaveBeenCalledTimes(1);
-				expect(child.kill).not.toHaveBeenCalledWith("SIGKILL");
+				vi.advanceTimersByTime(1_000);
+				expect(child.kill).toHaveBeenCalledWith("SIGKILL");
 			} finally {
 				vi.useRealTimers();
 			}

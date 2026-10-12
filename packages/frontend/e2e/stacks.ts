@@ -51,7 +51,7 @@ export function workerCount(argv: string[], ci: boolean): number {
 		return Math.max(1, Math.floor((cpus * Number.parseInt(raw, 10)) / 100));
 	const n = Number.parseInt(raw ?? "", 10);
 	if (Number.isInteger(n) && n > 0) return n;
-	return ci ? cpus : Math.min(4, cpus);
+	return ci ? cpus : Math.min(2, cpus);
 }
 
 /**

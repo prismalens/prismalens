@@ -76,7 +76,7 @@ journey-by-journey coverage matrix live in
 Two things to know before running it locally:
 
 - Each Playwright worker gets its own API, Vite, workspace and database; worker *n* binds
-  ports 3000+2n and 3001+2n (4 workers locally, one per CPU in CI). Stop `pnpm dev` first, or move
+  ports 3000+2n and 3001+2n (2 workers locally, one per CPU in CI). Stop `pnpm dev` first, or move
   the base ports with `PRISMALENS_FRONTEND_PORT`/`PRISMALENS_PORT`. `--workers=1` runs one stack.
 - The servers get a PATH holding only node, pnpm, git and the fake agents, so a real `claude` or
   `opencode` on your machine never answers. See

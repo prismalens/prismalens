@@ -13,20 +13,17 @@ import { MessageResponse } from "@/components/ai/message";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
 import { StateWord } from "@/components/shared/StateWord";
-import { Button } from "@/components/ui/button";
-import { useAnswerAsk } from "@/lib/api/hooks/use-investigations-orpc";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatClock, formatElapsed } from "@/lib/format-time";
 import {
-	type AskState,
 	type AttachmentView,
 	OPERATOR_STATE_LABEL,
 	type OperatorState,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
 import { shortPath } from "@/lib/report-view";
+import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
-import { isConflict } from "./useInvestigationRun";
 
 export { unfence } from "@/components/run/run-steps";
 
@@ -60,6 +57,8 @@ export interface TranscriptSteps {
 	highlight: number | null;
 	flagged: ReadonlySet<number>;
 	onSeeFlag?: () => void;
+	/** The run's asks, each on its step (#820). */
+	asks?: readonly AskRecord[];
 }
 
 /**
@@ -70,7 +69,6 @@ export interface TranscriptSteps {
 export function Transcript({
 	items,
 	incidentId,
-	runId,
 	cwd,
 	agent,
 	steps,
@@ -81,8 +79,6 @@ export function Transcript({
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
-	/** The run an ask's Approve or Deny goes to (#673 w21). */
-	runId?: string;
 	/** The run's workspace, shown as `repo/` (walk f16). */
 	cwd?: string | null;
 	agent: string;
@@ -109,7 +105,6 @@ export function Transcript({
 							key={item.key}
 							item={item}
 							incidentId={incidentId}
-							runId={runId}
 							cwd={cwd}
 							agent={agent}
 							steps={steps}
@@ -128,7 +123,6 @@ export function Transcript({
 function TranscriptRow({
 	item,
 	incidentId,
-	runId,
 	cwd,
 	agent,
 	steps,
@@ -138,7 +132,6 @@ function TranscriptRow({
 }: {
 	item: TranscriptItem;
 	incidentId: string;
-	runId?: string;
 	cwd?: string | null;
 	agent: string;
 	steps?: TranscriptSteps;
@@ -178,8 +171,26 @@ function TranscriptRow({
 			);
 		case "tools":
 			return <StepGroup item={item} steps={steps} cwd={cwd} />;
-		case "ask":
-			return <AskCard item={item} runId={runId} agent={agent} cwd={cwd} />;
+		case "ask": {
+			// An ask no step carries keeps its own line where it was (#820).
+			const ask = steps?.asks?.find((a) => a.askId === item.askId);
+			if (!ask || ask.step !== undefined) return null;
+			const end = askEnd(ask);
+			return (
+				<li
+					className={cn(
+						"text-meta [overflow-wrap:anywhere]",
+						ask.state === "waiting" ? "text-warn" : "text-text-3",
+						ENTER,
+					)}
+					data-testid="transcript-ask"
+					data-state={ask.state}
+				>
+					{agent} asked to run {shortPath(askTitle(ask), cwd)}:{" "}
+					{end.charAt(0).toLowerCase() + end.slice(1)}
+				</li>
+			);
+		}
 		case "thought":
 			return (
 				<li className="text-meta text-text-3" data-testid="transcript-thought">
@@ -391,115 +402,11 @@ function StepGroup({
 						highlight={steps.highlight === s.n}
 						flagged={steps.flagged.has(s.n)}
 						onSeeFlag={steps.onSeeFlag}
+						ask={steps.asks?.findLast((a) => a.step === s.n)}
 					/>
 				</Fragment>
 			))}
 		</>
-	);
-}
-
-/** How an ask ended, in one line (#673 w21). */
-const ASK_END: Record<Exclude<AskState, "waiting">, string> = {
-	approved: "You approved it",
-	denied: "You denied it",
-	timed_out: "No one answered in 10 minutes, so it was denied",
-	stopped: "Denied: the run stopped",
-	restarted: "Denied: PrismaLens restarted",
-	ended: "Not answered before the run ended",
-	allowed: "Allowed by the run's permission level",
-	mode_kept: "Refused: the run keeps its mode",
-	unattended: "Refused: an alert started this run and nobody was there",
-};
-
-/**
- * The agent asks before a tool call (#673 w21): what it wants to run, and
- * Approve or Deny while the run waits. Nobody answering denies it.
- */
-function AskCard({
-	item,
-	runId,
-	agent,
-	cwd,
-}: {
-	item: Extract<TranscriptItem, { kind: "ask" }>;
-	runId?: string;
-	agent: string;
-	cwd?: string | null;
-}) {
-	const answer = useAnswerAsk();
-	const { state } = item;
-	const waiting = state === "waiting";
-	const send = (decision: "approve" | "deny") => {
-		if (runId) answer.mutate({ id: runId, askId: item.askId, decision });
-	};
-	return (
-		<li
-			className={cn(
-				"rounded-surface bg-surface-1 px-3 py-2.5",
-				waiting && "bg-[oklch(from_var(--danger)_l_c_h/0.1)]",
-				ENTER,
-			)}
-			data-testid="transcript-ask"
-			data-state={item.state}
-		>
-			<p className="mb-1 flex items-baseline gap-2 text-meta text-text-3">
-				<span className="font-medium text-text-2">{agent}</span>
-				<span className="tabular-nums">{formatClock(item.at)}</span>
-				{waiting && (
-					<span className="ml-auto text-danger">Waiting for your approval</span>
-				)}
-			</p>
-			<p>Asks to run {item.title}</p>
-			{item.detail && !item.title.includes(item.detail) && (
-				<span
-					className="mt-1 block font-mono text-mono text-text-1 [overflow-wrap:anywhere]"
-					data-testid="transcript-ask-detail"
-				>
-					{shortPath(item.detail, cwd)}
-				</span>
-			)}
-			{state === "waiting" ? (
-				<div className="mt-2 flex flex-wrap items-center gap-2">
-					<Button
-						variant="primary"
-						disabled={!runId || answer.isPending}
-						onClick={() => send("approve")}
-						data-testid="ask-approve"
-					>
-						Approve
-					</Button>
-					<Button
-						variant="secondary"
-						disabled={!runId || answer.isPending}
-						onClick={() => send("deny")}
-						data-testid="ask-deny"
-					>
-						Deny
-					</Button>
-					<span className="text-meta text-text-3">
-						{answer.isError
-							? isConflict(answer.error)
-								? "That ask is no longer waiting."
-								: "Your answer did not reach the run. Try again."
-							: item.clamped
-								? `The run's time limit is near, so this ask expires at ${formatClock(item.expiresAt)}`
-								: `Denied at ${formatClock(item.expiresAt)} if no one answers`}
-					</span>
-				</div>
-			) : (
-				<p
-					className={cn(
-						"mt-1 text-meta",
-						state === "approved" ? "text-text-2" : "text-text-3",
-					)}
-					data-testid="transcript-ask-end"
-				>
-					{state === "timed_out" && item.clamped
-						? "Denied: the run's time limit was reached"
-						: ASK_END[state]}
-				</p>
-			)}
-		</li>
 	);
 }
 

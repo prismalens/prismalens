@@ -18,6 +18,7 @@ import {
 	ensureAppDataDir,
 	ensureInstanceFile,
 	getConfig,
+	LAUNCHER_STOP_MESSAGE,
 	resolvePort,
 	serviceOwnsWorkspace,
 	WorkspaceLockedError,
@@ -46,6 +47,17 @@ Logger.setServiceInfo({
 	name: "prismalens-api",
 	version: resolveServiceVersion(),
 	environment: process.env.NODE_ENV ?? "development",
+});
+
+/**
+ * A launcher's stop request (#819) takes a signal's path once Nest's hooks are
+ * armed; before that, exit, and the lock's `exit` listener releases it.
+ */
+let shutdownHooksArmed = false;
+process.on("message", (message) => {
+	if (message !== LAUNCHER_STOP_MESSAGE) return;
+	if (shutdownHooksArmed) process.emit("SIGTERM", "SIGTERM");
+	else process.exit(143);
 });
 
 async function bootstrap() {
@@ -300,6 +312,7 @@ async function bootstrap() {
 	// so a shutdown that hangs cannot trap someone at the terminal. Disarmed by
 	// the shutdown hook just before Nest re-raises.
 	armForcedExitOnSecondSignal(stopSignals);
+	shutdownHooksArmed = true;
 
 	// Catch EADDRINUSE to print a clear error and exit 1 without stack trace (#237).
 	try {

@@ -1154,7 +1154,7 @@ Given(
 			"supervised",
 		);
 		await openConversation(page);
-		await expect(page.getByTestId("transcript-ask")).toBeVisible();
+		await expect(page.getByTestId("dock-ask")).toBeVisible();
 	},
 );
 
@@ -1175,14 +1175,19 @@ Given(
 			"supervised",
 		);
 		await openConversation(page);
-		await expect(page.getByTestId("transcript-ask")).toBeVisible();
+		await expect(page.getByTestId("dock-ask")).toBeVisible();
 	},
 );
 
 Then(
 	/^(?:the band shows|the band reads) "Waiting for your approval"$/,
 	async ({ page }) => {
-		await expect(page.getByTestId("transcript-ask")).toContainText(
+		// The ask waits in the dock on the box; the strip and its step say so (#820).
+		await expect(page.getByTestId("dock-ask")).toBeVisible();
+		await expect(page.getByTestId("run-strip-label")).toContainText(
+			"waiting for you",
+		);
+		await expect(page.getByTestId("step-ask")).toContainText(
 			"Waiting for your approval",
 		);
 	},
@@ -1191,9 +1196,8 @@ Then(
 Then(
 	/^(?:the )?(?:ask )?card names "(.+)"$/,
 	async ({ page }, name: string) => {
-		const card = page.getByTestId("transcript-ask");
+		const card = page.getByTestId("dock-ask");
 		await expect(card).toBeVisible();
-		await expect(card).toHaveAttribute("data-state", "waiting");
 		await expect(card).toContainText(name);
 	},
 );
@@ -1209,19 +1213,17 @@ When(
 Then(
 	/^(?:the )?(?:ask )?card reads "(You approved it|You denied it)"$/,
 	async ({ page }, text: string) => {
-		const card = page.getByTestId("transcript-ask");
+		const line = page.getByTestId("step-ask");
 		const expectedState = text === "You approved it" ? "approved" : "denied";
-		await expect(card).toHaveAttribute("data-state", expectedState);
-		await expect(page.getByTestId("transcript-ask-end")).toHaveText(text);
+		await expect(line).toHaveAttribute("data-state", expectedState);
+		await expect(line).toHaveText(text);
 	},
 );
 
 Then(
 	/^(?:the band text goes away|the band no longer shows "Waiting for your approval")$/,
 	async ({ page }) => {
-		await expect(page.getByTestId("transcript-ask")).not.toContainText(
-			"Waiting for your approval",
-		);
+		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
 	},
 );
 
@@ -1289,7 +1291,7 @@ Then(
 Then(
 	"no card waits and the conversation shows {string}",
 	async ({ page }, text: string) => {
-		await expect(page.getByTestId("transcript-ask")).toHaveCount(0);
+		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
 		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
 		const allowed = page.getByTestId("transcript-allowed");
 		await expect(allowed).toBeVisible();

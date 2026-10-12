@@ -94,7 +94,12 @@ export function SituationCard({
 		refiredAs: incident.refiredAs,
 		cleared: o.cleared,
 		runs: runs.filter((r) => r.kind !== "chat").length,
-		live: o.live ? { name: viewName(runs, o.live) } : null,
+		live: o.live
+			? {
+					name: viewName(runs, o.live),
+					waiting: o.latestRun.awaiting || !!o.live.awaitingApprovalAt,
+				}
+			: null,
 		failed:
 			latest && latestState === "failed"
 				? {

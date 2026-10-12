@@ -132,8 +132,13 @@ function codeRows(inv: InvestigationWithRelations): DetailRow[] {
 	});
 }
 
-function evidenceRow(e: Evidence, steps: Map<string, number>): DetailRow {
-	const step = e.toolCallId ? steps.get(e.toolCallId) : undefined;
+/** Which step an evidence item came from, if any. */
+export type StepOf = (
+	e: Pick<Evidence, "toolCallId" | "source">,
+) => number | undefined;
+
+function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
+	const step = steps(e);
 	return {
 		text: e.observation,
 		sub:
@@ -151,7 +156,7 @@ function evidenceRow(e: Evidence, steps: Map<string, number>): DetailRow {
  */
 export function evidenceSections(
 	inv: InvestigationWithRelations,
-	steps: Map<string, number>,
+	steps: StepOf,
 	opts: { live: boolean; standing: { runId: string; name: string } | null },
 ): DetailSection[] {
 	const report = inv.report;
@@ -177,7 +182,7 @@ export function evidenceSections(
 
 function reportSections(
 	report: InvestigationReport,
-	steps: Map<string, number>,
+	steps: StepOf,
 ): DetailSection[] {
 	const out: DetailSection[] = [];
 	const [top, ...others] = report.hypotheses.filter(
@@ -203,25 +208,20 @@ function reportSections(
 			title: "Also possible",
 			rows: others.map((h) => {
 				const first = h.evidence[0];
-				const step = first?.toolCallId
-					? steps.get(first.toolCallId)
-					: undefined;
+				const step = first ? steps(first) : undefined;
 				return { text: h.statement, ...(step ? { step } : {}) };
 			}),
 		});
 	const ruled: DetailRow[] = [
 		...report.ruledOut.map((r) => {
-			const call = r.evidence.find((e) => e.toolCallId)?.toolCallId;
-			const step = call ? steps.get(call) : undefined;
+			const step = r.evidence.map((e) => steps(e)).find((n) => n !== undefined);
 			return { text: r.statement, sub: r.why, ...(step ? { step } : {}) };
 		}),
 		...report.hypotheses
 			.filter((h) => h.status === "refuted")
 			.map((h) => {
 				const against = h.evidence.find((e) => e.direction === "contradicts");
-				const step = against?.toolCallId
-					? steps.get(against.toolCallId)
-					: undefined;
+				const step = against ? steps(against) : undefined;
 				return {
 					text: h.statement,
 					...(against ? { sub: against.observation } : {}),

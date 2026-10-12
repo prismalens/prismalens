@@ -57,6 +57,7 @@ export interface RunningJob {
 		mode: "queue" | "now",
 		attachments?: JobAttachment[],
 		kind?: FollowUpKind,
+		id?: string,
 	): MessageState;
 	/** The operator's answer to one of the agent's asks (#673 w21); null when it no longer waits. */
 	answer?(askId: string, approve: boolean): "approved" | "denied" | null;
@@ -186,7 +187,8 @@ export class Dispatcher {
 			runMessageTopic(job.investigationId),
 			(m) =>
 				m.reply(
-					running.message?.(m.text, m.mode, m.attachments, m.kind) ?? null,
+					running.message?.(m.text, m.mode, m.attachments, m.kind, m.id) ??
+						null,
 				),
 		);
 		const askSub = this.bus.subscribe<RunAskRequest>(
