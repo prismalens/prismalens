@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
+import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import type { Overview } from "./use-overview";
 
@@ -35,21 +36,26 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 	const who = useRunAgentModel(inv);
 	const state = latest ? (run.state ?? refRunState(latest)) : null;
 	const live = !!state && isRunStateLive(state);
+	// The agent waits on you: the ask opens in the box below (#673 w5-14).
+	const waiting = live && (run.awaiting || !!latest?.awaitingApprovalAt);
+	const ask = run.asks.find((a) => a.state === "waiting");
 	const name = latest ? viewName(runs, latest) : null;
 	const took =
 		inv && runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
 	const outcome = latest ? runOutcome(latest) : "";
 	const detail = !latest
 		? "No run yet"
-		: live
-			? (run.latestText ?? "Working")
-			: state === "failed"
-				? failureWords(inv?.error ?? latest.error).what
-				: latest.hasReport
-					? latest.rootCause
-						? "Likely cause found"
-						: "No cause named"
-					: cap(outcome);
+		: waiting
+			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
+			: live
+				? (run.latestText ?? "Working")
+				: state === "failed"
+					? failureWords(inv?.error ?? latest.error, who.agent).what
+					: latest.hasReport
+						? latest.rootCause
+							? "Likely cause found"
+							: "No cause named"
+						: cap(outcome);
 	const when = latest
 		? live
 			? `started ${ago(latest.startedAt ?? latest.createdAt, now)}`
@@ -67,7 +73,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 		>
 			<span className="shrink-0 text-text-3">Latest run</span>
 			{state ? (
-				<RunDot state={state} className="size-[7px]" />
+				<RunDot state={state} waiting={waiting} className="size-[7px]" />
 			) : (
 				<span
 					aria-hidden
@@ -83,23 +89,27 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 					data-testid="latest-run-link"
 				>
 					{name}{" "}
-					{live
-						? "investigating"
-						: state === "failed"
-							? "failed"
-							: state === "stopped"
-								? "stopped"
-								: "concluded"}
+					{waiting
+						? "waiting for you"
+						: live
+							? "investigating"
+							: state === "failed"
+								? "failed"
+								: state === "stopped"
+									? "stopped"
+									: "concluded"}
 				</Link>
 			) : null}
 			<span
 				className={cn(
 					"min-w-[100px] shrink truncate",
-					live
-						? "text-live"
-						: state === "failed"
-							? "text-danger"
-							: "text-text-2",
+					waiting
+						? "text-warn"
+						: live
+							? "text-live"
+							: state === "failed"
+								? "text-danger"
+								: "text-text-2",
 				)}
 				data-testid="latest-run-detail"
 			>

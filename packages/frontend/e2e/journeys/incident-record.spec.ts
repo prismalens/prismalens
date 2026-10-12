@@ -325,7 +325,7 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 			"data-state",
 			"queued",
 		);
-		await expect(page.getByTestId("composer-waiting")).toHaveText("1 waiting");
+		await expect(page.getByTestId("composer-queued")).toHaveCount(1);
 
 		// Ctrl+Enter sends now; the run has ended, so the API answers 409.
 		answer = "conflict";

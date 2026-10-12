@@ -38,6 +38,7 @@ import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { failureSentence } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
+import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import { IncidentHeader } from "./IncidentHeader";
 import { type DetailsTab, RunDetailsPanel } from "./RunDetailsPanel";
@@ -57,7 +58,7 @@ import {
 	viewName,
 } from "./run-labels";
 import {
-	deriveSteps,
+	evidenceStep,
 	flaggedSteps,
 	stepFromHash,
 	stepOfCall,
@@ -95,6 +96,7 @@ export function RunPage() {
 		() =>
 			deriveTranscript(run.events, now ?? Date.now(), {
 				pending: run.pending,
+				modelName: (id) => modelName(harness, id) ?? id,
 				run: inv
 					? {
 							id: inv.id,
@@ -120,12 +122,10 @@ export function RunPage() {
 			run.continuable,
 			inv,
 			live,
+			harness,
 		],
 	);
-	const steps = useMemo(
-		() => deriveSteps(run.events, { cwd, ended: !live }),
-		[run.events, cwd, live],
-	);
+	const steps = run.steps;
 	const byCall = useMemo(() => stepOfCall(steps), [steps]);
 	const flaggedAt = useMemo(
 		() => flaggedSteps(steps, inv?.report?.flaggedContent),
@@ -217,6 +217,7 @@ export function RunPage() {
 	const step = runStepText(run.events, now ?? Date.now(), {
 		streamLost: run.streamFailed,
 	});
+	const ask = run.asks.find((a) => a.state === "waiting");
 	const stateWord = stripWords(
 		inv,
 		run.state,
@@ -224,6 +225,9 @@ export function RunPage() {
 		name,
 		now,
 		who.agent,
+		run.awaiting
+			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
+			: null,
 	);
 	const fidelity = report?.fidelity;
 	const substituted = !!fidelity && modelSubstituted(fidelity);
@@ -254,6 +258,7 @@ export function RunPage() {
 				{header}
 				<RunStrip
 					state={run.state}
+					waiting={run.awaiting}
 					label={stateWord.label}
 					detail={stateWord.detail}
 					model={modelChip}
@@ -279,7 +284,6 @@ export function RunPage() {
 						<Transcript
 							items={items}
 							incidentId={incident.id}
-							runId={inv.id}
 							cwd={cwd}
 							agent={who.agent}
 							runName={name}
@@ -299,12 +303,15 @@ export function RunPage() {
 								highlight,
 								flagged: new Set(flaggedAt.values()),
 								onSeeFlag: seeFlag,
+								asks: run.asks,
 							}}
 						/>
 					)}
 				</div>
 				{/* Not while the run loads: the key turns from "none" to its id and the remount drops typed text (#807). */}
-				{!run.isLoading && <DockedComposer key={inv?.id ?? "none"} />}
+				{!run.isLoading && (
+					<DockedComposer key={inv?.id ?? "none"} onStep={jump} />
+				)}
 			</div>
 			{panel && inv && (
 				<RunDetailsPanel
@@ -323,7 +330,7 @@ export function RunPage() {
 							harness,
 						}),
 					)}
-					evidence={evidenceSections(inv, byCall, {
+					evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
 						live,
 						standing: standingRun(record, inv.id),
 					})}
@@ -400,10 +407,17 @@ function stripWords(
 	name: string,
 	now: number | null,
 	agent: string,
+	/** What the agent waits on you for, while it does (#673 w5-14). */
+	asking: string | null,
 ): { label: string; detail: string } {
 	if (!inv || !state) return { label: name, detail: "" };
 	const chat = inv.kind === "chat";
 	const who = chat ? "Ask" : name;
+	if (asking && isRunStateLive(state))
+		return {
+			label: chat ? "Ask, waiting for you" : `${who} waiting for you`,
+			detail: asking,
+		};
 	const took = runTimed(inv) ? formatElapsed(runElapsed(inv, now)) : null;
 	const when = (at: string | null) =>
 		at && now !== null ? relative(at, now) : "";
@@ -483,14 +497,16 @@ function summaryFacts(
 				}
 			: state === "stopped"
 				? { text: "Stopped by you" }
-				: live
-					? { text: chat ? "Answering" : "Investigating", tone: "live" }
-					: chat
-						? { text: "Answered", tone: "ok" }
-						: {
-								text: `Concluded: ${runOutcome({ ...inv, hasReport: !!inv.report })}`,
-								tone: "ok",
-							};
+				: live && run.awaiting
+					? { text: "Waiting for your approval", tone: "warn" }
+					: live
+						? { text: chat ? "Answering" : "Investigating", tone: "live" }
+						: chat
+							? { text: "Answered", tone: "ok" }
+							: {
+									text: `Concluded: ${runOutcome({ ...inv, hasReport: !!inv.report })}`,
+									tone: "ok",
+								};
 	const at = inv.startedAt ?? inv.createdAt;
 	const why = startedWhy(inv.triggerType);
 	const asked = f?.access ?? inv.accessLevel ?? undefined;

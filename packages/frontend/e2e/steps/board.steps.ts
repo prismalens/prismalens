@@ -860,8 +860,13 @@ Then(
 	},
 );
 
-Given("no incidents in the window", async ({ page }) => {
-	// A year on, the last 30 days hold nothing this suite made.
+Given("no incidents in the window", async ({ page, unique }) => {
+	// First run's Reset data may have emptied this stack, and zero incidents ever
+	// shows the first-run panel instead; one incident a year back keeps the window empty (#820).
+	const made = await page.request.post("/api/incidents", {
+		data: { title: unique("Before the window"), severity: "low" },
+	});
+	expect(made.ok(), await made.text()).toBe(true);
 	await page.clock.setFixedTime(Date.now() + 400 * 86_400_000);
 });
 

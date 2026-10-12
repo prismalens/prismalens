@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
@@ -367,12 +368,14 @@ export class InvestigationsController {
 						if (refusal) throw new ORPCError("CONFLICT", { message: refusal });
 					}
 					// The kind rides with every send, retries included: the turn that receives it checks it.
+					const messageId = randomUUID();
 					let state = this.dispatchService.sendMessage(
 						input.id,
 						input.text,
 						input.mode,
 						attachments,
 						input.kind,
+						messageId,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
 						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
@@ -382,6 +385,7 @@ export class InvestigationsController {
 							input.mode,
 							attachments,
 							input.kind,
+							messageId,
 						);
 					}
 					if (state === "conflict") {
@@ -406,7 +410,7 @@ export class InvestigationsController {
 						}
 						throw refuse();
 					}
-					return { state };
+					return state === "queued" ? { state, messageId } : { state };
 				},
 			),
 

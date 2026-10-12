@@ -24,12 +24,14 @@ import { orpc } from "@/lib/api/orpc-client";
 const eventsKey = (id: string) =>
 	orpc.investigations.getEvents.key({ input: { id } });
 
+import { deriveSteps } from "@/components/run/run-steps";
 import {
 	type AttachmentView,
 	latestAgentText,
 	type PendingMessage,
-	unmatchedPending,
+	queuedMessages,
 } from "@/lib/investigation-events";
+import { deriveAsks } from "@/lib/run-asks";
 
 /** The API answered 409: the run ended before the message reached it. */
 export function isConflict(error: unknown): boolean {
@@ -245,6 +247,14 @@ export function useInvestigationRun(investigationId: string | null) {
 				}));
 				throw error;
 			}
+			const { messageId } = result;
+			if (messageId)
+				setPending((p) => ({
+					runId: p.runId,
+					items: p.items.map((m) =>
+						m.id === local.id ? { ...m, messageId } : m,
+					),
+				}));
 			// A follow-up reopened the run: refetch so it reads live and the stream connects.
 			if (result.state !== "resumed") return;
 			// A stop on the finished run must not read as a stop on its follow-up.
@@ -258,9 +268,24 @@ export function useInvestigationRun(investigationId: string | null) {
 	);
 
 	const pendingItems = pending.runId === id ? pending.items : [];
-	const waiting = unmatchedPending(events, pendingItems).filter(
-		(m) => m.mode === "queue" && !m.undelivered,
-	).length;
+	const queued = useMemo(
+		() => (isActive ? queuedMessages(events, pendingItems) : []),
+		[isActive, events, pendingItems],
+	);
+	const cwd = investigation?.workspace?.cwd;
+	const steps = useMemo(
+		() => deriveSteps(events, { cwd, ended: !isActive }),
+		[events, cwd, isActive],
+	);
+	const asks = useMemo(
+		() => deriveAsks(events, steps, { live: isActive, cwd }),
+		[events, steps, isActive, cwd],
+	);
+	// The run waits on you: an ask streamed in, or the row says so (#673 w5-14).
+	const awaiting =
+		isActive &&
+		(asks.some((a) => a.state === "waiting") ||
+			(!!investigation?.awaitingApprovalAt && asks.length === 0));
 
 	return {
 		investigation,
@@ -285,7 +310,12 @@ export function useInvestigationRun(investigationId: string | null) {
 		sendMessage,
 		isSending: message.isPending,
 		pending: pendingItems,
-		waiting,
+		/** Messages waiting for the agent's next pause, across reloads (#820). */
+		queued,
+		waiting: queued.length,
+		steps,
+		asks,
+		awaiting,
 		undeliverable,
 		clearUndeliverable: () => setUndeliverable(null),
 	};

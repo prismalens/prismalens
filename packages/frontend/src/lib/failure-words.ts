@@ -10,9 +10,14 @@ export interface FailureWords {
 	next?: string;
 	/** PrismaLens said it, not the agent, so it is never quoted as the agent's words. */
 	ours?: boolean;
+	/** Said plainly, the agent's raw words only as detail (#673 w5-39). */
+	plain?: boolean;
 }
 
-const KNOWN: { test: RegExp; words: FailureWords }[] = [
+const KNOWN: {
+	test: RegExp;
+	words: FailureWords | ((agent: string) => FailureWords);
+}[] = [
 	{
 		test: /\b529\b|overloaded/i,
 		words: {
@@ -28,11 +33,20 @@ const KNOWN: { test: RegExp; words: FailureWords }[] = [
 		},
 	},
 	{
+		test: /failed to authenticate|oauth|session (has )?expired|token (has )?expired|log ?in again/i,
+		words: (agent) => ({
+			what: `${cap(agent)}'s sign-in has expired.`,
+			next: `Sign in to ${agent} again, then start a new run.`,
+			plain: true,
+		}),
+	},
+	{
 		test: /not logged in|unauthori[sz]ed|\b401\b|\b403\b|api key|sign(ed)? in/i,
-		words: {
-			what: "The agent is not signed in to its model provider.",
-			next: "Sign the agent in, then try again.",
-		},
+		words: (agent) => ({
+			what: `${cap(agent)} is not signed in to its model provider.`,
+			next: `Sign in to ${agent}, then try again.`,
+			plain: true,
+		}),
 	},
 	{
 		test: /timed? ?out/i,
@@ -59,10 +73,17 @@ const KNOWN: { test: RegExp; words: FailureWords }[] = [
 	},
 ];
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** A failed investigation's error as a sentence an operator can act on (#743). */
-export function failureWords(error: string | null | undefined): FailureWords {
+export function failureWords(
+	error: string | null | undefined,
+	agent = "the agent",
+): FailureWords {
 	if (!error) return { what: "No error was recorded." };
-	for (const k of KNOWN) if (k.test.test(error)) return k.words;
+	for (const k of KNOWN)
+		if (k.test.test(error))
+			return typeof k.words === "function" ? k.words(agent) : k.words;
 	const clause = firstClause(error);
 	return { what: /[.!?]$/.test(clause) ? clause : `${clause}.` };
 }

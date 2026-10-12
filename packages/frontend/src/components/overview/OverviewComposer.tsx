@@ -19,6 +19,7 @@ import {
 	ComposerBox,
 	type ComposerSend,
 } from "@/components/investigation/ComposerBox";
+import { RunDock } from "@/components/investigation/RunDock";
 import { viewName } from "@/components/run/run-labels";
 import { uploadAttachment } from "@/lib/attachments";
 import { recheckBrief } from "@/lib/run-verb";
@@ -227,6 +228,24 @@ export function OverviewComposer({
 	};
 
 	const hint = t.hint[current];
+	// The live run's asks open here too: the box that messages it is where it waits on you (#820).
+	const latest = o.latestRun;
+	const asks = latest.isActive
+		? latest.asks.filter((a) => a.state === "waiting")
+		: [];
+	const dock =
+		asks.length > 0 || latest.queued.length > 0 ? (
+			<RunDock
+				asks={asks}
+				queued={latest.queued}
+				runId={latest.investigation?.id}
+				agent={
+					choice.harnesses.find((h) => h.id === latest.investigation?.harness)
+						?.label ?? "The agent"
+				}
+				cwd={latest.investigation?.workspace?.cwd}
+			/>
+		) : null;
 	return (
 		<div className="shrink-0 px-4 pt-2 pb-3" data-testid="overview-composer">
 			<div className="mx-auto w-full max-w-[760px]">
@@ -246,7 +265,7 @@ export function OverviewComposer({
 								? harness.checked.images
 								: null,
 					}}
-					waiting={current === "message" ? o.latestRun.waiting : 0}
+					dock={dock}
 					isPending={record.isStarting || record.isSavingNote}
 					blockedReason={agentBlocked}
 					above={

@@ -512,8 +512,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await input.press("Enter");
 		await expect.poll(() => sent.length).toBe(1);
 		expect(sent[0]).toMatchObject({ mode: "queue" });
+		// Queued messages wait in the dock on the box (#820).
 		await expect(page.getByTestId("composer-queued")).toBeVisible();
-		await expect(page.getByTestId("composer-waiting")).toBeVisible();
+		await expect(page.getByTestId("composer-dock")).toBeVisible();
 
 		// Ctrl+Enter sends now
 		await input.fill("Message sent now");

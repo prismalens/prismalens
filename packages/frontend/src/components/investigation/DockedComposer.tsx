@@ -31,7 +31,6 @@ import { viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
 import { uploadAttachment } from "@/lib/attachments";
 import { getErrorMessage } from "@/lib/get-error-message";
-import { unmatchedPending } from "@/lib/investigation-events";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
@@ -39,6 +38,7 @@ import {
 	ComposerBox,
 	type ComposerSend,
 } from "./ComposerBox";
+import { RunDock } from "./RunDock";
 
 /** What a chip choice changes: one of the three, the rest stay. */
 type Choice =
@@ -198,11 +198,14 @@ export function DockedComposer({
 	branchId,
 	boxRef,
 	floating,
+	onStep,
 }: {
 	branchId?: string;
 	boxRef?: MutableRefObject<ComposerSend | null>;
 	/** The new conversation's box, centred until the first send. */
 	floating?: boolean;
+	/** Rings a step in the transcript, from the dock's ask. */
+	onStep?: (n: number) => void;
 }) {
 	const record = useIncidentRecord();
 	const { run, incident, runs, draft } = record;
@@ -392,30 +395,24 @@ export function DockedComposer({
 		}
 	};
 
-	const queued = live
-		? unmatchedPending(run.events, run.pending).filter(
-				(m) => m.mode === "queue" && !m.undelivered,
-			)
-		: [];
 	const hint = ended ? null : thread.hint[action];
-	const above = (
-		<>
-			{hint && (
-				<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
-					{hint}
-				</p>
-			)}
-			{queued.map((m) => (
-				<p
-					key={m.id}
-					className="truncate px-3 text-meta text-text-2"
-					data-testid="composer-queued"
-				>
-					Waiting for the agent's next pause: {m.text}
-				</p>
-			))}
-		</>
-	);
+	const above = hint ? (
+		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
+			{hint}
+		</p>
+	) : null;
+	const asks = live ? run.asks.filter((a) => a.state === "waiting") : [];
+	const dock =
+		asks.length > 0 || run.queued.length > 0 ? (
+			<RunDock
+				asks={asks}
+				queued={run.queued}
+				runId={inv?.id}
+				agent={harness?.label ?? who.agent}
+				cwd={inv?.workspace?.cwd}
+				onStep={onStep}
+			/>
+		) : null;
 
 	return (
 		<div
@@ -461,7 +458,7 @@ export function DockedComposer({
 								? harness.checked.images
 								: null,
 					}}
-					waiting={run.waiting}
+					dock={dock}
 					isPending={record.isStarting}
 					stopping={run.stopRequested}
 					blockedReason={blockedReason}

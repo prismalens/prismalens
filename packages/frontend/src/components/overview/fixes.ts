@@ -138,7 +138,8 @@ export function nextStrip(input: {
 	/** Every alert cleared and nobody resolved it yet. */
 	cleared: boolean;
 	runs: number;
-	live: { name: string } | null;
+	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
+	live: { name: string; waiting?: boolean } | null;
 	failed: { name: string; reason: string } | null;
 	reported: boolean;
 	option: FixOption | null;
@@ -258,6 +259,11 @@ export function nextStrip(input: {
 			tone: "ok",
 			text: "Every alert has cleared. Resolve the incident, or investigate again if it comes back.",
 			primary: { id: "resolve", label: "Resolve" },
+		};
+	if (input.live?.waiting)
+		return {
+			tone: "warn",
+			text: `${input.live.name} waits for your approval. Approve or deny it in the box below.`,
 		};
 	if (input.live)
 		return {
