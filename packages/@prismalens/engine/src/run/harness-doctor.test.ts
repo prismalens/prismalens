@@ -137,6 +137,32 @@ describe("probeHarness", () => {
 		});
 	});
 
+	it("reads the companion CLI's version when the agent needs a sign-in (w8-8)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-companion-"));
+		try {
+			const cli = join(dir, "fake-cli");
+			writeFileSync(cli, '#!/bin/sh\necho "fake-cli 0.162.1"\n');
+			chmodSync(cli, 0o755);
+			vi.stubEnv("PATH", `${dir}:${process.env.PATH ?? ""}`);
+			const result = await probeHarness("codex", {
+				descriptor: {
+					...descriptor("auth-required"),
+					companionBinary: "fake-cli",
+					acpEnv: ({ companionPath }) => ({
+						FAKE_ACP_MODE: "auth-required",
+						...(companionPath ? { CODEX_PATH: companionPath } : {}),
+					}),
+				},
+			});
+			expect(result).toMatchObject({
+				outcome: "sign-in-needed",
+				companionVersion: "0.162.1",
+			});
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("maps Codex missing-key start error to sign in needed (API Key, ChatGPT)", () => {
 		const session = { authMethods: [] } as unknown as AcpSession;
 		const err = new Error(

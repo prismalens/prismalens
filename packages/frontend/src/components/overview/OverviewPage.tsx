@@ -3,6 +3,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { unreadyReason } from "@/components/agent/AgentPicker";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -10,7 +11,11 @@ import { ChangesCard } from "./ChangesCard";
 import type { NextActionId } from "./fixes";
 import { ImpactCard } from "./ImpactCard";
 import { LatestRunStrip } from "./LatestRunStrip";
-import { type OverviewAction, OverviewComposer } from "./OverviewComposer";
+import {
+	type OverviewAction,
+	OverviewComposer,
+	useBoxChoice,
+} from "./OverviewComposer";
 import { SituationCard } from "./SituationCard";
 import { StopImpactCard } from "./StopImpactCard";
 import { useOverview } from "./use-overview";
@@ -41,14 +46,17 @@ export function OverviewPage() {
 			0,
 		);
 	};
+	const box = useBoxChoice(o.record);
 	const start = () =>
-		void o.record.investigate({ stay: true }).catch((error: unknown) =>
-			toast({
-				title: "The run did not start",
-				description: getErrorMessage(error),
-				variant: "destructive",
-			}),
-		);
+		void o.record
+			.investigate({ ...box.sent, stay: true })
+			.catch((error: unknown) =>
+				toast({
+					title: "The run did not start",
+					description: getErrorMessage(error),
+					variant: "destructive",
+				}),
+			);
 
 	const onNext = (id: NextActionId) => {
 		const opt = o.current;
@@ -70,7 +78,9 @@ export function OverviewPage() {
 				return;
 			case "retry":
 			case "investigate":
-				start();
+				// An agent the box can't run says why there instead of failing a start.
+				if (box.harness && unreadyReason(box.harness)) focusBox("investigate");
+				else start();
 				return;
 			case "watch":
 				if (o.live)

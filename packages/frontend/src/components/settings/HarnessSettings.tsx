@@ -54,6 +54,7 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
+import { failureLine, notSignedIn } from "@/lib/failure-words";
 
 /** One harness's last on-demand ACP handshake verdict, kept only in memory; it goes stale the moment the harness's login state changes. */
 interface ProbeState {
@@ -474,7 +475,9 @@ function AgentRow({
 						className="whitespace-normal"
 						data-testid={`harness-check-result-${harness.id}`}
 					>
-						{probe.detail}
+						{probe.outcome === "sign-in-needed"
+							? failureLine(notSignedIn(harness.label))
+							: probe.detail}
 					</StateWord>
 				) : harness.installed ? (
 					// app.css's `code` chip is unlayered, so it outranks a plain utility.
@@ -528,7 +531,8 @@ export function versionText(h: HarnessStatus): string | null {
 	// No CLI version on record for the test run, so name the adapter's (#831 w6-3).
 	if (cli && h.tested) return `${cli}, adapter tested with ${h.tested.version}`;
 	if (ran) return ran;
-	return tested ? `tested with ${tested}` : null;
+	const t = h.tested;
+	return t ? `tested with ${t.companion ?? t.version}` : null;
 }
 
 /** The version note's hover line; behind a shipped adapter it names both the CLI and the adapter. */

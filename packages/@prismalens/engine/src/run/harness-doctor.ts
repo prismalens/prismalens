@@ -214,6 +214,13 @@ export async function probeHarness(
 		});
 		const opening = session.open();
 		opening.catch(() => {});
+		// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
+		// Read on every outcome, so a signed-out row still names its version (w8-8).
+		const companion = () =>
+			runEnv.companionPath &&
+			Object.values(descriptor.acpEnv(runEnv)).includes(runEnv.companionPath)
+				? versionOf(runEnv.companionPath)
+				: Promise.resolve(null);
 		let answered: HarnessProbeResult;
 		try {
 			await Promise.race([opening, deadline]);
@@ -228,14 +235,7 @@ export async function probeHarness(
 				detail,
 				hard: false,
 				version: agent.version ?? null,
-				// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
-				companionVersion:
-					runEnv.companionPath &&
-					Object.values(descriptor.acpEnv(runEnv)).includes(
-						runEnv.companionPath,
-					)
-						? await versionOf(runEnv.companionPath)
-						: null,
+				companionVersion: await companion(),
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,
@@ -245,7 +245,13 @@ export async function probeHarness(
 				...(authKind !== null ? { signedOut: authKind === "none" } : {}),
 			};
 		} catch (err) {
-			return { id: harness, ...classify(err, session, timeoutMs), hard: false };
+			const companionVersion = await companion();
+			return {
+				id: harness,
+				...classify(err, session, timeoutMs),
+				hard: false,
+				...(companionVersion ? { companionVersion } : {}),
+			};
 		} finally {
 			clearTimeout(timer);
 			await session.close();

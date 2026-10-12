@@ -57,9 +57,9 @@ export function useSettingsSections(): SettingsSectionItem[] {
 	).length;
 	const named = [
 		...(reports?.slackConfigured ? ["Slack"] : []),
-		...(integrations ?? [])
-			.filter((i) => !PULL_TEMPLATES.has(i.templateId))
-			.map((i) => i.label),
+		...listedIntegrations(integrations ?? [], connections ?? []).map(
+			(i) => i.label,
+		),
 	];
 	const agent = agentModelLabel(effective, model);
 	const sources = [delivery ? "Webhook" : "", pulled ? `${pulled} pulled` : ""]
@@ -83,7 +83,8 @@ export function useSettingsSections(): SettingsSectionItem[] {
 		{
 			tab: "integrations",
 			label: "Integrations",
-			line: integrations ? named.join(", ") || "None connected" : "",
+			line:
+				integrations && connections ? named.join(", ") || "None connected" : "",
 		},
 		{
 			tab: "devices",
@@ -119,6 +120,20 @@ export const PULL_TEMPLATES: ReadonlySet<string> = new Set([
 	"alertmanager",
 	"prometheus",
 ]);
+
+export const GIT_HOST_TOKEN = "git-host-token";
+
+/** Integrations Settings lists; the token holder with no token left is empty, not a git host (w8-5). */
+export function listedIntegrations<
+	I extends { id: string; templateId: string },
+>(integrations: I[], connections: { integrationId: string }[]): I[] {
+	return integrations.filter(
+		(i) =>
+			!PULL_TEMPLATES.has(i.templateId) &&
+			(i.templateId !== GIT_HOST_TOKEN ||
+				connections.some((c) => c.integrationId === i.id)),
+	);
+}
 
 /**
  * The content of a Settings section, or of Services, which keeps this frame

@@ -700,7 +700,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await page.getByTestId("harness-check-claude-code").click();
 		await expect(
 			page.getByTestId("harness-check-result-claude-code"),
-		).toHaveText("sign in needed (Log in with Claude)");
+		).toHaveText(
+			"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
+		);
 	});
 
 	test("shows Permission row under Next run with local defaults and agent notes (#673 w21)", async ({

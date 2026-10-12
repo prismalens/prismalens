@@ -349,6 +349,39 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 	});
 });
 
+describe("HarnessSettings signed-out row (w8-9)", () => {
+	it("says the picker's sentence when the last check needs a sign-in", async () => {
+		const saved = mockHarnesses[0].checked;
+		mockHarnesses[0].checked = {
+			at: "",
+			outcome: "sign-in-needed",
+			detail: "sign in needed",
+			version: null,
+			companionVersion: null,
+			servedModel: null,
+			effort: null,
+			modes: null,
+			efforts: null,
+			images: false,
+			sandbox: null,
+		};
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector(
+					'[data-testid="harness-check-result-claude-code"]',
+				)?.textContent,
+			).toBe(
+				"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
+			);
+		} finally {
+			mockHarnesses[0].checked = saved;
+		}
+	});
+});
+
 describe("HarnessSettings Permission rows (#673 w21)", () => {
 	it("renders the Next run Permission select and no Mode row", async () => {
 		await act(async () => {
@@ -507,6 +540,37 @@ describe("versionText", () => {
 		).toBe(
 			"PrismaLens was tested with Claude Code 2.1.296 through its adapter 0.81.1",
 		);
+	});
+
+	it("keeps the adapter wording when the check needed a sign-in (w8-8)", () => {
+		const h = {
+			...mockHarnesses[0],
+			label: "Codex",
+			checked: {
+				at: "",
+				outcome: "sign-in-needed" as const,
+				detail: "sign in needed (API Key, ChatGPT)",
+				version: null,
+				companionVersion: "0.162.1",
+				servedModel: null,
+				effort: null,
+				modes: null,
+				efforts: null,
+				images: false,
+				sandbox: null,
+			},
+			tested: { version: "1.13.1", date: "2026-09-24" },
+		};
+		expect(versionText(h)).toBe("0.162.1, adapter tested with 1.13.1");
+	});
+
+	it("names the tested CLI, not the adapter, before any check (w8-8)", () => {
+		const h = {
+			...mockHarnesses[0],
+			checked: null,
+			tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
+		};
+		expect(versionText(h)).toBe("tested with 2.1.296");
 	});
 
 	it("returns null with neither", () => {

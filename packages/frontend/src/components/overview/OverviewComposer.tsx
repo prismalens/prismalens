@@ -94,6 +94,39 @@ export function overviewActions(t: {
 }
 
 /**
+ * The agent, model, effort and level the overview box shows, and what a start
+ * sends for them; the Next strip starts with the same (w8-7).
+ */
+export function useBoxChoice(record: Overview["record"]) {
+	return boxChoice(useAgentChoice(), record.draftChoice);
+}
+
+export function boxChoice(
+	choice: ReturnType<typeof useAgentChoice>,
+	own: DraftChoice,
+) {
+	const harness =
+		choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective;
+	const hid = harness?.id as HarnessId;
+	const model =
+		own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "";
+	const effort =
+		own.effort !== undefined ? own.effort : (choice.efforts[hid] ?? null);
+	const accessLevel: AccessLevel =
+		own.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
+	const now: DraftChoice = hid
+		? { harness: hid, model, effort, accessLevel }
+		: {};
+	const sent = {
+		accessLevel,
+		...(own.harness ? { harness: own.harness } : {}),
+		...(own.model !== undefined ? { model: own.model } : {}),
+		...(own.effort !== undefined ? { effort: own.effort } : {}),
+	};
+	return { choice, harness, hid, model, effort, accessLevel, now, sent };
+}
+
+/**
  * The overview's chat box (#811), docked at reading width: Ask, Investigate
  * again or Note (Message and Note while a run is live). Every result lands
  * on this page; nothing navigates away.
@@ -109,7 +142,8 @@ export function OverviewComposer({
 }) {
 	const record = o.record;
 	const { incident, runs } = record;
-	const choice = useAgentChoice();
+	const { choice, harness, hid, model, effort, accessLevel, now, sent } =
+		useBoxChoice(record);
 	const [text, setText] = useState("");
 	const live = o.live;
 	const liveName = live ? viewName(runs, live) : null;
@@ -123,25 +157,6 @@ export function OverviewComposer({
 		action && t.actions.some((a) => a.id === action)
 			? action
 			: (t.actions[0]?.id as OverviewAction);
-
-	const own = record.draftChoice;
-	const harness =
-		choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective;
-	const hid = harness?.id as HarnessId;
-	const model =
-		own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "";
-	const effort =
-		own.effort !== undefined ? own.effort : (choice.efforts[hid] ?? null);
-	const accessLevel: AccessLevel =
-		own.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
-	const now: DraftChoice = hid
-		? { harness: hid, model, effort, accessLevel }
-		: {};
-	const sent = {
-		...(own.harness ? { harness: own.harness } : {}),
-		...(own.model !== undefined ? { model: own.model } : {}),
-		...(own.effort !== undefined ? { effort: own.effort } : {}),
-	};
 
 	const unready = harness ? unreadyReason(harness) : null;
 	const agentBlocked =
@@ -209,7 +224,6 @@ export function OverviewComposer({
 		if (current === "ask")
 			return record.chat({
 				text,
-				accessLevel,
 				...sent,
 				attachments: ids,
 				stay: true,
@@ -220,7 +234,6 @@ export function OverviewComposer({
 				report && o.reported
 					? recheckBrief(report, runNumber(runs, o.reported.id), text)
 					: text || undefined,
-			accessLevel,
 			...sent,
 			attachments: ids,
 			stay: true,

@@ -34,9 +34,8 @@ import { DeleteConnectionDialog } from "./DeleteConnectionDialog";
 import { DeleteIntegrationDialog } from "./DeleteIntegrationDialog";
 import { IntegrationFormDialog } from "./IntegrationFormDialog";
 import { ConnectionStatusBadge } from "./integration-utils";
-import { PULL_TEMPLATES } from "./SettingsFrame";
+import { GIT_HOST_TOKEN, listedIntegrations } from "./SettingsFrame";
 
-const GIT_HOST_TOKEN = "git-host-token";
 const LEGACY_LABEL = "GitHub App (removed in 0.5.1)";
 const LEGACY_COPY =
 	"This connection no longer works. Delete it here, then delete the app or its private key on GitHub (Settings → Developer settings → GitHub Apps).";
@@ -116,12 +115,12 @@ export function IntegrationsTab() {
 	);
 	const [removeConnection, setRemoveConnection] = useState<string | null>(null);
 
-	const shown = (integrations ?? []).filter(
-		(i) => !PULL_TEMPLATES.has(i.templateId),
-	);
+	const shown = listedIntegrations(integrations ?? [], connections ?? []);
 	const accounts = (id: string) =>
 		(connections ?? []).filter((c) => c.integrationId === id);
-	const tokenIntegration = shown.find((i) => i.templateId === GIT_HOST_TOKEN);
+	const tokenIntegration = integrations?.find(
+		(i) => i.templateId === GIT_HOST_TOKEN,
+	);
 	const addToken = () =>
 		setConnectFor(tokenIntegration?.id ?? `new:${GIT_HOST_TOKEN}`);
 

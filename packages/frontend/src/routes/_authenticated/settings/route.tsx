@@ -17,10 +17,16 @@ const TABS: SettingsTab[] = [
 	"danger",
 ];
 
+/** The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2). */
+export const validateSettingsSearch = (
+	search: Record<string, unknown>,
+): { tab?: SettingsTab } => ({
+	tab: TABS.includes(search.tab as SettingsTab)
+		? (search.tab as SettingsTab)
+		: undefined,
+});
+
 export const Route = createFileRoute("/_authenticated/settings")({
-	validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
-		TABS.includes(search.tab as SettingsTab)
-			? { tab: search.tab as SettingsTab }
-			: {},
+	validateSearch: validateSettingsSearch,
 	component: () => <Outlet />,
 });
