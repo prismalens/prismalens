@@ -15,6 +15,15 @@ const cut = (line: string) =>
  * first line, and what to do when there is something to say. A failure
  * PrismaLens itself named reads as a plain sentence, its raw text as `detail`.
  */
+/** The run status line: a failure PrismaLens named carries what to do, as the conversation shows it. */
+export function failureStatusLine(
+	agent: string,
+	error: string | null | undefined,
+): string {
+	const s = failureSentence(agent, error);
+	return s.detail && s.next ? `${s.said} ${s.next}` : s.said;
+}
+
 export function failureSentence(
 	agent: string,
 	error: string | null | undefined,

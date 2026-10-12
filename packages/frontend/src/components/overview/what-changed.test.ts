@@ -107,6 +107,38 @@ describe("mergeTimeline", () => {
 		expect(rows[1]?.runId).toBe("r1");
 	});
 
+	it("says a Continue continued the run, and keeps the run's own start (#831 w6-29)", () => {
+		const r1 = { investigationId: "r1" };
+		const rows = mergeTimeline(
+			[
+				entry({
+					type: "investigation_started",
+					title: "Investigation resumed",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:46:00Z",
+				}),
+				entry({
+					type: "investigation_completed",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:11:00Z",
+				}),
+				entry({
+					type: "investigation_started",
+					title: "Agent started",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:09:00Z",
+				}),
+			],
+			[],
+			[run({})],
+		);
+		expect(rows.map((r) => r.text)).toEqual([
+			"Run 1 continued",
+			"Run 1 concluded: likely cause",
+			"Run 1 started",
+		]);
+	});
+
 	describe("shows the reason the backend wrote (#673 w6-25, w6-26)", () => {
 		const one = (e: Partial<TimelineEntryWithRelations>) =>
 			mergeTimeline([entry(e)], [], [])[0];

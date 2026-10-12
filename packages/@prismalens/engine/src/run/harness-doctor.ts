@@ -95,6 +95,19 @@ export function versionOf(bin: string): Promise<string | null> {
 	});
 }
 
+/** The check's line for an agent that answered, naming the adapter PrismaLens ships when it ran through it (#831 w6-3). */
+export function answeredDetail(
+	harness: string,
+	agent: { name?: string | null; version?: string | null },
+	shipped: boolean,
+): string {
+	const via = shipped ? " through the adapter PrismaLens ships" : "";
+	const who = agent.version
+		? `, ${agent.name ?? harness} ${agent.version}`
+		: "";
+	return `answers ACP${via}${who}`;
+}
+
 export function classify(
 	err: unknown,
 	session: AcpSession,
@@ -208,7 +221,7 @@ export async function probeHarness(
 				opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
 			);
 			const agent = session.agent;
-			const detail = `answers ACP${agent.version ? `, ${agent.name ?? harness} ${agent.version}` : ""}`;
+			const detail = answeredDetail(harness, agent, launch.shipped);
 			answered = {
 				id: harness,
 				outcome: "answers-acp",

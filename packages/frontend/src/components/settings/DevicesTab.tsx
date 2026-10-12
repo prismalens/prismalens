@@ -33,9 +33,17 @@ export function useDevices(enabled = true) {
 	});
 }
 
+/** A browser by name, else the client's own first word ("curl/8.5.0") so no row goes blank (#831 w6-1). */
+function clientName(userAgent: string): string | undefined {
+	return (
+		guessDeviceName(userAgent, false) ??
+		(userAgent.trim().split(/\s+/)[0] || undefined)
+	);
+}
+
 /** "Chrome on Android. Paired Oct 2, last seen 17:07." */
 export function deviceLine(d: PairedDevice, now: Date = new Date()): string {
-	const client = d.userAgent ? guessDeviceName(d.userAgent, false) : undefined;
+	const client = d.userAgent ? clientName(d.userAgent) : undefined;
 	const seen = d.lastSeenAt ? new Date(d.lastSeenAt) : null;
 	const seenWord = !seen
 		? null

@@ -51,7 +51,11 @@ export function DeleteConnectionDialog({
 					<Skeleton className="h-4 w-3/4" />
 				</div>
 			) : impact ? (
-				<DeletionImpactSection impact={impact} showConnections={false} />
+				<DeletionImpactSection
+					impact={impact}
+					showConnections={false}
+					emptyLine="Nothing else uses this connection."
+				/>
 			) : null}
 		</DestructiveConfirm>
 	);

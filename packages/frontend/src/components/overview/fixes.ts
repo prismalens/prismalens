@@ -10,6 +10,7 @@ import type {
 	MetricUnit,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
+import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { formatValue } from "./impact";
 
@@ -127,6 +128,18 @@ const minutes = (from: string, to: string) => {
 	return m === 1 ? "1 minute" : `${m} minutes`;
 };
 
+/** A failed run on the Next strip; a signed-out agent names itself and the fix (#831 v5-39). */
+export function failedStrip(
+	name: string,
+	error: string | null | undefined,
+	agent: string | undefined,
+): { name: string; reason: string; next?: string } {
+	const words = failureWords(error, agent ?? "the agent");
+	return words.plain && words.next
+		? { name, reason: words.what, next: words.next }
+		: { name, reason: words.what };
+}
+
 /**
  * The Next strip (spec screen 2): the single next action for the incident,
  * from the top fix option's stage, else the run's state.
@@ -145,7 +158,8 @@ export function nextStrip(input: {
 	runs: number;
 	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
 	live: { name: string; waiting?: boolean } | null;
-	failed: { name: string; reason: string } | null;
+	/** `next`: what to do first, when the failure has a known fix (#831 v5-39). */
+	failed: { name: string; reason: string; next?: string } | null;
 	reported: boolean;
 	option: FixOption | null;
 	stage: FixStage | null;
@@ -295,7 +309,9 @@ export function nextStrip(input: {
 	if (input.failed && !input.reported)
 		return {
 			tone: "danger",
-			text: `Retry the investigation. ${input.failed.name} stopped before a finding: ${lowerFirst(input.failed.reason)}`,
+			text: input.failed.next
+				? `${input.failed.name} stopped before a finding. ${input.failed.reason} ${input.failed.next}`
+				: `Retry the investigation. ${input.failed.name} stopped before a finding: ${lowerFirst(input.failed.reason)}`,
 			primary: { id: "retry", label: "Retry run" },
 		};
 	if (input.runs === 0)

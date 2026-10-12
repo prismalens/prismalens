@@ -30,6 +30,8 @@ export interface DetailRow {
 	box?: "danger";
 	/** In-page: opens and highlights step N in the transcript. */
 	step?: number;
+	/** Where an item with no step came from, shown in the step's place. */
+	from?: string;
 	/** Navigates away, named by `action` or by the row's own text. */
 	link?: DetailLink;
 	action?: string;
@@ -139,6 +141,7 @@ export type StepOf = (
 
 function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 	const step = steps(e);
+	const alert = !step && e.status === "inferred" && /\balert\b/i.test(e.source);
 	return {
 		text: e.observation,
 		sub:
@@ -146,6 +149,8 @@ function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 				? `Inferred from ${e.source}`
 				: commandText(e.source),
 		...(step ? { step } : {}),
+		// No step ran for it; say where it came from in the step's place (#831 w6-18).
+		...(alert ? { from: "From the alert" } : {}),
 	};
 }
 

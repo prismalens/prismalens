@@ -197,15 +197,28 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 				return new Response("Unauthorized", { status: 401 });
 			}) as any;
 
+			// git's own refusal of the same token reads word for word the same (#831 w6-9).
+			type Token = { label: string; fingerprint: string };
+			vi.spyOn(
+				service as unknown as {
+					lsRemoteMatching: (t: Token) => Promise<string[]>;
+				},
+				"lsRemoteMatching",
+			).mockImplementation(async (t) => [
+				`github.com rejected token "${t.label}" (fp ${t.fingerprint}). It was revoked or mistyped; replace it.`,
+				"ok org/other",
+			]);
+
 			const result = await service.testConnection("conn-git-revoked");
 
 			expect(result.success).toBe(false);
 			expect(result.error).toMatch(/github\.com rejected token "Revoked PAT"/);
 			expect(result.error).toMatch(/It was revoked or mistyped; replace it\./);
+			expect(result.details).toEqual([result.error, "ok org/other"]);
 			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
 				where: { id: "conn-git-revoked" },
 				data: expect.objectContaining({
-					status: "ERROR",
+					status: "CREDENTIALS_INVALID",
 					lastErrorMessage: expect.stringContaining("github.com rejected token"),
 				}),
 			});
@@ -318,8 +331,8 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 		});
 	});
 
-	describe("T15d: recordGitFailure writes ERROR once per distinct message", () => {
-		it("writes ERROR and lastErrorMessage once, ignoring duplicates with identical message", async () => {
+	describe("T15d: recordGitFailure writes the failed status once per distinct message", () => {
+		it("writes CREDENTIALS_INVALID (\"rejected\") and lastErrorMessage once for a rejected token, ignoring duplicates (#831 w6-9)", async () => {
 			mockPrisma.connection.findUnique.mockResolvedValueOnce({
 				status: "ACTIVE",
 				lastErrorMessage: null,
@@ -335,7 +348,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
 				where: { id: "conn-fail-1" },
 				data: expect.objectContaining({
-					status: "ERROR",
+					status: "CREDENTIALS_INVALID",
 					lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
 					consecutiveErrors: { increment: 1 },
 				}),
@@ -343,7 +356,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 
 			// Second call with same message should not update again
 			mockPrisma.connection.findUnique.mockResolvedValueOnce({
-				status: "ERROR",
+				status: "CREDENTIALS_INVALID",
 				lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
 			});
 
@@ -374,6 +387,42 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 					lastErrorMessage: "Token expired on 2026-10-10",
 				}),
 			});
+		});
+	});
+
+	describe("a service's Telemetry rows (#831 walk 7)", () => {
+		it("names two connections of one type by their own labels, the integration's when unlabelled", async () => {
+			const integration = {
+				templateId: "prometheus",
+				label: "Prometheus",
+			};
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{ id: "c1", label: "prod", status: "ACTIVE", integration },
+				{ id: "c2", label: "", status: "ACTIVE", integration },
+			]);
+			mockPrisma.serviceIntegration = {
+				findMany: vi.fn().mockResolvedValue([]),
+			};
+
+			const rows = await service.getServiceIntegrationsWithStatus("svc-1");
+
+			expect(rows.map((r) => r.connectionName)).toEqual(["prod", "Prometheus"]);
+		});
+	});
+
+	describe("deletion impact (#831 w6-7)", () => {
+		it("names a service whose Turn off here override sits on the connection", async () => {
+			mockPrisma.connection.findFirst.mockResolvedValue({
+				id: "c1",
+				repositories: [],
+				serviceMappings: [{ service: { id: "s1", name: "booklogr-api" } }],
+			});
+
+			const impact = await service.getConnectionDeletionImpact("c1");
+
+			expect(impact?.affectedServices).toEqual([
+				{ id: "s1", name: "booklogr-api", impact: "integration_override_lost" },
+			]);
 		});
 	});
 });

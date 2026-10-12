@@ -4,8 +4,16 @@
  * `#step-N` with them (#811). Redirecting in beforeLoad: a rendered <Navigate>
  * here hung the page (#814).
  */
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	notFound,
+	redirect,
+} from "@tanstack/react-router";
+import { NotFound } from "@/components/shared/State";
+import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
+import { isNotFound } from "@/lib/not-found";
 
 export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 	beforeLoad: async ({ context, params, location }) => {
@@ -13,8 +21,11 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 			.fetchQuery(
 				orpc.investigations.get.queryOptions({ input: { id: params.id } }),
 			)
-			.catch(() => null);
-		if (!run) throw redirect({ to: "/incidents", replace: true });
+			.catch((error: unknown) => {
+				// An unknown address says so, as an unknown incident does (#831 w6-33).
+				if (isNotFound(error, params.id)) throw notFound();
+				throw error;
+			});
 		throw redirect({
 			to: "/incidents/$id/conversation",
 			params: { id: run.incidentId },
@@ -23,4 +34,20 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 			replace: true,
 		});
 	},
+	notFoundComponent: RunNotFound,
 });
+
+function RunNotFound() {
+	return (
+		<div className="px-4 pt-6 sm:px-6">
+			<NotFound
+				text="No run has this address. It may have been deleted, or the link is wrong."
+				back={
+					<Button variant="text" size="sm" asChild>
+						<Link to="/incidents">Back to the inbox</Link>
+					</Button>
+				}
+			/>
+		</div>
+	);
+}

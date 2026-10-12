@@ -4,6 +4,7 @@
 import type { Fixes } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	failedStrip,
 	type FixOption,
 	fixStage,
 	liveCheck,
@@ -334,6 +335,20 @@ describe("nextStrip", () => {
 				failed: { name: "Run 2", reason: "Rate limited." },
 			}).primary?.id,
 		).toBe("retry");
+		// A known fix comes first, in the same words as the agent picker (#831 v5-39).
+		expect(failedStrip("Run 2", "Rate limited (429)", "Codex")).toEqual({
+			name: "Run 2",
+			reason: "The model provider limited the request rate.",
+		});
+		expect(
+			nextStrip({
+				...none,
+				reported: false,
+				failed: failedStrip("Run 2", "Authentication required", "Codex"),
+			}).text,
+		).toBe(
+			"Run 2 stopped before a finding. Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
+		);
 		expect(nextStrip({ ...none, live: { name: "Run 3" } }).primary?.id).toBe(
 			"watch",
 		);

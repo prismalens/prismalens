@@ -99,6 +99,40 @@ describe("evidenceSections (#811 data mapping)", () => {
 		expect(out[1]?.rows[0]).toMatchObject({ text: "A slow database", step: 3 });
 	});
 
+	it("says an item taken from the alert came from the alert, where a step would sit (#831 w6-18)", () => {
+		const fromAlert = {
+			observation: "Alert p99 is 995.6ms",
+			source: "alert payload",
+			direction: "supports" as const,
+			status: "inferred" as const,
+			toolCallId: null,
+		};
+		const out = evidenceSections(
+			inv({
+				report: {
+					...report,
+					hypotheses: [
+						{
+							statement: "The in-memory sort",
+							status: "supported",
+							evidence: [
+								fromAlert,
+								...(report.hypotheses[0]?.evidence ?? []),
+							],
+						},
+					],
+				},
+			}),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		const rows = out[0]?.rows ?? [];
+		expect(rows.find((r) => r.text === fromAlert.observation)).toMatchObject({
+			from: "From the alert",
+		});
+		expect(rows.find((r) => r.text === "Over 200 notes is 2.9s")?.from).toBeUndefined();
+	});
+
 	it("says a live run has no conclusion and whose finding stands", () => {
 		const [so] = evidenceSections(inv({ status: "running" }), stepOf, {
 			live: true,

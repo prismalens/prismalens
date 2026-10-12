@@ -445,14 +445,7 @@ function AgentRow({
 						<span className="text-meta font-medium text-ok">in use</span>
 					)}
 					{harness.installed && versionText(harness) ? (
-						<Hint
-							label={
-								harness.tested
-									? `PrismaLens was tested with ${harness.tested.version}`
-									: "No compatibility run yet"
-							}
-							meta={harness.tested?.date}
-						>
+						<Hint label={testedHint(harness)} meta={harness.tested?.date}>
 							<span
 								className="font-mono text-meta font-normal text-text-3"
 								data-testid={`harness-tested-${harness.id}`}
@@ -496,11 +489,11 @@ function AgentRow({
 				harness.id === "opencode" ? (
 					// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
 					<p
-						className="text-meta text-text-3 [&_code]:bg-transparent! [&_code]:p-0!"
+						className="text-meta text-text-3"
 						data-testid="harness-opencode-asks"
 					>
-						A run sets each tool's <code>"*"</code> rule for its permission
-						level; the other patterns in your opencode.json stay.
+						A run sets each tool's default rule to match its permission level.
+						Your other rules in opencode.json stay as they are.
 					</p>
 				) : undefined
 			}
@@ -531,10 +524,22 @@ export function versionText(h: HarnessStatus): string | null {
 	const tested = cli
 		? (h.tested?.companion ?? null)
 		: (h.tested?.version ?? null);
-	if (ran && tested)
-		return ran === tested ? `${ran}, tested` : `${ran}, tested with ${tested}`;
+	if (ran && tested) return `${ran}, tested with ${tested}`;
+	// No CLI version on record for the test run, so name the adapter's (#831 w6-3).
+	if (cli && h.tested) return `${cli}, adapter tested with ${h.tested.version}`;
 	if (ran) return ran;
 	return tested ? `tested with ${tested}` : null;
+}
+
+/** The version note's hover line; behind a shipped adapter it names both the CLI and the adapter. */
+export function testedHint(h: HarnessStatus): string {
+	const t = h.tested;
+	if (!t) return "No compatibility run yet";
+	if (t.companion)
+		return `PrismaLens was tested with ${h.label} ${t.companion} through its adapter ${t.version}`;
+	if (h.checked?.companionVersion)
+		return `PrismaLens was tested with its adapter ${t.version}`;
+	return `PrismaLens was tested with ${t.version}`;
 }
 
 /** A check's verdict as a word (look ruling §1.3, agent row). */

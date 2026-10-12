@@ -87,7 +87,21 @@ describe("the box's chips (#673)", () => {
 				detail: "sign in needed",
 			},
 		});
-		expect(unreadyReason(codex)).toBe("Codex: sign in needed");
+		// The same words a run that fails on sign-in shows (#831 w7-3).
+		expect(unreadyReason(codex)).toBe(
+			"Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
+		);
+		expect(
+			unreadyReason(
+				claude({
+					checked: {
+						...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+						outcome: "no-answer",
+						detail: "no answer in 10s",
+					},
+				}),
+			),
+		).toBe("Claude Code: no answer in 10s");
 		expect(unreadyReason(claude())).toBeNull();
 	});
 
@@ -147,6 +161,10 @@ describe("the box's chips (#673)", () => {
 		expect(html).toContain('data-testid="access-level-auto"');
 		expect(html).toContain('data-testid="access-level-full-access"');
 		expect(html).toContain("PrismaLens default");
+		// One line per level (#831 w6-12); the agent's mode and sandbox sit in the row's hover title.
+		expect(html.match(/data-testid="access-line"/g)).toHaveLength(4);
+		expect(html).not.toContain('data-testid="access-row-line"');
+		expect(html).not.toContain('data-testid="access-sandbox"');
 	});
 
 	it("shows lock icon only when sandbox is enforced, and no icon otherwise", () => {

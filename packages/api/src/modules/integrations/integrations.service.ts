@@ -78,6 +78,14 @@ export interface TestConnectionResult {
 	error?: string;
 	details?: string[];
 	untested?: boolean;
+	/** The host refused the token itself, so the row reads "rejected", not "error" (#831 w6-9). */
+	rejected?: boolean;
+}
+
+/** The status a failed git host token lands in: a refused token reads "rejected". */
+function failedTokenStatus(code: string): string {
+	if (code === "token-expired") return "TOKEN_EXPIRED";
+	return code === "token-rejected" ? "CREDENTIALS_INVALID" : "ERROR";
 }
 
 /** Repositories a git host token's Test tries, and how many at once (a proxied request must not outlive them). */
@@ -504,7 +512,7 @@ export class IntegrationsService implements OnModuleInit {
 		connectionId: string,
 		failure: { code: string; message: string },
 	): Promise<void> {
-		const status = failure.code === "token-expired" ? "TOKEN_EXPIRED" : "ERROR";
+		const status = failedTokenStatus(failure.code);
 		const message = failure.message.slice(0, 500);
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
@@ -588,7 +596,11 @@ export class IntegrationsService implements OnModuleInit {
 			await this.prisma.connection.update({
 				where: { id },
 				data: {
-					status: testResult.success ? "ACTIVE" : "ERROR",
+					status: testResult.success
+						? "ACTIVE"
+						: testResult.rejected
+							? "CREDENTIALS_INVALID"
+							: "ERROR",
 					lastUsedAt: new Date(),
 					lastErrorMessage: testResult.success
 						? null
@@ -639,7 +651,14 @@ export class IntegrationsService implements OnModuleInit {
 			});
 		if (api?.rejected) {
 			const message = `github.com rejected token "${token.label}" (fp ${token.fingerprint}). It was revoked or mistyped; replace it.`;
-			return { success: false, error: message, details: [message, ...details] };
+			// git's own refusal of the same token reads word for word the same.
+			const rest = details.filter((d) => d !== message);
+			return {
+				success: false,
+				rejected: true,
+				error: message,
+				details: [message, ...rest],
+			};
 		}
 		if (details.length === 0)
 			return {
@@ -895,7 +914,8 @@ export class IntegrationsService implements OnModuleInit {
 
 			results.push({
 				connectionId: conn.id,
-				connectionName: conn.integration.label,
+				// Two connections of one type read apart by their own label (#831 walk 7).
+				connectionName: conn.label || conn.integration.label,
 				templateId: conn.integration.templateId,
 				templateName: template?.name ?? conn.integration.templateId,
 				category: template?.category ?? "unknown",

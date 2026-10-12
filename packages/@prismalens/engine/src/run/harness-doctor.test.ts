@@ -7,7 +7,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpSession } from "../runner/acp-client.js";
-import { classify, probeHarness, versionOf } from "./harness-doctor.js";
+import {
+	answeredDetail,
+	classify,
+	probeHarness,
+	versionOf,
+} from "./harness-doctor.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -201,6 +206,18 @@ describe("probeHarness", () => {
 		expect(result.outcome).toBe("no-answer");
 		// Per-request timeouts would take about 300 + 400 ms.
 		expect(Date.now() - started).toBeLessThan(600);
+	});
+});
+
+describe("answeredDetail", () => {
+	it("names the shipped adapter when the run went through it (#831 w6-3)", () => {
+		expect(
+			answeredDetail("codex", { name: "codex-acp", version: "1.13.1" }, true),
+		).toBe("answers ACP through the adapter PrismaLens ships, codex-acp 1.13.1");
+		expect(
+			answeredDetail("opencode", { name: "opencode", version: "1.18.30" }, false),
+		).toBe("answers ACP, opencode 1.18.30");
+		expect(answeredDetail("opencode", {}, false)).toBe("answers ACP");
 	});
 });
 

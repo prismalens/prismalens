@@ -16,6 +16,7 @@ import {
 	CHART_W,
 	chartGeometry,
 	formatValue,
+	noChartText,
 	stripDays,
 	stripSpan,
 } from "./impact";
@@ -403,14 +404,7 @@ function NoSource({ impact, firing }: { impact: ImpactChart; firing: number }) {
 }
 
 function Reason({ impact }: { impact: ImpactChart }) {
-	const text =
-		impact.state === "expression_unknown"
-			? `No chart: ${impact.expression.reason ?? "the alert's query is not known"}.`
-			: impact.state === "too_broad"
-				? "No chart: the alert's query matches 50 series or more, too many to show which one is this alert."
-				: impact.state === "not_configured"
-					? "Connect Prometheus to see the trend and check a fix"
-					: "No chart: the metrics source returned no data for the alert's query in the last 24 hours.";
+	const text = noChartText(impact);
 	return (
 		<div className="mt-auto flex min-w-0 items-center gap-3 rounded-surface bg-surface-2 px-3 py-2">
 			<span className="min-w-0 flex-1 text-text-2">{text}</span>

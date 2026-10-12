@@ -112,6 +112,15 @@ describe("permission labels and word guard (#673 w21 ruling 2026-10-10)", () => 
 		});
 	});
 
+	it("describes each level in one line of 10-15 words (#831 w6-12)", () => {
+		for (const line of Object.values(ACCESS_LEVEL_LINE)) {
+			const words = line.split(/\s+/).length;
+			expect(words).toBeGreaterThanOrEqual(10);
+			expect(words).toBeLessThanOrEqual(15);
+			expect(line.split(/[.!?]\s/)).toHaveLength(1);
+		}
+	});
+
 	it("says a mode with no proven sandbox in the operator's words (#811)", () => {
 		expect(NO_SANDBOX).toBe("No sandbox on this machine.");
 	});
