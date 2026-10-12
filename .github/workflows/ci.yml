@@ -162,6 +162,11 @@ jobs:
       - name: Pack script tests
         run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs
 
+      - name: Agent adapters tarball
+        run: |
+          pnpm --filter @prismalens/agent-adapters build
+          node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs
+
       - name: Pack tarball
         # `pnpm pack` cannot produce this artifact: the published package carries
         # the first-party closure as bundleDependencies, and pnpm's handling of

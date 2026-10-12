@@ -92,6 +92,7 @@ application.log
 
 # Packaging artifacts (scripts/pack-cli.mjs)
 packages/cli/dist-pack/
+packages/@prismalens/agent-adapters/dist-pack/
 packages/cli/.pack-staging/
 *.tgz
 
