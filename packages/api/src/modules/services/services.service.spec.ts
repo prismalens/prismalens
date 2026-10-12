@@ -106,3 +106,77 @@ describe("ServicesController metadata.investigation.notes validation (#673 w21)"
 		).resolves.toBeDefined();
 	});
 });
+
+describe("ServicesService.claimWaiting (#673 w5-10)", () => {
+	function claimWith(
+		incidents: Array<{ id: string; alerts: Array<{ id: string; labels: string | null }> }>,
+		stillWaiting = 1,
+	) {
+		const prisma = {
+			incident: { findMany: vi.fn(async () => incidents), updateMany: vi.fn(async () => ({ count: stillWaiting })) },
+			alert: { updateMany: vi.fn(async (a: unknown) => a) },
+			timelineEntry: { create: vi.fn(async (a: unknown) => a) },
+			$transaction: vi.fn(async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(prisma)),
+		};
+		return { prisma, service: new ServicesService(prisma as unknown as PrismaService) };
+	}
+	const svc = { id: "svc-1", name: "booklogr-api" };
+
+	it("claims a waiting incident whose alerts' service label names the new service, and only its alerts", async () => {
+		const { prisma, service } = claimWith([
+			{ id: "inc-1", alerts: [{ id: "a1", labels: '{"alertname":"P99","service":"booklogr-api"}' }, { id: "a2", labels: null }] },
+		]);
+
+		expect(await service.claimWaiting(svc)).toBe(1);
+
+		expect(prisma.incident.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({ serviceId: null, mergedIntoId: null, status: { not: "closed" } }),
+			}),
+		);
+		expect(prisma.incident.updateMany).toHaveBeenCalledWith({
+			where: { id: "inc-1", serviceId: null, mergedIntoId: null, status: { not: "closed" } },
+			data: { serviceId: "svc-1" },
+		});
+		expect(prisma.alert.updateMany).toHaveBeenCalledWith({
+			where: { id: { in: ["a1"] }, serviceId: null },
+			data: { serviceId: "svc-1" },
+		});
+		expect(prisma.timelineEntry.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ incidentId: "inc-1", title: "Moved to booklogr-api: its alert's service label names it" }),
+			}),
+		);
+	});
+
+	it("leaves an incident whose labels name another service, or none of its alerts names this one", async () => {
+		const { prisma, service } = claimWith([
+			{ id: "near", alerts: [{ id: "a1", labels: '{"service":"booklogr-api-v2"}' }] },
+			{ id: "split", alerts: [{ id: "a2", labels: '{"service":"booklogr-api"}' }, { id: "a3", labels: '{"service":"other"}' }] },
+			{ id: "manual", alerts: [] },
+		]);
+
+		expect(await service.claimWaiting(svc)).toBe(0);
+		expect(prisma.$transaction).not.toHaveBeenCalled();
+	});
+
+	it("writes nothing when another claim, a correlation or a close took the incident since the read", async () => {
+		const { prisma, service } = claimWith(
+			[{ id: "inc-1", alerts: [{ id: "a1", labels: '{"service":"booklogr-api"}' }] }],
+			0,
+		);
+
+		expect(await service.claimWaiting(svc)).toBe(0);
+		expect(prisma.alert.updateMany).not.toHaveBeenCalled();
+		expect(prisma.timelineEntry.create).not.toHaveBeenCalled();
+	});
+
+	it("never fails the service save it follows", async () => {
+		const prisma = {
+			service: { create: vi.fn(async () => ({ id: "svc-1", name: "booklogr-api" })) },
+			incident: { findMany: vi.fn(async () => Promise.reject(new Error("db locked"))) },
+		};
+		const service = new ServicesService(prisma as unknown as PrismaService);
+		await expect(service.create({ name: "booklogr-api" } as never)).resolves.toMatchObject({ id: "svc-1" });
+	});
+});

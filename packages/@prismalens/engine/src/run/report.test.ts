@@ -100,6 +100,12 @@ describe("parseReport", () => {
 		expect(p).toContain("Do not run more tools");
 	});
 
+	it("retry prompt restates the schema, since compaction can drop the first prompt's copy", () => {
+		const r = parseReport('```json\n{"summary":""}\n```');
+		if (r.ok) throw new Error("expected failure");
+		expect(retryPrompt(r)).toContain(reportJsonSchema());
+	});
+
 	it("exposes a JSON schema without the host-stamped fidelity", () => {
 		const schema = JSON.parse(reportJsonSchema()) as { properties: Record<string, unknown> };
 		expect(schema.properties).toHaveProperty("hypotheses");

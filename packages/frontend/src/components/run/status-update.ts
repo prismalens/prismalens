@@ -19,7 +19,10 @@ export function statusUpdateDraft(
 	const lines = [
 		`INC-${incident.number} ${incident.title}${service}. Severity ${SEVERITY_LABEL[incident.severity]}.`,
 	];
-	if (incident.status === "closed") lines.push("Resolved.");
+	if (incident.mergedInto)
+		lines.push(`Merged into INC-${incident.mergedInto.number}.`);
+	else if (incident.status === "closed") lines.push("Resolved.");
+	else if (incident.status === "resolved") lines.push("Alerts cleared.");
 	else {
 		const firing = firingWord(incident.alerts ?? [], now);
 		if (firing) lines.push(`${firing.text}.`);

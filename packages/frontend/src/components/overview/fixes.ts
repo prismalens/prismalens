@@ -115,7 +115,7 @@ export interface NextStrip {
 	text: string;
 	primary?: { id: NextActionId; label: string };
 	secondary?: { id: NextActionId; label: string };
-	/** The incident the alert fired again as, linked after the text. */
+	/** Another incident, linked after the text: the refire, or the merge's survivor. */
 	link?: { incidentId: string; label: string };
 }
 
@@ -132,11 +132,16 @@ const minutes = (from: string, to: string) => {
  * from the top fix option's stage, else the run's state.
  */
 export function nextStrip(input: {
+	/** The operator resolved it (stored `closed`); Alerts cleared is `cleared`, not this. */
 	ended: boolean;
+	/** The incident this one was merged into. */
+	mergedInto?: { id: string; number: number } | null;
 	/** The incident this one's alert fired again as (the detail's `refiredAs`). */
 	refiredAs?: { id: string; number: number } | null;
 	/** Every alert cleared and nobody resolved it yet. */
 	cleared: boolean;
+	/** Stored `resolved`: the source ended it; it reads Alerts cleared before any fix step. */
+	alertsCleared?: boolean;
 	runs: number;
 	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
 	live: { name: string; waiting?: boolean } | null;
@@ -151,6 +156,15 @@ export function nextStrip(input: {
 	unit?: MetricUnit | null;
 }): NextStrip {
 	const { option, stage } = input;
+	if (input.mergedInto)
+		return {
+			tone: "plain",
+			text: "Merged into",
+			link: {
+				incidentId: input.mergedInto.id,
+				label: `INC-${input.mergedInto.number}`,
+			},
+		};
 	if (input.ended)
 		return input.refiredAs
 			? {
@@ -165,6 +179,18 @@ export function nextStrip(input: {
 					tone: "plain",
 					text: "Resolved. If the alert fires again, PrismaLens opens a new incident and links it here.",
 				};
+	if (input.alertsCleared)
+		return input.refiredAs
+			? {
+					tone: "ok",
+					text: "Alerts cleared, and the alert fired again as a new incident. Resolve this one.",
+					primary: { id: "resolve", label: "Resolve" },
+					link: {
+						incidentId: input.refiredAs.id,
+						label: `${REFIRE_LABEL} as INC-${input.refiredAs.number}`,
+					},
+				}
+			: CLEARED;
 	if (option && stage) {
 		const prefix = input.live
 			? `${input.live.name} is checking this again; you can still apply it. `
@@ -254,12 +280,7 @@ export function nextStrip(input: {
 				};
 		}
 	}
-	if (input.cleared)
-		return {
-			tone: "ok",
-			text: "Every alert has cleared. Resolve the incident, or investigate again if it comes back.",
-			primary: { id: "resolve", label: "Resolve" },
-		};
+	if (input.cleared) return CLEARED;
 	if (input.live?.waiting)
 		return {
 			tone: "warn",
@@ -294,5 +315,11 @@ export function nextStrip(input: {
 		primary: { id: "investigate", label: "Investigate again" },
 	};
 }
+
+const CLEARED: NextStrip = {
+	tone: "ok",
+	text: "Every alert has cleared. Resolve the incident, or investigate again if it comes back.",
+	primary: { id: "resolve", label: "Resolve" },
+};
 
 const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);

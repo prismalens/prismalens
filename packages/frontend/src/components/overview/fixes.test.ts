@@ -278,6 +278,50 @@ describe("nextStrip", () => {
 		});
 	});
 
+	it("names a merged incident's survivor and never calls it Resolved (#673 w5-17)", () => {
+		const merged = nextStrip({
+			...base,
+			ended: true,
+			option: null,
+			stage: null,
+			mergedInto: { id: "00000000-0000-4000-8000-000000000004", number: 4 },
+		});
+		expect(merged.text).toBe("Merged into");
+		expect(merged.link).toEqual({
+			incidentId: "00000000-0000-4000-8000-000000000004",
+			label: "INC-4",
+		});
+		expect(merged.primary).toBeUndefined();
+	});
+
+	it("Alerts cleared offers Resolve and does not say Resolved (#673 w5-28)", () => {
+		const cleared = nextStrip({
+			...base,
+			ended: false,
+			cleared: true,
+			option: null,
+			stage: null,
+		});
+		expect(cleared.text).not.toMatch(/^Resolved/);
+		expect(cleared.primary?.id).toBe("resolve");
+	});
+
+	it("Alerts cleared wins over an unapplied fix and keeps the refire link", () => {
+		const stored = nextStrip({
+			...base,
+			ended: false,
+			cleared: true,
+			alertsCleared: true,
+			stage: { stage: "ready", copied: false, copyFailed: false },
+			refiredAs: { id: "00000000-0000-4000-8000-000000000009", number: 9 },
+		});
+		expect(stored.primary?.id).toBe("resolve");
+		expect(stored.text).not.toMatch(/comes back/);
+		expect(stored.link?.label).toBe("Fired again as INC-9");
+		const plain = nextStrip({ ...base, stage: null, cleared: true, alertsCleared: true });
+		expect(plain.text).toMatch(/^Every alert has cleared/);
+	});
+
 	it("falls back to the run when there is no option", () => {
 		const none = { ...base, option: null, stage: null };
 		expect(nextStrip({ ...none, runs: 0, reported: false }).primary?.id).toBe(

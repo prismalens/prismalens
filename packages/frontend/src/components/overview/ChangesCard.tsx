@@ -168,6 +168,18 @@ function RowText({
 				{row.text}
 			</Link>
 		);
+	if (row.incidentId)
+		return (
+			<Link
+				to="/incidents/$id"
+				params={{ id: row.incidentId }}
+				className={cn(cls, "hover:text-accent")}
+				dir="auto"
+				data-testid="changes-merge-link"
+			>
+				{row.text}
+			</Link>
+		);
 	if (row.url)
 		return (
 			<a

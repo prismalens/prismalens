@@ -39,7 +39,7 @@ export const NEED_GROUPS: {
 	{
 		key: "failed",
 		label: "Run failed or stopped",
-		hint: "No finding yet. Retry, or close it if it is noise.",
+		hint: "No finding yet. Retry, or resolve it if it is noise.",
 		tone: "danger",
 	},
 	{
@@ -51,7 +51,7 @@ export const NEED_GROUPS: {
 	{
 		key: "cleared",
 		label: "Alerts cleared",
-		hint: "Nothing is firing. Close them, or find out why they fired.",
+		hint: "Nothing is firing. Resolve them, or find out why they fired.",
 		tone: "ok",
 	},
 ];
@@ -62,7 +62,10 @@ const HOUR = 3_600_000;
 const time = (v: string | Date | null | undefined) =>
 	v ? new Date(v).getTime() : Number.NaN;
 
-/** The newest investigation that has ended, and the one with a named cause. */
+/**
+ * The newest investigation that has ended, and the newest with a named cause:
+ * a later run that stopped or failed leaves that finding standing, as the overview does.
+ */
 function concluded(incident: IncidentWithRelations): {
 	ended: Run | null;
 	finding: Run | null;
@@ -75,7 +78,7 @@ function concluded(incident: IncidentWithRelations): {
 	return {
 		ended,
 		finding:
-			ended?.status === "completed" && ended.rootCause?.trim() ? ended : null,
+			runs.find((r) => r.status === "completed" && r.rootCause?.trim()) ?? null,
 	};
 }
 

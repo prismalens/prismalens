@@ -287,14 +287,17 @@ function IncidentLayout() {
 		);
 		return (
 			<div className="px-4 pt-6 sm:px-6">
-				{error && !isNotFound(error) ? (
+				{error && !isNotFound(error, id) ? (
 					<Problem
 						text="This incident did not load."
 						onRetry={() => void refetch()}
 						back={back}
 					/>
 				) : (
-					<NotFound back={back} />
+					<NotFound
+						text="No incident has this address. It may have been deleted, or the link is wrong."
+						back={back}
+					/>
 				)}
 			</div>
 		);
@@ -360,8 +363,9 @@ function IncidentSkeleton() {
 	);
 }
 
-/** A 404 from the API: the record is gone, not broken. */
-function isNotFound(error: unknown): boolean {
+/** A 404, or an id that is no incident id at all (the API refuses it as a bad request). */
+function isNotFound(error: unknown, id: string): boolean {
+	if (!UUID.test(id)) return true;
 	return (
 		typeof error === "object" &&
 		error !== null &&
@@ -369,3 +373,5 @@ function isNotFound(error: unknown): boolean {
 		(error as { status?: number }).status === 404
 	);
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

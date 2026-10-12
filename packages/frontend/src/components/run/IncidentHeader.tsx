@@ -3,7 +3,10 @@
 
 import {
 	canIncidentAction,
+	INCIDENT_STATUS_LABEL,
+	type IncidentStatus,
 	type IncidentWithRelations,
+	isIncidentEnded,
 	isIncidentOpen,
 	SEVERITY_LABEL,
 	type Severity,
@@ -149,11 +152,11 @@ export function IncidentHeader({
 					</Link>
 				</Hint>
 			</h1>
-			<span aria-hidden className="shrink-0 text-text-3">
+			<span aria-hidden className="shrink-0 text-text-3 max-sm:hidden">
 				/
 			</span>
 			<span
-				className="shrink-0 text-body font-semibold"
+				className="shrink-0 text-body font-semibold max-sm:hidden"
 				aria-current="page"
 				data-testid="crumb-view"
 			>
@@ -171,19 +174,37 @@ export function IncidentHeader({
 			>
 				{SEVERITY_LABEL[incident.severity]}
 			</span>
-			{firing && (
-				<span
-					className={cn(
-						"flex shrink-0 items-center gap-1.5 max-lg:hidden",
-						firing.firing ? "text-danger" : "text-text-3",
-					)}
-					data-testid="header-firing"
+			{merged ? (
+				<Link
+					to="/incidents/$id"
+					params={{ id: merged.id }}
+					className="shrink-0 text-text-3 underline-offset-2 hover:text-text-1 hover:underline max-sm:hidden"
+					data-testid="header-state"
 				>
-					{firing.firing && (
-						<span aria-hidden className="size-[7px] rounded-full bg-danger" />
-					)}
-					{firing.text}
+					Merged into INC-{merged.number}
+				</Link>
+			) : isIncidentEnded(incident.status) ? (
+				<span
+					className="shrink-0 text-text-3 max-sm:hidden"
+					data-testid="header-state"
+				>
+					{INCIDENT_STATUS_LABEL[incident.status as IncidentStatus]}
 				</span>
+			) : (
+				firing && (
+					<span
+						className={cn(
+							"flex shrink-0 items-center gap-1.5 max-lg:hidden",
+							firing.firing ? "text-danger" : "text-text-3",
+						)}
+						data-testid="header-firing"
+					>
+						{firing.firing && (
+							<span aria-hidden className="size-[7px] rounded-full bg-danger" />
+						)}
+						{firing.text}
+					</span>
+				)
 			)}
 			<span className="flex-1" />
 			{trailing}

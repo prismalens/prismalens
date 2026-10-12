@@ -97,11 +97,12 @@ export function OverviewPage() {
 				onEditCause={o.record.openEditCause}
 			/>
 			<LatestRunStrip o={o} />
+			{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}
 			<main
-				className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-4 pt-3 pb-1"
+				className="grid min-h-0 flex-1 auto-rows-[280px] grid-cols-1 grid-rows-[auto] gap-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-1 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:grid-rows-[auto_minmax(120px,1fr)_minmax(120px,1fr)]"
 				data-testid="overview-grid"
 			>
-				<div className="col-span-2 min-w-0">
+				<div className="min-w-0 md:col-span-2">
 					<SituationCard o={o} onAction={onNext} />
 				</div>
 				<ImpactCard view={o.impact} />

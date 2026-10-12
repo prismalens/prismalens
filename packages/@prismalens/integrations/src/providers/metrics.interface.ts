@@ -20,6 +20,8 @@ export interface AlertRule {
 	name: string;
 	query: string;
 	labels: Record<string, string>;
+	/** When Prometheus last evaluated the rule (RFC 3339), when it says. */
+	lastEvaluation?: string;
 }
 
 /**

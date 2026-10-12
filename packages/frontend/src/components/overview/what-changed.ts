@@ -21,6 +21,8 @@ export interface ChangeRow {
 	url?: string | null;
 	/** A run or an Ask to open. */
 	runId?: string;
+	/** The other incident of a merge (#673 w5-17). */
+	incidentId?: string;
 }
 
 const short = (sha: string | null) => (sha ? sha.slice(0, 7) : null);
@@ -99,15 +101,21 @@ function entryRow(
 		return { ...base, text: `Note: ${e.title}`, tone: "plain" };
 	if (e.type === "incident_created")
 		return { ...base, text: "Incident opened", tone: "plain" };
+	const merged = e.metadata?.mergedIntoId ?? e.metadata?.mergedFromId;
+	const incidentId =
+		e.metadata?.reason === "merged" && typeof merged === "string"
+			? { incidentId: merged }
+			: {};
 	if (e.type === "alert_added" || e.type === "alert_removed")
 		return {
 			...base,
 			text: e.description ? `${e.title}: ${e.description}` : e.title,
 			tone: e.type === "alert_added" ? "danger" : "plain",
+			...incidentId,
 		};
 	if (e.type === "recommendation_completed")
 		return { ...base, text: e.title, tone: "ok" };
-	return { ...base, text: entryTitle(e), tone: "plain" };
+	return { ...base, text: entryTitle(e), tone: "plain", ...incidentId };
 }
 
 /**

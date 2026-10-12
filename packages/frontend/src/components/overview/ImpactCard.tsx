@@ -333,7 +333,7 @@ function NoSource({ impact, firing }: { impact: ImpactChart; firing: number }) {
 			className="flex h-full flex-col gap-3.5"
 			data-testid="impact-no-source"
 		>
-			<dl className="grid grid-cols-3 gap-3">
+			<dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3">
 				<div className="min-w-0">
 					<dt className="text-meta text-text-3">Firing for</dt>
 					<dd

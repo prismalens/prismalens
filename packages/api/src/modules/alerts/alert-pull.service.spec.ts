@@ -44,7 +44,9 @@ describe("AlertPullService (#605)", () => {
 		alertSourceAlert: {
 			updateMany: ReturnType<typeof vi.fn>;
 			findMany: ReturnType<typeof vi.fn>;
+			findFirst: ReturnType<typeof vi.fn>;
 		};
+		alert: { findFirst: ReturnType<typeof vi.fn> };
 	};
 	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
 	let webhooksService: {
@@ -70,7 +72,9 @@ describe("AlertPullService (#605)", () => {
 			alertSourceAlert: {
 				updateMany: vi.fn().mockResolvedValue({ count: 0 }),
 				findMany: vi.fn().mockResolvedValue([]),
+				findFirst: vi.fn().mockResolvedValue(null),
 			},
+			alert: { findFirst: vi.fn().mockResolvedValue(null) },
 		};
 		integrationsService = {
 			connectionBaseUrl: vi.fn(),
@@ -468,6 +472,8 @@ describe("AlertPullService (#605)", () => {
 				values: series2Values,
 			};
 
+			// No rules API on this backend: the gap alone decides.
+			fetchSpy.mockImplementation(async () => new Response("{}", { status: 404 }));
 			fetchSpy.mockResolvedValueOnce(
 				new Response(
 					JSON.stringify({
@@ -514,6 +520,13 @@ describe("AlertPullService (#605)", () => {
 				expectedFp1,
 				`prometheus-catchup:${expectedFp1}:${expectedStartsAt1}:resolved`,
 				expectedStartsAt1,
+				{
+					source: "prometheus",
+					note: {
+						reason: "catch-up",
+						text: "caught up from Prometheus after PrismaLens was offline; the alert stopped firing at 2026-09-20T11:50:00.000Z",
+					},
+				},
 			);
 
 			// Series 2 still firing: resolvePrometheusAlert NOT called for CpuHigh
@@ -950,158 +963,170 @@ describe("AlertPullService (#605)", () => {
 			);
 		});
 
-		it("splits a series into episodes on gaps > 2*step: series 02:00-02:10 and 08:00-08:05 pulled at 09:00 yields two resolved episodes", async () => {
-			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
-				if (args?.where?.integration?.templateId === "prometheus") {
-					return [
-						{
-							id: "prom-1",
-							label: "Prometheus Main",
-							status: "ACTIVE",
-							integration: { templateId: "prometheus" },
-						},
-					];
-				}
-				return [];
-			});
+		const promOnly = () => {
+			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) =>
+				args?.where?.integration?.templateId === "prometheus"
+					? [{ id: "prom-1", label: "Prometheus Main", status: "ACTIVE", integration: { templateId: "prometheus" } }]
+					: [],
+			);
 			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
+		};
+		const minutes = (from: string, to: string): Array<[number, string]> => {
+			const out: Array<[number, string]> = [];
+			for (let t = Date.parse(from) / 1000; t <= Date.parse(to) / 1000; t += 60) out.push([t, "1"]);
+			return out;
+		};
+		const matrix = (values: Array<[number, string]>, labels: Record<string, string>) =>
+			new Response(
+				JSON.stringify({
+					status: "success",
+					data: { resultType: "matrix", result: [{ metric: { __name__: "ALERTS", alertstate: "firing", ...labels }, values }] },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		const rules = (name: string, lastEvaluation: string) =>
+			new Response(
+				JSON.stringify({
+					status: "success",
+					data: { groups: [{ rules: [{ type: "alerting", name, query: "x > 1", lastEvaluation }] }] },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		const routeFetch = (alerts: Response, rulesBody?: Response) =>
+			fetchSpy.mockImplementation(async (url) => {
+				const u = url.toString();
+				if (u.includes("/api/v1/rules")) return rulesBody ?? new Response("{}", { status: 404 });
+				if (u.includes("ALERTS_FOR_STATE")) return matrix([], {});
+				return alerts;
+			});
+		const labels = { alertname: "DatabaseHighCpu", service: "orders" };
+		const fp = alertmanagerFingerprint(labels);
 
-			const pullTime = new Date("2026-09-20T09:00:00.000Z");
-			const labels = { alertname: "DatabaseHighCpu", service: "orders" };
-			const expectedFp = alertmanagerFingerprint(labels);
-
-			// 02:00 to 02:10 (60s steps)
-			const ep1Start = Math.floor(new Date("2026-09-20T02:00:00.000Z").getTime() / 1000);
-			const ep1End = Math.floor(new Date("2026-09-20T02:10:00.000Z").getTime() / 1000);
-			// 08:00 to 08:05 (60s steps)
-			const ep2Start = Math.floor(new Date("2026-09-20T08:00:00.000Z").getTime() / 1000);
-			const ep2End = Math.floor(new Date("2026-09-20T08:05:00.000Z").getTime() / 1000);
-
-			const values: Array<[number, string]> = [];
-			for (let t = ep1Start; t <= ep1End; t += 60) {
-				values.push([t, "1"]);
-			}
-			for (let t = ep2Start; t <= ep2End; t += 60) {
-				values.push([t, "1"]);
-			}
-
-			const series = {
-				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values,
-			};
-
-			fetchSpy.mockResolvedValueOnce(
-				new Response(
-					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
-					{ status: 200, headers: { "Content-Type": "application/json" } },
-				),
+		it("replays only the newest of several episodes, so an old one never ends or reopens the current alert (#673 w5-26)", async () => {
+			promOnly();
+			routeFetch(
+				matrix([...minutes("2026-09-20T02:00:00Z", "2026-09-20T02:10:00Z"), ...minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z")], labels),
 			);
 
-			const result = await service.pull(pullTime);
+			const result = await service.pull(new Date("2026-09-20T09:00:00.000Z"));
 
-			expect(result.caughtUp).toBe(2); // Two episodes
-			expect(result.processed).toBe(2);
-
-			const ep1StartsAt = new Date(ep1Start * 1000).toISOString();
-			const ep2StartsAt = new Date(ep2Start * 1000).toISOString();
-
-			// Both episodes ingested
+			const ep2 = "2026-09-20T08:00:00.000Z";
+			expect(result.caughtUp).toBe(1);
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledTimes(1);
 			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
-				expect.objectContaining({ startsAt: ep1StartsAt }),
-				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep1StartsAt}` }),
+				expect.objectContaining({ startsAt: ep2 }),
+				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${fp}:${ep2}` }),
 			);
-			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
-				expect.objectContaining({ startsAt: ep2StartsAt }),
-				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep2StartsAt}` }),
-			);
-
-			// Both episodes resolved (ep1 because it's not the last episode; ep2 because 08:05 < 09:00 - 2*step = 08:58)
-			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(2);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
 			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
-				expectedFp,
-				`prometheus-catchup:${expectedFp}:${ep1StartsAt}:resolved`,
-				ep1StartsAt,
-			);
-			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
-				expectedFp,
-				`prometheus-catchup:${expectedFp}:${ep2StartsAt}:resolved`,
-				ep2StartsAt,
+				fp,
+				`prometheus-catchup:${fp}:${ep2}:resolved`,
+				ep2,
+				expect.objectContaining({ note: expect.objectContaining({ reason: "catch-up" }) }),
 			);
 		});
 
-		it("splits a series into episodes on gaps > 2*step: series 02:00-02:10 and second still firing at pull time 09:00 resolves first and keeps second open with startsAt 08:00", async () => {
-			prisma.connection.findMany.mockImplementation(async (args?: { where?: { integration?: { templateId?: string } } }) => {
-				if (args?.where?.integration?.templateId === "prometheus") {
-					return [
-						{
-							id: "prom-1",
-							label: "Prometheus Main",
-							status: "ACTIVE",
-							integration: { templateId: "prometheus" },
-						},
-					];
-				}
-				return [];
-			});
-			integrationsService.connectionBaseUrl.mockResolvedValue("http://prometheus:9090");
-
-			const pullTime = new Date("2026-09-20T09:00:00.000Z");
-			const labels = { alertname: "DatabaseHighCpu", service: "orders" };
-			const expectedFp = alertmanagerFingerprint(labels);
-
-			// 02:00 to 02:10 (60s steps)
-			const ep1Start = Math.floor(new Date("2026-09-20T02:00:00.000Z").getTime() / 1000);
-			const ep1End = Math.floor(new Date("2026-09-20T02:10:00.000Z").getTime() / 1000);
-			// 08:00 to 09:00 (still firing at pull time)
-			const ep2Start = Math.floor(new Date("2026-09-20T08:00:00.000Z").getTime() / 1000);
-			const ep2End = Math.floor(new Date("2026-09-20T09:00:00.000Z").getTime() / 1000);
-
-			const values: Array<[number, string]> = [];
-			for (let t = ep1Start; t <= ep1End; t += 60) {
-				values.push([t, "1"]);
-			}
-			for (let t = ep2Start; t <= ep2End; t += 60) {
-				values.push([t, "1"]);
-			}
-
-			const series = {
-				metric: { __name__: "ALERTS", alertstate: "firing", ...labels },
-				values,
-			};
-
-			fetchSpy.mockResolvedValueOnce(
-				new Response(
-					JSON.stringify({ status: "success", data: { resultType: "matrix", result: [series] } }),
-					{ status: 200, headers: { "Content-Type": "application/json" } },
-				),
+		it("keeps the newest episode open while it still fires, whatever came before", async () => {
+			promOnly();
+			routeFetch(
+				matrix([...minutes("2026-09-20T02:00:00Z", "2026-09-20T02:10:00Z"), ...minutes("2026-09-20T08:00:00Z", "2026-09-20T09:00:00Z")], labels),
 			);
 
-			const result = await service.pull(pullTime);
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
 
-			expect(result.caughtUp).toBe(2);
-			expect(result.processed).toBe(2);
-
-			const ep1StartsAt = new Date(ep1Start * 1000).toISOString();
-			const ep2StartsAt = new Date(ep2Start * 1000).toISOString();
-
-			// Episode 1 is resolved
-			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
-			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledWith(
-				expectedFp,
-				`prometheus-catchup:${expectedFp}:${ep1StartsAt}:resolved`,
-				ep1StartsAt,
-			);
-
-			// Episode 2 is open with startsAt 08:00 (resolve NOT called for ep2)
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledTimes(1);
 			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledWith(
-				expect.objectContaining({ startsAt: ep2StartsAt }),
-				expect.objectContaining({ idempotencyKey: `prometheus-catchup:${expectedFp}:${ep2StartsAt}` }),
+				expect.objectContaining({ startsAt: "2026-09-20T08:00:00.000Z" }),
+				expect.anything(),
 			);
-			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalledWith(
-				expectedFp,
-				`prometheus-catchup:${expectedFp}:${ep2StartsAt}:resolved`,
-				ep2StartsAt,
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("skips an ended episode whose end the store already holds, so a known clear is never replayed as a refire", async () => {
+			promOnly();
+			routeFetch(matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels));
+			prisma.alertSourceAlert.findFirst.mockResolvedValue({ alertId: "alt-7" });
+			prisma.alert.findFirst.mockResolvedValue({ status: "resolved", resolvedAt: new Date("2026-09-20T08:06:00Z") });
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("still records an episode that began after the alert last cleared", async () => {
+			promOnly();
+			routeFetch(matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels));
+			prisma.alertSourceAlert.findFirst.mockResolvedValue({ alertId: "alt-7" });
+			prisma.alert.findFirst.mockResolvedValue({ status: "resolved", resolvedAt: new Date("2026-09-20T06:00:00Z") });
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.processPrometheusAlert).toHaveBeenCalledTimes(1);
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not call an episode ended when Prometheus has not evaluated its rule since (it may have slept)", async () => {
+			promOnly();
+			routeFetch(
+				matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels),
+				rules("DatabaseHighCpu", "2026-09-20T08:05:10Z"),
 			);
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			// Unknown: neither replayed as a firing nor resolved.
+			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("does not trust an evaluation after the range ends, which could have fired unseen", async () => {
+			promOnly();
+			routeFetch(
+				matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels),
+				rules("DatabaseHighCpu", "2026-09-20T09:00:40Z"),
+			);
+
+			await service.pull(new Date("2026-09-20T09:00:30.000Z"));
+
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+		});
+
+		it("neither replays nor resolves when the rules API fails rather than being absent", async () => {
+			promOnly();
+			routeFetch(
+				matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels),
+				new Response("{}", { status: 503 }),
+			);
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.processPrometheusAlert).not.toHaveBeenCalled();
+			expect(webhooksService.resolvePrometheusAlert).not.toHaveBeenCalled();
+			// The cursor holds, so the next pull re-reads this episode.
+			expect(prisma.setting.upsert).not.toHaveBeenCalled();
+		});
+
+		it("lets the gap decide when the backend has no rules API", async () => {
+			promOnly();
+			routeFetch(matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels));
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+		});
+
+		it("calls it ended once the rule was evaluated after the last firing sample", async () => {
+			promOnly();
+			routeFetch(
+				matrix(minutes("2026-09-20T08:00:00Z", "2026-09-20T08:05:00Z"), labels),
+				rules("DatabaseHighCpu", "2026-09-20T08:59:30Z"),
+			);
+
+			await service.pull(new Date("2026-09-20T09:00:00.000Z"));
+
+			expect(webhooksService.resolvePrometheusAlert).toHaveBeenCalledTimes(1);
+			expect(prisma.setting.upsert).toHaveBeenCalledTimes(1);
 		});
 	});
 

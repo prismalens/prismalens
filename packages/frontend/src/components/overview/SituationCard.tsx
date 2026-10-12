@@ -90,9 +90,11 @@ export function SituationCard({
 	const latest = o.latest;
 	const latestState = o.latestRun.state;
 	const strip = nextStrip({
-		ended: isIncidentEnded(incident.status),
+		ended: incident.status === "closed",
+		mergedInto: incident.mergedInto,
 		refiredAs: incident.refiredAs,
 		cleared: o.cleared,
+		alertsCleared: incident.status === "resolved",
 		runs: runs.filter((r) => r.kind !== "chat").length,
 		live: o.live
 			? {
@@ -121,13 +123,13 @@ export function SituationCard({
 			className="flex min-w-0 shrink-0 flex-col overflow-hidden rounded-pool bg-surface-1"
 			data-testid="situation"
 		>
-			<div className="flex min-w-0 items-start gap-6 px-4 pt-3 pb-2">
+			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
 				<button
 					type="button"
 					onClick={() => setOpen((v) => !v)}
 					aria-expanded={open}
 					className={cn(
-						"min-w-[300px] flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
+						"min-w-0 flex-[1_1_360px] text-left text-[15px] leading-[22px] font-medium",
 						!open && "line-clamp-3",
 						!report && "text-text-2",
 					)}

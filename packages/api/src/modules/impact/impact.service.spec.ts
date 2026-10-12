@@ -261,6 +261,17 @@ describe("ImpactService", () => {
 			});
 		});
 
+		it("is no chart, not not_configured, when Prometheus is connected and the incident has no alert", async () => {
+			const last = await prisma.incident.findFirst({ orderBy: { number: "desc" } });
+			const incident = await prisma.incident.create({ data: { number: (last?.number ?? 0) + 1, title: "Merged away", status: "closed" } });
+			expect(await impact.chart(incident.id)).toMatchObject({
+				state: "expression_unknown",
+				expression: { state: "expression_unknown", reason: "this incident has no alert of its own" },
+				connection: { id: connectionId },
+				series: [],
+			});
+		});
+
 		it(`is too broad at ${SERIES_LIMIT} series and never truncates`, async () => {
 			fake.range = () => Array.from({ length: SERIES_LIMIT }, (_, i) => series(`h${i}:9100`));
 			const { incidentId } = await incidentWith({});

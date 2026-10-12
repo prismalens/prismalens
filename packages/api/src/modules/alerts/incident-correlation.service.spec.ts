@@ -413,6 +413,19 @@ describe("IncidentCorrelationService", () => {
 	});
 
 	describe("resolveIncidentIfNoFiringAlerts", () => {
+		beforeEach(() => {
+			mockPrismaService.incident.findUnique.mockResolvedValue({ status: "investigating" });
+		});
+
+		it("never turns the operator's Resolve into Alerts cleared (#673 w5-28)", async () => {
+			mockPrismaService.incident.findUnique.mockResolvedValue({ status: "closed" });
+			mockPrismaService.alert.count.mockResolvedValue(0);
+
+			await service.resolveIncidentIfNoFiringAlerts("incident-1");
+
+			expect(mockIncidentsService.resolve).not.toHaveBeenCalled();
+		});
+
 		it("resolves the incident when no alert on it is still firing", async () => {
 			mockPrismaService.alert.count.mockResolvedValue(0);
 
