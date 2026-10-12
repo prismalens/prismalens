@@ -344,6 +344,14 @@ function Row({
 					Step {row.step}
 				</button>
 			)}
+			{row.step === undefined && row.from && (
+				<span
+					className="shrink-0 text-meta text-text-3"
+					data-testid="detail-from"
+				>
+					{row.from}
+				</span>
+			)}
 		</div>
 	);
 }

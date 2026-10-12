@@ -6,9 +6,28 @@ import {
 	CHART_H,
 	chartGeometry,
 	formatValue,
+	noChartText,
 	stripSpan,
 	yTicks,
 } from "./impact";
+
+describe("noChartText", () => {
+	const unknown = (reason: string | null) =>
+		noChartText({
+			state: "expression_unknown",
+			expression: { state: "expression_unknown", reason },
+		});
+
+	it("keeps one full stop when the server's reason ends in its own (#831 w6-10)", () => {
+		expect(unknown("The alert's sender gave no expression.")).toBe(
+			"No chart: The alert's sender gave no expression.",
+		);
+		expect(unknown("3 rules share this name")).toBe(
+			"No chart: 3 rules share this name.",
+		);
+		expect(unknown(null)).toBe("No chart: the alert's query is not known.");
+	});
+});
 
 const NOW = Date.parse("2026-10-11T12:00:00Z");
 const H = 3_600_000;

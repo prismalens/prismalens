@@ -40,6 +40,13 @@ describe("ConnectionStatusBadge", () => {
 		expect(container.textContent).toContain("not tested");
 	});
 
+	it('CREDENTIALS_INVALID renders "rejected" (#831 w6-9)', async () => {
+		await act(async () => {
+			root.render(<ConnectionStatusBadge status="CREDENTIALS_INVALID" />);
+		});
+		expect(container.textContent).toBe("rejected");
+	});
+
 	it('ERROR with untested renders "error"', async () => {
 		await act(async () => {
 			root.render(<ConnectionStatusBadge status="ERROR" untested={true} />);

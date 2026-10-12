@@ -60,6 +60,14 @@ export function changeDetail(c: IncidentChange): string {
 	return c.title;
 }
 
+/**
+ * A Continue on a finished run: the API logs it as `investigation_started`,
+ * titled "... resumed" (#831 w6-29), so it never reads as the run's start.
+ */
+function isResume(e: TimelineEntryWithRelations): boolean {
+	return e.type === "investigation_started" && /\bresumed$/i.test(e.title);
+}
+
 function entryRow(
 	e: TimelineEntryWithRelations,
 	runs: RunRef[],
@@ -68,6 +76,15 @@ function entryRow(
 	const run =
 		typeof id === "string" ? (runs.find((r) => r.id === id) ?? null) : null;
 	const base = { key: `t:${e.id}`, at: e.occurredAt };
+	if (run && isResume(e)) {
+		if (run.kind === "chat") return null;
+		return {
+			...base,
+			text: `${viewName(runs, run)} continued`,
+			tone: refRunState(run) === "working" ? "live" : "accent",
+			runId: run.id,
+		};
+	}
 	if (run && e.type === "investigation_started") {
 		if (run.kind === "chat")
 			return {
@@ -153,7 +170,8 @@ export function mergeTimeline(
 			continue;
 		const row = entryRow(e, runs);
 		if (!row) continue;
-		const once = `${e.type}:${String(id)}`;
+		// Each Continue is its own row; the start and the end show once per run.
+		const once = isResume(e) ? e.id : `${e.type}:${String(id)}`;
 		if (own && seenRun.has(once)) continue;
 		if (own) seenRun.add(once);
 		rows.push(row);

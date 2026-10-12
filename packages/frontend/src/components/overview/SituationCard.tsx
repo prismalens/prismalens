@@ -16,13 +16,13 @@ import { viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { failureWords } from "@/lib/failure-words";
+import { useHarnesses } from "@/lib/api/hooks";
 import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
-import { type NextActionId, nextStrip } from "./fixes";
+import { failedStrip, type NextActionId, nextStrip } from "./fixes";
 import type { Overview } from "./use-overview";
 
 const TONE_BG = {
@@ -57,6 +57,7 @@ export function SituationCard({
 	const { incident, runs } = o.record;
 	const now = useNow(30_000) ?? Date.now();
 	const [open, setOpen] = useState(false);
+	const harnesses = useHarnesses();
 	const report = o.report;
 	const waiting =
 		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
@@ -92,6 +93,13 @@ export function SituationCard({
 
 	const latest = o.latest;
 	const latestState = o.latestRun.state;
+	const failedRun = latest
+		? failedStrip(
+				viewName(runs, latest),
+				latest.error,
+				harnesses.data?.harnesses.find((h) => h.id === latest.harness)?.label,
+			)
+		: null;
 	const strip = nextStrip({
 		ended: incident.status === "closed",
 		mergedInto: incident.mergedInto,
@@ -105,13 +113,7 @@ export function SituationCard({
 					waiting,
 				}
 			: null,
-		failed:
-			latest && latestState === "failed"
-				? {
-						name: viewName(runs, latest),
-						reason: failureWords(latest.error).what,
-					}
-				: null,
+		failed: latest && latestState === "failed" ? failedRun : null,
 		reported: !!report,
 		option: o.current,
 		stage: o.stage,

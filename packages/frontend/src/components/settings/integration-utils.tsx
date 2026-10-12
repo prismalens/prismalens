@@ -38,12 +38,10 @@ export function ConnectionStatusBadge({
 	} else if (s === "ACTIVE") {
 		tone = "ok";
 		label = "connected";
-	} else if (
-		s.includes("FAIL") ||
-		s === "ERROR" ||
-		s === "CREDENTIALS_INVALID" ||
-		s === "REVOKED"
-	) {
+	} else if (s === "CREDENTIALS_INVALID") {
+		tone = "danger";
+		label = "rejected";
+	} else if (s.includes("FAIL") || s === "ERROR" || s === "REVOKED") {
 		tone = "danger";
 	} else if (s === "TOKEN_EXPIRED") {
 		tone = "warn";

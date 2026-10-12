@@ -9,7 +9,12 @@ import type { ServiceListQuery } from "@prismalens/contracts";
  *
  * Type-safe hooks for service catalog operations using oRPC with TanStack Query.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { orpc } from "../orpc-client";
 
 /**
@@ -104,6 +109,11 @@ export function useUpdateService() {
 	});
 }
 
+/** After a delete, every service query: a neighbour's detail and topology still count the deleted one (#831 w6-5). */
+export function afterServiceDelete(queryClient: QueryClient): Promise<void> {
+	return queryClient.invalidateQueries({ queryKey: serviceKeys.all() });
+}
+
 /**
  * Delete a service
  */
@@ -112,9 +122,7 @@ export function useDeleteService() {
 
 	return useMutation({
 		...orpc.services.delete.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: serviceKeys.lists() });
-		},
+		onSuccess: () => afterServiceDelete(queryClient),
 	});
 }
 

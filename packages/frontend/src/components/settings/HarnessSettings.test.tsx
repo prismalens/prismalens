@@ -7,7 +7,7 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HarnessSettings, versionText } from "./HarnessSettings";
+import { HarnessSettings, testedHint, versionText } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
 const mutateAsyncSpy = vi.fn();
@@ -336,7 +336,7 @@ describe("HarnessSettings agent rows (#673 w21)", () => {
 		);
 		expect(opencodeAsks).not.toBeNull();
 		expect(opencodeAsks?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-			'A run sets each tool\'s "*" rule for its permission level; the other patterns in your opencode.json stay.',
+			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
 		);
 
 		const claudeRow = container.querySelector(
@@ -426,7 +426,7 @@ describe("versionText", () => {
 		expect(versionText(h)).toBe("1.18.32, tested with 1.18.30");
 	});
 
-	it("returns '1.18.30, tested' when equal", () => {
+	it("returns '1.18.30, tested with 1.18.30' when equal (#831 w6-4)", () => {
 		const h = {
 			...mockHarnesses[0],
 			checked: {
@@ -444,7 +444,7 @@ describe("versionText", () => {
 			},
 			tested: { version: "1.18.30", date: "2026-10-01" },
 		};
-		expect(versionText(h)).toBe("1.18.30, tested");
+		expect(versionText(h)).toBe("1.18.30, tested with 1.18.30");
 	});
 
 	it("returns 'tested with 1.18.30' with no check", () => {
@@ -456,7 +456,7 @@ describe("versionText", () => {
 		expect(versionText(h)).toBe("tested with 1.18.30");
 	});
 
-	it("returns '2.1.296, tested' when checked.companionVersion is 2.1.296 and tested.companion is 2.1.296", () => {
+	it("returns '2.1.296, tested with 2.1.296' when checked.companionVersion is 2.1.296 and tested.companion is 2.1.296", () => {
 		const h = {
 			...mockHarnesses[0],
 			checked: {
@@ -474,7 +474,39 @@ describe("versionText", () => {
 			},
 			tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
 		};
-		expect(versionText(h)).toBe("2.1.296, tested");
+		expect(versionText(h)).toBe("2.1.296, tested with 2.1.296");
+	});
+
+	it("names the adapter's tested version when no CLI version was tested (#831 w6-3)", () => {
+		const h = {
+			...mockHarnesses[0],
+			label: "Codex",
+			checked: {
+				at: "",
+				outcome: "answers-acp" as const,
+				detail: "",
+				version: "1.13.1",
+				companionVersion: "0.162.1",
+				servedModel: null,
+				effort: null,
+				modes: [],
+				efforts: [],
+				images: false,
+				sandbox: null,
+			},
+			tested: { version: "1.13.1", date: "2026-09-24" },
+		};
+		expect(versionText(h)).toBe("0.162.1, adapter tested with 1.13.1");
+		expect(testedHint(h)).toBe("PrismaLens was tested with its adapter 1.13.1");
+		expect(
+			testedHint({
+				...h,
+				label: "Claude Code",
+				tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
+			}),
+		).toBe(
+			"PrismaLens was tested with Claude Code 2.1.296 through its adapter 0.81.1",
+		);
 	});
 
 	it("returns null with neither", () => {
