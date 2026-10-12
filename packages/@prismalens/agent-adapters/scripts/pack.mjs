@@ -13,7 +13,9 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
+	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,10 +69,13 @@ export function stage(manifest) {
 	};
 }
 
-export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
-	const manifest = JSON.parse(
-		readFileSync(join(PKG_DIR, "package.json"), "utf8"),
-	);
+function readManifest() {
+	return JSON.parse(readFileSync(join(PKG_DIR, "package.json"), "utf8"));
+}
+
+/** Writes the publishable package into `staging`; pack-cli.mjs stages its copy here too. */
+export function stageAdapters(staging) {
+	const manifest = readManifest();
 	for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
 		if (!/^\d+\.\d+\.\d+$/.test(spec))
 			fail(`${dep} must be pinned exactly, not ${spec}`);
@@ -78,7 +83,7 @@ export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
 	if (!existsSync(join(PKG_DIR, "dist", "index.js")))
 		fail("dist/index.js is missing; build first");
 
-	const staging = mkdtempSync(join(tmpdir(), "agent-adapters-"));
+	mkdirSync(staging, { recursive: true });
 	cpSync(join(PKG_DIR, "dist"), join(staging, "dist"), {
 		recursive: true,
 		filter: (src) => !/\.(test\.js|tsbuildinfo|map)$/.test(src),
@@ -105,6 +110,13 @@ export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
 		staging,
 	);
 
+	for (const entry of readdirSync(join(staging, "node_modules"), {
+		recursive: true,
+	})) {
+		if (/\.(map|tsbuildinfo)$/.test(entry))
+			rmSync(join(staging, "node_modules", entry));
+	}
+
 	const licences = join(staging, "THIRD_PARTY_LICENSES");
 	for (const { pkg, files, declared } of THIRD_PARTY) {
 		const from = join(staging, "node_modules", pkg);
@@ -128,7 +140,12 @@ export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
 			);
 		}
 	}
+}
 
+export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
+	const manifest = readManifest();
+	const staging = mkdtempSync(join(tmpdir(), "agent-adapters-"));
+	stageAdapters(staging);
 	mkdirSync(outDir, { recursive: true });
 	const name = run(
 		"npm",
