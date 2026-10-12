@@ -58,6 +58,8 @@ export function SituationCard({
 	const now = useNow(30_000) ?? Date.now();
 	const [open, setOpen] = useState(false);
 	const report = o.report;
+	const waiting =
+		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
 	const brief =
 		report?.summary ??
 		incidentSummary({
@@ -68,6 +70,7 @@ export function SituationCard({
 			noRepo: false,
 			attention: attentionFor(incident),
 			ended: isIncidentEnded(incident.status),
+			waiting,
 		}).lines.join(" ");
 
 	const trend = firingOf(incident, now);
@@ -99,7 +102,7 @@ export function SituationCard({
 		live: o.live
 			? {
 					name: viewName(runs, o.live),
-					waiting: o.latestRun.awaiting || !!o.live.awaitingApprovalAt,
+					waiting,
 				}
 			: null,
 		failed:

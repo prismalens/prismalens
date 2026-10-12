@@ -29,7 +29,8 @@ export function DangerZoneSettings() {
 
 	const handleFactoryReset = async () => {
 		await factoryReset.mutateAsync({ confirmation: "FACTORY RESET" });
-		window.location.href = "/setup";
+		// /setup went with the account (#701); / lands on the Inbox (#673 w6-32).
+		window.location.href = "/";
 	};
 
 	return (

@@ -146,6 +146,11 @@ export function isAlertFiring(status: string): status is AlertStatus {
 	return (OPEN_ALERT_STATUSES as readonly string[]).includes(status);
 }
 
+/** Alerts still firing in a by-status count; the one number every surface shows (#673 w6-2). */
+export function firingCount(byStatus: Partial<Record<string, number>>): number {
+	return OPEN_ALERT_STATUSES.reduce((n, s) => n + (byStatus[s] ?? 0), 0);
+}
+
 export function isIncidentOpen(status: string): status is IncidentStatus {
 	return (OPEN_INCIDENT_STATUSES as readonly string[]).includes(status);
 }

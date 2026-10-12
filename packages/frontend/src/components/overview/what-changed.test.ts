@@ -106,6 +106,54 @@ describe("mergeTimeline", () => {
 		]);
 		expect(rows[1]?.runId).toBe("r1");
 	});
+
+	describe("shows the reason the backend wrote (#673 w6-25, w6-26)", () => {
+		const one = (e: Partial<TimelineEntryWithRelations>) =>
+			mergeTimeline([entry(e)], [], [])[0];
+
+		it("names the incident a refire follows and links to it", () => {
+			const row = one({
+				type: "incident_created",
+				description: "New incident: WalkRefire fired again after INC-8 had its alerts cleared",
+				metadata: { priorIncidentId: "inc-8" },
+			});
+			expect(row?.text).toBe(
+				"New incident: WalkRefire fired again after INC-8 had its alerts cleared",
+			);
+			expect(row?.incidentId).toBe("inc-8");
+		});
+
+		it("says Incident opened when nothing came before", () => {
+			const row = one({
+				type: "incident_created",
+				description: "Incident INC-9 was created",
+			});
+			expect(row?.text).toBe("Incident opened");
+			expect(row?.incidentId).toBeUndefined();
+		});
+
+		it("says why an auto-run was skipped", () => {
+			const row = one({
+				type: "custom",
+				title: "Auto-investigation skipped",
+				description: "Investigation already in progress",
+			});
+			expect(row?.text).toBe(
+				"Auto-investigation skipped: Investigation already in progress",
+			);
+		});
+
+		it("does not repeat a reason its title already holds", () => {
+			const row = one({
+				type: "custom",
+				title: "Auto-investigation skipped: the agent is not signed in",
+				description: "the agent is not signed in",
+			});
+			expect(row?.text).toBe(
+				"Auto-investigation skipped: the agent is not signed in",
+			);
+		});
+	});
 });
 
 describe("changesProblem", () => {

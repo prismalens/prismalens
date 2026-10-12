@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
 	return {
 		mutate: vi.fn(),
 		record: {} as Record<string, unknown>,
+		settingsLevel: "auto",
 		opencode: agent("opencode", "OpenCode"),
 		codex: agent("codex", "Codex"),
 	};
@@ -56,7 +57,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 				button("pick-mode", () => p.onLevel("full-access")),
 			),
 		defaultAccessOf: () => ({
-			level: { level: "auto", from: "agent" },
+			level: { level: h.settingsLevel, from: "agent" },
 		}),
 		modelName: (_h: unknown, id: string) => id,
 		unreadyReason: () => null,
@@ -150,6 +151,7 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	h.mutate.mockReset();
+	h.settingsLevel = "auto";
 });
 afterEach(async () => {
 	await act(async () => root.unmount());
@@ -211,5 +213,37 @@ describe("DockedComposer chips (#673 w52)", () => {
 		expect(start).not.toHaveProperty("harness");
 		expect(start).not.toHaveProperty("model");
 		expect(start).not.toHaveProperty("effort");
+	});
+});
+
+describe("the follow-up chip on an alert-started run (#673 w6-13)", () => {
+	const alertRun = (state: string) => ({
+		...(h.record.run as Record<string, unknown>),
+		state,
+		investigation: {
+			id: "inv-1",
+			harness: "opencode",
+			model: "vendor/run",
+			effort: "medium",
+			agentMode: "build",
+			accessLevel: "auto",
+			triggerType: "auto_critical",
+		},
+	});
+
+	it("shows the Settings level once the run has ended", async () => {
+		h.settingsLevel = "supervised";
+		setRecord({});
+		h.record.run = alertRun("done");
+		await render();
+		expect(q("mode").dataset.value).toBe("supervised");
+	});
+
+	it("shows the run's own Auto while it runs", async () => {
+		h.settingsLevel = "supervised";
+		setRecord({});
+		h.record.run = alertRun("working");
+		await render();
+		expect(q("mode").dataset.value).toBe("auto");
 	});
 });

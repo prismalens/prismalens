@@ -98,7 +98,9 @@ function IncidentsLanding() {
 		});
 	};
 	const windows: WindowKey[] =
-		view === "analytics" ? ["7d", "30d", "90d"] : ["all", "1d", "7d", "30d"];
+		view === "analytics"
+			? ["7d", "30d", "90d"]
+			: ["all", "1d", "7d", "30d", "90d"];
 	// All time on All incidents reads as Analytics' 30 days, label and figures alike.
 	const viewKey: WindowKey = windows.includes(windowKey)
 		? windowKey

@@ -47,7 +47,7 @@ test.describe("#523 — the alerts frame", () => {
 		await expect(overview).toBeVisible({ timeout: 20_000 });
 		// One sentence, not three framed tiles (study-v3 §2: no number in a box).
 		await expect(overview.getByTestId("alerts-stat-firing")).toHaveText(
-			/^\d+ firing of \d+, \d+ acknowledged, \d+ cleared\.$/,
+			/^\d+ firing of \d+, \d+ cleared\.$/,
 		);
 		await expect(overview.getByTestId("live-slot")).toHaveCount(0);
 	});

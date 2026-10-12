@@ -90,4 +90,30 @@ describe("incidentSummary", () => {
 		const endedSummary = incidentSummary({ ...input, ended: true });
 		expect(endedSummary.next).toBeNull();
 	});
+
+	describe("a live run that waits on an approval (#673 w6-15)", () => {
+		const run = (status: string, rootCause?: string) => ({
+			now,
+			alerts: [],
+			services: [],
+			runs: [{ status, rootCause }],
+			noRepo: false,
+			attention: null,
+		});
+
+		it("says it waits for your approval", () => {
+			const s = incidentSummary({ ...run("running"), waiting: true, step: "reading config" });
+			expect(s.lines[1]).toBe("An investigation waits for your approval.");
+		});
+
+		it("says what it is doing when it does not wait", () => {
+			const s = incidentSummary({ ...run("running"), waiting: false, step: "reading config" });
+			expect(s.lines[1]).toBe("An investigation is working now: reading config.");
+		});
+
+		it("ignores the flag once the run has ended", () => {
+			const s = incidentSummary({ ...run("completed", "Pool capped at 10."), waiting: true });
+			expect(s.lines[1]).toBe("The last investigation concluded: Pool capped at 10.");
+		});
+	});
 });

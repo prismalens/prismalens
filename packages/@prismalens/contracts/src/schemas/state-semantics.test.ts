@@ -17,6 +17,7 @@ import {
 	latestRun,
 	liveRun,
 	isAlertFiring,
+	firingCount,
 	ALERT_ACTION_FROM,
 	ALERT_STATUS_PHASE,
 	canAlertAction,
@@ -93,6 +94,13 @@ describe("state semantics", () => {
 		expect(isAlertFiring("correlated")).toBe(true);
 		expect(isAlertFiring("resolved")).toBe(false);
 		expect(isAlertFiring("suppressed")).toBe(false);
+	});
+
+	it("counts every open alert status as firing", () => {
+		expect(
+			firingCount({ triggered: 1, correlated: 5, acknowledged: 0, resolved: 1 }),
+		).toBe(6);
+		expect(firingCount({})).toBe(0);
 	});
 
 	it("keeps alerts open until they resolve or are suppressed", () => {

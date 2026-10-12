@@ -99,8 +99,22 @@ function entryRow(
 	}
 	if (e.type === "comment")
 		return { ...base, text: `Note: ${e.title}`, tone: "plain" };
+	// Show the reason the backend wrote: the incident a refire follows, why a run was skipped (#673 w6-25, w6-26).
+	const prior = e.metadata?.priorIncidentId;
 	if (e.type === "incident_created")
-		return { ...base, text: "Incident opened", tone: "plain" };
+		return typeof prior === "string" && e.description
+			? { ...base, text: e.description, tone: "plain", incidentId: prior }
+			: { ...base, text: "Incident opened", tone: "plain" };
+	if (
+		e.type === "custom" &&
+		e.description &&
+		!entryTitle(e).includes(e.description)
+	)
+		return {
+			...base,
+			text: `${entryTitle(e)}: ${e.description}`,
+			tone: "plain",
+		};
 	const merged = e.metadata?.mergedIntoId ?? e.metadata?.mergedFromId;
 	const incidentId =
 		e.metadata?.reason === "merged" && typeof merged === "string"
