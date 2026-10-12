@@ -1,0 +1,14 @@
+{
+	"svix": {
+		"version": "2.3.0",
+		"source": "https://github.com/svix/svix-webhooks/blob/v2.3.0/LICENSE"
+	},
+	"standardwebhooks": {
+		"version": "1.1.1",
+		"source": "https://github.com/standard-webhooks/standard-webhooks/blob/b4d2c14fc5b4ccff3ff271e3b087dff812254c59/libraries/LICENSE"
+	},
+	"@tokenizer/token": {
+		"version": "0.3.0",
+		"source": "https://github.com/Borewit/tokenizer-token/blob/v0.3.0/README.md#licence"
+	}
+}
