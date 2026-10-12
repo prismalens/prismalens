@@ -6,6 +6,7 @@ import {
 	ALERT_STATUS_PHASE,
 	type AlertStatus,
 	type AlertWithRelations,
+	isAlertFiring,
 	SEVERITY_LABEL,
 	type StatePhase,
 } from "@prismalens/contracts";
@@ -113,14 +114,9 @@ const GROUPS: {
 	label: string;
 	testId: string;
 }[] = [
-	{ phase: (s) => s === "triggered", label: "Firing", testId: "group-firing" },
+	{ phase: isAlertFiring, label: "Firing", testId: "group-firing" },
 	{
-		phase: (s) => s !== "triggered" && PHASE_ORDER[ALERT_STATUS_PHASE[s]] < 3,
-		label: "In play",
-		testId: "group-in-play",
-	},
-	{
-		phase: (s) => PHASE_ORDER[ALERT_STATUS_PHASE[s]] >= 3,
+		phase: (s) => !isAlertFiring(s),
 		label: "Ended",
 		testId: "group-ended",
 	},

@@ -27,7 +27,7 @@ import {
 	runNumber,
 	useRunAgentModel,
 } from "@/components/incidents/run-facts";
-import { viewName } from "@/components/run/run-labels";
+import { startedBy, viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
 import { uploadAttachment } from "@/lib/attachments";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -275,13 +275,18 @@ export function DockedComposer({
 		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
 	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
+	// An ended alert-started run's follow-up goes at the person's level, not its Auto (#673 w6-13).
+	const followUpAtSettings =
+		!draft && !live && startedBy(inv?.triggerType) === "PrismaLens";
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
-		: (inv?.accessLevel ??
-			(inv?.report?.fidelity
-				? fidelityAccess(inv.report.fidelity, inv.agentMode)
-				: undefined) ??
-			"supervised");
+		: followUpAtSettings
+			? defaults.level.level
+			: (inv?.accessLevel ??
+				(inv?.report?.fidelity
+					? fidelityAccess(inv.report.fidelity, inv.agentMode)
+					: undefined) ??
+				"supervised");
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid

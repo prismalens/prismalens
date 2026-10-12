@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	firingCount,
 	type IncidentWithRelations,
 	isAlertFiring,
-	OPEN_ALERT_STATUSES,
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, type LinkProps } from "@tanstack/react-router";
@@ -60,10 +60,7 @@ export function InboxTiles({
 
 	const tiles = useMemo<Tile[] | null>(() => {
 		if (loading || !stats.data || !services.data) return null;
-		const firing = OPEN_ALERT_STATUSES.reduce(
-			(n, s) => n + (stats.data.byStatus[s] ?? 0),
-			0,
-		);
+		const firing = firingCount(stats.data.byStatus);
 		const cleared = (resolved.data?.data ?? []).filter(
 			(a) => a.resolvedAt && now - new Date(a.resolvedAt).getTime() < DAY,
 		);

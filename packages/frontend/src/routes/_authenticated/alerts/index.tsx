@@ -5,6 +5,7 @@
  */
 import {
 	AlertStatusSchema,
+	firingCount,
 	SEVERITY_LABEL,
 	SeveritySchema,
 } from "@prismalens/contracts";
@@ -60,7 +61,7 @@ function AlertsPage() {
 			search: (prev) => ({ ...prev, ...patch }),
 			replace: true,
 		});
-	const firing = stats.data?.byStatus.triggered ?? 0;
+	const firing = stats.data ? firingCount(stats.data.byStatus) : 0;
 
 	return (
 		<>
@@ -171,8 +172,7 @@ function AlertNumbers() {
 		refetchInterval: useLiveRefreshInterval(),
 	});
 	const s = stats.data;
-	// Firing is Triggered alone (look ruling §1.3): the Alerts door counts the same.
-	const firing = s?.byStatus.triggered ?? 0;
+	const firing = s ? firingCount(s.byStatus) : 0;
 	return (
 		<div
 			className="min-h-0 flex-1 overflow-y-auto"
@@ -208,10 +208,6 @@ function AlertNumbers() {
 								{firing}
 							</span>{" "}
 							firing of <span className="tabular-nums">{s.total}</span>,{" "}
-							<span className="tabular-nums">
-								{s.byStatus.acknowledged ?? 0}
-							</span>{" "}
-							acknowledged,{" "}
 							<span className="tabular-nums">{s.byStatus.resolved ?? 0}</span>{" "}
 							cleared.
 						</p>

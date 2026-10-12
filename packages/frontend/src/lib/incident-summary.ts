@@ -21,6 +21,8 @@ export interface SummaryInput {
 	ended?: boolean;
 	/** What a live run is doing right now, for the summary's run sentence. */
 	step?: string | null;
+	/** A live run waits on an Approve or Deny, as the Next strip says (#673 w6-15). */
+	waiting?: boolean;
 }
 
 export type NextStep = {
@@ -69,9 +71,11 @@ export function incidentSummary(i: SummaryInput): {
 	if (!latest) lines.push("No investigation yet.");
 	else if (state === "starting" || state === "working" || state === "stopping")
 		lines.push(
-			i.step
-				? `An investigation is working now: ${i.step}.`
-				: "An investigation is working now.",
+			i.waiting
+				? "An investigation waits for your approval."
+				: i.step
+					? `An investigation is working now: ${i.step}.`
+					: "An investigation is working now.",
 		);
 	else if (state === "done")
 		lines.push(

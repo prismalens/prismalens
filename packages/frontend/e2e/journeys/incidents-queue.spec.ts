@@ -109,6 +109,16 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		});
 	});
 
+	test("All incidents keeps a 90-day range from Analytics (#673 w6-35)", async ({
+		page,
+	}) => {
+		const from = new Date(Date.now() - 90 * 86_400_000).toISOString();
+		await page.goto(`/incidents?view=all&from=${encodeURIComponent(from)}`);
+		await expect(page.getByTestId("board-window")).toHaveText("90 days", {
+			timeout: 15_000,
+		});
+	});
+
 	test("empty — a date window with nothing in it", async ({ page }) => {
 		const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
 		await page.goto(`/incidents?view=all&from=${encodeURIComponent(tomorrow)}`);
