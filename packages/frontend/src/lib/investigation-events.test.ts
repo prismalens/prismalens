@@ -200,6 +200,23 @@ describe("deriveStreamView", () => {
 		expect(view.flatRows.map((row) => row.message)).toEqual(["Report drafted"]);
 	});
 
+	it("hides a fenced report the engine took though an option carries five facts (#673 w7-5)", () => {
+		const report = {
+			...VALID_REPORT,
+			nextSteps: [
+				{
+					title: "Confirm which metric fired the alert",
+					detail: "Read the rule that produced it from Prometheus.",
+					kind: "probe",
+					facts: ["a", "b", "c", "d", "e"],
+				},
+			],
+		};
+		const json = `\`\`\`json\n${JSON.stringify(report, null, 2)}\n\`\`\``;
+		const view = deriveStreamView([agentStep("main", 1, json)]);
+		expect(view.flatRows.map((row) => row.message)).toEqual(["Report drafted"]);
+	});
+
 	/**
 	 * A bare fragment is SHOWN: it is indistinguishable from prose starting
 	 * with `{`. A message sent mid-turn does cut a report off, though, and an

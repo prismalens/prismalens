@@ -1219,6 +1219,45 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(events.at(-1)?.kind).toBe("report");
 	});
 
+	it("Given Ask always, When the agent enters plan mode with no ask, Then the run puts it back and shows the refusal (#673 w7-4)", async () => {
+		const env = {
+			...process.env,
+			FAKE_ACP_MODE: "enter-plan",
+			FAKE_PROFILE: "claude",
+			FAKE_MODES: "",
+		};
+		const { events, runDir } = await collect("enter-plan", {
+			harness: "claude-code",
+			accessLevel: "supervised",
+			permission: autoApprovePolicy,
+			env,
+		});
+		const modeCalls = wireOut(runDir)
+			.map((m) => JSON.parse(m) as { method?: string; params?: { modeId?: string } })
+			.filter((m) => m.method === "session/set_mode")
+			.map((m) => m.params?.modeId);
+		expect(modeCalls).toEqual(["default"]);
+		expect(events.find((e) => e.kind === "permission_answer")).toMatchObject({
+			outcome: "mode_kept",
+			title: "EnterPlanMode",
+			toolKind: "switch_mode",
+		});
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ mode: "default" });
+
+		const stuck = await collect("enter-plan", {
+			harness: "claude-code",
+			accessLevel: "supervised",
+			permission: autoApprovePolicy,
+			env: { ...env, FAKE_REFUSE_MODES: "default" },
+		});
+		expect(stuck.events.at(-1)).toMatchObject({
+			kind: "error",
+			message: "The agent switched itself to plan and would not switch back",
+		});
+	});
+
 	it("resumed run keeps the stored mode and re-sets only when different (#673 w21)", async () => {
 		const same = await collect("resume", {
 			harness: "opencode",

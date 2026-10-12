@@ -18,7 +18,7 @@ import type {
 } from "@prismalens/contracts";
 import {
 	ACCESS_LEVEL_LABEL,
-	InvestigationReportSchema,
+	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
@@ -58,11 +58,9 @@ export const REPORT_CUT = "Report draft cut off";
  * exactly "what the contract calls a report", so there is no third opinion
  * about the report's shape left to drift out of sync with the other two.
  *
- * `InvestigationReportSchema` rather than the engine's `ModelReportSchema`:
- * the two differ only by `fidelity`, which is host-stamped and optional here,
- * so this schema accepts the model's own draft *and* the stamped report — and
- * it lives in `@prismalens/contracts`, which the browser bundle already
- * carries, while the engine is server-only.
+ * `ModelReportSchema`, the one the engine accepts a report by: a stricter
+ * schema printed a report the engine took as raw JSON (#673 w7-5). It strips
+ * the host-stamped `fidelity`, so a stamped report passes too.
  *
  * Only a COMPLETE object is recognised; see {@link agentStepMessage} for a
  * block cut off mid-way.
@@ -71,7 +69,7 @@ function isReportJson(body: string): boolean {
 	const trimmed = body.trim();
 	if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
 	try {
-		return InvestigationReportSchema.safeParse(JSON.parse(trimmed)).success;
+		return ModelReportSchema.safeParse(JSON.parse(trimmed)).success;
 	} catch {
 		return false;
 	}

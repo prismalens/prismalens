@@ -170,6 +170,16 @@ describe("buildInvestigationPrompt (#633)", () => {
 			expect(prompt).not.toMatch(/Writes will be refused|Network: only|Never modify/);
 		});
 
+		it("tells the agent to stay in its mode and to name a rule's denial as the rule's (#673 w7-4, w7-6)", () => {
+			const prompt = buildInvestigationPrompt(context, { modeName: "Manual" });
+			expect(prompt).toContain(
+				"Permission: Ask always (Manual, the agent's own mode). Stay in this mode; a mode switch is refused.",
+			);
+			expect(prompt).toContain(
+				"came from a permission rule the operator set: say a rule refused it, never that the user did, and do not offer to allow it.",
+			);
+		});
+
 		it("says the agent's default when no mode name is known", () => {
 			expect(buildInvestigationPrompt(context)).toContain(
 				"Permission: Ask always (the agent's default, the agent's own mode).",

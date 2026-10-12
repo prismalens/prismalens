@@ -57,6 +57,7 @@ import {
 	askWindow,
 	denyAllPolicy,
 	levelPolicy,
+	newAskId,
 	type PermissionPolicy,
 } from "./permission.js";
 import {
@@ -480,6 +481,27 @@ export async function* runInvestigation(
 
 	let text = "";
 	let sawEvidence = false;
+	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
+	let heldMode: string | null = null;
+	let lastCall: { title?: string; toolCallId?: string } | null = null;
+	/** Puts the agent back in the run's mode and shows the refusal; an error when it will not go back. */
+	const holdMode = async function* (
+		held: string,
+	): AsyncGenerator<CanonicalEvent, string | null> {
+		const left = session.currentMode;
+		const flushed = adapter.flushText();
+		if (flushed) yield flushed;
+		const back = (await session.setMode(held)) && session.currentMode === held;
+		wire("in", JSON.stringify({ modeHeld: held, left, back }));
+		yield adapter.permissionAnswer(newAskId(), "mode_kept", {
+			title: lastCall?.title ?? `Switch to ${left}`,
+			...(lastCall?.toolCallId ? { toolCallId: lastCall.toolCallId } : {}),
+			kind: "switch_mode",
+		});
+		return back
+			? null
+			: `The agent switched itself to ${left} and would not switch back`;
+	};
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
@@ -494,9 +516,24 @@ export async function* runInvestigation(
 							? chunk
 							: ((chunk as { text?: string } | undefined)?.text ?? "");
 				}
+				if (u.sessionUpdate === "tool_call")
+					lastCall = { title: u.title, toolCallId: u.toolCallId };
 				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
+				}
+				// Claude Code enters plan mode with no ask, so the mode update is the only sign (#673 w7-4).
+				if (
+					heldMode &&
+					(u.sessionUpdate === "current_mode_update" ||
+						u.sessionUpdate === "config_option_update") &&
+					session.currentMode !== heldMode
+				) {
+					const refused = yield* holdMode(heldMode);
+					if (refused) {
+						session.cancel();
+						return { error: refused };
+					}
 				}
 			} else if (item.kind === "permission_asked") {
 				openAsks.add(item.askId);
@@ -616,6 +653,7 @@ export async function* runInvestigation(
 				return;
 			}
 		}
+		if (!keepMode) heldMode = session.currentMode;
 		const ranMode = session.currentMode ?? askedMode ?? NO_MODE_KEY;
 		const sandbox = await (opts.sandboxCheck ?? checkSandbox)(
 			opts.harness,

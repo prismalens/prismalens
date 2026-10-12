@@ -26,7 +26,7 @@ const TAG_TONE = {
 } as const;
 
 /**
- * Why (#811): the likely cause from the newest run that concluded, its
+ * Why (#811): the likely cause from the newest run that named one, its
  * evidence (each row opens the step that found it), what was ruled out or
  * not checked, and the lasting fix in place. A live run banners above it;
  * the finding stands until that run reports.

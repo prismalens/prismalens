@@ -29,9 +29,13 @@ const SLOW_MS = 10_000;
 
 const keyOf = (o: FixOption) => o.id ?? `#${o.index}`;
 
-/** The newest investigation (not an Ask) that ended with a report: its finding stands until a newer one. */
+/**
+ * The newest investigation (not an Ask) whose report named a cause: a later report
+ * that names none does not erase it (#673 w7-7). With no named cause, the newest report.
+ */
 export function reportedRun(runs: RunRef[]): RunRef | null {
-	return runs.find((r) => r.kind !== "chat" && r.hasReport) ?? null;
+	const reported = runs.filter((r) => r.kind !== "chat" && r.hasReport);
+	return reported.find((r) => r.rootCause) ?? reported[0] ?? null;
 }
 
 /**
