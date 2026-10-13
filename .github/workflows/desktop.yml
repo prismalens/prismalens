@@ -1,7 +1,8 @@
 # The desktop app (#83): build the unpacked Electron app on each OS from the
 # same packed `prismalens` the npm channel ships, launch it on an empty
-# workspace, and assert the window rendered the app. On a published release the
-# three unpacked apps are zipped and attached to it, unsigned (signing is #697).
+# workspace, and assert the window rendered the app. When release.yml calls it
+# with a draft release's tag, the three unpacked apps are zipped and attached to
+# that draft, unsigned (signing is #697).
 name: Desktop
 
 on:
@@ -16,15 +17,18 @@ on:
       - "packages/desktop/**"
       - "scripts/pack-cli.mjs"
       - ".github/workflows/desktop.yml"
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: desktop-${{ inputs.release-tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -41,6 +45,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -103,9 +109,9 @@ jobs:
           retention-days: 7
 
   attach:
-    name: Attach to the release
+    name: Attach to the draft release
     needs: build
-    if: github.event_name == 'release'
+    if: inputs.release-tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -119,5 +125,5 @@ jobs:
       - name: Upload the unsigned apps
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.release-tag }}
         run: gh release upload "$TAG" apps/*.zip --repo "$GITHUB_REPOSITORY" --clobber

@@ -339,9 +339,35 @@ Versioning and publishing run through
    `chore:`, …); release-please reads these to compute the next version.
 2. On push to `main`, release-please opens or updates a release PR proposing
    the next version and a changelog.
-3. Merging that PR creates the GitHub Release and tag, which triggers the
-   `publish` job: build, `publint`, then pack + publish via npm trusted
-   publishing (OIDC) — no npm token secret.
+3. Merging that PR runs the release draft-first, in one `release.yml` run,
+   because the repository has immutable releases on and GitHub refuses any
+   upload to a published release (#717):
+   1. release-please creates the tag and a **draft** release (`draft` and
+      `force-tag-creation` in `release-please-config.json`; without the forced
+      tag a draft has none, and release-please could not find it next time).
+   2. `standalone.yml` and `desktop.yml`, called with the tag, build from it
+      and attach the archives, `SHA256SUMS`, `install.sh`, `install.ps1` and
+      the desktop zips to the draft.
+   3. npm publishes: build, `publint`, then pack + publish via npm trusted
+      publishing (OIDC), no npm token secret. It goes before the release is
+      published because the in-app update notice reads `releases/latest`.
+   4. The draft is published (`gh release edit --draft=false`), which makes
+      it immutable.
+   5. The Homebrew tap and Scoop bucket are updated from the published
+      `SHA256SUMS`.
+
+   What a failure leaves: before npm, a draft release and nothing on npm;
+   after npm, a draft release with npm published. Either way, **Re-run failed
+   jobs** on that `Release` run finishes it: uploads to a draft replace what
+   is there, and npm is skipped when the version is already on it. If
+   release-please made the draft but its run failed, a re-run sees an
+   existing release and builds nothing; run **Release** by hand
+   (`gh workflow run release.yml -f tag=v<version>`) to resume that draft
+   from its assets on. It refuses a release that is not a draft. A version
+   older than the current latest release is published to npm under the
+   `previous` dist-tag and not marked latest, and the tap and bucket are left
+   alone.
+
 4. Every release is a patch: `versioning: always-bump-patch` in
    `release-please-config.json` holds the line at 0.5.x whatever the commit
    types. A minor release means changing that line on purpose. To force one
@@ -350,8 +376,9 @@ Versioning and publishing run through
    footer does not work here: squash commits end with the attribution lines,
    and release-please reads footers only from a commit's last paragraph.
 5. Releases are tagged `v<version>` from 0.5.0 on (`prismalens@<version>`
-   before it). Publishing a release also starts the registry-mode
-   `cross-os-smoke` run against that version.
+   before it). Publishing the release (with `RELEASE_PAT`, so the event
+   reaches other workflows) also starts the registry-mode `cross-os-smoke`
+   run against that version.
 
 The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened

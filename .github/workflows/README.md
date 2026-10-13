@@ -105,7 +105,9 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
-| `release.yml` | `push`, `release` | release-please release PR on push; npm publish on release published |
+| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket |
+| `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
+| `desktop.yml` | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, launched and checked; attaches the zips to the draft release when called |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
