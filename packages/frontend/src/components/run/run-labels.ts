@@ -45,7 +45,12 @@ export function runOutcome(
 	if (state === "failed") return "failed";
 	if (chat) return "answered";
 	if (!run.hasReport) return "ended without a report";
-	return run.rootCause ? "likely cause" : "no cause named";
+	return reportOutcome(run.rootCause);
+}
+
+/** A report's own outcome: it holds while a Continue on the same run works (#831 w6-21). */
+export function reportOutcome(rootCause: string | null | undefined): string {
+	return rootCause ? "likely cause" : "no cause named";
 }
 
 /**

@@ -173,6 +173,7 @@ describe("ImpactService", () => {
 			expect(chart).toMatchObject({
 				state: "ok",
 				expression: { state: "recovered", reason: null },
+				checkable: true,
 				metric: { source: "alert", query: 'node_load1{job="node"}', threshold: { op: ">", value: 4 }, unit: null },
 				scope: { state: "scoped", matched: 1 },
 				now: 5,
@@ -189,6 +190,17 @@ describe("ImpactService", () => {
 			expect(seen.some((p) => p.includes("am-sender.example"))).toBe(false);
 		});
 
+		it.each([
+			["a range function", "histogram_quantile(0.99, rate(h_bucket[5m])) > 0.5"],
+			["a bool comparison", "node_load1 > bool 4"],
+		])("charts %s but says Check now cannot judge it (#673 w7-8)", async (_name, expr) => {
+			const { incidentId } = await incidentWith({ sourceUrl: graph(expr) });
+			expect(await impact.chart(incidentId)).toMatchObject({
+				expression: { state: "recovered" },
+				checkable: false,
+			});
+		});
+
 		it("shows every series unscoped when no loaded rule has the exact expression", async () => {
 			fake.rules = () => [{ ...RULE, query: `${EXPR} ` }];
 			const { incidentId } = await incidentWith({});
@@ -196,6 +208,16 @@ describe("ImpactService", () => {
 			expect(chart?.scope).toEqual({ state: "unscoped", matched: 0 });
 			expect(chart?.series).toHaveLength(2);
 			expect(chart?.now).toBeNull();
+			// check() refuses it as rule-not-matched, so the chart offers no check either.
+			expect(chart?.checkable).toBe(false);
+		});
+
+		it("offers no check when the alert's labels pick out no one series (#834 review)", async () => {
+			const { incidentId } = await incidentWith({ labels: { alertname: "HighLoad", job: "node", severity: "page" } });
+			const chart = await impact.chart(incidentId);
+			expect(chart?.scope).toEqual({ state: "unscoped", matched: 0 });
+			// check() refuses it as series-not-scoped, so the overview never runs it on its own.
+			expect(chart?.checkable).toBe(false);
 		});
 
 		it("uses the one rule loaded now for a catch-up alert, chart only and unscoped", async () => {
@@ -204,6 +226,7 @@ describe("ImpactService", () => {
 			expect(chart).toMatchObject({
 				state: "ok",
 				expression: { state: "recovered_current_rule" },
+				checkable: false,
 				metric: { source: "alert_current_rule", query: 'node_load1{job="node"}' },
 				scope: { state: "unscoped" },
 			});
@@ -246,6 +269,7 @@ describe("ImpactService", () => {
 			expect(chart).toMatchObject({
 				state: "ok",
 				expression: { state: "expression_unknown" },
+				checkable: false,
 				metric: { source: "service", query: "sum(rate(http_requests_total[5m]))", threshold: null, unit: "count/s" },
 				scope: { state: "unscoped" },
 			});

@@ -324,6 +324,7 @@ export class ImpactService {
 			alertId: alert?.id ?? null,
 			state: "not_configured",
 			expression: { state: "not_configured", reason: null },
+			checkable: false,
 			metric: null,
 			scope: { state: "unscoped", matched: 0 },
 			series: [],
@@ -373,8 +374,14 @@ export class ImpactService {
 				}
 				const shape =
 					source === "service"
-						? { series: query, threshold: null }
+						? { series: query, threshold: null, uncheckable: null }
 						: expressionShape(query);
+				// Checkable only where `judge` can judge: a matched rule and, below, one scoped series.
+				const judgeable =
+					source === "alert" &&
+					!!shape.threshold &&
+					!shape.uncheckable &&
+					!!expression.rule;
 				chart.metric = {
 					source,
 					query: shape.series,
@@ -395,6 +402,7 @@ export class ImpactService {
 						? scopeSeries(series, labelsOf(alert.labels), expression.rule)
 						: scopeSeries(series, {}, null);
 				chart.scope = { state: scoped.state, matched: scoped.matched };
+				chart.checkable = judgeable && scoped.state === "scoped";
 				chart.series = scoped.series.map((s) => ({
 					labels: s.labels,
 					points: s.values.map(

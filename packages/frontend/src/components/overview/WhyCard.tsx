@@ -15,6 +15,7 @@ import { formatClock } from "@/lib/format-time";
 import { commandText } from "@/lib/report-view";
 import { cn } from "@/lib/utils";
 import { Card } from "./Card";
+import { commandOf, noteOf } from "./fixes";
 import { plain } from "./SituationCard";
 import type { Overview } from "./use-overview";
 
@@ -26,7 +27,7 @@ const TAG_TONE = {
 } as const;
 
 /**
- * Why (#811): the likely cause from the newest run that concluded, its
+ * Why (#811): the likely cause from the newest run that named one, its
  * evidence (each row opens the step that found it), what was ruled out or
  * not checked, and the lasting fix in place. A live run banners above it;
  * the finding stands until that run reports.
@@ -289,10 +290,16 @@ function Finding({
 					<p className="text-text-2" dir="auto">
 						{plain(fix.detail)}
 					</p>
-					{fix.command && (
+					{commandOf(fix) ? (
 						<code className="mt-1 block font-mono text-mono break-all whitespace-pre-wrap text-text-1">
-							{fix.command}
+							{commandOf(fix)}
 						</code>
+					) : (
+						noteOf(fix) && (
+							<p className="text-text-2" dir="auto">
+								{noteOf(fix)}
+							</p>
+						)
 					)}
 				</div>
 			)}

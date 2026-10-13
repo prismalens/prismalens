@@ -175,6 +175,8 @@ const LEVEL_OUTCOMES: ReadonlySet<PermissionAskOutcome> = new Set([
 
 // ACP v2 folds load into session/resume; one constant to move (#747).
 const SESSION_LOAD = "session/load";
+/** claude-agent-acp's push-only sign-in extension (0.81.1 `dist/auth-status.js`). */
+const AUTH_STATUS_UPDATE = "_auth/status_update";
 
 const DEFAULT_INIT_TIMEOUT_MS = 120_000;
 const DEFAULT_PROMPT_TIMEOUT_MS = 900_000;
@@ -475,6 +477,11 @@ export class AcpSession {
 	private modeReports = 0;
 	/** History updates `session/load` replayed; dropped, never yielded. */
 	replayed = 0;
+	/** `initialize` advertised `_meta.authStatus`: the agent pushes its sign-in on `_auth/status_update`. */
+	pushesAuthStatus = false;
+	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
+	authStatusKind: string | null = null;
+	private authStatusSeen: (() => void) | null = null;
 
 	constructor(private readonly config: AcpSessionConfig) {
 		this.launcher = config.launcher ?? createProcessLauncher();
@@ -570,6 +577,8 @@ export class AcpSession {
 		this.loadSession = init?.agentCapabilities?.loadSession === true;
 		this.takesImages =
 			init?.agentCapabilities?.promptCapabilities?.image === true;
+		this.pushesAuthStatus =
+			init?.agentCapabilities?._meta?.authStatus !== undefined;
 		const params = {
 			cwd: config.cwd,
 			mcpServers: [],
@@ -896,7 +905,28 @@ export class AcpSession {
 				this.trackMode(u);
 				this.push({ kind: "update", update: update as AcpUpdate });
 			}
+		} else if (msg.method === AUTH_STATUS_UPDATE) {
+			const status = msg.params?.authStatus as { kind?: unknown } | undefined;
+			if (typeof status?.kind === "string") {
+				this.authStatusKind = status.kind;
+				this.authStatusSeen?.();
+			}
 		}
+	}
+
+	/** The agent's sign-in kind once it has pushed one, waiting up to `ms`; null if it pushes nothing. */
+	authStatus(ms: number): Promise<string | null> {
+		if (this.authStatusKind !== null || !this.pushesAuthStatus)
+			return Promise.resolve(this.authStatusKind);
+		return new Promise((resolve) => {
+			const done = () => {
+				clearTimeout(timer);
+				this.authStatusSeen = null;
+				resolve(this.authStatusKind);
+			};
+			const timer = setTimeout(done, ms);
+			this.authStatusSeen = done;
+		});
 	}
 
 	/** The harness may change its own mode; `setMode` skips only a mode it knows is current (#778). */

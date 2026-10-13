@@ -9,9 +9,9 @@ import { ago, useNow } from "@/hooks/use-now";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { Card } from "./Card";
-import type { FixOption, FixStage } from "./fixes";
+import { commandOf, type FixOption, type FixStage, noteOf } from "./fixes";
 import type { Overview } from "./use-overview";
-import { changeName } from "./what-changed";
+import { beforeAlert, changeName } from "./what-changed";
 
 const STATE: Record<
 	| FixStage["stage"]
@@ -94,7 +94,12 @@ export function StopImpactCard({
 						{o.changes?.deploy && (
 							<p className="text-text-3">
 								{changeName(o.changes.deploy)} shipped{" "}
-								{beforeAlert(o.changes.deploy.at, incident.createdAt)}.
+								{beforeAlert(
+									o.changes.deploy.at,
+									incident.createdAt,
+									(incident.alerts ?? []).length > 0,
+								)}
+								.
 							</p>
 						)}
 					</div>
@@ -129,13 +134,6 @@ function otherLine(o: Overview, x: FixOption): string {
 	return x.facts[0] ?? x.detail;
 }
 
-function beforeAlert(at: string, started: string): string {
-	const m = Math.round((Date.parse(started) - Date.parse(at)) / 60_000);
-	if (m < 0) return "after the incident opened";
-	if (m < 120) return `${m} ${m === 1 ? "minute" : "minutes"} before the alert`;
-	return `${Math.round(m / 60)} hours before the alert`;
-}
-
 function FixCard({
 	o,
 	option,
@@ -158,6 +156,8 @@ function FixCard({
 	const word = stateWord(stage);
 	// Undo stands until a check runs (spec): after that the timeline holds a verdict about it.
 	const canUndo = option.canUndo && stage.stage === "applied";
+	const command = commandOf(option);
+	const note = noteOf(option);
 	return (
 		<div
 			className="flex flex-col gap-2 rounded-surface bg-surface-2 p-3"
@@ -191,7 +191,7 @@ function FixCard({
 					</Button>
 				)}
 			</div>
-			{option.command ? (
+			{command ? (
 				<div className="flex min-w-0 items-start gap-1.5">
 					<code
 						ref={commandRef}
@@ -200,7 +200,7 @@ function FixCard({
 						className="min-w-0 flex-1 rounded-control bg-canvas px-2.5 py-2 font-mono text-mono break-all whitespace-pre-wrap text-text-1 select-all"
 						data-testid="fix-command"
 					>
-						{option.command}
+						{command}
 					</code>
 					<Button
 						variant="secondary"
@@ -216,9 +216,16 @@ function FixCard({
 					</Button>
 				</div>
 			) : (
-				<p className="text-text-2" dir="auto">
-					{option.detail}
-				</p>
+				<>
+					<p className="text-text-2" dir="auto">
+						{option.detail}
+					</p>
+					{note && note !== option.detail && (
+						<p className="text-text-2" dir="auto" data-testid="fix-note">
+							{note}
+						</p>
+					)}
+				</>
 			)}
 			{option.facts.length > 0 && (
 				<ul className="list-disc pl-4 text-text-2" data-testid="fix-facts">
@@ -229,7 +236,7 @@ function FixCard({
 					))}
 				</ul>
 			)}
-			{flagged && option.command && (
+			{flagged && command && (
 				<p
 					className="flex gap-1.5 text-meta text-warn"
 					data-testid="fix-flagged"

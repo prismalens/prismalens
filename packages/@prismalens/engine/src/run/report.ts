@@ -11,40 +11,10 @@
 import {
 	type Evidence,
 	type InvestigationReport,
-	InvestigationReportSchema,
-	NextStepKindSchema,
-	NextStepSchema,
+	type ModelReport,
+	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
 import { z } from "zod";
-
-const step = NextStepSchema.shape;
-/** An option's optional extras that break their limits are dropped, not the whole report. */
-const ModelNextStepSchema = NextStepSchema.omit({ id: true }).extend({
-	kind: z.preprocess(
-		(v) => (NextStepKindSchema.safeParse(v).success ? v : undefined),
-		step.kind,
-	),
-	command: z.preprocess(
-		(v) => (step.command.safeParse(v).success ? v : undefined),
-		step.command,
-	),
-	facts: z.preprocess(
-		(v) =>
-			Array.isArray(v)
-				? v
-						.filter((f): f is string => typeof f === "string" && f.length > 0)
-						.map((f) => f.slice(0, 300))
-						.slice(0, 3)
-				: undefined,
-		step.facts,
-	),
-});
-
-/** Host-stamped fields the model must not author. */
-export const ModelReportSchema = InvestigationReportSchema.omit({
-	fidelity: true,
-}).extend({ nextSteps: z.array(ModelNextStepSchema) });
-export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 export function reportJsonSchema(): string {
 	return JSON.stringify(z.toJSONSchema(ModelReportSchema));

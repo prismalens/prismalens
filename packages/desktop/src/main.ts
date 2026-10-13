@@ -58,12 +58,15 @@ import { appMenuTemplate } from "./menu.js";
 import {
 	askNotificationText,
 	askSnapshot,
+	holdUntilClicked,
 	type InvestigationSummary,
 	newlyAsking,
 	newlyFinished,
 	notificationText,
+	reveal,
 	runningCount,
 	runningLabel,
+	runPath,
 	snapshot,
 } from "./notifications.js";
 import {
@@ -127,6 +130,7 @@ let portOverride: number | null = null;
 
 let child: ChildProcess | null = null;
 let window: BrowserWindow | null = null;
+const notifications = new Set<Notification>();
 let tray: Tray | null = null;
 let baseUrl = "";
 /** The window's device token, also the Bearer the notification poll sends. */
@@ -648,8 +652,7 @@ function openWindow(path = "/"): void {
 	// `second-instance` and `activate` can fire while the backend is booting.
 	if (!ready) return;
 	if (window) {
-		window.show();
-		window.focus();
+		reveal(window);
 		if (path !== "/") window.loadURL(`${baseUrl}${path}`);
 		return;
 	}
@@ -843,20 +846,14 @@ function startPolling(): void {
 				for (const inv of newlyFinished(previous, current)) {
 					const text = notificationText(inv);
 					const n = new Notification(text);
-					n.on("click", () =>
-						openWindow(inv.incidentId ? `/incidents/${inv.incidentId}` : "/"),
-					);
+					n.on("click", () => openWindow(runPath(inv)));
+					holdUntilClicked(notifications, n);
 					n.show();
 				}
 				for (const ask of newlyAsking(asking, current)) {
 					const n = new Notification(askNotificationText(ask));
-					n.on("click", () =>
-						openWindow(
-							ask.incidentId
-								? `/incidents/${ask.incidentId}/conversation?investigation=${ask.id}`
-								: "/",
-						),
-					);
+					n.on("click", () => openWindow(runPath(ask)));
+					holdUntilClicked(notifications, n);
 					n.show();
 				}
 			}
@@ -914,6 +911,7 @@ function startUpdateChecks(): void {
 				body: `You have ${current}. Click to download the new version.`,
 			});
 			n.on("click", () => void shell.openExternal(releaseUrl(found)));
+			holdUntilClicked(notifications, n);
 			n.show();
 		}
 	};

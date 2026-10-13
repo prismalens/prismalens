@@ -16,13 +16,19 @@ import { viewName } from "@/components/run/run-labels";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { failureWords } from "@/lib/failure-words";
+import { useHarnesses } from "@/lib/api/hooks";
 import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
-import { type NextActionId, nextStrip } from "./fixes";
+import {
+	causeCategory,
+	failedStrip,
+	type NextActionId,
+	nextStrip,
+	startsRun,
+} from "./fixes";
 import type { Overview } from "./use-overview";
 
 const TONE_BG = {
@@ -50,13 +56,17 @@ const TONE_DOT = {
 export function SituationCard({
 	o,
 	onAction,
+	canStart = true,
 }: {
 	o: Overview;
 	onAction: (id: NextActionId) => void;
+	/** The box's agent is known; until then a start would send no harness. */
+	canStart?: boolean;
 }) {
 	const { incident, runs } = o.record;
 	const now = useNow(30_000) ?? Date.now();
 	const [open, setOpen] = useState(false);
+	const harnesses = useHarnesses();
 	const report = o.report;
 	const waiting =
 		!!o.live && (o.latestRun.awaiting || !!o.live.awaitingApprovalAt);
@@ -80,11 +90,12 @@ export function SituationCard({
 	else if (trend === "steady") facts.push({ k: "Trend", v: "Steady" });
 	else if (trend === "clear")
 		facts.push({ k: "Trend", v: "Recovered", tone: "text-ok" });
-	if (report?.rootCauseCategory)
-		facts.push({
-			k: "Cause",
-			v: ROOT_CAUSE_CATEGORY_LABEL[report.rootCauseCategory],
-		});
+	const category = causeCategory(
+		incident.actualCauseCategory,
+		report?.rootCauseCategory,
+	);
+	if (category)
+		facts.push({ k: "Cause", v: ROOT_CAUSE_CATEGORY_LABEL[category] });
 	if (report?.culprit?.changeRef)
 		facts.push({ k: "Change", v: report.culprit.changeRef });
 	if (report?.culprit?.mechanism)
@@ -92,8 +103,16 @@ export function SituationCard({
 
 	const latest = o.latest;
 	const latestState = o.latestRun.state;
+	const failedRun = latest
+		? failedStrip(
+				viewName(runs, latest),
+				latest.error,
+				harnesses.data?.harnesses.find((h) => h.id === latest.harness)?.label,
+			)
+		: null;
 	const strip = nextStrip({
 		ended: incident.status === "closed",
+		cause: incident.actualCause,
 		mergedInto: incident.mergedInto,
 		refiredAs: incident.refiredAs,
 		cleared: o.cleared,
@@ -105,19 +124,15 @@ export function SituationCard({
 					waiting,
 				}
 			: null,
-		failed:
-			latest && latestState === "failed"
-				? {
-						name: viewName(runs, latest),
-						reason: failureWords(latest.error).what,
-					}
-				: null,
+		failed: latest && latestState === "failed" ? failedRun : null,
 		reported: !!report,
 		option: o.current,
 		stage: o.stage,
 		checkable: o.checkable,
 		hasNextOption: o.others.length > 0,
 		unit: o.impact.impact?.metric?.unit,
+		threshold: o.impact.impact?.metric?.threshold,
+		flagged: o.flagged,
 	});
 
 	return (
@@ -197,7 +212,7 @@ export function SituationCard({
 						variant="secondary"
 						className="h-7 shrink-0 bg-surface-3 hover:bg-surface-4"
 						onClick={() => strip.secondary && onAction(strip.secondary.id)}
-						disabled={o.busy}
+						disabled={o.busy || (startsRun(strip.secondary.id) && !canStart)}
 						data-testid={`next-${strip.secondary.id}`}
 					>
 						{strip.secondary.label}
@@ -207,7 +222,7 @@ export function SituationCard({
 					<Button
 						className="h-7 shrink-0"
 						onClick={() => strip.primary && onAction(strip.primary.id)}
-						disabled={o.busy}
+						disabled={o.busy || (startsRun(strip.primary.id) && !canStart)}
 						data-testid={`next-${strip.primary.id}`}
 					>
 						{strip.primary.label}

@@ -18,9 +18,14 @@ export class HarnessProbeService {
 	constructor(private readonly models: HarnessModelsService) {}
 
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
-		const result = await probeHarness(id);
-		if (result.outcome === "answers-acp")
-			this.models.remember(id, result.models);
+		const probed = await probeHarness(id);
+		if (probed.outcome === "answers-acp")
+			this.models.remember(id, probed.models);
+		// The handshake passes signed out; the agent's own push says so (w8-9).
+		const result: typeof probed =
+			probed.outcome === "answers-acp" && probed.signedOut === true
+				? { ...probed, outcome: "sign-in-needed", detail: "sign in needed" }
+				: probed;
 		const effort = result.effort
 			? {
 					id: result.effort.id,

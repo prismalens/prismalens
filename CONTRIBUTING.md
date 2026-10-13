@@ -17,7 +17,7 @@ inbound=outbound. This section will be updated when that happens.
 
 Alongside the DCO, a one-time **Contributor License Agreement** ([CLA.md](CLA.md))
 will apply. It exists purely for IP hygiene — it keeps the Project's copyright in
-one clean place, as is standard for open-core projects (Grafana, Sentry) — and it
+one clean place, as is standard for open-core projects — and it
 does not change the license: your contributions remain licensed to everyone under
 Apache-2.0, inbound = outbound. It is **not in force yet**: no CLA check runs on
 pull requests while outside code contributions remain closed, and the signing
@@ -30,8 +30,8 @@ required of you until then.
   through a pull request; direct pushes to the trunk are not allowed (for
   anyone, including the maintainer).
 - **Never commit secrets.** No API keys, tokens, connection strings, or private
-  content. prismalens runs against real infrastructure under read-only
-  credentials by design — keep that contract intact.
+  content. prismalens runs against real services' code and telemetry; keep
+  fixtures and log excerpts synthetic.
 - Keep PRs focused. One logical change per PR makes review fast.
 
 ## Development setup

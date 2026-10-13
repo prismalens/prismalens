@@ -45,6 +45,7 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
+import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
 import { focusChosen, roveKeys } from "./rove";
@@ -171,7 +172,16 @@ export function chipModel(h: HarnessStatus | undefined, model: string): string {
 export function unreadyReason(h: HarnessStatus): string | null {
 	if (!h.installed || !h.checked || h.checked.outcome === "answers-acp")
 		return null;
+	// The same words a run that fails on sign-in shows (#831 w7-3).
+	if (h.checked.outcome === "sign-in-needed")
+		return failureLine(notSignedIn(h.label));
 	return `${h.label}: ${h.checked.detail}`;
+}
+
+/** The run gate's line: the reason, then where to check it, one full stop each (#673 w9-1). */
+export function unreadyLine(h: HarnessStatus): string | null {
+	const why = unreadyReason(h)?.replace(/[.\s]+$/, "");
+	return why ? `${why}. Check it in Settings, Agent.` : null;
 }
 
 function modelState(h: HarnessStatus): "list" | "pending" | "own" {
@@ -885,6 +895,12 @@ export function AccessChip({
 									l === level && "bg-surface-3",
 								)}
 								data-testid={`access-level-${l}`}
+								// One line per level shows (#831 w6-12); the agent's mode and sandbox wait on hover.
+								title={
+									harness
+										? `${levelRowLine(harness, l)} ${sandboxLine(sandbox)}`
+										: undefined
+								}
 							>
 								{levelIcon(sandbox) === "lock" ? (
 									<Lock className="size-3.5 text-text-2" aria-hidden />
@@ -909,21 +925,6 @@ export function AccessChip({
 									data-testid="access-line"
 								>
 									{ACCESS_LEVEL_LINE[l]}
-								</span>
-								{harness && (
-									<span
-										className="col-start-2 col-end-4 text-meta text-text-2"
-										data-testid="access-row-line"
-									>
-										{levelRowLine(harness, l)}
-									</span>
-								)}
-								<span
-									className="col-start-2 col-end-4 truncate text-meta text-text-3"
-									title={sandbox?.reason}
-									data-testid="access-sandbox"
-								>
-									{sandboxLine(sandbox)}
 								</span>
 							</button>
 						);

@@ -171,11 +171,12 @@ describe("FixesService", () => {
 			stepId: id,
 			event: "fix_check",
 			verdict: "not_yet",
+			retryable: false,
 			checkedAt: result.checkedAt,
 		});
 		expect(entry?.title).not.toContain("5");
 		const option = (await fixes.forInvestigation(meta.investigationId)).options[0];
-		expect(option).toMatchObject({ lastCheck: { verdict: "not_yet" }, canUndo: false });
+		expect(option).toMatchObject({ lastCheck: { verdict: "not_yet", retryable: false }, canUndo: false });
 		await expect(fixes.undo(id)).rejects.toMatchObject({ code: "CONFLICT" });
 	});
 

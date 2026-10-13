@@ -24,6 +24,11 @@ const SYSTEMS: [RegExp, string][] = [
 const match = (ua: string, table: [RegExp, string][]) =>
 	table.find(([re]) => re.test(ua))?.[1];
 
+/** The user agent names a browser this file knows, not only a system. */
+export function namesBrowser(userAgent: string): boolean {
+	return !!match(userAgent, BROWSERS);
+}
+
 /** "Firefox on Linux" from a user agent; whichever half is known, or undefined. */
 export function guessDeviceName(
 	userAgent: string,

@@ -82,13 +82,11 @@ export function mcpTool(name: string): { tool: string; server: string } | null {
  * (acp-adapter.ts deriveSource): `git show e87ad72`, `read api/books.py`.
  */
 export function commandText(source: string, cwd?: string | null): string {
-	const m = /^(.*?)\((\{[\s\S]*\})\)$/.exec(source.trim());
-	const name = (m?.[1] ?? source).replace(/^`(.*)`$/, "$1").trim();
+	const { name: raw, args } = splitSource(source.trim());
+	const name = raw.replace(/^`([\s\S]*)`$/, "$1").trim();
 	const mcp = mcpTool(name);
 	if (mcp) return `${mcp.tool} (${mcp.server})`;
-	if (!m?.[2]) return shortPath(name, cwd);
-	try {
-		const args = JSON.parse(m[2]) as Record<string, unknown>;
+	if (args) {
 		const command = args.command ?? args.cmd;
 		if (typeof command === "string" && command.trim())
 			return shortPath(command.trim(), cwd);
@@ -104,10 +102,30 @@ export function commandText(source: string, cwd?: string | null): string {
 							: "read";
 			return `${verb} ${shortPath(path, cwd)}`;
 		}
-	} catch {
-		// Not JSON after all: the name is the best there is.
 	}
 	return shortPath(name, cwd);
+}
+
+/** `name(args)` split where the rest parses as the args object; a name may span lines (#673 w8-11). */
+function splitSource(source: string): {
+	name: string;
+	args: Record<string, unknown> | null;
+} {
+	if (source.endsWith("})"))
+		for (const m of Array.from(source.matchAll(/\(\{/g))) {
+			const at = m.index ?? 0;
+			try {
+				const args: unknown = JSON.parse(source.slice(at + 1, -1));
+				if (args && typeof args === "object" && !Array.isArray(args))
+					return {
+						name: source.slice(0, at),
+						args: args as Record<string, unknown>,
+					};
+			} catch {
+				// Not the args yet: a `({` inside the command itself.
+			}
+		}
+	return { name: source, args: null };
 }
 
 export interface Refusal {

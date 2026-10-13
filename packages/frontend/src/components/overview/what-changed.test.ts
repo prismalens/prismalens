@@ -9,6 +9,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { RunRef } from "@/components/incidents/record-context";
 import {
+	beforeAlert,
 	changeDetail,
 	changeName,
 	changesProblem,
@@ -76,6 +77,15 @@ describe("changeName", () => {
 	});
 });
 
+describe("beforeAlert (#673 w8-17)", () => {
+	it("times a change against the alert, or a manual incident's opening", () => {
+		const opened = "2026-10-12T22:37:00Z";
+		expect(beforeAlert("2026-10-12T22:02:00Z", opened, true)).toBe("35 minutes before the alert");
+		expect(beforeAlert("2026-10-12T22:02:00Z", opened, false)).toBe("35 minutes before the incident opened");
+		expect(beforeAlert("2026-10-12T18:37:00Z", opened, false)).toBe("4 hours before the incident opened");
+	});
+});
+
 describe("mergeTimeline", () => {
 	it("merges entries and changes newest first, folding a run's own entries", () => {
 		const runs = [run({})];
@@ -105,6 +115,51 @@ describe("mergeTimeline", () => {
 			"Deploy v1.42: Sort notes in Python",
 		]);
 		expect(rows[1]?.runId).toBe("r1");
+	});
+
+	it("says a Continue continued the run, and keeps the run's own start (#831 w6-29)", () => {
+		const r1 = { investigationId: "r1" };
+		const rows = mergeTimeline(
+			[
+				entry({
+					type: "investigation_started",
+					title: "Investigation resumed",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:46:00Z",
+				}),
+				entry({
+					type: "investigation_completed",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:11:00Z",
+				}),
+				entry({
+					type: "investigation_started",
+					title: "Agent started",
+					metadata: r1,
+					occurredAt: "2026-10-11T13:09:00Z",
+				}),
+			],
+			[],
+			[run({})],
+		);
+		expect(rows.map((r) => r.text)).toEqual([
+			"Run 1 continued",
+			"Run 1 concluded: likely cause",
+			"Run 1 started",
+		]);
+	});
+
+	it("keeps the end before a Continue while the Continue works (#673 w8-12)", () => {
+		const r1 = { investigationId: "r1" };
+		const ended = (title: string) =>
+			entry({ type: "investigation_completed", title, metadata: r1 });
+		const working = { status: "running" } as const;
+		const text = (title: string, extra: Partial<RunRef>) =>
+			mergeTimeline([ended(title)], [], [run({ ...working, ...extra })])[0]?.text;
+		expect(text("Investigation completed", { rootCause: null })).toBe("Run 1 concluded: no cause named");
+		expect(text("Investigation completed", {})).toBe("Run 1 concluded: likely cause");
+		expect(text("Investigation stopped", { hasReport: false })).toBe("Run 1 stopped");
+		expect(text("Investigation failed", { hasReport: false })).toBe("Run 1 failed");
 	});
 
 	describe("shows the reason the backend wrote (#673 w6-25, w6-26)", () => {

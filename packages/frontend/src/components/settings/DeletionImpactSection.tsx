@@ -88,17 +88,34 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 interface DeletionImpactSectionProps {
 	impact: DeletionImpact;
 	showConnections?: boolean;
+	/** Said when nothing else is affected, so an empty preview still answers (#831 w6-7). */
+	emptyLine?: string;
 }
+
+/** What a service loses with the connection, in words. */
+const SERVICE_IMPACT: Record<
+	DeletionImpact["affectedServices"][number]["impact"],
+	string
+> = {
+	repo_link_lost: "loses its repository link",
+	integration_override_lost: "loses its own setting for this connection",
+};
 
 export function DeletionImpactSection({
 	impact,
 	showConnections = true,
+	emptyLine,
 }: DeletionImpactSectionProps) {
 	const hasResources =
 		impact.repositories.length > 0 || impact.affectedServices.length > 0;
 
 	return (
 		<div className="space-y-2 py-2 text-body">
+			{!hasResources && emptyLine && (
+				<p className="text-meta text-text-2" data-testid="deletion-impact-none">
+					{emptyLine}
+				</p>
+			)}
 			{showConnections && impact.connections.length > 0 && (
 				<div className="text-body font-medium">
 					{impact.connections.length} connection
@@ -129,7 +146,7 @@ export function DeletionImpactSection({
 					items={impact.affectedServices.map((s) => ({
 						id: `${s.id}-${s.impact}`,
 						label: s.name,
-						badge: s.impact.replace(/_/g, " "),
+						badge: SERVICE_IMPACT[s.impact],
 					}))}
 				/>
 			)}

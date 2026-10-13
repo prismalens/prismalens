@@ -615,7 +615,13 @@ export class AlertPullService implements OnApplicationBootstrap {
 					}
 					if (connections.length === 0) continue;
 					await this.stampListed(lists.present, at);
-					await this.resolveAbsent(lists, new Set(), at);
+					// The boot pull's line counts only its own clears; this path logs the rest (#831).
+					const resolved = await this.resolveAbsent(lists, new Set(), at);
+					if (resolved > 0) {
+						this.logger.log(
+							`Alertmanager check after webhook: ${resolved} resolved by absence`,
+						);
+					}
 				} catch (err) {
 					this.logger.warn(`Alertmanager check after webhook failed: ${err}`);
 				}

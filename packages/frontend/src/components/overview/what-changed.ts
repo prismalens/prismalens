@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	IncidentChange,
-	IncidentChanges,
-	TimelineEntryWithRelations,
+import {
+	type IncidentChange,
+	type IncidentChanges,
+	isRunStateLive,
+	type TimelineEntryWithRelations,
 } from "@prismalens/contracts";
 import type { RunRef } from "@/components/incidents/record-context";
 import { entryTitle } from "@/components/incidents/TimelineList";
-import { refRunState, runOutcome, viewName } from "@/components/run/run-labels";
+import {
+	refRunState,
+	reportOutcome,
+	runOutcome,
+	viewName,
+} from "@/components/run/run-labels";
 
 export type RowTone = "danger" | "accent" | "live" | "ok" | "plain";
 
@@ -48,6 +54,19 @@ export function changeName(c: IncidentChange): string {
 	}
 }
 
+/** How long before the alert a change shipped; a manual incident's has no alert, so its opening (#673 w8-17). */
+export function beforeAlert(
+	at: string,
+	started: string,
+	hasAlert: boolean,
+): string {
+	const m = Math.round((Date.parse(started) - Date.parse(at)) / 60_000);
+	const what = hasAlert ? "the alert" : "the incident opened";
+	if (m < 0) return "after the incident opened";
+	if (m < 120) return `${m} ${m === 1 ? "minute" : "minutes"} before ${what}`;
+	return `${Math.round(m / 60)} hours before ${what}`;
+}
+
 /** What the change touched, or its title when the host gave no files. */
 export function changeDetail(c: IncidentChange): string {
 	if (c.files && c.files.count > 0) {
@@ -60,6 +79,14 @@ export function changeDetail(c: IncidentChange): string {
 	return c.title;
 }
 
+/**
+ * A Continue on a finished run: the API logs it as `investigation_started`,
+ * titled "... resumed" (#831 w6-29), so it never reads as the run's start.
+ */
+function isResume(e: TimelineEntryWithRelations): boolean {
+	return e.type === "investigation_started" && /\bresumed$/i.test(e.title);
+}
+
 function entryRow(
 	e: TimelineEntryWithRelations,
 	runs: RunRef[],
@@ -68,6 +95,15 @@ function entryRow(
 	const run =
 		typeof id === "string" ? (runs.find((r) => r.id === id) ?? null) : null;
 	const base = { key: `t:${e.id}`, at: e.occurredAt };
+	if (run && isResume(e)) {
+		if (run.kind === "chat") return null;
+		return {
+			...base,
+			text: `${viewName(runs, run)} continued`,
+			tone: refRunState(run) === "working" ? "live" : "accent",
+			runId: run.id,
+		};
+	}
 	if (run && e.type === "investigation_started") {
 		if (run.kind === "chat")
 			return {
@@ -85,8 +121,21 @@ function entryRow(
 	}
 	if (run && e.type === "investigation_completed") {
 		if (run.kind === "chat") return null;
-		const state = refRunState(run);
-		const outcome = runOutcome(run);
+		const now = refRunState(run);
+		// During a Continue the row is the end before it, read like the report heading (#673 w8-12, #831 w6-21).
+		const state = !isRunStateLive(now)
+			? now
+			: run.hasReport
+				? "done"
+				: /stopped/i.test(e.title)
+					? "stopped"
+					: "failed";
+		const outcome =
+			state === now
+				? runOutcome(run)
+				: state === "done"
+					? reportOutcome(run.rootCause)
+					: state;
 		return {
 			...base,
 			text:
@@ -153,7 +202,8 @@ export function mergeTimeline(
 			continue;
 		const row = entryRow(e, runs);
 		if (!row) continue;
-		const once = `${e.type}:${String(id)}`;
+		// Each Continue is its own row; the start and the end show once per run.
+		const once = isResume(e) ? e.id : `${e.type}:${String(id)}`;
 		if (own && seenRun.has(once)) continue;
 		if (own) seenRun.add(once);
 		rows.push(row);

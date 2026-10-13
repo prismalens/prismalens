@@ -6,6 +6,26 @@ import type { ImpactChart, MetricUnit } from "@prismalens/contracts";
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
 
+/** Why the Impact card has no chart, as one sentence; the server's reason may end in its own full stop. */
+export function noChartText(
+	impact: Pick<ImpactChart, "state" | "expression">,
+): string {
+	switch (impact.state) {
+		case "expression_unknown": {
+			const reason = (
+				impact.expression.reason ?? "the alert's query is not known"
+			).replace(/\.+\s*$/, "");
+			return `No chart: ${reason}.`;
+		}
+		case "too_broad":
+			return "No chart: the query's answer is too large to show, 50 series or more or over 2 MB.";
+		case "not_configured":
+			return "Connect Prometheus to see the trend and check a fix";
+		default:
+			return "No chart: the metrics source returned no data for the alert's query in the last 24 hours.";
+	}
+}
+
 /** A firing span's place on the 7-day strip, in percent of its width. */
 export function stripSpan(
 	span: { start: string; end: string | null },

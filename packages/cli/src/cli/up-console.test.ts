@@ -9,6 +9,7 @@ import {
 	displayUrl,
 	healthUrl,
 	networkBindWarning,
+	noAgentLine,
 	portFree,
 	portInUseLine,
 	readTelemetryState,
@@ -131,6 +132,15 @@ describe("waitForReady", () => {
 				intervalMs: 1,
 			}),
 		).resolves.toBe(false);
+	});
+});
+
+describe("noAgentLine (#673 S7)", () => {
+	it("is one line naming pl doctor when no agent is installed, and null otherwise", () => {
+		expect(noAgentLine([{ installed: false }, { installed: false }])).toBe(
+			"No coding agent on PATH: investigations need one. `pl doctor` shows how to install one.",
+		);
+		expect(noAgentLine([{ installed: false }, { installed: true }])).toBe(null);
 	});
 });
 

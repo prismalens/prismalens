@@ -36,6 +36,7 @@ import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { investigationKeys } from "@/lib/api/hooks/use-investigations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { isNotFound } from "@/lib/not-found";
 import type { RunVerb } from "@/lib/run-verb";
 
 export const Route = createFileRoute("/_authenticated/incidents/$id")({
@@ -362,16 +363,3 @@ function IncidentSkeleton() {
 		</div>
 	);
 }
-
-/** A 404, or an id that is no incident id at all (the API refuses it as a bad request). */
-function isNotFound(error: unknown, id: string): boolean {
-	if (!UUID.test(id)) return true;
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"status" in error &&
-		(error as { status?: number }).status === 404
-	);
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -79,6 +79,8 @@ export const ImpactChartSchema = z.object({
 		/** Why it is unknown, in words for the card ("the rule is no longer loaded", "3 rules share this name"). */
 		reason: z.string().nullable(),
 	}),
+	/** Check now can judge this alert: its own rule's single threshold with no range function (Q1c A). */
+	checkable: z.boolean().default(false),
 	/** What is charted; null when nothing is. A "service" metric is the service's, not this alert's. */
 	metric: z
 		.object({
@@ -162,7 +164,12 @@ export const FixOptionSchema = z.object({
 	readOnly: z.boolean(),
 	appliedAt: DateStringSchema.nullable(),
 	lastCheck: z
-		.object({ verdict: FixVerdictSchema, at: DateStringSchema })
+		.object({
+			verdict: FixVerdictSchema,
+			at: DateStringSchema,
+			/** Absent on a check saved before it was kept. */
+			retryable: z.boolean().optional(),
+		})
 		.nullable(),
 	/** Undo is open from "I applied it" until the first check. */
 	canUndo: z.boolean(),

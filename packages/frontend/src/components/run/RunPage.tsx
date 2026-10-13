@@ -35,7 +35,7 @@ import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
-import { failureSentence } from "@/lib/failure-sentence";
+import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
 import { askTitle } from "@/lib/run-asks";
@@ -52,6 +52,7 @@ import {
 import {
 	codeChip,
 	dayClock,
+	reportOutcome,
 	runOutcome,
 	startedBy,
 	startedWhy,
@@ -247,7 +248,7 @@ export function RunPage() {
 	const transcriptReport =
 		report && inv && !chat
 			? {
-					title: `${name} concluded: ${runOutcome({ ...inv, hasReport: true })}`,
+					title: `${name} concluded: ${reportOutcome(report.rootCause)}`,
 					summary: report.summary,
 				}
 			: null;
@@ -438,7 +439,7 @@ function stripWords(
 		case "failed":
 			return {
 				label: chat ? "Ask, failed" : `${who} failed`,
-				detail: failureSentence(agent, inv.error).said,
+				detail: failureStatusLine(agent, inv.error),
 			};
 		case "stopped":
 			return {
@@ -493,7 +494,7 @@ function summaryFacts(
 			? {
 					text: "Failed",
 					tone: "danger",
-					sub: failureSentence(ctx.agent, inv.error).said,
+					sub: failureStatusLine(ctx.agent, inv.error),
 				}
 			: state === "stopped"
 				? { text: "Stopped by you" }

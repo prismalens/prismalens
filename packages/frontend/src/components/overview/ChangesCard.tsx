@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "./Card";
 import type { Overview } from "./use-overview";
 import {
+	beforeAlert,
 	changeDetail,
 	changeName,
 	changesProblem,
@@ -75,6 +76,7 @@ export function ChangesCard({ o }: { o: Overview }) {
 						started={incident.createdAt}
 						url={deploy.url}
 						now={now}
+						hasAlert={(incident.alerts ?? []).length > 0}
 					/>
 				)}
 				{problem && (
@@ -202,6 +204,7 @@ function DeployCard({
 	started,
 	url,
 	now,
+	hasAlert,
 }: {
 	name: string;
 	detail: string;
@@ -209,12 +212,11 @@ function DeployCard({
 	started: string;
 	url: string | null;
 	now: number | null;
+	hasAlert: boolean;
 }) {
 	const m = Math.round((Date.parse(started) - Date.parse(at)) / 60_000);
 	const rel =
-		m >= 0 && m < 120
-			? `, ${m} ${m === 1 ? "minute" : "minutes"} before the alert`
-			: "";
+		m >= 0 && m < 120 ? `, ${beforeAlert(at, started, hasAlert)}` : "";
 	const body = (
 		<>
 			<GitCommitHorizontal

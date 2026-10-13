@@ -12,6 +12,7 @@ import {
 	mapStopReason,
 	mapToolCategory,
 	pickName,
+	RULE_DENIED,
 	unwrapInput,
 } from "./acp-adapter.js";
 
@@ -334,6 +335,35 @@ describe("AcpAdapter.normalize", () => {
 			expiresAt: "2026-06-29T00:05:00.000Z",
 		});
 		expect(CanonicalEventSchema.safeParse(event).success).toBe(true);
+	});
+});
+
+describe("a call Claude Code's own rules refused (#673 w7-6)", () => {
+	it("Given a permission-rule failure, Then the result says a rule denied it, not the user", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.events({ ...execToolCall, toolCallId: "t_rule" });
+		// The live frame from walk 7 (build 83ce2d3), trimmed to what it carries.
+		const [result] = adapter.events({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "t_rule",
+			status: "failed",
+			_meta: {
+				claudeCode: { toolName: "Bash", nonExecutionKind: "permission-rule" },
+			},
+			content: [
+				{
+					type: "content",
+					content: {
+						type: "text",
+						text: "Permission to use Bash with command npm run dev has been denied.",
+					},
+				},
+			],
+		});
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: { ok: false, error: RULE_DENIED, preview: RULE_DENIED },
+		});
 	});
 });
 

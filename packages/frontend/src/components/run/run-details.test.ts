@@ -99,6 +99,77 @@ describe("evidenceSections (#811 data mapping)", () => {
 		expect(out[1]?.rows[0]).toMatchObject({ text: "A slow database", step: 3 });
 	});
 
+	it("heads a run that named no cause with the no-cause words (#673 w8-13)", () => {
+		const out = evidenceSections(inv({ report: { ...report, rootCause: null } }), stepOf, {
+			live: false,
+			standing: null,
+		});
+		expect(out[0]?.title).toBe("No cause named");
+		expect(out[0]?.rows[0]).toMatchObject({ text: "The in-memory sort" });
+		const bare = evidenceSections(
+			inv({ report: { ...report, rootCause: null, hypotheses: [] } }),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		expect(bare[0]).toMatchObject({ title: "No cause named", rows: [{ text: "This run named no cause." }] });
+		expect(out.map((s) => s.title)).not.toContain("Likely cause");
+	});
+
+	it("says an item taken from the alert came from the alert, where a step would sit (#831 w6-18)", () => {
+		const fromAlert = {
+			observation: "Alert p99 is 995.6ms",
+			source: "alert payload",
+			direction: "supports" as const,
+			status: "inferred" as const,
+			toolCallId: null,
+		};
+		const out = evidenceSections(
+			inv({
+				report: {
+					...report,
+					hypotheses: [
+						{
+							statement: "The in-memory sort",
+							status: "supported",
+							evidence: [
+								fromAlert,
+								...(report.hypotheses[0]?.evidence ?? []),
+							],
+						},
+					],
+				},
+			}),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		const rows = out[0]?.rows ?? [];
+		expect(rows.find((r) => r.text === fromAlert.observation)).toMatchObject({
+			from: "From the alert",
+		});
+		expect(rows.find((r) => r.text === "Over 200 notes is 2.9s")?.from).toBeUndefined();
+	});
+
+	it("needs the alert payload named, not any mention of an alert (#834 review)", () => {
+		const nearMiss = {
+			observation: "The rule waits 5m",
+			source: "alert rule documentation",
+			direction: "supports" as const,
+			status: "inferred" as const,
+			toolCallId: null,
+		};
+		const out = evidenceSections(
+			inv({
+				report: {
+					...report,
+					hypotheses: [{ statement: "The in-memory sort", status: "supported", evidence: [nearMiss] }],
+				},
+			}),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		expect(out[0]?.rows.find((r) => r.text === nearMiss.observation)?.from).toBeUndefined();
+	});
+
 	it("says a live run has no conclusion and whose finding stands", () => {
 		const [so] = evidenceSections(inv({ status: "running" }), stepOf, {
 			live: true,

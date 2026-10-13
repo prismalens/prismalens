@@ -42,6 +42,7 @@ interface FixEvent {
 	stepId: string;
 	event: string;
 	verdict: string | null;
+	retryable?: boolean;
 	at: Date;
 }
 
@@ -143,6 +144,7 @@ export class FixesService {
 					stepId,
 					event: CHECKED,
 					verdict: outcome.verdict,
+					retryable: outcome.retryable,
 					checkedAt: checkedAt.toISOString(),
 				}),
 			},
@@ -224,6 +226,7 @@ export class FixesService {
 					stepId: m.stepId,
 					event: m.event,
 					verdict: typeof m.verdict === "string" ? m.verdict : null,
+					retryable: typeof m.retryable === "boolean" ? m.retryable : undefined,
 					at: e.occurredAt,
 				},
 			];
@@ -269,7 +272,13 @@ export function optionOf(
 		appliedAt: appliedAt?.toISOString() ?? null,
 		lastCheck:
 			last && verdict.success
-				? { verdict: verdict.data, at: last.at.toISOString() }
+				? {
+						verdict: verdict.data,
+						at: last.at.toISOString(),
+						...(last.retryable === undefined
+							? {}
+							: { retryable: last.retryable }),
+					}
 				: null,
 		canUndo: !!appliedAt && checks.length === 0,
 	};

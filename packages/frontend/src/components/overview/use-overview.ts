@@ -4,8 +4,10 @@
 import { isAlertFiring, isRunStateLive } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RunRef } from "@/components/incidents/record-context";
-import { useIncidentRecord } from "@/components/incidents/record-context";
+import {
+	reportedRun,
+	useIncidentRecord,
+} from "@/components/incidents/record-context";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import { refRunState } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +18,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { copyOrSelect } from "./clipboard";
 import {
 	AUTO_CHECK_MS,
+	commandOf,
 	type FixCheck,
 	type FixOption,
 	type FixStage,
@@ -28,11 +31,6 @@ import {
 const SLOW_MS = 10_000;
 
 const keyOf = (o: FixOption) => o.id ?? `#${o.index}`;
-
-/** The newest investigation (not an Ask) that ended with a report: its finding stands until a newer one. */
-export function reportedRun(runs: RunRef[]): RunRef | null {
-	return runs.find((r) => r.kind !== "chat" && r.hasReport) ?? null;
-}
 
 /**
  * Everything the overview reads (#811): the standing finding and its fixes
@@ -89,7 +87,7 @@ export function useOverview() {
 		return () => window.clearTimeout(t);
 	}, [fetching]);
 	const impact = impactQuery.data ?? null;
-	const checkable = impact?.expression.state === "recovered";
+	const checkable = impact?.checkable ?? false;
 
 	const [allChanges, setAllChanges] = useState(false);
 	const changes = useQuery({
@@ -206,8 +204,9 @@ export function useOverview() {
 	}, [dueAt, current]);
 
 	const copy = async (o: FixOption, el: HTMLElement | null) => {
-		if (!o.command) return false;
-		const ok = await copyOrSelect(o.command, el);
+		const command = commandOf(o);
+		if (!command) return false;
+		const ok = await copyOrSelect(command, el);
 		setCopied((c) => ({ ...c, [keyOf(o)]: ok ? "ok" : "failed" }));
 		return ok;
 	};

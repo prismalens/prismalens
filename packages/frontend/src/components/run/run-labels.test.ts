@@ -7,8 +7,10 @@ import {
 	codeChip,
 	dayClock,
 	firingWord,
+	reportOutcome,
 	runAge,
 	runLabel,
+	runOutcome,
 	shortCredential,
 	viewName,
 } from "./run-labels";
@@ -61,6 +63,15 @@ describe("run labels (#811)", () => {
 		const now = new Date(2026, 9, 10, 13, 0).getTime();
 		expect(dayClock(new Date(2026, 9, 10, 1, 5), now)).toBe("Today 01:05");
 		expect(dayClock(new Date(2026, 9, 9, 23, 30), now)).toBe("Yesterday 23:30");
+	});
+});
+
+describe("reportOutcome (#831 w6-21)", () => {
+	it("reads the report's own cause, not the run's live state during a Continue", () => {
+		const continuing = ref({ status: "running", hasReport: true, rootCause: "sorts in Python" });
+		expect(runOutcome(continuing)).toBe("investigating");
+		expect(reportOutcome(continuing.rootCause)).toBe("likely cause");
+		expect(reportOutcome(null)).toBe("no cause named");
 	});
 });
 

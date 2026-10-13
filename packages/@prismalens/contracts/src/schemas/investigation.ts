@@ -221,6 +221,38 @@ export const InvestigationReportSchema = z.object({
 		.optional(),
 });
 
+const step = NextStepSchema.shape;
+/** An option's optional extras that break their limits are dropped, not the whole report. */
+const ModelNextStepSchema = NextStepSchema.omit({ id: true }).extend({
+	kind: z.preprocess(
+		(v) => (NextStepKindSchema.safeParse(v).success ? v : undefined),
+		step.kind,
+	),
+	command: z.preprocess(
+		(v) => (step.command.safeParse(v).success ? v : undefined),
+		step.command,
+	),
+	facts: z.preprocess(
+		(v) =>
+			Array.isArray(v)
+				? v
+						.filter((f): f is string => typeof f === "string" && f.length > 0)
+						.map((f) => f.slice(0, 300))
+						.slice(0, 3)
+				: undefined,
+		step.facts,
+	),
+});
+
+/**
+ * The report as the model writes it: what the engine accepts and the transcript
+ * hides, one schema for both (#673 w7-5). Host-stamped `fidelity` is omitted.
+ */
+export const ModelReportSchema = InvestigationReportSchema.omit({
+	fidelity: true,
+}).extend({ nextSteps: z.array(ModelNextStepSchema) });
+export type ModelReport = z.infer<typeof ModelReportSchema>;
+
 // =============================================================================
 // INVESTIGATION SCHEMAS
 // =============================================================================

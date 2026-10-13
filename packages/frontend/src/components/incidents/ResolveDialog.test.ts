@@ -6,7 +6,7 @@ import type { IncidentWithRelations } from "@prismalens/contracts";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResolveDialog } from "./ResolveDialog";
+import { ResolveDialog, reportAnswer } from "./ResolveDialog";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -106,5 +106,41 @@ describe("ResolveDialog cause length limit (#673 walk 4, QA-04)", () => {
 		expect(confirmBtn).not.toBeNull();
 		expect(confirmBtn.disabled).toBe(false);
 		expect(confirmBtn.textContent).toBe("Save");
+	});
+});
+
+describe("reportAnswer: the standing finding (#673 w9-4)", () => {
+	const run = (id: string, over: Record<string, unknown>) => ({
+		id,
+		kind: "investigation",
+		status: "completed",
+		hasReport: true,
+		rootCause: null,
+		rootCauseCategory: "unknown",
+		...over,
+	});
+
+	it("Given a later run that named no cause, Then the dialog starts from the run that did", () => {
+		const incident = makeIncident({
+			investigations: [
+				run("run-3", {}),
+				run("run-2", {
+					rootCause: "booklogr-api received `SIGTERM`",
+					rootCauseCategory: "infrastructure",
+				}),
+				run("run-1", {}),
+			],
+		} as unknown as Partial<IncidentWithRelations>);
+		expect(reportAnswer(incident)).toEqual({
+			cause: "booklogr-api received SIGTERM",
+			category: "infrastructure",
+		});
+	});
+
+	it("Given the report's category is unknown, Then the category starts unset", () => {
+		const incident = makeIncident({
+			investigations: [run("run-2", { rootCause: "SIGTERM" })],
+		} as unknown as Partial<IncidentWithRelations>);
+		expect(reportAnswer(incident).category).toBe("");
 	});
 });

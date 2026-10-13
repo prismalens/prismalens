@@ -4,11 +4,17 @@
 import type { Fixes } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	causeCategory,
+	commandOf,
+	failedStrip,
 	type FixOption,
 	fixStage,
 	liveCheck,
 	nextStrip,
+	noteOf,
+	nothingToRun,
 	splitOptions,
+	startsRun,
 } from "./fixes";
 
 const opt: FixOption = {
@@ -114,6 +120,122 @@ describe("fixStage", () => {
 				alerts: [{ status: "resolved", resolvedAt: "2026-10-11T12:00:00Z" }],
 			}).stage,
 		).toBe("applied");
+	});
+});
+
+describe("walk 8 packet 3 on the Next strip", () => {
+	const at = "2026-10-11T12:20:00Z";
+	const notYet = (extra: object, value: number | null, checkedAt = "2026-10-11T12:20:20Z") =>
+		nextStrip({
+			...base,
+			...extra,
+			stage: { stage: "checked", appliedAt: at, check: { verdict: "not_yet", at: checkedAt, value } },
+		}).text;
+
+	it("never offers Copy for a flagged command away from its warning (w8-19)", () => {
+		const ready = nextStrip({ ...base, flagged: true, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(ready.primary).toBeUndefined();
+		expect(ready.text).toMatch(/flagged text that tried to instruct it; read the command and its warning under Stop the impact/);
+		const copied = nextStrip({ ...base, flagged: true, stage: { stage: "ready", copied: true, copyFailed: false } });
+		expect(copied.primary?.id).toBe("applied");
+		expect(copied.secondary).toBeUndefined();
+	});
+
+	it("words a reloaded check by the rule's operator, never 'over' for == 0 (w8-20)", () => {
+		expect(notYet({ threshold: { op: "==", value: 0 } }, null)).toMatch(/^Not yet: still matching the alert's rule at /);
+		expect(notYet({ threshold: { op: "<", value: 1 } }, null)).toMatch(/^Not yet: still under the alert threshold at /);
+		expect(notYet({ threshold: { op: ">", value: 1 } }, null)).toMatch(/^Not yet: still over the alert threshold at /);
+		expect(notYet({ threshold: { op: "==", value: 0 } }, 0)).toMatch(/^Not yet: 0 at /);
+	});
+
+	it("says 'at or' on the side of the rule that includes the threshold (#834 review)", () => {
+		expect(notYet({ threshold: { op: ">=", value: 1 } }, null)).toMatch(/^Not yet: still at or above the alert threshold at /);
+		expect(notYet({ threshold: { op: "<=", value: 1 } }, null)).toMatch(/^Not yet: still at or below the alert threshold at /);
+		const cleared = (op: ">" | ">=" | "<" | "<=") =>
+			nextStrip({
+				...base,
+				threshold: { op, value: 1 },
+				stage: { stage: "checked", appliedAt: at, check: { verdict: "below_threshold", at, value: null } },
+			}).text;
+		expect(cleared(">")).toMatch(/^At or below the alert threshold at /);
+		expect(cleared(">=")).toMatch(/^Below the alert threshold at /);
+		expect(cleared("<")).toMatch(/^At or above the alert threshold at /);
+		expect(cleared("<=")).toMatch(/^Above the alert threshold at /);
+	});
+
+	it("shows the cause you recorded at Resolve (w8-21)", () => {
+		const s = nextStrip({ ...base, ended: true, cause: "booklogr-api container stopped", option: null, stage: null });
+		expect(s.text).toBe(
+			"Resolved. Your recorded cause: booklogr-api container stopped. If the alert fires again, PrismaLens opens a new incident and links it here.",
+		);
+		expect(nextStrip({ ...base, ended: true, option: null, stage: null }).text).toMatch(/^Resolved\. If the alert/);
+	});
+
+	it("says just after you applied it inside a minute (w8-22)", () => {
+		expect(notYet({}, 0)).toMatch(/, just after you applied it\./);
+		expect(notYet({}, 0, "2026-10-11T12:21:10Z")).toMatch(/, 1 minute after you applied it\./);
+	});
+});
+
+describe("causeCategory (#673 w9-3)", () => {
+	it("Given the standing report's category, Then the header shows it", () => {
+		expect(causeCategory(null, "infrastructure")).toBe("infrastructure");
+	});
+
+	it("Given a report that named a cause but no category, Then no Cause fact reads 'Unknown'", () => {
+		expect(causeCategory(null, "unknown")).toBeNull();
+		expect(causeCategory(undefined, undefined)).toBeNull();
+	});
+
+	it("Given a category you recorded at Resolve, Then it wins (w8-21)", () => {
+		expect(causeCategory("config", "infrastructure")).toBe("config");
+		expect(causeCategory("unknown", "infrastructure")).toBe("unknown");
+	});
+});
+
+describe("startsRun (#834 review)", () => {
+	it("holds only the Next actions that start a run until the box's agent loads", () => {
+		expect(startsRun("investigate")).toBe(true);
+		expect(startsRun("retry")).toBe(true);
+		for (const id of ["copy", "applied", "check", "resolve", "watch"] as const)
+			expect(startsRun(id)).toBe(false);
+	});
+});
+
+describe("a sentence where the command goes (#673 w8-15)", () => {
+	// Walk 8, Run 4: "Hold off on rolling back 8a99430" carried this as its command.
+	const hold = { ...opt, title: "Hold off on rolling back 8a99430", command: "None confirmed on current evidence." };
+
+	it("reads it as text, not a command", () => {
+		expect(commandOf(hold)).toBeNull();
+		expect(noteOf(hold)).toBe("None confirmed on current evidence.");
+		expect(commandOf({ command: "Restart the api pod" })).toBeNull();
+		for (const command of [
+			"kubectl rollout undo deployment/booklogr-api",
+			"Restart-Service booklogr",
+			"SELECT pg_cancel_backend(42);",
+			"git revert 8a99430\ngit push",
+		]) {
+			expect(commandOf({ command })).toBe(command);
+			expect(noteOf({ command })).toBeNull();
+		}
+	});
+
+	it("offers no Copy and no I applied it on the Next strip", () => {
+		const s = nextStrip({ ...base, option: hold, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(s.text).toBe("Hold off on rolling back 8a99430. There is nothing to run; the reason is under Stop the impact.");
+		expect(s.primary).toBeUndefined();
+		expect(s.secondary).toBeUndefined();
+	});
+
+	it("keeps I applied it, with no Copy, for a step done by hand (#834 review)", () => {
+		const restart = { ...opt, title: "Restart the api pod", command: "Restart the api pod" };
+		expect(nothingToRun(restart)).toBe(false);
+		expect(nothingToRun(hold)).toBe(true);
+		const s = nextStrip({ ...base, option: restart, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(s.text).toBe("Restart the api pod. The steps are under Stop the impact.");
+		expect(s.primary?.id).toBe("applied");
+		expect(s.secondary).toBeUndefined();
 	});
 });
 
@@ -263,6 +385,33 @@ describe("nextStrip", () => {
 		}
 	});
 
+	it("keeps the no-retry wording after a reload (#673 w7-8)", () => {
+		const appliedAt = "2026-10-11T12:20:00Z";
+		const at = "2026-10-11T12:22:00Z";
+		const saved = (lastCheck: FixOption["lastCheck"], checkable: boolean) =>
+			nextStrip({
+				...base,
+				checkable,
+				stage: fixStage({
+					option: { appliedAt, lastCheck },
+					copied: false,
+					alerts: firing,
+					checking: false,
+					check: null,
+				}),
+			});
+		const noRetry =
+			"Could not check; the alert clears on its own once its rule sees the recovery.";
+		const kept = saved({ verdict: "could_not_check", at, retryable: false }, true);
+		expect(kept.text).toBe(noRetry);
+		expect(kept.primary).toBeUndefined();
+		const older = saved({ verdict: "could_not_check", at }, false);
+		expect(older.text).toBe(noRetry);
+		expect(older.primary).toBeUndefined();
+		const timedOut = saved({ verdict: "could_not_check", at }, true);
+		expect(timedOut.primary).toEqual({ id: "check", label: "Try again" });
+	});
+
 	it("links the incident a Resolved one fired again as, else says it will", () => {
 		const resolved = { ...base, ended: true, option: null, stage: null };
 		expect(nextStrip(resolved).link).toBeUndefined();
@@ -334,6 +483,20 @@ describe("nextStrip", () => {
 				failed: { name: "Run 2", reason: "Rate limited." },
 			}).primary?.id,
 		).toBe("retry");
+		// A known fix comes first, in the same words as the agent picker (#831 v5-39).
+		expect(failedStrip("Run 2", "Rate limited (429)", "Codex")).toEqual({
+			name: "Run 2",
+			reason: "The model provider limited the request rate.",
+		});
+		expect(
+			nextStrip({
+				...none,
+				reported: false,
+				failed: failedStrip("Run 2", "Authentication required", "Codex"),
+			}).text,
+		).toBe(
+			"Run 2 stopped before a finding. Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
+		);
 		expect(nextStrip({ ...none, live: { name: "Run 3" } }).primary?.id).toBe(
 			"watch",
 		);

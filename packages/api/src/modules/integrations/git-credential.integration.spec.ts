@@ -280,7 +280,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		expect(repo.syncError).toMatch(/can't see missing-repo: it doesn't exist or the token has no access to it/);
 	});
 
-	it("S5: Revoke token on server (mode reject-401) -> run triggers token-rejected and records Connection.status = ERROR", async () => {
+	it("S5: Revoke token on server (mode reject-401) -> run triggers token-rejected and records Connection.status = CREDENTIALS_INVALID, read as rejected (#831 w6-9)", async () => {
 		const repoUrl = `${server.url}/private-repo-no-conn.git`;
 		server.setMode("private-repo-no-conn", { kind: "reject-401" });
 
@@ -295,7 +295,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		const conn = await prisma.connection.findFirst({
 			where: { label: "Token A" },
 		});
-		expect(conn?.status).toBe("ERROR");
+		expect(conn?.status).toBe("CREDENTIALS_INVALID");
 		expect(conn?.lastErrorMessage).toMatch(/rejected token "Token A"/);
 	});
 

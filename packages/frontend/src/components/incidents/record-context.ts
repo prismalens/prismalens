@@ -14,6 +14,15 @@ export type RunRef = NonNullable<
 	IncidentWithRelations["investigations"]
 >[number];
 
+/**
+ * The newest investigation (not an Ask) whose report named a cause: a later report
+ * that names none does not erase it (#673 w7-7). With no named cause, the newest report.
+ */
+export function reportedRun(runs: RunRef[]): RunRef | null {
+	const reported = runs.filter((r) => r.kind !== "chat" && r.hasReport);
+	return reported.find((r) => r.rootCause) ?? reported[0] ?? null;
+}
+
 /** `?investigation=new`: the draft of a run not sent yet (#673). */
 export const DRAFT = "new";
 

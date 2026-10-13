@@ -131,6 +131,50 @@ export function runningCount(current: readonly InvestigationSummary[]): number {
 		.length;
 }
 
+/** Where a run's notification opens: the run in its incident's conversation. */
+export function runPath(run: { id: string; incidentId?: string }): string {
+	return run.incidentId
+		? `/incidents/${run.incidentId}/conversation?investigation=${run.id}`
+		: `/investigations/${run.id}`;
+}
+
+/** The part of an Electron Notification `holdUntilClicked` uses. */
+export interface Clickable {
+	once(event: "click", listener: () => void): unknown;
+}
+
+/**
+ * Windows drops the click of a notification whose object was garbage collected (#831),
+ * so each is held until clicked; past `cap`, the oldest is let go.
+ */
+export function holdUntilClicked<N extends Clickable>(
+	held: Set<N>,
+	n: N,
+	cap = 25,
+): void {
+	held.add(n);
+	n.once("click", () => held.delete(n));
+	for (const old of held) {
+		if (held.size <= cap) break;
+		held.delete(old);
+	}
+}
+
+/** The part of a BrowserWindow `reveal` uses. */
+export interface Revealable {
+	isMinimized(): boolean;
+	restore(): void;
+	show(): void;
+	focus(): void;
+}
+
+/** A minimized window needs restore() before focus() brings it up. */
+export function reveal(win: Revealable): void {
+	if (win.isMinimized()) win.restore();
+	win.show();
+	win.focus();
+}
+
 /** The tray's status line and tooltip. */
 export function runningLabel(count: number): string {
 	if (count === 0) return "Nothing running";

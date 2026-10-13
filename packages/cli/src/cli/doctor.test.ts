@@ -18,6 +18,7 @@ import {
 	checkWebhookToken,
 	checkWebhookUrl,
 	sandboxSummary,
+	summary,
 } from "./doctor.js";
 
 const FAKE_HANDSHAKE = join(
@@ -148,22 +149,112 @@ describe("doctor — harness ACP handshake", () => {
 	it('says "answers ACP", never "ready", for a harness whose handshake succeeds', async () => {
 		installFakeOpencode("ok");
 		const results = await checkHarnessHandshake();
-		const opencode = results.find((c) => c.name.includes("OpenCode"));
+		const opencode = results.find((h) => h.id === "opencode");
 		expect(opencode).toEqual({
-			name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
-			pass: true,
-			detail: `answers ACP, fake 0; sandbox: none (OpenCode has no sandbox); sign-in: ${HARNESS_REGISTRY.opencode.loginHint}`,
-			hard: false,
+			id: "opencode",
+			servedModel: null,
+			signInUnchecked: false,
+			signedOut: false,
+			check: {
+				name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
+				pass: true,
+				detail: `answers ACP, fake 0; sandbox: none (OpenCode has no sandbox); sign-in: ${HARNESS_REGISTRY.opencode.loginHint}`,
+				hard: false,
+			},
+		});
+		expect(summary([opencode!.check], results)).toEqual({
+			level: "success",
+			line: "All required checks passed.",
 		});
 	});
 
 	it("is a SOFT failure carrying the harness's own stderr tail when it exits before answering", async () => {
 		installFakeOpencode("unauthenticated");
 		const results = await checkHarnessHandshake();
-		const opencode = results.find((c) => c.name.includes("OpenCode"));
+		const opencode = results.find((h) => h.id === "opencode")?.check;
 		expect(opencode?.pass).toBe(false);
 		expect(opencode?.hard).toBe(false);
 		expect(opencode?.detail).toMatch(/^failed to start: .*not logged in/);
+	});
+
+	it("names the model OpenCode serves, and that an opencode/ id is OpenCode Zen (#673 S2)", async () => {
+		installFakeOpencode("served");
+		delete process.env.PRISMALENS_HARNESS;
+		const results = await checkHarnessHandshake();
+		const served = Object.fromEntries(results.map((h) => [h.id, h.servedModel]));
+		expect(served.opencode).toBe("opencode/big-pickle");
+		const model = checkAutoSelection(served).find((c) => c.name === "Model");
+		expect(model?.detail).toBe(
+			"OpenCode serves opencode/big-pickle: the model set in its own config, else its default, unless Settings → Agent → Model sets one. That is an OpenCode Zen model, under OpenCode's terms; `opencode auth login` signs in another provider",
+		);
+	});
+
+	it("warns, never ✔, when Claude Code answers ACP: its sign-in is checked only when a run starts (#673 S1)", async () => {
+		const binPath = join(tempPathDir, HARNESS_REGISTRY["claude-code"].binary);
+		writeFileSync(
+			binPath,
+			`#!/bin/sh\nFAKE_ACP_MODE=ok exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
+		);
+		chmodSync(binPath, 0o755);
+		const results = await checkHarnessHandshake();
+		const claude = results.find((h) => h.id === "claude-code");
+		expect(claude?.signInUnchecked).toBe(true);
+		expect(claude?.check).toMatchObject({ pass: false, hard: false });
+		expect(claude?.check.detail).toMatch(
+			/^answers ACP, fake 0;.*; sign-in not checked until a run starts: `claude \/login`/,
+		);
+		const verdict = summary([claude!.check], results);
+		expect(verdict.level).toBe("warn");
+		expect(verdict.line).toBe(
+			"Required checks passed. Claude Code checks its sign-in only when a run starts, so a run fails there if it is not signed in.",
+		);
+	});
+
+	function installFakeClaude(mode: string): void {
+		const binPath = join(tempPathDir, HARNESS_REGISTRY["claude-code"].binary);
+		writeFileSync(
+			binPath,
+			`#!/bin/sh\nFAKE_ACP_MODE=${mode} exec "${process.execPath}" "${FAKE_HANDSHAKE}"\n`,
+		);
+		chmodSync(binPath, 0o755);
+	}
+
+	it("warns, never fails, when Claude Code pushes kind none on the handshake (#831)", async () => {
+		installFakeClaude("signed-out");
+		const results = await checkHarnessHandshake();
+		const claude = results.find((h) => h.id === "claude-code");
+		expect(claude).toMatchObject({ signedOut: true, signInUnchecked: false });
+		expect(claude?.check).toMatchObject({ pass: false, hard: false });
+		expect(claude?.check.detail).toMatch(
+			/^answers ACP, fake 0;.*; not signed in: `claude \/login`/,
+		);
+		const verdict = summary([claude!.check], results);
+		expect(verdict).toEqual({
+			level: "warn",
+			line: "Required checks passed. Claude Code is not signed in, so a run fails until it is.",
+		});
+	});
+
+	it("passes when Claude Code pushes a signed-in kind on the handshake (#831)", async () => {
+		installFakeClaude("signed-in");
+		const results = await checkHarnessHandshake();
+		const claude = results.find((h) => h.id === "claude-code");
+		expect(claude).toMatchObject({ signedOut: false, signInUnchecked: false });
+		expect(claude?.check).toMatchObject({ pass: true, hard: false });
+		expect(claude?.check.detail).toMatch(/; signed in$/);
+		expect(summary([claude!.check], results).level).toBe("success");
+	});
+
+	it("ends in an error, not the sign-in warning, when a required check fails", () => {
+		const git = { name: "Git", pass: false, detail: "git missing", hard: true };
+		const harness = { name: "Harness available", pass: false, detail: "", hard: true };
+		expect(summary([git], [])).toEqual({
+			level: "error",
+			line: "1 required check(s) failed. Fix the above before running `pl up`.",
+		});
+		expect(summary([harness], []).line).toBe(
+			"No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed.",
+		);
 	});
 
 	it("probes nothing when no harness is on PATH", async () => {

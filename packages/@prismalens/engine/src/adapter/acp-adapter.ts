@@ -68,7 +68,13 @@ export interface AcpUpdate {
 	 * for `tool_call_update` an array of `{ type:"content", content:{ type:"text", text } }`.
 	 */
 	content?: unknown;
+	/** Harness extras; Claude Code names a call its own settings refused here. */
+	_meta?: unknown;
 }
+
+/** A call Claude Code's own permission rules refused: no ask reached PrismaLens or the user (#673 w7-6). */
+export const RULE_DENIED =
+	"Denied by a permission rule in your Claude Code settings.";
 
 export interface AdapterContext {
 	/** The investigation run id (== Investigation.id; 1 run = 1 investigation row). */
@@ -326,7 +332,9 @@ export class AcpAdapter {
 		const meta = this.toolMeta.get(toolCallId);
 		const name = meta?.name ?? pickName(u);
 		const ok = u.status !== "failed";
-		const preview = truncate(flattenAcpContent(u.content), this.previewLimit);
+		const preview = ruleDenied(u._meta)
+			? RULE_DENIED
+			: truncate(flattenAcpContent(u.content), this.previewLimit);
 		return {
 			kind: "tool_result",
 			...this.base(),
@@ -528,6 +536,13 @@ export function askInput(rawInput: unknown): string | null {
 		return null;
 	}
 	return text.slice(0, ASK_DETAIL_LIMIT);
+}
+
+function ruleDenied(meta: unknown): boolean {
+	return (
+		(meta as { claudeCode?: { nonExecutionKind?: unknown } } | undefined)
+			?.claudeCode?.nonExecutionKind === "permission-rule"
+	);
 }
 
 /** The MCP server an ask's tool comes from, from Claude Code's `_meta` (#820). */

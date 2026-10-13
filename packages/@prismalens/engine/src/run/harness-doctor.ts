@@ -33,6 +33,8 @@ import { denyAllPolicy } from "./permission.js";
 import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 10_000;
+/** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
+const AUTH_STATUS_WAIT_MS = 3_000;
 /** ACP's auth_required error code. */
 const AUTH_REQUIRED = -32000;
 
@@ -63,6 +65,8 @@ export interface HarnessProbeResult {
 	images?: boolean;
 	/** Per offered mode (or `agent-default`): does the agent's own sandbox hold it on this machine (#673 w51). */
 	sandbox?: SandboxChecks;
+	/** The agent pushed its sign-in: true when it says signed out; absent when it pushed none (#831). */
+	signedOut?: boolean;
 }
 
 function effortLevels(
@@ -89,6 +93,19 @@ export function versionOf(bin: string): Promise<string | null> {
 				),
 		);
 	});
+}
+
+/** The check's line for an agent that answered, naming the adapter PrismaLens ships when it ran through it (#831 w6-3). */
+export function answeredDetail(
+	harness: string,
+	agent: { name?: string | null; version?: string | null },
+	shipped: boolean,
+): string {
+	const via = shipped ? " through the adapter PrismaLens ships" : "";
+	const who = agent.version
+		? `, ${agent.name ?? harness} ${agent.version}`
+		: "";
+	return `answers ACP${via}${who}`;
 }
 
 export function classify(
@@ -160,6 +177,7 @@ export async function probeHarness(
 		>;
 		timeoutMs?: number;
 		sandbox?: typeof checkSandbox;
+		authWaitMs?: number;
 	} = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
@@ -196,34 +214,44 @@ export async function probeHarness(
 		});
 		const opening = session.open();
 		opening.catch(() => {});
+		// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
+		// Read on every outcome, so a signed-out row still names its version (w8-8).
+		const companion = () =>
+			runEnv.companionPath &&
+			Object.values(descriptor.acpEnv(runEnv)).includes(runEnv.companionPath)
+				? versionOf(runEnv.companionPath)
+				: Promise.resolve(null);
 		let answered: HarnessProbeResult;
 		try {
 			await Promise.race([opening, deadline]);
+			const authKind = await session.authStatus(
+				opts.authWaitMs ?? AUTH_STATUS_WAIT_MS,
+			);
 			const agent = session.agent;
-			const detail = `answers ACP${agent.version ? `, ${agent.name ?? harness} ${agent.version}` : ""}`;
+			const detail = answeredDetail(harness, agent, launch.shipped);
 			answered = {
 				id: harness,
 				outcome: "answers-acp",
 				detail,
 				hard: false,
 				version: agent.version ?? null,
-				// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
-				companionVersion:
-					runEnv.companionPath &&
-					Object.values(descriptor.acpEnv(runEnv)).includes(
-						runEnv.companionPath,
-					)
-						? await versionOf(runEnv.companionPath)
-						: null,
+				companionVersion: await companion(),
 				...(session.models.length ? { models: session.models } : {}),
 				servedModel: session.servedModel,
 				effort: session.effort,
 				modes: session.offeredModes.length ? session.offeredModes : null,
 				efforts: effortLevels(session.effort),
 				images: session.takesImages,
+				...(authKind !== null ? { signedOut: authKind === "none" } : {}),
 			};
 		} catch (err) {
-			return { id: harness, ...classify(err, session, timeoutMs), hard: false };
+			const companionVersion = await companion();
+			return {
+				id: harness,
+				...classify(err, session, timeoutMs),
+				hard: false,
+				...(companionVersion ? { companionVersion } : {}),
+			};
 		} finally {
 			clearTimeout(timer);
 			await session.close();

@@ -43,16 +43,21 @@ describe("recheckBrief (#673 w59, OBJ-013)", () => {
 		],
 	};
 
-	it("puts what was typed first, then the report quoted", () => {
-		expect(recheckBrief(report, 3, "  only the 14:02 deploy ")).toBe(
-			"only the 14:02 deploy\n\nRe-check Run #3. It found: The pool is exhausted. Cause named: pool_size=1 in commit 138674f. Next steps it proposed: Revert 138674f; Raise pool_size.",
+	it("sends a typed brief alone: the report's quote never outranks it (#673 w8-16)", () => {
+		const typed = "Read-only: list the files in your workspace, then wait for my next message.";
+		expect(recheckBrief(report, 4, `  ${typed} `)).toBe(typed);
+	});
+
+	it("quotes the report when nothing was typed", () => {
+		expect(recheckBrief(report, 3, "  ")).toBe(
+			"Re-check Run #3. It found: The pool is exhausted. Cause named: pool_size=1 in commit 138674f. Next steps it proposed: Revert 138674f; Raise pool_size.",
 		);
 	});
 
-	it("names no cause as none, and caps the brief at 1500 characters", () => {
+	it("names no cause as none, and caps the quote at 1500 characters", () => {
 		expect(recheckBrief({ ...report, rootCause: null, nextSteps: [] }, 1, "")).toBe(
 			"Re-check Run #1. It found: The pool is exhausted. Cause named: none. Next steps it proposed: none.",
 		);
-		expect(recheckBrief(report, 1, "x".repeat(2000))).toHaveLength(1500);
+		expect(recheckBrief({ ...report, summary: "x".repeat(2000) }, 1, "")).toHaveLength(1500);
 	});
 });

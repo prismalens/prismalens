@@ -1399,6 +1399,38 @@ describe("AlertPullService (#605)", () => {
 				expect(prisma.setting.upsert).not.toHaveBeenCalled();
 			});
 
+			it("logs how many it resolved by absence, which the boot pull's line does not count", async () => {
+				alertmanagers("am-1");
+				serve({ "am-1": [listed("fp-live")] });
+				open("fp-live", "fp-gone");
+				const log = vi.spyOn(
+					(service as unknown as { logger: { log: (m: string) => void } }).logger,
+					"log",
+				);
+
+				await service.onWebhook(() => now);
+
+				expect(log).toHaveBeenCalledWith(
+					"Alertmanager check after webhook: 1 resolved by absence",
+				);
+			});
+
+			it("logs nothing when it resolved nothing", async () => {
+				alertmanagers("am-1");
+				serve({ "am-1": [listed("fp-live")] });
+				open("fp-live");
+				const log = vi.spyOn(
+					(service as unknown as { logger: { log: (m: string) => void } }).logger,
+					"log",
+				);
+
+				await service.onWebhook(() => now);
+
+				expect(log).not.toHaveBeenCalledWith(
+					expect.stringContaining("resolved by absence"),
+				);
+			});
+
 			it("coalesces a burst into at most two rounds", async () => {
 				alertmanagers("am-1");
 				serve({ "am-1": [] });

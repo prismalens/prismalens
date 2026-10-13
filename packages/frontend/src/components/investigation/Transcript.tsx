@@ -143,9 +143,24 @@ function TranscriptRow({
 		case "prose":
 			return (
 				<li className={ENTER} data-testid="transcript-agent">
-					<div data-testid="transcript-prose" className="leading-[22px]">
-						<MessageResponse>{item.text}</MessageResponse>
-					</div>
+					{item.text && (
+						<div data-testid="transcript-prose" className="leading-[22px]">
+							<MessageResponse>{item.text}</MessageResponse>
+						</div>
+					)}
+					{item.draft && (
+						<details
+							className={cn("text-meta text-text-3", item.text && "mt-2")}
+							data-testid="transcript-report-draft"
+						>
+							<summary className="cursor-pointer hover:text-text-2">
+								Report draft as the agent wrote it
+							</summary>
+							<pre className="m-0 mt-1.5 max-h-80 overflow-auto rounded-control bg-surface-1 px-3 py-2 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]">
+								{item.draft}
+							</pre>
+						</details>
+					)}
 				</li>
 			);
 		case "line":

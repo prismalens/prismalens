@@ -34,6 +34,7 @@ import {
 	healthUrl,
 	NO_BROWSER_LINE,
 	networkBindWarning,
+	noAgentLine,
 	portFree,
 	portInUseLine,
 	readTelemetryState,
@@ -243,6 +244,9 @@ export default defineCommand({
 			// The API then logs its detail to the file only (#673).
 			process.env.PRISMALENS_BIND_WARNED = "1";
 		}
+		const { listHarnessStatus } = await import("@prismalens/config");
+		const noAgent = noAgentLine(listHarnessStatus());
+		if (noAgent) consola.warn(noAgent);
 		if (process.env.PRISMALENS_LOG_CONSOLE === "verbose") {
 			consola.info(`Dashboard: ${app.staticDir}`);
 		}

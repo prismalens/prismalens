@@ -8,13 +8,28 @@ import type {
 	FixOption,
 	FixVerdict,
 	MetricUnit,
+	RootCauseCategory,
+	Threshold,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
+import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
 import { formatValue } from "./impact";
 
 export type { FixOption };
 export const AUTO_CHECK_MS = 5 * 60_000;
+
+/**
+ * The header's Cause: the one you recorded at Resolve outranks the standing report's
+ * (#673 w8-21). The report's "unknown" is no category, not "cause unknown" (w9-3).
+ */
+export function causeCategory(
+	recorded: RootCauseCategory | null | undefined,
+	reported: RootCauseCategory | null | undefined,
+): RootCauseCategory | null {
+	if (recorded) return recorded;
+	return reported && reported !== "unknown" ? reported : null;
+}
 
 /** The run's ways to stop the impact (0 to 3, in rank order) and its one lasting fix. */
 export function splitOptions(fixes: Fixes | undefined): {
@@ -26,6 +41,29 @@ export function splitOptions(fixes: Fixes | undefined): {
 		stop: options.filter((o) => o.kind === "stop-impact").slice(0, 3),
 		lasting: options.find((o) => o.kind === "lasting") ?? null,
 	};
+}
+
+/** A capitalised word, then a sentence's end or no shell characters at all: prose, not a command. */
+const SENTENCE = /^[A-Z][a-z]+[ ,](?:[^\n]*[.!]|[^\n|$=;&<>`/\\-]*)$/;
+
+/** The option's command, or null when its `command` is a sentence: that reads as text, never Copy or apply (#673 w8-15). */
+export function commandOf(option: Pick<FixOption, "command">): string | null {
+	const c = option.command?.trim();
+	return c && !SENTENCE.test(c) ? c : null;
+}
+
+/** The sentence an agent wrote where a command goes. */
+export function noteOf(option: Pick<FixOption, "command">): string | null {
+	const c = option.command?.trim();
+	return c && SENTENCE.test(c) ? c : null;
+}
+
+/** A note that opens with a negation says there is nothing to do; any other is a step done by hand (#834 review). */
+const NO_ACTION = /^(?:None|No|Nothing|Not|Never|Don't|Do not)\b/;
+
+export function nothingToRun(option: Pick<FixOption, "command">): boolean {
+	const note = noteOf(option);
+	return !!note && NO_ACTION.test(note);
 }
 
 /** One check result: the live answer has its value; after a reload only the verdict and time. */
@@ -110,6 +148,11 @@ export type NextActionId =
 	| "investigate"
 	| "watch";
 
+/** A Next action that starts a run, so it waits for the box's agent to load. */
+export function startsRun(id: NextActionId): boolean {
+	return id === "investigate" || id === "retry";
+}
+
 export interface NextStrip {
 	tone: "accent" | "plain" | "live" | "warn" | "ok" | "danger";
 	text: string;
@@ -119,13 +162,49 @@ export interface NextStrip {
 	link?: { incidentId: string; label: string };
 }
 
-const minutes = (from: string, to: string) => {
+/** `just after you applied it` inside a minute, never "0 minutes" (#673 w8-22). */
+export function afterApplied(from: string, to: string): string {
 	const m = Math.max(
 		0,
 		Math.round((Date.parse(to) - Date.parse(from)) / 60_000),
 	);
-	return m === 1 ? "1 minute" : `${m} minutes`;
-};
+	if (m === 0) return "just after you applied it";
+	return `${m === 1 ? "1 minute" : `${m} minutes`} after you applied it`;
+}
+
+/**
+ * Where the series stands against the rule, from its operator: `up == 0`
+ * is not "over" anything. A check's value is never stored (ADR 0006 §1).
+ */
+export function againstRule(
+	op: Threshold["op"] | undefined,
+	firing: boolean,
+): string {
+	// The side that includes the threshold itself says "at or" (#834 review).
+	if (op === undefined || op === ">" || op === ">=")
+		return firing
+			? `still ${op === ">=" ? "at or above" : "over"} the alert threshold`
+			: `${op === ">" ? "At or below" : "Below"} the alert threshold`;
+	if (op === "<" || op === "<=")
+		return firing
+			? `still ${op === "<=" ? "at or below" : "under"} the alert threshold`
+			: `${op === "<" ? "At or above" : "Above"} the alert threshold`;
+	return firing
+		? "still matching the alert's rule"
+		: "No longer matching the alert's rule";
+}
+
+/** A failed run on the Next strip; a signed-out agent names itself and the fix (#831 v5-39). */
+export function failedStrip(
+	name: string,
+	error: string | null | undefined,
+	agent: string | undefined,
+): { name: string; reason: string; next?: string } {
+	const words = failureWords(error, agent ?? "the agent");
+	return words.plain && words.next
+		? { name, reason: words.what, next: words.next }
+		: { name, reason: words.what };
+}
 
 /**
  * The Next strip (spec screen 2): the single next action for the incident,
@@ -134,6 +213,8 @@ const minutes = (from: string, to: string) => {
 export function nextStrip(input: {
 	/** The operator resolved it (stored `closed`); Alerts cleared is `cleared`, not this. */
 	ended: boolean;
+	/** The cause you recorded at Resolve, shown once it ended (#673 w8-21). */
+	cause?: string | null;
 	/** The incident this one was merged into. */
 	mergedInto?: { id: string; number: number } | null;
 	/** The incident this one's alert fired again as (the detail's `refiredAs`). */
@@ -145,15 +226,20 @@ export function nextStrip(input: {
 	runs: number;
 	/** `waiting`: its agent waits on your Approve or Deny (#673 w5-14). */
 	live: { name: string; waiting?: boolean } | null;
-	failed: { name: string; reason: string } | null;
+	/** `next`: what to do first, when the failure has a known fix (#831 v5-39). */
+	failed: { name: string; reason: string; next?: string } | null;
 	reported: boolean;
 	option: FixOption | null;
 	stage: FixStage | null;
-	/** A check can run: a metrics source answers for this alert. */
+	/** Check now can judge this alert (Q1c A); also stands in for a check saved without `retryable`. */
 	checkable: boolean;
 	hasNextOption: boolean;
 	/** The charted metric's unit, so a check's value reads as the Impact card does. */
 	unit?: MetricUnit | null;
+	/** The alert rule's threshold, so a check is worded by its operator (#673 w8-20). */
+	threshold?: Threshold | null;
+	/** The run flagged text that tried to instruct it: Copy happens beside the warning only (#673 w8-19). */
+	flagged?: boolean;
 }): NextStrip {
 	const { option, stage } = input;
 	if (input.mergedInto)
@@ -165,11 +251,14 @@ export function nextStrip(input: {
 				label: `INC-${input.mergedInto.number}`,
 			},
 		};
+	const resolved = input.cause?.trim()
+		? `Resolved. Your recorded cause: ${input.cause.trim().replace(/\.$/, "")}.`
+		: "Resolved.";
 	if (input.ended)
 		return input.refiredAs
 			? {
 					tone: "plain",
-					text: "Resolved.",
+					text: resolved,
 					link: {
 						incidentId: input.refiredAs.id,
 						label: `${REFIRE_LABEL} as INC-${input.refiredAs.number}`,
@@ -177,7 +266,7 @@ export function nextStrip(input: {
 				}
 			: {
 					tone: "plain",
-					text: "Resolved. If the alert fires again, PrismaLens opens a new incident and links it here.",
+					text: `${resolved} If the alert fires again, PrismaLens opens a new incident and links it here.`,
 				};
 	if (input.alertsCleared)
 		return input.refiredAs
@@ -205,7 +294,12 @@ export function nextStrip(input: {
 							? {}
 							: { primary: { id: "applied", label: "I applied it" } }),
 					};
-				if (!option.command)
+				if (nothingToRun(option))
+					return {
+						tone: "plain",
+						text: `${prefix}${option.title}. There is nothing to run; the reason is under Stop the impact.`,
+					};
+				if (!option.command || noteOf(option))
 					return {
 						tone: "accent",
 						text: `${prefix}${option.title}. The steps are under Stop the impact.`,
@@ -218,7 +312,14 @@ export function nextStrip(input: {
 						tone: "accent",
 						text: `${prefix}Command copied. Run it, then tell PrismaLens so it can check the result.`,
 						primary: { id: "applied", label: "I applied it" },
-						secondary: { id: "copy", label: "Copy again" },
+						...(input.flagged
+							? {}
+							: { secondary: { id: "copy", label: "Copy again" } }),
+					};
+				if (input.flagged)
+					return {
+						tone: "warn",
+						text: `${prefix}${option.title}. The agent flagged text that tried to instruct it; read the command and its warning under Stop the impact before you copy it.`,
 					};
 				return {
 					tone: "accent",
@@ -244,7 +345,7 @@ export function nextStrip(input: {
 				if (c.verdict === "not_yet")
 					return {
 						tone: "warn",
-						text: `Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `still over the alert threshold at ${formatClock(c.at)}`}, ${minutes(stage.appliedAt, c.at)} after you applied it. Some fixes take a few minutes to settle.`,
+						text: `Not yet: ${value ? `${value} at ${formatClock(c.at)}` : `${againstRule(input.threshold?.op, true)} at ${formatClock(c.at)}`}, ${afterApplied(stage.appliedAt, c.at)}. Some fixes take a few minutes to settle.`,
 						primary: { id: "check", label: "Check again" },
 						...(input.hasNextOption
 							? {
@@ -258,10 +359,10 @@ export function nextStrip(input: {
 				if (c.verdict === "below_threshold")
 					return {
 						tone: "plain",
-						text: `Below the alert threshold${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
+						text: `${againstRule(input.threshold?.op, false)}${value ? `: ${value}` : ""} at ${formatClock(c.at)}. The alert clears on its own once its rule sees the recovery.`,
 						primary: { id: "check", label: "Check again" },
 					};
-				return c.retryable !== false
+				return (c.retryable ?? input.checkable)
 					? {
 							tone: "warn",
 							text: `Could not check at ${formatClock(c.at)}. The fix may still have worked.`,
@@ -295,7 +396,9 @@ export function nextStrip(input: {
 	if (input.failed && !input.reported)
 		return {
 			tone: "danger",
-			text: `Retry the investigation. ${input.failed.name} stopped before a finding: ${lowerFirst(input.failed.reason)}`,
+			text: input.failed.next
+				? `${input.failed.name} stopped before a finding. ${input.failed.reason} ${input.failed.next}`
+				: `Retry the investigation. ${input.failed.name} stopped before a finding: ${lowerFirst(input.failed.reason)}`,
 			primary: { id: "retry", label: "Retry run" },
 		};
 	if (input.runs === 0)

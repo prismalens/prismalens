@@ -155,6 +155,13 @@ export async function readTelemetryState(
 export const TELEMETRY_NOTICE =
 	"Usage data: PrismaLens counts feature use under a random install id. Never an alert, code, a repo or a report. Turn it off in Settings, Usage data, or with PRISMALENS_TELEMETRY=off or DO_NOT_TRACK=1. Nothing is sent before the next start. https://docs.prismalens.io/trust#usage-telemetry";
 
+/** The app starts without a coding agent, but Investigate stays off; say so at start, not at the first 412 (#673 S7). */
+export function noAgentLine(agents: { installed: boolean }[]): string | null {
+	return agents.some((a) => a.installed)
+		? null
+		: "No coding agent on PATH: investigations need one. `pl doctor` shows how to install one.";
+}
+
 export interface BrowserCommandOptions {
 	isOnPath?: (bin: string, pathEnv?: string) => boolean;
 	/** Where `bin` resolves on PATH, Windows mounts included; null when absent. */

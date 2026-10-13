@@ -60,8 +60,10 @@ export function renderNotices(notices: Notice[]): string {
 		"",
 		"The PrismaLens web dashboard bundles the third-party software listed",
 		"below. Each entry gives the package, its version, its licence and the",
-		"licence text it ships with. Packages that npm installs next to PrismaLens",
-		"carry their own licence files and are not listed here.",
+		"licence text it ships with. The npm package also bundles the agent",
+		"adapters, including the Claude Agent SDK under Anthropic's own terms;",
+		"NOTICE names them and their licences. Packages that npm installs next",
+		"to PrismaLens carry their own licence files and are not listed here.",
 	].join("\n");
 	const entries = notices.map(
 		(n) =>

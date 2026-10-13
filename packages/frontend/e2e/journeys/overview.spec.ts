@@ -288,6 +288,7 @@ function impact(incidentId: string, mode: ImpactMode) {
 			alertId: null,
 			state: "not_configured",
 			expression: { state: "not_configured", reason: null },
+			checkable: false,
 			metric: null,
 			scope: { state: "scoped", matched: 1 },
 			series: [],
@@ -319,6 +320,7 @@ function impact(incidentId: string, mode: ImpactMode) {
 				state: "expression_unknown",
 				reason: "the rule is no longer loaded",
 			},
+			checkable: false,
 			metric: null,
 			scope: { state: "scoped", matched: 1 },
 			series: [],
@@ -350,6 +352,7 @@ function impact(incidentId: string, mode: ImpactMode) {
 			state: isService ? "expression_unknown" : "recovered",
 			reason: isService ? "the rule is no longer loaded" : null,
 		},
+		checkable: !isService,
 		metric: {
 			source: isService ? "service" : "alert",
 			query:

@@ -2,7 +2,27 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { failureSentence } from "./failure-sentence";
+import { failureSentence, failureStatusLine } from "./failure-sentence";
+
+describe("failureStatusLine", () => {
+	it("says an auth-required failure plainly, raw text kept as detail (#831 v5-39)", () => {
+		expect(failureStatusLine("Codex", "Authentication required")).toBe(
+			"Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
+		);
+		expect(
+			failureSentence("Codex", "Internal error: auth_required"),
+		).toMatchObject({
+			said: "Codex is not signed in to its model provider.",
+			detail: "Internal error: auth_required",
+		});
+	});
+
+	it("keeps an agent's own words as they are", () => {
+		expect(failureStatusLine("Codex", "disk full")).toBe(
+			'Codex answered "disk full".',
+		);
+	});
+});
 
 describe("failureSentence", () => {
 	it("quotes the agent's words verbatim, without the engine's wrapper", () => {
@@ -26,7 +46,7 @@ describe("failureSentence", () => {
 		).toEqual({
 			said: "Claude Code is not signed in to its model provider.",
 			words: null,
-			next: "Sign in to Claude Code, then try again.",
+			next: "Sign in with its own CLI, then retry.",
 			detail: "Not logged in. Run claude /login",
 		});
 		expect(

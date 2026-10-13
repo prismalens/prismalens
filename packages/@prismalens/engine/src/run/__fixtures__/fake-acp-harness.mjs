@@ -24,8 +24,11 @@
 // and plan over session/set_mode when FAKE_MODES is unset; FAKE_PROFILE=codex offers its modes as a
 // `mode` config option (read-only, agent, agent-full-access; FAKE_CODEX_V2=1 adds workspace-write).
 // FAKE_ACP_MODE=switch-mode first asks to enter its own plan mode with a `switch_mode` ask, then runs
-// as "ok". argv flags: --clamp-auto answers a switch to `auto` with
+// as "ok". FAKE_ACP_MODE=enter-plan runs an EnterPlanMode call that moves itself to `plan` with no ask
+// (Claude Code's way), then runs as "ok". argv flags: --clamp-auto answers a switch to `auto` with
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
+// FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
+// FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -262,6 +265,28 @@ async function turn(sessionId, promptText) {
 		const left = answer.outcome?.optionId === "yes";
 		process.stderr.write(`fake: mode ${left ? "SWITCHED" : "kept"}\n`);
 	}
+	if (mode === "enter-plan" && turns === 1) {
+		const call = {
+			toolCallId: "t_plan",
+			title: "EnterPlanMode",
+			kind: "other",
+		};
+		notify(sessionId, {
+			sessionUpdate: "tool_call",
+			status: "pending",
+			...call,
+		});
+		currentMode = "plan";
+		notify(sessionId, {
+			sessionUpdate: "current_mode_update",
+			currentModeId: "plan",
+		});
+		notify(sessionId, {
+			sessionUpdate: "tool_call_update",
+			toolCallId: "t_plan",
+			status: "completed",
+		});
+	}
 	if (mode === "tolerant") {
 		notify(sessionId, {
 			sessionUpdate: "unknown_session_update_kind",
@@ -401,6 +426,7 @@ async function turn(sessionId, promptText) {
 	const valid =
 		mode === "ok" ||
 		mode === "switch-mode" ||
+		mode === "enter-plan" ||
 		mode === "nowrite" ||
 		mode === "steerable" ||
 		(mode === "retry" && turns >= 2);
@@ -445,12 +471,26 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 					...(process.env.FAKE_IMAGES
 						? { promptCapabilities: { image: true } }
 						: {}),
+					...(process.env.FAKE_AUTH_STATUS
+						? { _meta: { authStatus: {} } }
+						: {}),
 				},
 				...(mode === "auth-required"
 					? { authMethods: [{ id: "login", name: "Log in with Fake" }] }
 					: {}),
 			},
 		});
+		const kind = process.env.FAKE_AUTH_STATUS;
+		if (kind && kind !== "silent")
+			setTimeout(
+				() =>
+					send({
+						jsonrpc: "2.0",
+						method: "_auth/status_update",
+						params: { authStatus: { kind, label: "fake" } },
+					}),
+				Number(process.env.FAKE_AUTH_DELAY_MS ?? 0),
+			);
 	} else if (msg.method === "session/new" && mode === "auth-required") {
 		send({
 			jsonrpc: "2.0",

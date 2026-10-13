@@ -97,9 +97,13 @@ ${fenceClose("RUNBOOK_NOTES")}`;
 const NO_NETWORK =
 	"Network: none. Your sandbox allows no network, so do not query the addresses above; list them under what you could not check.";
 
+/** A call the agent's own settings deny is the operator's standing rule, not a person's answer (#673 w7-6). */
+const RULE_DENIAL =
+	"A tool result saying permission was denied, with no rejection from the user, came from a permission rule the operator set: say a rule refused it, never that the user did, and do not offer to allow it.";
+
 /** The run's permission level in the brief (#673 w21). */
 function accessLine(level: AccessLevel, modeName: string): string {
-	return `Permission: ${ACCESS_LEVEL_LABEL[level]} (${modeName}, the agent's own mode).`;
+	return `Permission: ${ACCESS_LEVEL_LABEL[level]} (${modeName}, the agent's own mode). Stay in this mode; a mode switch is refused. ${RULE_DENIAL}`;
 }
 
 /** The job's scope at every level (ADR 0001 detect-and-report), not a permission rule (#673 w21). */

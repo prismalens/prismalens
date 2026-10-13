@@ -12,6 +12,8 @@ import {
 	RootCauseCategorySchema,
 } from "@prismalens/contracts";
 import { useId, useState } from "react";
+import { reportedRun } from "@/components/incidents/record-context";
+import { causeCategory } from "@/components/overview/fixes";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -40,16 +42,20 @@ const CATEGORIES = enumOptions(
 /** Radix reserves the empty value for "nothing selected"; unset needs its own. */
 const NO_CATEGORY = "__none";
 
-/** What the report answered, for the dialog to start from (adversarial v2 finding 19). */
+/** The standing finding, the one the overview shows (adversarial v2 finding 19, #673 w9-4). */
 export function reportAnswer(incident: IncidentWithRelations): {
 	cause: string;
 	category: RootCauseCategory | "";
 } {
-	const done = incident.investigations?.find((r) => r.status === "completed");
+	const done = reportedRun(incident.investigations ?? []);
 	return {
 		// The agent writes inline Markdown; a field a person edits reads plain (L80).
 		cause: stripInlineMarkdown(done?.rootCause ?? ""),
-		category: (done?.rootCauseCategory as RootCauseCategory | null) ?? "",
+		category:
+			causeCategory(
+				null,
+				done?.rootCauseCategory as RootCauseCategory | null | undefined,
+			) ?? "",
 	};
 }
 

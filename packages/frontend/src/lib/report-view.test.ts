@@ -98,6 +98,16 @@ describe("refusals", () => {
 		expect(commandText("git log")).toBe("git log");
 	});
 
+	it("reads a command that spans lines without its call input (#673 w8-11)", () => {
+		// Walk 8, Run 2 step 8: the source is `name(args)` and the name holds newlines.
+		const cmd =
+			"for q in 'sum(rate(x{job=\"api\"}[5m]))'; do curl -sG 'http://localhost:9090/api/v1/query_range' --data-urlencode \"query=$q\" | python3 -I -c 'import json,sys\nd=json.load(sys.stdin)\nprint(d)'; done";
+		const source = `${cmd}(${JSON.stringify({ command: cmd, description: "Trend /v1/books rate" })})`;
+		expect(commandText(source)).toBe(cmd);
+		const jq = "jq 'map({a: .b})' x.json\necho done";
+		expect(commandText(`${jq}(${JSON.stringify({ command: jq })})`)).toBe(jq);
+	});
+
 	it("formats file operations and terminal calls into plain commands (#673)", () => {
 		expect(
 			commandText('Write /tmp/x({"file_path":"/tmp/x","content":"hi"})'),

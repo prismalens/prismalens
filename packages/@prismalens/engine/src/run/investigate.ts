@@ -57,6 +57,7 @@ import {
 	askWindow,
 	denyAllPolicy,
 	levelPolicy,
+	newAskId,
 	type PermissionPolicy,
 } from "./permission.js";
 import {
@@ -480,6 +481,27 @@ export async function* runInvestigation(
 
 	let text = "";
 	let sawEvidence = false;
+	/** The run's mode once set; the agent may not leave it (#673 w7-4). */
+	let heldMode: string | null = null;
+	let lastCall: { title?: string; toolCallId?: string } | null = null;
+	/** A mode the agent would not leave: refused once, not again on every update. */
+	let stuckIn: string | null = null;
+	/** Asks the agent back into the run's mode and shows the refusal; the run goes on either way. */
+	const holdMode = async function* (
+		held: string,
+	): AsyncGenerator<CanonicalEvent> {
+		const left = session.currentMode;
+		const flushed = adapter.flushText();
+		if (flushed) yield flushed;
+		const back = (await session.setMode(held)) && session.currentMode === held;
+		stuckIn = back ? null : left;
+		wire("in", JSON.stringify({ modeHeld: held, left, back }));
+		yield adapter.permissionAnswer(newAskId(), "mode_kept", {
+			title: lastCall?.title ?? `Switch to ${left}`,
+			...(lastCall?.toolCallId ? { toolCallId: lastCall.toolCallId } : {}),
+			kind: "switch_mode",
+		});
+	};
 	const consume = async function* (
 		items: AsyncGenerator<AcpStreamItem>,
 	): AsyncGenerator<CanonicalEvent, { stop: string } | { error: string }> {
@@ -494,10 +516,21 @@ export async function* runInvestigation(
 							? chunk
 							: ((chunk as { text?: string } | undefined)?.text ?? "");
 				}
+				if (u.sessionUpdate === "tool_call")
+					lastCall = { title: u.title, toolCallId: u.toolCallId };
 				for (const ev of adapter.events(u)) {
 					if (ev.kind === "tool_result") sawEvidence = true;
 					yield ev;
 				}
+				// An agent can switch with no ask, so the mode update is the only sign (#673 w7-4).
+				if (
+					heldMode &&
+					(u.sessionUpdate === "current_mode_update" ||
+						u.sessionUpdate === "config_option_update") &&
+					session.currentMode !== heldMode &&
+					session.currentMode !== stuckIn
+				)
+					yield* holdMode(heldMode);
 			} else if (item.kind === "permission_asked") {
 				openAsks.add(item.askId);
 				const flushed = adapter.flushText();
@@ -616,6 +649,7 @@ export async function* runInvestigation(
 				return;
 			}
 		}
+		if (!keepMode) heldMode = session.currentMode;
 		const ranMode = session.currentMode ?? askedMode ?? NO_MODE_KEY;
 		const sandbox = await (opts.sandboxCheck ?? checkSandbox)(
 			opts.harness,

@@ -40,12 +40,21 @@ Do **not** include real secrets, tokens, or private content in your report.
 
 PrismaLens is a self-hosted incident investigator. `pl up` runs the API and the
 dashboard as one process on the user's machine, with a SQLite database in the
-workspace (`~/.prismalens` by default). For each investigation it takes a
-snapshot of the service's repository and starts the coding agent the user
-installed, over the Agent Client Protocol (ACP), with that snapshot as its
-working directory. PrismaLens answers the agent's permission requests under a
-read-only policy. The agent signs in to its own provider; PrismaLens never
-reads or stores that login, and never calls a model itself.
+workspace (`~/.prismalens` by default). Every browser, this machine's included,
+gets in only through a one-time pairing link; there is no account.
+
+For each investigation PrismaLens clones the service's repository at its last
+commit into a throwaway directory and starts the coding agent the user
+installed, over the Agent Client Protocol (ACP), with that clone as its working
+directory and an allowlisted environment. The run's permission level (Ask
+always, Auto-accept edits, Auto or Full access) picks the agent's own mode and
+decides which of its permission requests wait for the user; a run an alert
+starts runs at Auto and refuses anything the agent asks. The agent's own mode is
+the limit: PrismaLens adds no sandbox, and the agent runs as the user who
+started `pl up`.
+
+The agent signs in to its own provider; PrismaLens never reads or stores that
+login, and never calls a model itself.
 
 ## Scope
 
@@ -61,10 +70,11 @@ Reports in these areas are especially valuable:
   when `pl up` binds another address with `--host`.
 - **Tailscale serve** — anything exposed, or trusted, wrongly when PrismaLens
   is published on a tailnet with `--tailscale-serve`.
-- **The read-only command policy** — a way to make the agent edit, delete or
-  move files, or run a mutating shell command, without the policy refusing it.
-  The policy is a guardrail that matches on command text, not a sandbox, so a
-  bypass is in scope.
+- **Permission levels and asks** — a run that gets more than its level: a
+  permission request answered without the user when the level says it waits,
+  an alert-started run that lets through something it should refuse, or an
+  approval that lands on a different request from the one shown. What the
+  agent's own mode allows, and the agent's own sandbox, belong to the agent.
 - **The agent's environment** — the agent receiving an environment variable
   outside its allowlist, or reading files outside its snapshot through
   PrismaLens.

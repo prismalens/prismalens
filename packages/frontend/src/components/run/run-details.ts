@@ -30,6 +30,8 @@ export interface DetailRow {
 	box?: "danger";
 	/** In-page: opens and highlights step N in the transcript. */
 	step?: number;
+	/** Where an item with no step came from, shown in the step's place. */
+	from?: string;
 	/** Navigates away, named by `action` or by the row's own text. */
 	link?: DetailLink;
 	action?: string;
@@ -137,8 +139,12 @@ export type StepOf = (
 	e: Pick<Evidence, "toolCallId" | "source">,
 ) => number | undefined;
 
+/** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
+const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
+
 function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 	const step = steps(e);
+	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
 		text: e.observation,
 		sub:
@@ -146,6 +152,8 @@ function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 				? `Inferred from ${e.source}`
 				: commandText(e.source),
 		...(step ? { step } : {}),
+		// No step ran for it; say where it came from in the step's place (#831 w6-18).
+		...(alert ? { from: "From the alert" } : {}),
 	};
 }
 
@@ -188,9 +196,11 @@ function reportSections(
 	const [top, ...others] = report.hypotheses.filter(
 		(h) => h.status !== "refuted",
 	);
+	// A run that named no cause heads its leading idea the way its status reads (#673 w8-13).
+	const title = report.rootCause ? "Likely cause" : "No cause named";
 	if (top)
 		out.push({
-			title: "Likely cause",
+			title,
 			rows: [
 				{ text: report.rootCause ?? top.statement, strong: true },
 				...top.evidence
@@ -200,8 +210,10 @@ function reportSections(
 		});
 	else
 		out.push({
-			title: "Likely cause",
-			rows: [{ text: "This run named no cause.", sub: report.summary }],
+			title,
+			rows: report.rootCause
+				? [{ text: report.rootCause, strong: true }]
+				: [{ text: "This run named no cause.", sub: report.summary }],
 		});
 	if (others.length)
 		out.push({

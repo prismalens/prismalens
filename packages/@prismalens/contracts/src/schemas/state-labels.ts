@@ -189,15 +189,15 @@ export const ACCESS_LEVEL_LABEL: Record<AccessLevel, string> = {
 	"full-access": "Full access",
 };
 
-/** What a level means on any agent; what each agent runs sits on its own row line. */
+/** What a level does on any agent, one line of 10-15 words (#831 w6-12); engine `levelPolicy` is the behaviour. */
 export const ACCESS_LEVEL_LINE: Record<AccessLevel, string> = {
 	supervised:
-		"The agent's most cautious mode. Every ask it raises waits for you here; reads and searches run.",
+		"Reads and searches run; every other action the agent asks about waits for you.",
 	"auto-edits":
-		"File changes the agent asks about are approved by PrismaLens and logged; every other ask waits for you.",
-	auto: "The agent's own review mode where it has one. PrismaLens approves what it still asks and logs it.",
+		"Reads and file changes are approved and logged; every other ask waits for you.",
+	auto: "Runs the agent's own review mode where it has one; asks are approved and logged.",
 	"full-access":
-		"The agent's full-access mode. PrismaLens approves what it still asks and logs it. It can do anything your user can on this machine, inside whatever sandbox the agent itself runs.",
+		"Every ask is approved and logged; the agent can do anything your user can.",
 };
 
 /** A mode whose sandbox no check proved here; the operator's wording (#811, build-handoff ruling 3). */

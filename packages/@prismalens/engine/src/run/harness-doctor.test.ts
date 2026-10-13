@@ -7,7 +7,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AcpSession } from "../runner/acp-client.js";
-import { classify, probeHarness, versionOf } from "./harness-doctor.js";
+import {
+	answeredDetail,
+	classify,
+	probeHarness,
+	versionOf,
+} from "./harness-doctor.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -49,6 +54,40 @@ describe("probeHarness", () => {
 			sandbox: { "agent-default": { state: "none", reason: "OpenCode has no sandbox" } },
 		});
 		expect(result.detail).not.toMatch(/ready/i);
+	});
+
+	describe("sign-in pushed on _auth/status_update (#831)", () => {
+		const withAuth = (env: Record<string, string>) => ({
+			...descriptor("ok"),
+			acpEnv: () => ({ FAKE_ACP_MODE: "ok", ...env }),
+		});
+
+		it("reports signed out when the push says kind none, even after session/new", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "none", FAKE_AUTH_DELAY_MS: "300" }),
+				sandbox: async () => ({}),
+			});
+			expect(result.outcome).toBe("answers-acp");
+			expect(result.signedOut).toBe(true);
+		});
+
+		it("reports signed in for any other kind", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "account" }),
+				sandbox: async () => ({}),
+			});
+			expect(result.signedOut).toBe(false);
+		});
+
+		it("says nothing when the agent advertises the extension but pushes nothing in time", async () => {
+			const result = await probeHarness("claude-code", {
+				descriptor: withAuth({ FAKE_AUTH_STATUS: "silent" }),
+				sandbox: async () => ({}),
+				authWaitMs: 100,
+			});
+			expect(result.outcome).toBe("answers-acp");
+			expect(result).not.toHaveProperty("signedOut");
+		});
 	});
 
 	it("checks the sandbox once per offered mode, with the run's env (#673 w51)", async () => {
@@ -96,6 +135,32 @@ describe("probeHarness", () => {
 			detail: "sign in needed (Log in with Fake)",
 			hard: false,
 		});
+	});
+
+	it("reads the companion CLI's version when the agent needs a sign-in (w8-8)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "pl-companion-"));
+		try {
+			const cli = join(dir, "fake-cli");
+			writeFileSync(cli, '#!/bin/sh\necho "fake-cli 0.162.1"\n');
+			chmodSync(cli, 0o755);
+			vi.stubEnv("PATH", `${dir}:${process.env.PATH ?? ""}`);
+			const result = await probeHarness("codex", {
+				descriptor: {
+					...descriptor("auth-required"),
+					companionBinary: "fake-cli",
+					acpEnv: ({ companionPath }) => ({
+						FAKE_ACP_MODE: "auth-required",
+						...(companionPath ? { CODEX_PATH: companionPath } : {}),
+					}),
+				},
+			});
+			expect(result).toMatchObject({
+				outcome: "sign-in-needed",
+				companionVersion: "0.162.1",
+			});
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("maps Codex missing-key start error to sign in needed (API Key, ChatGPT)", () => {
@@ -167,6 +232,18 @@ describe("probeHarness", () => {
 		expect(result.outcome).toBe("no-answer");
 		// Per-request timeouts would take about 300 + 400 ms.
 		expect(Date.now() - started).toBeLessThan(600);
+	});
+});
+
+describe("answeredDetail", () => {
+	it("names the shipped adapter when the run went through it (#831 w6-3)", () => {
+		expect(
+			answeredDetail("codex", { name: "codex-acp", version: "1.13.1" }, true),
+		).toBe("answers ACP through the adapter PrismaLens ships, codex-acp 1.13.1");
+		expect(
+			answeredDetail("opencode", { name: "opencode", version: "1.18.30" }, false),
+		).toBe("answers ACP, opencode 1.18.30");
+		expect(answeredDetail("opencode", {}, false)).toBe("answers ACP");
 	});
 });
 

@@ -50,19 +50,20 @@ export function followUpKind(verb: RunVerb): FollowUpKind {
 const RECHECK_CAP = 1500;
 
 /**
- * The draft `Investigate again` opens: whatever was typed, then the report
- * quoted, editable and capped (#673 w59, OBJ-013).
+ * The brief `Investigate again` sends: what was typed, as typed; with nothing
+ * typed, the report quoted and capped (#673 w59, OBJ-013). A quote under a
+ * typed brief read as the task and the agent followed it instead (#673 w8-16).
  */
 export function recheckBrief(
 	report: Pick<InvestigationReport, "summary" | "rootCause" | "nextSteps">,
 	runNumber: number,
 	typed: string,
 ): string {
+	const lead = typed.trim();
+	if (lead) return lead;
 	const steps = report.nextSteps.map((s) => s.title).join("; ");
 	const quote = `Re-check Run #${runNumber}. It found: ${report.summary.replace(/\.$/, "")}. Cause named: ${report.rootCause?.replace(/\.$/, "") || "none"}. Next steps it proposed: ${steps || "none"}.`;
-	const lead = typed.trim();
-	const text = lead ? `${lead}\n\n${quote}` : quote;
-	return text.length > RECHECK_CAP
-		? `${text.slice(0, RECHECK_CAP - 1)}…`
-		: text;
+	return quote.length > RECHECK_CAP
+		? `${quote.slice(0, RECHECK_CAP - 1)}…`
+		: quote;
 }
