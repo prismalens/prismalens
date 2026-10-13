@@ -339,9 +339,27 @@ Versioning and publishing run through
    `chore:`, …); release-please reads these to compute the next version.
 2. On push to `main`, release-please opens or updates a release PR proposing
    the next version and a changelog.
-3. Merging that PR creates the GitHub Release and tag, which triggers the
-   `publish` job: build, `publint`, then pack + publish via npm trusted
-   publishing (OIDC) — no npm token secret.
+3. Merging that PR runs the release draft-first, in one `release.yml` run,
+   because the repository has immutable releases on and GitHub refuses any
+   upload to a published release (#717):
+   1. release-please creates the tag and a **draft** release (`draft` and
+      `force-tag-creation` in `release-please-config.json`; without the forced
+      tag a draft has none, and release-please could not find it next time).
+   2. `standalone.yml` and `desktop.yml`, called with the tag, build from it
+      and attach the archives, `SHA256SUMS`, `install.sh`, `install.ps1` and
+      the desktop zips to the draft.
+   3. npm publishes: build, `publint`, then pack + publish via npm trusted
+      publishing (OIDC), no npm token secret. It goes before the release is
+      published because the in-app update notice reads `releases/latest`.
+   4. The draft is published (`gh release edit --draft=false --latest`), which
+      makes it immutable.
+   5. The Homebrew tap and Scoop bucket are updated from the published
+      `SHA256SUMS`.
+
+   A failed step stops everything after it: the release stays a draft and npm
+   stays unpublished. Fix the cause and use **Re-run failed jobs** on that
+   `Release` run; uploads to a draft replace what is there. The next push to
+   `main` does not retry it, since release-please has already tagged the PR.
 4. Every release is a patch: `versioning: always-bump-patch` in
    `release-please-config.json` holds the line at 0.5.x whatever the commit
    types. A minor release means changing that line on purpose. To force one
@@ -350,8 +368,9 @@ Versioning and publishing run through
    footer does not work here: squash commits end with the attribution lines,
    and release-please reads footers only from a commit's last paragraph.
 5. Releases are tagged `v<version>` from 0.5.0 on (`prismalens@<version>`
-   before it). Publishing a release also starts the registry-mode
-   `cross-os-smoke` run against that version.
+   before it). Publishing the release (with `RELEASE_PAT`, so the event
+   reaches other workflows) also starts the registry-mode `cross-os-smoke`
+   run against that version.
 
 The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
