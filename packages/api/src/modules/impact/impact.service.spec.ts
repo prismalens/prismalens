@@ -212,6 +212,14 @@ describe("ImpactService", () => {
 			expect(chart?.checkable).toBe(false);
 		});
 
+		it("offers no check when the alert's labels pick out no one series (#834 review)", async () => {
+			const { incidentId } = await incidentWith({ labels: { alertname: "HighLoad", job: "node", severity: "page" } });
+			const chart = await impact.chart(incidentId);
+			expect(chart?.scope).toEqual({ state: "unscoped", matched: 0 });
+			// check() refuses it as series-not-scoped, so the overview never runs it on its own.
+			expect(chart?.checkable).toBe(false);
+		});
+
 		it("uses the one rule loaded now for a catch-up alert, chart only and unscoped", async () => {
 			const { incidentId } = await incidentWith({ sourceUrl: graph('ALERTS{alertname="HighLoad"}', baseUrl) });
 			const chart = await impact.chart(incidentId);

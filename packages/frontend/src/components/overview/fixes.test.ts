@@ -12,6 +12,7 @@ import {
 	liveCheck,
 	nextStrip,
 	noteOf,
+	nothingToRun,
 	splitOptions,
 	startsRun,
 } from "./fixes";
@@ -147,6 +148,21 @@ describe("walk 8 packet 3 on the Next strip", () => {
 		expect(notYet({ threshold: { op: "==", value: 0 } }, 0)).toMatch(/^Not yet: 0 at /);
 	});
 
+	it("says 'at or' on the side of the rule that includes the threshold (#834 review)", () => {
+		expect(notYet({ threshold: { op: ">=", value: 1 } }, null)).toMatch(/^Not yet: still at or above the alert threshold at /);
+		expect(notYet({ threshold: { op: "<=", value: 1 } }, null)).toMatch(/^Not yet: still at or below the alert threshold at /);
+		const cleared = (op: ">" | ">=" | "<" | "<=") =>
+			nextStrip({
+				...base,
+				threshold: { op, value: 1 },
+				stage: { stage: "checked", appliedAt: at, check: { verdict: "below_threshold", at, value: null } },
+			}).text;
+		expect(cleared(">")).toMatch(/^At or below the alert threshold at /);
+		expect(cleared(">=")).toMatch(/^Below the alert threshold at /);
+		expect(cleared("<")).toMatch(/^At or above the alert threshold at /);
+		expect(cleared("<=")).toMatch(/^Above the alert threshold at /);
+	});
+
 	it("shows the cause you recorded at Resolve (w8-21)", () => {
 		const s = nextStrip({ ...base, ended: true, cause: "booklogr-api container stopped", option: null, stage: null });
 		expect(s.text).toBe(
@@ -209,6 +225,16 @@ describe("a sentence where the command goes (#673 w8-15)", () => {
 		const s = nextStrip({ ...base, option: hold, stage: { stage: "ready", copied: false, copyFailed: false } });
 		expect(s.text).toBe("Hold off on rolling back 8a99430. There is nothing to run; the reason is under Stop the impact.");
 		expect(s.primary).toBeUndefined();
+		expect(s.secondary).toBeUndefined();
+	});
+
+	it("keeps I applied it, with no Copy, for a step done by hand (#834 review)", () => {
+		const restart = { ...opt, title: "Restart the api pod", command: "Restart the api pod" };
+		expect(nothingToRun(restart)).toBe(false);
+		expect(nothingToRun(hold)).toBe(true);
+		const s = nextStrip({ ...base, option: restart, stage: { stage: "ready", copied: false, copyFailed: false } });
+		expect(s.text).toBe("Restart the api pod. The steps are under Stop the impact.");
+		expect(s.primary?.id).toBe("applied");
 		expect(s.secondary).toBeUndefined();
 	});
 });

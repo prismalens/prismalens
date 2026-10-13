@@ -78,7 +78,8 @@ none; with no provider signed in, that is an OpenCode Zen model.
   clone of the repository's last commit: your checkout is never its working
   directory, and uncommitted changes are not read. A run you start uses **Ask
   always** unless Settings or the agent's own config sets another level. Reads
-  and searches run; every other action the agent asks about waits for your
+  and searches run, and a request to switch the agent's mode is denied, so the
+  run keeps its mode; every other action the agent asks about waits for your
   Approve or Deny on the run.
 - **[Try it on a broken app](https://docs.prismalens.io/guides/try-it/)**, with
   no repository or monitoring of your own. A small app runs with its monitoring

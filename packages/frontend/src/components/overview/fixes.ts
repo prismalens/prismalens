@@ -58,6 +58,14 @@ export function noteOf(option: Pick<FixOption, "command">): string | null {
 	return c && SENTENCE.test(c) ? c : null;
 }
 
+/** A note that opens with a negation says there is nothing to do; any other is a step done by hand (#834 review). */
+const NO_ACTION = /^(?:None|No|Nothing|Not|Never|Don't|Do not)\b/;
+
+export function nothingToRun(option: Pick<FixOption, "command">): boolean {
+	const note = noteOf(option);
+	return !!note && NO_ACTION.test(note);
+}
+
 /** One check result: the live answer has its value; after a reload only the verdict and time. */
 export interface FixCheck {
 	verdict: FixVerdict;
@@ -172,14 +180,15 @@ export function againstRule(
 	op: Threshold["op"] | undefined,
 	firing: boolean,
 ): string {
+	// The side that includes the threshold itself says "at or" (#834 review).
 	if (op === undefined || op === ">" || op === ">=")
 		return firing
-			? "still over the alert threshold"
-			: "Below the alert threshold";
+			? `still ${op === ">=" ? "at or above" : "over"} the alert threshold`
+			: `${op === ">" ? "At or below" : "Below"} the alert threshold`;
 	if (op === "<" || op === "<=")
 		return firing
-			? "still under the alert threshold"
-			: "Above the alert threshold";
+			? `still ${op === "<=" ? "at or below" : "under"} the alert threshold`
+			: `${op === "<" ? "At or above" : "Above"} the alert threshold`;
 	return firing
 		? "still matching the alert's rule"
 		: "No longer matching the alert's rule";
@@ -285,12 +294,12 @@ export function nextStrip(input: {
 							? {}
 							: { primary: { id: "applied", label: "I applied it" } }),
 					};
-				if (noteOf(option))
+				if (nothingToRun(option))
 					return {
 						tone: "plain",
 						text: `${prefix}${option.title}. There is nothing to run; the reason is under Stop the impact.`,
 					};
-				if (!option.command)
+				if (!option.command || noteOf(option))
 					return {
 						tone: "accent",
 						text: `${prefix}${option.title}. The steps are under Stop the impact.`,
