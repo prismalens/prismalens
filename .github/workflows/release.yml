@@ -2,6 +2,12 @@ name: Release
 on:
   push:
     branches: [main]
+  # Recovery: resume an existing draft release from its assets on (CONTRIBUTING.md, #717).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the draft release to finish, e.g. v0.5.2"
+        required: true
 permissions:
   contents: read
 concurrency: release-${{ github.ref }}
@@ -19,7 +25,6 @@ jobs:
     # Before 1.0 a breaking change bumps the minor version (`bump-minor-pre-major`
     # in release-please-config.json). Tags are `v<version>` from 0.5.0 on; the
     # releases before it are tagged `prismalens@<version>`.
-    if: vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,7 +33,9 @@ jobs:
       created: ${{ steps.rp.outputs.release_created }}
       tag: ${{ steps.rp.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      # A step-level gate: a skipped job would skip every job after it, dispatch included.
+      - if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
+        uses: googleapis/release-please-action@v5
         id: rp
         with:
           token: ${{ secrets.RELEASE_PAT || github.token }}
@@ -38,52 +45,97 @@ jobs:
   # Merging the release PR makes a DRAFT release (`draft` + `force-tag-creation` in
   # release-please-config.json). Everything below fills it, then publishes it:
   # immutable releases refuse uploads once a release is published (#717).
-  standalone:
+  draft:
+    name: Resolve the draft release
     needs: release-please
-    if: needs.release-please.outputs.created == 'true'
+    if: >-
+      vars.RELEASE_ENABLED == 'true' &&
+      (needs.release-please.outputs.created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+      version: ${{ steps.r.outputs.version }}
+      latest: ${{ steps.r.outputs.latest }}
+    steps:
+      - id: r
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
+        run: |
+          draft=$(gh release view "$TAG" --json isDraft --jq .isDraft --repo "$GITHUB_REPOSITORY")
+          if [ "$draft" != "true" ]; then echo "::error::$TAG is not a draft release"; exit 1; fi
+          version="${TAG#v}"
+          current=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          case "$current" in v[0-9]*) ;; *) current="" ;; esac
+          newest=$(printf '%s\n%s\n' "${current#v}" "$version" | sort -V | tail -1)
+          latest=$([ "$newest" = "$version" ] && echo true || echo false)
+          echo "$TAG: version $version, current latest ${current:-none}, becomes latest: $latest"
+          { echo "tag=$TAG"; echo "version=$version"; echo "latest=$latest"; } >> "$GITHUB_OUTPUT"
+
+  standalone:
+    needs: draft
     uses: ./.github/workflows/standalone.yml
     with:
-      release-tag: ${{ needs.release-please.outputs.tag }}
+      release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
       contents: write
       id-token: write
       attestations: write
 
   desktop:
-    needs: release-please
-    if: needs.release-please.outputs.created == 'true'
+    needs: draft
     uses: ./.github/workflows/desktop.yml
     with:
-      release-tag: ${{ needs.release-please.outputs.tag }}
+      release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
       contents: write
 
   npm:
     name: Publish to npm
-    needs: [release-please, standalone, desktop]
+    needs: [draft, standalone, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - id: npm
+        env:
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: |
+          if [ "$(npm view "prismalens@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::prismalens@$VERSION is already on npm; not publishing it again"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.npm.outputs.published != 'true'
+        uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+          ref: ${{ needs.draft.outputs.tag }}
+      - if: steps.npm.outputs.published != 'true'
+        uses: pnpm/action-setup@v6
+      - if: steps.npm.outputs.published != 'true'
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm publint
-      - run: node scripts/pack-cli.mjs --publish
+      - if: steps.npm.outputs.published != 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.npm.outputs.published != 'true'
+        run: pnpm build
+      - if: steps.npm.outputs.published != 'true'
+        run: pnpm publint
+      # An older version finished after a newer one must not take npm's `latest`.
+      - if: steps.npm.outputs.published != 'true'
+        env:
+          DIST_TAG: ${{ needs.draft.outputs.latest == 'true' && 'latest' || 'previous' }}
+        run: node scripts/pack-cli.mjs --publish --tag "$DIST_TAG"
 
   # npm goes first: publishing the release is what the in-app update notice reads
   # (`releases/latest`), so it must not point at a version npm lacks (#717).
   publish-release:
     name: Publish the release
-    needs: [release-please, npm]
+    needs: [draft, npm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -91,23 +143,25 @@ jobs:
       # A PAT, so `release: published` starts cross-os-smoke; GITHUB_TOKEN events start nothing.
       - env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
-          TAG: ${{ needs.release-please.outputs.tag }}
-        run: gh release edit "$TAG" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+          TAG: ${{ needs.draft.outputs.tag }}
+          LATEST: ${{ needs.draft.outputs.latest }}
+        run: gh release edit "$TAG" --draft=false "--latest=$LATEST" --repo "$GITHUB_REPOSITORY"
 
   package-managers:
     name: Update the Homebrew tap and Scoop bucket
-    needs: [release-please, publish-release]
+    needs: [draft, publish-release]
+    if: needs.draft.outputs.latest == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag }}
+          ref: ${{ needs.draft.outputs.tag }}
 
       - name: Write and push the formula and manifest
         env:
           GH_TOKEN: ${{ github.token }}
           PM_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
-          TAG: ${{ needs.release-please.outputs.tag }}
+          TAG: ${{ needs.draft.outputs.tag }}
         run: |
           if [ -z "$PM_TOKEN" ]; then
             echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
