@@ -1,6 +1,6 @@
 {
 	"name": "prismalens-monorepo",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"private": true,
 	"description": "Open-source AI-powered incident analysis and root cause detection",
 	"license": "Apache-2.0",
