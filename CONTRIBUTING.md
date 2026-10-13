@@ -351,15 +351,23 @@ Versioning and publishing run through
    3. npm publishes: build, `publint`, then pack + publish via npm trusted
       publishing (OIDC), no npm token secret. It goes before the release is
       published because the in-app update notice reads `releases/latest`.
-   4. The draft is published (`gh release edit --draft=false --latest`), which
-      makes it immutable.
+   4. The draft is published (`gh release edit --draft=false`), which makes
+      it immutable.
    5. The Homebrew tap and Scoop bucket are updated from the published
       `SHA256SUMS`.
 
-   A failed step stops everything after it: the release stays a draft and npm
-   stays unpublished. Fix the cause and use **Re-run failed jobs** on that
-   `Release` run; uploads to a draft replace what is there. The next push to
-   `main` does not retry it, since release-please has already tagged the PR.
+   What a failure leaves: before npm, a draft release and nothing on npm;
+   after npm, a draft release with npm published. Either way, **Re-run failed
+   jobs** on that `Release` run finishes it: uploads to a draft replace what
+   is there, and npm is skipped when the version is already on it. If
+   release-please made the draft but its run failed, a re-run sees an
+   existing release and builds nothing; run **Release** by hand
+   (`gh workflow run release.yml -f tag=v<version>`) to resume that draft
+   from its assets on. It refuses a release that is not a draft. A version
+   older than the current latest release is published to npm under the
+   `previous` dist-tag and not marked latest, and the tap and bucket are left
+   alone.
+
 4. Every release is a patch: `versioning: always-bump-patch` in
    `release-please-config.json` holds the line at 0.5.x whatever the commit
    types. A minor release means changing that line on purpose. To force one
