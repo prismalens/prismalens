@@ -9,15 +9,19 @@ on:
       - "scripts/install/**"
       - "scripts/pack-cli.mjs"
       - ".github/workflows/standalone.yml"
-  release:
-    types: [published]
+  # release.yml calls this with the draft release's tag to attach the archives (#717).
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: standalone-${{ github.ref }}
+  group: standalone-${{ inputs.release-tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,6 +48,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -249,9 +255,9 @@ jobs:
           retention-days: 7
 
   attach:
-    name: Attach to the release
+    name: Attach to the draft release
     needs: build
-    if: github.event_name == 'release'
+    if: inputs.release-tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -259,6 +265,8 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
 
       - name: Download standalone archives
         uses: actions/download-artifact@v8
@@ -273,48 +281,11 @@ jobs:
         with:
           subject-path: archives/prismalens-*
 
-      - name: Generate SHA256SUMS and upload to release
+      - name: Generate SHA256SUMS and upload to the draft
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.release-tag }}
         run: |
           cd archives
           sha256sum prismalens-* > SHA256SUMS
           gh release upload "$TAG" prismalens-* SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
-
-  publish-manifests:
-    name: Update the Homebrew tap and Scoop bucket
-    needs: attach
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # Skips until the operator creates both repos and the token (#717).
-      - name: Write and push the formula and manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PM_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [ -z "$PM_TOKEN" ]; then
-            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
-            exit 0
-          fi
-          version="${TAG#v}"
-          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
-          node scripts/install/package-manifests.mjs --version "$version" --sums "$RUNNER_TEMP/SHA256SUMS" --out "$RUNNER_TEMP/manifests"
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          publish() {
-            repo="$1" src="$2" dest="$3" dir="$RUNNER_TEMP/clone-${1#*/}"
-            git clone --depth 1 "https://x-access-token:${PM_TOKEN}@github.com/${repo}.git" "$dir"
-            mkdir -p "$dir/$(dirname "$dest")"
-            cp "$src" "$dir/$dest"
-            git -C "$dir" add "$dest"
-            if git -C "$dir" diff --cached --quiet; then return 0; fi
-            git -C "$dir" commit -m "prismalens $version"
-            git -C "$dir" push origin HEAD:main
-          }
-          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
-          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json

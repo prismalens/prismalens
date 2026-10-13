@@ -110,8 +110,8 @@ jobs:
             ;;
           esac
 
-      # The release event starts this run and release.yml's publish job at the
-      # same moment, so the version may not be on npm yet.
+      # release.yml publishes npm before the release, but the registry can lag
+      # behind the `release: published` event by a few seconds.
       - name: Wait for the version on npm (release event)
         if: github.event_name == 'release' && steps.resolve.outputs.mode == 'registry'
         env:

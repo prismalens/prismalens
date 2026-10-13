@@ -2,12 +2,8 @@ name: Release
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
 permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+  contents: read
 concurrency: release-${{ github.ref }}
 jobs:
   release-please:
@@ -23,22 +19,56 @@ jobs:
     # Before 1.0 a breaking change bumps the minor version (`bump-minor-pre-major`
     # in release-please-config.json). Tags are `v<version>` from 0.5.0 on; the
     # releases before it are tagged `prismalens@<version>`.
-    #
-    # The `publish` job below is deliberately NOT gated: it fires on a published
-    # GitHub Release, which only exists if a human deliberately made one.
-    if: github.event_name == 'push' && vars.RELEASE_ENABLED == 'true'
+    if: vars.RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v5
+        id: rp
         with:
           token: ${{ secrets.RELEASE_PAT || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-  publish:
-    if: github.event_name == 'release'
+
+  # Merging the release PR makes a DRAFT release (`draft` + `force-tag-creation` in
+  # release-please-config.json). Everything below fills it, then publishes it:
+  # immutable releases refuse uploads once a release is published (#717).
+  standalone:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    uses: ./.github/workflows/standalone.yml
+    with:
+      release-tag: ${{ needs.release-please.outputs.tag }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+  desktop:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    uses: ./.github/workflows/desktop.yml
+    with:
+      release-tag: ${{ needs.release-please.outputs.tag }}
+    permissions:
+      contents: write
+
+  npm:
+    name: Publish to npm
+    needs: [release-please, standalone, desktop]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -48,3 +78,55 @@ jobs:
       - run: pnpm build
       - run: pnpm publint
       - run: node scripts/pack-cli.mjs --publish
+
+  # npm goes first: publishing the release is what the in-app update notice reads
+  # (`releases/latest`), so it must not point at a version npm lacks (#717).
+  publish-release:
+    name: Publish the release
+    needs: [release-please, npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # A PAT, so `release: published` starts cross-os-smoke; GITHUB_TOKEN events start nothing.
+      - env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+
+  package-managers:
+    name: Update the Homebrew tap and Scoop bucket
+    needs: [release-please, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+
+      - name: Write and push the formula and manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PM_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: |
+          if [ -z "$PM_TOKEN" ]; then
+            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
+            exit 0
+          fi
+          version="${TAG#v}"
+          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
+          node scripts/install/package-manifests.mjs --version "$version" --sums "$RUNNER_TEMP/SHA256SUMS" --out "$RUNNER_TEMP/manifests"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          publish() {
+            repo="$1" src="$2" dest="$3" dir="$RUNNER_TEMP/clone-${1#*/}"
+            git clone --depth 1 "https://x-access-token:${PM_TOKEN}@github.com/${repo}.git" "$dir"
+            mkdir -p "$dir/$(dirname "$dest")"
+            cp "$src" "$dir/$dest"
+            git -C "$dir" add "$dest"
+            if git -C "$dir" diff --cached --quiet; then return 0; fi
+            git -C "$dir" commit -m "prismalens $version"
+            git -C "$dir" push origin HEAD:main
+          }
+          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
+          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
