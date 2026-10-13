@@ -104,3 +104,7 @@ packages/cli/.pack-staging/
 # Electron launcher: staged backend and built app
 packages/desktop/resources/
 packages/desktop/release/
+
+# Per-machine agent instructions (maintainer workflow, local paths)
+CLAUDE.local.md
+AGENTS.local.md
