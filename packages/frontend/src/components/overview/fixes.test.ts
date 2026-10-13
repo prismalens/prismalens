@@ -4,6 +4,7 @@
 import type { Fixes } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import {
+	causeCategory,
 	commandOf,
 	failedStrip,
 	type FixOption,
@@ -157,6 +158,22 @@ describe("walk 8 packet 3 on the Next strip", () => {
 	it("says just after you applied it inside a minute (w8-22)", () => {
 		expect(notYet({}, 0)).toMatch(/, just after you applied it\./);
 		expect(notYet({}, 0, "2026-10-11T12:21:10Z")).toMatch(/, 1 minute after you applied it\./);
+	});
+});
+
+describe("causeCategory (#673 w9-3)", () => {
+	it("Given the standing report's category, Then the header shows it", () => {
+		expect(causeCategory(null, "infrastructure")).toBe("infrastructure");
+	});
+
+	it("Given a report that named a cause but no category, Then no Cause fact reads 'Unknown'", () => {
+		expect(causeCategory(null, "unknown")).toBeNull();
+		expect(causeCategory(undefined, undefined)).toBeNull();
+	});
+
+	it("Given a category you recorded at Resolve, Then it wins (w8-21)", () => {
+		expect(causeCategory("config", "infrastructure")).toBe("config");
+		expect(causeCategory("unknown", "infrastructure")).toBe("unknown");
 	});
 });
 

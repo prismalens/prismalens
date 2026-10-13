@@ -2,8 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import type { RunRef } from "@/components/incidents/record-context";
-import { reportedRun } from "./use-overview";
+import {
+	type RunRef,
+	reportedRun,
+} from "@/components/incidents/record-context";
 
 const run = (
 	id: string,

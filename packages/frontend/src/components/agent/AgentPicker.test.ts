@@ -12,6 +12,7 @@ import {
 	effortLevels,
 	AccessChip,
 	modelName,
+	unreadyLine,
 	unreadyReason,
 } from "./AgentPicker";
 
@@ -103,6 +104,22 @@ describe("the box's chips (#673)", () => {
 			),
 		).toBe("Claude Code: no answer in 10s");
 		expect(unreadyReason(claude())).toBeNull();
+	});
+
+	it("ends the run gate's line with one full stop per sentence (#673 w9-1)", () => {
+		const codex = claude({
+			id: "codex",
+			label: "Codex",
+			checked: {
+				...(claude().checked as NonNullable<HarnessStatus["checked"]>),
+				outcome: "sign-in-needed",
+				detail: "sign in needed",
+			},
+		});
+		expect(unreadyLine(codex)).toBe(
+			"Codex is not signed in to its model provider. Sign in with its own CLI, then retry. Check it in Settings, Agent.",
+		);
+		expect(unreadyLine(claude())).toBeNull();
 	});
 
 	it("reads the level and the window as two spans, and stays disabled with its reason without levels", () => {

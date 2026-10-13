@@ -4,8 +4,10 @@
 import { isAlertFiring, isRunStateLive } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RunRef } from "@/components/incidents/record-context";
-import { useIncidentRecord } from "@/components/incidents/record-context";
+import {
+	reportedRun,
+	useIncidentRecord,
+} from "@/components/incidents/record-context";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
 import { refRunState } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
@@ -29,15 +31,6 @@ import {
 const SLOW_MS = 10_000;
 
 const keyOf = (o: FixOption) => o.id ?? `#${o.index}`;
-
-/**
- * The newest investigation (not an Ask) whose report named a cause: a later report
- * that names none does not erase it (#673 w7-7). With no named cause, the newest report.
- */
-export function reportedRun(runs: RunRef[]): RunRef | null {
-	const reported = runs.filter((r) => r.kind !== "chat" && r.hasReport);
-	return reported.find((r) => r.rootCause) ?? reported[0] ?? null;
-}
 
 /**
  * Everything the overview reads (#811): the standing finding and its fixes

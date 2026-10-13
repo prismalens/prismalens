@@ -15,7 +15,7 @@ import {
 	defaultAccessOf,
 	EffortChip,
 	ModelChip,
-	unreadyReason,
+	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import {
@@ -311,7 +311,7 @@ export function DockedComposer({
 		...(own.effort !== undefined ? { effort: own.effort } : {}),
 	};
 
-	const unready = draft && harness ? unreadyReason(harness) : null;
+	const unready = draft && harness ? unreadyLine(harness) : null;
 	const otherLive =
 		record.liveRun && record.liveRun.id !== inv?.id ? record.liveRun : null;
 	const liveNumber = otherLive ? runNumber(runs, otherLive.id) : null;
@@ -324,7 +324,7 @@ export function DockedComposer({
 					? "An Ask is answering; message it or stop it"
 					: `Run ${liveNumber} is working; message it or stop it`
 				: unready
-					? `${unready}. Check it in Settings, Agent.`
+					? unready
 					: own.harness
 						? harness?.installed
 							? undefined

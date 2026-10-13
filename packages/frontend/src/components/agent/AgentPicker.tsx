@@ -178,6 +178,12 @@ export function unreadyReason(h: HarnessStatus): string | null {
 	return `${h.label}: ${h.checked.detail}`;
 }
 
+/** The run gate's line: the reason, then where to check it, one full stop each (#673 w9-1). */
+export function unreadyLine(h: HarnessStatus): string | null {
+	const why = unreadyReason(h)?.replace(/[.\s]+$/, "");
+	return why ? `${why}. Check it in Settings, Agent.` : null;
+}
+
 function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 	if (h.modelVia === "unsupported")
 		return h.id === "deepagents" ? "own" : "pending";

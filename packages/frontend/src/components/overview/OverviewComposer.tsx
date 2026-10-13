@@ -9,7 +9,7 @@ import {
 	defaultAccessOf,
 	EffortChip,
 	ModelChip,
-	unreadyReason,
+	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import type { DraftChoice } from "@/components/incidents/record-context";
@@ -161,12 +161,12 @@ export function OverviewComposer({
 			? action
 			: (t.actions[0]?.id as OverviewAction);
 
-	const unready = harness ? unreadyReason(harness) : null;
+	const unready = harness ? unreadyLine(harness) : null;
 	const agentBlocked =
 		current === "note" || current === "message"
 			? undefined
 			: unready
-				? `${unready}. Check it in Settings, Agent.`
+				? unready
 				: record.investigateBlocked;
 
 	const chips =

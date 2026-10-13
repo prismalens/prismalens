@@ -17,6 +17,7 @@ import { ago, useNow } from "@/hooks/use-now";
 import { failureWords } from "@/lib/failure-words";
 import { formatElapsed } from "@/lib/format-time";
 import { askTitle } from "@/lib/run-asks";
+import { stripInlineMarkdown } from "@/lib/strip-inline-markdown";
 import { cn } from "@/lib/utils";
 import type { Overview } from "./use-overview";
 
@@ -48,7 +49,7 @@ export function LatestRunStrip({ o }: { o: Overview }) {
 		: waiting
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: live
-				? (run.latestText ?? "Working")
+				? stripInlineMarkdown(run.latestText ?? "Working")
 				: state === "failed"
 					? failureWords(inv?.error ?? latest.error, who.agent).what
 					: latest.hasReport

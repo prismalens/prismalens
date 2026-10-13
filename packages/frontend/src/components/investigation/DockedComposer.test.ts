@@ -60,7 +60,7 @@ vi.mock("@/components/agent/AgentPicker", async () => {
 			level: { level: h.settingsLevel, from: "agent" },
 		}),
 		modelName: (_h: unknown, id: string) => id,
-		unreadyReason: () => null,
+		unreadyLine: () => null,
 		useAgentChoice: () => ({
 			harnesses: [h.opencode, h.codex],
 			effective: h.opencode,

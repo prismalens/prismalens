@@ -22,7 +22,13 @@ import { attentionFor } from "@/lib/incident-attention";
 import { incidentSummary } from "@/lib/incident-summary";
 import { incidentServices } from "@/lib/service-lanes";
 import { cn } from "@/lib/utils";
-import { failedStrip, type NextActionId, nextStrip, startsRun } from "./fixes";
+import {
+	causeCategory,
+	failedStrip,
+	type NextActionId,
+	nextStrip,
+	startsRun,
+} from "./fixes";
 import type { Overview } from "./use-overview";
 
 const TONE_BG = {
@@ -84,8 +90,10 @@ export function SituationCard({
 	else if (trend === "steady") facts.push({ k: "Trend", v: "Steady" });
 	else if (trend === "clear")
 		facts.push({ k: "Trend", v: "Recovered", tone: "text-ok" });
-	// The category you recorded at Resolve outranks the report's (#673 w8-21).
-	const category = incident.actualCauseCategory ?? report?.rootCauseCategory;
+	const category = causeCategory(
+		incident.actualCauseCategory,
+		report?.rootCauseCategory,
+	);
 	if (category)
 		facts.push({ k: "Cause", v: ROOT_CAUSE_CATEGORY_LABEL[category] });
 	if (report?.culprit?.changeRef)

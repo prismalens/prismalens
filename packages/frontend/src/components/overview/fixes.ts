@@ -8,6 +8,7 @@ import type {
 	FixOption,
 	FixVerdict,
 	MetricUnit,
+	RootCauseCategory,
 	Threshold,
 } from "@prismalens/contracts";
 import { isAlertFiring, REFIRE_LABEL } from "@prismalens/contracts";
@@ -17,6 +18,18 @@ import { formatValue } from "./impact";
 
 export type { FixOption };
 export const AUTO_CHECK_MS = 5 * 60_000;
+
+/**
+ * The header's Cause: the one you recorded at Resolve outranks the standing report's
+ * (#673 w8-21). The report's "unknown" is no category, not "cause unknown" (w9-3).
+ */
+export function causeCategory(
+	recorded: RootCauseCategory | null | undefined,
+	reported: RootCauseCategory | null | undefined,
+): RootCauseCategory | null {
+	if (recorded) return recorded;
+	return reported && reported !== "unknown" ? reported : null;
+}
 
 /** The run's ways to stop the impact (0 to 3, in rank order) and its one lasting fix. */
 export function splitOptions(fixes: Fixes | undefined): {
