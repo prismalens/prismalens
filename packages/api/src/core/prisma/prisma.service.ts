@@ -129,6 +129,39 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 		return db.incidentSimilarity;
 	}
 
+	// Case File experiment
+	get serviceBinding() {
+		return db.serviceBinding;
+	}
+
+	get capture() {
+		return db.capture;
+	}
+
+	get caseCapture() {
+		return db.caseCapture;
+	}
+
+	get captureArtifact() {
+		return db.captureArtifact;
+	}
+
+	get manifestEntry() {
+		return db.manifestEntry;
+	}
+
+	get caseNode() {
+		return db.caseNode;
+	}
+
+	get caseEdge() {
+		return db.caseEdge;
+	}
+
+	get claimRevision() {
+		return db.claimRevision;
+	}
+
 	// Device pairing (ADR 0004 §8)
 	get pairingLink() {
 		return db.pairingLink;

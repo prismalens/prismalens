@@ -329,6 +329,53 @@ describe("investigation_asks (#673 w21)", () => {
 	});
 });
 
+describe("case_file_core (Case File experiment)", () => {
+	const CASE_CORE = "20261014200221_case_file_core";
+
+	it("applies on top of every shipped migration and refuses UPDATEs on the append-only tables", async () => {
+		const shipped = resolveMigrationsDir();
+		const file = dbFile();
+		const result = await runMigrations({ databaseFile: file, migrationsDir: shipped });
+
+		const all = readdirSync(shipped)
+			.filter((name) => existsSync(join(shipped, name, "migration.sql")))
+			.sort();
+		expect(result.applied).toEqual(all);
+		expect(result.applied).toContain(CASE_CORE);
+		expect(tableNames(file)).toEqual(
+			expect.arrayContaining([
+				"service_bindings",
+				"captures",
+				"case_captures",
+				"capture_artifacts",
+				"manifest_entries",
+				"case_nodes",
+				"case_edges",
+				"claim_revisions",
+			]),
+		);
+
+		const db = new Database(file);
+		db.pragma("foreign_keys = OFF");
+		db.prepare(
+			`INSERT INTO "claim_revisions" ("id", "incidentId", "revision", "status", "statement", "sourceKind", "provenance", "validKind") VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		).run("rev-1", "inc-1", 1, "observed", "a statement", "capture", "host-executed", "instant");
+		db.prepare(
+			`INSERT INTO "manifest_entries" ("captureId", "body", "prevDigest", "digest") VALUES (?, ?, ?, ?)`,
+		).run("cap-1", "{}", "", "d1");
+
+		expect(() =>
+			db.prepare(`UPDATE "claim_revisions" SET "status" = 'confirmed'`).run(),
+		).toThrow(/claim_revisions is append-only/);
+		expect(() =>
+			db.prepare(`UPDATE "manifest_entries" SET "digest" = 'd2'`).run(),
+		).toThrow(/manifest_entries is append-only/);
+		// Deletes stay possible: the cascades from incidents and captures rely on them.
+		expect(db.prepare(`DELETE FROM "claim_revisions"`).run().changes).toBe(1);
+		db.close();
+	});
+});
+
 describe("runMigrations — already current database", () => {
 	it("is a no-op on the second run", async () => {
 		const migrationsDir = lineage([BASE, ADD_COLOUR]);

@@ -3,6 +3,7 @@
 
 // Import individual contracts
 export { alertsContract } from "./alerts.js";
+export { caseFilesContract } from "./case-files.js";
 export { changesContract } from "./changes.js";
 export { eventsContract } from "./events.js";
 export { fixesContract } from "./fixes.js";
@@ -42,6 +43,7 @@ export { webhooksContract } from "./webhooks.js";
 
 // Re-import for combined contract
 import { alertsContract } from "./alerts.js";
+import { caseFilesContract } from "./case-files.js";
 import { changesContract } from "./changes.js";
 import { eventsContract } from "./events.js";
 import { fixesContract } from "./fixes.js";
@@ -76,6 +78,7 @@ export const contract = {
 	recommendations: recommendationsContract,
 	repositories: repositoriesContract,
 	services: servicesContract,
+	caseFiles: caseFilesContract,
 	webhooks: webhooksContract,
 	events: eventsContract,
 	timeline: timelineContract,

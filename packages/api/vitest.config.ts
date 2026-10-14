@@ -74,6 +74,7 @@ export default defineConfig({
 				"src/modules/impact/promql-shape.ts": NEW_CODE_THRESHOLD,
 				"src/modules/impact/series-scope.ts": NEW_CODE_THRESHOLD,
 				"src/modules/fixes/fixes.service.ts": NEW_CODE_THRESHOLD,
+				"src/modules/case-files/**": NEW_CODE_THRESHOLD,
 			},
 		},
 	},

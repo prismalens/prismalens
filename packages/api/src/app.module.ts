@@ -77,6 +77,7 @@ import { HealthModule } from "./infrastructure/health/health.module.js";
 import { AlertMappingModule } from "./modules/alert-mapping/alert-mapping.module.js";
 // Feature modules
 import { AlertsModule } from "./modules/alerts/alerts.module.js";
+import { CaseFilesModule } from "./modules/case-files/case-files.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { EventsModule } from "./modules/events/events.module.js";
 import { FixesModule } from "./modules/fixes/fixes.module.js";
@@ -191,6 +192,7 @@ const orpcLogger = new Logger({ context: "oRPC" });
 		WebhooksModule, // Webhook ingestion
 		RecommendationsModule,
 		IntegrationsModule, // External tool integrations (GitHub, Prometheus, Slack)
+		CaseFilesModule, // Case File experiment, off unless Setting case_file is on
 		OpenAPIModule, // OpenAPI spec and documentation
 	],
 	controllers: [AppController],

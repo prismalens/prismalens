@@ -912,6 +912,14 @@ export const InvestigationContextSchema = z.object({
 			),
 		})
 		.optional(),
+	/** The host capture bundle under the cwd and its retrieval state when the prompt was built. */
+	caseBundle: z
+		.object({
+			path: z.string(),
+			target: z.string(),
+			digest: z.array(z.string().max(160)).max(12),
+		})
+		.optional(),
 });
 export type InvestigationContext = z.infer<typeof InvestigationContextSchema>;
 

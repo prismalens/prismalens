@@ -24869,6 +24869,2329 @@
         }
       }
     },
+    "/case-files/settings": {
+      "get": {
+        "operationId": "caseFiles.settings.get",
+        "summary": "Whether Case File capture is on",
+        "tags": [
+          "case-files"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "caseFiles.settings.update",
+        "summary": "Turn Case File capture on or off",
+        "tags": [
+          "case-files"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services/{serviceId}/binding/detect": {
+      "get": {
+        "operationId": "caseFiles.bindings.detect",
+        "summary": "What kubectl on this machine offers for a binding",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kubectl": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "version"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contexts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "currentContext": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "cluster": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "user": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "namespace": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "cluster",
+                            "user",
+                            "namespace"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "suggested": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kubeContext": {
+                              "type": "string"
+                            },
+                            "namespace": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kubeContext",
+                            "namespace"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kubectl",
+                    "contexts"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services/{serviceId}/binding": {
+      "get": {
+        "operationId": "caseFiles.bindings.get",
+        "summary": "The service's Kubernetes binding, if any",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "serviceId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "kubernetes"
+                        },
+                        "kubeContext": {
+                          "type": "string"
+                        },
+                        "cluster": {
+                          "type": "string"
+                        },
+                        "namespace": {
+                          "type": "string"
+                        },
+                        "kubeUser": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "detected": {
+                          "type": "object",
+                          "properties": {
+                            "kubectl": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "path": {
+                                      "type": "string"
+                                    },
+                                    "version": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "path",
+                                    "version"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "contexts": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "currentContext": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "current": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "cluster": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "user": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "namespace": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "cluster",
+                                    "user",
+                                    "namespace"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "suggested": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kubeContext": {
+                                      "type": "string"
+                                    },
+                                    "namespace": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kubeContext",
+                                    "namespace"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kubectl",
+                            "contexts"
+                          ]
+                        },
+                        "confirmedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "probeState": {
+                          "enum": [
+                            "unchecked",
+                            "ok",
+                            "no-kubectl",
+                            "context-missing",
+                            "identity-mismatch",
+                            "unauthorised",
+                            "unreachable"
+                          ],
+                          "type": "string"
+                        },
+                        "probeDetail": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "probedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "serviceId",
+                        "kind",
+                        "kubeContext",
+                        "cluster",
+                        "namespace",
+                        "kubeUser",
+                        "detected",
+                        "confirmedAt",
+                        "probeState",
+                        "probeDetail",
+                        "probedAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "caseFiles.bindings.confirm",
+        "summary": "Bind the service to a kube context and namespace",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kubeContext": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  },
+                  "namespace": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63
+                  }
+                },
+                "required": [
+                  "kubeContext",
+                  "namespace"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "kubernetes"
+                    },
+                    "kubeContext": {
+                      "type": "string"
+                    },
+                    "cluster": {
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "type": "string"
+                    },
+                    "kubeUser": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "detected": {
+                      "type": "object",
+                      "properties": {
+                        "kubectl": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "version": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "version"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "contexts": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "currentContext": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "current": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "cluster": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "user": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "namespace": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "cluster",
+                                "user",
+                                "namespace"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "suggested": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kubeContext": {
+                                  "type": "string"
+                                },
+                                "namespace": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kubeContext",
+                                "namespace"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kubectl",
+                        "contexts"
+                      ]
+                    },
+                    "confirmedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "probeState": {
+                      "enum": [
+                        "unchecked",
+                        "ok",
+                        "no-kubectl",
+                        "context-missing",
+                        "identity-mismatch",
+                        "unauthorised",
+                        "unreachable"
+                      ],
+                      "type": "string"
+                    },
+                    "probeDetail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "probedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "serviceId",
+                    "kind",
+                    "kubeContext",
+                    "cluster",
+                    "namespace",
+                    "kubeUser",
+                    "detected",
+                    "confirmedAt",
+                    "probeState",
+                    "probeDetail",
+                    "probedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "caseFiles.bindings.remove",
+        "summary": "Unbind the service",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services/{serviceId}/binding/probe": {
+      "post": {
+        "operationId": "caseFiles.bindings.probe",
+        "summary": "Check the binding with one real read",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "serviceId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "kubernetes"
+                    },
+                    "kubeContext": {
+                      "type": "string"
+                    },
+                    "cluster": {
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "type": "string"
+                    },
+                    "kubeUser": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "detected": {
+                      "type": "object",
+                      "properties": {
+                        "kubectl": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "version": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "version"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "contexts": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "currentContext": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "current": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "cluster": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "user": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "namespace": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "cluster",
+                                "user",
+                                "namespace"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "suggested": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kubeContext": {
+                                  "type": "string"
+                                },
+                                "namespace": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kubeContext",
+                                "namespace"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kubectl",
+                        "contexts"
+                      ]
+                    },
+                    "confirmedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "probeState": {
+                      "enum": [
+                        "unchecked",
+                        "ok",
+                        "no-kubectl",
+                        "context-missing",
+                        "identity-mismatch",
+                        "unauthorised",
+                        "unreachable"
+                      ],
+                      "type": "string"
+                    },
+                    "probeDetail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "probedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "serviceId",
+                    "kind",
+                    "kubeContext",
+                    "cluster",
+                    "namespace",
+                    "kubeUser",
+                    "detected",
+                    "confirmedAt",
+                    "probeState",
+                    "probeDetail",
+                    "probedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{incidentId}": {
+      "get": {
+        "operationId": "caseFiles.cases.get",
+        "summary": "The incident's case as it stood at asOf",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "asOf": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "binding": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kubeContext": {
+                              "type": "string"
+                            },
+                            "namespace": {
+                              "type": "string"
+                            },
+                            "cluster": {
+                              "type": "string"
+                            },
+                            "probeState": {
+                              "enum": [
+                                "unchecked",
+                                "ok",
+                                "no-kubectl",
+                                "context-missing",
+                                "identity-mismatch",
+                                "unauthorised",
+                                "unreachable"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kubeContext",
+                            "namespace",
+                            "cluster",
+                            "probeState"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "captures": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "enum": [
+                              "queued",
+                              "running",
+                              "complete",
+                              "partial",
+                              "skipped",
+                              "blocked"
+                            ],
+                            "type": "string"
+                          },
+                          "stateReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "missed": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "from": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "to": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "from",
+                                  "to"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "shared": {
+                            "type": "boolean"
+                          },
+                          "latencyMs": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "identity": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kubeContext": {
+                                    "type": "string"
+                                  },
+                                  "cluster": {
+                                    "type": "string"
+                                  },
+                                  "kubeUser": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "whoami": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "username": {
+                                            "type": "string"
+                                          },
+                                          "uid": {
+                                            "type": "string"
+                                          },
+                                          "groups": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        "required": [
+                                          "username"
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "matchesBinding": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "kubeContext",
+                                  "cluster",
+                                  "kubeUser",
+                                  "whoami",
+                                  "matchesBinding"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "identityMatches": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "finishedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "artifacts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "purpose": {
+                                  "enum": [
+                                    "events",
+                                    "deployments",
+                                    "replicasets",
+                                    "pods",
+                                    "logs-previous"
+                                  ],
+                                  "type": "string"
+                                },
+                                "subject": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "command": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "retrieval": {
+                                  "enum": [
+                                    "complete",
+                                    "partial"
+                                  ],
+                                  "type": "string"
+                                },
+                                "retrievalReason": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "page-limit",
+                                        "byte-cap",
+                                        "timeout",
+                                        "error"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "bytes": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "redactions": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      }
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "error": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "error"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "withheld": {
+                                  "type": "boolean"
+                                },
+                                "expired": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "purpose",
+                                "subject",
+                                "command",
+                                "retrieval",
+                                "retrievalReason",
+                                "bytes",
+                                "redactions",
+                                "withheld",
+                                "expired"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "state",
+                          "stateReason",
+                          "missed",
+                          "shared",
+                          "latencyMs",
+                          "identity",
+                          "identityMatches",
+                          "startedAt",
+                          "finishedAt",
+                          "artifacts"
+                        ]
+                      }
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "node",
+                                  "edge"
+                                ],
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "relation": {
+                                "type": "string"
+                              },
+                              "from": {
+                                "type": "string"
+                              },
+                              "to": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "label"
+                            ]
+                          },
+                          "status": {
+                            "enum": [
+                              "hint",
+                              "candidate",
+                              "observed",
+                              "inferred",
+                              "stated",
+                              "confirmed",
+                              "inconclusive",
+                              "unknown"
+                            ],
+                            "type": "string"
+                          },
+                          "statusReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "statement": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "attributes": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revision": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "exclusiveMinimum": 0
+                          },
+                          "revisions": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "exclusiveMinimum": 0
+                          },
+                          "source": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "capture",
+                                  "alert",
+                                  "report",
+                                  "host"
+                                ],
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "enum": [
+                                  "host-executed",
+                                  "shim-observed",
+                                  "harness-relayed",
+                                  "harness-reported"
+                                ],
+                                "type": "string"
+                              },
+                              "artifactId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "investigationId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "provenance",
+                              "artifactId",
+                              "investigationId"
+                            ]
+                          },
+                          "population": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "retrieval": {
+                                    "enum": [
+                                      "complete",
+                                      "partial"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "enum": [
+                                      "page-limit",
+                                      "byte-cap",
+                                      "timeout",
+                                      "error"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "missedFrom": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "missedTo": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "note": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "retrieval"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceTime": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "valid": {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "enum": [
+                                  "instant",
+                                  "interval",
+                                  "unknown"
+                                ],
+                                "type": "string"
+                              },
+                              "from": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "to": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "from",
+                              "to"
+                            ]
+                          },
+                          "collectedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recordedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "projected": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "subject",
+                          "status",
+                          "statusReason",
+                          "statement",
+                          "hint",
+                          "attributes",
+                          "revision",
+                          "revisions",
+                          "source",
+                          "population",
+                          "coverage",
+                          "sourceTime",
+                          "valid",
+                          "collectedAt",
+                          "recordedAt",
+                          "projected"
+                        ]
+                      }
+                    },
+                    "openQuestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "agentToolCalls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "investigationId": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "provenance": {
+                            "const": "harness-reported"
+                          }
+                        },
+                        "required": [
+                          "investigationId",
+                          "toolCallId",
+                          "name",
+                          "source",
+                          "at",
+                          "provenance"
+                        ]
+                      }
+                    },
+                    "manifest": {
+                      "type": "object",
+                      "properties": {
+                        "entries": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "lastVerified": {
+                          "type": "null"
+                        }
+                      },
+                      "required": [
+                        "entries",
+                        "lastVerified"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "asOf",
+                    "binding",
+                    "captures",
+                    "claims",
+                    "openQuestions",
+                    "agentToolCalls",
+                    "manifest"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "caseFiles.cases.artifact",
+        "summary": "One captured artifact's redacted text",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "artifactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "artifact": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "purpose": {
+                          "enum": [
+                            "events",
+                            "deployments",
+                            "replicasets",
+                            "pods",
+                            "logs-previous"
+                          ],
+                          "type": "string"
+                        },
+                        "subject": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "command": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "retrieval": {
+                          "enum": [
+                            "complete",
+                            "partial"
+                          ],
+                          "type": "string"
+                        },
+                        "retrievalReason": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "page-limit",
+                                "byte-cap",
+                                "timeout",
+                                "error"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "bytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "redactions": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "error": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "error"
+                              ]
+                            }
+                          ]
+                        },
+                        "withheld": {
+                          "type": "boolean"
+                        },
+                        "expired": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "purpose",
+                        "subject",
+                        "command",
+                        "retrieval",
+                        "retrievalReason",
+                        "bytes",
+                        "redactions",
+                        "withheld",
+                        "expired"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "artifact",
+                    "text",
+                    "truncated"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{incidentId}/verify": {
+      "post": {
+        "operationId": "caseFiles.cases.verify",
+        "summary": "Re-check the case's manifest chain and files",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "entries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "expired": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "brokenAt": {
+                      "type": "object",
+                      "properties": {
+                        "seq": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "check": {
+                          "enum": [
+                            "chain",
+                            "columns",
+                            "metadata",
+                            "file"
+                          ],
+                          "type": "string"
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "seq",
+                        "check",
+                        "detail"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "entries",
+                    "expired"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{incidentId}/capture": {
+      "post": {
+        "operationId": "caseFiles.cases.capture",
+        "summary": "Capture the bound target now",
+        "tags": [
+          "case-files"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "enum": [
+                        "queued",
+                        "running",
+                        "complete",
+                        "partial",
+                        "skipped",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    },
+                    "stateReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "missed": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "to": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "shared": {
+                      "type": "boolean"
+                    },
+                    "latencyMs": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "identity": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kubeContext": {
+                              "type": "string"
+                            },
+                            "cluster": {
+                              "type": "string"
+                            },
+                            "kubeUser": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "whoami": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "username": {
+                                      "type": "string"
+                                    },
+                                    "uid": {
+                                      "type": "string"
+                                    },
+                                    "groups": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "username"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "matchesBinding": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kubeContext",
+                            "cluster",
+                            "kubeUser",
+                            "whoami",
+                            "matchesBinding"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "identityMatches": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "finishedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "artifacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "purpose": {
+                            "enum": [
+                              "events",
+                              "deployments",
+                              "replicasets",
+                              "pods",
+                              "logs-previous"
+                            ],
+                            "type": "string"
+                          },
+                          "subject": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "command": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "retrieval": {
+                            "enum": [
+                              "complete",
+                              "partial"
+                            ],
+                            "type": "string"
+                          },
+                          "retrievalReason": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "page-limit",
+                                  "byte-cap",
+                                  "timeout",
+                                  "error"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "redactions": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "error": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "error"
+                                ]
+                              }
+                            ]
+                          },
+                          "withheld": {
+                            "type": "boolean"
+                          },
+                          "expired": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "purpose",
+                          "subject",
+                          "command",
+                          "retrieval",
+                          "retrievalReason",
+                          "bytes",
+                          "redactions",
+                          "withheld",
+                          "expired"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "state",
+                    "stateReason",
+                    "missed",
+                    "shared",
+                    "latencyMs",
+                    "identity",
+                    "identityMatches",
+                    "startedAt",
+                    "finishedAt",
+                    "artifacts"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/webhooks/prometheus": {
       "post": {
         "operationId": "webhooks.prometheus",

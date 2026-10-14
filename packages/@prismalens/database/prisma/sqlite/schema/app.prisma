@@ -41,6 +41,7 @@ model Service {
   integrations ServiceIntegration[]
   changeEvents ChangeEvent[]
   repositories ServiceRepository[]
+  binding      ServiceBinding?
 
   @@map("services")
 }
@@ -221,6 +222,10 @@ model Incident {
   investigations Investigation[]
   timeline       TimelineEntry[]
   attachments    Attachment[]
+  caseCaptures   CaseCapture[]
+  caseNodes      CaseNode[]
+  caseEdges      CaseEdge[]
+  claimRevisions ClaimRevision[]
 
   @@index([status])
   @@index([severity])

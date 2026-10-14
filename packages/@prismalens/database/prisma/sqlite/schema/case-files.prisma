@@ -1,0 +1,201 @@
+// =============================================================================
+// CASE FILES (experiment, behind Setting `case_file`) - SQLite
+// =============================================================================
+// Alert-time capture against a bound Kubernetes target, and the claims built
+// from it. String "enums" list their values in a trailing comment.
+// =============================================================================
+
+/// One service bound to one Kubernetes target, confirmed once by the operator.
+model ServiceBinding {
+  id          String    @id @default(uuid())
+  serviceId   String    @unique
+  kind        String    @default("kubernetes") // kubernetes
+  kubeContext String
+  cluster     String // the context's server URL when confirmed
+  namespace   String
+  kubeUser    String? // the context's user entry name, never a credential
+  detected    String // JSON BindingDetection that pre-filled the form
+  confirmedAt DateTime
+  probeState  String    @default("unchecked") // unchecked, ok, no-kubectl, context-missing, identity-mismatch, unauthorised, unreachable
+  probeDetail String?
+  probedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  service  Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  captures Capture[]
+
+  @@map("service_bindings")
+}
+
+/// One host-executed checklist run against one target; also the scheduled-work row.
+model Capture {
+  id               String    @id @default(uuid())
+  bindingId        String?
+  kind             String    @default("k8s-alert-time")
+  checklistVersion Int
+  canonicalQuery   String // JSON {v,kind,checklistVersion,kubeContext,cluster,namespace}
+  queryDigest      String // sha256 hex of the canonical query: the sharing key
+  kubeContext      String
+  cluster          String
+  namespace        String
+  identity         String? // JSON CaptureIdentity
+  identityMatches  Boolean?
+  state            String    @default("queued") // queued, running, complete, partial, skipped, blocked
+  stateReason      String? // partial: page-limit, byte-cap, timeout, error; skipped: queue-full; blocked: a BLOCKED_REASONS value
+  missedFrom       DateTime? // due but not started until missedTo
+  missedTo         DateTime?
+  priority         Int       @default(3) // 1 critical ... 4 low
+  caseStartedAt    DateTime // earliest linked incident's createdAt: second sort key
+  dueAt            DateTime
+  attempts         Int       @default(0)
+  maxAttempts      Int       @default(2)
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  lastError        String?
+  bytesStored      Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  binding   ServiceBinding?   @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+  cases     CaseCapture[]
+  artifacts CaptureArtifact[]
+  entries   ManifestEntry[]
+
+  @@index([state, dueAt, priority])
+  @@index([queryDigest, state])
+  @@map("captures")
+}
+
+/// A case (incident) linked to a capture; several cases may share one queued capture.
+model CaseCapture {
+  id          String   @id @default(uuid())
+  incidentId  String
+  captureId   String
+  alertId     String?
+  triggeredAt DateTime // when PrismaLens handled the alert that opened or reopened the case
+  shared      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  capture  Capture  @relation(fields: [captureId], references: [id], onDelete: Cascade)
+
+  @@unique([incidentId, captureId])
+  @@index([captureId])
+  @@map("case_captures")
+}
+
+/// One command's output. Files live at <appData>/cases/<captureId>/<seq>.{raw.enc,redacted}.
+model CaptureArtifact {
+  id              String    @id @default(uuid())
+  captureId       String
+  seq             Int
+  purpose         String // events, deployments, replicasets, pods, logs-previous
+  subject         String? // "<pod>/<container>" for logs-previous
+  command         String // JSON argv exactly as executed
+  retrieval       String // complete, partial
+  retrievalReason String? // page-limit, byte-cap, timeout, error
+  exitCode        Int?
+  stderrTail      String? // redacted, last 2 KiB
+  startedAt       DateTime
+  endedAt         DateTime // the collection time
+  sourceFrom      DateTime? // earliest source timestamp inside the output
+  sourceTo        DateTime?
+  rawBytes        Int
+  rawSha256       String
+  redactedBytes   Int
+  redactedSha256  String
+  redactions      String // JSON {ruleId: count} or {"error": "..."}
+  expiredAt       DateTime? // retention removed the files; the row and its manifest entry stay
+  createdAt       DateTime  @default(now())
+
+  capture Capture         @relation(fields: [captureId], references: [id], onDelete: Cascade)
+  claims  ClaimRevision[]
+
+  @@unique([captureId, seq])
+  @@map("capture_artifacts")
+}
+
+/// Append-only hash chain over every capture: digest = sha256(prevDigest + body).
+model ManifestEntry {
+  seq        Int     @id @default(autoincrement())
+  captureId  String
+  artifactId String? // null for the capture-level entry written at the end
+  body       String // RFC 8785 canonical JSON
+  prevDigest String // "" for the first entry
+  digest     String  @unique
+
+  capture Capture @relation(fields: [captureId], references: [id], onDelete: Cascade)
+
+  @@index([captureId])
+  @@map("manifest_entries")
+}
+
+model CaseNode {
+  id         String   @id @default(uuid())
+  incidentId String
+  kind       String // alert, workload, revision, pod, k8s-event, gap
+  key        String // stable identity within the incident
+  label      String
+  createdAt  DateTime @default(now())
+
+  incident  Incident        @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  claims    ClaimRevision[]
+  edgesFrom CaseEdge[]      @relation("CaseEdgeFrom")
+  edgesTo   CaseEdge[]      @relation("CaseEdgeTo")
+
+  @@unique([incidentId, key])
+  @@map("case_nodes")
+}
+
+model CaseEdge {
+  id         String   @id @default(uuid())
+  incidentId String
+  fromNodeId String
+  toNodeId   String
+  relation   String // revision_of, runs, precedes_alert, no_rollout_before_alert
+  createdAt  DateTime @default(now())
+
+  incident Incident        @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  from     CaseNode        @relation("CaseEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  to       CaseNode        @relation("CaseEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  claims   ClaimRevision[]
+
+  @@unique([fromNodeId, toNodeId, relation])
+  @@map("case_edges")
+}
+
+/// Immutable claim revisions with three times. A DB trigger refuses every UPDATE,
+/// so every relation into this table cascades: a SetNull would be an UPDATE.
+model ClaimRevision {
+  id           String    @id @default(uuid())
+  incidentId   String
+  nodeId       String? // exactly one of nodeId, edgeId
+  edgeId       String?
+  revision     Int // 1, 2, ... per subject
+  status       String // hint, candidate, observed, inferred, stated, confirmed, inconclusive, unknown
+  statusReason String?
+  statement    String
+  attributes   String? // JSON
+  sourceKind   String // capture, alert
+  provenance   String // host-executed, shim-observed, harness-relayed, harness-reported
+  artifactId   String?
+  population   String? // JSON label map {namespace, workload, revision?, pod?}
+  coverage     String? // JSON {retrieval, reason?, missedFrom?, missedTo?, note?}
+  sourceTime   DateTime? // when it happened, per the source
+  validKind    String // instant, interval, unknown
+  validFrom    DateTime?
+  validTo      DateTime?
+  collectedAt  DateTime? // when PrismaLens collected the evidence
+  recordedAt   DateTime  @default(now()) // when this revision was written
+
+  incident Incident         @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  node     CaseNode?        @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  edge     CaseEdge?        @relation(fields: [edgeId], references: [id], onDelete: Cascade)
+  artifact CaptureArtifact? @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, recordedAt])
+  @@index([nodeId, revision])
+  @@index([edgeId, revision])
+  @@map("claim_revisions")
+}

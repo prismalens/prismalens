@@ -7,6 +7,7 @@
  */
 
 export * from "./alert.js";
+export * from "./case-file.js";
 export * from "./change-event.js";
 // Common schemas (enums, pagination, utilities)
 export * from "./common.js";
