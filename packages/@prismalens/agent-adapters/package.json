@@ -19,7 +19,7 @@
 		"test": "vitest run",
 		"clean": "rm -rf dist && rm -rf node_modules",
 		"typecheck": "tsc --noEmit",
-		"pack:npm": "node scripts/pack.mjs"
+		"pack:npm": "pnpm run build && node scripts/pack.mjs"
 	},
 	"dependencies": {
 		"@agentclientprotocol/claude-agent-acp": "0.81.1",

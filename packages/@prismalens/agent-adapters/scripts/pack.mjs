@@ -156,25 +156,29 @@ export function stageAdapters(staging) {
 export function packAdapters({ outDir = join(PKG_DIR, "dist-pack") } = {}) {
 	const manifest = readManifest();
 	const staging = mkdtempSync(join(tmpdir(), "agent-adapters-"));
-	stageAdapters(staging);
-	mkdirSync(outDir, { recursive: true });
-	const name = run(
-		"npm",
-		["pack", "--pack-destination", outDir, "--loglevel", "warn"],
-		staging,
-	)
-		.trim()
-		.split("\n")
-		.pop();
-	const tarball = join(outDir, name);
-	const entries = run("tar", ["-tzf", tarball]).split("\n");
-	const native = entries.find((e) => NATIVE_COPIES.test(e));
-	if (native) fail(`the tarball carries a native copy: ${native}`);
-	for (const dep of Object.keys(manifest.dependencies)) {
-		if (!entries.includes(`package/node_modules/${dep}/package.json`))
-			fail(`${dep} did not survive npm pack`);
+	try {
+		stageAdapters(staging);
+		mkdirSync(outDir, { recursive: true });
+		const name = run(
+			"npm",
+			["pack", "--pack-destination", outDir, "--loglevel", "warn"],
+			staging,
+		)
+			.trim()
+			.split("\n")
+			.pop();
+		const tarball = join(outDir, name);
+		const entries = run("tar", ["-tzf", tarball]).split("\n");
+		const native = entries.find((e) => NATIVE_COPIES.test(e));
+		if (native) fail(`the tarball carries a native copy: ${native}`);
+		for (const dep of Object.keys(manifest.dependencies)) {
+			if (!entries.includes(`package/node_modules/${dep}/package.json`))
+				fail(`${dep} did not survive npm pack`);
+		}
+		return { tarball, entries };
+	} finally {
+		rmSync(staging, { recursive: true, force: true });
 	}
-	return { tarball, entries };
 }
 
 if (

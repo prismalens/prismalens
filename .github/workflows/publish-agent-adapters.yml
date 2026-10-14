@@ -19,6 +19,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1+, which an older Node 24 does not bundle.
+      - run: npm install --global npm@11.21.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @prismalens/agent-adapters build
       - run: node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs
