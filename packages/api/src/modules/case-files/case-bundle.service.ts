@@ -240,7 +240,8 @@ export class CaseBundleService {
 
 	/** Null when the setting is off or the incident's service is unbound. */
 	async attach(incidentId: string, cwd: string): Promise<CaseBundle | null> {
-		if (!(await this.settings.isEnabled())) return null;
+		const admission = await this.settings.admit();
+		if (!admission) return null;
 		const incident = await this.prisma.incident.findUnique({
 			where: { id: incidentId },
 			select: { service: { select: { binding: true } } },
@@ -248,27 +249,29 @@ export class CaseBundleService {
 		const binding = incident?.service?.binding;
 		if (!binding) return null;
 
-		await mkdir(join(cwd, BUNDLE_DIR), { recursive: true });
-		await excludeFromGit(cwd);
-		this.register(incidentId, cwd);
-		try {
-			const snap = await this.serial(cwd, () =>
-				this.materialise(incidentId, cwd),
-			);
-			const at = snap.target;
-			return {
-				path: BUNDLE_DIR,
-				target: `${at.kubeContext}/${at.namespace}`,
-				digest: retrievalDigest(
-					snap.capture,
-					snap.capture?.artifacts ?? [],
-					this.now(),
-				),
-			};
-		} catch (err) {
-			this.unregister(incidentId, cwd);
-			throw err;
-		}
+		return admission.commit(async () => {
+			await mkdir(join(cwd, BUNDLE_DIR), { recursive: true });
+			await excludeFromGit(cwd);
+			this.register(incidentId, cwd);
+			try {
+				const snap = await this.serial(cwd, () =>
+					this.materialise(incidentId, cwd),
+				);
+				const at = snap.target;
+				return {
+					path: BUNDLE_DIR,
+					target: `${at.kubeContext}/${at.namespace}`,
+					digest: retrievalDigest(
+						snap.capture,
+						snap.capture?.artifacts ?? [],
+						this.now(),
+					),
+				};
+			} catch (err) {
+				this.unregister(incidentId, cwd);
+				throw err;
+			}
+		});
 	}
 
 	@OnEvent(CASE_CAPTURE_UPDATED_EVENT)
