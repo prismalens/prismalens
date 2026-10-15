@@ -1,0 +1,8 @@
+{
+	"logs": {
+		"lines": [
+			"{{now-7m}} starting checkout 1.5.0",
+			"{{now-5m}} fatal: db login failed with DB_PASSWORD=hunter2"
+		]
+	}
+}

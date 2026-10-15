@@ -1,0 +1,14 @@
+{
+	"whoami": {
+		"username": "dev@example.com",
+		"groups": ["system:authenticated"]
+	},
+	"fail": {
+		"get": {
+			"stderr": "Error from server (Forbidden): pods is forbidden: User \"dev@example.com\" cannot list resource \"pods\" in API group \"\" in the namespace \"shop\""
+		},
+		"logs": {
+			"stderr": "Error from server (Forbidden): pods \"x\" is forbidden: User \"dev@example.com\" cannot get resource \"pods/log\" in API group \"\" in the namespace \"shop\""
+		}
+	}
+}

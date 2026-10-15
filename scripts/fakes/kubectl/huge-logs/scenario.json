@@ -1,0 +1,7 @@
+{
+	"data": "crashloop",
+	"logs": {
+		"lines": ["{{now-12m}} DB_PASSWORD=hunter2"],
+		"padToBytes": 3000000
+	}
+}
