@@ -20,4 +20,8 @@ describe("Settings tab search (w8-2)", () => {
 	it("keeps a known tab", () => {
 		expect(merged({ tab: "integrations" }).tab).toBe("integrations");
 	});
+
+	it("keeps tab=experiments", () => {
+		expect(merged({ tab: "experiments" }).tab).toBe("experiments");
+	});
 });
