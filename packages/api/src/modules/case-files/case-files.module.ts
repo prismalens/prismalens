@@ -10,6 +10,7 @@ import { CaseBuilder } from "./case-builder.js";
 import { CaseBundleService } from "./case-bundle.service.js";
 import { CaseFileSettingsService } from "./case-file-settings.service.js";
 import { CaseFilesController } from "./case-files.controller.js";
+import { CaseViewService } from "./case-view.service.js";
 import { ArtifactStore } from "./storage/artifact-store.js";
 import { ManifestService } from "./storage/manifest.js";
 
@@ -25,6 +26,7 @@ import { ManifestService } from "./storage/manifest.js";
 		CaseBuilder,
 		CaptureService,
 		CaseBundleService,
+		CaseViewService,
 	],
 	exports: [
 		CaseFileSettingsService,
