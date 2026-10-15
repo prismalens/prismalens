@@ -121,7 +121,7 @@ describe("CaptureService", () => {
 			settings,
 			store,
 			manifest,
-			new CaseBuilder(),
+			new CaseBuilder(store),
 			{ emit } as unknown as EventEmitter2,
 		);
 	});
