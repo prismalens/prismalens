@@ -521,3 +521,58 @@ describe("reference key names (#842)", () => {
 		for (const v of [jwt, "Inl1neValue", "Spac3dValue"]) expect(text).not.toContain(v);
 	});
 });
+
+describe("round 4 (#842)", () => {
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+
+	it("OBJ-017: only reference fields under their own parents keep their value, and a secret-shaped one never does", async () => {
+		const jwt = "x.eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU";
+		const pod = {
+			kind: "Pod",
+			metadata: {
+				name: "checkout",
+				labels: { "api-token": "abc123def456ghi", app: "checkout" },
+				annotations: { key: "S3cr3tValue123", secretName: "Ann0tS3cretName", "session-token": "3f9a8b7c6d5e4f3a2b1c" },
+			},
+			spec: {
+				tolerations: [{ key: jwt }, { key: "MixedCase16Chars9xQ" }, { key: "dedicated" }],
+				nodeSelector: { "secret-tier": "Zq8Wv7Ut6Sr5Qp4On" },
+				containers: [{ name: "app", env: [{ name: "X", valueFrom: { secretKeyRef: { name: "payments-db", key: "DB_PASSWORD" } } }] }],
+			},
+		};
+		const out = await redact("pods", Buffer.from(JSON.stringify(pod)));
+		if ("error" in out) throw new Error(out.error);
+		const text = out.redacted.toString("utf8");
+		expect(
+			leaked(text, ["S3cr3tValue123", "abc123def456ghi", "Ann0tS3cretName", "3f9a8b7c6d5e4f3a2b1c", "eyJhbGciOiJSUzI1NiJ9", "MixedCase16Chars9xQ", "Zq8Wv7Ut6Sr5Qp4On"]),
+		).toEqual([]);
+		const item = JSON.parse(text);
+		expect(item.metadata.labels.app).toBe("checkout");
+		expect(item.spec.tolerations[2]).toEqual({ key: "dedicated" });
+		expect(item.spec.containers[0].env[0].valueFrom.secretKeyRef).toEqual({ name: "payments-db", key: "DB_PASSWORD" });
+	});
+
+	it("OBJ-019: a timestamped multi-line YAML block loses every line until the indent returns", async () => {
+		const log = timestamped(["config:", "  password: |", "    BlockL1neOne", "    BlockL1neTwo", "    BlockL1neThree", "  user: app", "secret: >-", "  Fold3dOne", "  Fold3dTwo", "done"].join("\n"));
+		const out = await redactInProcess("logs-previous", Buffer.from(log));
+		if ("error" in out) throw new Error(out.error);
+		const text = out.redacted.toString("utf8");
+		expect(leaked(text, ["BlockL1neOne", "BlockL1neTwo", "BlockL1neThree", "Fold3dOne", "Fold3dTwo"])).toEqual([]);
+		expect(text).toContain("  user: app");
+		expect(text).toContain(" done");
+	});
+
+	it("OBJ-019: a timestamped OpenSSH key body wrapped at 70 with its BEGIN cut loses every body line", async () => {
+		const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		const bodyLine = (i: number) => Array.from({ length: 70 }, (_, j) => alphabet[(i * 7 + j * 13) % 64]).join("");
+		const body = [...Array.from({ length: 6 }, (_, i) => bodyLine(i)), "AAAAAAAAAAECAwQF"];
+		const key = ["-----BEGIN OPENSSH PRIVATE KEY-----", ...body, "-----END OPENSSH PRIVATE KEY-----"];
+		for (const lines of [key.slice(2), key.slice(2, -1)]) {
+			const out = await redactInProcess("logs-previous", Buffer.from(timestamped(["boot", ...lines, "ready"].join("\n"))));
+			if ("error" in out) throw new Error(out.error);
+			const text = out.redacted.toString("utf8");
+			expect(leaked(text, body.slice(1, -1))).toEqual([]);
+			expect(text).toContain(" ready");
+		}
+	});
+});
