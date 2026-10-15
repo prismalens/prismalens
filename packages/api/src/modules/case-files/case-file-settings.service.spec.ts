@@ -4,7 +4,7 @@
 import { Module } from "@nestjs/common";
 import { EventEmitterModule } from "@nestjs/event-emitter";
 import { Test } from "@nestjs/testing";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	CASE_FILE_SETTING_KEY,
@@ -97,6 +97,48 @@ describe("CaseFileSettingsService", () => {
 
 		fake.rows.set(CASE_FILE_SETTING_KEY, row('{"enabled":"yes"}'));
 		expect(await service.isEnabled()).toBe(false);
+	});
+
+	it("OBJ-007: refuses admission and commit while a turn-off write is still pending, whatever the row says", async () => {
+		await service.set(true);
+		const early = await service.admit();
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const upsert = fake.setting.upsert;
+		fake.setting.upsert = async (args) => {
+			await gate;
+			return upsert(args);
+		};
+		const hookDone = vi.fn();
+		service.onDisable(async () => hookDone());
+
+		const off = service.set(false);
+		expect(await service.isEnabled()).toBe(true);
+		expect(await service.admit()).toBeNull();
+		const write = vi.fn(async () => "wrote");
+		expect(await early?.commit(write)).toBeNull();
+		expect(write).not.toHaveBeenCalled();
+
+		release();
+		await off;
+		expect(hookDone).toHaveBeenCalledTimes(1);
+		expect(await service.admit()).toBeNull();
+		await service.set(true);
+		expect(await service.admit()).not.toBeNull();
+	});
+
+	it("OBJ-007: a failed turn-off write lifts the refusal and runs no hook", async () => {
+		await service.set(true);
+		const hookDone = vi.fn();
+		service.onDisable(async () => hookDone());
+		fake.setting.upsert = async () => {
+			throw new Error("db down");
+		};
+		await expect(service.set(false)).rejects.toThrow("db down");
+		expect(hookDone).not.toHaveBeenCalled();
+		expect(await service.admit()).not.toBeNull();
 	});
 
 	it("is provided by CaseFilesModule", async () => {
