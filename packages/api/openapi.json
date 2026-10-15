@@ -19658,7 +19658,8 @@
                                 "enum": [
                                   "incidents",
                                   "alerts",
-                                  "investigations"
+                                  "investigations",
+                                  "cases"
                                 ],
                                 "type": "string"
                               }
