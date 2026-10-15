@@ -4,7 +4,13 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import type { BlockedReason, ClaimCoverage, RetrievalReason } from "@prismalens/contracts";
-import type { Capture, CaptureArtifact, CaseNode, ClaimRevision } from "@prismalens/database";
+import type {
+	Capture,
+	CaptureArtifact,
+	CaseNode,
+	ClaimRevision,
+	Prisma,
+} from "@prismalens/database";
 import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
@@ -84,7 +90,7 @@ describe("CaseBuilder", () => {
 		seq: number,
 		purpose: string,
 		json: unknown,
-		overrides: Partial<Parameters<typeof prisma.captureArtifact.create>[0]["data"]> = {},
+		overrides: Partial<Prisma.CaptureArtifactUncheckedCreateInput> = {},
 	): Promise<CaptureArtifact> {
 		const bytes = Buffer.from(JSON.stringify(json));
 		const { storedBytes: _, ...digests } = await store.write(captureId, seq, bytes, bytes);
