@@ -47,6 +47,13 @@ export const SECRETS = {
 	cookie: "C00kieSess1on",
 	setCookie: "SetC00kieSid",
 	jwt: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU",
+	// #842 round 5: label values under token-named keys, and block lines past escaped or blank gaps.
+	labelMixed: "R3alPassw0rd",
+	labelDashed: "abc123-def456-ghi789",
+	blockLine1: "CanaryLine1",
+	blockLine2: "CanaryLine2",
+	gapFirst: "FirstSecretLine",
+	gapLast: "LastSecretLine",
 } as const;
 
 const PEM_BODY = PEM.split("\n").filter(
@@ -83,6 +90,17 @@ export const UNNAMED_EVENT_MESSAGE = `rotating ENCRYPTION_KEY=${SECRETS.encrypti
 
 /** A Warning event whose message carries the colon form, one line in and one escaped newline down. */
 export const SECRET_EVENT_MESSAGE = `auth failed for app, password: ${SECRETS.colonPassword}\nsecret: ${SECRETS.multiline}`;
+
+/** A Warning event whose message holds a YAML block, its lines joined by JSON-escaped newlines. */
+export const BLOCK_EVENT_MESSAGE = `mount failed\npassword: |\n  ${SECRETS.blockLine1}\n  ${SECRETS.blockLine2}\nretrying`;
+
+/** Label values a token-named key must not keep; `splitFlag` doubles as the third. */
+export const SECRET_LABELS = {
+	"api-token": SECRETS.splitFlag,
+	"auth-token": SECRETS.labelMixed,
+	"session-id": SECRETS.labelDashed,
+	app: "checkout",
+};
 
 const STDERR_TAIL_BYTES = 2048;
 const cutLine = `ssword: ${SECRETS.headTruncated}\n`;
@@ -129,6 +147,11 @@ export const SECRET_LOG = [
 	`    ${SECRETS.yamlBlock}`,
 	"  secret:",
 	`    ${SECRETS.nextLine}`,
+	"  token: |",
+	`    ${SECRETS.gapFirst}`,
+	"",
+	`    ${SECRETS.gapLast}`,
+	"  user: app",
 	`ENCRYPTION_KEY=${SECRETS.encryptionKey}`,
 	`SIGNING_KEY=${SECRETS.signingKey} DB_CREDENTIALS=${SECRETS.dbCredentials}`,
 	`GET /orders Authorization: Basic ${SECRETS.basicAuth}`,

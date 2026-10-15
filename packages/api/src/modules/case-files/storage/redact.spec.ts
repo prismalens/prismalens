@@ -454,7 +454,7 @@ describe("round 3 (#842)", () => {
 
 describe("reference key names (#842)", () => {
 	const podSpec = {
-		nodeSelector: { "payments.example.com/secret-tier": "gold" },
+		nodeSelector: { "payments.example.com/tier": "gold" },
 		tolerations: [{ key: "dedicated-secret-nodes", operator: "Equal", value: "payments", effect: "NoSchedule" }],
 		affinity: {
 			nodeAffinity: {
@@ -481,10 +481,10 @@ describe("reference key names (#842)", () => {
 		kind: "Deployment",
 		metadata: {
 			name: "payments",
-			labels: { "auth-proxy": "enabled" },
+			labels: { "app.kubernetes.io/part-of": "payments" },
 			annotations: { "example.com/session-note": "token=Ann0tSecret" },
 		},
-		spec: { selector: { matchLabels: { "auth-proxy": "enabled" } }, template: { metadata: { labels: { "auth-proxy": "enabled" } }, spec: podSpec } },
+		spec: { selector: { matchLabels: { "app.kubernetes.io/part-of": "payments" } }, template: { metadata: { labels: { "app.kubernetes.io/part-of": "payments" } }, spec: podSpec } },
 	};
 
 	it("keeps the key names a workload reads and still redacts every value", async () => {
@@ -504,8 +504,8 @@ describe("reference key names (#842)", () => {
 			expect(spec.affinity).toEqual(podSpec.affinity);
 			expect(spec.topologySpreadConstraints).toEqual(podSpec.topologySpreadConstraints);
 			expect(spec.volumes).toEqual(podSpec.volumes);
-			expect(item.metadata.labels).toEqual({ "auth-proxy": "enabled" });
-			if (purpose === "deployments") expect(item.spec.selector.matchLabels).toEqual({ "auth-proxy": "enabled" });
+			expect(item.metadata.labels).toEqual({ "app.kubernetes.io/part-of": "payments" });
+			if (purpose === "deployments") expect(item.spec.selector.matchLabels).toEqual({ "app.kubernetes.io/part-of": "payments" });
 			// Values are still values.
 			expect(text).not.toContain("Lit3ralApiKey");
 			expect(text).not.toContain("Ann0tSecret");
@@ -574,5 +574,109 @@ describe("round 4 (#842)", () => {
 			expect(leaked(text, body.slice(1, -1))).toEqual([]);
 			expect(text).toContain(" ready");
 		}
+	});
+});
+
+describe("round 5 (#842)", () => {
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+	const run = async (purpose: (typeof ARTIFACT_PURPOSES)[number], text: string) => {
+		const out = await redactInProcess(purpose, Buffer.from(text));
+		if ("error" in out) throw new Error(out.error);
+		return out.redacted.toString("utf8");
+	};
+
+	it("OBJ-017: a label whose key reads as secret, or whose value is a generated token, never keeps its value", async () => {
+		const values = ["SYNTHETIC_SECRET_7zQ9", "R3alPassw0rd", "abc123-def456-ghi789"];
+		const labelled = Object.fromEntries(values.map((v, i) => [`api-token-${i}`, v]));
+		const metaOf = (labels: Record<string, string>) => ({ name: "checkout", labels });
+		const podSpec = { nodeSelector: { "node-auth": values[0], "Session-Pool": values[1], "x.io/secret-tier": values[2] } };
+		const pod = { kind: "Pod", metadata: metaOf(labelled), spec: podSpec };
+		const deployment = {
+			kind: "Deployment",
+			metadata: metaOf(labelled),
+			spec: { selector: { matchLabels: labelled }, template: { metadata: metaOf(labelled), spec: podSpec } },
+		};
+		for (const [purpose, doc] of [
+			["pods", { kind: "List", items: [pod] }],
+			["deployments", { kind: "List", items: [deployment] }],
+			["replicasets", { kind: "List", items: [deployment] }],
+		] as const) {
+			expect(leaked(await run(purpose, JSON.stringify(doc)), values)).toEqual([]);
+		}
+	});
+
+	it("OBJ-017: a mixed letter and digit run of 8 or more is redacted from any label, structural hashes stay", async () => {
+		const pod = {
+			kind: "Pod",
+			metadata: {
+				name: "checkout",
+				labels: {
+					app: "checkout",
+					tier: "frontend",
+					release: "20261014",
+					build: "R3alPassw0rd",
+					"pod-template-hash": "5d8f7b9c4",
+					"controller-revision-hash": "6b9d8c7f5d",
+				},
+			},
+			spec: { nodeSelector: { pool: "Zq8Wv7Ut6Sr5Qp4On", zone: "eu-west-1a" } },
+		};
+		const item = JSON.parse(await run("pods", JSON.stringify(pod)));
+		expect(item.metadata.labels).toMatchObject({
+			app: "checkout",
+			tier: "frontend",
+			release: "20261014",
+			"pod-template-hash": "5d8f7b9c4",
+			"controller-revision-hash": "6b9d8c7f5d",
+		});
+		expect(JSON.stringify(item)).not.toMatch(/R3alPassw0rd|Zq8Wv7Ut6Sr5Qp4On/);
+		expect(item.spec.nodeSelector.zone).toBe("eu-west-1a");
+	});
+
+	it("OBJ-017: a non-label structural hash value is not exempt, only by its own key", async () => {
+		const pod = { kind: "Pod", metadata: { name: "x", labels: { build: "5d8f7b9c4", "pod-template-hash": "R3alPassw0rd" } } };
+		const text = await run("pods", JSON.stringify(pod));
+		expect(text).not.toContain("5d8f7b9c4");
+		expect(text).not.toContain("R3alPassw0rd");
+	});
+
+	const BLOCK = ["password: |", "  CanaryLine1", "  CanaryLine2", "  CanaryLine3"];
+	const eventsOf = (message: string) => JSON.stringify({ items: [{ type: "Warning", reason: "FailedMount", message, count: 3 }] }, null, 4);
+
+	it("OBJ-019: a YAML block inside a JSON string, with escaped newlines, loses every line", async () => {
+		const canaries = ["CanaryLine1", "CanaryLine2", "CanaryLine3"];
+		const messages = [
+			BLOCK.join("\n"),
+			`mount failed\n${BLOCK.join("\n")}\nretrying`,
+			`mount failed\r\n${BLOCK.join("\r\n")}\r\nretrying`,
+			["config:", "  secret: >-", "    CanaryLine1", "    CanaryLine2", "    CanaryLine3", "  user: app"].join("\n"),
+			["password: |", "  CanaryLine1", "", "  CanaryLine2", "   ", "  CanaryLine3", "tail"].join("\n"),
+			`Error: ${BLOCK.join("\n")}`,
+		];
+		for (const message of messages) {
+			const text = await run("events", eventsOf(message));
+			expect(leaked(text, canaries)).toEqual([]);
+			const event = JSON.parse(text).items[0];
+			expect(event).toMatchObject({ type: "Warning", reason: "FailedMount", count: 3 });
+		}
+		const text = await run("events", eventsOf(["config:", "  password: |", "    CanaryLine1", "  user: app", "done"].join("\n")));
+		expect(JSON.parse(text).items[0].message).toContain("  user: app\ndone");
+	});
+
+	it("OBJ-019: a timestamped block keeps going over empty, whitespace-only and timestamp-only lines", async () => {
+		const canaries = ["FirstSecretLine", "MiddleSecretLine", "LastSecretLine"];
+		for (const gap of [[""], ["   "], ["", ""], ["", "\t", ""]]) {
+			const lines = ["config:", "  password: |", "    FirstSecretLine", ...gap, "    MiddleSecretLine", ...gap, "    LastSecretLine", "  user: app", "done"];
+			const text = await run("logs-previous", timestamped(lines.join("\n")));
+			expect(leaked(text, canaries)).toEqual([]);
+			expect(text).toContain(" user: app");
+			expect(text).toContain(" done");
+		}
+	});
+
+	it("OBJ-019: an untimestamped block with blank lines loses every line until the indent returns", async () => {
+		const text = await run("logs-previous", ["password: |", "  FirstSecretLine", "", "  LastSecretLine", "user: app"].join("\n"));
+		expect(leaked(text, ["FirstSecretLine", "LastSecretLine"])).toEqual([]);
+		expect(text).toContain("user: app");
 	});
 });
