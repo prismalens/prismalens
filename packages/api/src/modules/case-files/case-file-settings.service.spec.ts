@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Module } from "@nestjs/common";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 import { Test } from "@nestjs/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -100,7 +101,7 @@ describe("CaseFileSettingsService", () => {
 
 	it("is provided by CaseFilesModule", async () => {
 		const moduleRef = await Test.createTestingModule({
-			imports: [CaseFilesModule],
+			imports: [EventEmitterModule.forRoot(), CaseFilesModule],
 		})
 			.overrideModule(IntegrationsModule)
 			.useModule(CredentialsOnly)
