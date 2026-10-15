@@ -40,7 +40,7 @@ const env = await vi.hoisted(async () => {
 
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { ArtifactStore } = await import("./storage/artifact-store.js");
-const { CaseBuilder, anchorAlert, claimChanged } = await import("./case-builder.js");
+const { CaseBuilder, anchorAlert, claimChanged, deriveCase } = await import("./case-builder.js");
 
 const vault = new TokenVault(randomBytes(32));
 const credentials = { getVault: () => vault } as unknown as CredentialsService;
@@ -179,7 +179,7 @@ describe("CaseBuilder", () => {
 			data: { dedupKey: "k2", title: "Latency spike", triggeredAt: ALERT_AT, incidentId: incident.id },
 		});
 
-		// Rollout 3 h before alert: no candidate precedes_alert edge, observed no_rollout_before_alert.
+		// Rollout 3 h before alert: no candidate precedes_alert edge, observed no_new_replicaset_before_alert.
 		const c1 = await createCapture();
 		const a1Deps = await writeArtifact(c1.id, 0, "deployments", sampleDeployments);
 		const a1Rs = await writeArtifact(c1.id, 1, "replicasets", replicaSetsRollout3Hours);
@@ -198,11 +198,12 @@ describe("CaseBuilder", () => {
 		);
 		expect(rsPrecedes).toHaveLength(0);
 
-		const noRollout1 = claims1.find((c) => c.edge?.relation === "no_rollout_before_alert");
+		const noRollout1 = claims1.find((c) => c.edge?.relation === "no_new_replicaset_before_alert");
 		expect(noRollout1).toMatchObject({
 			status: "observed",
 			statusReason: null,
-			statement: "No rollout of checkout in the 2 h before the alert.",
+			statement:
+				"No retained ReplicaSet of checkout was created in the 2 h before the alert; a rollback to an older ReplicaSet would not show here.",
 		});
 		expect(JSON.parse(noRollout1?.coverage ?? "{}")).toMatchObject({
 			retrieval: "complete",
@@ -232,7 +233,7 @@ describe("CaseBuilder", () => {
 			where: { incidentId: incidentPartial.id },
 			include: { edge: true },
 		});
-		const noRollout2 = claims2.find((c) => c.edge?.relation === "no_rollout_before_alert");
+		const noRollout2 = claims2.find((c) => c.edge?.relation === "no_new_replicaset_before_alert");
 		expect(noRollout2).toMatchObject({
 			status: "unknown",
 			statusReason: "retrieval-partial",
@@ -265,7 +266,7 @@ describe("CaseBuilder", () => {
 			where: { incidentId: incidentLate.id },
 			include: { edge: true, node: true },
 		});
-		const noRollout3 = claims3.find((c) => c.edge?.relation === "no_rollout_before_alert");
+		const noRollout3 = claims3.find((c) => c.edge?.relation === "no_new_replicaset_before_alert");
 		expect(noRollout3).toMatchObject({
 			status: "unknown",
 			statusReason: "captured-late",
@@ -317,7 +318,7 @@ describe("CaseBuilder", () => {
 			where: { incidentId: incidentNoRs.id },
 			include: { edge: true },
 		});
-		const noRollout4 = claims4.find((c) => c.edge?.relation === "no_rollout_before_alert");
+		const noRollout4 = claims4.find((c) => c.edge?.relation === "no_new_replicaset_before_alert");
 		expect(noRollout4).toMatchObject({
 			status: "unknown",
 			statusReason: "retrieval-partial",
@@ -926,5 +927,94 @@ describe("CaseBuilder", () => {
 				{ ...baseClaim, attributes: null },
 			),
 		).toBe(false);
+	});
+});
+
+describe("deriveCase rollout coverage", () => {
+	const artifactRow = (purpose: string): CaptureArtifact => ({
+		id: `${purpose}-artifact`,
+		captureId: "cap",
+		seq: 0,
+		purpose,
+		subject: null,
+		command: "[]",
+		retrieval: "complete",
+		retrievalReason: null,
+		exitCode: 0,
+		stderrTail: null,
+		startedAt: ALERT_AT,
+		endedAt: COLLECTED,
+		sourceFrom: null,
+		sourceTo: null,
+		rawBytes: 0,
+		rawSha256: "",
+		redactedBytes: 0,
+		redactedSha256: "",
+		redactions: "{}",
+		expiredAt: null,
+		createdAt: COLLECTED,
+	});
+	const capture = {
+		id: "cap",
+		namespace: "shop",
+		state: "complete",
+		stateReason: null,
+		missedFrom: null,
+		missedTo: null,
+		dueAt: ALERT_AT,
+		startedAt: ALERT_AT,
+		finishedAt: COLLECTED,
+		identity: null,
+	} as Capture;
+	const alert = { id: "a1", title: "Latency", triggeredAt: ALERT_AT, createdAt: ALERT_AT };
+	const rs = (name: string, revision: string, createdAt: string) => ({
+		...meta(name, {
+			creationTimestamp: createdAt,
+			annotations: { "deployment.kubernetes.io/revision": revision },
+			labels: { "pod-template-hash": name.split("-")[1] },
+			ownerReferences: [{ kind: "Deployment", name: "checkout", controller: true }],
+		}),
+		spec: { template: { spec: { containers: [{ name: "app", image: "checkout:v1" }] } } },
+		status: { replicas: 2, readyReplicas: 2 },
+	});
+	const workloadToAlert = (replicasets: unknown) => {
+		const draft = deriveCase({
+			capture,
+			alerts: [alert],
+			loaded: {
+				deployments: { row: artifactRow("deployments"), json: sampleDeployments },
+				replicasets: { row: artifactRow("replicasets"), json: replicasets },
+			},
+			now: COLLECTED,
+		});
+		const claims = draft.edges.filter((e) => e.from === "workload:shop/checkout" && e.to === "alert:a1");
+		expect(claims).toHaveLength(1);
+		return claims[0]?.claim;
+	};
+
+	it("does not report observed absence of a rollout after a rollback to a retained ReplicaSet", () => {
+		// Five minutes before the alert, checkout rolled back from revision 4 to the older ReplicaSet:
+		// the controller re-labels it revision 5 and keeps its creation time from yesterday.
+		const claim = workloadToAlert({
+			items: [
+				rs("checkout-aaa", "5", "2026-10-14T09:00:00Z"),
+				rs("checkout-bbb", "4", "2026-10-14T10:00:00Z"),
+			],
+		});
+		expect(claim?.statement).not.toMatch(/no rollout/i);
+		expect(claim).toMatchObject({
+			status: "observed",
+			statement:
+				"No retained ReplicaSet of checkout was created in the 2 h before the alert; a rollback to an older ReplicaSet would not show here.",
+		});
+	});
+
+	it("leaves the rollout unknown when the complete ReplicaSet list retains none for the workload", () => {
+		const claim = workloadToAlert({ items: [] });
+		expect(claim).toMatchObject({
+			status: "unknown",
+			statusReason: "no-retained-history",
+			statement: "Whether checkout rolled out in the 2 h before the alert is unknown (no-retained-history).",
+		});
 	});
 });

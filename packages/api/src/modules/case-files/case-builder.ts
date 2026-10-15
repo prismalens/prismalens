@@ -46,7 +46,7 @@ export type CaseRelation =
 	| "revision_of"
 	| "runs"
 	| "precedes_alert"
-	| "no_rollout_before_alert";
+	| "no_new_replicaset_before_alert";
 export type CaptureClaimStatus = Extract<
 	ClaimStatus,
 	"observed" | "candidate" | "unknown" | "inconclusive"
@@ -295,10 +295,12 @@ export function deriveCase(input: {
 	const revisionKey = (rs: K8sReplicaSet) =>
 		`revision:${ns}/${rs.owner}#${rs.revision}`;
 	const rolledOutInWindow = new Set<string>();
+	const retained = new Map<string, number>();
 	for (const rs of rsArtifact ? replicaSets : []) {
 		if (!rsArtifact) continue;
 		const dep = rs.owner as string;
 		workloads.add(dep);
+		retained.set(dep, (retained.get(dep) ?? 0) + 1);
 		const wKey = addNode({
 			kind: "workload",
 			key: workloadKey(dep),
@@ -506,7 +508,8 @@ export function deriveCase(input: {
 		}
 	}
 
-	// R8: absence of a rollout is observed only from a complete history captured on time.
+	// R8: only a complete history captured on time is observed, and only as "no ReplicaSet was
+	// created": a rollback re-labels an older ReplicaSet without a new creationTimestamp.
 	if (alertKey) {
 		const late = capture.missedFrom !== null;
 		const complete =
@@ -517,14 +520,19 @@ export function deriveCase(input: {
 				? "retrieval-partial"
 				: late
 					? "captured-late"
-					: null;
+					: !retained.has(dep)
+						? "no-retained-history"
+						: null;
 			const claim: Parameters<typeof fromArtifact>[1] = {
 				status: reason ? "unknown" : "observed",
 				statusReason: reason,
 				statement: reason
 					? `Whether ${dep} rolled out in the 2 h before the alert is unknown (${reason}).`
-					: `No rollout of ${dep} in the 2 h before the alert.`,
-				attributes: { windowMs: WINDOW_BEFORE_ALERT_MS },
+					: `No retained ReplicaSet of ${dep} was created in the 2 h before the alert; a rollback to an older ReplicaSet would not show here.`,
+				attributes: {
+					windowMs: WINDOW_BEFORE_ALERT_MS,
+					retainedReplicaSets: retained.get(dep) ?? 0,
+				},
 				population: { namespace: ns, workload: dep },
 				sourceTime: null,
 			};
@@ -547,7 +555,7 @@ export function deriveCase(input: {
 					claim: null,
 				}),
 				to: alertKey,
-				relation: "no_rollout_before_alert",
+				relation: "no_new_replicaset_before_alert",
 				claim: {
 					...drafted,
 					coverage: {
