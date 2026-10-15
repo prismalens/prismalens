@@ -3,7 +3,7 @@
 
 /** Artifact files over a temp workspace and a migrated SQLite database. */
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, rmSync, statSync } from "node:fs";
+import { existsSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -19,7 +19,7 @@ const env = await vi.hoisted(async () => {
 });
 
 const { PrismaService } = await import("../../../core/prisma/prisma.service.js");
-const { ArtifactStore, casesDir, sha256Hex } = await import("./artifact-store.js");
+const { ArtifactStore, casesDir, removeAllCaseFiles, sha256Hex } = await import("./artifact-store.js");
 
 const credentials = {
 	getVault: () => vault,
@@ -127,5 +127,39 @@ describe("ArtifactStore", () => {
 		expect(rows).toHaveLength(3);
 		expect(rows.filter((r) => r.expiredAt).map((r) => r.captureId).sort()).toEqual([old, big].sort());
 		expect(await store.readRedacted(rows.find((r) => r.captureId === old) ?? rows[0], 10)).toBeNull();
+	});
+
+	it("expires cleanly when artifact files are already missing from disk", async () => {
+		const now = new Date("2026-10-15T12:00:00Z");
+		const cId = await capture(now, 100);
+		rmSync(join(casesDir(), cId), { recursive: true, force: true });
+		await expect(store.expire(cId, now)).resolves.not.toThrow();
+		const cap = await prisma.capture.findUnique({ where: { id: cId } });
+		const art = await prisma.captureArtifact.findFirst({ where: { captureId: cId } });
+		expect(cap?.bytesStored).toBe(0);
+		expect(art?.expiredAt).toEqual(now);
+	});
+
+	it("fails to decrypt a tampered raw artifact file", async () => {
+		const cId = randomUUID();
+		const raw = Buffer.from("confidential data");
+		await store.write(cId, 1, raw, raw);
+		const rawEncPath = join(casesDir(), cId, "1.raw.enc");
+		writeFileSync(rawEncPath, Buffer.from("invalid-ciphertext-bytes-that-fail-auth-tag"));
+		await expect(store.readRaw({ captureId: cId, seq: 1, expiredAt: null })).rejects.toThrow();
+	});
+
+	it("returns null when reading redacted content of an expired artifact", async () => {
+		const cId = randomUUID();
+		const raw = Buffer.from("hello world");
+		await store.write(cId, 2, raw, raw);
+		const ref = { captureId: cId, seq: 2, expiredAt: new Date() };
+		expect(await store.readRedacted(ref, 100)).toBeNull();
+	});
+
+	it("removes all case files on danger zone reset and rejects negative seq", async () => {
+		await expect(store.write("cap-seq", -1, Buffer.from("a"), null)).rejects.toThrow("bad artifact seq");
+		removeAllCaseFiles();
+		expect(existsSync(casesDir())).toBe(false);
 	});
 });
