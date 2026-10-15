@@ -12,7 +12,7 @@ import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingsService } from "./bindings.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
-import { SECRET_ARGV, SECRET_LOG, SECRETS } from "./__fixtures__/secrets.js";
+import { SECRET_ARGV, SECRET_EVENT_MESSAGE, SECRET_LOG, SECRET_STDERR, SECRETS } from "./__fixtures__/secrets.js";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -67,6 +67,14 @@ function installFakeKubectl(): void {
 					lastTimestamp: "2026-10-15T09:58:30Z",
 					message: `restarting: DB_PASSWORD=${SECRETS.dbPassword} Authorization: Bearer ${SECRETS.bearer} ${SECRETS.slack}`,
 				},
+				{
+					type: "Warning",
+					reason: "FailedAuth",
+					metadata: { name: "checkout.2", namespace: "shop", uid: "e2" },
+					involvedObject: { kind: "Pod", name: "checkout-7d9f" },
+					lastTimestamp: "2026-10-15T09:58:40Z",
+					message: SECRET_EVENT_MESSAGE,
+				},
 			],
 		},
 		deployments: {
@@ -113,6 +121,7 @@ const dir = ${JSON.stringify(binDir)};
 const out = (v) => process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
 if (args[0] === "config") out({ contexts: [{ name: ${JSON.stringify(CONTEXT)}, context: { cluster: "kind", user: "admin", namespace: "shop" } }], clusters: [{ name: "kind", cluster: { server: ${JSON.stringify(SERVER)} } }] });
 else if (args[0] === "auth") { process.stderr.write("unknown command"); process.exit(1); }
+else if (args[1] === "events") { process.stderr.write(${JSON.stringify(SECRET_STDERR)}); out(fs.readFileSync(path.join(dir, "events.json"), "utf8")); }
 else if (args[0] === "logs") out(fs.readFileSync(path.join(dir, "logs.txt"), "utf8"));
 else out(fs.readFileSync(path.join(dir, args[1] + ".json"), "utf8"));
 `;
@@ -217,6 +226,8 @@ describe("CaseViewService", () => {
 
 		// The event message reaches the view as a claim statement, redacted.
 		expect(JSON.stringify(view)).toMatch(/restarting: DB_PASSWORD=\[REDACTED:[a-z-]+\]/);
+		// The colon form in a Warning event reaches a claim statement, redacted (#842 OBJ-011).
+		expect(JSON.stringify(view)).toMatch(/FailedAuth: auth failed for app, password: \[REDACTED:pattern\]/);
 		const haystacks: [string, string][] = [["view", JSON.stringify(view)]];
 		for (const a of view.captures[0]?.artifacts ?? []) haystacks.push([`artifact ${a.purpose}`, (await views.artifact(a.id)).text]);
 		for (const table of NEW_TABLES) {
