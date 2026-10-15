@@ -1,0 +1,60 @@
+{
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Reading the case bundle's manifest first.\n\n"
+			},
+			{
+				"tool": {
+					"id": "toolu_case",
+					"title": "`cat .prismalens/case/manifest.json`",
+					"kind": "read",
+					"rawInput": {
+						"command": "cat <{{cwd}}>/.prismalens/case/manifest.json"
+					},
+					"output": "{\"state\": \"running\"}"
+				}
+			},
+			{
+				"waitForRelease": true
+			},
+			{
+				"report": {
+					"summary": "Revision 2 of checkout rolled out shortly before the alert, and one of its pods restarts.",
+					"rootCause": "Revision 2 of checkout fails its database login and restarts.",
+					"rootCauseCategory": "code",
+					"hypotheses": [
+						{
+							"statement": "Revision 2 of checkout broke its database login",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "The previous log of the restarting pod ends with a failed database login",
+									"source": "case bundle logs",
+									"direction": "supports",
+									"status": "verified"
+								}
+							]
+						}
+					],
+					"ruledOut": [],
+					"coverage": {
+						"queried": ["case bundle"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Roll back checkout",
+							"detail": "Roll back to revision 1 while the login is fixed.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	]
+}

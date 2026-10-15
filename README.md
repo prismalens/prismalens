@@ -154,6 +154,7 @@ development, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - Site: [prismalens.io](https://prismalens.io)
 - Docs: [docs.prismalens.io](https://docs.prismalens.io)
+- Case Files (experiment): [docs.prismalens.io/guides/case-files](https://docs.prismalens.io/guides/case-files/)
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [VERSIONING.md](VERSIONING.md) ·
   [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [SECURITY.md](SECURITY.md)
 

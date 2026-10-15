@@ -1,0 +1,29 @@
+{
+	"apiVersion": "v1",
+	"kind": "List",
+	"items": [
+		{
+			"apiVersion": "v1",
+			"kind": "Event",
+			"metadata": {
+				"name": "checkout-6c8b5d-q7w4z.17f0b1",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0004-4000-8000-000000000003"
+			},
+			"type": "Warning",
+			"reason": "BackOff",
+			"involvedObject": {
+				"kind": "Pod",
+				"name": "checkout-6c8b5d-q7w4z",
+				"namespace": "shop"
+			},
+			"firstTimestamp": "{{now-2m}}",
+			"lastTimestamp": "{{now-2m}}",
+			"count": 9,
+			"message": "Back-off restarting failed container app in pod checkout-6c8b5d-q7w4z"
+		}
+	],
+	"metadata": {
+		"resourceVersion": ""
+	}
+}

@@ -1,0 +1,134 @@
+{
+	"apiVersion": "v1",
+	"kind": "List",
+	"items": [
+		{
+			"apiVersion": "v1",
+			"kind": "Pod",
+			"metadata": {
+				"name": "checkout-6c8b5d-k2x9p",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0003-4000-8000-000000000003",
+				"creationTimestamp": "{{now-3d}}",
+				"labels": {
+					"app": "checkout",
+					"pod-template-hash": "6c8b5d"
+				},
+				"ownerReferences": [
+					{
+						"apiVersion": "apps/v1",
+						"kind": "ReplicaSet",
+						"name": "checkout-6c8b5d",
+						"controller": true
+					}
+				]
+			},
+			"spec": {
+				"containers": [
+					{
+						"name": "app",
+						"image": "shop/checkout:1.4.2",
+						"env": [
+							{
+								"name": "DB_PASSWORD",
+								"value": "hunter2"
+							},
+							{
+								"name": "DB_HOST",
+								"value": "db.shop.svc"
+							}
+						]
+					}
+				]
+			},
+			"status": {
+				"phase": "Running",
+				"startTime": "{{now-3d}}",
+				"containerStatuses": [
+					{
+						"name": "app",
+						"image": "shop/checkout:1.4.2",
+						"imageID": "docker.io/shop/checkout@sha256:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+						"ready": true,
+						"restartCount": 0,
+						"state": {
+							"running": {
+								"startedAt": "{{now-3d}}"
+							}
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "v1",
+			"kind": "Pod",
+			"metadata": {
+				"name": "checkout-6c8b5d-q7w4z",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0003-4000-8000-000000000004",
+				"creationTimestamp": "{{now-3d}}",
+				"labels": {
+					"app": "checkout",
+					"pod-template-hash": "6c8b5d"
+				},
+				"ownerReferences": [
+					{
+						"apiVersion": "apps/v1",
+						"kind": "ReplicaSet",
+						"name": "checkout-6c8b5d",
+						"controller": true
+					}
+				]
+			},
+			"spec": {
+				"containers": [
+					{
+						"name": "app",
+						"image": "shop/checkout:1.4.2",
+						"env": [
+							{
+								"name": "DB_PASSWORD",
+								"value": "hunter2"
+							},
+							{
+								"name": "DB_HOST",
+								"value": "db.shop.svc"
+							}
+						]
+					}
+				]
+			},
+			"status": {
+				"phase": "Running",
+				"startTime": "{{now-3d}}",
+				"containerStatuses": [
+					{
+						"name": "app",
+						"image": "shop/checkout:1.4.2",
+						"imageID": "docker.io/shop/checkout@sha256:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+						"ready": false,
+						"restartCount": 7,
+						"state": {
+							"waiting": {
+								"reason": "CrashLoopBackOff",
+								"message": "back-off 5m0s restarting failed container=app"
+							}
+						},
+						"lastState": {
+							"terminated": {
+								"reason": "OOMKilled",
+								"exitCode": 137,
+								"startedAt": "{{now-12m}}",
+								"finishedAt": "{{now-10m}}"
+							}
+						}
+					}
+				]
+			}
+		}
+	],
+	"metadata": {
+		"resourceVersion": ""
+	}
+}

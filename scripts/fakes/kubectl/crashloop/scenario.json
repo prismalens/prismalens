@@ -1,0 +1,8 @@
+{
+	"logs": {
+		"lines": [
+			"{{now-12m}} loading catalogue cache",
+			"{{now-10m}} java.lang.OutOfMemoryError: Java heap space"
+		]
+	}
+}

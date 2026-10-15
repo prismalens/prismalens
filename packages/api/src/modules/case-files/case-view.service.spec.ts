@@ -7,6 +7,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import type { EventEmitter2 } from "@nestjs/event-emitter";
 import { ORPCError } from "@orpc/nest";
+import { buildInvestigationPrompt } from "@prismalens/engine";
 import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingsService } from "./bindings.service.js";
@@ -29,6 +30,7 @@ const { CaseFileSettingsService } = await import("./case-file-settings.service.j
 const { CaseBuilder } = await import("./case-builder.js");
 const { CaptureService } = await import("./capture.service.js");
 const { CaseViewService } = await import("./case-view.service.js");
+const { CaseBundleService, BUNDLE_DIR } = await import("./case-bundle.service.js");
 const { CaseFilesController } = await import("./case-files.controller.js");
 const { prisma: raw } = await import("@prismalens/database");
 
@@ -198,7 +200,7 @@ describe("CaseViewService", () => {
 		rmSync(env.root, { recursive: true, force: true });
 	});
 
-	it("leaks no corpus value into the view, the served artifacts, the new tables or the redacted files", async () => {
+	it("leaks no corpus value into the view, the served artifacts, the new tables, the redacted files, the bundle or the prompt", async () => {
 		const incident = await incidentFor("svc-leak", true);
 		const captureId = await captureToEnd(incident.id);
 		const view = await views.get(incident.id);
@@ -225,6 +227,21 @@ describe("CaseViewService", () => {
 			for (const file of readdirSync(join(casesDir(), dir)))
 				haystacks.push([`${dir}/${file}`, readFileSync(join(casesDir(), dir, file)).toString("latin1")]);
 		expect(haystacks.filter(([name]) => name.endsWith(".redacted")).length).toBe(5);
+
+		const cwd = join(env.root, "run-cwd");
+		mkdirSync(cwd);
+		const bundle = await new CaseBundleService(prisma, settings, store).attach(incident.id, cwd);
+		if (!bundle) throw new Error("no bundle for a bound incident");
+		const bundleFiles = readdirSync(join(cwd, BUNDLE_DIR));
+		expect(bundleFiles).toHaveLength(6);
+		for (const file of bundleFiles) haystacks.push([`bundle ${file}`, readFileSync(join(cwd, BUNDLE_DIR, file), "utf8")]);
+		const prompt = buildInvestigationPrompt({
+			alerts: [{ alertname: "CheckoutDown", severity: "critical", labels: {}, annotations: {}, startsAt: "2026-10-15T10:00:00Z" }],
+			service: { name: "svc-leak" },
+			caseBundle: bundle,
+		});
+		expect(prompt).toContain("<<<CASE_BUNDLE");
+		haystacks.push(["prompt", prompt]);
 
 		const leaks = haystacks.flatMap(([name, text]) =>
 			Object.entries(SECRETS)

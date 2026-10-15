@@ -1,0 +1,68 @@
+{
+	"apiVersion": "v1",
+	"kind": "List",
+	"items": [
+		{
+			"apiVersion": "apps/v1",
+			"kind": "ReplicaSet",
+			"metadata": {
+				"name": "checkout-6c8b5d",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0002-4000-8000-000000000001",
+				"creationTimestamp": "{{now-3d}}",
+				"labels": {
+					"app": "checkout",
+					"pod-template-hash": "6c8b5d"
+				},
+				"annotations": {
+					"deployment.kubernetes.io/revision": "1"
+				},
+				"ownerReferences": [
+					{
+						"apiVersion": "apps/v1",
+						"kind": "Deployment",
+						"name": "checkout",
+						"uid": "0d6c1f2e-0001-4000-8000-000000000001",
+						"controller": true
+					}
+				]
+			},
+			"spec": {
+				"replicas": 2,
+				"template": {
+					"metadata": {
+						"labels": {
+							"app": "checkout",
+							"pod-template-hash": "6c8b5d"
+						}
+					},
+					"spec": {
+						"containers": [
+							{
+								"name": "app",
+								"image": "shop/checkout:1.4.2",
+								"env": [
+									{
+										"name": "DB_PASSWORD",
+										"value": "hunter2"
+									},
+									{
+										"name": "DB_HOST",
+										"value": "db.shop.svc"
+									}
+								]
+							}
+						]
+					}
+				}
+			},
+			"status": {
+				"replicas": 2,
+				"readyReplicas": 1
+			}
+		}
+	],
+	"metadata": {
+		"resourceVersion": ""
+	}
+}

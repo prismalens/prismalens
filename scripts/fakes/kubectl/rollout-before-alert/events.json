@@ -1,0 +1,49 @@
+{
+	"apiVersion": "v1",
+	"kind": "List",
+	"items": [
+		{
+			"apiVersion": "v1",
+			"kind": "Event",
+			"metadata": {
+				"name": "checkout.17f0a1",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0004-4000-8000-000000000001"
+			},
+			"type": "Normal",
+			"reason": "ScalingReplicaSet",
+			"involvedObject": {
+				"kind": "Deployment",
+				"name": "checkout",
+				"namespace": "shop"
+			},
+			"firstTimestamp": "{{now-30m}}",
+			"lastTimestamp": "{{now-30m}}",
+			"count": 1,
+			"message": "Scaled up replica set checkout-7d9f4c to 2"
+		},
+		{
+			"apiVersion": "v1",
+			"kind": "Event",
+			"metadata": {
+				"name": "checkout-7d9f4c-fghij.17f0a2",
+				"namespace": "shop",
+				"uid": "0d6c1f2e-0004-4000-8000-000000000002"
+			},
+			"type": "Warning",
+			"reason": "BackOff",
+			"involvedObject": {
+				"kind": "Pod",
+				"name": "checkout-7d9f4c-fghij",
+				"namespace": "shop"
+			},
+			"firstTimestamp": "{{now-4m}}",
+			"lastTimestamp": "{{now-4m}}",
+			"count": 3,
+			"message": "Back-off restarting failed container app in pod checkout-7d9f4c-fghij"
+		}
+	],
+	"metadata": {
+		"resourceVersion": ""
+	}
+}
