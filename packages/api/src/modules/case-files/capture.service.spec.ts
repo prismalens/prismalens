@@ -437,6 +437,83 @@ describe("CaptureService", () => {
 		tickSpy.mockRestore();
 	});
 
+	/** Sixteen queued captures that are not yet due, so a tick leaves them alone. */
+	async function fillQueue(priority: number, caseStartedAt: Date): Promise<string[]> {
+		const namespaces: string[] = [];
+		for (let i = 0; i < 16; i++) {
+			const namespace = `ns-fill-${priority}-${i}`;
+			namespaces.push(namespace);
+			await prisma.capture.create({
+				data: {
+					checklistVersion: 1,
+					canonicalQuery: "{}",
+					queryDigest: `fill-${priority}-${i}`,
+					kubeContext: CONTEXT,
+					cluster: SERVER,
+					namespace,
+					state: "queued",
+					priority,
+					caseStartedAt: new Date(caseStartedAt.getTime() + i * 1000),
+					dueAt: new Date(Date.now() + 3_600_000),
+				},
+			});
+		}
+		return namespaces;
+	}
+
+	it("OBJ-026: a displaced capture's skipped record names its own target's commands, not the newcomer's", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		await fillQueue(4, new Date("2026-10-15T10:00:00Z"));
+		const { incident } = await boundIncident("svc-displacer", "critical", "ns-displacer");
+		const res = await service.captureNow(incident.id);
+		tickSpy.mockRestore();
+
+		expect(res?.state).toBe("queued");
+		const skipped = await prisma.capture.findFirstOrThrow({ where: { state: "skipped", stateReason: "queue-full" } });
+		const end = await prisma.manifestEntry.findFirstOrThrow({ where: { captureId: skipped.id, artifactId: null } });
+		const body = JSON.parse(end.body) as { notRun: string[][] };
+		expect(body.notRun.length).toBeGreaterThan(0);
+		for (const cmd of body.notRun) {
+			expect(cmd).toContain(skipped.namespace);
+			expect(cmd).not.toContain("ns-displacer");
+		}
+	});
+
+	it("OBJ-025: a retry into a full queue displaces a lower-ranked capture instead of exceeding the capacity", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-retry-full", "critical", "ns-retry-full");
+		writeFileSync(modeFile, "unreachable");
+		const res = await service.captureNow(incident.id);
+		await fillQueue(4, new Date("2026-10-15T10:00:00Z"));
+		tickSpy.mockRestore();
+		const captureId = res?.captureId ?? "";
+
+		await service.tick();
+		await service.settle();
+
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "queued", attempts: 1 });
+		expect(await prisma.capture.count({ where: { state: "queued" } })).toBe(16);
+		expect(await prisma.capture.count({ where: { state: "skipped", stateReason: "queue-full" } })).toBe(1);
+		expect(await manifest.verify([captureId])).toMatchObject({ ok: true });
+	});
+
+	it("OBJ-025: a retry that ranks below a full queue ends skipped as queue-full", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-retry-low", "critical", "ns-retry-low");
+		writeFileSync(modeFile, "unreachable");
+		const res = await service.captureNow(incident.id);
+		await fillQueue(1, new Date("2026-10-14T10:00:00Z"));
+		tickSpy.mockRestore();
+		const captureId = res?.captureId ?? "";
+
+		await service.tick();
+		await service.settle();
+
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "skipped", stateReason: "queue-full" });
+		expect(await prisma.capture.count({ where: { state: "queued" } })).toBe(16);
+		expect(await manifest.verify([captureId])).toMatchObject({ ok: true });
+	});
+
 	it("orders by priority and ties by caseStartedAt", () => {
 		expect(priorityFor("critical")).toBe(1);
 		expect(priorityFor("high")).toBe(2);
