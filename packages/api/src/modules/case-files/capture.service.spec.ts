@@ -749,10 +749,10 @@ describe("CaptureService", () => {
 	it("blocks on no-kubectl when kubectl is not on PATH", async () => {
 		const { incident } = await boundIncident("svc-no-kubectl", "critical", "ns-no-kubectl");
 		const origPath = process.env.PATH ?? "";
-		process.env.PATH = origPath
-			.split(":")
-			.filter((p) => !p.includes(binDir) && !p.includes("Rancher Desktop"))
-			.join(":");
+		// An empty dir, not a filtered PATH: CI runners ship a real kubectl in /usr/local/bin.
+		const emptyBin = join(binDir, "..", "empty-bin");
+		mkdirSync(emptyBin, { recursive: true });
+		process.env.PATH = emptyBin;
 		try {
 			await service.captureNow(incident.id);
 			await service.tick();
