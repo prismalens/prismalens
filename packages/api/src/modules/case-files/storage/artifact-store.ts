@@ -17,9 +17,11 @@ import { PrismaService } from "../../../core/prisma/prisma.service.js";
 // biome-ignore lint/style/useImportType: Nest injects by the runtime class
 import { CredentialsService } from "../../integrations/crypto/credentials.service.js";
 
-// Mirrors RETENTION_BYTES_PER_BINDING / RETENTION_DAYS in capture/budget.ts (WU2): assumptions.
-const RETENTION_BYTES_PER_BINDING = 256 * 1024 * 1024;
-const RETENTION_DAYS = 30;
+import {
+	RETENTION_BYTES_PER_BINDING,
+	RETENTION_DAYS,
+} from "../capture/budget.js";
+
 const DAY_MS = 86_400_000;
 
 export interface StoredArtifact {
