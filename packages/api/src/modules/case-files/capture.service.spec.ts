@@ -1185,6 +1185,56 @@ describe("CaptureService", () => {
 		expect(await claims()).toBe(rebuilt);
 	});
 
+	it("OBJ-018: boot rebuilds the gap claims of a blocked capture and of a partial one with no artifacts", async () => {
+		const gapClaims = (captureId: string) =>
+			prisma.claimRevision.count({ where: { node: { key: { startsWith: `gap:${captureId}:` } } } });
+		const boot = async () => {
+			await service.onModuleInit();
+			await service.settle();
+			const s = service as unknown as { interval?: NodeJS.Timeout; sweepTimer?: NodeJS.Timeout };
+			if (s.interval) clearInterval(s.interval);
+			if (s.sweepTimer) clearInterval(s.sweepTimer);
+		};
+		const blockedRun = await boundIncident("svc-rebuild-blocked", "critical", "ns-rebuild-blocked");
+		writeFileSync(modeFile, "context-missing");
+		const build = vi.spyOn(CaseBuilder.prototype, "build").mockRejectedValueOnce(new Error("build crashed"));
+		const res = await service.captureNow(blockedRun.incident.id);
+		await service.tick();
+		await service.settle();
+		build.mockRestore();
+		const blockedId = res?.captureId ?? "";
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: blockedId } })).toMatchObject({ state: "blocked" });
+
+		const bare = await boundIncident("svc-rebuild-bare", "critical", "ns-rebuild-bare");
+		const partial = await prisma.capture.create({
+			data: {
+				bindingId: bare.binding.id,
+				checklistVersion: 1,
+				canonicalQuery: "{}",
+				queryDigest: "rebuild-bare",
+				kubeContext: CONTEXT,
+				cluster: SERVER,
+				namespace: "ns-rebuild-bare",
+				state: "partial",
+				stateReason: "timeout",
+				finishedAt: new Date(),
+				caseStartedAt: new Date(),
+				dueAt: new Date(),
+			},
+		});
+		await prisma.caseCapture.create({ data: { incidentId: bare.incident.id, captureId: partial.id, triggeredAt: new Date() } });
+		expect(await gapClaims(blockedId)).toBe(0);
+		expect(await gapClaims(partial.id)).toBe(0);
+
+		await boot();
+		const rebuilt = [await gapClaims(blockedId), await gapClaims(partial.id)];
+		expect(rebuilt[0]).toBeGreaterThan(0);
+		expect(rebuilt[1]).toBeGreaterThan(0);
+
+		await boot();
+		expect([await gapClaims(blockedId), await gapClaims(partial.id)]).toEqual(rebuilt);
+	});
+
 	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {
 		const old = new Date(Date.now() - 31 * 86_400_000);
 		async function storedCapture(name: string): Promise<{ captureId: string; bindingId: string }> {

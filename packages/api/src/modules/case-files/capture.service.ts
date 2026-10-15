@@ -263,18 +263,19 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Builds claims for ended captures that have none for a linked case: the process
-	 * stopped after end() committed, or the build threw (OBJ-018). A build is
-	 * idempotent, so a retry is safe; one that fails again waits for the next run.
+	 * stopped after end() committed, or the build threw (OBJ-018). A blocked or
+	 * artifact-free capture is covered too; its gap claims name no artifact.
+	 * A build is idempotent, so a retry is safe; one that fails again waits for the next run.
 	 */
 	private async rebuildMissingClaims(): Promise<void> {
 		if (!(await this.settings.isEnabled())) return;
 		const links = await this.prisma.caseCapture.findMany({
 			where: {
 				capture: {
-					state: { in: ["complete", "partial"] },
+					state: { in: ["complete", "partial", "blocked"] },
 					// Turned off mid-run: closed without claims on purpose.
 					OR: [{ stateReason: null }, { stateReason: { not: "disabled" } }],
-					artifacts: { some: {}, none: { expiredAt: { not: null } } },
+					artifacts: { none: { expiredAt: { not: null } } },
 				},
 			},
 			include: { capture: true },
@@ -285,7 +286,10 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			const built = await this.prisma.claimRevision.count({
 				where: {
 					incidentId: link.incidentId,
-					artifact: { captureId: link.captureId },
+					OR: [
+						{ artifact: { captureId: link.captureId } },
+						{ node: { key: { startsWith: `gap:${link.captureId}:` } } },
+					],
 				},
 			});
 			if (built > 0) continue;
