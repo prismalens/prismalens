@@ -4,6 +4,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { unreadyReason } from "@/components/agent/AgentPicker";
+import { CaseFileLink } from "@/components/case-file/CaseFileView";
 import { IncidentHeader } from "@/components/run/IncidentHeader";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -106,6 +107,7 @@ export function OverviewPage() {
 				onResolve={o.record.openClose}
 				onReopen={o.record.openReopen}
 				onEditCause={o.record.openEditCause}
+				trailing={<CaseFileLink incidentId={incident.id} />}
 			/>
 			<LatestRunStrip o={o} />
 			{/* A card row never shrinks below its header and foot; past that the grid scrolls, under 768 px in one column (#673 w5-19). */}

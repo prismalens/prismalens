@@ -13,6 +13,7 @@ const TABS: SettingsTab[] = [
 	"integrations",
 	"devices",
 	"usage",
+	"experiments",
 	"about",
 	"danger",
 ];

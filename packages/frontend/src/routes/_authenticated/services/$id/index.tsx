@@ -7,6 +7,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
+import { ServiceCaptureSection } from "@/components/services/ServiceCaptureSection";
 import { ServiceCodeSection } from "@/components/services/ServiceCodeSection";
 import { ServiceDependenciesSection } from "@/components/services/ServiceDependenciesSection";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
@@ -210,6 +211,7 @@ function ServicePage() {
 							serviceId={id}
 							integrations={integrations}
 						/>
+						<ServiceCaptureSection serviceId={id} />
 						<ServiceDependenciesSection
 							serviceId={id}
 							topology={topology}
