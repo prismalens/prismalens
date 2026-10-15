@@ -199,6 +199,8 @@ export function deriveCase(input: {
 	capture: Capture;
 	alerts: CaseAlert[];
 	loaded: LoadedArtifacts;
+	/** Every row of the capture, logs included; the loaded rows when absent. */
+	artifacts?: readonly CaptureArtifact[];
 	now: Date;
 }): CaseDraft {
 	const { capture, alerts, loaded, now } = input;
@@ -567,7 +569,10 @@ export function deriveCase(input: {
 		}
 	}
 
-	for (const gap of gapClaims(capture, loaded, anchor, now)) addNode(gap);
+	const rows =
+		input.artifacts ?? Object.values(loaded).flatMap((a) => (a ? [a.row] : []));
+	for (const gap of gapClaims(capture, newestRows(rows), anchor, now))
+		addNode(gap);
 	return { nodes: [...nodes.values()], edges };
 }
 
@@ -628,9 +633,20 @@ function latestTermination(pod: K8sPod) {
 	return best;
 }
 
+/** Newest row per purpose and subject: a retry's rows stand in for the first attempt's. */
+function newestRows(rows: readonly CaptureArtifact[]): CaptureArtifact[] {
+	const newest = new Map<string, CaptureArtifact>();
+	for (const row of rows) {
+		const key = `${row.purpose}\u0000${row.subject ?? ""}`;
+		const seen = newest.get(key);
+		if (!seen || row.seq > seen.seq) newest.set(key, row);
+	}
+	return [...newest.values()];
+}
+
 function gapClaims(
 	capture: Capture,
-	loaded: LoadedArtifacts,
+	rows: readonly CaptureArtifact[],
 	anchor: CaseAlert | null,
 	now: Date,
 ): NodeDraft[] {
@@ -680,12 +696,11 @@ function gapClaims(
 		);
 	}
 
-	const cut = new Map<RetrievalReason, LoadedArtifact[]>();
-	for (const a of Object.values(loaded)) {
-		if (!a) continue;
-		const reason = a.row.retrievalReason;
-		if (a.row.retrieval === "partial" && isRetrievalReason(reason))
-			cut.set(reason, [...(cut.get(reason) ?? []), a]);
+	const cut = new Map<RetrievalReason, CaptureArtifact[]>();
+	for (const row of rows) {
+		const reason = row.retrievalReason;
+		if (row.retrieval === "partial" && isRetrievalReason(reason))
+			cut.set(reason, [...(cut.get(reason) ?? []), row]);
 	}
 	if (
 		capture.state === "partial" &&
@@ -694,7 +709,7 @@ function gapClaims(
 	)
 		cut.set(capture.stateReason, []);
 	for (const [reason, arts] of cut) {
-		const purposes = arts.map((a) => a.row.purpose);
+		const purposes = [...new Set(arts.map((a) => a.purpose))];
 		const statement = purposes.length
 			? `${purposes.join(", ")} ${purposes.length > 1 ? "were" : "was"} cut: ${reason}.`
 			: `The capture was cut: ${reason}.`;
@@ -704,7 +719,7 @@ function gapClaims(
 				"unknown",
 				statement,
 				PARTIAL_HINT,
-				arts.length === 1 ? (arts[0]?.row.id ?? null) : null,
+				arts.length === 1 ? (arts[0]?.id ?? null) : null,
 				{ retrieval: "partial", reason },
 			),
 		);
@@ -774,6 +789,9 @@ export class CaseBuilder {
 			capture: input.capture,
 			alerts: input.alerts,
 			loaded,
+			artifacts: input.artifacts.filter(
+				(a) => a.captureId === input.capture.id,
+			),
 			now: input.now ?? new Date(),
 		});
 		return this.write(tx, input.incidentId, draft, input.now);
