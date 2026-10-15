@@ -10,6 +10,13 @@ import {
 	BindingsService,
 	ServiceNotFoundError,
 } from "./bindings.service.js";
+import { CaseFileSettingsService } from "./case-file-settings.service.js";
+import {
+	ArtifactUnavailableError,
+	CaptureRefusedError,
+	CaseNotFoundError,
+	CaseViewService,
+} from "./case-view.service.js";
 
 function toOrpcError(err: unknown): never {
 	if (
@@ -27,10 +34,45 @@ function toOrpcError(err: unknown): never {
 	throw err;
 }
 
+function toCaseError(err: unknown): never {
+	if (err instanceof CaseNotFoundError)
+		throw new ORPCError("NOT_FOUND", { message: err.message });
+	if (err instanceof ArtifactUnavailableError)
+		throw new ORPCError("CONFLICT", {
+			message: err.message,
+			data: { reason: err.reason },
+		});
+	if (err instanceof CaptureRefusedError)
+		throw new ORPCError("PRECONDITION_FAILED", {
+			message: err.message,
+			data: { reason: err.reason },
+		});
+	throw err;
+}
+
 /** Case File routes (experiment, Setting `case_file`); auth is the global guard. */
 @Controller()
 export class CaseFilesController {
-	constructor(private readonly bindingsService: BindingsService) {}
+	constructor(
+		private readonly bindingsService: BindingsService,
+		private readonly caseViews: CaseViewService,
+		private readonly settings: CaseFileSettingsService,
+	) {}
+
+	@Implement(caseFilesContract.settings)
+	caseFileSettings() {
+		return {
+			get: implement(caseFilesContract.settings.get).handler(async () => ({
+				enabled: await this.settings.isEnabled(),
+			})),
+			update: implement(caseFilesContract.settings.update).handler(
+				async ({ input }) => {
+					await this.settings.set(input.enabled);
+					return { enabled: input.enabled };
+				},
+			),
+		};
+	}
 
 	@Implement(caseFilesContract.bindings)
 	bindings() {
@@ -51,6 +93,25 @@ export class CaseFilesController {
 				async ({ input }) => ({
 					success: await this.bindingsService.remove(input.serviceId),
 				}),
+			),
+		};
+	}
+
+	@Implement(caseFilesContract.cases)
+	cases() {
+		return {
+			get: implement(caseFilesContract.cases.get).handler(({ input }) =>
+				this.caseViews.get(input.incidentId, input.asOf).catch(toCaseError),
+			),
+			artifact: implement(caseFilesContract.cases.artifact).handler(
+				({ input }) =>
+					this.caseViews.artifact(input.artifactId).catch(toCaseError),
+			),
+			verify: implement(caseFilesContract.cases.verify).handler(({ input }) =>
+				this.caseViews.verify(input.incidentId).catch(toCaseError),
+			),
+			capture: implement(caseFilesContract.cases.capture).handler(({ input }) =>
+				this.caseViews.capture(input.incidentId).catch(toCaseError),
 			),
 		};
 	}
