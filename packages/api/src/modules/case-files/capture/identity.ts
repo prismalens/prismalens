@@ -51,13 +51,25 @@ export function classifyFailure(
 	return null;
 }
 
+/**
+ * The server URL as scheme://host:port/path: it is stored and served, and userinfo,
+ * query and fragment can carry credentials (OBJ-015). Everything up to the last `@`
+ * goes, so a secret holding `/`, `?` or `@` cannot survive by ending the userinfo early.
+ */
+export function serverAddress(server: string): string {
+	return server
+		.replace(/^([a-z][a-z0-9+.-]*:\/\/)?.*@/is, "$1")
+		.replace(/[?#].*$/s, "")
+		.replace(/^([a-z][a-z0-9+.-]*:\/\/[^/]+)\/$/i, "$1");
+}
+
 export function matchesBinding(
 	identity: Pick<CaptureIdentity, "kubeContext" | "cluster">,
 	binding: BindingTarget,
 ): boolean {
 	return (
 		identity.kubeContext === binding.kubeContext &&
-		identity.cluster === binding.cluster
+		serverAddress(identity.cluster) === serverAddress(binding.cluster)
 	);
 }
 
@@ -105,8 +117,8 @@ export interface KubeContextView {
 
 /**
  * Reads one context from this machine's kubeconfig. The `config view` output holds
- * kubeconfig material: only names and the server URL leave this function, and the
- * output is never stored (s05).
+ * kubeconfig material: only names and the server's address leave this function,
+ * and the output is never stored (s05).
  */
 export async function viewContext(
 	bin: string,
@@ -145,7 +157,8 @@ export async function viewContext(
 	}
 	const config = record(parseJson(view.stdout));
 	const context = first(config.contexts);
-	const server = text(record(first(config.clusters).cluster).server);
+	const raw = text(record(first(config.clusters).cluster).server);
+	const server = raw === null ? null : serverAddress(raw);
 	if (text(context.name) !== kubeContext || server === null) {
 		throw new IdentityError(
 			"context-missing",

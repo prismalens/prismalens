@@ -10,6 +10,7 @@ import {
 	IdentityError,
 	matchesBinding,
 	resolveIdentity,
+	serverAddress,
 	viewContext,
 } from "./identity.js";
 import { NoKubectlError } from "./run-command.js";
@@ -176,6 +177,23 @@ describe("viewContext", () => {
 		await expect(viewContext("/nonexistent/bin", "kind-pl")).rejects.toMatchObject({
 			reason: "no-kubectl",
 		});
+	});
+});
+
+describe("serverAddress (OBJ-015)", () => {
+	it("keeps scheme, host, port and path, and drops userinfo, query and fragment", () => {
+		expect(serverAddress("https://127.0.0.1:6443")).toBe("https://127.0.0.1:6443");
+		expect(serverAddress("https://127.0.0.1:1/?token=s3cret")).toBe("https://127.0.0.1:1");
+		expect(serverAddress("https://user:pass@host.example:6443/k8s/clusters/c-1?x=1#y")).toBe(
+			"https://host.example:6443/k8s/clusters/c-1",
+		);
+		expect(serverAddress("user:pass@host:6443?token=s3cret")).toBe("host:6443");
+		expect(serverAddress("https://u:pa/s?s@host:6443/?t=1")).toBe("https://host:6443");
+	});
+
+	it("matches a binding stored before the address was stripped", () => {
+		const target = { kubeContext: "kind-pl", cluster: "https://127.0.0.1:6443/?token=old" };
+		expect(matchesBinding({ kubeContext: "kind-pl", cluster: "https://127.0.0.1:6443" }, target)).toBe(true);
 	});
 });
 

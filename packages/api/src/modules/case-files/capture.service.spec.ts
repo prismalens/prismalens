@@ -25,6 +25,7 @@ const { SettingsService } = await import("../../core/settings/settings.service.j
 const { ManifestService } = await import("./storage/manifest.js");
 const { CaseFileSettingsService } = await import("./case-file-settings.service.js");
 const { CaseBuilder } = await import("./case-builder.js");
+const { BindingsService } = await import("./bindings.service.js");
 const {
 	CaptureService,
 	CASE_CAPTURE_UPDATED_EVENT,
@@ -159,7 +160,8 @@ if (mode === "invalid-pod-name") {
 }
 
 const out = (v) => process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
-if (args[0] === "config") out({ contexts: [{ name: ${JSON.stringify(CONTEXT)}, context: { cluster: "kind", user: "admin", namespace: "shop" } }], clusters: [{ name: "kind", cluster: { server: serverUrl } }] });
+if (args[0] === "config" && (args[1] === "current-context" || args[1] === "get-contexts")) out(${JSON.stringify(CONTEXT)} + "\\n");
+else if (args[0] === "config") out({ contexts: [{ name: ${JSON.stringify(CONTEXT)}, context: { cluster: "kind", user: "admin", namespace: "shop" } }], clusters: [{ name: "kind", cluster: { server: serverUrl } }] });
 else if (args[0] === "auth") { process.stderr.write("unknown command"); process.exit(1); }
 else if (args[0] === "logs") out("2026-10-15T09:57:59Z OOM DB_PASSWORD=hunter2\\n");
 else if (args[1] === "pods") out(JSON.stringify(podsData));
@@ -1063,6 +1065,39 @@ describe("CaptureService", () => {
 		const after = await prisma.capture.findUniqueOrThrow({ where: { id: captureId }, include: { artifacts: true } });
 		expect(after.state).toBe("complete");
 		expect(after.artifacts.map((a) => a.purpose)).toContain("events");
+	});
+
+	/** Every SQLite file under the test workspace, main database and write-ahead log. */
+	function databaseFiles(dir = env.root): string[] {
+		return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+			e.isDirectory() ? databaseFiles(join(dir, e.name)) : /\.db(-wal)?$/.test(e.name) ? [join(dir, e.name)] : [],
+		);
+	}
+
+	it.each([
+		["a token in the query", (v: string) => `https://127.0.0.1:6443/?token=${v}`],
+		["userinfo", (v: string) => `https://kube:${v}@127.0.0.1:6443`],
+	])("OBJ-015: a server URL carrying %s is stored, captured and served without it", async (_, serverWith) => {
+		const canary = `C_DIAG_${randomUUID().replaceAll("-", "")}`;
+		writeFileSync(serverFile, serverWith(canary));
+		const svc = await prisma.service.create({ data: { name: `svc-leaky-${canary.slice(-6)}` } });
+		const bindings = new BindingsService(prisma);
+		const bound = await bindings.confirm({ serviceId: svc.id, kubeContext: CONTEXT, namespace: "ns-leaky" });
+		incidentNumber += 1;
+		const incident = await prisma.incident.create({
+			data: { number: incidentNumber, title: "leaky down", severity: "critical", serviceId: svc.id },
+		});
+		const res = await service.captureNow(incident.id);
+		await service.tick();
+		await service.settle();
+
+		expect(bound.cluster).toBe("https://127.0.0.1:6443");
+		const capture = await prisma.capture.findUniqueOrThrow({ where: { id: res?.captureId ?? "" } });
+		expect(capture).toMatchObject({ state: "complete", identityMatches: true });
+		expect(JSON.stringify([bound, await bindings.get(svc.id)])).not.toContain(canary);
+		const files = databaseFiles();
+		expect(files.length).toBeGreaterThan(0);
+		for (const file of files) expect(readFileSync(file).includes(canary), file).toBe(false);
 	});
 
 	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {
