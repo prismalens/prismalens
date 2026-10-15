@@ -30,7 +30,7 @@ export const RAW_SECRET_VALUES: readonly string[] = [
 	SECRETS.dbPassword,
 	SECRETS.pgPassword,
 	SECRETS.apiKey,
-	PEM_PRIVATE_KEY.split("\n")[1]!,
+	PEM_PRIVATE_KEY.split("\n")[1] ?? "",
 ];
 
 export const SYNTHETIC_LOG = [

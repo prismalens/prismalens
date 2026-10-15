@@ -82,7 +82,7 @@ describe("redact", () => {
 		expect(out.counts.pattern).toBeGreaterThan(0);
 	});
 
-	it("removes the full secret corpus in __fixtures__/secrets.ts across every purpose", async () => {
+	it("removes the full secret corpus in __fixtures__/secret-corpus.ts across every purpose", async () => {
 		for (const purpose of ARTIFACT_PURPOSES) {
 			const out = await redact(purpose, corpusFor(purpose));
 			if ("error" in out) throw new Error(out.error);
