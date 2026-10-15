@@ -101,8 +101,7 @@ describe("redact", () => {
 		expect(item.metadata.annotations).toEqual({ "deployment.kubernetes.io/revision": "7" });
 		expect(item.spec.template.spec.containers[0].env).toEqual([
 			{ name: "DATABASE_URL", value: "[REDACTED:env]" },
-			// Any `"…key…": "…"` string is redacted too (#842 OBJ-016), so a ref's key name goes.
-			{ name: "FROM_SECRET", valueFrom: { secretKeyRef: { name: "s", key: "[REDACTED:pattern]" } } },
+			{ name: "FROM_SECRET", valueFrom: { secretKeyRef: { name: "s", key: "k" } } },
 		]);
 		expect(out.counts).toMatchObject({ env: 1, "last-applied-configuration": 1 });
 	});
@@ -450,5 +449,75 @@ describe("round 3 (#842)", () => {
 		expect(redactUrl("https://127.0.0.1:6443")).toBe("https://127.0.0.1:6443");
 		expect(redactUrl("https://admin:hunter2@k8s.example:6443/x?token=abc#frag")).toBe("https://k8s.example:6443/x");
 		expect(redactUrl("not a url hunter2")).toBe("[REDACTED:url]");
+	});
+});
+
+describe("reference key names (#842)", () => {
+	const podSpec = {
+		nodeSelector: { "payments.example.com/secret-tier": "gold" },
+		tolerations: [{ key: "dedicated-secret-nodes", operator: "Equal", value: "payments", effect: "NoSchedule" }],
+		affinity: {
+			nodeAffinity: {
+				requiredDuringSchedulingIgnoredDuringExecution: {
+					nodeSelectorTerms: [{ matchExpressions: [{ key: "topology.kubernetes.io/zone", operator: "In", values: ["a"] }] }],
+				},
+			},
+		},
+		topologySpreadConstraints: [{ topologyKey: "kubernetes.io/hostname", maxSkew: 1 }],
+		volumes: [{ name: "creds", secret: { secretName: "payments-db", items: [{ key: "tls.key", path: "tls.key" }] } }],
+		containers: [
+			{
+				name: "app",
+				env: [
+					{ name: "DB_PASSWORD", valueFrom: { secretKeyRef: { name: "payments-db", key: "DB_PASSWORD" } } },
+					{ name: "UPSTREAM_URL", valueFrom: { configMapKeyRef: { name: "upstream", key: "UPSTREAM_URL" } } },
+					{ name: "API_KEY", value: "Lit3ralApiKey" },
+				],
+				envFrom: [{ secretRef: { name: "payments-db" } }, { configMapRef: { name: "upstream" } }],
+			},
+		],
+	};
+	const deployment = {
+		kind: "Deployment",
+		metadata: {
+			name: "payments",
+			labels: { "auth-proxy": "enabled" },
+			annotations: { "example.com/session-note": "token=Ann0tSecret" },
+		},
+		spec: { selector: { matchLabels: { "auth-proxy": "enabled" } }, template: { metadata: { labels: { "auth-proxy": "enabled" } }, spec: podSpec } },
+	};
+
+	it("keeps the key names a workload reads and still redacts every value", async () => {
+		for (const [purpose, doc] of [
+			["deployments", { kind: "List", items: [deployment] }],
+			["pods", { kind: "List", items: [{ kind: "Pod", metadata: deployment.metadata, spec: podSpec }] }],
+		] as const) {
+			const out = await redact(purpose, Buffer.from(JSON.stringify(doc)));
+			if ("error" in out) throw new Error(out.error);
+			const text = out.redacted.toString("utf8");
+			const item = JSON.parse(text).items[0];
+			const spec = purpose === "deployments" ? item.spec.template.spec : item.spec;
+			expect(spec.containers[0].env.slice(0, 2)).toEqual(podSpec.containers[0].env.slice(0, 2));
+			expect(spec.containers[0].envFrom).toEqual(podSpec.containers[0].envFrom);
+			expect(spec.tolerations).toEqual(podSpec.tolerations);
+			expect(spec.nodeSelector).toEqual(podSpec.nodeSelector);
+			expect(spec.affinity).toEqual(podSpec.affinity);
+			expect(spec.topologySpreadConstraints).toEqual(podSpec.topologySpreadConstraints);
+			expect(spec.volumes).toEqual(podSpec.volumes);
+			expect(item.metadata.labels).toEqual({ "auth-proxy": "enabled" });
+			if (purpose === "deployments") expect(item.spec.selector.matchLabels).toEqual({ "auth-proxy": "enabled" });
+			// Values are still values.
+			expect(text).not.toContain("Lit3ralApiKey");
+			expect(text).not.toContain("Ann0tSecret");
+		}
+	});
+
+	it("does not keep a reference field whose value has a secret's shape", async () => {
+		const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU";
+		const doc = { kind: "Pod", spec: { tolerations: [{ key: jwt }, { key: "token=Inl1neValue" }], nodeSelector: { "secret-tier": "a b=Spac3dValue" } } };
+		const out = await redact("pods", Buffer.from(JSON.stringify(doc)));
+		if ("error" in out) throw new Error(out.error);
+		const text = out.redacted.toString("utf8");
+		for (const v of [jwt, "Inl1neValue", "Spac3dValue"]) expect(text).not.toContain(v);
 	});
 });

@@ -249,12 +249,66 @@ function scrubObject(item: unknown, counts: RedactCounts): void {
 	if (isObject(spec.template)) scrubPodSpec(spec.template.spec, counts);
 }
 
-/** Structural pass (R2.1); a JSON list's items, or a single object. */
-function structural(text: string, counts: RedactCounts): string {
+type Span = readonly [start: number, end: number];
+
+// String values that name a key, label or Secret a workload reads; they never hold the secret.
+const REFERENCE_FIELDS: ReadonlySet<string> = new Set([
+	"key",
+	"topologyKey",
+	"secretName",
+]);
+const LABEL_MAPS: ReadonlySet<string> = new Set([
+	"labels",
+	"matchLabels",
+	"nodeSelector",
+]);
+// A Kubernetes name, key or label value; anything else in those fields is scanned as usual.
+const REFERENCE = /^(?!eyJ)[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$/;
+const MARKED = /\\u0001([^"\\]*)\\u0002/g;
+
+const mark = (value: unknown): unknown =>
+	typeof value === "string" && REFERENCE.test(value)
+		? `\u0001${value}\u0002`
+		: value;
+
+function markReferences(field: string, value: unknown): unknown {
+	if (LABEL_MAPS.has(field) && isObject(value))
+		return Object.fromEntries(
+			Object.entries(value).map(([k, v]) => [k, mark(v)]),
+		);
+	return REFERENCE_FIELDS.has(field) ? mark(value) : value;
+}
+
+/**
+ * Structural pass (R2.1); a JSON list's items, or a single object. Also returns the spans of
+ * reference names (#842), which the generic-name patterns must not redact.
+ */
+function structural(
+	text: string,
+	counts: RedactCounts,
+): { text: string; kept: Span[] } {
 	const doc: unknown = JSON.parse(text);
 	const items = isObject(doc) && Array.isArray(doc.items) ? doc.items : [doc];
 	for (const item of items) scrubObject(item, counts);
-	return JSON.stringify(doc, null, 4);
+	const plain = JSON.stringify(doc, null, 4);
+	// Fails closed: input that already carries the markers keeps nothing.
+	if (plain.includes("\\u0001") || plain.includes("\\u0002"))
+		return { text: plain, kept: [] };
+	const marked = JSON.stringify(doc, markReferences, 4);
+	const kept: Span[] = [];
+	const parts: string[] = [];
+	let cursor = 0;
+	let length = 0;
+	for (const m of marked.matchAll(MARKED)) {
+		const before = marked.slice(cursor, m.index);
+		parts.push(before, m[1]);
+		length += before.length;
+		kept.push([length, length + m[1].length]);
+		length += m[1].length;
+		cursor = m.index + m[0].length;
+	}
+	parts.push(marked.slice(cursor));
+	return { text: parts.join(""), kept };
 }
 
 function replaceRanges(
@@ -326,10 +380,25 @@ function withoutTimestamps(text: string): {
 	return { scanned, pieces };
 }
 
+/** Whether `hit` lies inside one of the sorted, disjoint `spans`. */
+function within(spans: readonly Span[], hit: Hit): boolean {
+	let lo = 0;
+	let hi = spans.length - 1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const [start, end] = spans[mid];
+		if (hit.end <= start) hi = mid - 1;
+		else if (hit.start >= end) lo = mid + 1;
+		else return hit.start >= start && hit.end <= end;
+	}
+	return false;
+}
+
 async function textPass(
 	original: string,
 	counts: RedactCounts,
 	config: RedactConfig,
+	kept: readonly Span[] = [],
 ): Promise<string> {
 	const { scanned: text, pieces } = withoutTimestamps(original);
 	const hits = new Map<string, Hit>();
@@ -351,8 +420,17 @@ async function textPass(
 			hits.set(`${hit.start}:${hit.end}:${rule}`, hit);
 		}
 	}
-	for (const hit of hits.values()) bump(counts, hit.rule);
-	return replaceRanges(original, [...hits.values()].flatMap(pieces));
+	const ranges: Hit[] = [];
+	for (const hit of hits.values()) {
+		// Only our own patterns yield to a kept reference name; a provider-shaped token never does.
+		const left = pieces(hit).filter(
+			(p) => p.rule !== "pattern" || !within(kept, p),
+		);
+		if (left.length === 0) continue;
+		bump(counts, hit.rule);
+		ranges.push(...left);
+	}
+	return replaceRanges(original, ranges);
 }
 
 /** A URL without userinfo, query or fragment, for a diagnostic or a DB column; unparseable is withheld. */
@@ -400,15 +478,16 @@ export async function redactInProcess(
 	const counts: RedactCounts = {};
 	if (raw.length === 0) return { redacted: Buffer.alloc(0), counts };
 	let text = raw.toString("utf8");
+	let kept: Span[] = [];
 	if (STRUCTURAL.has(purpose)) {
 		try {
-			text = structural(text, counts);
+			({ text, kept } = structural(text, counts));
 		} catch (err) {
 			return { error: failure("structural", err) };
 		}
 	}
 	try {
-		text = await textPass(text, counts, config);
+		text = await textPass(text, counts, config, kept);
 	} catch (err) {
 		return { error: failure("text", err) };
 	}
