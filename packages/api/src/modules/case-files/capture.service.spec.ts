@@ -1016,6 +1016,55 @@ describe("CaptureService", () => {
 		},
 	);
 
+	it("OBJ-007: a capture admitted before the switch went off, whose incident lookup is still pending, queues nothing", async () => {
+		const { incident, alert } = await boundIncident("svc-off-admit", "critical", "ns-off-admit");
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const lookup = prisma.incident.findUnique.bind(prisma.incident);
+		const spy = vi.spyOn(prisma.incident, "findUnique").mockImplementation((async (args: Parameters<typeof lookup>[0]) => {
+			await gate;
+			return lookup(args);
+		}) as unknown as typeof prisma.incident.findUnique);
+		const manual = service.captureNow(incident.id);
+		const listener = service.handleAlertCorrelated({ alertId: alert.id, incidentId: incident.id, isNewIncident: true });
+		for (let i = 0; i < 50 && spy.mock.calls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+		expect(spy).toHaveBeenCalledTimes(2);
+
+		await settings.set(false);
+		release();
+		const [result] = await Promise.all([manual, listener]);
+		spy.mockRestore();
+
+		expect(result).toBeNull();
+		expect(await prisma.caseCapture.count({ where: { incidentId: incident.id } })).toBe(0);
+	});
+
+	it("OBJ-013: a reset refused after it stopped a capture puts the capture back in the queue, and it completes", async () => {
+		const captureId = await hungCapture("svc-refused-reset");
+		const { incident } = await boundIncident("svc-refused-run", "critical", "ns-refused-run");
+		const settingsService = new SettingsService(prisma as never, service as never);
+		// The controller's early count saw no run; one commits while the reset stops captures.
+		const quiesce = service.quiesce.bind(service);
+		const spy = vi.spyOn(service, "quiesce").mockImplementationOnce(async (work) => {
+			await prisma.investigation.create({ data: { incidentId: incident.id, status: "running" } });
+			return quiesce(work);
+		});
+
+		await expect(settingsService.resetData()).rejects.toThrow("investigation(s) are queued or running");
+		spy.mockRestore();
+		await prisma.investigation.deleteMany({ where: { incidentId: incident.id } });
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "queued" });
+
+		writeFileSync(releaseFile, "");
+		await service.tick();
+		await service.settle();
+		const after = await prisma.capture.findUniqueOrThrow({ where: { id: captureId }, include: { artifacts: true } });
+		expect(after.state).toBe("complete");
+		expect(after.artifacts.map((a) => a.purpose)).toContain("events");
+	});
+
 	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {
 		const old = new Date(Date.now() - 31 * 86_400_000);
 		async function storedCapture(name: string): Promise<{ captureId: string; bindingId: string }> {

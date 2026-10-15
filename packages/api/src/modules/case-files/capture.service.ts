@@ -62,7 +62,10 @@ import {
 	runCommand,
 } from "./capture/run-command.js";
 import { CaseBuilder } from "./case-builder.js";
-import { CaseFileSettingsService } from "./case-file-settings.service.js";
+import {
+	type Admission,
+	CaseFileSettingsService,
+} from "./case-file-settings.service.js";
 import { ArtifactStore, sha256Hex } from "./storage/artifact-store.js";
 import {
 	artifactEntryBody,
@@ -202,7 +205,9 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		private readonly builder: CaseBuilder,
 		private readonly events: EventEmitter2,
 	) {
-		settings.onDisable(() => this.halt("disabled"));
+		settings.onDisable(async () => {
+			await this.halt("disabled");
+		});
 	}
 
 	async onModuleInit(): Promise<void> {
@@ -255,21 +260,39 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	/** Runs `work` (a reset) with no capture running or starting and no sweep under way (OBJ-008). */
 	async quiesce<T>(work: () => Promise<T>): Promise<T> {
 		this.resetting = true;
+		let stopped: string[] = [];
 		try {
-			await this.halt("reset");
+			stopped = await this.halt("reset");
 			await this.sweepRun;
 			return await work();
 		} finally {
+			// A refused reset keeps the rows (OBJ-013): what it stopped runs again, as after a restart (R4).
+			if (stopped.length > 0) await this.requeue(stopped);
 			this.resetting = false;
+			setImmediate(() => void this.tick());
 		}
 	}
 
-	/** Aborts every running capture and waits for each to end; a tick under way may still be starting one. */
-	private async halt(reason: HaltReason): Promise<void> {
+	private async requeue(ids: string[]): Promise<void> {
+		await this.prisma.capture
+			.updateMany({
+				where: { id: { in: ids }, state: "running" },
+				data: { state: "queued" },
+			})
+			.catch((err: unknown) => {
+				this.logger.warn(
+					`captures stopped by a reset not requeued: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			});
+	}
+
+	/** Aborts every running capture, waits for each to end, and returns their ids; a tick under way may still be starting one. */
+	private async halt(reason: HaltReason): Promise<string[]> {
 		await this.tickRun;
-		const all = [...this.running.values()];
-		for (const r of all) r.controller.abort(new CaptureHaltedError(reason));
-		await Promise.allSettled(all.map((r) => r.done));
+		const all = [...this.running.entries()];
+		for (const [, r] of all) r.controller.abort(new CaptureHaltedError(reason));
+		await Promise.allSettled(all.map(([, r]) => r.done));
+		return all.map(([id]) => id);
 	}
 
 	private async haltedBy(stop: AbortSignal): Promise<HaltReason | null> {
@@ -288,8 +311,9 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	async handleAlertCorrelated(event: AlertCorrelatedEvent): Promise<void> {
 		if (!event.isNewIncident && event.reopened !== true) return;
 		try {
-			if (!(await this.settings.isEnabled())) return;
-			await this.enqueue(event.incidentId, event.alertId);
+			const admission = await this.settings.admit();
+			if (!admission) return;
+			await this.enqueue(admission, event.incidentId, event.alertId);
 		} catch (err) {
 			this.logger.warn(
 				`capture not queued for incident ${event.incidentId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -299,11 +323,13 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/** The manual route: the listener's work without the opening-alert rule. Null when off or unbound. */
 	async captureNow(incidentId: string): Promise<EnqueueResult | null> {
-		if (!(await this.settings.isEnabled())) return null;
-		return this.enqueue(incidentId, null);
+		const admission = await this.settings.admit();
+		if (!admission) return null;
+		return this.enqueue(admission, incidentId, null);
 	}
 
 	private async enqueue(
+		admission: Admission,
 		incidentId: string,
 		alertId: string | null,
 	): Promise<EnqueueResult | null> {
@@ -328,80 +354,87 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		};
 		const link = { incidentId, alertId, triggeredAt: now };
 
-		const result = await this.manifest.transaction(async (tx) => {
-			const queued = await tx.capture.findFirst({
-				where: { queryDigest, state: "queued" },
-				orderBy: { createdAt: "asc" },
-			});
-			if (queued) {
-				const linked = await tx.caseCapture.findUnique({
-					where: {
-						incidentId_captureId: { incidentId, captureId: queued.id },
-					},
+		const result = await admission.commit(() =>
+			this.manifest.transaction(async (tx) => {
+				const queued = await tx.capture.findFirst({
+					where: { queryDigest, state: "queued" },
+					orderBy: { createdAt: "asc" },
 				});
-				if (!linked) {
-					await tx.caseCapture.create({
-						data: { ...link, captureId: queued.id, shared: true },
-					});
-				}
-				await tx.capture.update({
-					where: { id: queued.id },
-					data: {
-						priority: Math.min(queued.priority, rank.priority),
-						caseStartedAt:
-							queued.caseStartedAt < rank.caseStartedAt
-								? queued.caseStartedAt
-								: rank.caseStartedAt,
-					},
-				});
-				return { captureId: queued.id, state: "queued" as const, shared: true };
-			}
-
-			let state: CaptureState = "queued";
-			const depth = await tx.capture.count({ where: { state: "queued" } });
-			if (depth >= QUEUE_CAPACITY) {
-				const lowest = await tx.capture.findFirst({
-					where: { state: "queued" },
-					orderBy: [{ priority: "desc" }, { caseStartedAt: "desc" }],
-				});
-				if (lowest && ranksAbove(rank, lowest)) {
-					const skipped = await tx.capture.update({
-						where: { id: lowest.id },
-						data: {
-							state: "skipped",
-							stateReason: "queue-full",
-							finishedAt: now,
+				if (queued) {
+					const linked = await tx.caseCapture.findUnique({
+						where: {
+							incidentId_captureId: { incidentId, captureId: queued.id },
 						},
 					});
-					await this.appendEnding(tx, skipped, now, target);
-				} else {
-					state = "skipped";
+					if (!linked) {
+						await tx.caseCapture.create({
+							data: { ...link, captureId: queued.id, shared: true },
+						});
+					}
+					await tx.capture.update({
+						where: { id: queued.id },
+						data: {
+							priority: Math.min(queued.priority, rank.priority),
+							caseStartedAt:
+								queued.caseStartedAt < rank.caseStartedAt
+									? queued.caseStartedAt
+									: rank.caseStartedAt,
+						},
+					});
+					return {
+						captureId: queued.id,
+						state: "queued" as const,
+						shared: true,
+					};
 				}
-			}
 
-			const created = await tx.capture.create({
-				data: {
-					bindingId: binding.id,
-					checklistVersion: query.checklistVersion,
-					canonicalQuery: JSON.stringify(query),
-					queryDigest,
-					...target,
-					state,
-					stateReason: state === "skipped" ? "queue-full" : null,
-					finishedAt: state === "skipped" ? now : null,
-					priority: rank.priority,
-					caseStartedAt: rank.caseStartedAt,
-					dueAt: now,
-					maxAttempts: MAX_ATTEMPTS,
-				},
-			});
-			await tx.caseCapture.create({
-				data: { ...link, captureId: created.id },
-			});
-			if (state === "skipped")
-				await this.appendEnding(tx, created, now, target);
-			return { captureId: created.id, state, shared: false };
-		});
+				let state: CaptureState = "queued";
+				const depth = await tx.capture.count({ where: { state: "queued" } });
+				if (depth >= QUEUE_CAPACITY) {
+					const lowest = await tx.capture.findFirst({
+						where: { state: "queued" },
+						orderBy: [{ priority: "desc" }, { caseStartedAt: "desc" }],
+					});
+					if (lowest && ranksAbove(rank, lowest)) {
+						const skipped = await tx.capture.update({
+							where: { id: lowest.id },
+							data: {
+								state: "skipped",
+								stateReason: "queue-full",
+								finishedAt: now,
+							},
+						});
+						await this.appendEnding(tx, skipped, now, target);
+					} else {
+						state = "skipped";
+					}
+				}
+
+				const created = await tx.capture.create({
+					data: {
+						bindingId: binding.id,
+						checklistVersion: query.checklistVersion,
+						canonicalQuery: JSON.stringify(query),
+						queryDigest,
+						...target,
+						state,
+						stateReason: state === "skipped" ? "queue-full" : null,
+						finishedAt: state === "skipped" ? now : null,
+						priority: rank.priority,
+						caseStartedAt: rank.caseStartedAt,
+						dueAt: now,
+						maxAttempts: MAX_ATTEMPTS,
+					},
+				});
+				await tx.caseCapture.create({
+					data: { ...link, captureId: created.id },
+				});
+				if (state === "skipped")
+					await this.appendEnding(tx, created, now, target);
+				return { captureId: created.id, state, shared: false };
+			}),
+		);
+		if (!result) return null;
 
 		setImmediate(() => void this.tick());
 		return result;

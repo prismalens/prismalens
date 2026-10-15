@@ -230,6 +230,32 @@ describe("CaseBundleService", () => {
 		await assertManifestMatchesStore();
 	});
 
+	it("OBJ-007: an attach whose incident lookup is pending when the setting turns off writes, registers and returns nothing", async () => {
+		const incident = await boundIncident();
+		const dir = cwd();
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const lookup = prisma.incident.findUnique.bind(prisma.incident);
+		const spy = vi.spyOn(prisma.incident, "findUnique").mockImplementation((async (args: Parameters<typeof lookup>[0]) => {
+			await gate;
+			return lookup(args);
+		}) as unknown as typeof prisma.incident.findUnique);
+		const attaching = service.attach(incident.id, dir);
+		for (let i = 0; i < 50 && spy.mock.calls.length < 1; i++) await new Promise((r) => setTimeout(r, 10));
+		expect(spy).toHaveBeenCalledTimes(1);
+
+		await settings.set(false);
+		release();
+		const bundle = await attaching;
+		spy.mockRestore();
+
+		expect(bundle).toBeNull();
+		expect(existsSync(join(dir, BUNDLE_DIR))).toBe(false);
+		expect(service.registeredDirs(incident.id)).toEqual([]);
+	});
+
 	it("OBJ-007: turning the setting off during a refresh lets it finish before set() returns, then delivers nothing", async () => {
 		const incident = await boundIncident();
 		const dir = cwd();
