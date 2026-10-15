@@ -22,8 +22,6 @@ import {
 import { ArtifactDrawer } from "./ArtifactDrawer";
 import { ClaimRow, missedWord, PROVENANCE_WORD } from "./ClaimRow";
 
-type Binding = CaseView["binding"];
-
 function identityWord(matches: boolean | null): string {
 	if (matches === null) return "identity not checked";
 	return matches
@@ -32,10 +30,8 @@ function identityWord(matches: boolean | null): string {
 }
 
 /** "Captured kind-pl/shop 42 s after the alert · complete · identity matches binding". */
-export function captureLine(capture: CaptureSummary, binding: Binding): string {
-	const target = binding
-		? `${binding.kubeContext}/${binding.namespace}`
-		: (capture.identity?.kubeContext ?? "the bound target");
+export function captureLine(capture: CaptureSummary): string {
+	const target = `${capture.kubeContext}/${capture.namespace}`;
 	switch (capture.state) {
 		case "queued":
 			return `Capture of ${target} queued`;
@@ -149,7 +145,7 @@ export function CaseFileView({
 						data-testid="case-capture-line"
 					>
 						<span className="text-body text-text-1">
-							{captureLine(capture, view.binding)}
+							{captureLine(capture)}
 						</span>
 						{captureChips(capture).map((chip) => (
 							<StateWord key={chip} tone="warn" data-testid="case-chip">

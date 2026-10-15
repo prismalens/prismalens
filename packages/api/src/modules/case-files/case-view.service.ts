@@ -38,6 +38,7 @@ import type {
 } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CaptureService } from "./capture.service.js";
+import { compareObservation } from "./case-builder.js";
 import { CaseFileSettingsService } from "./case-file-settings.service.js";
 import { ArtifactStore } from "./storage/artifact-store.js";
 import { ManifestService } from "./storage/manifest.js";
@@ -137,6 +138,8 @@ export function captureSummary(
 ): CaptureSummary {
 	return {
 		id: capture.id,
+		kubeContext: capture.kubeContext,
+		namespace: capture.namespace,
 		state: capture.state as CaptureState,
 		stateReason: capture.stateReason,
 		missed:
@@ -213,7 +216,7 @@ export function storedClaim(rev: RevisionRow, revisions: number): ClaimView {
 	};
 }
 
-/** Latest revision per subject recorded by `asOf`, with how many it had by then. */
+/** Latest observation per subject recorded by `asOf`, with how many revisions it had by then. */
 export function latestPerSubject(
 	rows: RevisionRow[],
 ): { rev: RevisionRow; revisions: number }[] {
@@ -224,7 +227,7 @@ export function latestPerSubject(
 		if (!seen) bySubject.set(key, { rev, revisions: 1 });
 		else
 			bySubject.set(key, {
-				rev: rev.revision > seen.rev.revision ? rev : seen.rev,
+				rev: compareObservation(rev, seen.rev) > 0 ? rev : seen.rev,
 				revisions: seen.revisions + 1,
 			});
 	}

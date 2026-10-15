@@ -68,6 +68,7 @@ export interface K8sPod {
 	podTemplateHash: string | null;
 	/** The owning ReplicaSet's name. */
 	owner: string | null;
+	ownerUid: string | null;
 	containers: K8sPodContainer[];
 }
 
@@ -119,11 +120,14 @@ function items(listJson: unknown): Json[] {
 	return list(obj(listJson).items).map(obj);
 }
 
-function controllerOwner(meta: Json, kind: string): string | null {
-	const owner = list(meta.ownerReferences)
+function ownerRef(meta: Json, kind: string): Json | undefined {
+	return list(meta.ownerReferences)
 		.map(obj)
 		.find((ref) => ref.kind === kind);
-	return owner ? str(owner.name) : null;
+}
+
+function controllerOwner(meta: Json, kind: string): string | null {
+	return str(ownerRef(meta, kind)?.name);
 }
 
 /** `repo/name:tag@sha256:…` → `tag`; a registry port is not a tag. */
@@ -262,6 +266,7 @@ export function parsePods(listJson: unknown): K8sPod[] {
 				startTime: time(status.startTime),
 				podTemplateHash: str(obj(meta.labels)["pod-template-hash"]),
 				owner: controllerOwner(meta, "ReplicaSet"),
+				ownerUid: str(ownerRef(meta, "ReplicaSet")?.uid),
 				containers,
 			},
 		];

@@ -48,6 +48,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 function capture(state: CaptureSummary["state"]): CaptureSummary {
 	return {
 		id: "cap-1",
+		kubeContext: "kind-pl",
+		namespace: "shop",
 		state,
 		stateReason: null,
 		missed: null,

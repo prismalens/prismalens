@@ -25993,6 +25993,12 @@
                           "id": {
                             "type": "string"
                           },
+                          "kubeContext": {
+                            "type": "string"
+                          },
+                          "namespace": {
+                            "type": "string"
+                          },
                           "state": {
                             "enum": [
                               "queued",
@@ -26262,6 +26268,8 @@
                         },
                         "required": [
                           "id",
+                          "kubeContext",
+                          "namespace",
                           "state",
                           "stateReason",
                           "missed",
@@ -26906,6 +26914,12 @@
                     "id": {
                       "type": "string"
                     },
+                    "kubeContext": {
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "type": "string"
+                    },
                     "state": {
                       "enum": [
                         "queued",
@@ -27175,6 +27189,8 @@
                   },
                   "required": [
                     "id",
+                    "kubeContext",
+                    "namespace",
                     "state",
                     "stateReason",
                     "missed",

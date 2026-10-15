@@ -180,6 +180,7 @@ describe("k8s-parse", () => {
 				startTime: null,
 				podTemplateHash: null,
 				owner: null,
+				ownerUid: null,
 				containers: [
 					{
 						name: "c-old",
@@ -209,6 +210,7 @@ describe("k8s-parse", () => {
 				startTime: null,
 				podTemplateHash: null,
 				owner: null,
+				ownerUid: null,
 				containers: [
 					{
 						name: "c-mid1",

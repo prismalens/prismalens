@@ -92,6 +92,8 @@ const fixture: CaseView = {
 	captures: [
 		{
 			id: "cap-1",
+			kubeContext: "kind-pl",
+			namespace: "shop",
 			state: "partial",
 			stateReason: "byte-cap",
 			missed: { from: AT, to: "2026-10-15T08:06:00.000Z" },

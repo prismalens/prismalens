@@ -199,6 +199,9 @@ export type ArtifactSummary = z.infer<typeof ArtifactSummarySchema>;
 
 export const CaptureSummarySchema = z.object({
 	id: z.string(),
+	/** The target this capture ran against; a later rebinding does not rewrite it. */
+	kubeContext: z.string(),
+	namespace: z.string(),
 	state: CaptureStateSchema,
 	stateReason: z.string().nullable(),
 	missed: z.object({ from: DateStringSchema, to: DateStringSchema }).nullable(),
