@@ -70,7 +70,7 @@ import {
 	captureEntryBody,
 	ManifestService,
 } from "./storage/manifest.js";
-import { redact, redactText } from "./storage/redact.js";
+import { redact, redactDiagnostic, redactText } from "./storage/redact.js";
 
 /** Emitted with `{ captureId }` after each artifact lands and when a capture ends. */
 export const CASE_CAPTURE_UPDATED_EVENT = "case.capture.updated";
@@ -768,6 +768,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			cluster: capture.cluster,
 			namespace: capture.namespace,
 		};
+		// Identity failures carry kubectl stderr, which can quote credentials (#842).
+		const lastError =
+			ending.lastError === undefined
+				? null
+				: await redactDiagnostic(ending.lastError);
 		const ended = await this.manifest.transaction(async (tx) => {
 			const row = await tx.capture.update({
 				where: { id: capture.id },
@@ -775,7 +780,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 					state: ending.state,
 					stateReason: ending.reason,
 					finishedAt,
-					lastError: ending.lastError ?? null,
+					lastError,
 				},
 			});
 			await this.appendEnding(tx, row, finishedAt, target, ending.notRun);

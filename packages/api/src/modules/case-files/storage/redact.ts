@@ -9,7 +9,7 @@
 import type { ArtifactPurpose } from "@prismalens/contracts";
 import { lintSource } from "@secretlint/core";
 import { creator as patternRule } from "@secretlint/secretlint-rule-pattern";
-import { creator as recommendPreset } from "@secretlint/secretlint-rule-preset-recommend";
+import { rules as recommendRules } from "@secretlint/secretlint-rule-preset-recommend";
 
 export type RedactConfig = Parameters<
 	typeof lintSource
@@ -24,6 +24,10 @@ export type RedactTextResult =
 
 const RULE_PREFIX = "@secretlint/secretlint-rule-";
 const ENV_MARK = "[REDACTED:env]";
+const ARGV_MARK = "[REDACTED:argv]";
+const HEADER_MARK = "[REDACTED:header]";
+const ARGV_KEYS: ReadonlySet<string> = new Set(["command", "args"]);
+const DIAGNOSTIC_WITHHELD = "[diagnostic withheld: redaction failed]";
 const LAST_APPLIED = "kubectl.kubernetes.io/last-applied-configuration";
 const STRUCTURAL: ReadonlySet<ArtifactPurpose> = new Set([
 	"deployments",
@@ -43,12 +47,40 @@ const OVERLAP = 16 * 1024;
 
 const KEY = "PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY";
 
-/** #272's Done-when shapes. Lookbehinds keep the key visible and replace only the value. */
+// A bare token; a backslash only as an escape pair, so a JSON string's closing quote survives.
+const TOKEN = String.raw`(?:[^\s"'\\&,;]|\\[^"\s])`;
+
+/**
+ * The value after `prefix`: a quoted run (plain, JSON-escaped or single), else one token.
+ * Quotes stay outside the match; a `"` before `,:]}` ends a JSON string and one before `:`
+ * is an object key, so redacted JSON still parses for the case builder.
+ */
+const valueAfter = (prefix: string): string =>
+	[
+		String.raw`(?<=${prefix}")(?!\s*[,:\]}])[^"\n]+(?="(?!\s*:))`,
+		String.raw`(?<=${prefix}\\")[^"\n]+?(?=\\")`,
+		String.raw`(?<=${prefix}')[^'\n]+(?=')`,
+		String.raw`(?<=${prefix}(?:\\?["'])?)${TOKEN}+(?!${TOKEN})(?!\\?["']\s*:)`,
+	].join("|");
+
+/** #272's Done-when shapes plus argv forms (#842). Lookbehinds keep the key visible and replace only the value. */
 export const SECRET_PATTERNS = [
 	{
 		name: "key=value",
 		patterns: [
-			String.raw`/(?<=\b[\w.-]*(?:${KEY})[\w.-]*\s*=\s*["']?)[^\s"'&,;]+/i`,
+			`/${valueAfter(String.raw`\b[\w.-]*(?:${KEY})[\w.-]*\s*=\s*`)}/i`,
+		],
+	},
+	{
+		name: "flag value",
+		patterns: [
+			`/${valueAfter(String.raw`(?:^|[\s"'\[,(])--?[\w.-]*(?:${KEY})[\w.-]*(?:\\?["'])?(?:[ \t]*,\s*|[ \t]+)`)}/i`,
+		],
+	},
+	{
+		name: "url-userinfo",
+		patterns: [
+			String.raw`/(?<=\b[a-z][a-z0-9+.-]*:\/\/[^\s\/?#@:"'\\]*:)[^\s\/?#@"'\\]+(?=@)/i`,
 		],
 	},
 	{
@@ -73,19 +105,22 @@ export const SECRET_PATTERNS = [
 	},
 ];
 
+const FILTER_COMMENTS = "@secretlint/secretlint-rule-filter-comments";
+
 export const REDACT_CONFIG: RedactConfig = {
 	rules: [
-		{
-			id: "@secretlint/secretlint-rule-preset-recommend",
-			rule: recommendPreset,
-			// Access key ids are off by default upstream; a key pair must lose both halves.
-			rules: [
-				{
-					id: "@secretlint/secretlint-rule-aws",
-					options: { enableIDScanRule: true },
-				},
-			],
-		},
+		// The preset's rules one by one, minus the filter that lets `secretlint-disable` comments in
+		// captured text switch redaction off; core ignores `disabled` inside a preset (#842).
+		...recommendRules
+			.filter((rule) => rule.meta.id !== FILTER_COMMENTS)
+			.map((rule) => ({
+				id: rule.meta.id,
+				rule,
+				// Access key ids are off by default upstream; a key pair must lose both halves.
+				...(rule.meta.id === "@secretlint/secretlint-rule-aws"
+					? { options: { enableIDScanRule: true } }
+					: {}),
+			})),
 		{
 			id: "@secretlint/secretlint-rule-pattern",
 			rule: patternRule,
@@ -103,13 +138,37 @@ function bump(counts: RedactCounts, rule: string, by = 1): void {
 	counts[rule] = (counts[rule] ?? 0) + by;
 }
 
+/** Every argv (the container's, its probes', its hooks') and probe header value, item by item. */
+function scrubArgv(node: unknown, counts: RedactCounts): void {
+	if (Array.isArray(node)) {
+		for (const item of node) scrubArgv(item, counts);
+		return;
+	}
+	if (!isObject(node)) return;
+	for (const [key, value] of Object.entries(node)) {
+		if (ARGV_KEYS.has(key) && Array.isArray(value)) {
+			node[key] = value.map(() => ARGV_MARK);
+			bump(counts, "argv", value.length);
+		} else if (key === "httpHeaders" && Array.isArray(value)) {
+			for (const header of value) {
+				if (isObject(header) && "value" in header) {
+					header.value = HEADER_MARK;
+					bump(counts, "header");
+				}
+			}
+		} else scrubArgv(value, counts);
+	}
+}
+
 function scrubPodSpec(spec: unknown, counts: RedactCounts): void {
 	if (!isObject(spec)) return;
 	for (const key of POD_SPEC_CONTAINERS) {
 		const containers = spec[key];
 		if (!Array.isArray(containers)) continue;
 		for (const container of containers) {
-			if (!isObject(container) || !Array.isArray(container.env)) continue;
+			if (!isObject(container)) continue;
+			scrubArgv(container, counts);
+			if (!Array.isArray(container.env)) continue;
 			for (const env of container.env) {
 				if (isObject(env) && "value" in env) {
 					env.value = ENV_MARK;
@@ -165,8 +224,9 @@ function replaceRanges(
 	return parts.join("");
 }
 
-const errorText = (err: unknown): string =>
-	err instanceof Error ? err.message : String(err);
+/** Names the error's class only: parser and rule messages can quote the input (#842). */
+const failure = (pass: string, err: unknown): string =>
+	`${pass} pass failed (${err instanceof Error ? err.name : typeof err})`;
 
 async function textPass(
 	text: string,
@@ -205,8 +265,14 @@ export async function redactText(
 	try {
 		return { text: await textPass(text, counts, config), counts };
 	} catch (err) {
-		return { error: errorText(err) };
+		return { error: failure("text", err) };
 	}
+}
+
+/** Failure text bound for a DB column or an API error: redacted, or withheld whole. */
+export async function redactDiagnostic(text: string): Promise<string> {
+	const out = await redactText(text);
+	return "error" in out ? DIAGNOSTIC_WITHHELD : out.text;
 }
 
 /** Both passes over one artifact; the raw buffer is never modified. */
@@ -222,13 +288,13 @@ export async function redact(
 		try {
 			text = structural(text, counts);
 		} catch (err) {
-			return { error: `structural pass: ${errorText(err)}` };
+			return { error: failure("structural", err) };
 		}
 	}
 	try {
 		text = await textPass(text, counts, config);
 	} catch (err) {
-		return { error: errorText(err) };
+		return { error: failure("text", err) };
 	}
 	return { redacted: Buffer.from(text, "utf8"), counts };
 }

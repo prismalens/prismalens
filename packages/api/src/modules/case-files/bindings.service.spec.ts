@@ -46,6 +46,7 @@ if (a[0] === "version") {
   else out("kind-pl\\n");
 } else if (a[0] === "config" && a[1] === "view") {
   const ctx = a[a.indexOf("--context") + 1];
+  if (mode === "leaky-view") fail("error: exec plugin: token=SYNTHETIC_SECRET_7zQ9 rejected");
   if (ctx !== "kind-pl" || mode === "deleted") fail('error: context "' + ctx + '" does not exist');
   const server = mode === "moved" ? "https://other:6443" : "https://127.0.0.1:6443";
   const contextObj = mode === "no-namespace"
@@ -63,6 +64,7 @@ else if (a.includes("get")) {
   if (mode === "timeout") fail("error: i/o timeout");
   if (mode === "byte-cap") out("x".repeat(70000));
   if (mode === "empty-stderr-fail") process.exit(1);
+  if (mode === "leaky-get") fail("error: token=SYNTHETIC_SECRET_7zQ9 rejected by server");
   out("pod/checkout-1\\n");
 } else fail("unexpected " + a.join(" "));
 `,
@@ -204,6 +206,24 @@ describe("BindingsService", () => {
 			}),
 		).rejects.toBeInstanceOf(BindingRefusedError);
 		expect(fake.rows.has(SERVICE_ID)).toBe(false);
+	});
+
+	it("keeps a secret in probe or identity stderr out of probeDetail and the refusal message (#842 OBJ-003)", async () => {
+		await service.confirm({ serviceId: SERVICE_ID, kubeContext: "kind-pl", namespace: "shop" });
+		writeFileSync(modeFile, "leaky-get");
+		const probed = await service.probe(SERVICE_ID);
+		expect(probed.probeState).toBe("unreachable");
+		expect(JSON.stringify(probed)).not.toContain("SYNTHETIC_SECRET_7zQ9");
+
+		writeFileSync(modeFile, "leaky-view");
+		const viaProbe = await service.probe(SERVICE_ID);
+		expect(viaProbe.probeDetail).toContain("token=");
+		expect(JSON.stringify(viaProbe)).not.toContain("SYNTHETIC_SECRET_7zQ9");
+		const refused = await service
+			.confirm({ serviceId: SERVICE_ID, kubeContext: "kind-pl", namespace: "shop" })
+			.catch((err: unknown) => err);
+		expect(refused).toBeInstanceOf(BindingRefusedError);
+		expect((refused as Error).message).not.toContain("SYNTHETIC_SECRET_7zQ9");
 	});
 
 	it("remove deletes the binding", async () => {
