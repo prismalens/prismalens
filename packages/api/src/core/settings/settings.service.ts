@@ -62,7 +62,7 @@ export class SettingsService {
 	 * In-memory is enough because the workspace lock guarantees one process per
 	 * workspace; two processes cannot both be resetting the same database.
 	 */
-	private resetting = false;
+	private resetting = 0;
 	/**
 	 * Bumped once per completed reset. A caller that saw one value before its
 	 * work and a different one after knows a reset landed in between, even
@@ -74,7 +74,7 @@ export class SettingsService {
 	private resets = 0;
 
 	isResetting(): boolean {
-		return this.resetting;
+		return this.resetting > 0;
 	}
 
 	/** A token that changes whenever a reset completes. Opaque to callers. */
@@ -84,16 +84,16 @@ export class SettingsService {
 
 	/** True if a reset is running now, or finished since `generation` was read. */
 	resetSince(generation: number): boolean {
-		return this.resetting || this.resets !== generation;
+		return this.resetting > 0 || this.resets !== generation;
 	}
 
 	/** Holds {@link resetting} for the duration of `run`, whatever it throws. */
 	private async whileResetting<T>(run: () => Promise<T>): Promise<T> {
-		this.resetting = true;
+		this.resetting += 1;
 		try {
 			return await run();
 		} finally {
-			this.resetting = false;
+			this.resetting -= 1;
 			this.resets += 1;
 		}
 	}

@@ -1018,6 +1018,60 @@ describe("CaptureService", () => {
 		},
 	);
 
+	it("OBJ-008: a refused reset does not lift the barrier while an overlapping reset is still under way", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-overlap", "critical", "ns-overlap");
+		const res = await service.captureNow(incident.id);
+		const captureId = res?.captureId ?? "";
+		tickSpy.mockRestore();
+		const gate = () => {
+			let open: () => void = () => {};
+			const wait = new Promise<void>((r) => {
+				open = r;
+			});
+			return { open, wait };
+		};
+		const first = gate();
+		const second = gate();
+
+		const refused = service.quiesce(async () => {
+			await first.wait;
+			throw new Error("refused");
+		});
+		const pending = service.quiesce(() => second.wait);
+		first.open();
+		await expect(refused).rejects.toThrow("refused");
+		await new Promise((r) => setTimeout(r, 150));
+		const during = await prisma.capture.findUniqueOrThrow({ where: { id: captureId } });
+		second.open();
+		await pending;
+		await service.tick();
+		await service.settle();
+
+		expect(during.state).toBe("queued");
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "complete" });
+	});
+
+	it("OBJ-008: the settings service keeps reporting a reset until the last overlapping one ends", async () => {
+		const gate = new Promise<void>((r) => setTimeout(r, 100));
+		const captures = {
+			quiesce: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("refused"))
+				.mockImplementationOnce(async () => {
+					await gate;
+					return { success: true, message: "" };
+				}),
+		};
+		const settingsService = new SettingsService(prisma as never, captures as never);
+		const refused = settingsService.resetData();
+		const pending = settingsService.resetData();
+		await expect(refused).rejects.toThrow("refused");
+		expect(settingsService.isResetting()).toBe(true);
+		await pending;
+		expect(settingsService.isResetting()).toBe(false);
+	});
+
 	it("OBJ-007: a capture admitted before the switch went off, whose incident lookup is still pending, queues nothing", async () => {
 		const { incident, alert } = await boundIncident("svc-off-admit", "critical", "ns-off-admit");
 		let release: () => void = () => {};

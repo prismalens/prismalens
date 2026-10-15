@@ -191,7 +191,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	private tickAgain = false;
 	private tickRun: Promise<void> = Promise.resolve();
 	private stopping = false;
-	private resetting = false;
+	/** Resets under way; a counter, so one that ends does not lift the barrier for another (OBJ-008). */
+	private resets = 0;
+	private get resetting(): boolean {
+		return this.resets > 0;
+	}
 	private sweepTimer: NodeJS.Timeout | undefined;
 	private sweepRun: Promise<void> | null = null;
 	/** Overridable in tests. */
@@ -292,7 +296,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/** Runs `work` (a reset) with no capture running or starting and no sweep under way (OBJ-008). */
 	async quiesce<T>(work: () => Promise<T>): Promise<T> {
-		this.resetting = true;
+		this.resets += 1;
 		let stopped: string[] = [];
 		try {
 			stopped = await this.halt("reset");
@@ -301,7 +305,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		} finally {
 			// A refused reset keeps the rows (OBJ-013): what it stopped runs again, as after a restart (R4).
 			if (stopped.length > 0) await this.requeue(stopped);
-			this.resetting = false;
+			this.resets -= 1;
 			setImmediate(() => void this.tick());
 		}
 	}
