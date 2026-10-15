@@ -34,6 +34,7 @@ import {
 	MAX_RUNNING,
 	MISSED_AFTER_MS,
 	QUEUE_CAPACITY,
+	RETENTION_SWEEP_MS,
 	RETRY_DELAY_MS,
 	TICK_MS,
 } from "./capture/budget.js";
@@ -154,6 +155,16 @@ function parseJson(buf: Buffer): unknown {
 	}
 }
 
+type HaltReason = "disabled" | "reset";
+
+/** The abort reason, and the error a persist step throws, once the switch is off or a reset has begun. */
+class CaptureHaltedError extends Error {
+	constructor(readonly reason: HaltReason) {
+		super(`capture halted: ${reason}`);
+		this.name = "CaptureHaltedError";
+	}
+}
+
 interface Running {
 	cluster: string;
 	namespace: string;
@@ -175,7 +186,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	private interval: NodeJS.Timeout | undefined;
 	private ticking = false;
 	private tickAgain = false;
+	private tickRun: Promise<void> = Promise.resolve();
 	private stopping = false;
+	private resetting = false;
+	private sweepTimer: NodeJS.Timeout | undefined;
+	private sweepRun: Promise<void> | null = null;
 	/** Overridable in tests. */
 	now: () => Date = () => new Date();
 
@@ -186,7 +201,9 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		private readonly manifest: ManifestService,
 		private readonly builder: CaseBuilder,
 		private readonly events: EventEmitter2,
-	) {}
+	) {
+		settings.onDisable(() => this.halt("disabled"));
+	}
 
 	async onModuleInit(): Promise<void> {
 		// A capture is read-only, so one interrupted by a restart simply runs again (R4).
@@ -196,14 +213,75 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		});
 		this.interval = setInterval(() => void this.tick(), TICK_MS);
 		this.interval.unref();
+		void this.sweepRetention();
+		this.sweepTimer = setInterval(
+			() => void this.sweepRetention(),
+			RETENTION_SWEEP_MS,
+		);
+		this.sweepTimer.unref();
 	}
 
 	async onModuleDestroy(): Promise<void> {
 		this.stopping = true;
 		if (this.interval) clearInterval(this.interval);
+		if (this.sweepTimer) clearInterval(this.sweepTimer);
 		const all = [...this.running.values()];
 		for (const r of all) r.controller.abort();
+		await Promise.allSettled([...all.map((r) => r.done), this.sweepRun]);
+	}
+
+	/**
+	 * Retention for every source, including quiet ones and captures whose binding
+	 * was deleted (OBJ-009). It runs whatever the setting says: it only removes.
+	 */
+	private sweepRetention(): Promise<void> {
+		if (this.resetting || this.stopping) return Promise.resolve();
+		this.sweepRun ??= this.store
+			.sweepAll(this.now())
+			.then(
+				() => undefined,
+				(err: unknown) => {
+					this.logger.warn(
+						`retention sweep failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				},
+			)
+			.finally(() => {
+				this.sweepRun = null;
+			});
+		return this.sweepRun;
+	}
+
+	/** Runs `work` (a reset) with no capture running or starting and no sweep under way (OBJ-008). */
+	async quiesce<T>(work: () => Promise<T>): Promise<T> {
+		this.resetting = true;
+		try {
+			await this.halt("reset");
+			await this.sweepRun;
+			return await work();
+		} finally {
+			this.resetting = false;
+		}
+	}
+
+	/** Aborts every running capture and waits for each to end; a tick under way may still be starting one. */
+	private async halt(reason: HaltReason): Promise<void> {
+		await this.tickRun;
+		const all = [...this.running.values()];
+		for (const r of all) r.controller.abort(new CaptureHaltedError(reason));
 		await Promise.allSettled(all.map((r) => r.done));
+	}
+
+	private async haltedBy(stop: AbortSignal): Promise<HaltReason | null> {
+		if (stop.reason instanceof CaptureHaltedError) return stop.reason.reason;
+		if (this.resetting) return "reset";
+		return (await this.settings.isEnabled()) ? null : "disabled";
+	}
+
+	/** Called before every persist step of a running capture. */
+	private async mayWrite(stop: AbortSignal): Promise<void> {
+		const halted = await this.haltedBy(stop);
+		if (halted) throw new CaptureHaltedError(halted);
 	}
 
 	@OnEvent(ALERT_CORRELATED_EVENT)
@@ -336,6 +414,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			return;
 		}
 		this.ticking = true;
+		this.tickRun = this.runTicks();
+		await this.tickRun;
+	}
+
+	private async runTicks(): Promise<void> {
 		try {
 			do {
 				this.tickAgain = false;
@@ -352,11 +435,15 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/** Resolves once every capture running now has ended; for tests and shutdown. */
 	async settle(): Promise<void> {
-		await Promise.allSettled([...this.running.values()].map((r) => r.done));
+		await Promise.allSettled([
+			...[...this.running.values()].map((r) => r.done),
+			this.sweepRun,
+		]);
 	}
 
 	private async startDue(): Promise<void> {
-		if (this.stopping || !(await this.settings.isEnabled())) return;
+		if (this.stopping || this.resetting || !(await this.settings.isEnabled()))
+			return;
 		const due = await this.prisma.capture.findMany({
 			where: { state: "queued", dueAt: { lte: this.now() } },
 			orderBy: [
@@ -366,7 +453,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			],
 		});
 		for (const row of due) {
-			if (this.running.size >= MAX_RUNNING) return;
+			if (this.running.size >= MAX_RUNNING || this.resetting) return;
 			const busy = [...this.running.values()].some(
 				(r) => r.cluster === row.cluster && r.namespace === row.namespace,
 			);
@@ -411,19 +498,26 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			const capture = await this.prisma.capture.findUniqueOrThrow({
 				where: { id: captureId },
 			});
-			let ending: Ending | "retry";
+			let ending: Ending | "retry" | null = null;
+			let halted: HaltReason | null = null;
 			try {
-				ending = await this.runChecklist(capture, deadline.signal);
+				ending = await this.runChecklist(capture, deadline.signal, stop);
 			} catch (err) {
-				ending = {
-					state: err instanceof NoKubectlError ? "blocked" : "partial",
-					reason: err instanceof NoKubectlError ? "no-kubectl" : "error",
-					notRun: [],
-					lastError: err instanceof Error ? err.message : String(err),
-				};
+				if (err instanceof CaptureHaltedError) halted = err.reason;
+				else
+					ending = {
+						state: err instanceof NoKubectlError ? "blocked" : "partial",
+						reason: err instanceof NoKubectlError ? "no-kubectl" : "error",
+						notRun: [],
+						lastError: err instanceof Error ? err.message : String(err),
+					};
 			}
 			// Shutdown leaves the row `running`, so boot queues it again.
 			if (this.stopping) return;
+			halted ??= await this.haltedBy(stop);
+			// A reset deletes this row and its files: anything written now would outlive it.
+			if (halted === "disabled") ending = await this.disabledEnding(capture);
+			else if (halted === "reset" || ending === null) return;
 			if (ending === "retry") {
 				await this.prisma.capture.update({
 					where: { id: captureId },
@@ -435,7 +529,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 				this.emitUpdated(captureId);
 				return;
 			}
-			await this.end(capture, ending);
+			await this.end(capture, ending, halted === null);
 		} catch (err) {
 			this.logger.warn(
 				`capture ${captureId} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -449,6 +543,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	private async runChecklist(
 		capture: Capture,
 		signal: AbortSignal,
+		stop: AbortSignal,
 	): Promise<Ending | "retry"> {
 		const target: CaptureTarget = {
 			kubeContext: capture.kubeContext,
@@ -476,6 +571,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			if (err instanceof IdentityError) return blocked(err.reason, message);
 			return blocked(classifyFailure("", err) ?? "unreachable", message);
 		}
+		await this.mayWrite(stop);
 		await this.prisma.capture.update({
 			where: { id: capture.id },
 			data: {
@@ -509,6 +605,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 				cmd,
 				bin,
 				signal,
+				stop,
 			);
 			landed.push(row);
 			stderrs.push(stderr);
@@ -558,6 +655,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		cmd: CaptureCommand,
 		bin: string,
 		signal: AbortSignal,
+		stop: AbortSignal,
 	): Promise<{ row: CaptureArtifact; stdout: Buffer; stderr: string }> {
 		const res = await runCommand({
 			bin,
@@ -577,6 +675,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		}
 		const redacted = await redact(cmd.purpose, res.stdout);
 		const stderr = await redactText(res.stderrTail);
+		await this.mayWrite(stop);
 		const stored = await this.store.write(
 			capture.id,
 			seq,
@@ -590,6 +689,12 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 				: parseJson(res.stdout),
 		);
 		const recordedAt = this.now();
+		try {
+			await this.mayWrite(stop);
+		} catch (err) {
+			await this.store.discard(capture.id, seq);
+			throw err;
+		}
 		const row = await this.manifest.transaction(async (tx) => {
 			const created = await tx.captureArtifact.create({
 				data: {
@@ -630,7 +735,33 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		return { row, stdout: res.stdout, stderr: res.stderrTail };
 	}
 
-	private async end(capture: Capture, ending: Ending): Promise<void> {
+	/** Turned off mid-run: what landed stays, and each checklist command with no artifact is recorded as not run. */
+	private async disabledEnding(capture: Capture): Promise<Ending> {
+		const landed = await this.prisma.captureArtifact.findMany({
+			where: { captureId: capture.id },
+			select: { command: true },
+		});
+		const ran = new Set(landed.map((a) => a.command));
+		const notRun = checklistArgv({
+			kubeContext: capture.kubeContext,
+			cluster: capture.cluster,
+			namespace: capture.namespace,
+		})
+			.map(asCommand)
+			.filter((cmd) => !ran.has(JSON.stringify(cmd)));
+		return {
+			state: landed.length > 0 ? "partial" : "skipped",
+			reason: "disabled",
+			notRun,
+		};
+	}
+
+	/** `derive` false: a halted capture closes its record but builds no case and sweeps nothing. */
+	private async end(
+		capture: Capture,
+		ending: Ending,
+		derive = true,
+	): Promise<void> {
 		const finishedAt = this.now();
 		const target: CaptureTarget = {
 			kubeContext: capture.kubeContext,
@@ -650,8 +781,8 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			await this.appendEnding(tx, row, finishedAt, target, ending.notRun);
 			return row;
 		});
-		await this.buildCases(ended);
-		if (ended.bindingId) {
+		if (derive) await this.buildCases(ended);
+		if (derive && ended.bindingId) {
 			await this.store
 				.sweep(ended.bindingId, finishedAt)
 				.catch((err: unknown) => {

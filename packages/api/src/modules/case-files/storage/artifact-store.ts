@@ -8,7 +8,15 @@
  */
 import { createHash } from "node:crypto";
 import { rmSync } from "node:fs";
-import { chmod, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	open,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import { getAppDataDir } from "@prismalens/config";
@@ -112,6 +120,12 @@ export class ArtifactStore {
 		};
 	}
 
+	/** Removes one artifact's files, for a write whose row will never be recorded. */
+	async discard(captureId: string, seq: number): Promise<void> {
+		await rm(filePath(captureId, seq, "raw.enc"), { force: true });
+		await rm(filePath(captureId, seq, "redacted"), { force: true });
+	}
+
 	/** The redacted copy up to `maxBytes`; null when expired or withheld. */
 	async readRedacted(
 		artifact: ArtifactRef,
@@ -199,5 +213,66 @@ export class ArtifactStore {
 			expired.push(c.id);
 		}
 		return expired;
+	}
+
+	/**
+	 * The scheduled sweep: every binding's {@link sweep}, age expiry for captures
+	 * whose binding is gone (no budget to charge them to), then directories that
+	 * no capture still holding files owns.
+	 */
+	async sweepAll(now: Date = new Date()): Promise<string[]> {
+		const bindings = await this.prisma.capture.findMany({
+			where: {
+				bindingId: { not: null },
+				artifacts: { some: { expiredAt: null } },
+			},
+			distinct: ["bindingId"],
+			select: { bindingId: true },
+		});
+		const expired: string[] = [];
+		for (const { bindingId } of bindings) {
+			if (bindingId) expired.push(...(await this.sweep(bindingId, now)));
+		}
+		const unbound = await this.prisma.capture.findMany({
+			where: {
+				bindingId: null,
+				state: { notIn: ["queued", "running"] },
+				createdAt: { lt: new Date(now.getTime() - RETENTION_DAYS * DAY_MS) },
+				artifacts: { some: { expiredAt: null } },
+			},
+			orderBy: { createdAt: "asc" },
+			select: { id: true },
+		});
+		for (const c of unbound) {
+			await this.expire(c.id, now);
+			expired.push(c.id);
+		}
+		await this.removeOrphanDirs();
+		return expired;
+	}
+
+	/** A queued or running capture may be writing; any other owner holds files only while one is unexpired. */
+	private async removeOrphanDirs(): Promise<void> {
+		let names: string[];
+		try {
+			names = await readdir(casesDir());
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+			throw err;
+		}
+		const owners = await this.prisma.capture.findMany({
+			where: {
+				OR: [
+					{ state: { in: ["queued", "running"] } },
+					{ artifacts: { some: { expiredAt: null } } },
+				],
+			},
+			select: { id: true },
+		});
+		const keep = new Set(owners.map((c) => c.id));
+		for (const name of names) {
+			if (SAFE_ID.test(name) && !keep.has(name))
+				await rm(captureDir(name), { recursive: true, force: true });
+		}
 	}
 }

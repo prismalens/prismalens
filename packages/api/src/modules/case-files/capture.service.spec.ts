@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /** The capture queue and runner over a migrated SQLite database and a fake kubectl on PATH. */
-import { randomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes, randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EventEmitter2 } from "@nestjs/event-emitter";
 import { TokenVault } from "@prismalens/integrations";
@@ -20,7 +20,8 @@ const env = await vi.hoisted(async () => {
 });
 
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
-const { ArtifactStore } = await import("./storage/artifact-store.js");
+const { ArtifactStore, casesDir } = await import("./storage/artifact-store.js");
+const { SettingsService } = await import("../../core/settings/settings.service.js");
 const { ManifestService } = await import("./storage/manifest.js");
 const { CaseFileSettingsService } = await import("./case-file-settings.service.js");
 const { CaseBuilder } = await import("./case-builder.js");
@@ -917,5 +918,112 @@ describe("CaptureService", () => {
 		expect(cap.state).toBe("blocked");
 		expect(cap.stateReason).toBe("unreachable");
 		spy2.mockRestore();
+	});
+
+	/** Starts a capture whose `get events` hangs until released, and waits for the other three lists to land. */
+	async function hungCapture(name: string): Promise<string> {
+		const { incident } = await boundIncident(name, "critical", `ns-${name}`);
+		writeFileSync(modeFile, "hang-first");
+		const res = await service.captureNow(incident.id);
+		const captureId = res?.captureId ?? "";
+		void service.tick();
+		for (let i = 0; i < 200; i++) {
+			if ((await prisma.captureArtifact.count({ where: { captureId } })) >= 3) break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		expect(await prisma.captureArtifact.count({ where: { captureId } })).toBe(3);
+		return captureId;
+	}
+
+	it("OBJ-007: turning the setting off mid-command ends the capture before set() returns, and nothing lands after", async () => {
+		const captureId = await hungCapture("svc-off-mid");
+
+		await settings.set(false);
+		const filesAtOff = readdirSync(join(casesDir(), captureId)).sort();
+		const entriesAtOff = await prisma.manifestEntry.count({ where: { captureId } });
+		const rowAtOff = await prisma.capture.findUniqueOrThrow({ where: { id: captureId } });
+		writeFileSync(releaseFile, "");
+		await service.settle();
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(await prisma.captureArtifact.count({ where: { captureId } })).toBe(3);
+		expect(readdirSync(join(casesDir(), captureId)).sort()).toEqual(filesAtOff);
+		expect(await prisma.manifestEntry.count({ where: { captureId } })).toBe(entriesAtOff);
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toEqual(rowAtOff);
+		expect(rowAtOff).toMatchObject({ state: "partial", stateReason: "disabled" });
+		const end = await prisma.manifestEntry.findFirstOrThrow({ where: { captureId, artifactId: null } });
+		const body = JSON.parse(end.body) as { notRun: string[][] };
+		expect(body.notRun.map((cmd) => cmd[2])).toEqual(["events"]);
+	});
+
+	it.each(["resetData", "factoryReset"] as const)(
+		"OBJ-008: %s during a pending command stops the capture first and leaves no case files, rows or writers",
+		async (method) => {
+			const captureId = await hungCapture(`svc-${method}`);
+
+			await new SettingsService(prisma as never, service as never)[method]();
+			writeFileSync(releaseFile, "");
+			await service.settle();
+			await new Promise((r) => setTimeout(r, 200));
+
+			expect(existsSync(join(casesDir(), captureId))).toBe(false);
+			expect(await prisma.capture.count()).toBe(0);
+			expect(await prisma.captureArtifact.count()).toBe(0);
+			expect((service as unknown as { running: Map<string, unknown> }).running.size).toBe(0);
+		},
+	);
+
+	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {
+		const old = new Date(Date.now() - 31 * 86_400_000);
+		async function storedCapture(name: string): Promise<{ captureId: string; bindingId: string }> {
+			const { binding } = await boundIncident(name, "critical", `ns-${name}`);
+			const c = await prisma.capture.create({
+				data: {
+					bindingId: binding.id,
+					checklistVersion: 1,
+					canonicalQuery: "{}",
+					queryDigest: `retention-${name}`,
+					kubeContext: CONTEXT,
+					cluster: SERVER,
+					namespace: `ns-${name}`,
+					state: "complete",
+					caseStartedAt: old,
+					dueAt: old,
+					createdAt: old,
+					bytesStored: 2,
+				},
+			});
+			const { storedBytes: _s, ...digests } = await store.write(c.id, 1, Buffer.from("x"), Buffer.from("x"));
+			await prisma.captureArtifact.create({
+				data: { captureId: c.id, seq: 1, purpose: "events", command: "[]", retrieval: "complete", startedAt: old, endedAt: old, redactions: "{}", ...digests },
+			});
+			return { captureId: c.id, bindingId: binding.id };
+		}
+		const quiet = await storedCapture("svc-quiet");
+		const unbound = await storedCapture("svc-unbound-later");
+		await prisma.serviceBinding.delete({ where: { id: unbound.bindingId } });
+		expect((await prisma.capture.findUniqueOrThrow({ where: { id: unbound.captureId } })).bindingId).toBeNull();
+		const orphan = join(casesDir(), randomUUID());
+		mkdirSync(orphan, { recursive: true });
+		writeFileSync(join(orphan, "1.redacted"), "left behind");
+
+		await service.onModuleInit();
+		for (let i = 0; i < 50; i++) {
+			if (!existsSync(join(casesDir(), unbound.captureId)) && !existsSync(join(casesDir(), quiet.captureId))) break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		await service.settle();
+		const s = service as unknown as { interval?: NodeJS.Timeout; sweepTimer?: NodeJS.Timeout };
+		expect(s.sweepTimer).toBeDefined();
+		if (s.interval) clearInterval(s.interval);
+		if (s.sweepTimer) clearInterval(s.sweepTimer);
+
+		for (const { captureId } of [quiet, unbound]) {
+			expect(existsSync(join(casesDir(), captureId))).toBe(false);
+			const rows = await prisma.captureArtifact.findMany({ where: { captureId } });
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.expiredAt).not.toBeNull();
+		}
+		expect(existsSync(orphan)).toBe(false);
 	});
 });

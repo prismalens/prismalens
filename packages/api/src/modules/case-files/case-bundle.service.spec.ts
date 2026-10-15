@@ -169,6 +169,64 @@ describe("CaseBundleService", () => {
 		await service.handleCaptureUpdated({ captureId: capture.id });
 		expect(service.registeredDirs(incident.id)).toEqual([]);
 	});
+
+	it("OBJ-007: turning the setting off during a refresh lets it finish before set() returns, then delivers nothing", async () => {
+		const incident = await boundIncident();
+		const dir = cwd();
+		await service.attach(incident.id, dir);
+		const capture = await prisma.capture.create({
+			data: {
+				checklistVersion: 1,
+				canonicalQuery: "{}",
+				queryDigest: randomUUID(),
+				kubeContext: "kind-pl",
+				cluster: "https://k",
+				namespace: "shop",
+				state: "running",
+				caseStartedAt: NOW,
+				dueAt: NOW,
+				startedAt: NOW,
+			},
+		});
+		await prisma.caseCapture.create({ data: { incidentId: incident.id, captureId: capture.id, triggeredAt: NOW } });
+		const artifact = async (seq: number) => {
+			const bytes = Buffer.from(`{"seq":${seq}}`);
+			const { storedBytes: _, ...digests } = await store.write(capture.id, seq, bytes, bytes);
+			await prisma.captureArtifact.create({
+				data: { captureId: capture.id, seq, purpose: "events", command: "[]", retrieval: "complete", startedAt: NOW, endedAt: NOW, redactions: "{}", ...digests },
+			});
+		};
+		await artifact(1);
+
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const read = vi.spyOn(store, "readRedactedBytes").mockImplementationOnce(async (a) => {
+			await gate;
+			return Buffer.from(`{"seq":${a.seq}}`);
+		});
+		const blocked = service.handleCaptureUpdated({ captureId: capture.id });
+		await new Promise((r) => setTimeout(r, 50));
+
+		let off = false;
+		const turningOff = settings.set(false).then(() => {
+			off = true;
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		const manifestPath = join(dir, BUNDLE_DIR, "manifest.json");
+		release();
+		await Promise.all([blocked, turningOff]);
+		read.mockRestore();
+		expect(off).toBe(true);
+		const atOff = readFileSync(manifestPath, "utf8");
+
+		await artifact(2);
+		await service.handleCaptureUpdated({ captureId: capture.id });
+		expect(readFileSync(manifestPath, "utf8")).toBe(atOff);
+		expect(existsSync(join(dir, BUNDLE_DIR, "2-events.json"))).toBe(false);
+		expect(service.registeredDirs(incident.id)).toEqual([]);
+	});
 });
 
 describe("retrievalDigest", () => {

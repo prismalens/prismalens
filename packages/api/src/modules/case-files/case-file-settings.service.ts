@@ -10,7 +10,14 @@ export const CASE_FILE_SETTING_KEY = "case_file";
 /** The Case File experiment's on/off switch; off unless a valid row says otherwise. */
 @Injectable()
 export class CaseFileSettingsService {
+	private readonly onOff = new Set<() => Promise<void>>();
+
 	constructor(private readonly prisma: PrismaService) {}
+
+	/** `stop` runs on every turn-off; `set(false)` returns only once each has settled. */
+	onDisable(stop: () => Promise<void>): void {
+		this.onOff.add(stop);
+	}
 
 	async isEnabled(): Promise<boolean> {
 		try {
@@ -37,5 +44,7 @@ export class CaseFileSettingsService {
 				category: "general",
 			},
 		});
+		if (!enabled)
+			await Promise.allSettled([...this.onOff].map((stop) => stop()));
 	}
 }

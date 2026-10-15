@@ -37,6 +37,8 @@ export const MISSED_AFTER_MS = 300_000;
 export const RETENTION_BYTES_PER_BINDING = 256 * MiB;
 /** Assumption: age past which artifacts expire. */
 export const RETENTION_DAYS = 30;
+/** Assumption: how often retention runs when no capture ends to trigger it. */
+export const RETENTION_SWEEP_MS = 3_600_000;
 
 /** Assumption: how far before the alert a change is a candidate cause. */
 export const WINDOW_BEFORE_ALERT_MS = 7_200_000;
