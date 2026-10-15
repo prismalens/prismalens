@@ -2,6 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prismalens/database";
+import { removeAllCaseFiles } from "../../modules/case-files/storage/artifact-store.js";
 import { removeAllAttachmentFiles } from "../../modules/investigations/attachments.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -23,6 +25,17 @@ export class ResetInProgressError extends Error {
 		);
 		this.name = "ResetInProgressError";
 	}
+}
+
+/** Case File rows, children first; both resets run it before incidents. */
+async function deleteCaseFiles(tx: Prisma.TransactionClient): Promise<void> {
+	await tx.claimRevision.deleteMany({});
+	await tx.caseEdge.deleteMany({});
+	await tx.caseNode.deleteMany({});
+	await tx.manifestEntry.deleteMany({});
+	await tx.captureArtifact.deleteMany({});
+	await tx.caseCapture.deleteMany({});
+	await tx.capture.deleteMany({});
 }
 
 @Injectable()
@@ -117,11 +130,13 @@ export class SettingsService {
 			await tx.investigation.deleteMany({});
 			await tx.timelineEntry.deleteMany({});
 			await tx.attachment.deleteMany({});
+			await deleteCaseFiles(tx);
 			await tx.incident.deleteMany({});
 			await tx.alert.deleteMany({});
 			await tx.event.deleteMany({});
 		});
 		removeAllAttachmentFiles();
+		removeAllCaseFiles();
 
 		return { success: true, message: "All data has been reset" };
 	}
@@ -141,6 +156,7 @@ export class SettingsService {
 			await tx.timelineEntry.deleteMany({});
 			await tx.changeEvent.deleteMany({});
 			await tx.attachment.deleteMany({});
+			await deleteCaseFiles(tx);
 			// Incident/Alert (after investigations, timelines)
 			await tx.incident.deleteMany({});
 			await tx.alert.deleteMany({});
@@ -148,6 +164,7 @@ export class SettingsService {
 			// Service hierarchy
 			await tx.serviceIntegration.deleteMany({});
 			await tx.serviceDependency.deleteMany({});
+			await tx.serviceBinding.deleteMany({});
 			await tx.service.deleteMany({});
 			// Integrations (after serviceIntegrations)
 			await tx.connection.deleteMany({});
@@ -161,6 +178,7 @@ export class SettingsService {
 			await tx.user.deleteMany({});
 		});
 		removeAllAttachmentFiles();
+		removeAllCaseFiles();
 
 		return { success: true, message: "Factory reset complete" };
 	}

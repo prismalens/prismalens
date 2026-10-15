@@ -30,6 +30,20 @@ function prismaWith(
 	return { $transaction: transaction } as unknown as PrismaService;
 }
 
+/** The Case File tables a reset clears; nothing here is about them. */
+const caseTables = () =>
+	Object.fromEntries(
+		[
+			"claimRevision",
+			"caseEdge",
+			"caseNode",
+			"manifestEntry",
+			"captureArtifact",
+			"caseCapture",
+			"capture",
+		].map((m) => [m, { deleteMany: vi.fn() }]),
+	);
+
 type SettingsStub = Pick<
 	SettingsService,
 	"isResetting" | "resetGeneration" | "resetSince"
@@ -68,6 +82,7 @@ describe("the resetting flag", () => {
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },
+					...caseTables(),
 					incident: { deleteMany: vi.fn() },
 					alert: { deleteMany: vi.fn() },
 					event: { deleteMany: vi.fn() },
@@ -91,6 +106,7 @@ describe("the resetting flag", () => {
 					investigation: { deleteMany: vi.fn(), count: async () => 0 },
 					timelineEntry: { deleteMany: vi.fn() },
 					attachment: { deleteMany: vi.fn() },
+					...caseTables(),
 					incident: { deleteMany: vi.fn() },
 					alert: { deleteMany: vi.fn() },
 					event: { deleteMany: vi.fn() },
