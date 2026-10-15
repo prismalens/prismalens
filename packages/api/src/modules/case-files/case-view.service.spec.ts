@@ -12,7 +12,16 @@ import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingsService } from "./bindings.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
-import { SECRET_ARGV, SECRET_EVENT_MESSAGE, SECRET_LOG, SECRET_STDERR, SECRETS } from "./__fixtures__/secrets.js";
+import {
+	CANARIES,
+	SECRET_ARGV,
+	SECRET_EVENT_MESSAGE,
+	SECRET_LOG,
+	SECRET_STDERR,
+	SECRETS,
+	timestamped,
+	UNNAMED_EVENT_MESSAGE,
+} from "./__fixtures__/secrets.js";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -75,6 +84,14 @@ function installFakeKubectl(): void {
 					lastTimestamp: "2026-10-15T09:58:40Z",
 					message: SECRET_EVENT_MESSAGE,
 				},
+				{
+					type: "Warning",
+					reason: "KeyRotation",
+					metadata: { name: "checkout.3", namespace: "shop", uid: "e3" },
+					involvedObject: { kind: "Pod", name: "checkout-7d9f" },
+					lastTimestamp: "2026-10-15T09:58:50Z",
+					message: UNNAMED_EVENT_MESSAGE,
+				},
 			],
 		},
 		deployments: {
@@ -113,6 +130,8 @@ function installFakeKubectl(): void {
 	};
 	for (const [purpose, body] of Object.entries(out)) writeFileSync(join(binDir, `${purpose}.json`), JSON.stringify(body));
 	writeFileSync(join(binDir, "logs.txt"), `${SECRET_LOG}\n`);
+	// What kubectl returns for `logs --timestamps`, which the checklist always passes (#842 OBJ-014).
+	writeFileSync(join(binDir, "logs-ts.txt"), `${timestamped(SECRET_LOG)}\n`);
 	const script = `#!${process.execPath}
 const fs = require("node:fs");
 const path = require("node:path");
@@ -122,7 +141,7 @@ const out = (v) => process.stdout.write(typeof v === "string" ? v : JSON.stringi
 if (args[0] === "config") out({ contexts: [{ name: ${JSON.stringify(CONTEXT)}, context: { cluster: "kind", user: "admin", namespace: "shop" } }], clusters: [{ name: "kind", cluster: { server: ${JSON.stringify(SERVER)} } }] });
 else if (args[0] === "auth") { process.stderr.write("unknown command"); process.exit(1); }
 else if (args[1] === "events") { process.stderr.write(${JSON.stringify(SECRET_STDERR)}); out(fs.readFileSync(path.join(dir, "events.json"), "utf8")); }
-else if (args[0] === "logs") out(fs.readFileSync(path.join(dir, "logs.txt"), "utf8"));
+else if (args[0] === "logs") out(fs.readFileSync(path.join(dir, args.includes("--timestamps") ? "logs-ts.txt" : "logs.txt"), "utf8"));
 else out(fs.readFileSync(path.join(dir, args[1] + ".json"), "utf8"));
 `;
 	writeFileSync(join(binDir, "kubectl"), script);
@@ -223,6 +242,8 @@ describe("CaseViewService", () => {
 		const logs = await prisma.captureArtifact.findFirstOrThrow({ where: { captureId, purpose: "logs-previous" } });
 		// The corpus really went through capture: the encrypted raw copy holds it.
 		expect((await store.readRaw(logs)).toString("utf8")).toContain(SECRETS.dbPassword);
+		const timestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z /;
+		expect((await store.readRaw(logs)).toString("utf8").split("\n")[0]).toMatch(timestamp);
 
 		// The event message reaches the view as a claim statement, redacted.
 		expect(JSON.stringify(view)).toMatch(/restarting: DB_PASSWORD=\[REDACTED:[a-z-]+\]/);
@@ -255,9 +276,7 @@ describe("CaseViewService", () => {
 		haystacks.push(["prompt", prompt]);
 
 		const leaks = haystacks.flatMap(([name, text]) =>
-			Object.entries(SECRETS)
-				.filter(([, secret]) => text.includes(secret))
-				.map(([key]) => `${key} in ${name}`),
+			CANARIES.filter(([, secret]) => text.includes(secret)).map(([key]) => `${key} in ${name}`),
 		);
 		expect(leaks).toEqual([]);
 	});

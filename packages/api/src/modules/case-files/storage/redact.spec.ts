@@ -9,7 +9,8 @@ import {
 	SECRETS as FIXTURE_SECRETS,
 	corpusFor,
 } from "../__fixtures__/secret-corpus.js";
-import { REDACT_CONFIG, type RedactConfig, redact, redactInProcess, redactText } from "./redact.js";
+import { REDACT_CONFIG, type RedactConfig, redact, redactInProcess, redactText, redactUrl } from "./redact.js";
+import { timestamped } from "../__fixtures__/secrets.js";
 
 const PEM = generateKeyPairSync("rsa", { modulusLength: 1024 })
 	.privateKey.export({ type: "pkcs8", format: "pem" })
@@ -100,7 +101,8 @@ describe("redact", () => {
 		expect(item.metadata.annotations).toEqual({ "deployment.kubernetes.io/revision": "7" });
 		expect(item.spec.template.spec.containers[0].env).toEqual([
 			{ name: "DATABASE_URL", value: "[REDACTED:env]" },
-			{ name: "FROM_SECRET", valueFrom: { secretKeyRef: { name: "s", key: "k" } } },
+			// Any `"…key…": "…"` string is redacted too (#842 OBJ-016), so a ref's key name goes.
+			{ name: "FROM_SECRET", valueFrom: { secretKeyRef: { name: "s", key: "[REDACTED:pattern]" } } },
 		]);
 		expect(out.counts).toMatchObject({ env: 1, "last-applied-configuration": 1 });
 	});
@@ -390,4 +392,63 @@ describe("round 2 (#842)", () => {
 		expect(out).toEqual({ error: "redaction deadline exceeded (200 ms)" });
 		expect(Date.now() - started).toBeLessThan(2_000);
 	}, 60_000);
+});
+
+describe("round 3 (#842)", () => {
+	const body = PEM.split("\n").filter((l) => l !== "" && !l.startsWith("-----"));
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+	const TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z /;
+
+	it("OBJ-014: a timestamped PEM body, whole, without its END, or without its BEGIN, loses every body line", async () => {
+		const lines = PEM.trimEnd().split("\n");
+		for (const pem of [lines, lines.slice(0, -2).concat(lines.at(-2)?.slice(0, 20) ?? ""), lines.slice(3)]) {
+			const log = timestamped(["starting vault-client", ...pem, "listening on :8080"].join("\n"));
+			const out = await redactInProcess("logs-previous", Buffer.from(log));
+			if ("error" in out) throw new Error(out.error);
+			const text = out.redacted.toString("utf8");
+			expect(leaked(text, body.map((l) => l.slice(0, 16)))).toEqual([]);
+			// The timestamps stay, one per line, and the lines around the key are kept.
+			expect(text.split("\n").every((l) => TS.test(l))).toBe(true);
+			expect(text).toContain("listening on :8080");
+		}
+	});
+
+	it("OBJ-014: a timestamped YAML block or next-line value is removed", async () => {
+		const log = timestamped(["db:", "  password: |", "    Yam1BlockValue", "  secret:", "    NextL1neValue", "done"].join("\n"));
+		const out = await redactInProcess("logs-previous", Buffer.from(log));
+		if ("error" in out) throw new Error(out.error);
+		expect(leaked(out.redacted.toString("utf8"), ["Yam1BlockValue", "NextL1neValue"])).toEqual([]);
+	});
+
+	it("OBJ-016: removes generic key names, Basic auth, cookies and bare JWTs, raw and encoded", async () => {
+		const basic = Buffer.from("svc:BasicPassw0rd").toString("base64");
+		const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU";
+		const values = ["EncKeyV4lue9", "SignKeyV4lue9", "DbCredV4lue9", "AuthV4lue9", "SessV4lue9", "C00kieSess1on", "SetC00kieSid", basic, jwt];
+		const log = timestamped(
+			[
+				"ENCRYPTION_KEY=EncKeyV4lue9 SIGNING_KEY=SignKeyV4lue9",
+				"DB_CREDENTIALS=DbCredV4lue9 AUTH=AuthV4lue9 session_id=SessV4lue9",
+				`GET /orders Authorization: Basic ${basic}`,
+				"Cookie: session=C00kieSess1on; theme=dark",
+				"Set-Cookie: sid=SetC00kieSid; Path=/; HttpOnly",
+				`issued ${jwt} to checkout`,
+			].join("\n"),
+		);
+		const encoded = (v: string) => [v, Buffer.from(v).toString("base64"), encodeURIComponent(v)];
+		const out = await redactInProcess("logs-previous", Buffer.from(log));
+		if ("error" in out) throw new Error(out.error);
+		expect(leaked(out.redacted.toString("utf8"), values.flatMap(encoded))).toEqual([]);
+
+		const events = { items: [{ type: "Warning", message: log }, { headers: { cookie: "sid=SetC00kieSid", "x-auth": "AuthV4lue9" }, note: "keep me" }] };
+		const json = await redactInProcess("events", Buffer.from(JSON.stringify(events, null, 4)));
+		if ("error" in json) throw new Error(json.error);
+		expect(leaked(json.redacted.toString("utf8"), values.flatMap(encoded))).toEqual([]);
+		expect(JSON.parse(json.redacted.toString("utf8"))).toMatchObject({ items: [{}, { note: "keep me" }] });
+	});
+
+	it("redactUrl drops userinfo, query and fragment, and fails closed on what it cannot parse", () => {
+		expect(redactUrl("https://127.0.0.1:6443")).toBe("https://127.0.0.1:6443");
+		expect(redactUrl("https://admin:hunter2@k8s.example:6443/x?token=abc#frag")).toBe("https://k8s.example:6443/x");
+		expect(redactUrl("not a url hunter2")).toBe("[REDACTED:url]");
+	});
 });

@@ -126,6 +126,9 @@ describe("Case File: capture at alert time, beside the run", () => {
 			expect(a.withheld).toBe(false);
 			expect(readFileSync(join(cwd, ".prismalens", "case", a.file ?? ""), "utf8")).not.toContain("hunter2");
 		}
+		// The checklist asks for `--timestamps`, and the redacted log keeps them.
+		const log = bundle.artifacts.find((a) => a.purpose === "logs-previous");
+		expect(readFileSync(join(cwd, ".prismalens", "case", log?.file ?? ""), "utf8")).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:]+\.\d{9}Z \S/);
 
 		releaseRun(key);
 		await eventually(

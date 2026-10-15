@@ -211,9 +211,19 @@ function run() {
 		remote(() => {
 			if (scenario.fail?.logs)
 				fail(scenario.fail.logs.stderr, scenario.fail.logs.exit ?? 1);
-			let text = fillTimes((scenario.logs?.lines ?? []).join("\n"), now);
+			// A fixture line is `{{now-…}} text`: when the container printed it, then what it printed.
+			// Like kubectl, only `--timestamps` puts the time in front, in RFC3339Nano.
+			const stamp = (/** @type {string} */ iso, /** @type {string} */ text) =>
+				flags["--timestamps"] ? `${iso.replace("Z", "000000Z")} ${text}` : text;
+			let text = (scenario.logs?.lines ?? [])
+				.map((raw) => {
+					const filled = fillTimes(raw, now);
+					const space = filled.indexOf(" ");
+					return stamp(filled.slice(0, space), filled.slice(space + 1));
+				})
+				.join("\n");
 			const pad = scenario.logs?.padToBytes ?? 0;
-			const line = `${new Date(now).toISOString()} log-line\n`;
+			const line = `${stamp(new Date(now).toISOString(), "log-line")}\n`;
 			text = text ? `${text}\n` : "";
 			if (pad > text.length)
 				text += line.repeat(Math.ceil((pad - text.length) / line.length));

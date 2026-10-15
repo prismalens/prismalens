@@ -3,6 +3,7 @@
 
 import { generateKeyPairSync } from "node:crypto";
 import type { ArtifactPurpose } from "@prismalens/contracts";
+import { timestamped } from "./secrets.js";
 
 export const PEM_PRIVATE_KEY = generateKeyPairSync("rsa", {
 	modulusLength: 1024,
@@ -32,23 +33,28 @@ export const RAW_SECRET_VALUES: readonly string[] = [
 	SECRETS.dbPassword,
 	SECRETS.pgPassword,
 	SECRETS.apiKey,
-	PEM_PRIVATE_KEY.split("\n")[1] ?? "",
+	...PEM_PRIVATE_KEY.split("\n").filter(
+		(l) => l !== "" && !l.startsWith("-----"),
+	),
 ];
 
-export const SYNTHETIC_LOG = [
-	`2026-10-15T10:00:00Z AWS_ACCESS_KEY_ID=${SECRETS.awsId}`,
-	`2026-10-15T10:00:01Z aws_secret_access_key = ${SECRETS.awsSecret}`,
-	`2026-10-15T10:00:02Z cloning with ${SECRETS.github}`,
-	`2026-10-15T10:00:02Z slack token ${SECRETS.slack}`,
-	`2026-10-15T10:00:03Z Authorization: Bearer ${SECRETS.bearer}`,
-	`2026-10-15T10:00:04Z DB_PASSWORD=${SECRETS.dbPassword}`,
-	`2026-10-15T10:00:05Z config {"POSTGRES_PASSWORD": "${SECRETS.pgPassword}"}`,
-	`2026-10-15T10:00:06Z GET /v1/orders?api_key=${SECRETS.apiKey}&page=2`,
-	PEM_PRIVATE_KEY,
-	"-----BEGIN CERTIFICATE-----",
-	"MIIBszCCAVmgAwIBAgIUQ",
-	"-----END CERTIFICATE-----",
-].join("\n");
+/** In `kubectl logs --timestamps` form, as the checklist fetches it. */
+export const SYNTHETIC_LOG = timestamped(
+	[
+		`AWS_ACCESS_KEY_ID=${SECRETS.awsId}`,
+		`aws_secret_access_key = ${SECRETS.awsSecret}`,
+		`cloning with ${SECRETS.github}`,
+		`slack token ${SECRETS.slack}`,
+		`Authorization: Bearer ${SECRETS.bearer}`,
+		`DB_PASSWORD=${SECRETS.dbPassword}`,
+		`config {"POSTGRES_PASSWORD": "${SECRETS.pgPassword}"}`,
+		`GET /v1/orders?api_key=${SECRETS.apiKey}&page=2`,
+		PEM_PRIVATE_KEY.trimEnd(),
+		"-----BEGIN CERTIFICATE-----",
+		"MIIBszCCAVmgAwIBAgIUQ",
+		"-----END CERTIFICATE-----",
+	].join("\n"),
+);
 
 export function corpusFor(purpose: ArtifactPurpose): Buffer {
 	if (purpose === "logs-previous") {

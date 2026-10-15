@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -8,6 +9,7 @@ import {
 	fingerprintOf,
 	startFakeAlertmanager,
 } from "../../../../scripts/fakes/fake-alertmanager.mjs";
+import { FAKE_KUBECTL_PATH } from "../../../../scripts/fakes/fake-kubectl.mjs";
 import { alertmanagerFingerprint } from "../../src/modules/alerts/alertmanager-fingerprint.js";
 
 let am: FakeAlertmanager | undefined;
@@ -96,5 +98,19 @@ describe("the fake Alertmanager", () => {
 		} finally {
 			await new Promise<void>((r) => sink.close(() => r()));
 		}
+	});
+});
+
+describe("the fake kubectl", () => {
+	const logs = (...flags: string[]) =>
+		execFileSync(process.execPath, [FAKE_KUBECTL_PATH, "--scenario", "crashloop", "logs", "checkout-1", "-c", "app", "--previous", ...flags], {
+			encoding: "utf8",
+		});
+
+	it("prefixes each log line with an RFC3339Nano time only under --timestamps, as kubectl does (#842 OBJ-014)", () => {
+		expect(logs().split("\n").filter(Boolean)).toEqual(["loading catalogue cache", "java.lang.OutOfMemoryError: Java heap space"]);
+		const stamped = logs("--timestamps").split("\n").filter(Boolean);
+		expect(stamped).toHaveLength(2);
+		for (const line of stamped) expect(line).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z \S/);
 	});
 });
