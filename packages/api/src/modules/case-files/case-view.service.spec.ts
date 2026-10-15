@@ -13,8 +13,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { BindingsService } from "./bindings.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
 import {
+	BLOCK_EVENT_MESSAGE,
 	CANARIES,
 	SECRET_ARGV,
+	SECRET_LABELS,
 	SECRET_EVENT_MESSAGE,
 	SECRET_LOG,
 	SECRET_STDERR,
@@ -92,13 +94,21 @@ function installFakeKubectl(): void {
 					lastTimestamp: "2026-10-15T09:58:50Z",
 					message: UNNAMED_EVENT_MESSAGE,
 				},
+				{
+					type: "Warning",
+					reason: "FailedMount",
+					metadata: { name: "checkout.4", namespace: "shop", uid: "e4" },
+					involvedObject: { kind: "Pod", name: "checkout-7d9f" },
+					lastTimestamp: "2026-10-15T09:58:55Z",
+					message: BLOCK_EVENT_MESSAGE,
+				},
 			],
 		},
 		deployments: {
 			items: [
 				{
-					metadata: { name: "checkout", namespace: "shop", uid: "d1" },
-					spec: { template: { spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env, ...SECRET_ARGV }] } } },
+					metadata: { name: "checkout", namespace: "shop", uid: "d1", labels: SECRET_LABELS },
+					spec: { selector: { matchLabels: SECRET_LABELS }, template: { metadata: { labels: SECRET_LABELS }, spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env, ...SECRET_ARGV }] } } },
 				},
 			],
 		},
@@ -110,6 +120,7 @@ function installFakeKubectl(): void {
 						name: "checkout-7d9f",
 						namespace: "shop",
 						uid: "p1",
+						labels: SECRET_LABELS,
 						annotations: { note: `pulled with ${SECRETS.github} from /x?api_key=${SECRETS.apiKey}` },
 					},
 					spec: { containers: [{ name: "app", env, ...SECRET_ARGV }] },
@@ -249,6 +260,10 @@ describe("CaseViewService", () => {
 		expect(JSON.stringify(view)).toMatch(/restarting: DB_PASSWORD=\[REDACTED:[a-z-]+\]/);
 		// The colon form in a Warning event reaches a claim statement, redacted (#842 OBJ-011).
 		expect(JSON.stringify(view)).toMatch(/FailedAuth: auth failed for app, password: \[REDACTED:pattern\]/);
+		// A block under an escaped newline reaches a claim statement and its attributes without a value line (#842 OBJ-019).
+		const mount = view.claims.find((c) => c.statement.startsWith("FailedMount: mount failed"));
+		expect(mount?.statement).toContain("password: [REDACTED:pattern]");
+		expect(JSON.stringify(mount?.attributes)).not.toMatch(/CanaryLine/);
 		const haystacks: [string, string][] = [["view", JSON.stringify(view)]];
 		for (const a of view.captures[0]?.artifacts ?? []) haystacks.push([`artifact ${a.purpose}`, (await views.artifact(a.id)).text]);
 		for (const table of NEW_TABLES) {

@@ -39,6 +39,7 @@ const WORKER_URL = new URL(
 	import.meta.url,
 );
 const LAST_APPLIED = "kubectl.kubernetes.io/last-applied-configuration";
+const LABEL_MARK = "[REDACTED:label]";
 const STRUCTURAL: ReadonlySet<ArtifactPurpose> = new Set([
 	"deployments",
 	"replicasets",
@@ -66,6 +67,28 @@ const BARE_TOKEN = String.raw`${TOKEN}+(?!${TOKEN})(?!\\?["']\s*:)`;
 const BARE_LINE = String.raw`(?=\S)(?:[^\r\n"\\]|\\[^nr"])+`;
 // A newline, raw or JSON-escaped, then the indent of a YAML value on the next line.
 const NEXT_LINE = String.raw`(?:(?:\r?\n|(?:\\r)?\\n)[ \t]+)`;
+const RAW_NL = String.raw`\r?\n`;
+const ESC_NL = String.raw`(?:\\r)?\\n`;
+const END_OF_TEXT = String.raw`(?![\s\S])`;
+// A block value's key line up to the newline that opens its body.
+const keyLine = (nl: string, indicator: string): string =>
+	String.raw`[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?[ \t]*:[ \t]*${indicator}[ \t]*${nl}`;
+const INDICATOR = "[|>][-+]?[0-9]?";
+// Blank and whitespace-only lines continue a block; it ends at a line whose indent is no deeper than `indent`.
+const blockBody = (
+	nl: string,
+	text: string,
+	end: string,
+	indent: string,
+): string => {
+	const blank = String.raw`[ \t]*(?:${nl}|${end})`;
+	const line = String.raw`${indent}[ \t]+(?=\S)${text}+(?:${nl}|${end})`;
+	return `(?:${blank})*${line}(?:${blank}|${line})*`;
+};
+// Inside a JSON string a line stops at an unescaped quote, so redacted JSON still parses.
+const ESC_TEXT = String.raw`(?:[^\r\n"\\]|\\(?!n|r\\n)[\s\S])`;
+const ESC_END = `(?=")|${END_OF_TEXT}`;
+const ESC_LINE_START = String.raw`(?:^|\\n|")`;
 
 /**
  * The value after `prefix`: a quoted run (plain, JSON-escaped or single), else one token.
@@ -106,7 +129,11 @@ export const SECRET_PATTERNS = [
 		// A YAML block or folded value under such a key: every line indented past the key's own.
 		name: "key: block",
 		patterns: [
-			String.raw`/(?<=^([ \t]*)[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?[ \t]*:[ \t]*(?:[|>][-+]?[0-9]?)?[ \t]*\r?\n)(?:\1[ \t]+\S[^\r\n]*(?:\r?\n|$))+/im`,
+			`/(?<=^([ \t]*)${keyLine(RAW_NL, `(?:${INDICATOR})?`)})${blockBody(RAW_NL, String.raw`[^\r\n]`, END_OF_TEXT, String.raw`\1`)}/im`,
+			// Inside a JSON string the lines are separated by an escaped `\n`; a key mid-line has no indent to
+			// compare, so it takes a `|` or `>` and every indented line after it.
+			`/(?<=${ESC_LINE_START}([ \t]*)${keyLine(ESC_NL, `(?:${INDICATOR})?`)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, String.raw`\1`)}/im`,
+			`/(?<=(?<![w.-])(?<!${ESC_LINE_START}[ \t]*)${keyLine(ESC_NL, INDICATOR)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, "")}/im`,
 		],
 	},
 	{
@@ -242,6 +269,33 @@ function scrubPodSpec(spec: unknown, counts: RedactCounts): void {
 	}
 }
 
+// A label is free text under a key the operator chose, so a secret-like key or a generated-looking value goes.
+const SECRET_KEY = /token|secret|pass|pwd|key|auth|cred|session|cookie|sig/i;
+const GENERATED_RUN = /[A-Za-z0-9]{8,}/g;
+const STRUCTURAL_HASHES: ReadonlySet<string> = new Set([
+	"pod-template-hash",
+	"controller-revision-hash",
+]);
+
+function secretLabel(key: string, value: string): boolean {
+	if (SECRET_KEY.test(key)) return true;
+	if (STRUCTURAL_HASHES.has(key) && /^[0-9a-f]{8,10}$/.test(value))
+		return false;
+	return [...value.matchAll(GENERATED_RUN)].some(
+		([run]) => /[A-Za-z]/.test(run) && /[0-9]/.test(run),
+	);
+}
+
+/** Labels and nodeSelector: a value is kept only under a key that does not read as secret. */
+function scrubLabels(map: unknown, counts: RedactCounts): void {
+	if (!isObject(map)) return;
+	for (const [key, value] of Object.entries(map)) {
+		if (typeof value !== "string" || !secretLabel(key, value)) continue;
+		map[key] = LABEL_MARK;
+		bump(counts, "label");
+	}
+}
+
 function scrubObject(item: unknown, counts: RedactCounts): void {
 	if (!isObject(item)) return;
 	const meta = item.metadata;
@@ -251,11 +305,19 @@ function scrubObject(item: unknown, counts: RedactCounts): void {
 			delete meta.annotations[LAST_APPLIED];
 			bump(counts, "last-applied-configuration");
 		}
+		scrubLabels(meta.labels, counts);
 	}
 	const spec = item.spec;
 	if (!isObject(spec)) return;
 	scrubPodSpec(spec, counts);
-	if (isObject(spec.template)) scrubPodSpec(spec.template.spec, counts);
+	scrubLabels(spec.nodeSelector, counts);
+	if (isObject(spec.selector)) scrubLabels(spec.selector.matchLabels, counts);
+	const template = spec.template;
+	if (!isObject(template)) return;
+	if (isObject(template.metadata))
+		scrubLabels(template.metadata.labels, counts);
+	scrubPodSpec(template.spec, counts);
+	if (isObject(template.spec)) scrubLabels(template.spec.nodeSelector, counts);
 }
 
 type Span = readonly [start: number, end: number];
@@ -283,9 +345,8 @@ function markField(holder: unknown, field: string): void {
 	const value = holder[field];
 	if (
 		typeof value === "string" &&
-		REFERENCE.test(value) &&
-		!HAS_JWT.test(value) &&
-		!secretLike(value)
+		(value === LABEL_MARK ||
+			(REFERENCE.test(value) && !HAS_JWT.test(value) && !secretLike(value)))
 	)
 		holder[field] = `\u0001${value}\u0002`;
 }
