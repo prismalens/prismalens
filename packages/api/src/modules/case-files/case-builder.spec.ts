@@ -500,6 +500,25 @@ describe("CaseBuilder", () => {
 		expect(capGap.statement).toBe("The capture was cut: timeout.");
 	});
 
+	it("names the logs as cut when only a previous-container log hit the byte cap", async () => {
+		const incident = await prisma.incident.create({ data: { number: 23, title: "logs cut" } });
+		const capture = await createCapture({ state: "partial", stateReason: "byte-cap" });
+		const pods = await writeArtifact(capture.id, 1, "pods", { items: [] });
+		const logs = await writeArtifact(capture.id, 2, "logs-previous", "OOM", {
+			subject: "checkout-7d9f/app",
+			retrieval: "partial",
+			retrievalReason: "byte-cap",
+		});
+		await prisma.$transaction((tx) =>
+			builder.build(tx, { incidentId: incident.id, capture, artifacts: [pods, logs], alerts: [] }),
+		);
+		const gap = await prisma.claimRevision.findFirstOrThrow({
+			where: { incidentId: incident.id, node: { kind: "gap" }, statusReason: "byte-cap" },
+		});
+		expect(gap.statement).toBe("logs-previous was cut: byte-cap.");
+		expect(gap.artifactId).toBe(logs.id);
+	});
+
 	it("records sourceTime per subject, builds event precedes_alert and maps event populations", async () => {
 		const incident = await prisma.incident.create({ data: { number: 30, title: "sourceTime and events" } });
 		const alert = await prisma.alert.create({
