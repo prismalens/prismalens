@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Module } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -8,7 +9,16 @@ import {
 	CASE_FILE_SETTING_KEY,
 	CaseFileSettingsService,
 } from "./case-file-settings.service.js";
+import { CredentialsService } from "../integrations/crypto/credentials.service.js";
+import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { CaseFilesModule } from "./case-files.module.js";
+
+/** Stands in for IntegrationsModule: the case files need only the vault. */
+@Module({
+	providers: [{ provide: CredentialsService, useValue: {} }],
+	exports: [CredentialsService],
+})
+class CredentialsOnly {}
 
 interface Row {
 	key: string;
@@ -92,6 +102,8 @@ describe("CaseFileSettingsService", () => {
 		const moduleRef = await Test.createTestingModule({
 			imports: [CaseFilesModule],
 		})
+			.overrideModule(IntegrationsModule)
+			.useModule(CredentialsOnly)
 			.overrideProvider(PrismaService)
 			.useValue({ setting: fake.setting })
 			.compile();

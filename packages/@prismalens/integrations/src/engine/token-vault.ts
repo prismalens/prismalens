@@ -34,19 +34,25 @@ export class TokenVault {
 	}
 
 	encrypt(plaintext: string): Buffer {
+		return this.encryptBytes(Buffer.from(plaintext, "utf8"));
+	}
+
+	decrypt(data: Buffer): string {
+		return this.decryptBytes(data).toString("utf8");
+	}
+
+	/** Same `iv|tag|ct` framing as `encrypt`, over bytes that need not be UTF-8. */
+	encryptBytes(plain: Buffer): Buffer {
 		const iv = randomBytes(IV_LENGTH);
 		const cipher = createCipheriv("aes-256-gcm", this.key, iv, {
 			authTagLength: AUTH_TAG_LENGTH,
 		});
-		const encrypted = Buffer.concat([
-			cipher.update(plaintext, "utf8"),
-			cipher.final(),
-		]);
+		const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
 		const authTag = cipher.getAuthTag();
 		return Buffer.concat([iv, authTag, encrypted]);
 	}
 
-	decrypt(data: Buffer): string {
+	decryptBytes(data: Buffer): Buffer {
 		const iv = data.subarray(0, IV_LENGTH);
 		const authTag = data.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
 		const ciphertext = data.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
@@ -54,9 +60,7 @@ export class TokenVault {
 			authTagLength: AUTH_TAG_LENGTH,
 		});
 		decipher.setAuthTag(authTag);
-		return (
-			decipher.update(ciphertext).toString("utf8") + decipher.final("utf8")
-		);
+		return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 	}
 
 	/** HMAC-SHA256 under the vault key, hex: a stable fingerprint that reveals nothing without the key. */

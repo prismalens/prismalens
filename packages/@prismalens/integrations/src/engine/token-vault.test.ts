@@ -181,6 +181,20 @@ describe("TokenVault rejects tampered or foreign envelopes", () => {
 	});
 });
 
+describe("TokenVault byte helpers", () => {
+	it("round-trips bytes that are not UTF-8, byte for byte", () => {
+		const plain = Buffer.from([0xff, 0xfe, 0x00, 0xc3, 0x28, 0x80]);
+		const env = vault().encryptBytes(plain);
+		expect(env.length).toBe(HEADER_LENGTH + plain.length);
+		expect(vault().decryptBytes(env).equals(plain)).toBe(true);
+	});
+
+	it("throws on a tampered auth tag", () => {
+		const env = vault().encryptBytes(Buffer.from("raw log"));
+		expect(() => vault().decryptBytes(tamper(env, IV_LENGTH))).toThrow();
+	});
+});
+
 describe("TokenVault JSON helpers", () => {
 	it("round-trips a credential object", () => {
 		const v = vault();
