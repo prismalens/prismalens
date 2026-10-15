@@ -22,6 +22,9 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	CaseNode: "cases",
 	CaseEdge: "cases",
 	ClaimRevision: "cases",
+	// The Case link and the Services section follow the switch and the bindings (OBJ-024).
+	Setting: "cases",
+	ServiceBinding: "cases",
 };
 
 const WRITE_OPERATIONS = new Set([

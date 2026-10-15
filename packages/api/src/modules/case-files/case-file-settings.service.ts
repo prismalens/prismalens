@@ -19,6 +19,8 @@ export class CaseFileSettingsService {
 	private readonly onOff = new Set<() => Promise<void>>();
 	/** Moves at the start of every turn-off, before the row is written. */
 	private offs = 0;
+	/** Turn-offs under way, from the call until its hooks settle; admission refuses meanwhile, whatever the row says (OBJ-007). */
+	private turningOff = 0;
 	private readonly writing = new Set<Promise<unknown>>();
 
 	constructor(private readonly prisma: PrismaService) {}
@@ -33,8 +35,10 @@ export class CaseFileSettingsService {
 	 * this and `commit` may outlast a whole turn-off, so `commit` decides.
 	 */
 	async admit(): Promise<Admission | null> {
+		if (this.turningOff > 0) return null;
 		const at = this.offs;
-		if (!(await this.isEnabled()) || at !== this.offs) return null;
+		if (!(await this.isEnabled()) || this.turningOff > 0 || at !== this.offs)
+			return null;
 		return { commit: (write) => this.commit(at, write) };
 	}
 
@@ -42,7 +46,7 @@ export class CaseFileSettingsService {
 		at: number,
 		write: () => Promise<T>,
 	): Promise<T | null> {
-		if (at !== this.offs) return null;
+		if (this.turningOff > 0 || at !== this.offs) return null;
 		const run = write();
 		this.writing.add(run);
 		try {
@@ -66,21 +70,28 @@ export class CaseFileSettingsService {
 	}
 
 	async set(enabled: boolean): Promise<void> {
-		if (!enabled) this.offs += 1;
-		const value = JSON.stringify({ enabled });
-		await this.prisma.setting.upsert({
-			where: { key: CASE_FILE_SETTING_KEY },
-			update: { value, type: "json" },
-			create: {
-				key: CASE_FILE_SETTING_KEY,
-				value,
-				type: "json",
-				category: "general",
-			},
-		});
 		if (!enabled) {
-			await Promise.allSettled([...this.writing]);
-			await Promise.allSettled([...this.onOff].map((stop) => stop()));
+			this.offs += 1;
+			this.turningOff += 1;
+		}
+		try {
+			const value = JSON.stringify({ enabled });
+			await this.prisma.setting.upsert({
+				where: { key: CASE_FILE_SETTING_KEY },
+				update: { value, type: "json" },
+				create: {
+					key: CASE_FILE_SETTING_KEY,
+					value,
+					type: "json",
+					category: "general",
+				},
+			});
+			if (!enabled) {
+				await Promise.allSettled([...this.writing]);
+				await Promise.allSettled([...this.onOff].map((stop) => stop()));
+			}
+		} finally {
+			if (!enabled) this.turningOff -= 1;
 		}
 	}
 }

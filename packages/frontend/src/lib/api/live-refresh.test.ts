@@ -40,6 +40,22 @@ describe("invalidateTopics (walk f27)", () => {
 	});
 });
 
+describe("invalidateTopics cases (OBJ-024)", () => {
+	it("re-reads the case list, the Case File setting and the service bindings", () => {
+		const queryClient = new QueryClient();
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		invalidateTopics(queryClient, ["cases"]);
+
+		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
+		expect(keys).toEqual([
+			JSON.stringify(orpc.caseFiles.cases.key()),
+			JSON.stringify(orpc.caseFiles.settings.key()),
+			JSON.stringify(orpc.caseFiles.bindings.key()),
+		]);
+	});
+});
+
 describe("reconnectAsOf", () => {
 	it("says nothing while connected or for the first ten seconds down", () => {
 		expect(reconnectAsOf({ connected: true, lostAt: 0 }, 60_000)).toBeNull();

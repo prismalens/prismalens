@@ -39,11 +39,19 @@ describe("LiveChanges (walk f27)", () => {
 		}
 	});
 
+	it("OBJ-024: names the cases list for a setting or a service binding being written", async () => {
+		for (const model of ["Setting", "ServiceBinding"]) {
+			const live = new LiveChanges(1);
+			const change = await firstChange(live, () => live.noteWrite(model, "upsert"));
+			expect(change?.topics).toEqual(["cases"]);
+		}
+	});
+
 	it("ignores reads and models no list shows", async () => {
 		const live = new LiveChanges(10);
 		const change = await firstChange(live, () => {
 			live.noteWrite("Incident", "findMany");
-			live.noteWrite("Setting", "update");
+			live.noteWrite("Connection", "update");
 			live.noteWrite("Incident", "update");
 		});
 		expect(change?.topics).toEqual(["incidents"]);

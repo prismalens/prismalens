@@ -437,6 +437,83 @@ describe("CaptureService", () => {
 		tickSpy.mockRestore();
 	});
 
+	/** Sixteen queued captures that are not yet due, so a tick leaves them alone. */
+	async function fillQueue(priority: number, caseStartedAt: Date): Promise<string[]> {
+		const namespaces: string[] = [];
+		for (let i = 0; i < 16; i++) {
+			const namespace = `ns-fill-${priority}-${i}`;
+			namespaces.push(namespace);
+			await prisma.capture.create({
+				data: {
+					checklistVersion: 1,
+					canonicalQuery: "{}",
+					queryDigest: `fill-${priority}-${i}`,
+					kubeContext: CONTEXT,
+					cluster: SERVER,
+					namespace,
+					state: "queued",
+					priority,
+					caseStartedAt: new Date(caseStartedAt.getTime() + i * 1000),
+					dueAt: new Date(Date.now() + 3_600_000),
+				},
+			});
+		}
+		return namespaces;
+	}
+
+	it("OBJ-026: a displaced capture's skipped record names its own target's commands, not the newcomer's", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		await fillQueue(4, new Date("2026-10-15T10:00:00Z"));
+		const { incident } = await boundIncident("svc-displacer", "critical", "ns-displacer");
+		const res = await service.captureNow(incident.id);
+		tickSpy.mockRestore();
+
+		expect(res?.state).toBe("queued");
+		const skipped = await prisma.capture.findFirstOrThrow({ where: { state: "skipped", stateReason: "queue-full" } });
+		const end = await prisma.manifestEntry.findFirstOrThrow({ where: { captureId: skipped.id, artifactId: null } });
+		const body = JSON.parse(end.body) as { notRun: string[][] };
+		expect(body.notRun.length).toBeGreaterThan(0);
+		for (const cmd of body.notRun) {
+			expect(cmd).toContain(skipped.namespace);
+			expect(cmd).not.toContain("ns-displacer");
+		}
+	});
+
+	it("OBJ-025: a retry into a full queue displaces a lower-ranked capture instead of exceeding the capacity", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-retry-full", "critical", "ns-retry-full");
+		writeFileSync(modeFile, "unreachable");
+		const res = await service.captureNow(incident.id);
+		await fillQueue(4, new Date("2026-10-15T10:00:00Z"));
+		tickSpy.mockRestore();
+		const captureId = res?.captureId ?? "";
+
+		await service.tick();
+		await service.settle();
+
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "queued", attempts: 1 });
+		expect(await prisma.capture.count({ where: { state: "queued" } })).toBe(16);
+		expect(await prisma.capture.count({ where: { state: "skipped", stateReason: "queue-full" } })).toBe(1);
+		expect(await manifest.verify([captureId])).toMatchObject({ ok: true });
+	});
+
+	it("OBJ-025: a retry that ranks below a full queue ends skipped as queue-full", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-retry-low", "critical", "ns-retry-low");
+		writeFileSync(modeFile, "unreachable");
+		const res = await service.captureNow(incident.id);
+		await fillQueue(1, new Date("2026-10-14T10:00:00Z"));
+		tickSpy.mockRestore();
+		const captureId = res?.captureId ?? "";
+
+		await service.tick();
+		await service.settle();
+
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "skipped", stateReason: "queue-full" });
+		expect(await prisma.capture.count({ where: { state: "queued" } })).toBe(16);
+		expect(await manifest.verify([captureId])).toMatchObject({ ok: true });
+	});
+
 	it("orders by priority and ties by caseStartedAt", () => {
 		expect(priorityFor("critical")).toBe(1);
 		expect(priorityFor("high")).toBe(2);
@@ -1018,6 +1095,60 @@ describe("CaptureService", () => {
 		},
 	);
 
+	it("OBJ-008: a refused reset does not lift the barrier while an overlapping reset is still under way", async () => {
+		const tickSpy = vi.spyOn(service, "tick").mockResolvedValue();
+		const { incident } = await boundIncident("svc-overlap", "critical", "ns-overlap");
+		const res = await service.captureNow(incident.id);
+		const captureId = res?.captureId ?? "";
+		tickSpy.mockRestore();
+		const gate = () => {
+			let open: () => void = () => {};
+			const wait = new Promise<void>((r) => {
+				open = r;
+			});
+			return { open, wait };
+		};
+		const first = gate();
+		const second = gate();
+
+		const refused = service.quiesce(async () => {
+			await first.wait;
+			throw new Error("refused");
+		});
+		const pending = service.quiesce(() => second.wait);
+		first.open();
+		await expect(refused).rejects.toThrow("refused");
+		await new Promise((r) => setTimeout(r, 150));
+		const during = await prisma.capture.findUniqueOrThrow({ where: { id: captureId } });
+		second.open();
+		await pending;
+		await service.tick();
+		await service.settle();
+
+		expect(during.state).toBe("queued");
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: captureId } })).toMatchObject({ state: "complete" });
+	});
+
+	it("OBJ-008: the settings service keeps reporting a reset until the last overlapping one ends", async () => {
+		const gate = new Promise<void>((r) => setTimeout(r, 100));
+		const captures = {
+			quiesce: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("refused"))
+				.mockImplementationOnce(async () => {
+					await gate;
+					return { success: true, message: "" };
+				}),
+		};
+		const settingsService = new SettingsService(prisma as never, captures as never);
+		const refused = settingsService.resetData();
+		const pending = settingsService.resetData();
+		await expect(refused).rejects.toThrow("refused");
+		expect(settingsService.isResetting()).toBe(true);
+		await pending;
+		expect(settingsService.isResetting()).toBe(false);
+	});
+
 	it("OBJ-007: a capture admitted before the switch went off, whose incident lookup is still pending, queues nothing", async () => {
 		const { incident, alert } = await boundIncident("svc-off-admit", "critical", "ns-off-admit");
 		let release: () => void = () => {};
@@ -1129,6 +1260,56 @@ describe("CaptureService", () => {
 
 		await boot();
 		expect(await claims()).toBe(rebuilt);
+	});
+
+	it("OBJ-018: boot rebuilds the gap claims of a blocked capture and of a partial one with no artifacts", async () => {
+		const gapClaims = (captureId: string) =>
+			prisma.claimRevision.count({ where: { node: { key: { startsWith: `gap:${captureId}:` } } } });
+		const boot = async () => {
+			await service.onModuleInit();
+			await service.settle();
+			const s = service as unknown as { interval?: NodeJS.Timeout; sweepTimer?: NodeJS.Timeout };
+			if (s.interval) clearInterval(s.interval);
+			if (s.sweepTimer) clearInterval(s.sweepTimer);
+		};
+		const blockedRun = await boundIncident("svc-rebuild-blocked", "critical", "ns-rebuild-blocked");
+		writeFileSync(modeFile, "context-missing");
+		const build = vi.spyOn(CaseBuilder.prototype, "build").mockRejectedValueOnce(new Error("build crashed"));
+		const res = await service.captureNow(blockedRun.incident.id);
+		await service.tick();
+		await service.settle();
+		build.mockRestore();
+		const blockedId = res?.captureId ?? "";
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: blockedId } })).toMatchObject({ state: "blocked" });
+
+		const bare = await boundIncident("svc-rebuild-bare", "critical", "ns-rebuild-bare");
+		const partial = await prisma.capture.create({
+			data: {
+				bindingId: bare.binding.id,
+				checklistVersion: 1,
+				canonicalQuery: "{}",
+				queryDigest: "rebuild-bare",
+				kubeContext: CONTEXT,
+				cluster: SERVER,
+				namespace: "ns-rebuild-bare",
+				state: "partial",
+				stateReason: "timeout",
+				finishedAt: new Date(),
+				caseStartedAt: new Date(),
+				dueAt: new Date(),
+			},
+		});
+		await prisma.caseCapture.create({ data: { incidentId: bare.incident.id, captureId: partial.id, triggeredAt: new Date() } });
+		expect(await gapClaims(blockedId)).toBe(0);
+		expect(await gapClaims(partial.id)).toBe(0);
+
+		await boot();
+		const rebuilt = [await gapClaims(blockedId), await gapClaims(partial.id)];
+		expect(rebuilt[0]).toBeGreaterThan(0);
+		expect(rebuilt[1]).toBeGreaterThan(0);
+
+		await boot();
+		expect([await gapClaims(blockedId), await gapClaims(partial.id)]).toEqual(rebuilt);
 	});
 
 	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {

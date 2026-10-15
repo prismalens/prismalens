@@ -191,7 +191,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	private tickAgain = false;
 	private tickRun: Promise<void> = Promise.resolve();
 	private stopping = false;
-	private resetting = false;
+	/** Resets under way; a counter, so one that ends does not lift the barrier for another (OBJ-008). */
+	private resets = 0;
+	private get resetting(): boolean {
+		return this.resets > 0;
+	}
 	private sweepTimer: NodeJS.Timeout | undefined;
 	private sweepRun: Promise<void> | null = null;
 	/** Overridable in tests. */
@@ -259,18 +263,19 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/**
 	 * Builds claims for ended captures that have none for a linked case: the process
-	 * stopped after end() committed, or the build threw (OBJ-018). A build is
-	 * idempotent, so a retry is safe; one that fails again waits for the next run.
+	 * stopped after end() committed, or the build threw (OBJ-018). A blocked or
+	 * artifact-free capture is covered too; its gap claims name no artifact.
+	 * A build is idempotent, so a retry is safe; one that fails again waits for the next run.
 	 */
 	private async rebuildMissingClaims(): Promise<void> {
 		if (!(await this.settings.isEnabled())) return;
 		const links = await this.prisma.caseCapture.findMany({
 			where: {
 				capture: {
-					state: { in: ["complete", "partial"] },
+					state: { in: ["complete", "partial", "blocked"] },
 					// Turned off mid-run: closed without claims on purpose.
 					OR: [{ stateReason: null }, { stateReason: { not: "disabled" } }],
-					artifacts: { some: {}, none: { expiredAt: { not: null } } },
+					artifacts: { none: { expiredAt: { not: null } } },
 				},
 			},
 			include: { capture: true },
@@ -281,7 +286,10 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			const built = await this.prisma.claimRevision.count({
 				where: {
 					incidentId: link.incidentId,
-					artifact: { captureId: link.captureId },
+					OR: [
+						{ artifact: { captureId: link.captureId } },
+						{ node: { key: { startsWith: `gap:${link.captureId}:` } } },
+					],
 				},
 			});
 			if (built > 0) continue;
@@ -292,7 +300,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 	/** Runs `work` (a reset) with no capture running or starting and no sweep under way (OBJ-008). */
 	async quiesce<T>(work: () => Promise<T>): Promise<T> {
-		this.resetting = true;
+		this.resets += 1;
 		let stopped: string[] = [];
 		try {
 			stopped = await this.halt("reset");
@@ -301,7 +309,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		} finally {
 			// A refused reset keeps the rows (OBJ-013): what it stopped runs again, as after a restart (R4).
 			if (stopped.length > 0) await this.requeue(stopped);
-			this.resetting = false;
+			this.resets -= 1;
 			setImmediate(() => void this.tick());
 		}
 	}
@@ -421,27 +429,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 					};
 				}
 
-				let state: CaptureState = "queued";
-				const depth = await tx.capture.count({ where: { state: "queued" } });
-				if (depth >= QUEUE_CAPACITY) {
-					const lowest = await tx.capture.findFirst({
-						where: { state: "queued" },
-						orderBy: [{ priority: "desc" }, { caseStartedAt: "desc" }],
-					});
-					if (lowest && ranksAbove(rank, lowest)) {
-						const skipped = await tx.capture.update({
-							where: { id: lowest.id },
-							data: {
-								state: "skipped",
-								stateReason: "queue-full",
-								finishedAt: now,
-							},
-						});
-						await this.appendEnding(tx, skipped, now, target);
-					} else {
-						state = "skipped";
-					}
-				}
+				const state = await this.claimQueueSlot(tx, rank, now);
 
 				const created = await tx.capture.create({
 					data: {
@@ -462,8 +450,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 				await tx.caseCapture.create({
 					data: { ...link, captureId: created.id },
 				});
-				if (state === "skipped")
-					await this.appendEnding(tx, created, now, target);
+				if (state === "skipped") await this.appendEnding(tx, created, now);
 				return { captureId: created.id, state, shared: false };
 			}),
 		);
@@ -471,6 +458,31 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 
 		setImmediate(() => void this.tick());
 		return result;
+	}
+
+	/**
+	 * Room in the queue for a capture that ranks `rank`: the lowest-ranked queued
+	 * one makes way when `rank` is above it, else the newcomer is the one skipped.
+	 * Admission and retry share it, so the capacity holds for both (OBJ-025).
+	 */
+	private async claimQueueSlot(
+		tx: ChainTx,
+		rank: Rank,
+		now: Date,
+	): Promise<"queued" | "skipped"> {
+		const depth = await tx.capture.count({ where: { state: "queued" } });
+		if (depth < QUEUE_CAPACITY) return "queued";
+		const lowest = await tx.capture.findFirst({
+			where: { state: "queued" },
+			orderBy: [{ priority: "desc" }, { caseStartedAt: "desc" }],
+		});
+		if (!lowest || !ranksAbove(rank, lowest)) return "skipped";
+		const skipped = await tx.capture.update({
+			where: { id: lowest.id },
+			data: { state: "skipped", stateReason: "queue-full", finishedAt: now },
+		});
+		await this.appendEnding(tx, skipped, now);
+		return "queued";
 	}
 
 	/** Starts due captures within the running limits; never awaits a capture's work. */
@@ -585,14 +597,27 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			if (halted === "disabled") ending = await this.disabledEnding(capture);
 			else if (halted === "reset" || ending === null) return;
 			if (ending === "retry") {
-				await this.prisma.capture.update({
-					where: { id: captureId },
-					data: {
-						state: "queued",
-						dueAt: new Date(this.now().getTime() + RETRY_DELAY_MS),
-					},
+				const now = this.now();
+				const slot = await this.manifest.transaction(async (tx) => {
+					const claimed = await this.claimQueueSlot(tx, capture, now);
+					if (claimed === "queued") {
+						await tx.capture.update({
+							where: { id: captureId },
+							data: {
+								state: "queued",
+								dueAt: new Date(now.getTime() + RETRY_DELAY_MS),
+							},
+						});
+					}
+					return claimed;
 				});
-				this.emitUpdated(captureId);
+				if (slot === "skipped") {
+					await this.end(capture, {
+						state: "skipped",
+						reason: "queue-full",
+						notRun: [],
+					});
+				} else this.emitUpdated(captureId);
 				return;
 			}
 			await this.end(capture, ending, halted === null);
@@ -829,11 +854,6 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		derive = true,
 	): Promise<void> {
 		const finishedAt = this.now();
-		const target: CaptureTarget = {
-			kubeContext: capture.kubeContext,
-			cluster: capture.cluster,
-			namespace: capture.namespace,
-		};
 		// Identity failures carry kubectl stderr, which can quote credentials (#842).
 		const lastError =
 			ending.lastError === undefined
@@ -849,7 +869,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 					lastError,
 				},
 			});
-			await this.appendEnding(tx, row, finishedAt, target, ending.notRun);
+			await this.appendEnding(tx, row, finishedAt, ending.notRun);
 			return row;
 		});
 		if (derive) await this.buildCases(ended);
@@ -870,8 +890,11 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		tx: ChainTx,
 		capture: Capture,
 		finishedAt: Date,
-		target: CaptureTarget,
-		notRun: string[][] = checklistArgv(target).map(asCommand),
+		notRun: string[][] = checklistArgv({
+			kubeContext: capture.kubeContext,
+			cluster: capture.cluster,
+			namespace: capture.namespace,
+		}).map(asCommand),
 	): Promise<void> {
 		const entries = await tx.manifestEntry.findMany({
 			where: { captureId: capture.id, artifactId: { not: null } },
