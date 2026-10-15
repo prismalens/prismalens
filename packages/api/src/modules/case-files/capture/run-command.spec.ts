@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	captureEnv,
 	NoKubectlError,
+	reapLiveCaptures,
 	resolveKubectl,
 	runCommand,
 } from "./run-command.js";
@@ -113,5 +115,76 @@ describe("runCommand", () => {
 		expect(env.KUBECONFIG).toBe("/tmp/kc");
 		expect(env.PRISMALENS_SECRET).toBeUndefined();
 		expect(env.ENCRYPTION_KEY).toBeUndefined();
+	});
+
+	it("passes child env with KUBECONFIG kept and PRISMALENS_* dropped", async () => {
+		process.env.KUBECONFIG = "/tmp/kc";
+		process.env.PRISMALENS_SECRET = "x";
+		const res = await run(
+			'process.stdout.write(JSON.stringify({ kc: process.env.KUBECONFIG, sec: process.env.PRISMALENS_SECRET }))',
+		);
+		const data = JSON.parse(res.stdout.toString()) as {
+			kc?: string;
+			sec?: string;
+		};
+		expect(data.kc).toBe("/tmp/kc");
+		expect(data.sec).toBeUndefined();
+	});
+
+	it("an already-aborted signal returns partial(timeout) without spawning", async () => {
+		const ac = new AbortController();
+		ac.abort();
+		const res = await runCommand({
+			bin: "/nonexistent/kubectl",
+			argv: [],
+			timeoutMs: 5_000,
+			byteCap: 1024,
+			signal: ac.signal,
+		});
+		expect(res).toMatchObject({
+			exitCode: null,
+			retrieval: "partial",
+			retrievalReason: "timeout",
+			stderrTail: "",
+		});
+		expect(res.stdout.length).toBe(0);
+	});
+
+	it("a non-ENOENT spawn error gives partial(error)", async () => {
+		const res = await runCommand({
+			bin: tmpdir(),
+			argv: [],
+			timeoutMs: 5_000,
+			byteCap: 1024,
+		});
+		expect(res).toMatchObject({
+			exitCode: null,
+			retrieval: "partial",
+			retrievalReason: "error",
+		});
+		expect(res.stderrTail).toContain("EACCES");
+	});
+
+	it("reapLiveCaptures kills running capture processes", async () => {
+		const promise = run("setTimeout(() => {}, 10000)", { timeoutMs: 10_000 });
+		await new Promise((r) => setTimeout(r, 100));
+		reapLiveCaptures();
+		const res = await promise;
+		expect(res.retrieval).toBe("partial");
+		expect(res.retrievalReason).toBe("error");
+		expect(() => reapLiveCaptures()).not.toThrow();
+	});
+
+	it("truncates stderrTail to the last 2048 bytes across chunks", async () => {
+		const res = await run(
+			'process.stderr.write("a".repeat(100)); process.stderr.write("b".repeat(2500)); process.exit(1)',
+		);
+		expect(res.stderrTail.length).toBe(2048);
+		expect(res.stderrTail).toBe("b".repeat(2048));
+	});
+
+	it("resolveKubectl uses process.env.PATH by default", () => {
+		process.env.PATH = "/nonexistent";
+		expect(resolveKubectl()).toBeNull();
 	});
 });

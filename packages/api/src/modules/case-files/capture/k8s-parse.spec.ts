@@ -4,7 +4,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	crashedContainers,
+	imageDigest,
 	imageTag,
+	type K8sPod,
 	parseDeployments,
 	parsePods,
 	parseReplicaSets,
@@ -13,6 +15,7 @@ import {
 } from "./k8s-parse.js";
 
 const d1 = `sha256:${"a".repeat(64)}`;
+const d2 = `sha256:${"b".repeat(64)}`;
 const meta = (name: string, extra: object = {}) => ({
 	metadata: { name, namespace: "shop", uid: `${name}-uid`, ...extra },
 });
@@ -133,5 +136,292 @@ describe("k8s-parse", () => {
 			to: new Date("2026-10-15T07:54:59Z"),
 		});
 		expect(sourceRange("deployments", { items: [] })).toEqual({ from: null, to: null });
+	});
+
+	it("handles one image tag mapping to two digests across pods", () => {
+		const twoDigestPods = {
+			items: [
+				{
+					...meta("checkout-a"),
+					spec: { containers: [{ name: "app", image: "checkout:v2" }] },
+					status: {
+						phase: "Running",
+						containerStatuses: [
+							{ name: "app", imageID: `docker-pullable://checkout@${d1}` },
+						],
+					},
+				},
+				{
+					...meta("checkout-b"),
+					spec: { containers: [{ name: "app", image: "checkout:v2" }] },
+					status: {
+						phase: "Running",
+						containerStatuses: [
+							{ name: "app", imageID: `docker-pullable://checkout@${d2}` },
+						],
+					},
+				},
+			],
+		};
+		const parsed = parsePods(twoDigestPods);
+		expect(parsed[0].containers[0].digest).toBe(d1);
+		expect(parsed[1].containers[0].digest).toBe(d2);
+		expect(imageTag(parsed[0].containers[0].image!)).toBe("v2");
+		expect(imageTag(parsed[1].containers[0].image!)).toBe("v2");
+	});
+
+	it("orders crashedContainers newest finishedAt first with nulls last and caps at MAX_LOG_CONTAINERS", () => {
+		const crashedPods: K8sPod[] = [
+			{
+				namespace: "shop",
+				name: "pod-1",
+				uid: "p1",
+				phase: "Running",
+				startTime: null,
+				podTemplateHash: null,
+				owner: null,
+				containers: [
+					{
+						name: "c-old",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "Error", exitCode: 1, finishedAt: "2026-10-15T01:00:00Z" },
+					},
+					{
+						name: "c-newest",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "OOM", exitCode: 137, finishedAt: "2026-10-15T05:00:00Z" },
+					},
+				],
+			},
+			{
+				namespace: "shop",
+				name: "pod-2",
+				uid: "p2",
+				phase: "Running",
+				startTime: null,
+				podTemplateHash: null,
+				owner: null,
+				containers: [
+					{
+						name: "c-mid1",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "Error", exitCode: 1, finishedAt: "2026-10-15T04:00:00Z" },
+					},
+					{
+						name: "c-mid2",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "Error", exitCode: 1, finishedAt: "2026-10-15T03:00:00Z" },
+					},
+					{
+						name: "c-mid3",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "Error", exitCode: 1, finishedAt: "2026-10-15T02:00:00Z" },
+					},
+					{
+						name: "c-null-time",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: false,
+						restartCount: 1,
+						lastTermination: { reason: "Unknown", exitCode: 2, finishedAt: null },
+					},
+					{
+						name: "c-no-term",
+						image: null,
+						imageID: null,
+						digest: null,
+						ready: true,
+						restartCount: 0,
+						lastTermination: null,
+					},
+				],
+			},
+		];
+		const crashed = crashedContainers(crashedPods);
+		expect(crashed).toHaveLength(5);
+		expect(crashed.map((c) => c.container)).toEqual([
+			"c-newest",
+			"c-mid1",
+			"c-mid2",
+			"c-mid3",
+			"c-old",
+		]);
+
+		const allCrashed = crashedContainers(crashedPods, 10);
+		expect(allCrashed).toHaveLength(6);
+		expect(allCrashed[5]).toMatchObject({
+			container: "c-null-time",
+			finishedAt: null,
+		});
+	});
+
+	it("caps warning events at MAX_WARNING_EVENTS and supports custom cap", () => {
+		const items = Array.from({ length: 60 }, (_, i) => ({
+			...meta(`warn-${i}`),
+			type: "Warning",
+			reason: "BackOff",
+			lastTimestamp: new Date(Date.parse("2026-10-15T00:00:00Z") + i * 1000).toISOString(),
+		}));
+		const defaultCapped = parseWarningEvents({ items });
+		expect(defaultCapped).toHaveLength(50);
+		expect(defaultCapped[0].name).toBe("warn-59");
+
+		const customCapped = parseWarningEvents({ items }, 3);
+		expect(customCapped).toHaveLength(3);
+		expect(customCapped.map((e) => e.name)).toEqual(["warn-59", "warn-58", "warn-57"]);
+	});
+
+	it("resolves event times using series.lastObservedTime and firstTimestamp fallback", () => {
+		const events = {
+			items: [
+				{
+					...meta("e-series"),
+					type: "Warning",
+					note: "from note",
+					series: { lastObservedTime: "2026-10-15T08:00:00Z", count: 7 },
+				},
+				{
+					...meta("e-first"),
+					type: "Warning",
+					message: "from message",
+					firstTimestamp: "2026-10-15T06:00:00Z",
+					count: 2,
+				},
+			],
+		};
+		const parsed = parseWarningEvents(events);
+		expect(parsed).toEqual([
+			{
+				namespace: "shop",
+				name: "e-series",
+				uid: "e-series-uid",
+				reason: null,
+				message: "from note",
+				count: 7,
+				involvedObject: { kind: null, name: null },
+				time: "2026-10-15T08:00:00Z",
+			},
+			{
+				namespace: "shop",
+				name: "e-first",
+				uid: "e-first-uid",
+				reason: null,
+				message: "from message",
+				count: 2,
+				involvedObject: { kind: null, name: null },
+				time: "2026-10-15T06:00:00Z",
+			},
+		]);
+	});
+
+	it("extracts sourceRange for deployments with conditions and for replicasets", () => {
+		const depWithConditions = {
+			items: [
+				{
+					...meta("web", { creationTimestamp: "2026-10-10T10:00:00Z" }),
+					status: {
+						conditions: [
+							{
+								lastUpdateTime: "2026-10-10T10:05:00Z",
+								lastTransitionTime: "2026-10-10T10:04:00Z",
+							},
+							{
+								lastUpdateTime: "2026-10-10T12:00:00Z",
+								lastTransitionTime: "2026-10-10T11:00:00Z",
+							},
+						],
+					},
+				},
+			],
+		};
+		expect(sourceRange("deployments", depWithConditions)).toEqual({
+			from: new Date("2026-10-10T10:00:00Z"),
+			to: new Date("2026-10-10T12:00:00Z"),
+		});
+
+		expect(sourceRange("replicasets", replicasets)).toEqual({
+			from: new Date("2026-10-15T07:30:00Z"),
+			to: new Date("2026-10-15T07:30:00Z"),
+		});
+	});
+
+	it("handles malformed and non-object input without throwing", () => {
+		for (const bad of [null, undefined, 42, "string", [], {}]) {
+			expect(parseDeployments(bad)).toEqual([]);
+			expect(parseReplicaSets(bad)).toEqual([]);
+			expect(parsePods(bad)).toEqual([]);
+			expect(parseWarningEvents(bad)).toEqual([]);
+			expect(sourceRange("deployments", bad)).toEqual({ from: null, to: null });
+			expect(sourceRange("pods", bad)).toEqual({ from: null, to: null });
+			expect(sourceRange("events", bad)).toEqual({ from: null, to: null });
+			expect(sourceRange("replicasets", bad)).toEqual({ from: null, to: null });
+			expect(sourceRange("logs-previous", bad)).toEqual({ from: null, to: null });
+		}
+
+		expect(parseDeployments({ items: [{}, { metadata: {} }] })).toEqual([]);
+		expect(parsePods({ items: [null, "foo", { metadata: {} }] })).toEqual([]);
+		expect(
+			parsePods({
+				items: [
+					{
+						metadata: { name: "no-ns-pod" },
+						status: { containerStatuses: [{ name: null }] },
+					},
+				],
+			})[0].namespace,
+		).toBe("");
+		expect(parseWarningEvents({ items: [{ type: "Warning" }, { type: "Normal" }] })).toEqual([]);
+		expect(
+			parseWarningEvents({
+				items: [
+					{ type: "Warning", metadata: { name: "w1" }, lastTimestamp: "2026-10-15T00:00:00Z" },
+					{ type: "Warning", metadata: { name: "w2" }, lastTimestamp: "2026-10-15T00:00:00Z" },
+					{ type: "Warning", metadata: { name: "no-ns-warn" } },
+				],
+			}).find((e) => e.name === "no-ns-warn")?.namespace,
+		).toBe("");
+
+		expect(
+			parseReplicaSets({
+				items: [
+					{ metadata: { name: "rs-no-rev" } },
+					{ metadata: { name: "rs-neg", annotations: { "deployment.kubernetes.io/revision": "-1" } } },
+					{ metadata: { name: "rs-zero", annotations: { "deployment.kubernetes.io/revision": "0" } } },
+					{ metadata: { name: "rs-nan", annotations: { "deployment.kubernetes.io/revision": "abc" } } },
+				],
+			}),
+		).toEqual([]);
+
+		expect(imageTag("")).toBeNull();
+		expect(imageTag("no-tag")).toBeNull();
+		expect(imageTag("registry:5000/repo")).toBeNull();
+		expect(imageTag("registry:5000/repo:")).toBeNull();
+		expect(imageTag(":only-tag")).toBe("only-tag");
+
+		expect(imageDigest(null)).toBeNull();
+		expect(imageDigest("")).toBeNull();
+		expect(imageDigest("sha256:short")).toBeNull();
+		expect(imageDigest(`SHA256:${"A".repeat(64)}`)).toBe(`sha256:${"a".repeat(64)}`);
 	});
 });
