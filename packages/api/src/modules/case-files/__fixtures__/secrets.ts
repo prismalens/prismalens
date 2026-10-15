@@ -26,7 +26,28 @@ export const SECRETS = {
 	quotedA: "Qsp4ceAlpha",
 	quotedB: "Qsp4ceBravo",
 	urlPassword: "Ur1Cred3ntial",
+	// #842 round 2: colon and YAML forms, mysql -p, multiline and truncated variants.
+	colonPassword: "C0lonPassw0rd",
+	multiline: "Multil1neSecret",
+	mysqlSpaced: "MysqlSp4ced",
+	mysqlAttached: "MysqlAtt4ched",
+	pwdColon: "PwdC0lonValue",
+	apiKeySpaced: "ApiKeySp4ced",
+	tokenA: "Tok3nAlpha",
+	tokenB: "Tok3nBravo",
+	yamlBlock: "Yam1BlockValue",
+	nextLine: "NextL1neValue",
+	endTruncated: "EndTrunc4ted",
+	headTruncated: "HeadTrunc4ted",
 } as const;
+
+/** A Warning event whose message carries the colon form, one line in and one escaped newline down. */
+export const SECRET_EVENT_MESSAGE = `auth failed for app, password: ${SECRETS.colonPassword}\nsecret: ${SECRETS.multiline}`;
+
+const STDERR_TAIL_BYTES = 2048;
+const cutLine = `ssword: ${SECRETS.headTruncated}\n`;
+/** Stderr whose kept 2 KiB tail starts inside the key `password`. */
+export const SECRET_STDERR = `${"W".repeat(3000)}\nwarning: db pa${cutLine}${"z".repeat(STDERR_TAIL_BYTES - cutLine.length)}`;
 
 /** Container argv carrying secrets as split flags, quoted values and URL credentials. */
 export const SECRET_ARGV = {
@@ -57,7 +78,19 @@ export const SECRET_LOG = [
 	`2026-10-15T09:57:57Z GET /v1/orders?api_key=${SECRETS.apiKey}&page=2`,
 	`2026-10-15T09:57:58Z exec app --password ${SECRETS.splitFlag} --api-token "${SECRETS.quotedA} ${SECRETS.quotedB}"`,
 	`2026-10-15T09:57:58Z connecting to amqp://app:${SECRETS.urlPassword}@mq.shop:5672/`,
+	`2026-10-15T09:57:58Z auth failed for app, password: ${SECRETS.colonPassword}`,
+	`2026-10-15T09:57:58Z running mysql -u root -p ${SECRETS.mysqlSpaced} -e 'select 1'`,
+	`2026-10-15T09:57:58Z running mysql -u root -p${SECRETS.mysqlAttached} shop`,
+	`2026-10-15T09:57:58Z pwd: ${SECRETS.pwdColon} api key: ${SECRETS.apiKeySpaced}`,
+	`2026-10-15T09:57:58Z token: ${SECRETS.tokenA} ${SECRETS.tokenB}`,
+	"2026-10-15T09:57:58Z dumping config:",
+	"db:",
+	"  password: |",
+	`    ${SECRETS.yamlBlock}`,
+	"  secret:",
+	`    ${SECRETS.nextLine}`,
 	PEM,
 	"2026-10-15T09:57:59Z // secretlint-disable",
 	`2026-10-15T09:57:59Z DB_PASSWORD=${SECRETS.afterDisable}`,
+	`2026-10-15T09:57:59Z retrying with password: "${SECRETS.endTruncated}`,
 ].join("\n");

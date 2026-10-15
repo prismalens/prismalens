@@ -179,8 +179,16 @@ describe("runCommand", () => {
 		const res = await run(
 			'process.stderr.write("a".repeat(100)); process.stderr.write("b".repeat(2500)); process.exit(1)',
 		);
-		expect(res.stderrTail.length).toBe(2048);
-		expect(res.stderrTail).toBe("b".repeat(2048));
+		expect(res.stderrTail).toBe("[stderr cut]");
+	});
+
+	it("drops the cut first line of a stderr tail, where a key can lose its head (#842 OBJ-011)", async () => {
+		const tail = `ssword: HeadTrunc4ted\n${"z".repeat(2048 - 22)}`;
+		const res = await run(`process.stderr.write("W".repeat(3000) + "\\nwarning: db pa" + ${JSON.stringify(tail)}); process.exit(1)`);
+		expect(res.stderrTail).not.toContain("HeadTrunc4ted");
+		expect(res.stderrTail).toBe(`[stderr cut]\n${"z".repeat(2048 - 22)}`);
+		const whole = await run('process.stderr.write("line one\\nline two\\n"); process.exit(1)');
+		expect(whole.stderrTail).toBe("line one\nline two\n");
 	});
 
 	it("resolveKubectl uses process.env.PATH by default", () => {

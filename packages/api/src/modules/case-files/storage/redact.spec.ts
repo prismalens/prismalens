@@ -9,7 +9,7 @@ import {
 	SECRETS as FIXTURE_SECRETS,
 	corpusFor,
 } from "../__fixtures__/secret-corpus.js";
-import { REDACT_CONFIG, type RedactConfig, redact, redactText } from "./redact.js";
+import { REDACT_CONFIG, type RedactConfig, redact, redactInProcess, redactText } from "./redact.js";
 
 const PEM = generateKeyPairSync("rsa", { modulusLength: 1024 })
 	.privateKey.export({ type: "pkcs8", format: "pem" })
@@ -123,7 +123,7 @@ describe("redact", () => {
 				},
 			],
 		};
-		expect(await redact("events", Buffer.from("{}"), throwing)).toEqual({ error: "text pass failed (Error)" });
+		expect(await redactInProcess("events", Buffer.from("{}"), throwing)).toEqual({ error: "text pass failed (Error)" });
 		expect(await redact("pods", Buffer.from('{"items": ['))).toEqual({
 			error: expect.stringContaining("structural pass"),
 		});
@@ -304,9 +304,90 @@ describe("redaction holds against captured text (#842)", () => {
 				},
 			],
 		};
-		for (const out of [await redact("events", Buffer.from("token hunter2"), quoting), await redactText("token hunter2", quoting)]) {
+		for (const out of [await redactInProcess("events", Buffer.from("token hunter2"), quoting), await redactText("token hunter2", quoting)]) {
 			expect(out).toEqual({ error: expect.any(String) });
 			expect(JSON.stringify(out)).not.toContain("hunter2");
 		}
 	});
+});
+
+describe("round 2 (#842)", () => {
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+
+	it("OBJ-011: removes colon, YAML and mysql -p forms, multiline and truncated, from logs and event JSON", async () => {
+		const values = [
+			"C0lonPassw0rd",
+			"PassW0rdTwo",
+			"PwdC0lonValue",
+			"ApiKeySp4ced",
+			"Tok3nAlpha",
+			"Tok3nBravo",
+			"Yam1BlockValue",
+			"NextL1neValue",
+			"MysqlSp4ced",
+			"MysqlAtt4ched",
+			"Multil1neSecret",
+			"EndTrunc4ted",
+			"SecretKeyValue",
+		];
+		const log = [
+			"2026-10-15T10:00:00Z auth failed, password: C0lonPassw0rd",
+			"2026-10-15T10:00:00Z Password:PassW0rdTwo",
+			"2026-10-15T10:00:01Z pwd: PwdC0lonValue api key: ApiKeySp4ced",
+			"2026-10-15T10:00:02Z token: Tok3nAlpha Tok3nBravo",
+			"db:",
+			"  password: |",
+			"    Yam1BlockValue",
+			"  secret:",
+			"    NextL1neValue",
+			"2026-10-15T10:00:03Z mysql -u root -p MysqlSp4ced -e 'select 1'",
+			"2026-10-15T10:00:03Z mysql -u root -pMysqlAtt4ched shop",
+			"secret key: SecretKeyValue",
+			'2026-10-15T10:00:04Z retrying with password: "EndTrunc4ted',
+		].join("\n");
+		const logs = await redact("logs-previous", Buffer.from(log));
+		if ("error" in logs) throw new Error(logs.error);
+		expect(leaked(logs.redacted.toString("utf8"), values)).toEqual([]);
+
+		const events = {
+			items: [
+				{ type: "Warning", reason: "FailedAuth", message: `auth failed, password: C0lonPassw0rd\nsecret: Multil1neSecret` },
+				{ type: "Warning", reason: "Exec", message: log },
+				{ type: "Normal", reason: "Counted", count: 3, passed: true, tokenCount: 7, note: "keep me" },
+			],
+		};
+		for (const indent of [undefined, 4]) {
+			const out = await redact("events", Buffer.from(JSON.stringify(events, null, indent)));
+			if ("error" in out) throw new Error(out.error);
+			const text = out.redacted.toString("utf8");
+			expect(leaked(text, values)).toEqual([]);
+			expect(JSON.parse(text)).toMatchObject({ items: [{}, {}, { note: "keep me" }] });
+		}
+	});
+
+	const dense = (bytes: number) => Buffer.from("token=a ".repeat(Math.ceil(bytes / 8)).slice(0, bytes));
+
+	it("OBJ-012: dense input never holds the event loop for more than 100 ms", async () => {
+		// Async rules run as microtasks, so the gap is read once more after the call returns.
+		let last = performance.now();
+		let maxGap = 0;
+		const sample = setInterval(() => {
+			const now = performance.now();
+			maxGap = Math.max(maxGap, now - last);
+			last = now;
+		}, 5);
+		const out = await redact("events", dense(256 * 1024));
+		maxGap = Math.max(maxGap, performance.now() - last);
+		clearInterval(sample);
+		if ("error" in out) throw new Error(out.error);
+		expect(out.redacted.toString("utf8")).not.toContain("token=a ");
+		expect(maxGap).toBeLessThan(100);
+	}, 60_000);
+
+	it("OBJ-012: a redaction past its deadline fails closed with the reason recorded", async () => {
+		const started = Date.now();
+		const out = await redact("logs-previous", dense(1024 * 1024), { deadlineMs: 200 });
+		expect(out).toEqual({ error: "redaction deadline exceeded (200 ms)" });
+		expect(Date.now() - started).toBeLessThan(2_000);
+	}, 60_000);
 });

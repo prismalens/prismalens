@@ -6,6 +6,7 @@
  * JSON, then a secretlint text pass over everything. Fails closed: on any
  * error no redacted copy exists.
  */
+import { Worker } from "node:worker_threads";
 import type { ArtifactPurpose } from "@prismalens/contracts";
 import { lintSource } from "@secretlint/core";
 import { creator as patternRule } from "@secretlint/secretlint-rule-pattern";
@@ -28,6 +29,15 @@ const ARGV_MARK = "[REDACTED:argv]";
 const HEADER_MARK = "[REDACTED:header]";
 const ARGV_KEYS: ReadonlySet<string> = new Set(["command", "args"]);
 const DIAGNOSTIC_WITHHELD = "[diagnostic withheld: redaction failed]";
+const DIAGNOSTIC_CAP = 4096;
+
+/** Per artifact; past it the artifact is withheld, never stored unredacted (#842). */
+export const REDACT_DEADLINE_MS = 15_000;
+// Sources run under Node's type stripping, builds as the emitted .js beside this file.
+const WORKER_URL = new URL(
+	`./redact-worker.${import.meta.url.endsWith(".ts") ? "ts" : "js"}`,
+	import.meta.url,
+);
 const LAST_APPLIED = "kubectl.kubernetes.io/last-applied-configuration";
 const STRUCTURAL: ReadonlySet<ArtifactPurpose> = new Set([
 	"deployments",
@@ -45,22 +55,27 @@ const POD_SPEC_CONTAINERS = [
 const WINDOW = 64 * 1024;
 const OVERLAP = 16 * 1024;
 
-const KEY = "PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY";
+const KEY = "PASS(?:WORD|WD|PHRASE)?|PWD|SECRET|TOKEN|API[_ -]?KEY|PRIVATE_KEY";
 
 // A bare token; a backslash only as an escape pair, so a JSON string's closing quote survives.
 const TOKEN = String.raw`(?:[^\s"'\\&,;]|\\[^"\s])`;
+const BARE_TOKEN = String.raw`${TOKEN}+(?!${TOKEN})(?!\\?["']\s*:)`;
+// The rest of a line, stopping at an unescaped `"` or an escaped newline inside a JSON string.
+const BARE_LINE = String.raw`(?=\S)(?:[^\r\n"\\]|\\[^nr"])+`;
+// A newline, raw or JSON-escaped, then the indent of a YAML value on the next line.
+const NEXT_LINE = String.raw`(?:(?:\r?\n|(?:\\r)?\\n)[ \t]+)`;
 
 /**
  * The value after `prefix`: a quoted run (plain, JSON-escaped or single), else one token.
  * Quotes stay outside the match; a `"` before `,:]}` ends a JSON string and one before `:`
  * is an object key, so redacted JSON still parses for the case builder.
  */
-const valueAfter = (prefix: string): string =>
+const valueAfter = (prefix: string, bare = BARE_TOKEN): string =>
 	[
 		String.raw`(?<=${prefix}")(?!\s*[,:\]}])[^"\n]+(?="(?!\s*:))`,
 		String.raw`(?<=${prefix}\\")[^"\n]+?(?=\\")`,
 		String.raw`(?<=${prefix}')[^'\n]+(?=')`,
-		String.raw`(?<=${prefix}(?:\\?["'])?)${TOKEN}+(?!${TOKEN})(?!\\?["']\s*:)`,
+		String.raw`(?<=${prefix}(?:\\?["'])?)${bare}`,
 	].join("|");
 
 /** #272's Done-when shapes plus argv forms (#842). Lookbehinds keep the key visible and replace only the value. */
@@ -75,6 +90,21 @@ export const SECRET_PATTERNS = [
 		name: "flag value",
 		patterns: [
 			`/${valueAfter(String.raw`(?:^|[\s"'\[,(])--?[\w.-]*(?:${KEY})[\w.-]*(?:\\?["'])?(?:[ \t]*,\s*|[ \t]+)`)}/i`,
+		],
+	},
+	{
+		// `password: x`, YAML block and next-line values, `api key: x`; unquoted keys only, as JSON keys
+		// are quoted and json-key-value covers them. The whole rest of the line goes.
+		name: "key: value",
+		patterns: [
+			`/${valueAfter(String.raw`\b[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?[ \t]*:[ \t]*(?:[|>][-+]?[ \t]*)?${NEXT_LINE}?`, BARE_LINE)}/i`,
+		],
+	},
+	{
+		// mysql-style `-p value` and `-pvalue`; case-sensitive, as `-P` is mysql's port.
+		name: "short password flag",
+		patterns: [
+			`/${valueAfter(String.raw`(?:^|[\s"'\[,(])-p(?:(?:\\?["'])?(?:[ \t]*,\s*|[ \t]+))?`)}/`,
 		],
 	},
 	{
@@ -256,7 +286,7 @@ async function textPass(
 	return replaceRanges(text, [...hits.values()]);
 }
 
-/** Text pass alone, for `stderrTail`. */
+/** Text pass alone, for `stderrTail` and diagnostics: small inputs, so it runs in-process. */
 export async function redactText(
 	text: string,
 	config: RedactConfig = REDACT_CONFIG,
@@ -271,12 +301,12 @@ export async function redactText(
 
 /** Failure text bound for a DB column or an API error: redacted, or withheld whole. */
 export async function redactDiagnostic(text: string): Promise<string> {
-	const out = await redactText(text);
+	const out = await redactText(text.slice(0, DIAGNOSTIC_CAP));
 	return "error" in out ? DIAGNOSTIC_WITHHELD : out.text;
 }
 
-/** Both passes over one artifact; the raw buffer is never modified. */
-export async function redact(
+/** Both passes over one artifact in this thread; `redact` runs it in a worker. */
+export async function redactInProcess(
 	purpose: ArtifactPurpose,
 	raw: Buffer,
 	config: RedactConfig = REDACT_CONFIG,
@@ -297,4 +327,54 @@ export async function redact(
 		return { error: failure("text", err) };
 	}
 	return { redacted: Buffer.from(text, "utf8"), counts };
+}
+
+type WorkerResult =
+	| { redacted: Uint8Array; counts: RedactCounts }
+	| { error: string };
+
+/**
+ * Both passes over one artifact; the raw buffer is never modified. The scan runs in a worker
+ * because secretlint dedups hits quadratically and would hold the API's event loop on dense
+ * input (#842); the deadline terminates it.
+ */
+export function redact(
+	purpose: ArtifactPurpose,
+	raw: Buffer,
+	{ deadlineMs = REDACT_DEADLINE_MS }: { deadlineMs?: number } = {},
+): Promise<RedactResult> {
+	return new Promise((resolve) => {
+		const worker = new Worker(WORKER_URL, { workerData: { purpose, raw } });
+		worker.unref();
+		let settled = false;
+		const finish = (result: RedactResult): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			void worker.terminate();
+			resolve(result);
+		};
+		const timer = setTimeout(
+			() => finish({ error: `redaction deadline exceeded (${deadlineMs} ms)` }),
+			deadlineMs,
+		);
+		worker.once("message", (out: WorkerResult) =>
+			finish(
+				"error" in out
+					? out
+					: {
+							redacted: Buffer.from(
+								out.redacted.buffer,
+								out.redacted.byteOffset,
+								out.redacted.byteLength,
+							),
+							counts: out.counts,
+						},
+			),
+		);
+		worker.once("error", (err) => finish({ error: failure("worker", err) }));
+		worker.once("exit", () =>
+			finish({ error: "redaction worker exited without a result" }),
+		);
+	});
 }

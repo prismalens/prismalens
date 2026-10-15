@@ -30,6 +30,7 @@ export const CAPTURE_ENV_ALLOWLIST = [
 ] as const;
 
 const STDERR_TAIL_BYTES = 2048;
+const CUT_MARK = "[stderr cut]";
 /** After a kill, stop waiting for a grandchild that escaped the group still holding the pipes. */
 const KILL_GRACE_MS = 2_000;
 
@@ -89,6 +90,7 @@ export function reapLiveCaptures(): void {
 class TailBuffer {
 	private chunks: Buffer[] = [];
 	private size = 0;
+	private dropped = false;
 	constructor(private readonly limit: number) {}
 	push(chunk: Buffer): void {
 		this.chunks.push(chunk);
@@ -96,11 +98,17 @@ class TailBuffer {
 		while (this.size - this.chunks[0].length >= this.limit) {
 			this.size -= this.chunks[0].length;
 			this.chunks.shift();
+			this.dropped = true;
 		}
 	}
 	text(): string {
 		const all = Buffer.concat(this.chunks);
-		return all.subarray(Math.max(0, all.length - this.limit)).toString("utf8");
+		const start = Math.max(0, all.length - this.limit);
+		const text = all.subarray(start).toString("utf8");
+		if (start === 0 && !this.dropped) return text;
+		// A cut tail starts mid-line, where a secret's key can lose its head, so that line goes (#842).
+		const newline = text.indexOf("\n");
+		return newline === -1 ? CUT_MARK : `${CUT_MARK}${text.slice(newline)}`;
 	}
 }
 
