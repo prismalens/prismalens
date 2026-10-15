@@ -23,6 +23,7 @@ import {
 	resolveKubectl,
 	runCommand,
 } from "./capture/run-command.js";
+import { redactDiagnostic } from "./storage/redact.js";
 
 const DETECT_TIMEOUT_MS = 5_000;
 const DETECT_BYTE_CAP = 256 * 1024;
@@ -199,7 +200,9 @@ export class BindingsService {
 					: (classifyFailure("", err) ?? "context-missing");
 			throw new BindingRefusedError(
 				reason,
-				err instanceof Error ? err.message : String(err),
+				await redactDiagnostic(
+					err instanceof Error ? err.message : String(err),
+				),
 			);
 		}
 		const detected = await this.detect(input.serviceId);
@@ -229,9 +232,11 @@ export class BindingsService {
 		});
 		if (!binding) throw new BindingNotFoundError(serviceId);
 		const { state, detail } = await this.runProbe(binding);
+		// Probe detail quotes kubectl stderr, which can carry credentials (#842).
+		const probeDetail = detail === null ? null : await redactDiagnostic(detail);
 		const row = await this.prisma.serviceBinding.update({
 			where: { serviceId },
-			data: { probeState: state, probeDetail: detail, probedAt: new Date() },
+			data: { probeState: state, probeDetail, probedAt: new Date() },
 		});
 		return serializeBinding(row);
 	}

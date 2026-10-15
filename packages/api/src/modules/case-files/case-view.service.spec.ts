@@ -12,7 +12,7 @@ import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingsService } from "./bindings.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
-import { SECRET_LOG, SECRETS } from "./__fixtures__/secrets.js";
+import { SECRET_ARGV, SECRET_LOG, SECRETS } from "./__fixtures__/secrets.js";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -73,7 +73,7 @@ function installFakeKubectl(): void {
 			items: [
 				{
 					metadata: { name: "checkout", namespace: "shop", uid: "d1" },
-					spec: { template: { spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env }] } } },
+					spec: { template: { spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env, ...SECRET_ARGV }] } } },
 				},
 			],
 		},
@@ -87,7 +87,7 @@ function installFakeKubectl(): void {
 						uid: "p1",
 						annotations: { note: `pulled with ${SECRETS.github} from /x?api_key=${SECRETS.apiKey}` },
 					},
-					spec: { containers: [{ name: "app", env }] },
+					spec: { containers: [{ name: "app", env, ...SECRET_ARGV }] },
 					status: {
 						phase: "Running",
 						startTime: "2026-10-15T09:00:00Z",

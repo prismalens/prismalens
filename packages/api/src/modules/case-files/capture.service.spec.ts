@@ -105,6 +105,14 @@ if (mode === "context-missing" && args[0] === "config") {
 	process.stderr.write("error: context kind-pl does not exist\\n");
 	process.exit(1);
 }
+if (mode === "leaky-context" && args[0] === "config") {
+	process.stderr.write("error: exec plugin failed: token=SYNTHETIC_SECRET_7zQ9\\n");
+	process.exit(1);
+}
+if (mode === "leaky-pods" && args[0] === "get" && args[1] === "pods") {
+	process.stdout.write('{"items": [hunter2');
+	process.exit(0);
+}
 if (mode === "unreachable" && args[0] === "get") {
 	process.stderr.write("unable to connect to server: connection refused\\n");
 	process.exit(1);
@@ -717,6 +725,35 @@ describe("CaptureService", () => {
 		const redactions = JSON.parse(depArt?.redactions ?? "{}") as { error?: string };
 		expect(redactions.error).toBeDefined();
 		expect(depArt?.redactedBytes).toBe(0);
+	});
+
+	it("keeps secrets out of lastError, redactions.error and the manifest when diagnostics quote them (#842 OBJ-003)", async () => {
+		const { incident: blocked } = await boundIncident("svc-leaky-ctx", "critical", "ns-leaky-ctx");
+		writeFileSync(modeFile, "leaky-context");
+		await service.captureNow(blocked.id);
+		await service.tick();
+		await service.settle();
+		const cap = await prisma.capture.findFirstOrThrow({ where: { binding: { service: { name: "svc-leaky-ctx" } } } });
+		expect(cap.state).toBe("blocked");
+		expect(cap.lastError).toContain("token=");
+		expect(cap.lastError).not.toContain("SYNTHETIC_SECRET_7zQ9");
+
+		const { incident: malformed } = await boundIncident("svc-leaky-pods", "critical", "ns-leaky-pods");
+		writeFileSync(modeFile, "leaky-pods");
+		await service.captureNow(malformed.id);
+		await service.tick();
+		await service.settle();
+		const pods = await prisma.captureArtifact.findFirstOrThrow({
+			where: { purpose: "pods", capture: { binding: { service: { name: "svc-leaky-pods" } } } },
+		});
+		expect(JSON.parse(pods.redactions)).toEqual({ error: expect.any(String) });
+		const persisted = JSON.stringify([
+			await prisma.capture.findMany(),
+			await prisma.captureArtifact.findMany(),
+			await prisma.manifestEntry.findMany(),
+		]);
+		expect(persisted).not.toContain("hunter2");
+		expect(persisted).not.toContain("SYNTHETIC_SECRET_7zQ9");
 	});
 
 	it("determines worstReason correctly", () => {

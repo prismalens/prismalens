@@ -123,13 +123,11 @@ describe("redact", () => {
 				},
 			],
 		};
-		expect(await redact("events", Buffer.from("{}"), throwing)).toEqual({
-			error: expect.stringContaining("rule exploded"),
-		});
+		expect(await redact("events", Buffer.from("{}"), throwing)).toEqual({ error: "text pass failed (Error)" });
 		expect(await redact("pods", Buffer.from('{"items": ['))).toEqual({
 			error: expect.stringContaining("structural pass"),
 		});
-		expect(await redactText("x", throwing)).toEqual({ error: expect.stringContaining("rule exploded") });
+		expect(await redactText("x", throwing)).toEqual({ error: "text pass failed (Error)" });
 	});
 
 	it("redacts a stderr tail as text", async () => {
@@ -184,5 +182,131 @@ describe("redact", () => {
 
 		const nonObj = await redact("pods", Buffer.from(JSON.stringify({ kind: "Pod", metadata: null, spec: null })));
 		if ("error" in nonObj) throw new Error(nonObj.error);
+	});
+});
+
+describe("redaction holds against captured text (#842)", () => {
+	const SECRET = "SYNTHETIC_SECRET_7zQ9";
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+
+	it("OBJ-001: a disable directive inside captured text does not switch redaction off", async () => {
+		for (const log of [
+			"2026-10-15T10:00:00Z // secretlint-disable\n2026-10-15T10:00:01Z DB_PASSWORD=hunter2",
+			"2026-10-15T10:00:00Z # secretlint-disable-next-line\n2026-10-15T10:00:01Z DB_PASSWORD=hunter2",
+			"2026-10-15T10:00:01Z DB_PASSWORD=hunter2 // secretlint-disable-line",
+			`2026-10-15T10:00:00Z /* secretlint-disable @secretlint/secretlint-rule-pattern */ token=hunter2 ${FIXTURE_SECRETS.github}`,
+		]) {
+			const out = await redact("logs-previous", Buffer.from(log));
+			if ("error" in out) throw new Error(out.error);
+			expect(leaked(out.redacted.toString("utf8"), ["hunter2", FIXTURE_SECRETS.github])).toEqual([]);
+		}
+	});
+
+	it("OBJ-002: removes every component of secrets in a pod's command, args and exec probes", async () => {
+		const pods = {
+			items: [
+				{
+					metadata: { name: "checkout-7d9f" },
+					spec: {
+						initContainers: [{ name: "migrate", args: ["db", "postgres://app:Ur1Cred3ntial@db:5432/shop"] }],
+						containers: [
+							{
+								name: "app",
+								image: "shop/checkout:1.4.2",
+								command: ["sh", "-c", "exec app --password 'Qsp4ceAlpha Qsp4ceBravo'"],
+								args: ["--password", SECRET, "--db-pass=plainEq9"],
+								livenessProbe: { exec: { command: ["mysql", "-phunter2", "-e", "select 1"] } },
+							},
+						],
+					},
+				},
+			],
+		};
+		const out = await redact("pods", Buffer.from(JSON.stringify(pods)));
+		if ("error" in out) throw new Error(out.error);
+		const text = out.redacted.toString("utf8");
+		expect(leaked(text, [SECRET, "Qsp4ceAlpha", "Qsp4ceBravo", "Ur1Cred3ntial", "plainEq9", "hunter2"])).toEqual([]);
+		const container = JSON.parse(text).items[0].spec.containers[0];
+		expect(container).toMatchObject({ name: "app", image: "shop/checkout:1.4.2" });
+		expect(out.counts.argv).toBeGreaterThan(0);
+	});
+
+	it("OBJ-002: removes split flags, quoted values with spaces and URL credentials from text", async () => {
+		const log = [
+			`2026-10-15T10:00:00Z exec app --password ${SECRET}`,
+			`2026-10-15T10:00:01Z exec app --password="Qsp4ceAlpha Qsp4ceBravo"`,
+			`2026-10-15T10:00:02Z exec app --api-token 'Qsp4ceCharlie Qsp4ceDelta'`,
+			`2026-10-15T10:00:03Z DB_PASSWORD="Qsp4ceEcho Qsp4ceFoxtrot"`,
+			`2026-10-15T10:00:04Z dialing redis://:R3disPositional@cache:6379/0 and amqp://app:Amqp.p4ss@mq/`,
+		].join("\n");
+		const out = await redact("logs-previous", Buffer.from(log));
+		if ("error" in out) throw new Error(out.error);
+		expect(
+			leaked(out.redacted.toString("utf8"), [
+				SECRET,
+				"Qsp4ceAlpha",
+				"Qsp4ceBravo",
+				"Qsp4ceCharlie",
+				"Qsp4ceDelta",
+				"Qsp4ceEcho",
+				"Qsp4ceFoxtrot",
+				"R3disPositional",
+				"Amqp.p4ss",
+			]),
+		).toEqual([]);
+		expect(out.redacted.toString("utf8")).toContain("exec app --password");
+	});
+
+	it("OBJ-002: removes a split flag written as a JSON array in an artifact with no structural pass", async () => {
+		const events = { items: [{ message: `Error: exec ["app","--password","${SECRET}","--token", "Qsp4ceAlpha Qsp4ceBravo"]` }] };
+		const escaped = { items: [{ message: 'run --password="Qsp4ceCharlie Qsp4ceDelta"' }] };
+		const rawArray = { items: [{ args: ["--password", "Qsp4ceEcho Qsp4ceFoxtrot"] }] };
+		for (const doc of [events, escaped, rawArray]) {
+			for (const indent of [undefined, 4]) {
+				const out = await redact("events", Buffer.from(JSON.stringify(doc, null, indent)));
+				if ("error" in out) throw new Error(out.error);
+				const text = out.redacted.toString("utf8");
+				expect(
+					leaked(text, [SECRET, "Qsp4ceAlpha", "Qsp4ceBravo", "Qsp4ceCharlie", "Qsp4ceDelta", "Qsp4ceEcho", "Qsp4ceFoxtrot"]),
+				).toEqual([]);
+				expect(() => JSON.parse(text)).not.toThrow();
+			}
+		}
+	});
+
+	it("keeps redacted JSON parseable when a key=value or flag ends a string", async () => {
+		const doc = { items: [{ note: "DB_PASSWORD=", flag: "--token", next: "keep me", list: ["--secret", "", "tail"] }] };
+		for (const indent of [undefined, 4]) {
+			const out = await redact("events", Buffer.from(JSON.stringify(doc, null, indent)));
+			if ("error" in out) throw new Error(out.error);
+			expect(JSON.parse(out.redacted.toString("utf8"))).toMatchObject({ items: [{ next: "keep me" }] });
+		}
+	});
+
+	it("OBJ-003: a redaction failure never echoes the input it failed on", async () => {
+		const malformed = await redact("pods", Buffer.from('{"items": [hunter2'));
+		expect(malformed).toEqual({ error: expect.any(String) });
+		expect(JSON.stringify(malformed)).not.toContain("hunter2");
+
+		const quoting: RedactConfig = {
+			rules: [
+				{
+					id: "quoting",
+					rule: {
+						messages: {},
+						meta: { id: "quoting", recommended: false, type: "scanner", supportedContentTypes: ["text"] },
+						create: () => ({
+							file(source) {
+								throw new Error(`cannot scan ${source.content}`);
+							},
+						}),
+					},
+				},
+			],
+		};
+		for (const out of [await redact("events", Buffer.from("token hunter2"), quoting), await redactText("token hunter2", quoting)]) {
+			expect(out).toEqual({ error: expect.any(String) });
+			expect(JSON.stringify(out)).not.toContain("hunter2");
+		}
 	});
 });
