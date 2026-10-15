@@ -14,8 +14,10 @@ import type { BindingsService } from "./bindings.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
 import {
 	BLOCK_EVENT_MESSAGE,
+	COMMENTED_BLOCK_EVENT_MESSAGE,
 	CANARIES,
 	SECRET_ARGV,
+	SECRET_EXPRESSIONS,
 	SECRET_LABELS,
 	SECRET_EVENT_MESSAGE,
 	SECRET_LOG,
@@ -102,13 +104,21 @@ function installFakeKubectl(): void {
 					lastTimestamp: "2026-10-15T09:58:55Z",
 					message: BLOCK_EVENT_MESSAGE,
 				},
+				{
+					type: "Warning",
+					reason: "FailedUnmount",
+					metadata: { name: "checkout.5", namespace: "shop", uid: "e5" },
+					involvedObject: { kind: "Pod", name: "checkout-7d9f" },
+					lastTimestamp: "2026-10-15T09:58:58Z",
+					message: COMMENTED_BLOCK_EVENT_MESSAGE,
+				},
 			],
 		},
 		deployments: {
 			items: [
 				{
 					metadata: { name: "checkout", namespace: "shop", uid: "d1", labels: SECRET_LABELS },
-					spec: { selector: { matchLabels: SECRET_LABELS }, template: { metadata: { labels: SECRET_LABELS }, spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env, ...SECRET_ARGV }] } } },
+					spec: { selector: { matchLabels: SECRET_LABELS, matchExpressions: SECRET_EXPRESSIONS }, template: { metadata: { labels: SECRET_LABELS }, spec: { containers: [{ name: "app", image: "shop/checkout:1.4.2", env, ...SECRET_ARGV }] } } },
 				},
 			],
 		},
@@ -123,7 +133,7 @@ function installFakeKubectl(): void {
 						labels: SECRET_LABELS,
 						annotations: { note: `pulled with ${SECRETS.github} from /x?api_key=${SECRETS.apiKey}` },
 					},
-					spec: { containers: [{ name: "app", env, ...SECRET_ARGV }] },
+					spec: { containers: [{ name: "app", env, ...SECRET_ARGV }], affinity: { podAntiAffinity: { requiredDuringSchedulingIgnoredDuringExecution: [{ topologyKey: "kubernetes.io/hostname", labelSelector: { matchExpressions: SECRET_EXPRESSIONS } }] } } },
 					status: {
 						phase: "Running",
 						startTime: "2026-10-15T09:00:00Z",
@@ -264,6 +274,9 @@ describe("CaseViewService", () => {
 		const mount = view.claims.find((c) => c.statement.startsWith("FailedMount: mount failed"));
 		expect(mount?.statement).toContain("password: [REDACTED:pattern]");
 		expect(JSON.stringify(mount?.attributes)).not.toMatch(/CanaryLine/);
+		const unmount = view.claims.find((c) => c.statement.startsWith("FailedUnmount: mount failed"));
+		expect(unmount).toBeDefined();
+		expect(JSON.stringify(unmount)).not.toMatch(/C0mmentedLine/);
 		const haystacks: [string, string][] = [["view", JSON.stringify(view)]];
 		for (const a of view.captures[0]?.artifacts ?? []) haystacks.push([`artifact ${a.purpose}`, (await views.artifact(a.id)).text]);
 		for (const table of NEW_TABLES) {

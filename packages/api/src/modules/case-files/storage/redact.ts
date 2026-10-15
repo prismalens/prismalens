@@ -70,10 +70,28 @@ const NEXT_LINE = String.raw`(?:(?:\r?\n|(?:\\r)?\\n)[ \t]+)`;
 const RAW_NL = String.raw`\r?\n`;
 const ESC_NL = String.raw`(?:\\r)?\\n`;
 const END_OF_TEXT = String.raw`(?![\s\S])`;
-// A block value's key line up to the newline that opens its body.
-const keyLine = (nl: string, indicator: string): string =>
-	String.raw`[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?[ \t]*:[ \t]*${indicator}[ \t]*${nl}`;
-const INDICATOR = "[|>][-+]?[0-9]?";
+// A YAML block scalar's key line up to the newline that opens its body (YAML 1.2.2 §8.1.1): a plain or
+// quoted key; a tag and an anchor in either order; the indicator with its indentation digit and
+// chomping sign in either order; a trailing comment.
+const TAG = String.raw`![^\s\\"]*`;
+const ANCHOR = String.raw`&[^\s\\",\[\]{}]+`;
+const PROPERTIES = String.raw`(?:(?:${TAG}(?:[ \t]+${ANCHOR})?|${ANCHOR}(?:[ \t]+${TAG})?)[ \t]*)?`;
+const INDICATOR = "[|>](?:[0-9][-+]?|[-+][0-9]?)?";
+const KEY_START = String.raw`(?<![\w.-])`;
+const LIST_ENTRY = String.raw`(?:-[ \t]+)*`;
+const keyName = (dq: string): string => {
+	const quoted = (q: string): string =>
+		String.raw`${q}[^'"\\\r\n]*(?:${KEY})[^'"\\\r\n]*${q}`;
+	return String.raw`(?:[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?|${quoted(dq)}|${quoted("'")})`;
+};
+// `dq` is the double quote as the text spells it, escaped inside a JSON string.
+const keyLine = (
+	nl: string,
+	comment: string,
+	dq: string,
+	indicator: string,
+): string =>
+	String.raw`${keyName(dq)}[ \t]*:[ \t]*${PROPERTIES}${indicator}(?:[ \t]*#${comment}*)?[ \t]*${nl}`;
 // Blank and whitespace-only lines continue a block; it ends at a line whose indent is no deeper than `indent`.
 const blockBody = (
 	nl: string,
@@ -87,6 +105,8 @@ const blockBody = (
 };
 // Inside a JSON string a line stops at an unescaped quote, so redacted JSON still parses.
 const ESC_TEXT = String.raw`(?:[^\r\n"\\]|\\(?!n|r\\n)[\s\S])`;
+const ESC_DQ = String.raw`\\"`;
+const RAW_TEXT = String.raw`[^\r\n]`;
 const ESC_END = `(?=")|${END_OF_TEXT}`;
 const ESC_LINE_START = String.raw`(?:^|\\n|")`;
 
@@ -129,11 +149,12 @@ export const SECRET_PATTERNS = [
 		// A YAML block or folded value under such a key: every line indented past the key's own.
 		name: "key: block",
 		patterns: [
-			`/(?<=^([ \t]*)${keyLine(RAW_NL, `(?:${INDICATOR})?`)})${blockBody(RAW_NL, String.raw`[^\r\n]`, END_OF_TEXT, String.raw`\1`)}/im`,
+			// A list entry's body is whatever is deeper than its dash: over-redacts a sibling key, never leaks.
+			`/(?<=^([ \t]*)${LIST_ENTRY}${keyLine(RAW_NL, RAW_TEXT, '"', `(?:${INDICATOR})?`)})${blockBody(RAW_NL, RAW_TEXT, END_OF_TEXT, String.raw`\1`)}/im`,
 			// Inside a JSON string the lines are separated by an escaped `\n`; a key mid-line has no indent to
 			// compare, so it takes a `|` or `>` and every indented line after it.
-			`/(?<=${ESC_LINE_START}([ \t]*)${keyLine(ESC_NL, `(?:${INDICATOR})?`)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, String.raw`\1`)}/im`,
-			`/(?<=(?<![w.-])(?<!${ESC_LINE_START}[ \t]*)${keyLine(ESC_NL, INDICATOR)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, "")}/im`,
+			`/(?<=${ESC_LINE_START}([ \t]*)${LIST_ENTRY}${keyLine(ESC_NL, ESC_TEXT, ESC_DQ, `(?:${INDICATOR})?`)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, String.raw`\1`)}/im`,
+			`/(?<=${KEY_START}(?<!${ESC_LINE_START}[ \t]*${LIST_ENTRY})${keyLine(ESC_NL, ESC_TEXT, ESC_DQ, INDICATOR)})${blockBody(ESC_NL, ESC_TEXT, ESC_END, "")}/im`,
 		],
 	},
 	{
@@ -252,6 +273,8 @@ function scrubArgv(node: unknown, counts: RedactCounts): void {
 
 function scrubPodSpec(spec: unknown, counts: RedactCounts): void {
 	if (!isObject(spec)) return;
+	scrubSelectors(spec.affinity, counts);
+	scrubSelectors(spec.topologySpreadConstraints, counts);
 	for (const key of POD_SPEC_CONTAINERS) {
 		const containers = spec[key];
 		if (!Array.isArray(containers)) continue;
@@ -300,6 +323,32 @@ function scrubLabels(map: unknown, counts: RedactCounts): void {
 	}
 }
 
+const each = (value: unknown): JsonObject[] =>
+	Array.isArray(value) ? value.filter(isObject) : [];
+
+/** Every selector under `node`: matchExpressions values and matchLabels, by the label rule on the expression's key. */
+function scrubSelectors(node: unknown, counts: RedactCounts): void {
+	if (Array.isArray(node)) {
+		for (const item of node) scrubSelectors(item, counts);
+		return;
+	}
+	if (!isObject(node)) return;
+	for (const [field, value] of Object.entries(node)) {
+		if (field === "matchLabels") scrubLabels(value, counts);
+		else if (field === "matchExpressions" || field === "matchFields") {
+			for (const e of each(value)) {
+				if (typeof e.key !== "string" || !Array.isArray(e.values)) continue;
+				const key = e.key;
+				e.values = e.values.map((v: unknown) => {
+					if (typeof v !== "string" || !secretLabel(key, v)) return v;
+					bump(counts, "label");
+					return LABEL_MARK;
+				});
+			}
+		} else scrubSelectors(value, counts);
+	}
+}
+
 function scrubObject(item: unknown, counts: RedactCounts): void {
 	if (!isObject(item)) return;
 	const meta = item.metadata;
@@ -315,7 +364,7 @@ function scrubObject(item: unknown, counts: RedactCounts): void {
 	if (!isObject(spec)) return;
 	scrubPodSpec(spec, counts);
 	scrubLabels(spec.nodeSelector, counts);
-	if (isObject(spec.selector)) scrubLabels(spec.selector.matchLabels, counts);
+	scrubSelectors(spec.selector, counts);
 	const template = spec.template;
 	if (!isObject(template)) return;
 	if (isObject(template.metadata))
@@ -339,9 +388,6 @@ const secretLike = (value: string): boolean =>
 			(run.match(/[A-Za-z]/g)?.length ?? 0) >= 3 &&
 			(run.match(/[0-9]/g)?.length ?? 0) >= 3,
 	);
-
-const each = (value: unknown): JsonObject[] =>
-	Array.isArray(value) ? value.filter(isObject) : [];
 
 /** Marks `holder[field]` as a kept reference name when it has a name's shape and not a secret's. */
 function markField(holder: unknown, field: string): void {

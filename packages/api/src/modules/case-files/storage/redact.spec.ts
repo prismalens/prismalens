@@ -690,3 +690,106 @@ describe("round 5 (#842)", () => {
 		expect(text).toContain("user: app");
 	});
 });
+
+describe("round 7 (#842)", () => {
+	const leaked = (text: string, values: readonly string[]) => values.filter((v) => text.includes(v));
+	const run = async (purpose: (typeof ARTIFACT_PURPOSES)[number], text: string) => {
+		const out = await redactInProcess(purpose, Buffer.from(text));
+		if ("error" in out) throw new Error(out.error);
+		return out.redacted.toString("utf8");
+	};
+	const canaries = ["Fr1stBlockLine", "M1ddleBlockLine", "L4stBlockLine"];
+
+	// Every key/header pair is a valid YAML block scalar introduction under a secret-like key.
+	const HEADERS = ["|", "| # rotated", ">+", ">-", "|2-", "|-2", ">+1 # c", "!!str |", "!foo >-", "&a |", "&a !!str |2-", "!!str &a >+ # c", "!<tag:yaml.org,2002:str> |-"];
+	const KEYS = ["password", "'password'", '"password"', "client_secret", '"api-token"', "- password", "- 'client_secret'", '- "api-token"'];
+	const forms = KEYS.flatMap((key) => HEADERS.map((header) => `${key}: ${header}`));
+
+	const linesFor = (form: string) => {
+		const list = form.startsWith("- ");
+		const pad = list ? "      " : "    ";
+		return list
+			? ["config:", `  ${form}`, `${pad}${canaries[0]}`, "", `${pad}${canaries[1]}`, `${pad}${canaries[2]}`, "  - name: app", "done"]
+			: ["config:", `  ${form}`, `${pad}${canaries[0]}`, "", `${pad}${canaries[1]}`, `${pad}${canaries[2]}`, "  user: app", "done"];
+	};
+
+	it("OBJ-019: every YAML block-scalar header form loses its whole body, raw and timestamped", async () => {
+		const failures: string[] = [];
+		for (const form of forms) {
+			const lines = linesFor(form).join("\n");
+			for (const [label, input] of [["raw", lines], ["timestamped", timestamped(lines)]] as const) {
+				const text = await run("logs-previous", input);
+				const kept = form.startsWith("- ") ? "  - name: app" : "  user: app";
+				if (leaked(text, canaries).length > 0 || !text.includes(kept) || !text.includes("done")) failures.push(`${label}: ${form}`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
+
+	it("OBJ-019: every header form inside a JSON event message, after escaped newlines, loses its whole body", async () => {
+		const failures: string[] = [];
+		for (const form of forms) {
+			for (const prefix of ["mount failed\n", "Error: "]) {
+				const message = `${prefix}${linesFor(form).join("\n")}`;
+				const body = JSON.stringify({ items: [{ type: "Warning", reason: "FailedMount", message, count: 3 }] }, null, 4);
+				const text = await run("events", body);
+				const event = JSON.parse(text).items[0];
+				if (leaked(text, canaries).length > 0 || event.count !== 3 || !String(event.message).includes("done")) failures.push(`${JSON.stringify(prefix)}: ${form}`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
+
+	it("OBJ-019: a header comment does not end the block, and a sibling key at the key's indent stays", async () => {
+		const text = await run("logs-previous", ["password: | # comment", "  Fr1stBlockLine", "user: app"].join("\n"));
+		expect(leaked(text, canaries)).toEqual([]);
+		expect(text).toContain("user: app");
+	});
+
+	const exprs = [
+		{ key: "api-token", operator: "In", values: ["R3alPassw0rd", "plain"] },
+		{ key: "tier", operator: "In", values: ["Zq8Wv7Ut6Sr5Qp4On", "frontend"] },
+		{ key: "app", operator: "In", values: ["checkout"] },
+		{ key: "pod-template-hash", operator: "In", values: ["5d8f7b9c4"] },
+		{ key: "topology.kubernetes.io/zone", operator: "NotIn", values: ["eu-west-1a"] },
+		{ key: "gone", operator: "Exists" },
+	];
+	const secretValues = ["R3alPassw0rd", "Zq8Wv7Ut6Sr5Qp4On", "plain"];
+	const affinity = {
+		nodeAffinity: {
+			requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: [{ matchExpressions: exprs, matchFields: [{ key: "metadata.name", operator: "In", values: ["node-a"] }] }] },
+			preferredDuringSchedulingIgnoredDuringExecution: [{ weight: 1, preference: { matchExpressions: exprs } }],
+		},
+		podAffinity: { requiredDuringSchedulingIgnoredDuringExecution: [{ topologyKey: "kubernetes.io/hostname", labelSelector: { matchExpressions: exprs, matchLabels: { "x-token": "R3alPassw0rd" } } }] },
+		podAntiAffinity: {
+			requiredDuringSchedulingIgnoredDuringExecution: [{ topologyKey: "kubernetes.io/hostname", labelSelector: { matchExpressions: exprs }, namespaceSelector: { matchExpressions: exprs } }],
+			preferredDuringSchedulingIgnoredDuringExecution: [{ weight: 1, podAffinityTerm: { topologyKey: "kubernetes.io/hostname", labelSelector: { matchExpressions: exprs } } }],
+		},
+	};
+	const podSpec = { affinity, topologySpreadConstraints: [{ topologyKey: "kubernetes.io/hostname", maxSkew: 1, labelSelector: { matchExpressions: exprs } }] };
+
+	it("OBJ-027: selector and affinity matchExpressions values follow the label rule, in a Deployment, ReplicaSet and Pod", async () => {
+		const workload = (kind: string) => ({
+			kind,
+			metadata: { name: "checkout" },
+			spec: { selector: { matchExpressions: exprs }, template: { metadata: { labels: { app: "checkout" } }, spec: podSpec } },
+		});
+		const cases = [
+			["deployments", { kind: "List", items: [workload("Deployment")] }],
+			["replicasets", { kind: "List", items: [workload("ReplicaSet")] }],
+			["pods", { kind: "List", items: [{ kind: "Pod", metadata: { name: "checkout" }, spec: podSpec }] }],
+		] as const;
+		for (const [purpose, doc] of cases) {
+			const text = await run(purpose, JSON.stringify(doc));
+			expect(leaked(text, secretValues)).toEqual([]);
+			const item = JSON.parse(text).items[0];
+			const spec = purpose === "pods" ? item.spec : item.spec.template.spec;
+			const terms = spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0];
+			const kept = terms.matchExpressions.map((e: { values?: string[] }) => e.values);
+			expect(kept).toEqual([["[REDACTED:label]", "[REDACTED:label]"], ["[REDACTED:label]", "frontend"], ["checkout"], ["5d8f7b9c4"], ["eu-west-1a"], undefined]);
+			expect(terms.matchFields[0].values).toEqual(["node-a"]);
+			expect(spec.affinity.podAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchLabels["x-token"]).toMatch(/^\[REDACTED:/);
+			if (purpose !== "pods") expect(item.spec.selector.matchExpressions.map((e: { values?: string[] }) => e.values)).toEqual(kept);
+		}
+	});
+});

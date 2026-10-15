@@ -54,6 +54,9 @@ export const SECRETS = {
 	blockLine2: "CanaryLine2",
 	gapFirst: "FirstSecretLine",
 	gapLast: "LastSecretLine",
+	// #842 round 7: a block under a commented, tagged header.
+	commentedLine1: "C0mmentedLineOne",
+	commentedLine2: "C0mmentedLineTwo",
 } as const;
 
 const PEM_BODY = PEM.split("\n").filter(
@@ -94,6 +97,9 @@ export const SECRET_EVENT_MESSAGE = `auth failed for app, password: ${SECRETS.co
 /** A Warning event whose message holds a YAML block, its lines joined by JSON-escaped newlines. */
 export const BLOCK_EVENT_MESSAGE = `mount failed\npassword: |\n  ${SECRETS.blockLine1}\n  ${SECRETS.blockLine2}\nretrying`;
 
+/** A Warning event whose message holds a list-entry block with a tag, an indentation digit and a header comment. */
+export const COMMENTED_BLOCK_EVENT_MESSAGE = `mount failed\n- "api-token": !!str |2- # rotated\n    ${SECRETS.commentedLine1}\n\n    ${SECRETS.commentedLine2}\nretrying`;
+
 /** Label values a token-named key must not keep; `splitFlag` doubles as the third. */
 export const SECRET_LABELS = {
 	"api-token": SECRETS.splitFlag,
@@ -101,6 +107,11 @@ export const SECRET_LABELS = {
 	"session-id": SECRETS.labelDashed,
 	app: "checkout",
 };
+
+/** The same secret-like label as a selector expression, which `matchLabels` alone does not cover. */
+export const SECRET_EXPRESSIONS = [
+	{ key: "api-token", operator: "In", values: [SECRETS.labelMixed] },
+];
 
 const STDERR_TAIL_BYTES = 2048;
 const cutLine = `ssword: ${SECRETS.headTruncated}\n`;
