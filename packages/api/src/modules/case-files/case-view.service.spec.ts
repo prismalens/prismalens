@@ -38,7 +38,7 @@ const { ManifestService } = await import("./storage/manifest.js");
 const { CaseFileSettingsService } = await import("./case-file-settings.service.js");
 const { CaseBuilder } = await import("./case-builder.js");
 const { CaptureService } = await import("./capture.service.js");
-const { CaseViewService } = await import("./case-view.service.js");
+const { CaseViewService, latestPerSubject } = await import("./case-view.service.js");
 const { CaseBundleService, BUNDLE_DIR } = await import("./case-bundle.service.js");
 const { CaseFilesController } = await import("./case-files.controller.js");
 const { prisma: raw } = await import("@prismalens/database");
@@ -314,6 +314,14 @@ describe("CaseViewService", () => {
 		});
 
 		const view = await views.get(incident.id, new Date(completedAt.getTime() + 1_000).toISOString());
+		await prisma.serviceBinding.updateMany({
+			where: { service: { name: "svc-view" } },
+			data: { kubeContext: "rebound-ctx", namespace: "rebound-ns" },
+		});
+		const reopened = await views.get(incident.id, view.asOf);
+		expect(reopened.binding).toMatchObject({ kubeContext: "rebound-ctx", namespace: "rebound-ns" });
+		expect(reopened.captures[0]).toMatchObject({ kubeContext: link.capture.kubeContext, namespace: link.capture.namespace });
+		expect(link.capture.kubeContext).not.toBe("rebound-ctx");
 		expect(view.captures[0]?.latencyMs).toBe((link.capture.startedAt?.getTime() ?? 0) - link.triggeredAt.getTime());
 		const report = view.claims.filter((c) => c.source.kind === "report");
 		expect(report).toEqual([
@@ -390,5 +398,41 @@ describe("CaseViewService", () => {
 		expect(await settingsRoutes("update")({ input: { enabled: false } })).toEqual({ enabled: false });
 		expect(await settingsRoutes("get")({ input: undefined })).toEqual({ enabled: false });
 		expect(await views.get(incident.id)).toMatchObject({ enabled: false, claims: [], captures: [] });
+	});
+});
+
+describe("latestPerSubject", () => {
+	const row = (revision: number, statement: string, collectedAt: string, sourceTime: string | null = null) =>
+		({
+			id: `r${revision}`,
+			nodeId: "n1",
+			edgeId: null,
+			revision,
+			statement,
+			sourceTime: sourceTime ? new Date(sourceTime) : null,
+			collectedAt: new Date(collectedAt),
+		}) as unknown as Parameters<typeof latestPerSubject>[0][number];
+
+	it("picks the newest observation, not the newest revision, when recovery rebuilt an older capture last (OBJ-021)", () => {
+		const picked = latestPerSubject([
+			row(1, "Running", "2026-10-15T10:05:00Z", "2026-10-15T09:30:00Z"),
+			row(2, "Failed", "2026-10-15T10:00:00Z", "2026-10-15T09:30:00Z"),
+		]);
+		expect(picked).toHaveLength(1);
+		expect(picked[0]?.rev.statement).toBe("Running");
+		expect(picked[0]?.revisions).toBe(2);
+	});
+
+	it("lets a later source time outrank collection time, and falls back to revision when neither differs", () => {
+		const bySource = latestPerSubject([
+			row(1, "Failed", "2026-10-15T10:05:00Z", "2026-10-15T09:00:00Z"),
+			row(2, "Running", "2026-10-15T10:00:00Z", "2026-10-15T09:30:00Z"),
+		]);
+		expect(bySource[0]?.rev.statement).toBe("Running");
+		const tie = latestPerSubject([
+			row(1, "a", "2026-10-15T10:00:00Z"),
+			row(2, "b", "2026-10-15T10:00:00Z"),
+		]);
+		expect(tie[0]?.rev.statement).toBe("b");
 	});
 });

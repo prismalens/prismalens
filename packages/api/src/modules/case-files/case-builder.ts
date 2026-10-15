@@ -323,7 +323,7 @@ export function deriveCase(input: {
 		const images = rs.images.map((img) => ({
 			container: img.container,
 			tag: img.tag,
-			digests: digestsFor(rs, img, pods),
+			digests: digestsFor(rs, img, pods, replicaSets),
 		}));
 		const forked = images.filter((i) => i.digests.length > 1);
 		edges.push({
@@ -582,33 +582,36 @@ function imagesText(images: ContainerImage[]): string {
 		: "no containers";
 }
 
+/** Whether the pod's ownerReference names this ReplicaSet: by uid when both carry one, else by name. */
+function ownedBy(pod: K8sPod, rs: K8sReplicaSet): boolean {
+	if (pod.ownerUid !== null && rs.uid !== null) return pod.ownerUid === rs.uid;
+	return pod.owner !== null && pod.owner === rs.name;
+}
+
+/** The pod's ReplicaSet; the hash decides only for a pod with no owner, and only when it names one. */
 function replicaSetOf(
 	pod: K8sPod,
 	replicaSets: K8sReplicaSet[],
 ): K8sReplicaSet | undefined {
-	return (
-		replicaSets.find((rs) => pod.owner !== null && rs.name === pod.owner) ??
-		replicaSets.find(
-			(rs) =>
-				pod.podTemplateHash !== null &&
-				rs.podTemplateHash === pod.podTemplateHash,
-		)
+	const owned = replicaSets.find((rs) => ownedBy(pod, rs));
+	if (owned || pod.owner !== null || pod.ownerUid !== null) return owned;
+	if (pod.podTemplateHash === null) return undefined;
+	const byHash = replicaSets.filter(
+		(rs) => rs.podTemplateHash === pod.podTemplateHash,
 	);
+	return byHash.length === 1 ? byHash[0] : undefined;
 }
 
-/** Digests pulled for one container of a revision, from pods with its pod-template-hash (s03). */
+/** Digests pulled for one container of a revision, from the pods its ReplicaSet owns (s03). */
 function digestsFor(
 	rs: K8sReplicaSet,
 	img: ContainerImage,
 	pods: K8sPod[],
+	replicaSets: K8sReplicaSet[],
 ): string[] {
 	const found = new Set<string>();
 	for (const pod of pods) {
-		if (
-			rs.podTemplateHash === null ||
-			pod.podTemplateHash !== rs.podTemplateHash
-		)
-			continue;
+		if (replicaSetOf(pod, replicaSets) !== rs) continue;
 		for (const c of pod.containers) {
 			if (c.name === img.container && c.digest) found.add(c.digest);
 		}
@@ -758,6 +761,18 @@ function safeJson(text: string): unknown {
 	}
 }
 
+/** Orders revisions of one subject by what they observed: source time, then collection time (each when both have it), then revision. */
+export function compareObservation(
+	a: { sourceTime: Date | null; collectedAt: Date | null; revision: number },
+	b: { sourceTime: Date | null; collectedAt: Date | null; revision: number },
+): number {
+	if (a.sourceTime && b.sourceTime && +a.sourceTime !== +b.sourceTime)
+		return +a.sourceTime - +b.sourceTime;
+	if (a.collectedAt && b.collectedAt && +a.collectedAt !== +b.collectedAt)
+		return +a.collectedAt - +b.collectedAt;
+	return a.revision - b.revision;
+}
+
 /** Whether a draft says something the subject's latest revision does not (the §2.2 append rule). */
 export function claimChanged(
 	latest: Pick<
@@ -883,23 +898,32 @@ export class CaseBuilder {
 		claim: ClaimDraft,
 		now: Date | undefined,
 	): Promise<boolean> {
-		const latest = await tx.claimRevision.findFirst({
+		const history = await tx.claimRevision.findMany({
 			where: subject,
-			orderBy: { revision: "desc" },
 			select: {
 				revision: true,
 				status: true,
 				statusReason: true,
 				statement: true,
 				attributes: true,
+				sourceTime: true,
+				collectedAt: true,
 			},
 		});
+		const latest = history.reduce<(typeof history)[number] | null>(
+			(best, rev) => (!best || compareObservation(rev, best) > 0 ? rev : best),
+			null,
+		);
+		const lastRevision = history.reduce(
+			(n, rev) => Math.max(n, rev.revision),
+			0,
+		);
 		if (!claimChanged(latest, claim)) return false;
 		await tx.claimRevision.create({
 			data: {
 				incidentId,
 				...subject,
-				revision: (latest?.revision ?? 0) + 1,
+				revision: lastRevision + 1,
 				status: claim.status,
 				statusReason: claim.statusReason,
 				statement: claim.statement,

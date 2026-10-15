@@ -173,6 +173,38 @@ describe("CaseBuilder", () => {
 		expect(runs.map((r) => r.revision)).toEqual([1, 2]);
 	});
 
+	it("keeps a recovered older observation in history without letting it stand in for the newest (OBJ-021)", async () => {
+		const incident = await prisma.incident.create({ data: { number: 9021, title: "recovery ordering" } });
+		const pod = (phase: string) => ({
+			items: [
+				{
+					...meta("solo"),
+					spec: { containers: [{ name: "app" }] },
+					status: { phase, startTime: "2026-10-15T09:30:00Z", containerStatuses: [] },
+				},
+			],
+		});
+		const buildAt = async (phase: string, endedAt: Date) => {
+			const capture = await createCapture({ finishedAt: endedAt });
+			const artifact = await writeArtifact(capture.id, 0, "pods", pod(phase), { endedAt });
+			return prisma.$transaction((tx) =>
+				builder.build(tx, { incidentId: incident.id, capture, artifacts: [artifact], alerts: [] }),
+			);
+		};
+		await buildAt("Running", new Date("2026-10-15T10:05:00Z"));
+		await buildAt("Failed", new Date("2026-10-15T10:00:00Z"));
+		const rows = await prisma.claimRevision.findMany({
+			where: { incidentId: incident.id },
+			orderBy: { revision: "asc" },
+		});
+		expect(rows.map((r) => [r.revision, r.collectedAt?.toISOString()])).toEqual([
+			[1, "2026-10-15T10:05:00.000Z"],
+			[2, "2026-10-15T10:00:00.000Z"],
+		]);
+		const again = await buildAt("Running", new Date("2026-10-15T10:06:00Z"));
+		expect(again.revisions).toBe(0);
+	});
+
 	it("handles rollout 3 h before, partial replicasets artifact, missed interval and omitted artifact", async () => {
 		const incident = await prisma.incident.create({ data: { number: 2, title: "rollout window cases" } });
 		const alert = await prisma.alert.create({
@@ -1034,6 +1066,71 @@ describe("deriveCase rollout coverage", () => {
 			status: "unknown",
 			statusReason: "no-retained-history",
 			statement: "Whether checkout rolled out in the 2 h before the alert is unknown (no-retained-history).",
+		});
+	});
+
+	describe("image digests follow the pod's owner (OBJ-022)", () => {
+		const replicaSet = (name: string, deployment: string, uid: string) => ({
+			...meta(name, {
+				uid,
+				creationTimestamp: "2026-10-15T09:00:00Z",
+				annotations: { "deployment.kubernetes.io/revision": "1" },
+				labels: { "pod-template-hash": "7d9f" },
+				ownerReferences: [{ kind: "Deployment", name: deployment, controller: true }],
+			}),
+			spec: { template: { spec: { containers: [{ name: "app", image: "app:v1" }] } } },
+			status: { replicas: 1, readyReplicas: 1 },
+		});
+		const podOf = (owner: Record<string, unknown> | null, digest: string) => ({
+			...meta("pod-1", {
+				labels: { "pod-template-hash": "7d9f" },
+				...(owner ? { ownerReferences: [{ kind: "ReplicaSet", controller: true, ...owner }] } : {}),
+			}),
+			spec: { containers: [{ name: "app", image: "app:v1" }] },
+			status: {
+				phase: "Running",
+				startTime: "2026-10-15T09:30:00Z",
+				containerStatuses: [{ name: "app", imageID: `docker-pullable://app@${digest}`, restartCount: 0 }],
+			},
+		});
+		const digestsByRevisionOwner = (pod: unknown) => {
+			const draft = deriveCase({
+				capture,
+				alerts: [],
+				loaded: {
+					replicasets: {
+						row: artifactRow("replicasets"),
+						json: { items: [replicaSet("first-7d9f", "first", "rs-1"), replicaSet("other-7d9f", "other", "rs-2")] },
+					},
+					pods: { row: artifactRow("pods"), json: { items: [pod] } },
+				},
+				now: COLLECTED,
+			});
+			const byWorkload = new Map<string, unknown>();
+			for (const e of draft.edges) {
+				if (e.relation !== "revision_of") continue;
+				const images = (e.claim.attributes as { images: { digests: string[] }[] }).images;
+				byWorkload.set(e.claim.population?.workload ?? "", images[0]?.digests);
+			}
+			return Object.fromEntries(byWorkload);
+		};
+
+		it("keeps a digest with the ReplicaSet its pod is owned by, when two share a hash", () => {
+			expect(digestsByRevisionOwner(podOf({ name: "other-7d9f", uid: "rs-2" }, D1))).toEqual({
+				first: [],
+				other: [D1],
+			});
+		});
+
+		it("does not bind by name when the owner uid names a different ReplicaSet", () => {
+			expect(digestsByRevisionOwner(podOf({ name: "first-7d9f", uid: "rs-recreated" }, D1))).toEqual({
+				first: [],
+				other: [],
+			});
+		});
+
+		it("falls back to the hash only for a pod with no owner, and only when one ReplicaSet carries it", () => {
+			expect(digestsByRevisionOwner(podOf(null, D1))).toEqual({ first: [], other: [] });
 		});
 	});
 });

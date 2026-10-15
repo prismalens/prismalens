@@ -168,6 +168,8 @@ describe("CaseFileView", () => {
 				captures: [
 					{
 						id: "cap1",
+						kubeContext: "kind-pl",
+						namespace: "shop",
 						state: "partial",
 						stateReason: null,
 						missed: null,
@@ -220,6 +222,46 @@ describe("CaseFileView", () => {
 		expect(byTestId("claim-status")).toEqual(["observed", "inferred"]);
 	});
 
+	it("labels each capture with the target it recorded, not the current binding (OBJ-023)", async () => {
+		const base = {
+			stateReason: null,
+			missed: null,
+			shared: false,
+			identity: null,
+			identityMatches: true,
+			startedAt: T,
+			finishedAt: T,
+			artifacts: [],
+		};
+		await render(
+			view({
+				captures: [
+					{
+						...base,
+						id: "old",
+						state: "complete",
+						latencyMs: 5_000,
+						kubeContext: "old-ctx",
+						namespace: "old-ns",
+					},
+					{
+						...base,
+						id: "gone",
+						state: "blocked",
+						stateReason: "no-kubectl",
+						latencyMs: null,
+						kubeContext: "old-ctx",
+						namespace: "old-ns",
+					},
+				],
+			}),
+		);
+		const lines = byTestId("case-capture-line").join("|");
+		expect(lines).toContain("Captured old-ctx/old-ns 5 s after the alert");
+		expect(lines).toContain("Capture of old-ctx/old-ns blocked: no-kubectl");
+		expect(lines).not.toContain("kind-pl");
+	});
+
 	describe("missed(...) and skipped(...) chips", () => {
 		it("renders missed and skipped chips from capture summary", async () => {
 			const missedFrom = "2026-10-15T03:14:00.000Z";
@@ -229,6 +271,8 @@ describe("CaseFileView", () => {
 					captures: [
 						{
 							id: "cap-missed",
+							kubeContext: "kind-pl",
+							namespace: "shop",
 							state: "complete",
 							stateReason: null,
 							missed: { from: missedFrom, to: missedTo },
@@ -242,6 +286,8 @@ describe("CaseFileView", () => {
 						},
 						{
 							id: "cap-skipped",
+							kubeContext: "kind-pl",
+							namespace: "shop",
 							state: "skipped",
 							stateReason: "queue-full",
 							missed: null,
@@ -265,6 +311,8 @@ describe("CaseFileView", () => {
 		it("captureChips helper computes all chip shapes", () => {
 			const chips = captureChips({
 				id: "cap1",
+				kubeContext: "kind-pl",
+				namespace: "shop",
 				state: "skipped",
 				stateReason: "queue-full",
 				missed: {
@@ -525,6 +573,8 @@ describe("CaseFileView", () => {
 					captures: [
 						{
 							id: "c1",
+							kubeContext: "kind-pl",
+							namespace: "shop",
 							state: "complete",
 							stateReason: null,
 							missed: null,
@@ -635,18 +685,14 @@ describe("CaseFileView", () => {
 	describe("captureLine helper", () => {
 		const baseCapture = {
 			id: "c1",
+			kubeContext: "kind-pl",
+			namespace: "shop",
 			state: "complete" as const,
 			stateReason: null,
 			missed: null,
 			shared: false,
 			latencyMs: 5000,
-			identity: {
-				kubeContext: "ctx",
-				cluster: "cl",
-				kubeUser: null,
-				whoami: null,
-				matchesBinding: true,
-			},
+			identity: null,
 			identityMatches: true,
 			startedAt: T,
 			finishedAt: T,
@@ -654,36 +700,40 @@ describe("CaseFileView", () => {
 		};
 
 		it("formats queued, running, blocked, skipped states", () => {
-			const binding = {
-				kubeContext: "kind-pl",
-				namespace: "shop",
-				cluster: "kind",
-				probeState: "ok" as const,
-			};
-			expect(captureLine({ ...baseCapture, state: "queued" }, binding)).toBe(
+			expect(captureLine({ ...baseCapture, state: "queued" })).toBe(
 				"Capture of kind-pl/shop queued",
 			);
-			expect(captureLine({ ...baseCapture, state: "running" }, binding)).toBe(
+			expect(captureLine({ ...baseCapture, state: "running" })).toBe(
 				"Capturing kind-pl/shop…",
 			);
 			expect(
-				captureLine(
-					{ ...baseCapture, state: "blocked", stateReason: "no-kubectl" },
-					binding,
-				),
+				captureLine({
+					...baseCapture,
+					state: "blocked",
+					stateReason: "no-kubectl",
+				}),
 			).toBe("Capture of kind-pl/shop blocked: no-kubectl");
-			expect(captureLine({ ...baseCapture, state: "skipped" }, binding)).toBe(
+			expect(captureLine({ ...baseCapture, state: "skipped" })).toBe(
 				"Capture of kind-pl/shop skipped",
 			);
 		});
 
-		it("falls back to identity or default target when binding is null", () => {
+		it("names the recorded target even when the identity differs", () => {
 			expect(
-				captureLine({ ...baseCapture, state: "queued", identity: null }, null),
-			).toBe("Capture of the bound target queued");
-			expect(captureLine({ ...baseCapture, state: "queued" }, null)).toBe(
-				"Capture of ctx queued",
-			);
+				captureLine({
+					...baseCapture,
+					state: "queued",
+					kubeContext: "old-ctx",
+					namespace: "old-ns",
+					identity: {
+						kubeContext: "ctx",
+						cluster: "cl",
+						kubeUser: null,
+						whoami: null,
+						matchesBinding: false,
+					},
+				}),
+			).toBe("Capture of old-ctx/old-ns queued");
 		});
 	});
 
@@ -747,6 +797,8 @@ describe("CaseFileView", () => {
 					captures: [
 						{
 							id: "c1",
+							kubeContext: "kind-pl",
+							namespace: "shop",
 							state: "complete",
 							stateReason: null,
 							missed: null,
