@@ -196,6 +196,7 @@ function realDispatch() {
 		{} as never,
 		telemetry as never,
 		{ deliver } as never,
+		{} as never,
 	);
 	vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
 	vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
@@ -306,6 +307,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 			harnessService as any,
 			{} as any,
 			fakePrisma([]),
+			{} as any,
 			{} as any,
 			{} as any,
 			{} as any,

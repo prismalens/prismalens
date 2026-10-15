@@ -50,6 +50,7 @@ import {
 	TelemetryService,
 	triggerFor,
 } from "../../core/telemetry/telemetry.service.js";
+import { CaseBundleService } from "../../modules/case-files/case-bundle.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
@@ -168,6 +169,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
+		private readonly caseBundles: CaseBundleService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -393,6 +395,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			caseBundle: (incidentId, cwd) => this.caseBundles.attach(incidentId, cwd),
 		};
 
 		this.dispatcher = new Dispatcher(

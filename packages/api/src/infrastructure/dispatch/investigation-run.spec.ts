@@ -82,6 +82,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		snapshotWith: cloneAs(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
+		caseBundle: vi.fn(async () => null),
 		...overrides,
 	};
 }
@@ -895,6 +896,29 @@ describe("context pack reaches the run (#633)", () => {
 			{ context: { contextPack?: unknown } },
 		];
 		expect(runArgs.context.contextPack).toEqual(PACK);
+	});
+
+	it("puts the case bundle the port returns into conductRun's context, with the run's cwd", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValueOnce({
+			failureKind: null,
+			report: { summary: "done", rootCause: null, nextSteps: [] },
+		});
+		const bundle = { path: ".prismalens/case", target: "kind-pl/shop", digest: ["capture queued as of 10:00:00Z; nothing has landed"] };
+		const ports = fakePorts({ caseBundle: vi.fn(async () => bundle) });
+
+		await runInvestigationJob(
+			{ id: "job-bundle", investigationId: "inv-bundle", attempts: 1 },
+			{ investigationId: "inv-bundle", incidentId: "inc-bundle" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		const [runArgs] = mocks.conductRun.mock.calls[0] as unknown as [
+			{ cwd: string; context: { caseBundle?: unknown } },
+		];
+		expect(ports.caseBundle).toHaveBeenCalledWith("inc-bundle", runArgs.cwd);
+		expect(runArgs.context.caseBundle).toEqual(bundle);
 	});
 
 	it("proceeds with no context pack when the port throws", async () => {

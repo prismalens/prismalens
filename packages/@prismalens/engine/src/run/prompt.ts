@@ -14,6 +14,7 @@ import {
 	fenceClose,
 	fenceOpen,
 	renderAlertPayload,
+	renderCaseBundle,
 	renderContextPack,
 	sanitizeUntrustedBlock,
 	UNTRUSTED_DATA_METHOD_GUARD,
@@ -139,7 +140,8 @@ export function buildInvestigationPrompt(
 	const notes = s?.notes?.trim();
 	const packBlock =
 		(pack ? `\n\n${renderContextPack(pack)}` : "") +
-		(notes ? `\n\n${renderRunbookNotes(notes)}` : "");
+		(notes ? `\n\n${renderRunbookNotes(notes)}` : "") +
+		(context.caseBundle ? `\n\n${renderCaseBundle(context.caseBundle)}` : "");
 	const packCite = pack
 		? `\n  A fact you take from CONTEXT_PACK without re-observing it with a tool cites source "${CONTEXT_PACK_SOURCE}<which fact>"; it is recorded as inferred.`
 		: "";
