@@ -81,7 +81,11 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 		orpc.incidents.key(),
 		orpc.caseFiles.cases.key(),
 	],
-	cases: () => [orpc.caseFiles.cases.key()],
+	cases: () => [
+		orpc.caseFiles.cases.key(),
+		orpc.caseFiles.settings.key(),
+		orpc.caseFiles.bindings.key(),
+	],
 };
 
 export function invalidateTopics(
