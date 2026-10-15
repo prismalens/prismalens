@@ -31,6 +31,14 @@ describe("LiveChanges (walk f27)", () => {
 		]);
 	});
 
+	it("OBJ-010: names the cases list for a capture landing or a claim being written", async () => {
+		for (const model of ["Capture", "CaptureArtifact", "ClaimRevision", "CaseNode"]) {
+			const live = new LiveChanges(1);
+			const change = await firstChange(live, () => live.noteWrite(model, "create"));
+			expect(change?.topics).toEqual(["cases"]);
+		}
+	});
+
 	it("ignores reads and models no list shows", async () => {
 		const live = new LiveChanges(10);
 		const change = await firstChange(live, () => {

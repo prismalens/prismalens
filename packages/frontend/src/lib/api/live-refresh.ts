@@ -75,7 +75,13 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 		orpc.setup.key(),
 		orpc.webhooks.lastDelivery.key(),
 	],
-	investigations: () => [orpc.investigations.key(), orpc.incidents.key()],
+	// A case shows the agent's report, read from the run (case-view.service.ts).
+	investigations: () => [
+		orpc.investigations.key(),
+		orpc.incidents.key(),
+		orpc.caseFiles.cases.key(),
+	],
+	cases: () => [orpc.caseFiles.cases.key()],
 };
 
 export function invalidateTopics(
@@ -108,6 +114,7 @@ export function useLiveChanges(): void {
 							"incidents",
 							"alerts",
 							"investigations",
+							"cases",
 						]);
 					}
 					first = false;

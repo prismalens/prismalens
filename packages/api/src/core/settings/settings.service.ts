@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prismalens/database";
+import { CaptureService } from "../../modules/case-files/capture.service.js";
 import { removeAllCaseFiles } from "../../modules/case-files/storage/artifact-store.js";
 import { removeAllAttachmentFiles } from "../../modules/investigations/attachments.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -40,7 +41,11 @@ async function deleteCaseFiles(tx: Prisma.TransactionClient): Promise<void> {
 
 @Injectable()
 export class SettingsService {
-	constructor(private prisma: PrismaService) {}
+	constructor(
+		private prisma: PrismaService,
+		/** Absent only in unit tests that build the service by hand. */
+		@Inject(CaptureService) private readonly captures?: CaptureService,
+	) {}
 
 	/**
 	 * True while a reset transaction is open (#662 review).
@@ -119,8 +124,15 @@ export class SettingsService {
 		if (active > 0) throw new ActiveRunsError(active);
 	}
 
+	/** A capture writes files before its row, so it is stopped before the deletes, not raced (OBJ-008). */
+	private withCapturesStopped<T>(run: () => Promise<T>): Promise<T> {
+		return this.captures ? this.captures.quiesce(run) : run();
+	}
+
 	async resetData() {
-		return this.whileResetting(() => this.deleteAllData());
+		return this.whileResetting(() =>
+			this.withCapturesStopped(() => this.deleteAllData()),
+		);
 	}
 
 	private async deleteAllData() {
@@ -142,7 +154,9 @@ export class SettingsService {
 	}
 
 	async factoryReset() {
-		return this.whileResetting(() => this.deleteEverything());
+		return this.whileResetting(() =>
+			this.withCapturesStopped(() => this.deleteEverything()),
+		);
 	}
 
 	private async deleteEverything() {

@@ -8,6 +8,7 @@
  * service's Kubernetes binding, and an incident's case.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
 
 export const caseFileKeys = {
@@ -88,10 +89,13 @@ export function useRemoveBinding() {
 	});
 }
 
+/** Follows the change stream's `cases` hints, and polls while the stream is down (OBJ-010). */
 export function useCaseView(incidentId: string, enabled: boolean) {
+	const refetchInterval = useLiveRefreshInterval();
 	return useQuery({
 		...orpc.caseFiles.cases.get.queryOptions({ input: { incidentId } }),
 		enabled,
+		refetchInterval,
 	});
 }
 

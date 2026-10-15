@@ -234,7 +234,9 @@ export class CaseBundleService {
 		private readonly prisma: PrismaService,
 		private readonly settings: CaseFileSettingsService,
 		private readonly store: ArtifactStore,
-	) {}
+	) {
+		settings.onDisable(() => this.stopAll());
+	}
 
 	/** Null when the setting is off or the incident's service is unbound. */
 	async attach(incidentId: string, cwd: string): Promise<CaseBundle | null> {
@@ -274,6 +276,7 @@ export class CaseBundleService {
 		this.prune();
 		if (this.registered.size === 0) return;
 		try {
+			if (!(await this.settings.isEnabled())) return;
 			const links = await this.prisma.caseCapture.findMany({
 				where: { captureId: event.captureId },
 				select: { incidentId: true },
@@ -298,7 +301,11 @@ export class CaseBundleService {
 
 	private async refresh(incidentId: string, cwd: string): Promise<void> {
 		try {
-			await this.serial(cwd, () => this.materialise(incidentId, cwd));
+			// Rechecked in the queue: a refresh waiting behind one in flight may outlive the switch.
+			await this.serial(cwd, async () => {
+				if (await this.settings.isEnabled())
+					await this.materialise(incidentId, cwd);
+			});
 		} catch (err) {
 			// The run dir went with its run (clearRunWorkspace): stop following it.
 			if (isEnoent(err)) {
@@ -394,6 +401,12 @@ export class CaseBundleService {
 				namespace: from?.namespace ?? "",
 			},
 		};
+	}
+
+	/** Off: follow no cwd, and let a copy already under way finish first. */
+	private async stopAll(): Promise<void> {
+		this.registered.clear();
+		await Promise.allSettled([...this.chains.values()]);
 	}
 
 	private serial<T>(cwd: string, fn: () => Promise<T>): Promise<T> {

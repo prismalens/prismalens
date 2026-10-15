@@ -14,6 +14,14 @@ const TOPIC_BY_MODEL: Readonly<Record<string, LiveTopic>> = {
 	Investigation: "investigations",
 	// A ticked Do now step is shared across browsers (study-v3 §3.2).
 	Recommendation: "incidents",
+	// The Case page follows its capture as it lands and the claims built from it (OBJ-010).
+	Capture: "cases",
+	CaseCapture: "cases",
+	CaptureArtifact: "cases",
+	ManifestEntry: "cases",
+	CaseNode: "cases",
+	CaseEdge: "cases",
+	ClaimRevision: "cases",
 };
 
 const WRITE_OPERATIONS = new Set([
