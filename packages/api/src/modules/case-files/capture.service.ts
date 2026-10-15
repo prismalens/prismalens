@@ -65,8 +65,8 @@ import { CaseFileSettingsService } from "./case-file-settings.service.js";
 import { ArtifactStore, sha256Hex } from "./storage/artifact-store.js";
 import {
 	artifactEntryBody,
-	type CaptureEntryBody,
 	type ChainTx,
+	captureEntryBody,
 	ManifestService,
 } from "./storage/manifest.js";
 import { redact, redactText } from "./storage/redact.js";
@@ -676,22 +676,17 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 			orderBy: { seq: "asc" },
 			select: { digest: true },
 		});
-		const body: CaptureEntryBody = {
-			v: 1,
-			kind: "capture",
-			captureId: capture.id,
-			state: capture.state as CaptureState,
-			stateReason: capture.stateReason,
-			missedFrom: capture.missedFrom?.toISOString() ?? null,
-			missedTo: capture.missedTo?.toISOString() ?? null,
-			dueAt: capture.dueAt.toISOString(),
-			startedAt: capture.startedAt?.toISOString() ?? null,
-			finishedAt: finishedAt.toISOString(),
-			recordedAt: this.now().toISOString(),
-			notRun,
-			artifactDigests: entries.map((e) => e.digest),
-		};
-		await this.manifest.append(tx, body);
+		await this.manifest.append(
+			tx,
+			captureEntryBody(
+				{ ...capture, finishedAt },
+				{
+					recordedAt: this.now(),
+					notRun,
+					artifactDigests: entries.map((e) => e.digest),
+				},
+			),
+		);
 	}
 
 	private async buildCases(capture: Capture): Promise<void> {

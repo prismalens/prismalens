@@ -3,7 +3,7 @@
 
 /** The arm-C bundle over a migrated SQLite database: attach, refresh on capture events, and the digest. */
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,7 @@ const env = await vi.hoisted(async () => {
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { ArtifactStore } = await import("./storage/artifact-store.js");
 const { CaseFileSettingsService } = await import("./case-file-settings.service.js");
-const { CaseBundleService, BUNDLE_DIR, retrievalDigest } = await import("./case-bundle.service.js");
+const { CaseBundleService, BUNDLE_DIR, bundleFileName, retrievalDigest } = await import("./case-bundle.service.js");
 
 const NOW = new Date("2026-10-15T10:00:05Z");
 
@@ -136,7 +136,8 @@ describe("CaseBundleService", () => {
 
 		await service.handleCaptureUpdated({ captureId: capture.id });
 
-		const copied = readFileSync(join(dir, BUNDLE_DIR, "1-events.json"));
+		const eventsFile = `1-events-${capture.id.slice(0, 8)}.json`;
+		const copied = readFileSync(join(dir, BUNDLE_DIR, eventsFile));
 		expect(copied.equals(redacted)).toBe(true);
 		const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 		expect(manifest).toMatchObject({
@@ -145,7 +146,7 @@ describe("CaseBundleService", () => {
 			artifacts: [
 				{
 					id: artifact.id,
-					file: "1-events.json",
+					file: eventsFile,
 					command: "kubectl get events -o json",
 					retrieval: "partial",
 					reason: "byte-cap",
@@ -168,6 +169,65 @@ describe("CaseBundleService", () => {
 		rmSync(dir, { recursive: true, force: true });
 		await service.handleCaptureUpdated({ captureId: capture.id });
 		expect(service.registeredDirs(incident.id)).toEqual([]);
+	});
+
+	it("byte-matches every manifest reference to its stored artifact across captures and over planted files", async () => {
+		const incident = await boundIncident();
+		const podsCapture = async (createdAt: Date, text: string) => {
+			const capture = await prisma.capture.create({
+				data: {
+					checklistVersion: 1,
+					canonicalQuery: "{}",
+					queryDigest: randomUUID(),
+					kubeContext: "kind-pl",
+					cluster: "https://k",
+					namespace: "shop",
+					state: "complete",
+					caseStartedAt: NOW,
+					dueAt: NOW,
+					createdAt,
+				},
+			});
+			await prisma.caseCapture.create({ data: { incidentId: incident.id, captureId: capture.id, triggeredAt: NOW } });
+			const bytes = Buffer.from(text);
+			const { storedBytes: _, ...digests } = await store.write(capture.id, 1, bytes, bytes);
+			return prisma.captureArtifact.create({
+				data: {
+					captureId: capture.id,
+					seq: 1,
+					purpose: "pods",
+					command: "[]",
+					retrieval: "complete",
+					startedAt: NOW,
+					endedAt: NOW,
+					redactions: "{}",
+					...digests,
+				},
+			});
+		};
+		const assertManifestMatchesStore = async () => {
+			const manifest = JSON.parse(readFileSync(join(dir, BUNDLE_DIR, "manifest.json"), "utf8"));
+			expect(manifest.artifacts.length).toBeGreaterThan(0);
+			for (const ref of manifest.artifacts as { id: string; file: string }[]) {
+				const row = await prisma.captureArtifact.findUniqueOrThrow({ where: { id: ref.id } });
+				const stored = await store.readRedactedBytes(row);
+				expect(readFileSync(join(dir, BUNDLE_DIR, ref.file)).toString()).toBe(stored?.toString());
+			}
+		};
+
+		const old = await podsCapture(new Date("2026-10-15T09:00:00Z"), '{"items":["OLD POD STATE"]}');
+		const dir = cwd();
+		// A file already sitting at the bundle's name for this artifact.
+		mkdirSync(join(dir, BUNDLE_DIR), { recursive: true });
+		writeFileSync(join(dir, BUNDLE_DIR, bundleFileName(old)), "PLANTED");
+		await service.attach(incident.id, dir);
+		await assertManifestMatchesStore();
+
+		const fresh = await podsCapture(new Date("2026-10-15T09:30:00Z"), '{"items":["NEW POD STATE"]}');
+		await service.handleCaptureUpdated({ captureId: fresh.captureId });
+		const manifest = JSON.parse(readFileSync(join(dir, BUNDLE_DIR, "manifest.json"), "utf8"));
+		expect(manifest.artifacts.map((a: { id: string }) => a.id)).toEqual([fresh.id]);
+		await assertManifestMatchesStore();
 	});
 });
 

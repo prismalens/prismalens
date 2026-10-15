@@ -572,6 +572,7 @@ describe("CaptureService", () => {
 		expect(afterAttempt2.state).toBe("blocked");
 		expect(afterAttempt2.stateReason).toBe("unreachable");
 		expect(afterAttempt2.attempts).toBe(2);
+		expect(await manifest.verify([captureId])).toMatchObject({ ok: true });
 	});
 
 	it("falls back to worstReason when all commands fail without classified failure on second attempt", async () => {
@@ -645,6 +646,11 @@ describe("CaptureService", () => {
 
 		const log = readFileSync(argvLog, "utf8");
 		expect(log).not.toContain('"get"');
+
+		// No artifact landed, so only the capture entry binds the identity the view shows.
+		expect(await manifest.verify([capture.id])).toEqual({ ok: true, entries: 1, expired: 0 });
+		await prisma.capture.update({ where: { id: capture.id }, data: { identityMatches: true } });
+		expect((await manifest.verify([capture.id])).brokenAt).toMatchObject({ check: "metadata" });
 	});
 
 	it("listener resolves in under 200 ms against a fake kubectl that sleeps 2 s", async () => {

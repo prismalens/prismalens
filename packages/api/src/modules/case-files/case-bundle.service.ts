@@ -11,6 +11,7 @@ import {
 	mkdir,
 	readFile,
 	rename,
+	rm,
 	stat,
 	writeFile,
 } from "node:fs/promises";
@@ -25,7 +26,7 @@ import {
 	type CaseCaptureUpdatedEvent,
 } from "./capture.service.js";
 import { CaseFileSettingsService } from "./case-file-settings.service.js";
-import { ArtifactStore } from "./storage/artifact-store.js";
+import { ArtifactStore, sha256Hex } from "./storage/artifact-store.js";
 
 /** Relative to the run's cwd: inside it, so the agent's read rule admits it (§4 constraint 1). */
 export const BUNDLE_DIR = ".prismalens/case";
@@ -153,15 +154,15 @@ export function retrievalDigest(
 	];
 }
 
-/** `<seq>-<purpose>[-<pod>-<container>].{json,log}`; the subject is a cluster name, kept to filename-safe characters. */
+/** `<seq>-<purpose>[-<pod>-<container>]-<capture8>.{json,log}`, filename-safe; the capture id keeps a later capture's file off an earlier one's name. */
 export function bundleFileName(
-	a: Pick<CaptureArtifact, "seq" | "purpose" | "subject">,
+	a: Pick<CaptureArtifact, "captureId" | "seq" | "purpose" | "subject">,
 ): string {
 	const subject = a.subject
 		? `-${a.subject.replace(/[^A-Za-z0-9._-]/g, "-")}`
 		: "";
 	const ext = a.purpose === "logs-previous" ? "log" : "json";
-	return `${a.seq}-${a.purpose}${subject}.${ext}`;
+	return `${a.seq}-${a.purpose}${subject}-${a.captureId.slice(0, 8)}.${ext}`;
 }
 
 function commandLine(command: string): string {
@@ -176,10 +177,9 @@ function commandLine(command: string): string {
 const isEnoent = (err: unknown): boolean =>
 	(err as NodeJS.ErrnoException | null)?.code === "ENOENT";
 
-async function exists(path: string): Promise<boolean> {
+async function holds(path: string, sha256: string): Promise<boolean> {
 	try {
-		await stat(path);
-		return true;
+		return sha256Hex(await readFile(path)) === sha256;
 	} catch (err) {
 		if (isEnoent(err)) return false;
 		throw err;
@@ -311,7 +311,7 @@ export class CaseBundleService {
 		}
 	}
 
-	/** Copies each new redacted file, then replaces manifest.json. Never recreates a deleted dir. */
+	/** Copies each redacted file the dir lacks or holds wrong, then replaces manifest.json. Never recreates a deleted dir. */
 	private async materialise(
 		incidentId: string,
 		cwd: string,
@@ -326,13 +326,14 @@ export class CaseBundleService {
 			if (!withheld && !a.expiredAt) {
 				const name = bundleFileName(a);
 				const dest = join(dir, name);
-				if (await exists(dest)) file = name;
+				if (await holds(dest, a.redactedSha256)) file = name;
 				else {
 					const bytes = await this.store.readRedactedBytes(a);
-					if (bytes) {
+					// Fails closed: a stored copy that no longer matches its row is not handed over.
+					if (bytes && sha256Hex(bytes) === a.redactedSha256) {
 						await writeAtomic(dest, bytes);
 						file = name;
-					}
+					} else await rm(dest, { force: true });
 				}
 			}
 			artifacts.push({

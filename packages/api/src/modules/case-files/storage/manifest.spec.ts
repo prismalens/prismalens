@@ -7,6 +7,7 @@ import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { TokenVault } from "@prismalens/integrations";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { Prisma } from "@prismalens/database";
 import type { CredentialsService } from "../../integrations/crypto/credentials.service.js";
 
 const env = await vi.hoisted(async () => {
@@ -20,7 +21,7 @@ const env = await vi.hoisted(async () => {
 
 const { PrismaService } = await import("../../../core/prisma/prisma.service.js");
 const { ArtifactStore, casesDir } = await import("./artifact-store.js");
-const { ManifestService, artifactEntryBody } = await import("./manifest.js");
+const { ManifestService, artifactEntryBody, captureEntryBody } = await import("./manifest.js");
 
 const vault = new TokenVault(randomBytes(32));
 const credentials = { getVault: () => vault } as unknown as CredentialsService;
@@ -49,6 +50,10 @@ describe("ManifestService", () => {
 				kubeContext: "kind",
 				cluster: "https://k",
 				namespace: "shop",
+				identity: JSON.stringify(IDENTITY),
+				identityMatches: true,
+				state: "running",
+				startedAt: now,
 				caseStartedAt: now,
 				dueAt: now,
 			},
@@ -84,6 +89,29 @@ describe("ManifestService", () => {
 			}),
 		);
 		return c.id;
+	}
+
+	/** Ends a capture as the runner does: the row's final state, then its capture entry. */
+	async function finish(captureId: string): Promise<void> {
+		const finishedAt = new Date("2026-10-15T10:01:00Z");
+		await manifest.transaction(async (tx) => {
+			const row = await tx.capture.update({
+				where: { id: captureId },
+				data: { state: "complete", finishedAt },
+			});
+			const artifactEntries = await tx.manifestEntry.findMany({
+				where: { captureId, artifactId: { not: null } },
+				orderBy: { seq: "asc" },
+			});
+			await manifest.append(
+				tx,
+				captureEntryBody(row, {
+					recordedAt: finishedAt,
+					notRun: [],
+					artifactDigests: artifactEntries.map((e) => e.digest),
+				}),
+			);
+		});
 	}
 
 	beforeAll(async () => {
@@ -202,6 +230,8 @@ describe("ManifestService", () => {
 				kubeContext: "kind",
 				cluster: "https://k",
 				namespace: "shop",
+				identity: JSON.stringify(IDENTITY),
+				identityMatches: true,
 				caseStartedAt: now,
 				dueAt: now,
 			},
@@ -264,6 +294,75 @@ describe("ManifestService", () => {
 			check: "metadata",
 			detail: "artifact row columns do not parse",
 		});
+	});
+
+	it("breaks on every edit to a finished capture's displayed identity, target, state or times", async () => {
+		const edits: Record<string, Prisma.CaptureUpdateInput> = {
+			identity: { identity: JSON.stringify({ ...IDENTITY, kubeUser: "intruder" }) },
+			identityMatches: { identityMatches: false },
+			cluster: { cluster: "https://elsewhere" },
+			kubeContext: { kubeContext: "prod" },
+			namespace: { namespace: "payments" },
+			state: { state: "partial" },
+			stateReason: { stateReason: "timeout" },
+			startedAt: { startedAt: new Date("2026-10-15T09:00:00Z") },
+			finishedAt: { finishedAt: new Date("2026-10-15T11:00:00Z") },
+			dueAt: { dueAt: new Date("2026-10-15T08:00:00Z") },
+			missed: { missedFrom: new Date("2026-10-15T09:00:00Z"), missedTo: new Date("2026-10-15T09:30:00Z") },
+		};
+		for (const [field, data] of Object.entries(edits)) {
+			const id = await captureWith(2);
+			await finish(id);
+			expect(await manifest.verify([id]), `${field} before the edit`).toMatchObject({ ok: true });
+			await prisma.capture.update({ where: { id }, data });
+			expect((await manifest.verify([id])).ok, `${field} after the edit`).toBe(false);
+		}
+	});
+
+	it("breaks on an identity edit to a capture still running", async () => {
+		const id = await captureWith(2);
+		await prisma.capture.update({
+			where: { id },
+			data: { identity: JSON.stringify({ ...IDENTITY, cluster: "https://elsewhere" }) },
+		});
+		expect((await manifest.verify([id])).ok).toBe(false);
+	});
+
+	it("breaks on an edited artifact purpose or subject", async () => {
+		for (const data of [{ purpose: "pods" }, { subject: "checkout/app" }]) {
+			const id = await captureWith(1);
+			await prisma.captureArtifact.updateMany({ where: { captureId: id }, data });
+			expect((await manifest.verify([id])).ok).toBe(false);
+		}
+	});
+
+	it("breaks when a terminal or artifact entry is deleted", async () => {
+		const tail = await captureWith(2);
+		await finish(tail);
+		await prisma.manifestEntry.deleteMany({ where: { captureId: tail, artifactId: null } });
+		expect((await manifest.verify([tail])).ok, "terminal entry at the chain tail").toBe(false);
+
+		const middle = await captureWith(3);
+		await finish(middle);
+		const entries = await prisma.manifestEntry.findMany({ where: { captureId: middle }, orderBy: { seq: "asc" } });
+		await prisma.manifestEntry.delete({ where: { seq: entries[1]!.seq } });
+		expect((await manifest.verify([middle])).ok, "artifact entry mid-capture").toBe(false);
+
+		const lastArtifact = await captureWith(2);
+		const last = await prisma.manifestEntry.findFirstOrThrow({
+			where: { captureId: lastArtifact },
+			orderBy: { seq: "desc" },
+		});
+		await prisma.manifestEntry.delete({ where: { seq: last.seq } });
+		expect((await manifest.verify([lastArtifact])).ok, "an artifact entry at the chain tail").toBe(false);
+
+		const all = await captureWith(1);
+		await prisma.manifestEntry.deleteMany({ where: { captureId: all } });
+		expect(await manifest.verify([all]), "every entry, artifact kept").toMatchObject({ ok: false });
+
+		const finishedOnly = await captureWith(0);
+		await prisma.capture.update({ where: { id: finishedOnly }, data: { state: "blocked", stateReason: "unreachable", finishedAt: new Date() } });
+		expect(await manifest.verify([finishedOnly]), "finished capture with no entry").toMatchObject({ ok: false });
 	});
 
 	it("has no update or delete path on the append-only tables outside specs", () => {
