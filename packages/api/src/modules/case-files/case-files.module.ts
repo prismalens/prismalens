@@ -5,6 +5,8 @@ import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../core/prisma/prisma.module.js";
 import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { BindingsService } from "./bindings.service.js";
+import { CaptureService } from "./capture.service.js";
+import { CaseBuilder } from "./case-builder.js";
 import { CaseFileSettingsService } from "./case-file-settings.service.js";
 import { CaseFilesController } from "./case-files.controller.js";
 import { ArtifactStore } from "./storage/artifact-store.js";
@@ -19,7 +21,14 @@ import { ManifestService } from "./storage/manifest.js";
 		ArtifactStore,
 		ManifestService,
 		BindingsService,
+		CaseBuilder,
+		CaptureService,
 	],
-	exports: [CaseFileSettingsService, ArtifactStore, ManifestService],
+	exports: [
+		CaseFileSettingsService,
+		ArtifactStore,
+		ManifestService,
+		CaptureService,
+	],
 })
 export class CaseFilesModule {}
