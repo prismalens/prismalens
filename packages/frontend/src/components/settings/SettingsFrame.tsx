@@ -16,6 +16,7 @@ import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useOperator } from "@/hooks/use-operator";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useConnections, useIntegrations } from "@/lib/api/hooks";
+import { useCaseFileSettings } from "@/lib/api/hooks/use-case-files-orpc";
 import { useLastDelivery } from "@/lib/api/hooks/use-webhooks-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 
@@ -25,6 +26,7 @@ export type SettingsTab =
 	| "integrations"
 	| "devices"
 	| "usage"
+	| "experiments"
 	| "about"
 	| "danger";
 
@@ -52,6 +54,7 @@ export function useSettingsSections(): SettingsSectionItem[] {
 	const { data: devices } = useDevices(managesPairing);
 	const { data: about } = useAbout();
 	const { query: telemetry } = useTelemetrySettings();
+	const { data: caseFile, isError: caseFileFailed } = useCaseFileSettings();
 	const pulled = (connections ?? []).filter((c) =>
 		PULL_TEMPLATES.has(c.templateId ?? ""),
 	).length;
@@ -99,6 +102,16 @@ export function useSettingsSections(): SettingsSectionItem[] {
 			tab: "usage",
 			label: "Usage data",
 			line: telemetry.data ? (telemetry.data.enabled ? "On" : "Off") : "",
+		},
+		{
+			tab: "experiments",
+			label: "Experiments",
+			line:
+				caseFile || caseFileFailed
+					? caseFile?.enabled
+						? "Case File on"
+						: "None on"
+					: "",
 		},
 		{
 			tab: "about",

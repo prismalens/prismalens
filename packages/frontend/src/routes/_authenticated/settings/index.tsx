@@ -11,6 +11,7 @@ import {
 } from "@/components/settings";
 import { AlertSources } from "@/components/settings/AlertSources";
 import { DevicesTab } from "@/components/settings/DevicesTab";
+import { ExperimentsSettings } from "@/components/settings/ExperimentsSettings";
 import {
 	SettingsFrame,
 	useSettingsSections,
@@ -48,6 +49,11 @@ const SECTIONS = {
 		intro:
 			"Counts that show which features get used. On unless you turn it off.",
 	},
+	experiments: {
+		title: "Experiments",
+		intro:
+			"Features still being tried out. Each one is off until you turn it on.",
+	},
 	about: {
 		title: "About",
 		intro:
@@ -82,6 +88,7 @@ function SettingsPage() {
 			{tab === "sources" && <AlertSources />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
+			{tab === "experiments" && <ExperimentsSettings />}
 			{tab === "about" && <AboutSettings />}
 			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>
