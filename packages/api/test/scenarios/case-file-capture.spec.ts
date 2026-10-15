@@ -97,7 +97,13 @@ describe("Case File: capture at alert time, beside the run", () => {
 		const manifestFile = join(cwd, ".prismalens", "case", "manifest.json");
 		expect(existsSync(manifestFile)).toBe(true);
 
-		const view = await eventually(() => caseOf(incidentId), ended, "the capture to end", 60_000);
+		// Claims are built in their own transaction after the capture ends, so wait for both.
+		const view = await eventually(
+			() => caseOf(incidentId),
+			(v) => ended(v) && v.claims.some((c) => c.subject.relation === "precedes_alert"),
+			"the capture to end and its claims to land",
+			60_000,
+		);
 		const capture = view.captures[0];
 		expect(capture).toMatchObject({ state: "complete", stateReason: null, shared: false, identityMatches: true });
 		expect(capture?.artifacts.map((a) => a.purpose)).toEqual([
