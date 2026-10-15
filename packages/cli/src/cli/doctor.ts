@@ -491,6 +491,57 @@ export function checkGit(
 	return checks;
 }
 
+type KubectlRun = (
+	bin: string,
+	args: string[],
+) => { status: number | null; stdout: string };
+
+const runKubectl: KubectlRun = (bin, args) => {
+	const plan = windowsSpawnPlan(bin, args);
+	const r = spawnSync(plan.command, plan.args, {
+		...plan.options,
+		encoding: "utf8",
+		timeout: 5_000,
+		windowsHide: true,
+	});
+	return { status: r.error ? null : r.status, stdout: r.stdout ?? "" };
+};
+
+/** Case File capture needs kubectl; reads PATH and kubectl only, never the DB. */
+export function checkCapture(
+	path = process.env.PATH ?? "",
+	run: KubectlRun = runKubectl,
+): Check {
+	const bin = resolveOnPath("kubectl", path);
+	if (!bin)
+		return {
+			name: "Capture (Kubernetes)",
+			pass: false,
+			detail:
+				"kubectl not on PATH, so alert-time pod capture can't run. Install kubectl to use it.",
+			hard: false,
+		};
+	let version: string | null = null;
+	const v = run(bin, ["version", "--client", "-o", "json"]);
+	try {
+		const parsed: { clientVersion?: { gitVersion?: unknown } } = JSON.parse(
+			v.stdout,
+		);
+		const git = parsed.clientVersion?.gitVersion;
+		version = typeof git === "string" ? git : null;
+	} catch {
+		version = null;
+	}
+	const ctx = run(bin, ["config", "current-context"]);
+	const current = ctx.status === 0 ? ctx.stdout.trim() : "";
+	return {
+		name: "Capture (Kubernetes)",
+		pass: true,
+		detail: `kubectl ${version ?? "(version unknown)"} at ${bin}; ${current ? `current context ${current}` : "no current context"}. Case File capture is an experiment, off by default (Settings → Experiments).`,
+		hard: false,
+	};
+}
+
 /** What `pl up` would pick, without creating the instance file the doctor only reports on. */
 function workspacePort(): number {
 	const workspace = getAppDataDir();
@@ -624,6 +675,7 @@ export default defineCommand({
 				checkPath(),
 				checkInstalls(),
 				...checkGit(),
+				checkCapture(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakes.map((h) => h.check),

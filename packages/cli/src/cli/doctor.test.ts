@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAnyHarnessOnPath,
 	checkAutoSelection,
+	checkCapture,
 	checkGit,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
@@ -460,3 +461,39 @@ describe("doctor — checkGit (#673, T19, T19b, T19c)", () => {
 	});
 });
 
+
+describe("doctor — checkCapture (Case File)", () => {
+	let dir: string;
+	beforeEach(() => {
+		dir = join(os.tmpdir(), `pl-doctor-kubectl-${process.pid}-${Date.now()}`);
+		mkdirSync(dir, { recursive: true });
+	});
+	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+	it("names kubectl, its version and the current context when present", () => {
+		const bin = join(dir, "kubectl");
+		writeFileSync(bin, "#!/bin/sh\n");
+		chmodSync(bin, 0o755);
+		const run = vi.fn((_bin: string, args: string[]) =>
+			args[0] === "version"
+				? { status: 0, stdout: '{"clientVersion":{"gitVersion":"v1.31.0"}}' }
+				: { status: 0, stdout: "kind-pl\n" },
+		);
+		const check = checkCapture(dir, run);
+		expect(check).toEqual({
+			name: "Capture (Kubernetes)",
+			pass: true,
+			hard: false,
+			detail: `kubectl v1.31.0 at ${bin}; current context kind-pl. Case File capture is an experiment, off by default (Settings → Experiments).`,
+		});
+	});
+
+	it("warns, never fails hard, when kubectl is absent", () => {
+		const check = checkCapture(dir, vi.fn());
+		expect(check.pass).toBe(false);
+		expect(check.hard).toBe(false);
+		expect(check.detail).toBe(
+			"kubectl not on PATH, so alert-time pod capture can't run. Install kubectl to use it.",
+		);
+	});
+});
