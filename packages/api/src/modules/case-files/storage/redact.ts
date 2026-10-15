@@ -103,6 +103,13 @@ export const SECRET_PATTERNS = [
 		],
 	},
 	{
+		// A YAML block or folded value under such a key: every line indented past the key's own.
+		name: "key: block",
+		patterns: [
+			String.raw`/(?<=^([ \t]*)[\w.-]*(?:${KEY})[\w.-]*(?:[ \t]+[\w.-]+)?[ \t]*:[ \t]*(?:[|>][-+]?[0-9]?)?[ \t]*\r?\n)(?:\1[ \t]+\S[^\r\n]*(?:\r?\n|$))+/im`,
+		],
+	},
+	{
 		// mysql-style `-p value` and `-pvalue`; case-sensitive, as `-P` is mysql's port.
 		name: "short password flag",
 		patterns: [
@@ -135,6 +142,8 @@ export const SECRET_PATTERNS = [
 		patterns: [
 			String.raw`/(?:^|(?<=\n|\\n))[A-Za-z0-9+/=]{1,64}(?:\r?\n|\\n)-----END [A-Z0-9 ]*PRIVATE KEY-----/`,
 			String.raw`/(?:^|(?<=\n|\\n))[A-Za-z0-9+/]{64}(?:(?:\r?\n|\\n)[A-Za-z0-9+/=]{1,64}(?=\r?\n|\\n|$))+/`,
+			// Other wraps, such as OpenSSH's 70: three or more full lines of 60 to 76, then a short last.
+			String.raw`/(?:^|(?<=\n|\\n))[A-Za-z0-9+/]{60,76}(?:(?:\r?\n|\\n)[A-Za-z0-9+/]{60,76}(?=\r?\n|\\n|$)){2,}(?:(?:\r?\n|\\n)[A-Za-z0-9+/=]{1,76}(?=\r?\n|\\n|$))?/`,
 		],
 	},
 	{
@@ -251,32 +260,91 @@ function scrubObject(item: unknown, counts: RedactCounts): void {
 
 type Span = readonly [start: number, end: number];
 
-// String values that name a key, label or Secret a workload reads; they never hold the secret.
-const REFERENCE_FIELDS: ReadonlySet<string> = new Set([
-	"key",
-	"topologyKey",
-	"secretName",
-]);
-const LABEL_MAPS: ReadonlySet<string> = new Set([
-	"labels",
-	"matchLabels",
-	"nodeSelector",
-]);
-// A Kubernetes name, key or label value; anything else in those fields is scanned as usual.
-const REFERENCE = /^(?!eyJ)[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$/;
+// A Kubernetes name, key or label value; anything else in a reference field is scanned as usual.
+const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$/;
+const HAS_JWT = /eyJ[A-Za-z0-9_-]{6,}\./;
+const ALNUM_RUN = /[A-Za-z0-9]{12,}/g;
 const MARKED = /\\u0001([^"\\]*)\\u0002/g;
 
-const mark = (value: unknown): unknown =>
-	typeof value === "string" && REFERENCE.test(value)
-		? `\u0001${value}\u0002`
-		: value;
+/** A run of 12+ letters and digits holding 3+ of each reads as a generated secret, not a name. */
+const secretLike = (value: string): boolean =>
+	[...value.matchAll(ALNUM_RUN)].some(
+		([run]) =>
+			(run.match(/[A-Za-z]/g)?.length ?? 0) >= 3 &&
+			(run.match(/[0-9]/g)?.length ?? 0) >= 3,
+	);
 
-function markReferences(field: string, value: unknown): unknown {
-	if (LABEL_MAPS.has(field) && isObject(value))
-		return Object.fromEntries(
-			Object.entries(value).map(([k, v]) => [k, mark(v)]),
-		);
-	return REFERENCE_FIELDS.has(field) ? mark(value) : value;
+const each = (value: unknown): JsonObject[] =>
+	Array.isArray(value) ? value.filter(isObject) : [];
+
+/** Marks `holder[field]` as a kept reference name when it has a name's shape and not a secret's. */
+function markField(holder: unknown, field: string): void {
+	if (!isObject(holder)) return;
+	const value = holder[field];
+	if (
+		typeof value === "string" &&
+		REFERENCE.test(value) &&
+		!HAS_JWT.test(value) &&
+		!secretLike(value)
+	)
+		holder[field] = `\u0001${value}\u0002`;
+}
+
+function markValues(map: unknown): void {
+	if (isObject(map))
+		for (const field of Object.keys(map)) markField(map, field);
+}
+
+/** Every `matchExpressions[].key` and `topologyKey` inside an affinity. */
+function markAffinity(node: unknown): void {
+	if (Array.isArray(node)) {
+		for (const item of node) markAffinity(item);
+		return;
+	}
+	if (!isObject(node)) return;
+	for (const [field, value] of Object.entries(node)) {
+		if (field === "matchExpressions")
+			for (const e of each(value)) markField(e, "key");
+		else if (field === "topologyKey") markField(node, field);
+		else markAffinity(value);
+	}
+}
+
+function markPodSpec(spec: unknown): void {
+	if (!isObject(spec)) return;
+	for (const key of POD_SPEC_CONTAINERS)
+		for (const container of each(spec[key]))
+			for (const env of each(container.env)) {
+				const from = env.valueFrom;
+				if (!isObject(from)) continue;
+				markField(from.secretKeyRef, "key");
+				markField(from.configMapKeyRef, "key");
+			}
+	for (const volume of each(spec.volumes)) {
+		markField(volume.secret, "secretName");
+		for (const source of [volume.secret, volume.configMap])
+			if (isObject(source))
+				for (const item of each(source.items)) markField(item, "key");
+	}
+	for (const t of each(spec.tolerations)) markField(t, "key");
+	for (const t of each(spec.topologySpreadConstraints))
+		markField(t, "topologyKey");
+	markValues(spec.nodeSelector);
+	markAffinity(spec.affinity);
+}
+
+/** The reference names a workload reads, by path: never annotations, never anywhere else (#842). */
+function markReferences(item: unknown): void {
+	if (!isObject(item)) return;
+	if (isObject(item.metadata)) markValues(item.metadata.labels);
+	const spec = item.spec;
+	if (!isObject(spec)) return;
+	if (isObject(spec.selector)) markValues(spec.selector.matchLabels);
+	markPodSpec(spec);
+	const template = spec.template;
+	if (!isObject(template)) return;
+	if (isObject(template.metadata)) markValues(template.metadata.labels);
+	markPodSpec(template.spec);
 }
 
 /**
@@ -290,11 +358,10 @@ function structural(
 	const doc: unknown = JSON.parse(text);
 	const items = isObject(doc) && Array.isArray(doc.items) ? doc.items : [doc];
 	for (const item of items) scrubObject(item, counts);
-	const plain = JSON.stringify(doc, null, 4);
-	// Fails closed: input that already carries the markers keeps nothing.
-	if (plain.includes("\\u0001") || plain.includes("\\u0002"))
-		return { text: plain, kept: [] };
-	const marked = JSON.stringify(doc, markReferences, 4);
+	// Fails closed: input that already carries the markers keeps nothing (JSON can only escape them).
+	const markable = !/\\u000[12]/.test(text);
+	if (markable) for (const item of items) markReferences(item);
+	const marked = JSON.stringify(doc, null, 4);
 	const kept: Span[] = [];
 	const parts: string[] = [];
 	let cursor = 0;
