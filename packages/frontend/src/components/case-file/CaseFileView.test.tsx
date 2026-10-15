@@ -340,7 +340,7 @@ describe("CaseFileView", () => {
 				unknown: "unbound",
 				inferred: "agent-hypothesis",
 			};
-			const claims = CLAIM_STATUSES.map((status, i) =>
+			const claims = CLAIM_STATUSES.map((status) =>
 				claim({
 					id: `claim-${status}`,
 					status,

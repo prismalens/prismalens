@@ -12,7 +12,9 @@ export const SECRETS = {
 	awsId: "AKIA2E0A8F3B244C9986",
 	awsSecret: "Zx9q2Lm4Rt7Vb1Nc8Kd3Hf6Jg0Ps5Wy2Ea7Ub4Io",
 	github: ["ghp", "wWPw5k4aXcaT4fNP0UcnZwJUVFk6LO0pINUx"].join("_"),
-	slack: ["xoxb", "2048112233-4096556677889-Qw3rTy8uIoP4aSdF6gHjK2lZ"].join("-"),
+	slack: ["xoxb", "2048112233-4096556677889-Qw3rTy8uIoP4aSdF6gHjK2lZ"].join(
+		"-",
+	),
 	bearer: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhYmMifQ.c2lnbmF0dXJl",
 	dbPassword: "hunter2-db-value",
 	pgPassword: "x-pg-value",
