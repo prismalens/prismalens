@@ -42,7 +42,7 @@ export function classifyFailure(
 		return "context-missing";
 	}
 	if (
-		/unable to connect|i\/o timeout|no such host|connection refused|deadline exceeded/i.test(
+		/unable to connect|i\/o timeout|no such host|connection refused|deadline exceeded|tls handshake timeout|": EOF$/im.test(
 			stderr,
 		)
 	) {
