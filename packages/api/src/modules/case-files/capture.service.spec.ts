@@ -1100,6 +1100,37 @@ describe("CaptureService", () => {
 		for (const file of files) expect(readFileSync(file).includes(canary), file).toBe(false);
 	});
 
+	it("OBJ-018: a capture whose claim build failed gets its claims at the next boot, not while off, and only once", async () => {
+		const { incident } = await boundIncident("svc-rebuild", "critical", "ns-rebuild");
+		const build = vi.spyOn(CaseBuilder.prototype, "build").mockRejectedValueOnce(new Error("build crashed"));
+		const res = await service.captureNow(incident.id);
+		await service.tick();
+		await service.settle();
+		build.mockRestore();
+		expect(await prisma.capture.findUniqueOrThrow({ where: { id: res?.captureId ?? "" } })).toMatchObject({ state: "complete" });
+		const claims = () => prisma.claimRevision.count({ where: { incidentId: incident.id } });
+		expect(await claims()).toBe(0);
+
+		const boot = async () => {
+			await service.onModuleInit();
+			await service.settle();
+			const s = service as unknown as { interval?: NodeJS.Timeout; sweepTimer?: NodeJS.Timeout };
+			if (s.interval) clearInterval(s.interval);
+			if (s.sweepTimer) clearInterval(s.sweepTimer);
+		};
+		await settings.set(false);
+		await boot();
+		expect(await claims()).toBe(0);
+
+		await settings.set(true);
+		await boot();
+		const rebuilt = await claims();
+		expect(rebuilt).toBeGreaterThan(0);
+
+		await boot();
+		expect(await claims()).toBe(rebuilt);
+	});
+
 	it("OBJ-009: boot sweeps a quiet capture past retention and an unbound one, keeping their rows, and drops orphan dirs", async () => {
 		const old = new Date(Date.now() - 31 * 86_400_000);
 		async function storedCapture(name: string): Promise<{ captureId: string; bindingId: string }> {

@@ -207,6 +207,7 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	) {
 		settings.onDisable(async () => {
 			await this.halt("disabled");
+			await this.sweepRun;
 		});
 	}
 
@@ -218,9 +219,9 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		});
 		this.interval = setInterval(() => void this.tick(), TICK_MS);
 		this.interval.unref();
-		void this.sweepRetention();
+		void this.maintain();
 		this.sweepTimer = setInterval(
-			() => void this.sweepRetention(),
+			() => void this.maintain(),
 			RETENTION_SWEEP_MS,
 		);
 		this.sweepTimer.unref();
@@ -236,25 +237,57 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/**
-	 * Retention for every source, including quiet ones and captures whose binding
-	 * was deleted (OBJ-009). It runs whatever the setting says: it only removes.
+	 * On boot and hourly: retention for every source, including quiet ones and
+	 * captures whose binding was deleted (OBJ-009), then claims a build never wrote.
 	 */
-	private sweepRetention(): Promise<void> {
+	private maintain(): Promise<void> {
 		if (this.resetting || this.stopping) return Promise.resolve();
-		this.sweepRun ??= this.store
-			.sweepAll(this.now())
-			.then(
-				() => undefined,
-				(err: unknown) => {
-					this.logger.warn(
-						`retention sweep failed: ${err instanceof Error ? err.message : String(err)}`,
-					);
-				},
-			)
-			.finally(() => {
-				this.sweepRun = null;
-			});
+		const warn = (what: string) => (err: unknown) => {
+			this.logger.warn(
+				`${what} failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		};
+		this.sweepRun ??= (async () => {
+			// Retention runs whatever the setting says: it only removes.
+			await this.store.sweepAll(this.now()).catch(warn("retention sweep"));
+			await this.rebuildMissingClaims().catch(warn("claim recovery"));
+		})().finally(() => {
+			this.sweepRun = null;
+		});
 		return this.sweepRun;
+	}
+
+	/**
+	 * Builds claims for ended captures that have none for a linked case: the process
+	 * stopped after end() committed, or the build threw (OBJ-018). A build is
+	 * idempotent, so a retry is safe; one that fails again waits for the next run.
+	 */
+	private async rebuildMissingClaims(): Promise<void> {
+		if (!(await this.settings.isEnabled())) return;
+		const links = await this.prisma.caseCapture.findMany({
+			where: {
+				capture: {
+					state: { in: ["complete", "partial"] },
+					// Turned off mid-run: closed without claims on purpose.
+					OR: [{ stateReason: null }, { stateReason: { not: "disabled" } }],
+					artifacts: { some: {}, none: { expiredAt: { not: null } } },
+				},
+			},
+			include: { capture: true },
+		});
+		for (const link of links) {
+			if (this.resetting || this.stopping) return;
+			if (this.running.has(link.captureId)) continue;
+			const built = await this.prisma.claimRevision.count({
+				where: {
+					incidentId: link.incidentId,
+					artifact: { captureId: link.captureId },
+				},
+			});
+			if (built > 0) continue;
+			if (!(await this.settings.isEnabled())) return;
+			await this.buildCases(link.capture, [link.incidentId]);
+		}
 	}
 
 	/** Runs `work` (a reset) with no capture running or starting and no sweep under way (OBJ-008). */
@@ -858,9 +891,17 @@ export class CaptureService implements OnModuleInit, OnModuleDestroy {
 		);
 	}
 
-	private async buildCases(capture: Capture): Promise<void> {
+	private async buildCases(
+		capture: Capture,
+		incidentIds?: readonly string[],
+	): Promise<void> {
 		const [links, artifacts] = await Promise.all([
-			this.prisma.caseCapture.findMany({ where: { captureId: capture.id } }),
+			this.prisma.caseCapture.findMany({
+				where: {
+					captureId: capture.id,
+					...(incidentIds && { incidentId: { in: [...incidentIds] } }),
+				},
+			}),
 			this.prisma.captureArtifact.findMany({
 				where: { captureId: capture.id },
 				orderBy: { seq: "asc" },
