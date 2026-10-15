@@ -157,7 +157,7 @@ describe("redact", () => {
 		if ("error" in out) throw new Error(out.error);
 		expect(out.redacted.length).toBe(buf.length);
 		expect(durationMs).toBeLessThan(10_000);
-	});
+	}, 20_000);
 
 	it("redacts a secret straddling a 64 KiB window boundary", async () => {
 		const secretKey = "DB_PASSWORD=";
