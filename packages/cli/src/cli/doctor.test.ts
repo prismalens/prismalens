@@ -496,4 +496,40 @@ describe("doctor — checkCapture (Case File)", () => {
 			"kubectl not on PATH, so alert-time pod capture can't run. Install kubectl to use it.",
 		);
 	});
+
+	it("reports (version unknown) when kubectl version cannot be parsed", () => {
+		const bin = join(dir, "kubectl");
+		writeFileSync(bin, "#!/bin/sh\n");
+		chmodSync(bin, 0o755);
+		const run = vi.fn((_bin: string, args: string[]) =>
+			args[0] === "version"
+				? { status: 1, stdout: "error: unable to read version\n" }
+				: { status: 0, stdout: "kind-pl\n" },
+		);
+		const check = checkCapture(dir, run);
+		expect(check).toEqual({
+			name: "Capture (Kubernetes)",
+			pass: true,
+			hard: false,
+			detail: `kubectl (version unknown) at ${bin}; current context kind-pl. Case File capture is an experiment, off by default (Settings → Experiments).`,
+		});
+	});
+
+	it("reports no current context when current-context exits non-zero", () => {
+		const bin = join(dir, "kubectl");
+		writeFileSync(bin, "#!/bin/sh\n");
+		chmodSync(bin, 0o755);
+		const run = vi.fn((_bin: string, args: string[]) =>
+			args[0] === "version"
+				? { status: 0, stdout: '{"clientVersion":{"gitVersion":"v1.31.0"}}' }
+				: { status: 1, stdout: "error: current-context is not set\n" },
+		);
+		const check = checkCapture(dir, run);
+		expect(check).toEqual({
+			name: "Capture (Kubernetes)",
+			pass: true,
+			hard: false,
+			detail: `kubectl v1.31.0 at ${bin}; no current context. Case File capture is an experiment, off by default (Settings → Experiments).`,
+		});
+	});
 });
