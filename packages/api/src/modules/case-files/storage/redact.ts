@@ -279,7 +279,11 @@ const STRUCTURAL_HASHES: ReadonlySet<string> = new Set([
 
 function secretLabel(key: string, value: string): boolean {
 	if (SECRET_KEY.test(key)) return true;
-	if (STRUCTURAL_HASHES.has(key) && /^[0-9a-f]{8,10}$/.test(value))
+	// Kubernetes' own safe-encoding alphabet (no vowels, no 0/1/3), optionally after `<name>-`.
+	if (
+		STRUCTURAL_HASHES.has(key) &&
+		/^(?:[a-z0-9.-]+-)?[bcdfghjklmnpqrstvwxz2456789]{5,10}$/.test(value)
+	)
 		return false;
 	return [...value.matchAll(GENERATED_RUN)].some(
 		([run]) => /[A-Za-z]/.test(run) && /[0-9]/.test(run),

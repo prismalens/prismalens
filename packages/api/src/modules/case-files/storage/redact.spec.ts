@@ -640,6 +640,16 @@ describe("round 5 (#842)", () => {
 		expect(text).not.toContain("R3alPassw0rd");
 	});
 
+	it("keeps the hash labels Kubernetes itself writes, in its own encoding", async () => {
+		const pod = {
+			kind: "Pod",
+			metadata: { name: "x", labels: { "pod-template-hash": "6b8f7d9c4x", "controller-revision-hash": "web-7c5bd9f4d6" } },
+		};
+		const text = await run("pods", JSON.stringify(pod));
+		expect(text).toContain("6b8f7d9c4x");
+		expect(text).toContain("web-7c5bd9f4d6");
+	});
+
 	const BLOCK = ["password: |", "  CanaryLine1", "  CanaryLine2", "  CanaryLine3"];
 	const eventsOf = (message: string) => JSON.stringify({ items: [{ type: "Warning", reason: "FailedMount", message, count: 3 }] }, null, 4);
 
