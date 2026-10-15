@@ -85,7 +85,7 @@ describe("redact", () => {
 
 	it("removes the full secret corpus in __fixtures__/secret-corpus.ts across every purpose", async () => {
 		for (const purpose of ARTIFACT_PURPOSES) {
-			const out = await redact(purpose, corpusFor(purpose));
+			const out = await redactInProcess(purpose, corpusFor(purpose));
 			if ("error" in out) throw new Error(out.error);
 			const text = out.redacted.toString("utf8");
 			for (const secret of RAW_SECRET_VALUES) expect(text).not.toContain(secret);
@@ -93,7 +93,7 @@ describe("redact", () => {
 	});
 
 	it("blanks env values, keeps names and valueFrom, drops managedFields and last-applied", async () => {
-		const out = await redact("deployments", Buffer.from(JSON.stringify(DEPLOYMENTS)));
+		const out = await redactInProcess("deployments", Buffer.from(JSON.stringify(DEPLOYMENTS)));
 		if ("error" in out) throw new Error(out.error);
 		const doc = JSON.parse(out.redacted.toString("utf8"));
 		const item = doc.items[0];
@@ -125,7 +125,7 @@ describe("redact", () => {
 			],
 		};
 		expect(await redactInProcess("events", Buffer.from("{}"), throwing)).toEqual({ error: "text pass failed (Error)" });
-		expect(await redact("pods", Buffer.from('{"items": ['))).toEqual({
+		expect(await redactInProcess("pods", Buffer.from('{"items": ['))).toEqual({
 			error: expect.stringContaining("structural pass"),
 		});
 		expect(await redactText("x", throwing)).toEqual({ error: "text pass failed (Error)" });
@@ -167,7 +167,7 @@ describe("redact", () => {
 		const paddingBefore = "a".repeat(boundary - secretKey.length);
 		const paddingAfter = "b".repeat(1024);
 		const text = paddingBefore + fullSecret + paddingAfter;
-		const out = await redact("logs-previous", Buffer.from(text));
+		const out = await redactInProcess("logs-previous", Buffer.from(text));
 		if ("error" in out) throw new Error(out.error);
 		const redacted = out.redacted.toString("utf8");
 		expect(redacted).not.toContain(secretVal);
@@ -176,12 +176,12 @@ describe("redact", () => {
 	});
 
 	it("handles empty buffers and overlapping patterns cleanly", async () => {
-		expect(await redact("events", Buffer.alloc(0))).toEqual({ redacted: Buffer.alloc(0), counts: {} });
+		expect(await redactInProcess("events", Buffer.alloc(0))).toEqual({ redacted: Buffer.alloc(0), counts: {} });
 		const overlapping = await redactText(`Authorization: Bearer ${["xoxb", "123456789012-1234567890123-456789abcdef456789abcdef"].join("-")}`);
 		if ("error" in overlapping) throw new Error(overlapping.error);
 		expect(overlapping.text).toContain("[REDACTED:");
 
-		const nonObj = await redact("pods", Buffer.from(JSON.stringify({ kind: "Pod", metadata: null, spec: null })));
+		const nonObj = await redactInProcess("pods", Buffer.from(JSON.stringify({ kind: "Pod", metadata: null, spec: null })));
 		if ("error" in nonObj) throw new Error(nonObj.error);
 	});
 });
@@ -197,7 +197,7 @@ describe("redaction holds against captured text (#842)", () => {
 			"2026-10-15T10:00:01Z DB_PASSWORD=hunter2 // secretlint-disable-line",
 			`2026-10-15T10:00:00Z /* secretlint-disable @secretlint/secretlint-rule-pattern */ token=hunter2 ${FIXTURE_SECRETS.github}`,
 		]) {
-			const out = await redact("logs-previous", Buffer.from(log));
+			const out = await redactInProcess("logs-previous", Buffer.from(log));
 			if ("error" in out) throw new Error(out.error);
 			expect(leaked(out.redacted.toString("utf8"), ["hunter2", FIXTURE_SECRETS.github])).toEqual([]);
 		}
@@ -223,7 +223,7 @@ describe("redaction holds against captured text (#842)", () => {
 				},
 			],
 		};
-		const out = await redact("pods", Buffer.from(JSON.stringify(pods)));
+		const out = await redactInProcess("pods", Buffer.from(JSON.stringify(pods)));
 		if ("error" in out) throw new Error(out.error);
 		const text = out.redacted.toString("utf8");
 		expect(leaked(text, [SECRET, "Qsp4ceAlpha", "Qsp4ceBravo", "Ur1Cred3ntial", "plainEq9", "hunter2"])).toEqual([]);
@@ -240,7 +240,7 @@ describe("redaction holds against captured text (#842)", () => {
 			`2026-10-15T10:00:03Z DB_PASSWORD="Qsp4ceEcho Qsp4ceFoxtrot"`,
 			`2026-10-15T10:00:04Z dialing redis://:R3disPositional@cache:6379/0 and amqp://app:Amqp.p4ss@mq/`,
 		].join("\n");
-		const out = await redact("logs-previous", Buffer.from(log));
+		const out = await redactInProcess("logs-previous", Buffer.from(log));
 		if ("error" in out) throw new Error(out.error);
 		expect(
 			leaked(out.redacted.toString("utf8"), [
@@ -264,7 +264,7 @@ describe("redaction holds against captured text (#842)", () => {
 		const rawArray = { items: [{ args: ["--password", "Qsp4ceEcho Qsp4ceFoxtrot"] }] };
 		for (const doc of [events, escaped, rawArray]) {
 			for (const indent of [undefined, 4]) {
-				const out = await redact("events", Buffer.from(JSON.stringify(doc, null, indent)));
+				const out = await redactInProcess("events", Buffer.from(JSON.stringify(doc, null, indent)));
 				if ("error" in out) throw new Error(out.error);
 				const text = out.redacted.toString("utf8");
 				expect(
@@ -278,14 +278,14 @@ describe("redaction holds against captured text (#842)", () => {
 	it("keeps redacted JSON parseable when a key=value or flag ends a string", async () => {
 		const doc = { items: [{ note: "DB_PASSWORD=", flag: "--token", next: "keep me", list: ["--secret", "", "tail"] }] };
 		for (const indent of [undefined, 4]) {
-			const out = await redact("events", Buffer.from(JSON.stringify(doc, null, indent)));
+			const out = await redactInProcess("events", Buffer.from(JSON.stringify(doc, null, indent)));
 			if ("error" in out) throw new Error(out.error);
 			expect(JSON.parse(out.redacted.toString("utf8"))).toMatchObject({ items: [{ next: "keep me" }] });
 		}
 	});
 
 	it("OBJ-003: a redaction failure never echoes the input it failed on", async () => {
-		const malformed = await redact("pods", Buffer.from('{"items": [hunter2'));
+		const malformed = await redactInProcess("pods", Buffer.from('{"items": [hunter2'));
 		expect(malformed).toEqual({ error: expect.any(String) });
 		expect(JSON.stringify(malformed)).not.toContain("hunter2");
 
@@ -346,7 +346,7 @@ describe("round 2 (#842)", () => {
 			"secret key: SecretKeyValue",
 			'2026-10-15T10:00:04Z retrying with password: "EndTrunc4ted',
 		].join("\n");
-		const logs = await redact("logs-previous", Buffer.from(log));
+		const logs = await redactInProcess("logs-previous", Buffer.from(log));
 		if ("error" in logs) throw new Error(logs.error);
 		expect(leaked(logs.redacted.toString("utf8"), values)).toEqual([]);
 
@@ -358,7 +358,7 @@ describe("round 2 (#842)", () => {
 			],
 		};
 		for (const indent of [undefined, 4]) {
-			const out = await redact("events", Buffer.from(JSON.stringify(events, null, indent)));
+			const out = await redactInProcess("events", Buffer.from(JSON.stringify(events, null, indent)));
 			if ("error" in out) throw new Error(out.error);
 			const text = out.redacted.toString("utf8");
 			expect(leaked(text, values)).toEqual([]);
@@ -492,7 +492,7 @@ describe("reference key names (#842)", () => {
 			["deployments", { kind: "List", items: [deployment] }],
 			["pods", { kind: "List", items: [{ kind: "Pod", metadata: deployment.metadata, spec: podSpec }] }],
 		] as const) {
-			const out = await redact(purpose, Buffer.from(JSON.stringify(doc)));
+			const out = await redactInProcess(purpose, Buffer.from(JSON.stringify(doc)));
 			if ("error" in out) throw new Error(out.error);
 			const text = out.redacted.toString("utf8");
 			const item = JSON.parse(text).items[0];
@@ -515,7 +515,7 @@ describe("reference key names (#842)", () => {
 	it("does not keep a reference field whose value has a secret's shape", async () => {
 		const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU";
 		const doc = { kind: "Pod", spec: { tolerations: [{ key: jwt }, { key: "token=Inl1neValue" }], nodeSelector: { "secret-tier": "a b=Spac3dValue" } } };
-		const out = await redact("pods", Buffer.from(JSON.stringify(doc)));
+		const out = await redactInProcess("pods", Buffer.from(JSON.stringify(doc)));
 		if ("error" in out) throw new Error(out.error);
 		const text = out.redacted.toString("utf8");
 		for (const v of [jwt, "Inl1neValue", "Spac3dValue"]) expect(text).not.toContain(v);
@@ -540,7 +540,7 @@ describe("round 4 (#842)", () => {
 				containers: [{ name: "app", env: [{ name: "X", valueFrom: { secretKeyRef: { name: "payments-db", key: "DB_PASSWORD" } } }] }],
 			},
 		};
-		const out = await redact("pods", Buffer.from(JSON.stringify(pod)));
+		const out = await redactInProcess("pods", Buffer.from(JSON.stringify(pod)));
 		if ("error" in out) throw new Error(out.error);
 		const text = out.redacted.toString("utf8");
 		expect(
