@@ -76,6 +76,7 @@ function makePorts(
 		})),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
+		caseBundle: vi.fn(async () => null),
 		...overrides,
 	};
 }

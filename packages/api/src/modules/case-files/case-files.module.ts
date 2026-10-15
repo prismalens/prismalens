@@ -7,6 +7,7 @@ import { IntegrationsModule } from "../integrations/integrations.module.js";
 import { BindingsService } from "./bindings.service.js";
 import { CaptureService } from "./capture.service.js";
 import { CaseBuilder } from "./case-builder.js";
+import { CaseBundleService } from "./case-bundle.service.js";
 import { CaseFileSettingsService } from "./case-file-settings.service.js";
 import { CaseFilesController } from "./case-files.controller.js";
 import { ArtifactStore } from "./storage/artifact-store.js";
@@ -23,12 +24,14 @@ import { ManifestService } from "./storage/manifest.js";
 		BindingsService,
 		CaseBuilder,
 		CaptureService,
+		CaseBundleService,
 	],
 	exports: [
 		CaseFileSettingsService,
 		ArtifactStore,
 		ManifestService,
 		CaptureService,
+		CaseBundleService,
 	],
 })
 export class CaseFilesModule {}

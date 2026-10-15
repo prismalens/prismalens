@@ -100,6 +100,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		snapshotWith: cloneAs(async () => ({ path: "/app-data/repos/clone", head: "abc123def456", branch: "main" as const })),
 		resolveConnectors: vi.fn(async () => []),
 		contextPack: vi.fn(async () => null),
+		caseBundle: vi.fn(async () => null),
 		...overrides,
 	};
 }

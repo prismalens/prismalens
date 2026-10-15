@@ -155,6 +155,14 @@ export interface RunPorts {
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/**
+	 * The Case File bundle copied into `cwd`, with its retrieval state now; null when
+	 * the setting is off or the service is unbound. Local file work only, no capture wait.
+	 */
+	caseBundle(
+		incidentId: string,
+		cwd: string,
+	): Promise<{ path: string; target: string; digest: string[] } | null>;
+	/**
 	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
 	 * credential the resolver picks (#673); `credential` is the one that cloned it.
 	 */

@@ -208,6 +208,11 @@ async function runJobInternal(
 		await recordWorkspace(data, workspace, ports, context);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
+		// Concurrent with capture, never after it: attach snapshots the rows that exist now (spec §4).
+		const bundle = await ports
+			.caseBundle(data.incidentId, workspace.cwd)
+			.catch(() => null);
+		if (bundle) context.caseBundle = bundle;
 
 		const runId = data.investigationId;
 		const runDir = runDirFor(runId);
