@@ -55,7 +55,9 @@ const POD_SPEC_CONTAINERS = [
 const WINDOW = 64 * 1024;
 const OVERLAP = 16 * 1024;
 
-const KEY = "PASS(?:WORD|WD|PHRASE)?|PWD|SECRET|TOKEN|API[_ -]?KEY|PRIVATE_KEY";
+// Generic names on purpose (#842 OBJ-016): over-redaction is the accepted direction.
+const KEY =
+	"PASS(?:WORD|WD|PHRASE)?|PWD|SECRET|TOKEN|KEY|CREDENTIALS?|CREDS?|AUTH|SESSION|COOKIE|SIGNATURE|SALT";
 
 // A bare token; a backslash only as an escape pair, so a JSON string's closing quote survives.
 const TOKEN = String.raw`(?:[^\s"'\\&,;]|\\[^"\s])`;
@@ -117,6 +119,28 @@ export const SECRET_PATTERNS = [
 		name: "json-key-value",
 		patterns: [
 			String.raw`/(?<="[\w.-]*(?:${KEY})[\w.-]*"\s*:\s*")(?:[^"\\]|\\.)+/i`,
+		],
+	},
+	{
+		// From BEGIN through its body lines, with or without END: `--limit-bytes` can cut it.
+		name: "private-key-block",
+		patterns: [
+			String.raw`/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:(?:\r?\n|\\n)(?:(?:[A-Za-z0-9+/=]+|[A-Za-z-]+: [^\r\n"\\]*)(?=\r?\n|\\n|$))?)*(?:(?:\r?\n|\\n)-----END [A-Z0-9 ]*PRIVATE KEY-----)?/`,
+		],
+	},
+	{
+		// A body whose BEGIN `--tail` cut off: runs of 64-character base64 lines, and the short last
+		// line before END. Each line is matched once, so a base64-heavy log stays linear.
+		name: "private-key-body",
+		patterns: [
+			String.raw`/(?:^|(?<=\n|\\n))[A-Za-z0-9+/=]{1,64}(?:\r?\n|\\n)-----END [A-Z0-9 ]*PRIVATE KEY-----/`,
+			String.raw`/(?:^|(?<=\n|\\n))[A-Za-z0-9+/]{64}(?:(?:\r?\n|\\n)[A-Za-z0-9+/=]{1,64}(?=\r?\n|\\n|$))+/`,
+		],
+	},
+	{
+		name: "jwt",
+		patterns: [
+			String.raw`/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*/`,
 		],
 	},
 	{
@@ -258,12 +282,57 @@ function replaceRanges(
 const failure = (pass: string, err: unknown): string =>
 	`${pass} pass failed (${err instanceof Error ? err.name : typeof err})`;
 
+// `kubectl logs --timestamps` puts one before every line, which breaks line-anchored shapes.
+const TIMESTAMP =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2}) /gm;
+
+type Hit = { start: number; end: number; rule: string };
+
+/** The text without line timestamps, and a map from its ranges back to pieces of the original. */
+function withoutTimestamps(text: string): {
+	scanned: string;
+	pieces: (hit: Hit) => Hit[];
+} {
+	const from = [0];
+	const to = [0];
+	const parts: string[] = [];
+	let cursor = 0;
+	let removed = 0;
+	for (const m of text.matchAll(TIMESTAMP)) {
+		parts.push(text.slice(cursor, m.index));
+		cursor = m.index + m[0].length;
+		removed += m[0].length;
+		from.push(cursor - removed);
+		to.push(cursor);
+	}
+	parts.push(text.slice(cursor));
+	const scanned = parts.join("");
+	const pieces = (hit: Hit): Hit[] => {
+		const out: Hit[] = [];
+		for (let i = 0; i < from.length; i++) {
+			const segEnd = i + 1 < from.length ? from[i + 1] : scanned.length;
+			const lo = Math.max(hit.start, from[i]);
+			const hi = Math.min(hit.end, segEnd);
+			if (lo >= hi) continue;
+			let end = to[i] + hi - from[i];
+			const start = to[i] + lo - from[i];
+			// Newlines stay, so each kept timestamp still starts its own line.
+			while (end > start && (text[end - 1] === "\n" || text[end - 1] === "\r"))
+				end--;
+			if (end > start) out.push({ start, end, rule: hit.rule });
+		}
+		return out;
+	};
+	return { scanned, pieces };
+}
+
 async function textPass(
-	text: string,
+	original: string,
 	counts: RedactCounts,
 	config: RedactConfig,
 ): Promise<string> {
-	const hits = new Map<string, { start: number; end: number; rule: string }>();
+	const { scanned: text, pieces } = withoutTimestamps(original);
+	const hits = new Map<string, Hit>();
 	for (let base = 0; base < text.length; base += WINDOW) {
 		const result = await lintSource({
 			source: {
@@ -283,7 +352,24 @@ async function textPass(
 		}
 	}
 	for (const hit of hits.values()) bump(counts, hit.rule);
-	return replaceRanges(text, [...hits.values()]);
+	return replaceRanges(original, [...hits.values()].flatMap(pieces));
+}
+
+/** A URL without userinfo, query or fragment, for a diagnostic or a DB column; unparseable is withheld. */
+export function redactUrl(url: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return "[REDACTED:url]";
+	}
+	if (!parsed.username && !parsed.password && !parsed.search && !parsed.hash)
+		return url;
+	parsed.username = "";
+	parsed.password = "";
+	parsed.search = "";
+	parsed.hash = "";
+	return parsed.toString();
 }
 
 /** Text pass alone, for `stderrTail` and diagnostics: small inputs, so it runs in-process. */

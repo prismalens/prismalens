@@ -39,7 +39,47 @@ export const SECRETS = {
 	nextLine: "NextL1neValue",
 	endTruncated: "EndTrunc4ted",
 	headTruncated: "HeadTrunc4ted",
+	// #842 round 3: unnamed canaries, named so no earlier pattern matches them.
+	encryptionKey: "EncKeyV4lue9",
+	signingKey: "SignKeyV4lue9",
+	dbCredentials: "DbCredV4lue9",
+	basicAuth: Buffer.from("svc:BasicPassw0rd").toString("base64"),
+	cookie: "C00kieSess1on",
+	setCookie: "SetC00kieSid",
+	jwt: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1bm5hbWVkIn0.c2lnbmF0dXJlLWJhcmU",
 } as const;
+
+const PEM_BODY = PEM.split("\n").filter(
+	(l) => l !== "" && !l.startsWith("-----"),
+);
+
+/** Every value that must not leak, with its base64 and URL-encoded copies (#842 OBJ-016). */
+export const CANARIES: ReadonlyArray<readonly [string, string]> = [
+	...Object.entries(SECRETS),
+	...PEM_BODY.map((line, i) => [`pem body ${i}`, line] as const),
+].flatMap(([name, value]) => {
+	const forms: Array<readonly [string, string]> = [[name, value]];
+	const b64 = Buffer.from(value).toString("base64");
+	if (b64 !== value) forms.push([`${name} (base64)`, b64]);
+	const url = encodeURIComponent(value);
+	if (url !== value) forms.push([`${name} (url)`, url]);
+	return forms;
+});
+
+/** `kubectl logs --timestamps` form: an RFC3339Nano time and a space before every line. */
+export function timestamped(text: string): string {
+	const from = Date.parse("2026-10-15T09:57:50Z");
+	return text
+		.split("\n")
+		.map(
+			(line, i) =>
+				`${new Date(from + i * 1000).toISOString().replace("Z", "123456Z")} ${line}`,
+		)
+		.join("\n");
+}
+
+/** A Warning event whose message carries only unnamed shapes. */
+export const UNNAMED_EVENT_MESSAGE = `rotating ENCRYPTION_KEY=${SECRETS.encryptionKey} SIGNING_KEY=${SECRETS.signingKey}, got Cookie: session=${SECRETS.cookie} and issued ${SECRETS.jwt}`;
 
 /** A Warning event whose message carries the colon form, one line in and one escaped newline down. */
 export const SECRET_EVENT_MESSAGE = `auth failed for app, password: ${SECRETS.colonPassword}\nsecret: ${SECRETS.multiline}`;
@@ -66,31 +106,37 @@ export const SECRET_ARGV = {
 	},
 };
 
-/** Every corpus shape as log lines, the form the text pass sees. */
+/** Every corpus shape as log lines, without kubectl's timestamps; see `timestamped`. */
 export const SECRET_LOG = [
-	`2026-10-15T09:57:50Z AWS_ACCESS_KEY_ID=${SECRETS.awsId}`,
-	`2026-10-15T09:57:51Z aws_secret_access_key = ${SECRETS.awsSecret}`,
-	`2026-10-15T09:57:52Z cloning with ${SECRETS.github}`,
-	`2026-10-15T09:57:53Z posting with ${SECRETS.slack}`,
-	`2026-10-15T09:57:54Z Authorization: Bearer ${SECRETS.bearer}`,
-	`2026-10-15T09:57:55Z DB_PASSWORD=${SECRETS.dbPassword}`,
-	`2026-10-15T09:57:56Z config {"POSTGRES_PASSWORD": "${SECRETS.pgPassword}"}`,
-	`2026-10-15T09:57:57Z GET /v1/orders?api_key=${SECRETS.apiKey}&page=2`,
-	`2026-10-15T09:57:58Z exec app --password ${SECRETS.splitFlag} --api-token "${SECRETS.quotedA} ${SECRETS.quotedB}"`,
-	`2026-10-15T09:57:58Z connecting to amqp://app:${SECRETS.urlPassword}@mq.shop:5672/`,
-	`2026-10-15T09:57:58Z auth failed for app, password: ${SECRETS.colonPassword}`,
-	`2026-10-15T09:57:58Z running mysql -u root -p ${SECRETS.mysqlSpaced} -e 'select 1'`,
-	`2026-10-15T09:57:58Z running mysql -u root -p${SECRETS.mysqlAttached} shop`,
-	`2026-10-15T09:57:58Z pwd: ${SECRETS.pwdColon} api key: ${SECRETS.apiKeySpaced}`,
-	`2026-10-15T09:57:58Z token: ${SECRETS.tokenA} ${SECRETS.tokenB}`,
-	"2026-10-15T09:57:58Z dumping config:",
+	`AWS_ACCESS_KEY_ID=${SECRETS.awsId}`,
+	`aws_secret_access_key = ${SECRETS.awsSecret}`,
+	`cloning with ${SECRETS.github}`,
+	`posting with ${SECRETS.slack}`,
+	`Authorization: Bearer ${SECRETS.bearer}`,
+	`DB_PASSWORD=${SECRETS.dbPassword}`,
+	`config {"POSTGRES_PASSWORD": "${SECRETS.pgPassword}"}`,
+	`GET /v1/orders?api_key=${SECRETS.apiKey}&page=2`,
+	`exec app --password ${SECRETS.splitFlag} --api-token "${SECRETS.quotedA} ${SECRETS.quotedB}"`,
+	`connecting to amqp://app:${SECRETS.urlPassword}@mq.shop:5672/`,
+	`auth failed for app, password: ${SECRETS.colonPassword}`,
+	`running mysql -u root -p ${SECRETS.mysqlSpaced} -e 'select 1'`,
+	`running mysql -u root -p${SECRETS.mysqlAttached} shop`,
+	`pwd: ${SECRETS.pwdColon} api key: ${SECRETS.apiKeySpaced}`,
+	`token: ${SECRETS.tokenA} ${SECRETS.tokenB}`,
+	"dumping config:",
 	"db:",
 	"  password: |",
 	`    ${SECRETS.yamlBlock}`,
 	"  secret:",
 	`    ${SECRETS.nextLine}`,
-	PEM,
-	"2026-10-15T09:57:59Z // secretlint-disable",
-	`2026-10-15T09:57:59Z DB_PASSWORD=${SECRETS.afterDisable}`,
-	`2026-10-15T09:57:59Z retrying with password: "${SECRETS.endTruncated}`,
+	`ENCRYPTION_KEY=${SECRETS.encryptionKey}`,
+	`SIGNING_KEY=${SECRETS.signingKey} DB_CREDENTIALS=${SECRETS.dbCredentials}`,
+	`GET /orders Authorization: Basic ${SECRETS.basicAuth}`,
+	`Cookie: session=${SECRETS.cookie}; theme=dark`,
+	`Set-Cookie: sid=${SECRETS.setCookie}; Path=/; HttpOnly`,
+	`issued ${SECRETS.jwt} to checkout`,
+	PEM.trimEnd(),
+	"// secretlint-disable",
+	`DB_PASSWORD=${SECRETS.afterDisable}`,
+	`retrying with password: "${SECRETS.endTruncated}`,
 ].join("\n");
