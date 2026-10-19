@@ -22,6 +22,7 @@ import {
 	type InvestigationsQuery,
 	type PastInvestigation,
 	SOURCE_CATEGORIES,
+	type SourceCategory,
 	type SourceStatus,
 	type SourceView,
 	TEMPLATE_CATEGORY,
@@ -185,7 +186,8 @@ export class GatewayService {
 		}
 	}
 
-	private async sources(): Promise<SourceView[]> {
+	/** Every category with its status; the Sources page and `sources_list` read the same answer. */
+	async sources(): Promise<SourceView[]> {
 		const rows = await this.prisma.connection.findMany({
 			where: { status: { not: "REVOKED" } },
 			select: {
@@ -266,8 +268,7 @@ export class GatewayService {
 				tools: CATEGORY_TOOLS[category] ?? [],
 				...(status === "not-configured"
 					? {
-							howToConnect:
-								"Connect one in PrismaLens under Settings, Integrations.",
+							howToConnect: howToConnect(category),
 						}
 					: {}),
 			};
@@ -340,4 +341,10 @@ export class GatewayService {
 				: null,
 		}));
 	}
+}
+
+function howToConnect(category: SourceCategory): string {
+	return category === "deploys"
+		? "Send deploy events with `pl deploy` from the deploy job; see PrismaLens under Settings, Data sources."
+		: `Connect one in PrismaLens under Settings, Data sources, or run \`pl connect ${category}\`.`;
 }
