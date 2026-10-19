@@ -165,7 +165,7 @@ export function ConnectSourceDialog({
 					<div className="space-y-4">
 						{detected && (
 							<div
-								className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+								className="flex items-center justify-between gap-3 rounded-control bg-surface-3 px-3 py-2"
 								data-testid="connect-detected"
 							>
 								<span className="min-w-0 text-body">
@@ -371,7 +371,7 @@ export function ProbeTable({ report }: { report: ProbeReport }) {
 				{report.probes.map((p) => (
 					<tr
 						key={p.id}
-						className="border-t border-border align-top"
+						className="align-top odd:bg-surface-2"
 						data-testid="probe-row"
 					>
 						<td className="py-1.5 pr-3">
