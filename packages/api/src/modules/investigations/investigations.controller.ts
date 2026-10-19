@@ -36,6 +36,7 @@ import type {
 	InternalInvestigationResultDto,
 	RecommendationDto,
 } from "./dto/index.js";
+import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
 import {
 	followUpBlockedReason,
 	InvestigationsService,
@@ -467,6 +468,31 @@ export class InvestigationsController {
 							completedAt: investigation.completedAt,
 						}),
 					};
+				},
+			),
+
+			// GET /investigations/:id/blob - A file the run read, at its recorded commit
+			getBlob: implement(investigationsContract.getBlob).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					try {
+						return await readEvidenceBlob(
+							this.parseWorkspace(investigation.workspace),
+							input.sha,
+							input.path,
+						);
+					} catch (error) {
+						if (error instanceof EvidenceRequestRefused)
+							throw new ORPCError("BAD_REQUEST", { message: error.message });
+						throw error;
+					}
 				},
 			),
 

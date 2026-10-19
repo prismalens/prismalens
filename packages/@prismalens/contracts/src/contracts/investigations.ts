@@ -9,6 +9,8 @@ import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
 	CreateInvestigationSchema,
+	EvidenceBlobQuerySchema,
+	EvidenceBlobSchema,
 	GetInvestigationEventsSchema,
 	IdParamSchema,
 	InvestigationEventsPageSchema,
@@ -193,4 +195,18 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(InvestigationReportMarkdownSchema),
+
+	/**
+	 * A file the run read, at the commit it recorded: read-only, tracked blobs only
+	 * GET /investigations/:id/blob?sha=&path=
+	 */
+	getBlob: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/blob",
+			summary: "Read a file at the commit the run recorded",
+			tags: ["investigations"],
+		})
+		.input(EvidenceBlobQuerySchema)
+		.output(EvidenceBlobSchema),
 };

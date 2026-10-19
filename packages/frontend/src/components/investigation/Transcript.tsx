@@ -59,6 +59,9 @@ export interface TranscriptSteps {
 	onSeeFlag?: () => void;
 	/** The run's asks, each on its step (#820). */
 	asks?: readonly AskRecord[];
+	/** A read step's file at the run's commit, and opening it (proposal item 2). */
+	fileOf?: (s: RunStep) => { sha: string } | null;
+	onOpenFile?: (s: RunStep) => void;
 }
 
 /**
@@ -418,6 +421,10 @@ function StepGroup({
 						flagged={steps.flagged.has(s.n)}
 						onSeeFlag={steps.onSeeFlag}
 						ask={steps.asks?.findLast((a) => a.step === s.n)}
+						fileSha={steps.fileOf?.(s)?.sha}
+						onOpenFile={
+							steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
+						}
 					/>
 				</Fragment>
 			))}
