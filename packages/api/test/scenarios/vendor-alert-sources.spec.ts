@@ -2,7 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { createHmac } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from "vitest";
 import * as azure from "../../src/modules/webhooks/alert-sources/fixtures/azure-monitor.js";
 import * as cloudwatch from "../../src/modules/webhooks/alert-sources/fixtures/cloudwatch.js";
 import * as datadog from "../../src/modules/webhooks/alert-sources/fixtures/datadog.js";
@@ -30,6 +37,11 @@ interface Detail {
 	serviceId: string | null;
 	alerts?: Array<{ externalId: string | null; occurrenceCount?: number }>;
 }
+
+// The webhook controller allows 20 deliveries per second (503 over it); the cases above
+// use most of that, so each later test starts in a fresh window.
+const freshThrottleWindow = () =>
+	new Promise((resolve) => setTimeout(resolve, 1100));
 
 const bearer = () => ({ authorization: `Bearer ${pl.webhookToken}` });
 
@@ -110,6 +122,8 @@ describe.each(cases)("$source intake (#79)", (c) => {
 });
 
 describe("credentials", () => {
+	beforeEach(freshThrottleWindow);
+
 	it("refuses a delivery with no credential and one with a wrong token", async () => {
 		expect((await deliver("grafana", grafana.firing, {})).status).toBe(401);
 		expect(
@@ -150,6 +164,8 @@ describe("credentials", () => {
 });
 
 describe("SNS subscription handshake", () => {
+	beforeEach(freshThrottleWindow);
+
 	it("answers a SubscriptionConfirmation without opening an incident, and does not fetch a non-SNS URL", async () => {
 		const forged = {
 			...cloudwatch.subscriptionConfirmation,
