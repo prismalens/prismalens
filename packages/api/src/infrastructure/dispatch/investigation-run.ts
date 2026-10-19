@@ -232,9 +232,11 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
+		const gateway = ports.gateway?.lease(runId);
 		const outcome = await conductRun(
 			{
 				runId,
+				...(gateway ? { gateway } : {}),
 				context,
 				harness: selection.harness,
 				cwd: workspace.cwd,
@@ -355,6 +357,7 @@ async function runJobInternal(
 		// The harness's per-run home and the packages it installs under its config dir go too:
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
+			ports.gateway?.revoke(unvalidated.investigationId);
 			clearRunWorkspace(runDirFor(unvalidated.investigationId));
 		}
 	}
@@ -479,9 +482,11 @@ async function runFollowUp(
 				.resolveHarness({ harness, model: inv.model })
 				.then((r) => r.customModel)
 				.catch(() => false));
+		const gateway = ports.gateway?.lease(id);
 		const outcome = await conductRun(
 			{
 				runId: id,
+				...(gateway ? { gateway } : {}),
 				context,
 				harness,
 				cwd: workspace.cwd,
@@ -548,6 +553,7 @@ async function runFollowUp(
 			sentence: message,
 		};
 	} finally {
+		ports.gateway?.revoke(id);
 		clearRunWorkspace(runDir);
 	}
 

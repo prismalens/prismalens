@@ -369,10 +369,14 @@ export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
 
 /** What the harness answered when the run set its model or effort (R4.2). */
 export function sessionConfigLine(e: {
-	option: "model" | "effort";
+	option: "model" | "effort" | "tools";
 	value: string;
 	accepted: boolean;
 }): string {
+	if (e.option === "tools")
+		return e.accepted
+			? "The agent took PrismaLens tools before the first prompt"
+			: "The agent does not take PrismaLens tools";
 	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
 	return e.accepted
 		? `The agent took ${what} before the first prompt`

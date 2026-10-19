@@ -684,10 +684,10 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		attachments: z.array(AttachmentRefSchema).optional(),
 	}),
 	z.object({
-		/** The harness answered `session/set_config_option` before the first prompt (R4.2). */
+		/** The harness answered `session/set_config_option` before the first prompt (R4.2); `tools`: it took PrismaLens's MCP gateway (#848). */
 		kind: z.literal("session_config"),
 		...StreamBaseShape,
-		option: z.enum(["model", "effort"]),
+		option: z.enum(["model", "effort", "tools"]),
 		value: z.string(),
 		accepted: z.boolean(),
 	}),

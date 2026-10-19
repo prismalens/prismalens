@@ -52,6 +52,12 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import {
+	GATEWAY_PROMPT_LINE,
+	GATEWAY_SERVER_NAME,
+	type GatewayEntry,
+	gatewayOffer,
+} from "./gateway.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	askWindow,
@@ -157,6 +163,8 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
+	gateway?: GatewayEntry;
 	signal?: AbortSignal;
 }
 
@@ -445,6 +453,7 @@ export async function* runInvestigation(
 		}
 	};
 
+	const offer = opts.gateway ? gatewayOffer(opts.gateway) : null;
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
@@ -471,6 +480,7 @@ export async function* runInvestigation(
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
 		...(opts.resume ? { resume: { sessionId: opts.resume.sessionId } } : {}),
+		...(offer ? { mcpServers: offer.pick } : {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -636,6 +646,9 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
+		if (offer)
+			yield adapter.sessionConfig("tools", GATEWAY_SERVER_NAME, offer.taken());
+		const toolsLine = offer?.taken() ? `\n\n${GATEWAY_PROMPT_LINE}` : "";
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
 		if (!keepMode && !(opts.resume && session.offeredModes.length === 0)) {
 			const refused = await applyMode(session, {
@@ -763,7 +776,7 @@ export async function* runInvestigation(
 			);
 			outcome = yield* turn(
 				promptParts(
-					buildChatPrompt(opts.context, message, { noNetwork }),
+					buildChatPrompt(opts.context, message, { noNetwork }) + toolsLine,
 					opts.attachments,
 				),
 			);
@@ -784,6 +797,7 @@ export async function* runInvestigation(
 						noNetwork,
 						level,
 					}) +
+						toolsLine +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
