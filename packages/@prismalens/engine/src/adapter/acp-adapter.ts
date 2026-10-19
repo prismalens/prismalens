@@ -68,6 +68,10 @@ export interface AcpUpdate {
 	 * for `tool_call_update` an array of `{ type:"content", content:{ type:"text", text } }`.
 	 */
 	content?: unknown;
+	/** `usage_update`: tokens in context, the window, and the cumulative cost when sent. */
+	used?: number;
+	size?: number;
+	cost?: { amount?: unknown; currency?: unknown } | null;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
 }

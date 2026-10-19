@@ -64,6 +64,7 @@ import {
 	stepFromHash,
 	stepOfCall,
 } from "./run-steps";
+import { usageView } from "./run-usage";
 
 const HIGHLIGHT_MS = 2400;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -243,6 +244,10 @@ export function RunPage() {
 				warn: substituted,
 			}
 		: null;
+	const usage = usageView(inv?.usage, who.agent);
+	const usageChip: StripChip | null = inv
+		? { text: usage.text, title: usage.title }
+		: null;
 	const code = codeChip(inv?.workspace);
 
 	const transcriptReport =
@@ -263,6 +268,7 @@ export function RunPage() {
 					label={stateWord.label}
 					detail={stateWord.detail}
 					model={modelChip}
+					usage={usageChip}
 					code={panel ? null : code}
 					onStop={
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
@@ -292,6 +298,11 @@ export function RunPage() {
 								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
 							}
 							report={transcriptReport}
+							worked={
+								transcriptReport && !live && steps.length > 0 && runTimed(inv)
+									? { seconds: runElapsed(inv, now), steps: steps.length }
+									: null
+							}
 							steps={{
 								all: steps,
 								open,
@@ -543,6 +554,10 @@ function summaryFacts(
 				}
 			: null,
 		effort: effort ? cap(effort) : null,
+		usage: (() => {
+			const u = usageView(inv.usage, ctx.agent);
+			return { text: u.text, sub: u.title, reported: u.reported };
+		})(),
 		access: level
 			? {
 					text: ACCESS_LEVEL_LABEL[level],

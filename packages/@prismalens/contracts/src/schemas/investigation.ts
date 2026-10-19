@@ -111,6 +111,21 @@ export const NextStepSchema = z.object({
 });
 
 /**
+ * The harness's last ACP `usage_update`: context in use, the window, and the
+ * cumulative cost when it sends one. A run whose harness sends none has no
+ * usage at all, which is not zero.
+ */
+export const RunUsageSchema = z.object({
+	used: z.number().int().nonnegative(),
+	size: z.number().int().nonnegative(),
+	cost: z
+		.object({ amount: z.number().nonnegative(), currency: z.string().min(1) })
+		.optional(),
+	at: z.string(),
+});
+export type RunUsage = z.infer<typeof RunUsageSchema>;
+
+/**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
  * fidelity). Deterministic — computed from (harness, mode), never LLM-authored.
  */
@@ -320,6 +335,8 @@ export const InvestigationSchema = z.object({
 	model: z.string().nullable().optional(),
 	/** The effort the run asked for (#673 w52); null asked for the agent's own. */
 	effort: z.string().nullable().optional(),
+	/** The harness's last `usage_update`; null when it has sent none (shown "not reported", never zero). */
+	usage: RunUsageSchema.nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** Who started the thread: `manual`, an alert trigger, or `re_trigger` on a refire (#673 w59). */

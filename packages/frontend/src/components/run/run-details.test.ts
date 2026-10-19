@@ -263,6 +263,7 @@ describe("summarySections (#811 data mapping)", () => {
 				agent: "Claude Code 2.3.1",
 				model: { text: "Opus", warn: false },
 				effort: "High",
+				usage: { text: "usage not reported", sub: "Claude Code has not reported usage for this run. That is not zero.", reported: false },
 				access: { text: "Auto", sub: "No sandbox on this machine." },
 				chat: false,
 			},
@@ -270,6 +271,7 @@ describe("summarySections (#811 data mapping)", () => {
 		const labels = out.flatMap((s) => s.rows.map((r) => r.label));
 		expect(labels).not.toContain("Mode");
 		expect(labels).toContain("Access");
+		expect(out[1]?.rows.find((r) => r.label === "Usage")?.text).toBe("usage not reported");
 		expect(out[0]?.rows.find((r) => r.label === "Can continue")?.text).toBe("Yes");
 		expect(out[2]?.rows[0]).toMatchObject({
 			label: "booklogr",

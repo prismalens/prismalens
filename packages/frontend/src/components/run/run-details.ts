@@ -50,6 +50,7 @@ export interface SummaryFacts {
 	agent: string | null;
 	model: { text: string; sub?: string; warn: boolean } | null;
 	effort: string | null;
+	usage: { text: string; sub: string; reported: boolean } | null;
 	access: { text: string; sub: string } | null;
 	chat: boolean;
 }
@@ -95,6 +96,8 @@ export function summarySections(
 			sub: facts.model.sub,
 		});
 	if (facts.effort) used.push({ label: "Effort", text: facts.effort });
+	if (facts.usage)
+		used.push({ label: "Usage", text: facts.usage.text, sub: facts.usage.sub });
 	if (facts.access)
 		used.push({
 			label: "Access",

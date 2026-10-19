@@ -272,6 +272,7 @@ model Investigation {
   harness           String? // the harness the run started with (#743)
   model             String? // the model id it was asked for, if any (#743)
   effort            String? // the effort it was asked for, if any (#673 w52)
+  usage             String? // JSON RunUsage: the harness's last ACP usage_update; null when it sent none
   stopRequestedAt   DateTime? // the operator asked it to stop (#743)
   acpSessionId      String? // the harness's own session id, set only when it can be loaded again (#747)
   workspace         String? // JSON RunWorkspace (#747)

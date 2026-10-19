@@ -17,6 +17,7 @@ import type {
 	ContextPack,
 	RunChoice,
 	RunCredential,
+	RunUsage,
 } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
@@ -110,6 +111,8 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** Keep the harness's latest `usage_update`. Its own write, like `recordSession`. */
+	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
 	markAwaitingApproval(id: string, since: Date | null): Promise<void>;
 	/**

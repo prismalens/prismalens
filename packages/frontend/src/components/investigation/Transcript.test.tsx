@@ -240,3 +240,69 @@ describe("a step you denied (#673 w8-18)", () => {
 		).toBe("Denied by you");
 	});
 });
+
+describe("Transcript work fold", () => {
+	const step = {
+		n: 1,
+		callId: "c1",
+		title: "pwd",
+		command: "pwd",
+		kind: "command" as const,
+		verb: "Ran",
+		ok: true,
+		unfinished: false,
+		output: "/repo",
+		at: "2026-10-13T04:30:00Z",
+		took: 1,
+		input: null,
+	};
+	const items: TranscriptItem[] = [
+		{
+			kind: "tools",
+			key: "t",
+			count: 1,
+			summary: "Ran 1 tool",
+			failed: 0,
+			running: 0,
+			rows: [],
+			callIds: ["c1"],
+		},
+		{ kind: "line", key: "l", text: "after" },
+	];
+	const render = (worked: { seconds: number; steps: number } | null) =>
+		act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					worked={worked}
+					steps={{
+						all: [step],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+					}}
+				/>,
+			);
+		});
+
+	it("folds the steps behind one line once a report exists, and opens them on click", async () => {
+		await render({ seconds: 252, steps: 23 });
+		const toggle = container.querySelector('[data-testid="worked-toggle"]');
+		expect(toggle?.textContent).toBe("Worked for 4m 12s · 23 steps");
+		expect(container.querySelector('[data-testid="step-verb"]')).toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-line"]'),
+		).not.toBeNull();
+		await act(async () => (toggle as HTMLButtonElement).click());
+		expect(container.querySelector('[data-testid="step-verb"]')).not.toBeNull();
+	});
+
+	it("shows every step with no fold while the run has no report", async () => {
+		await render(null);
+		expect(container.querySelector('[data-testid="worked-toggle"]')).toBeNull();
+		expect(container.querySelector('[data-testid="step-verb"]')).not.toBeNull();
+	});
+});
