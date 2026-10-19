@@ -30,6 +30,10 @@ export const WEBHOOK_ROUTES = {
 	generic: "webhooks/generic",
 	prometheus: "webhooks/prometheus",
 	render: "webhooks/render",
+	azureMonitor: "webhooks/azure-monitor",
+	sentry: "webhooks/sentry",
+	pagerduty: "webhooks/pagerduty",
+	cloudwatch: "webhooks/cloudwatch",
 } as const;
 
 /** Express-5 wildcard matching every webhook route, without the global prefix. */

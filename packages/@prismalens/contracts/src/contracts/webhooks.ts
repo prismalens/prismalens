@@ -16,6 +16,8 @@ export const WebhookDeliverySchema = z.object({
 export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
 
 import {
+	AlertSourceWebhookResponseSchema,
+	AlertSourceWebhookSchema,
 	GenericWebhookResponseSchema,
 	GenericWebhookSchema,
 	PrometheusWebhookResponseSchema,
@@ -24,7 +26,46 @@ import {
 	RenderWebhookSchema,
 } from "../schemas/index.js";
 
+const alertSourceRoute = (path: `/${string}`, summary: string) =>
+	oc
+		.route({ method: "POST", path, summary, tags: ["webhooks"] })
+		.input(AlertSourceWebhookSchema)
+		.output(AlertSourceWebhookResponseSchema);
+
 export const webhooksContract = {
+	/** POST /webhooks/grafana - Grafana unified alerting webhook */
+	grafana: alertSourceRoute(
+		"/webhooks/grafana",
+		"Receive Grafana alert webhook",
+	),
+	/** POST /webhooks/datadog - Datadog webhook integration */
+	datadog: alertSourceRoute(
+		"/webhooks/datadog",
+		"Receive Datadog monitor webhook",
+	),
+	/** POST /webhooks/sentry - Sentry integration-platform webhook */
+	sentry: alertSourceRoute("/webhooks/sentry", "Receive Sentry alert webhook"),
+	/** POST /webhooks/pagerduty - PagerDuty v3 webhook */
+	pagerduty: alertSourceRoute(
+		"/webhooks/pagerduty",
+		"Receive PagerDuty v3 webhook",
+	),
+	/** POST /webhooks/cloudwatch - AWS CloudWatch alarm via SNS, including the subscription handshake */
+	cloudwatch: alertSourceRoute(
+		"/webhooks/cloudwatch",
+		"Receive AWS CloudWatch alarm through SNS",
+	),
+	/** POST /webhooks/azure-monitor - Azure Monitor common alert schema */
+	azureMonitor: alertSourceRoute(
+		"/webhooks/azure-monitor",
+		"Receive Azure Monitor common-schema alert",
+	),
+	/** POST /webhooks/newrelic - New Relic workflow or classic webhook */
+	newrelic: alertSourceRoute(
+		"/webhooks/newrelic",
+		"Receive New Relic alert webhook",
+	),
+
 	/**
 	 * Receive Prometheus AlertManager webhook
 	 * POST /webhooks/prometheus

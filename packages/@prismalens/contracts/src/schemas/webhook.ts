@@ -114,3 +114,19 @@ export type GenericWebhookResponse = z.infer<
 >;
 export type RenderWebhook = z.infer<typeof RenderWebhookSchema>;
 export type RenderWebhookResponse = z.infer<typeof RenderWebhookResponseSchema>;
+
+// =============================================================================
+// VENDOR ALERT SOURCES (Grafana, Datadog, Sentry, PagerDuty, CloudWatch via SNS, Azure Monitor, New Relic)
+// =============================================================================
+
+/** Each vendor's own body; the API maps it, so the contract only asks for a JSON object. */
+export const AlertSourceWebhookSchema = z.record(z.string(), z.unknown());
+
+export const AlertSourceWebhookResponseSchema = z.object({
+	received: z.number().int(),
+	processed: z.number().int(),
+	alertIds: z.array(z.string().uuid()),
+	incidentIds: z.array(z.string().uuid()),
+	/** True when an SNS subscription handshake was answered. */
+	confirmed: z.boolean().optional(),
+});
