@@ -60,6 +60,8 @@ function makePorts(
 		initLiveTurn: vi.fn(async () => {}),
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
+		events: vi.fn(async () => []),
+		recordHandoff: vi.fn(async () => {}),
 		recordSession: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
 		newerRun: vi.fn(async () => null),
@@ -300,6 +302,18 @@ describe("createPrismaInvestigationStore — lifecycle writes (0005 §2)", () =>
 			source: "ai_worker",
 			metadata: { investigationId: INVESTIGATION_ID },
 		});
+	});
+
+	it.each([
+		["Claude", "You've hit your session limit · resets 6:10am (Europe/London)"],
+		["Codex", "You\u2019ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or try again at 6:10 AM."],
+	])("a %s usage-limit error ends the run limited, not just failed", async (_agent, error) => {
+		const updateStatus = vi.fn(async () => true);
+		const { store } = makeStore(vi.fn(async () => {}), { updateStatus, createTimelineEntry: vi.fn(async () => {}) });
+
+		await store.fail(error);
+
+		expect(updateStatus).toHaveBeenCalledWith(INVESTIGATION_ID, { status: "failed", error, endReason: "limited" });
 	});
 
 	it("fail() writes failed status and failure timeline through RunPorts", async () => {

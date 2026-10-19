@@ -582,6 +582,31 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
 	});
 
+	it("a handoff opens a fresh session seeded with the handoff, and records the agent, model and level on the first message", async () => {
+		const { events, runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume" },
+			accessLevel: "supervised",
+			resume: {
+				handoff: "HANDOFF: 1. not the cache",
+				via: { harness: "codex", model: "gpt-x", accessLevel: "supervised", handoff: { carried: "alert, 1 message", omitted: null } },
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+		});
+		expect(events[0]).toMatchObject({
+			kind: "operator_message",
+			text: "Why the pool?",
+			via: { harness: "codex", model: "gpt-x", handoff: { carried: "alert, 1 message" } },
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).not.toContain("session/load");
+		expect(wire).toContain("session/new");
+		const prompt = wire.split("\n").find((l) => l.includes("session/prompt"));
+		expect(prompt).toContain("HANDOFF: 1. not the cache");
+		expect(prompt).toContain("Why the pool?");
+	});
+
 	it("a resumed run with resume.newer includes the note in outbound prompt but not in operator_message (#673 w27)", async () => {
 		const { events, runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },

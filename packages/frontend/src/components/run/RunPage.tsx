@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
 import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
+import { endReasonStatus } from "@/lib/handoff-line";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
@@ -489,8 +490,10 @@ function summaryFacts(
 	const chat = inv.kind === "chat";
 	const live = !!state && isRunStateLive(state);
 	const f = inv.report?.fidelity;
-	const status: SummaryFacts["status"] =
-		state === "failed"
+	const ended = state === "failed" && endReasonStatus(inv.endReason, ctx.agent);
+	const status: SummaryFacts["status"] = ended
+		? { ...ended, tone: "warn" }
+		: state === "failed"
 			? {
 					text: "Failed",
 					tone: "danger",
