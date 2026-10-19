@@ -104,8 +104,10 @@ export interface AuthTemplate {
 		method: "GET" | "POST";
 		path: string;
 	};
-	/** No credentials: the connection's baseUrl is reached directly and `verify` runs against it (#633). */
+	/** Addressed by the connection's baseUrl, which `verify` runs against (#633); auth comes from `credentialKinds`. */
 	urlOnly?: true;
+	/** The credential kinds (contracts `SOURCE_CREDENTIAL_KINDS`) this source accepts, first is the default (#848). */
+	credentialKinds?: readonly string[];
 	/** A token git sends over HTTPS to clone; Test runs `git ls-remote` instead of `verify` (#673). */
 	gitHost?: true;
 	/** Permission requirements — single source of truth for capabilities, defaultPermissions, and scopes */

@@ -9,6 +9,7 @@ import type { AccessLevel } from "@prismalens/config/harness";
 import {
 	ACCESS_LEVEL_LABEL,
 	type InvestigationContext,
+	telemetrySources,
 } from "@prismalens/contracts/schemas";
 import {
 	fenceClose,
@@ -39,6 +40,25 @@ function renderSurfaces(
 	if (t?.alertmanagerUrl) {
 		surfaces.push(
 			`  - Alertmanager  ${t.alertmanagerUrl}${online ? `      curl -s '${t.alertmanagerUrl}/api/v2/alerts'` : ""}`,
+		);
+	}
+	// Sources past the two curl recipes above: Loki, and any that need a credential (#848).
+	for (const src of telemetrySources(t)) {
+		if (src.url === t?.prometheusUrl || src.url === t?.alertmanagerUrl)
+			continue;
+		const name = {
+			prometheus: "Prometheus",
+			alertmanager: "Alertmanager",
+			loki: "Loki",
+		}[src.kind];
+		surfaces.push(
+			src.authenticated
+				? `  - ${name} (${src.label})  needs a credential PrismaLens holds: read it with the PrismaLens ${src.kind}_ tools, not curl`
+				: `  - ${name}  ${src.url}${
+						online && src.kind === "loki"
+							? `\n      curl -sG '${src.url}/loki/api/v1/query_range' --data-urlencode 'query=<logql>' --data-urlencode 'limit=100'`
+							: ""
+					}`,
 		);
 	}
 	if (t?.apiUrl) surfaces.push(`  - Application API ${t.apiUrl}`);

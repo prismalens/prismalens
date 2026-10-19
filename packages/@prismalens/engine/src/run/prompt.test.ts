@@ -44,6 +44,27 @@ describe("buildInvestigationPrompt (#633)", () => {
 		);
 	});
 
+	it("a sources list keeps the curl recipes for open sources and sends credentialed ones to the tools (#848)", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseContext,
+			telemetry: {
+				sources: [
+					{ kind: "prometheus", label: "prom", url: "http://prom:9090" },
+					{ kind: "prometheus", label: "mimir", url: "https://mimir.example", authenticated: true },
+					{ kind: "loki", label: "loki", url: "http://loki:3100" },
+				],
+				prometheusUrl: "http://prom:9090",
+			},
+		});
+		expect(prompt).toContain("curl -sG 'http://prom:9090/api/v1/query'");
+		expect(prompt).toContain("curl -sG 'http://loki:3100/loki/api/v1/query_range'");
+		expect(prompt).toContain(
+			"- Prometheus (mimir)  needs a credential PrismaLens holds: read it with the PrismaLens prometheus_ tools, not curl",
+		);
+		expect(prompt).not.toContain("curl -sG 'https://mimir.example");
+		expect(prompt.match(/- Prometheus {4}http:\/\/prom:9090/g)).toHaveLength(1);
+	});
+
 	it("tells the agent not to name the report's fields in its prose (#673 w5-25)", () => {
 		expect(buildInvestigationPrompt(baseContext)).toContain(
 			"never name the block's fields there (nextSteps, rootCause, ruledOut)",

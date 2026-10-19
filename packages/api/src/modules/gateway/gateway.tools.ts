@@ -3,6 +3,12 @@
 
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import {
+	type QueryKind,
+	type QuerySource,
+	registerSourceTools,
+	SOURCE_TOOL_NAMES,
+} from "./source-tools.js";
 
 export type SourceCategory =
 	| "metrics"
@@ -16,6 +22,7 @@ export type SourceStatus = "connected" | "not-configured" | "unreachable";
 export const TEMPLATE_CATEGORY: Readonly<Record<string, SourceCategory>> = {
 	prometheus: "metrics",
 	alertmanager: "metrics",
+	loki: "logs",
 	"github-token": "scm",
 	"git-host-token": "scm",
 	render: "deploys",
@@ -39,6 +46,8 @@ export interface SourceView {
 		status: SourceStatus;
 		/** For `unreachable`: when the last error was recorded. Never the error text, which may echo a credential. */
 		lastErrorAt?: string;
+		/** Why a probe failed, in PrismaLens's own words. */
+		reason?: string;
 	}>;
 	/** The tools on this gateway that read the category; empty until a phase adds them. */
 	tools: string[];
@@ -70,18 +79,34 @@ export interface InvestigationsQuery {
 export interface GatewayData {
 	sources(): Promise<SourceView[]>;
 	searchInvestigations(q: InvestigationsQuery): Promise<PastInvestigation[]>;
+	querySources(kind: QueryKind): Promise<QuerySource[]>;
 }
+
+/** The tools that read each category (#848 Phase 1). */
+export const CATEGORY_TOOLS: Readonly<
+	Partial<Record<SourceCategory, string[]>>
+> = {
+	metrics: [
+		"prometheus_query",
+		"prometheus_query_range",
+		"prometheus_alerts",
+		"alertmanager_alerts",
+	],
+	logs: ["loki_query_range"],
+	knowledge: ["investigations_search"],
+};
 
 export const GATEWAY_TOOL_NAMES = [
 	"sources_list",
 	"investigations_search",
+	...SOURCE_TOOL_NAMES,
 ] as const;
 
 const json = (value: unknown) => ({
 	content: [{ type: "text" as const, text: JSON.stringify(value, null, 1) }],
 });
 
-/** The gateway's MCP surface for one run: exactly two read-only tools (#848 Phase 0). */
+/** The gateway's MCP surface for one run: read-only tools only (#848). */
 export function gatewayMcpServer(data: GatewayData, runId: string): McpServer {
 	const server = new McpServer({ name: "prismalens", version: "0.1.0" });
 	server.registerTool(
@@ -117,5 +142,6 @@ export function gatewayMcpServer(data: GatewayData, runId: string): McpServer {
 				}),
 			),
 	);
+	registerSourceTools(server, (kind) => data.querySources(kind));
 	return server;
 }

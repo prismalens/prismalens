@@ -198,7 +198,7 @@ describe("gateway tools (#848)", () => {
 		return body(res);
 	}
 
-	it("tools/list returns exactly two read-only tools", async () => {
+	it("tools/list returns only read-only tools: Phase 0's two plus Phase 1's source tools", async () => {
 		const out = await call("tools/list");
 		const tools = (
 			out.result as {
@@ -206,7 +206,12 @@ describe("gateway tools (#848)", () => {
 			}
 		).tools;
 		expect(tools.map((t) => t.name).sort()).toEqual([
+			"alertmanager_alerts",
 			"investigations_search",
+			"loki_query_range",
+			"prometheus_alerts",
+			"prometheus_query",
+			"prometheus_query_range",
 			"sources_list",
 		]);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
