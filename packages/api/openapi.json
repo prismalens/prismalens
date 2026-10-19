@@ -15906,7 +15906,8 @@
                               "option": {
                                 "enum": [
                                   "model",
-                                  "effort"
+                                  "effort",
+                                  "tools"
                                 ],
                                 "type": "string"
                               },
