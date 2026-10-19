@@ -34,7 +34,11 @@ export {
 	urlOnlyRequestFn,
 } from "./engine/index.js";
 // Providers — deployment
-export type { DeploymentProvider } from "./providers/deployment.interface.js";
+export type {
+	DeploymentEvent,
+	DeploymentEventSource,
+	DeploymentProvider,
+} from "./providers/deployment.interface.js";
 // Providers — git
 export type {
 	GitProvider,
@@ -45,6 +49,7 @@ export {
 	adapterSegments,
 	createAdapter,
 	GitHubAdapter,
+	GitHubDeploymentsSegment,
 	GitHubVcsSegment,
 	getAdapter,
 	getAdapterSegments,

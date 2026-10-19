@@ -142,7 +142,7 @@ describe("ImpactService", () => {
 			prisma,
 			connectors as never,
 			integrations as never,
-			new ChangeEventsService(prisma, {} as never, {} as never),
+			new ChangeEventsService(prisma, {} as never, {} as never, {} as never),
 		);
 	});
 
@@ -404,7 +404,7 @@ describe("ImpactService", () => {
 				prisma,
 				{ resolve: async () => [{ templateId: "prometheus", connectionId, label: "p", baseUrl: "http://127.0.0.1:1", segments: [] }] } as never,
 				{ baseUrlOf: () => null } as never,
-				new ChangeEventsService(prisma, {} as never, {} as never),
+				new ChangeEventsService(prisma, {} as never, {} as never, {} as never),
 			);
 			expect(await broken.check(incidentId)).toMatchObject({
 				verdict: "could_not_check",

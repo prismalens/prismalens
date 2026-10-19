@@ -56,6 +56,7 @@ const main = defineCommand({
 		up: lazy("up"),
 		doctor: lazy("doctor"),
 		pair: lazy("pair"),
+		deploy: lazy("deploy"),
 		reset: lazy("reset"),
 		upgrade: lazy("upgrade"),
 		service: lazy("service"),
