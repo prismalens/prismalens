@@ -39,3 +39,21 @@ export function useSetRunbooks() {
 			queryClient.invalidateQueries({ queryKey: orpc.sources.key() }),
 	});
 }
+
+/** Starts a sign-in; the browser goes to the returned URL (#848). */
+export function useOAuthStart() {
+	return useMutation(orpc.sources.oauthStart.mutationOptions());
+}
+
+export function useMcpPreview() {
+	return useMutation(orpc.sources.mcpPreview.mutationOptions());
+}
+
+export function useRenameSource() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.sources.rename.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() }),
+	});
+}

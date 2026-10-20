@@ -122,6 +122,16 @@ jobs:
       - if: steps.npm.outputs.published != 'true'
         run: pnpm install --frozen-lockfile
       - if: steps.npm.outputs.published != 'true'
+        name: Write the PrismaLens OAuth app IDs (#848)
+        env:
+          OAUTH_APP_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_APP_GITHUB_CLIENT_ID }}
+          OAUTH_APP_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_APP_GITHUB_CLIENT_SECRET }}
+          OAUTH_APP_GITLAB_CLIENT_ID: ${{ secrets.OAUTH_APP_GITLAB_CLIENT_ID }}
+          OAUTH_APP_GITLAB_CLIENT_SECRET: ${{ secrets.OAUTH_APP_GITLAB_CLIENT_SECRET }}
+          OAUTH_APP_BITBUCKET_CLIENT_ID: ${{ secrets.OAUTH_APP_BITBUCKET_CLIENT_ID }}
+          OAUTH_APP_BITBUCKET_CLIENT_SECRET: ${{ secrets.OAUTH_APP_BITBUCKET_CLIENT_SECRET }}
+        run: node scripts/write-oauth-apps.mjs
+      - if: steps.npm.outputs.published != 'true'
         run: pnpm build
       - if: steps.npm.outputs.published != 'true'
         run: pnpm publint

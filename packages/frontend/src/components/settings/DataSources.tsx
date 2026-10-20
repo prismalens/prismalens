@@ -3,32 +3,63 @@
 
 import {
 	type DetectedSource,
+	DISCLOSURE,
 	SOURCE_CATEGORY_INFO,
 	SOURCE_TYPES,
 	type SourceCategoryView,
 	type SourceTypeDescriptor,
 	sourceType,
 } from "@prismalens/contracts/schemas";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
+	useRenameSource,
 	useRetestSource,
 	useSourcesOverview,
 } from "@/lib/api/hooks/use-sources-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ConnectSourceDialog } from "./ConnectSourceDialog";
+import { Field } from "./Field";
 import { RunbooksDialog } from "./RunbooksDialog";
 
 const STATUS_WORD = {
 	connected: { tone: "ok", word: "Connected" },
 	unreachable: { tone: "danger", word: "Unreachable" },
 	"not-configured": { tone: "quiet", word: "Not connected" },
+	removed: { tone: "quiet", word: "Removed" },
 } as const;
+
+/** What a server callback's redirect says (04); never upstream text. */
+const SIGN_IN_ERROR: Record<string, string> = {
+	state: "The sign-in expired or was already used. Start it again.",
+	denied: "The sign-in was declined.",
+	exchange: "The vendor did not complete the sign-in.",
+	probe:
+		"Signed in, but the source did not answer its checks; nothing was saved.",
+};
+
+/** A source's reason, with the way out when its sign-in needs more permission. */
+export function reasonText(reason: string | undefined): string | undefined {
+	if (!reason) return undefined;
+	return reason.startsWith("needs permission:")
+		? `${reason} — sign in again`
+		: reason;
+}
+
+type SourceItem = SourceCategoryView["sources"][number];
 
 /**
  * Settings, Data sources (#848): one row per category the agent reads, its state,
@@ -37,6 +68,19 @@ const STATUS_WORD = {
 export function DataSources() {
 	const { data, isLoading } = useSourcesOverview();
 	const [runbooksOpen, setRunbooksOpen] = useState(false);
+	const [renaming, setRenaming] = useState<SourceItem | null>(null);
+	const { toast } = useToast();
+	useEffect(() => {
+		const q = new URLSearchParams(window.location.search);
+		const error = q.get("error");
+		if (q.get("connected")) toast({ title: "Signed in and connected" });
+		else if (error && SIGN_IN_ERROR[error])
+			toast({
+				title: "Sign-in did not finish",
+				description: SIGN_IN_ERROR[error],
+				variant: "destructive",
+			});
+	}, [toast]);
 	const [picked, setPicked] = useState<{
 		type: SourceTypeDescriptor;
 		detected?: DetectedSource;
@@ -58,6 +102,8 @@ export function DataSources() {
 							key={c.category}
 							view={c}
 							detected={data?.detected ?? []}
+							disclosed={data?.disclosed ?? []}
+							onRename={setRenaming}
 							onPick={(type, detected) => setPicked({ type, detected })}
 							onRunbooks={() => setRunbooksOpen(true)}
 						/>
@@ -71,6 +117,7 @@ export function DataSources() {
 				open={runbooksOpen}
 				onOpenChange={setRunbooksOpen}
 			/>
+			<RenameDialog source={renaming} onClose={() => setRenaming(null)} />
 			{picked && (
 				<ConnectSourceDialog
 					type={picked.type}
@@ -88,9 +135,13 @@ function CategoryRow({
 	detected,
 	onPick,
 	onRunbooks,
+	disclosed,
+	onRename,
 }: {
 	view: SourceCategoryView;
 	detected: DetectedSource[];
+	disclosed: string[];
+	onRename: (s: SourceItem) => void;
 	onPick: (type: SourceTypeDescriptor, detected?: DetectedSource) => void;
 	onRunbooks: () => void;
 }) {
@@ -131,7 +182,11 @@ function CategoryRow({
 			});
 		}
 	};
-	const broken = view.sources.find((s) => s.status === "unreachable");
+	const broken = view.sources.find(
+		(s) =>
+			s.status === "unreachable" || s.reason?.startsWith("needs permission:"),
+	);
+	const wide = view.sources.some((s) => disclosed.includes(s.id));
 	return (
 		<SettingRow
 			testId={`data-source-${view.category}`}
@@ -146,8 +201,8 @@ function CategoryRow({
 			description={
 				view.category === "deploys" && view.status === "not-configured" ? (
 					<>
-						{info.blind} Add <InlineCode text="pl deploy" /> to the deploy job
-						to send each release.
+						{info.blind} Have the deploy job POST each release to{" "}
+						<InlineCode text="/api/webhooks/deploy" />.
 					</>
 				) : view.status === "not-configured" ? (
 					info.blind
@@ -155,10 +210,20 @@ function CategoryRow({
 					<>
 						{view.sources
 							.filter((s) => s.status !== "not-configured")
-							.map((s) => s.label)
+							.map((s) =>
+								s.name
+									? `${s.name}: ${s.description ?? ""}${s.toolCount !== undefined ? ` (${s.toolCount} tools)` : ""}`
+									: s.label,
+							)
 							.join(", ")}
-						{broken?.reason && `. ${broken.label}: ${broken.reason}`}
+						{broken?.reason &&
+							`. ${broken.label}: ${reasonText(broken.reason)}`}
 						{view.tools.length > 0 && `. ${view.tools.length} read-only tools`}
+						{wide && (
+							<span className="block" data-testid="row-disclosure">
+								{view.category === "mcp" ? DISCLOSURE.token : DISCLOSURE.signIn}
+							</span>
+						)}
 					</>
 				)
 			}
@@ -198,6 +263,19 @@ function CategoryRow({
 						))}
 				</>
 			)}
+			{view.sources
+				.filter((s) => s.kind === "mcp-server")
+				.map((s) => (
+					<Button
+						key={`rename-${s.id}`}
+						variant="text"
+						size="sm"
+						onClick={() => onRename(s)}
+						data-testid={`rename-${s.id}`}
+					>
+						Rename {s.name ?? s.label}
+					</Button>
+				))}
 			{types.map((t) => {
 				const d = found(t);
 				return (
@@ -214,5 +292,74 @@ function CategoryRow({
 				);
 			})}
 		</SettingRow>
+	);
+}
+
+/** A vendor MCP connection's name and description; tools take the new name from the next run (06). */
+function RenameDialog({
+	source,
+	onClose,
+}: {
+	source: SourceItem | null;
+	onClose: () => void;
+}) {
+	const [name, setName] = useState("");
+	const [description, setDescription] = useState("");
+	const rename = useRenameSource();
+	const nameId = useId();
+	const descriptionId = useId();
+	const reset = rename.reset;
+	useEffect(() => {
+		setName(source?.name ?? "");
+		setDescription(source?.description ?? "");
+		reset();
+	}, [source, reset]);
+	return (
+		<Dialog open={Boolean(source)} onOpenChange={(o) => !o && onClose()}>
+			<DialogContent data-testid="rename-source-dialog">
+				<DialogHeader>
+					<DialogTitle>Rename {source?.label}</DialogTitle>
+				</DialogHeader>
+				<Field
+					label="Name"
+					htmlFor={nameId}
+					hint="Tools take the new name from the next run."
+					error={rename.error ? getErrorMessage(rename.error) : null}
+				>
+					<Input
+						id={nameId}
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+					/>
+				</Field>
+				<Field label="Description" htmlFor={descriptionId}>
+					<Input
+						id={descriptionId}
+						value={description}
+						maxLength={80}
+						onChange={(e) => setDescription(e.target.value)}
+					/>
+				</Field>
+				<DialogFooter>
+					<Button
+						variant="primary"
+						disabled={rename.isPending || !name.trim() || !description.trim()}
+						onClick={() =>
+							source &&
+							rename.mutate(
+								{
+									id: source.id,
+									name: name.trim(),
+									description: description.trim(),
+								},
+								{ onSuccess: onClose },
+							)
+						}
+					>
+						Save
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

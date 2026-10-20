@@ -7,6 +7,7 @@ import {
 	CREDENTIAL_KIND_LABELS,
 	connectSteps,
 	type DetectedSource,
+	type McpPreview,
 	type ProbeReport,
 	type SourceCredentialKind,
 	type SourceDraft,
@@ -37,11 +38,25 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
 	useConnectSource,
+	useMcpPreview,
+	useOAuthStart,
+	useRetestSource,
+	useSourcesOverview,
 	useTestSource,
 } from "@/lib/api/hooks/use-sources-orpc";
 import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
 import { Field } from "./Field";
+import {
+	callbackUrl,
+	Disclosure,
+	disclosureFor,
+	SignInPanel,
+	type SignInValues,
+} from "./SignInPanel";
+
+const SIGN_IN_KINDS = new Set<SourceCredentialKind>(["oauth", "mcp-oauth"]);
+const SIGN_IN_WAIT_MS = 10 * 60_000;
 
 function hostOf(url: string): string | null {
 	try {
@@ -80,6 +95,26 @@ export function ConnectSourceDialog({
 	const [showErrors, setShowErrors] = useState(false);
 	const test = useTestSource();
 	const connect = useConnectSource();
+	const oauthStart = useOAuthStart();
+	const preview = useMcpPreview();
+	const retest = useRetestSource();
+	const overview = useSourcesOverview();
+	const [signIn, setSignIn] = useState<SignInValues>({
+		clientId: "",
+		clientSecret: "",
+		scopes: "",
+	});
+	const [waitingSince, setWaitingSince] = useState<{
+		at: number;
+		known: Set<string>;
+	} | null>(null);
+	const [savedId, setSavedId] = useState<string | null>(null);
+	const [name, setName] = useState("");
+	const [description, setDescription] = useState("");
+	const [tools, setTools] = useState<McpPreview | null>(null);
+	const mcp = type.id === "mcp-server";
+	const nameId = useId();
+	const descriptionId = useId();
 	const { toast } = useToast();
 	const urlId = useId();
 	const kindId = useId();
@@ -97,9 +132,46 @@ export function ConnectSourceDialog({
 		setServiceLabel(null);
 		setReport(null);
 		setShowErrors(false);
+		setSignIn({ clientId: "", clientSecret: "", scopes: "" });
+		setWaitingSince(null);
+		setSavedId(null);
+		setName("");
+		setDescription("");
+		setTools(null);
 		test.reset();
 		connect.reset();
-	}, [open, type, detected, test.reset, connect.reset]);
+		oauthStart.reset();
+	}, [open, type, detected, test.reset, connect.reset, oauthStart.reset]);
+
+	// The sign-in finishes in another tab; the new connection shows up in the overview.
+	const refetch = overview.refetch;
+	useEffect(() => {
+		if (!waitingSince) return;
+		const timer = setInterval(() => {
+			if (Date.now() - waitingSince.at > SIGN_IN_WAIT_MS) setWaitingSince(null);
+			else void refetch();
+		}, 2000);
+		return () => clearInterval(timer);
+	}, [waitingSince, refetch]);
+	const retestNew = retest.mutate;
+	useEffect(() => {
+		if (!waitingSince) return;
+		const added = overview.data?.categories
+			.flatMap((c) => c.sources)
+			.find((s) => s.kind === type.id && !waitingSince.known.has(s.id));
+		if (!added) return;
+		setWaitingSince(null);
+		setSavedId(added.id);
+		retestNew(
+			{ id: added.id },
+			{
+				onSuccess: (r) => {
+					setReport(r);
+					setStep("confirm");
+				},
+			},
+		);
+	}, [overview.data, waitingSince, type.id, retestNew]);
 
 	const fields = CREDENTIAL_KIND_FIELDS[kind];
 	const host = hostOf(url);
@@ -110,7 +182,46 @@ export function ConnectSourceDialog({
 			? { useDetected: true }
 			: { credential: { kind, ...values } }),
 		...(serviceLabel ? { serviceLabel } : {}),
+		...(mcp && name.trim() ? { name: name.trim() } : {}),
+		...(mcp && description.trim() ? { description: description.trim() } : {}),
 	});
+	const signingIn = SIGN_IN_KINDS.has(kind);
+
+	const startSignIn = () => {
+		setShowErrors(true);
+		if (!host) return;
+		const known = new Set(
+			(overview.data?.categories ?? []).flatMap((c) =>
+				c.sources.map((s) => s.id),
+			),
+		);
+		const cb = callbackUrl();
+		oauthStart.mutate(
+			{
+				draft: {
+					...draft(false),
+					credential: {
+						...(signIn.clientId.trim()
+							? { clientId: signIn.clientId.trim() }
+							: {}),
+						...(signIn.clientSecret
+							? { clientSecret: signIn.clientSecret }
+							: {}),
+					},
+					...(signIn.scopes.trim()
+						? { scopes: signIn.scopes.trim().split(/\s+/) }
+						: {}),
+				},
+				...(cb.local ? {} : { redirectUri: cb.url }),
+			},
+			{
+				onSuccess: ({ authorizationUrl }) => {
+					window.open(authorizationUrl, "_blank", "noopener");
+					setWaitingSince({ at: Date.now(), known });
+				},
+			},
+		);
+	};
 
 	const runTest = (detectedUse: boolean) => {
 		setShowErrors(true);
@@ -125,15 +236,21 @@ export function ConnectSourceDialog({
 				if (r.ok) setStep(steps.includes("choose") ? "choose" : "confirm");
 			},
 		});
+		if (mcp) preview.mutate(draft(detectedUse), { onSuccess: setTools });
 	};
 
+	const disclosure = report
+		? disclosureFor(type, kind, report.discovered.grantedScopes)
+		: null;
 	const save = () =>
-		connect.mutate(draft(useDetected), {
-			onSuccess: () => {
-				toast({ title: `${type.vendor} connected` });
-				onOpenChange(false);
-			},
-		});
+		savedId
+			? onOpenChange(false)
+			: connect.mutate(draft(useDetected), {
+					onSuccess: () => {
+						toast({ title: `${type.vendor} connected` });
+						onOpenChange(false);
+					},
+				});
 
 	const index = steps.indexOf(step) + 1;
 	return (
@@ -157,7 +274,9 @@ export function ConnectSourceDialog({
 							"PrismaLens tests what it can read before anything is saved. Every check is a read."}
 						{step === "choose" && "Which label names a service in these logs?"}
 						{step === "confirm" &&
-							"What the agent gets. Nothing it can call writes."}
+							(mcp
+								? "What the agent gets: every tool this server lists."
+								: "What the agent gets. Nothing it can call writes.")}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -241,7 +360,60 @@ export function ConnectSourceDialog({
 								</Select>
 							</Field>
 						)}
-						{fields.length > 0 && (
+						{mcp && (
+							<>
+								<Field
+									label="Name"
+									htmlFor={nameId}
+									hint="Prefixes this server's tools, like n8n_prod__list_workflows"
+								>
+									<Input
+										id={nameId}
+										value={name}
+										placeholder="n8n_prod"
+										onChange={(e) => setName(e.target.value)}
+										data-testid="connect-mcp-name"
+									/>
+								</Field>
+								<Field
+									label="Description"
+									htmlFor={descriptionId}
+									error={
+										showErrors && !description.trim()
+											? "Describe this server in one line"
+											: null
+									}
+								>
+									<Input
+										id={descriptionId}
+										value={description}
+										maxLength={80}
+										placeholder="Production workflows"
+										onChange={(e) => setDescription(e.target.value)}
+										data-testid="connect-mcp-description"
+									/>
+								</Field>
+								<p className="text-meta text-text-3" data-testid="mcp-advice">
+									Prefer a read-only token if this service offers one.
+									PrismaLens forwards every tool this server lists, and what the
+									agent does with them is governed by the run's permission
+									level. Large servers offer only their first 64 tools; split
+									them into narrower servers where the vendor allows.
+								</p>
+							</>
+						)}
+						{signingIn && (
+							<SignInPanel
+								type={type}
+								url={url.trim()}
+								values={signIn}
+								onChange={setSignIn}
+								onSignIn={startSignIn}
+								pending={oauthStart.isPending}
+								waiting={Boolean(waitingSince)}
+							/>
+						)}
+						{!signingIn && fields.length > 0 && (
 							<DynamicCredentialForm
 								fields={fields}
 								values={values}
@@ -302,6 +474,19 @@ export function ConnectSourceDialog({
 								type.uses
 							)}
 						</p>
+						{tools?.ok && (
+							<ul className="text-meta" data-testid="mcp-preview">
+								{tools.tools.map((t) => (
+									<li key={t.upstream}>
+										<Mono>{t.offered}</Mono>
+										{t.shortened && (
+											<span className="text-text-3"> (from {t.upstream})</span>
+										)}
+									</li>
+								))}
+							</ul>
+						)}
+						<Disclosure text={disclosure} />
 						<p className="text-meta text-text-3">
 							The credential is sent only to {report.host}, and a redirect to
 							another host is not followed.
@@ -311,7 +496,12 @@ export function ConnectSourceDialog({
 
 				<div className="min-h-5">
 					<MutationError
-						error={(test.error ?? connect.error) as Error | null}
+						error={
+							(test.error ??
+								connect.error ??
+								oauthStart.error ??
+								retest.error) as Error | null
+						}
 					/>
 				</div>
 				<DialogFooter>
@@ -320,7 +510,7 @@ export function ConnectSourceDialog({
 							Back
 						</Button>
 					)}
-					{step === "auth" && (
+					{step === "auth" && !signingIn && (
 						<Button
 							variant={detected ? "secondary" : "primary"}
 							disabled={test.isPending}
@@ -347,7 +537,7 @@ export function ConnectSourceDialog({
 							onClick={save}
 							data-testid="connect-submit"
 						>
-							Connect
+							{savedId ? "Done" : "Connect"}
 						</Button>
 					)}
 				</DialogFooter>
