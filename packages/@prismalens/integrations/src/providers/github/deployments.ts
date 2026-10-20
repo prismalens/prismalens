@@ -3,7 +3,7 @@
 
 /**
  * GitHub Deployments, read-only (#854): each deployment with its latest status,
- * mapped to the shape `prismalens deploy` pushes.
+ * mapped to the shape `POST /webhooks/deploy` takes.
  */
 import { providerHttpError } from "../../engine/provider-http-error.js";
 import type {

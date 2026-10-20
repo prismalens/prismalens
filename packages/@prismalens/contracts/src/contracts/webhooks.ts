@@ -111,7 +111,8 @@ export const webhooksContract = {
 		.output(RenderWebhookResponseSchema),
 
 	/**
-	 * Record a deploy from any stack (#854); `prismalens deploy` calls it
+	 * Record a deploy from any stack (#854). CI posts it with the webhook secret:
+	 * curl -X POST $HOST/api/webhooks/deploy -H "Authorization: Bearer $SECRET" -H 'content-type: application/json' -d '{"service":"api","version":"v1.2.3","environment":"production","status":"succeeded"}'
 	 * POST /webhooks/deploy
 	 */
 	deploy: oc
