@@ -59,8 +59,6 @@ const main = defineCommand({
 		reset: lazy("reset"),
 		upgrade: lazy("upgrade"),
 		service: lazy("service"),
-		connect: lazy("connect"),
-		sources: lazy("sources"),
 	},
 });
 

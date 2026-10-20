@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * One descriptor per source type drives the web connect flow, `pl connect` and the
+ * One descriptor per source type drives the web connect flow and the
  * probes the api runs (#848, uniform connect UX). Probes are reads only.
  */
 import { z } from "zod";
@@ -59,7 +59,7 @@ export interface SourceTypeDescriptor {
 	id: string;
 	category: SourceCategory;
 	vendor: string;
-	/** The `pl connect <category> <vendor>` word. */
+	/** The url-safe word for a vendor within its category. */
 	slug: string;
 	/** First is the default. */
 	credentialKinds: readonly SourceCredentialKind[];

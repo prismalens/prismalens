@@ -6,7 +6,7 @@ import { Implement, implement } from "@orpc/nest";
 import { sourcesContract } from "@prismalens/contracts";
 import { SourcesService } from "./sources.service.js";
 
-/** Sources (#848): the web connect flow and `pl connect` / `pl sources` call these. */
+/** Sources (#848): the web connect flow calls these. */
 @Controller()
 export class SourcesController {
 	constructor(private readonly sources: SourcesService) {}

@@ -89,7 +89,7 @@ describe("source type descriptors", () => {
 		expect(UNSUPPORTED_SCM_VENDORS).toEqual(["Gitea", "Forgejo", "Azure DevOps"]);
 	});
 
-	it("resolves `pl connect <category> <vendor>`", () => {
+	it("resolves a category and vendor slug to its source type", () => {
 		expect(sourceTypeBySlug("scm", "gitlab")?.id).toBe("gitlab-token");
 		expect(sourceTypeBySlug("scm", "bitbucket")?.id).toBe("bitbucket-token");
 		expect(sourceTypeBySlug("logs", "loki")?.id).toBe("loki");

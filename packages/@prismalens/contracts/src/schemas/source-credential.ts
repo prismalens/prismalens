@@ -103,7 +103,7 @@ const password = (name: string, label: string): TemplateField => ({
 	sensitive: true,
 });
 
-/** The form (and future `pl connect`) shape of each kind: one field list per kind. */
+/** The form shape of each kind: one field list per kind. */
 export const CREDENTIAL_KIND_FIELDS: Record<
 	SourceCredentialKind,
 	TemplateField[]
