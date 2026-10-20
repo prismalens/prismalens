@@ -6,6 +6,7 @@ import type {
 	InvestigationReport,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
+import type { FileAt } from "@/lib/evidence-files";
 import type { OperatorState, TranscriptItem } from "@/lib/investigation-events";
 import { commandText } from "@/lib/report-view";
 import { shortCredential } from "./run-labels";
@@ -32,6 +33,8 @@ export interface DetailRow {
 	step?: number;
 	/** Where an item with no step came from, shown in the step's place. */
 	from?: string;
+	/** A file the item cites, opened read-only at the run's commit. */
+	file?: FileAt;
 	/** Navigates away, named by `action` or by the row's own text. */
 	link?: DetailLink;
 	action?: string;
@@ -145,8 +148,12 @@ export type StepOf = (
 /** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
 const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 
-function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
+/** The file an evidence item cites, at the run's commit; null when it names none. */
+export type FileOf = (source: string) => FileAt | null;
+
+function evidenceRow(e: Evidence, steps: StepOf, fileOf?: FileOf): DetailRow {
 	const step = steps(e);
+	const file = fileOf?.(e.source) ?? null;
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
 		text: e.observation,
@@ -155,6 +162,7 @@ function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 				? `Inferred from ${e.source}`
 				: commandText(e.source),
 		...(step ? { step } : {}),
+		...(file ? { file } : {}),
 		// No step ran for it; say where it came from in the step's place (#831 w6-18).
 		...(alert ? { from: "From the alert" } : {}),
 	};
@@ -168,7 +176,11 @@ function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 export function evidenceSections(
 	inv: InvestigationWithRelations,
 	steps: StepOf,
-	opts: { live: boolean; standing: { runId: string; name: string } | null },
+	opts: {
+		live: boolean;
+		standing: { runId: string; name: string } | null;
+		fileOf?: FileOf;
+	},
 ): DetailSection[] {
 	const report = inv.report;
 	if (!report) {
@@ -188,12 +200,13 @@ export function evidenceSections(
 			});
 		return [{ title: opts.live ? "So far" : "No report", rows }];
 	}
-	return reportSections(report, steps);
+	return reportSections(report, steps, opts.fileOf);
 }
 
 function reportSections(
 	report: InvestigationReport,
 	steps: StepOf,
+	fileOf?: FileOf,
 ): DetailSection[] {
 	const out: DetailSection[] = [];
 	const [top, ...others] = report.hypotheses.filter(
@@ -208,7 +221,7 @@ function reportSections(
 				{ text: report.rootCause ?? top.statement, strong: true },
 				...top.evidence
 					.filter((e) => e.direction === "supports")
-					.map((e) => evidenceRow(e, steps)),
+					.map((e) => evidenceRow(e, steps, fileOf)),
 			],
 		});
 	else
