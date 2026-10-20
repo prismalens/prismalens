@@ -123,16 +123,18 @@ export class GitCredential {
 	readonly effectiveUrl?: string;
 	#token?: string;
 	#host?: string;
+	#username?: string;
 
 	constructor(
 		display: GitCredentialDisplay,
 		token?: string,
-		opts: { effectiveUrl?: string; host?: string } = {},
+		opts: { effectiveUrl?: string; host?: string; username?: string } = {},
 	) {
 		this.display = display;
 		if (opts.effectiveUrl) this.effectiveUrl = opts.effectiveUrl;
 		this.#token = token;
 		this.#host = opts.host;
+		this.#username = opts.username;
 	}
 
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
@@ -141,7 +143,7 @@ export class GitCredential {
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
-		const user = tokenUsernameFor(url.hostname);
+		const user = this.#username ?? tokenUsernameFor(url.hostname);
 		return `Authorization: Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
 	}
 

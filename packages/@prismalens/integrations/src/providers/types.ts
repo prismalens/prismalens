@@ -5,7 +5,7 @@
  * Shared provider types
  *
  * AuthenticatedRequestFn is the core abstraction — providers never see raw tokens.
- * AuthManager.request() is bound to a connectionId and injected as this function.
+ * The api's template request is bound to a connectionId and injected as this function.
  */
 
 import type { DeploymentProvider } from "./deployment.interface.js";
@@ -14,7 +14,7 @@ import type { MetricsQueries } from "./metrics.interface.js";
 
 /**
  * Bound authenticated request function — created by binding
- * AuthManager.request() to a specific connectionId.
+ * the api's template request to a specific connectionId.
  */
 export type AuthenticatedRequestFn = (
 	method: string,

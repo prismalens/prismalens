@@ -68,7 +68,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("readHostToken: GitLab and Bitbucket hosts come from the API base URL, else the cloud host", () => {
+	it("readHostToken: GitLab and Bitbucket hosts come from the API base URL, else the cloud host", async () => {
 		const row = (templateId: string, creds: Record<string, unknown>) =>
 			({
 				id: `conn-${templateId}`,
@@ -80,13 +80,13 @@ describe("GitCredentialService & host-token (#810)", () => {
 				connectionConfigEnc: null,
 				integration: { templateId, label: templateId },
 			}) as any;
-		const host = (templateId: string, creds: Record<string, unknown>) =>
-			readHostToken(row(templateId, creds), credentialsService)?.host;
-		expect(host("gitlab-token", { token: "glpat" })).toBe("gitlab.com");
-		expect(host("gitlab-token", { token: "glpat", baseUrl: "https://git.acme.io/api/v4" })).toBe("git.acme.io");
-		expect(host("bitbucket-token", { token: "bb" })).toBe("bitbucket.org");
-		expect(host("bitbucket-token", { token: "bb", baseUrl: "https://api.bitbucket.org/2.0" })).toBeTruthy();
-		expect(readHostToken(row("gitlab-token", {}), credentialsService)).toBeNull();
+		const host = async (templateId: string, creds: Record<string, unknown>) =>
+			(await readHostToken(row(templateId, creds), credentialsService))?.host;
+		expect(await host("gitlab-token", { token: "glpat" })).toBe("gitlab.com");
+		expect(await host("gitlab-token", { token: "glpat", baseUrl: "https://git.acme.io/api/v4" })).toBe("git.acme.io");
+		expect(await host("bitbucket-token", { token: "bb" })).toBe("bitbucket.org");
+		expect(await host("bitbucket-token", { token: "bb", baseUrl: "https://api.bitbucket.org/2.0" })).toBeTruthy();
+		expect(await readHostToken(row("gitlab-token", {}), credentialsService)).toBeNull();
 	});
 
 	it("T1: folder -> none, label folder", async () => {
@@ -925,22 +925,22 @@ describe("GitCredentialService & host-token (#810)", () => {
 			expect(pickOf({ credentialConnectionId: "" })).toBeNull();
 		});
 
-		it("readHostToken returns null when template is not gitHost or decryption fails", () => {
+		it("readHostToken returns null when template is not gitHost or decryption fails", async () => {
 			const badTemplateConn: any = {
 				id: "c-bad",
 				integration: { templateId: "prometheus" },
 			};
-			expect(readHostToken(badTemplateConn, credentialsService)).toBeNull();
+			expect(await readHostToken(badTemplateConn, credentialsService)).toBeNull();
 
 			const decryptFailConn: any = {
 				id: "c-fail",
 				integration: { templateId: "git-host-token" },
 				credentialsEnc: Buffer.from("invalid-encrypted-data"),
 			};
-			expect(readHostToken(decryptFailConn, credentialsService)).toBeNull();
+			expect(await readHostToken(decryptFailConn, credentialsService)).toBeNull();
 		});
 
-		it("readHostToken handles github-token baseUrl fallback and missing host/token", () => {
+		it("readHostToken handles github-token baseUrl fallback and missing host/token", async () => {
 			const noHostConn: any = {
 				id: "c-nohost",
 				integration: { templateId: "git-host-token", label: "No Host" },
@@ -948,7 +948,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 				connectionConfigEnc: credentialsService.encrypt({ host: "" }),
 				status: "ACTIVE",
 			};
-			expect(readHostToken(noHostConn, credentialsService)).toBeNull();
+			expect(await readHostToken(noHostConn, credentialsService)).toBeNull();
 
 			const noTokenConn: any = {
 				id: "c-notok",
@@ -957,7 +957,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
 				status: "ACTIVE",
 			};
-			expect(readHostToken(noTokenConn, credentialsService)).toBeNull();
+			expect(await readHostToken(noTokenConn, credentialsService)).toBeNull();
 
 			// github-token reading baseUrl from config instead of creds
 			const configBaseUrlConn: any = {
@@ -968,7 +968,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 				connectionConfigEnc: credentialsService.encrypt({ baseUrl: "https://ghe-config.corp/api/v3" }),
 				status: "ACTIVE",
 			};
-			const res = readHostToken(configBaseUrlConn, credentialsService);
+			const res = await readHostToken(configBaseUrlConn, credentialsService);
 			expect(res).not.toBeNull();
 			expect(res?.host).toBe("ghe-config.corp");
 			expect(res?.label).toBe("Integration Label Fallback");

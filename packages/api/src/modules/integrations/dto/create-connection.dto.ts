@@ -46,7 +46,7 @@ export class CreateConnectionDto {
 	label!: string;
 
 	@IsObject()
-	credentials!: Record<string, string>;
+	credentials!: Record<string, unknown>;
 
 	@IsOptional()
 	@IsObject()

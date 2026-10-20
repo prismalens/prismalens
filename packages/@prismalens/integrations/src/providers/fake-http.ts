@@ -14,7 +14,7 @@ export interface FakeReply {
 export interface FakeApi {
 	origin: string;
 	requests: Array<{ method: string; url: string; authorization?: string }>;
-	/** Adds the bearer token the way AuthManager does, so adapters never hold it. */
+	/** Adds the bearer token the way template-request does, so adapters never hold it. */
 	request: (token: string, prefix?: string) => AuthenticatedRequestFn;
 	close: () => Promise<void>;
 }

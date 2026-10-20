@@ -28,31 +28,6 @@ export class AuthError extends Error {
 	}
 }
 
-export class TokenExpiredError extends AuthError {
-	constructor(opts: {
-		connectionId: string;
-		templateId?: string;
-		provider?: string;
-	}) {
-		super("Token expired, refresh needed", opts);
-		this.name = "TokenExpiredError";
-	}
-}
-
-export class TokenRefreshError extends AuthError {
-	constructor(
-		message: string,
-		opts: {
-			connectionId: string;
-			templateId?: string;
-			provider?: string;
-		},
-	) {
-		super(message, opts);
-		this.name = "TokenRefreshError";
-	}
-}
-
 export class ProviderError extends AuthError {
 	readonly httpStatus: number;
 	readonly responseBody?: string;

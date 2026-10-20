@@ -19,6 +19,7 @@ export * from "./incident-similarity.js";
 export * from "./integration.js";
 export * from "./investigation.js";
 export * from "./mcp-names.js";
+export * from "./oauth-apps.js";
 export * from "./overlay.js";
 export * from "./recommendation.js";
 export * from "./repository.js";

@@ -5,7 +5,7 @@
  * Git Provider Interface
  *
  * Abstraction layer for git hosting services (GitHub, etc.).
- * Uses an injected authenticated request function (from AuthManager.request)
+ * Uses an injected authenticated request function (from the api's template-request)
  * instead of raw access tokens.
  */
 import type {

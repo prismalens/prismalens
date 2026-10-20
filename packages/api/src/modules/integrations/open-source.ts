@@ -32,16 +32,21 @@ export async function openSource(
 		secrets: [],
 		unusable: reason,
 	});
-	const base = await integrations.connectionBaseUrl(src.id);
+	const row = await integrations.storedRow(src.id);
+	const base =
+		(await integrations.connectionBaseUrl(src.id)) ?? row?.stored.baseUrl;
 	if (!base) return unusable("the connection has no URL");
-	const parsed = await integrations.sourceCredential(src.id);
-	if (!parsed.ok) return unusable(parsed.message);
+	const parsed = row?.stored.credential;
+	if (!parsed?.ok) return unusable(parsed?.message ?? "Connection not found");
 	const credential = parsed.credential;
 	return {
 		...src,
-		request: sourceRequestFn(base, parsed, opts),
+		request: sourceRequestFn(base, parsed, {
+			...opts,
+			connection: integrations.sourceConnection(src.id),
+		}),
 		get secrets() {
-			return credentialSecrets(credential);
+			return credentialSecrets(credential, src.id);
 		},
 	};
 }
