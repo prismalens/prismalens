@@ -520,8 +520,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
-		acpArgs: () => ["--experimental-acp", "--ignore-env"],
-		// trusted so MCP servers load; the snapshot strips .gemini and GEMINI.md, and --ignore-env skips workspace .env (#848)
+		acpArgs: () => ["--acp"],
+		// trusted so PrismaLens's MCP servers load alongside the user's own (#848)
 		acpEnv: () => ({
 			GEMINI_CLI_TRUST_WORKSPACE: "true",
 		}),

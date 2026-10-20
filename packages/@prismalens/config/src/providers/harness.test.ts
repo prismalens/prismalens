@@ -176,11 +176,11 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		});
 	});
 
-	it("gemini trusts the throwaway copy so MCP servers load, and skips its .env (#848)", () => {
+	it("gemini trusts the throwaway copy so MCP servers load, and starts with --acp alone (#848)", () => {
 		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
 			GEMINI_CLI_TRUST_WORKSPACE: "true",
 		});
-		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toContain("--ignore-env");
+		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toEqual(["--acp"]);
 	});
 });
 
