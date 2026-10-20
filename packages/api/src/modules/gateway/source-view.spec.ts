@@ -15,6 +15,8 @@ interface Row {
 	label: string;
 	templateId: string;
 	baseUrl?: string;
+	status?: string;
+	lastErrorMessage?: string;
 }
 
 const servers: Server[] = [];
@@ -42,8 +44,9 @@ function setup(rows: Row[], proxy?: Partial<ProxyPort>) {
 				rows.map((r) => ({
 					id: r.id,
 					label: r.label,
-					status: "ACTIVE",
+					status: r.status ?? "ACTIVE",
 					lastErrorAt: null,
+					lastErrorMessage: r.lastErrorMessage ?? null,
 					integration: { templateId: r.templateId, label: r.templateId },
 				})),
 		},
@@ -257,5 +260,38 @@ describe("proxied tools on the gateway (#848, 06 gateway half)", () => {
 		const out = await rpc(g, token, "tools/call", { name: "n8n_prod__get_workflow", arguments: { id: "w1" } });
 		expect(calls).toEqual(["n8n_prod__get_workflow"]);
 		expect(out.content).toEqual([image]);
+	});
+});
+
+describe("follow-ups for lane B (#848)", () => {
+	it("shows a sign-in that needs the user as the reason, and no other stored error", async () => {
+		const g = setup([
+			{ id: "s1", label: "gitlab", templateId: "gitlab-token", status: "ACTIVE", lastErrorMessage: "needs permission: read_api" },
+			{ id: "s2", label: "bitbucket", templateId: "bitbucket-token", status: "REFRESH_FAILED", lastErrorMessage: "upstream said tok-123" },
+			{ id: "s3", label: "github", templateId: "github-token", status: "ERROR", lastErrorMessage: "upstream said tok-456" },
+			{ id: "m1", label: "n8n_prod", templateId: "mcp-server", lastErrorMessage: "needs permission: workflows:read" },
+		]);
+		const view = (await g.sources()) as unknown as View;
+		const scm = category(view, "scm")?.sources ?? [];
+		expect(scm.find((s) => s.id === "s1")?.reason).toBe("needs permission: read_api — sign in again");
+		expect(scm.find((s) => s.id === "s2")?.reason).toBe("sign-in expired — sign in again");
+		expect(scm.find((s) => s.id === "s3")?.reason).toBeUndefined();
+		expect(JSON.stringify(view)).not.toContain("tok-");
+		expect(category(view, "mcp")?.sources[0]?.reason).toBe("needs permission: workflows:read — sign in again");
+	});
+
+	it("an MCP connection deleted mid-run reads removed, decided by the view", async () => {
+		const rows: Row[] = [{ id: "m1", label: "n8n_prod", templateId: "mcp-server" }];
+		const g = setup(rows, {
+			snapshot: async () => ({
+				connections: [{ id: "m1", name: "n8n_prod", description: "prod", status: "connected", tools: [] }],
+			}),
+		});
+		const token = (await g.lease(RUN))?.token ?? "";
+		rows.splice(0);
+		const mcp = category((await tool(g, token, "sources_list")) as View, "mcp");
+		expect(mcp?.sources).toEqual([
+			expect.objectContaining({ id: "m1", label: "n8n_prod", status: "removed" }),
+		]);
 	});
 });
