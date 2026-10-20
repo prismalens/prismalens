@@ -72,6 +72,10 @@ export const HypothesisSchema = z.object({
 	statement: z.string().min(1),
 	status: HypothesisStatusSchema,
 	evidence: z.array(EvidenceSchema),
+	/** Short id ("h1") a later hypothesis names as its parent. Optional: older reports have none and render flat. */
+	id: z.string().min(1).max(64).optional(),
+	/** The `id` of the hypothesis this one refines; absent on a top-level idea. */
+	parentId: z.string().min(1).max(64).optional(),
 });
 
 export const RuledOutSchema = z.object({

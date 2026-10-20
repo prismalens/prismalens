@@ -323,7 +323,7 @@ function Sections({
 	);
 }
 
-function Row({
+export function Row({
 	row,
 	incidentId,
 	onJump,

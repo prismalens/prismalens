@@ -151,7 +151,8 @@ const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 /** The file an evidence item cites, at the run's commit; null when it names none. */
 export type FileOf = (source: string) => FileAt | null;
 
-function evidenceRow(e: Evidence, steps: StepOf, fileOf?: FileOf): DetailRow {
+/** One evidence item as a row: its step, or where it came from (the citation the panel and the tree share). */
+export function evidenceRow(e: Evidence, steps: StepOf, fileOf?: FileOf): DetailRow {
 	const step = steps(e);
 	const file = fileOf?.(e.source) ?? null;
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
