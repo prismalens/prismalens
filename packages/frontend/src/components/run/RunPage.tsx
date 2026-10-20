@@ -30,7 +30,6 @@ import {
 	stopFailed,
 } from "@/components/investigation/DockedComposer";
 import { Transcript } from "@/components/investigation/Transcript";
-import { AskLinkNotice } from "@/components/run/AskLinkNotice";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
 import { useNow } from "@/hooks/use-now";
@@ -273,9 +272,6 @@ export function RunPage() {
 					runs={runs}
 					current={inv?.id ?? null}
 				/>
-				{inv && search.ask && (
-					<AskLinkNotice investigationId={inv.id} askId={search.ask} />
-				)}
 				<div className="min-h-0 flex-1">
 					{run.isLoading ? (
 						<div className="mx-auto max-w-[760px] px-4 pt-5">

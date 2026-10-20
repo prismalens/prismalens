@@ -16,9 +16,7 @@ import { orpc } from "@/lib/api/orpc-client";
 import { isNotFound } from "@/lib/not-found";
 
 export const Route = createFileRoute("/_authenticated/investigations/$id/")({
-	validateSearch: (search: Record<string, unknown>): { ask?: string } =>
-		typeof search.ask === "string" ? { ask: search.ask } : {},
-	beforeLoad: async ({ context, params, location, search }) => {
+	beforeLoad: async ({ context, params, location }) => {
 		const run = await context.queryClient
 			.fetchQuery(
 				orpc.investigations.get.queryOptions({ input: { id: params.id } }),
@@ -31,10 +29,7 @@ export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 		throw redirect({
 			to: "/incidents/$id/conversation",
 			params: { id: run.incidentId },
-			search: {
-				investigation: params.id,
-				...(search.ask ? { ask: search.ask } : {}),
-			},
+			search: { investigation: params.id },
 			hash: location.hash || undefined,
 			replace: true,
 		});

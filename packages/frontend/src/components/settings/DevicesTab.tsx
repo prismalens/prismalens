@@ -8,9 +8,9 @@
  * device: managing access is the host's.
  */
 
-import type { PairedDevice, PushHealth } from "@prismalens/contracts";
+import type { PairedDevice } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Mono } from "@/components/shared/Mono";
@@ -22,15 +22,9 @@ import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useOperator } from "@/hooks/use-operator";
-import { client, orpc } from "@/lib/api/orpc-client";
+import { orpc } from "@/lib/api/orpc-client";
 import { guessDeviceName, namesBrowser } from "@/lib/device-name";
 import { formatClock, formatDate } from "@/lib/format-time";
-import {
-	currentSubscription,
-	PUSH_SUPPORT_TEXT,
-	pushSupport,
-	subscribeThisBrowser,
-} from "@/lib/push";
 
 export function useDevices(enabled = true) {
 	return useQuery({
@@ -63,18 +57,6 @@ export function deviceLine(d: PairedDevice, now: Date = new Date()): string {
 	return client ? `${client}. ${paired}` : paired;
 }
 
-/** "Push on, last delivered 17:07." A device's push health, for the operator (#859). */
-export function pushLine(push: PushHealth, now: Date = new Date()): string {
-	if (push.state === "expired")
-		return "Push expired. Turn it on again on that device.";
-	if (push.state === "failing") return `Push failing: ${push.lastError}.`;
-	if (!push.lastDeliveryAt) return "Push on, nothing delivered yet.";
-	const at = new Date(push.lastDeliveryAt);
-	const when =
-		at.toDateString() === now.toDateString() ? formatClock(at) : formatDate(at);
-	return `Push on, last delivered ${when}.`;
-}
-
 export function DevicesTab() {
 	const { managesPairing } = useOperator();
 	const queryClient = useQueryClient();
@@ -96,16 +78,12 @@ export function DevicesTab() {
 
 	if (!managesPairing) {
 		return (
-			<>
-				<ThisDevicePush onChanged={refresh} />
-				<Empty text="Devices are managed from the machine running PrismaLens, not from a paired device." />
-			</>
+			<Empty text="Devices are managed from the machine running PrismaLens, not from a paired device." />
 		);
 	}
 
 	return (
 		<>
-			<ThisDevicePush onChanged={refresh} />
 			<SettingGroup
 				title="Paired"
 				count={devices.data?.devices.length || undefined}
@@ -191,10 +169,6 @@ function DeviceRow({
 			setEditing(false);
 		},
 	});
-	const test = useMutation({
-		...orpc.push.sendTest.mutationOptions(),
-		onSettled: () => onRenamed(),
-	});
 	return (
 		<SettingRow
 			testId="device-row"
@@ -254,37 +228,13 @@ function DeviceRow({
 					</span>
 				)
 			}
-			description={
-				<>
-					<span data-testid="device-line">{deviceLine(device)}</span>
-					{device.push && (
-						<span className="block" data-testid="device-push">
-							{pushLine(device.push)}
-						</span>
-					)}
-				</>
-			}
+			description={<span data-testid="device-line">{deviceLine(device)}</span>}
 			below={
-				rename.isError ? (
-					<MutationError error={rename.error} />
-				) : test.isError ? (
-					<MutationError error={test.error} />
-				) : undefined
+				rename.isError ? <MutationError error={rename.error} /> : undefined
 			}
 		>
 			{!editing && (
 				<>
-					{device.push && device.push.state !== "expired" && (
-						<Button
-							variant="text"
-							size="sm"
-							disabled={test.isPending}
-							onClick={() => test.mutate({ deviceId: device.id })}
-							data-testid="device-push-test"
-						>
-							Send test
-						</Button>
-					)}
 					<Button
 						variant="text"
 						size="sm"
@@ -304,106 +254,6 @@ function DeviceRow({
 				</>
 			)}
 		</SettingRow>
-	);
-}
-
-/**
- * Push for the browser in hand, on any paired device (#859). The push
- * service carries ids only; the words come from this instance.
- */
-function ThisDevicePush({ onChanged }: { onChanged: () => Promise<unknown> }) {
-	const support = pushSupport();
-	const [on, setOn] = useState<boolean | null>(null);
-	useEffect(() => {
-		currentSubscription()
-			.then((s) => setOn(!!s))
-			.catch(() => setOn(false));
-	}, []);
-	const turnOn = useMutation({
-		mutationFn: async () => {
-			const { publicKey } = await client.push.publicKey({});
-			return client.push.subscribe(await subscribeThisBrowser(publicKey));
-		},
-		onSuccess: async () => {
-			setOn(true);
-			await onChanged();
-		},
-	});
-	const turnOff = useMutation({
-		mutationFn: async () => {
-			await (await currentSubscription())?.unsubscribe();
-			return client.push.unsubscribe({});
-		},
-		onSuccess: async () => {
-			setOn(false);
-			await onChanged();
-		},
-	});
-	const test = useMutation({
-		mutationFn: () => client.push.sendTest({}),
-		onSettled: () => onChanged(),
-	});
-	const failed = turnOn.error ?? turnOff.error ?? test.error;
-
-	return (
-		<SettingGroup
-			title="Push on this device"
-			description="Findings, failed runs and asks that wait on you. The browser's push service sees that a push was sent, never what it says."
-			testId="push-this-device"
-		>
-			<Pool>
-				<SettingRow
-					label="Push"
-					description={
-						support !== "ok"
-							? PUSH_SUPPORT_TEXT[support]
-							: on
-								? test.data?.state === "expired"
-									? "The push service dropped this device. Turn push off and on again."
-									: test.data?.lastError
-										? `The test did not arrive: ${test.data.lastError}.`
-										: test.isSuccess
-											? "On. A test push is on its way."
-											: "On"
-								: "Off"
-					}
-				>
-					{support === "ok" && on === false && (
-						<Button
-							variant="secondary"
-							size="sm"
-							disabled={turnOn.isPending}
-							onClick={() => turnOn.mutate()}
-							data-testid="push-turn-on"
-						>
-							Turn on
-						</Button>
-					)}
-					{support === "ok" && on && (
-						<>
-							<Button
-								variant="text"
-								size="sm"
-								disabled={test.isPending}
-								onClick={() => test.mutate()}
-								data-testid="push-test"
-							>
-								Send test
-							</Button>
-							<Button
-								variant="text"
-								size="sm"
-								disabled={turnOff.isPending}
-								onClick={() => turnOff.mutate()}
-							>
-								Turn off
-							</Button>
-						</>
-					)}
-				</SettingRow>
-			</Pool>
-			{failed && <MutationError error={failed} className="mt-2" />}
-		</SettingGroup>
 	);
 }
 

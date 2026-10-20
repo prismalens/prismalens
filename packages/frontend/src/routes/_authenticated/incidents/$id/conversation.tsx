@@ -8,12 +8,8 @@ import { RunPage } from "@/components/run/RunPage";
 export const Route = createFileRoute(
 	"/_authenticated/incidents/$id/conversation",
 )({
-	validateSearch: (
-		search: Record<string, unknown>,
-	): { call?: string; ask?: string } => ({
+	validateSearch: (search: Record<string, unknown>): { call?: string } => ({
 		...(typeof search.call === "string" ? { call: search.call } : {}),
-		// A push names its ask (#859); the page says where that ask stands.
-		...(typeof search.ask === "string" ? { ask: search.ask } : {}),
 	}),
 	component: RunPage,
 });
