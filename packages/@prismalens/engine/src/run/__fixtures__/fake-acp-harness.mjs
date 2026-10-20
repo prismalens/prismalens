@@ -18,6 +18,7 @@
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
+// FAKE_USAGE=1 sends one usage_update before the final message.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 // Access levels (#673 w21): FAKE_PROFILE=claude offers default, acceptEdits, auto, bypassPermissions
@@ -422,6 +423,13 @@ async function turn(sessionId, promptText) {
 		notify(sessionId, {
 			sessionUpdate: "agent_message_chunk",
 			content: { type: "text", text: `Heard: ${promptText}\n` },
+		});
+	if (process.env.FAKE_USAGE)
+		notify(sessionId, {
+			sessionUpdate: "usage_update",
+			used: 182000,
+			size: 440000,
+			cost: { amount: 1.25, currency: "USD" },
 		});
 	const valid =
 		mode === "ok" ||

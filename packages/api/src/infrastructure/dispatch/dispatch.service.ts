@@ -241,6 +241,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					data: { acpSessionId },
 				});
 			},
+			recordUsage: async (id, usage) => {
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { usage: JSON.stringify(usage) },
+				});
+			},
 			markAwaitingApproval: async (id, since) => {
 				await this.prisma.investigation.updateMany({
 					where: { id },

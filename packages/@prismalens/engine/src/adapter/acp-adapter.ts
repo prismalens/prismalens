@@ -70,6 +70,10 @@ export interface AcpUpdate {
 	content?: unknown;
 	/** Codex's output: `{ formatted_output, exit_code }` for a command, `{ result, error }` for MCP; it sends no `content`. */
 	rawOutput?: unknown;
+	/** `usage_update`: tokens in context, the window, and the cumulative cost when sent. */
+	used?: number;
+	size?: number;
+	cost?: { amount?: unknown; currency?: unknown } | null;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
 }

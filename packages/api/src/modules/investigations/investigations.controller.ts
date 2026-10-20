@@ -18,6 +18,7 @@ import {
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	RunUsageSchema,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
@@ -539,6 +540,11 @@ export class InvestigationsController {
 		return withoutSimilar.success ? withoutSimilar.data : null;
 	}
 
+	private parseUsage(raw: Investigation["usage"]) {
+		const parsed = RunUsageSchema.safeParse(safeParseJsonObject(raw));
+		return parsed.success ? parsed.data : null;
+	}
+
 	private parseWorkspace(raw: Investigation["workspace"]) {
 		const parsed = RunWorkspaceSchema.safeParse(safeParseJsonObject(raw));
 		return parsed.success ? parsed.data : null;
@@ -612,6 +618,7 @@ export class InvestigationsController {
 			harness: investigation.harness ?? null,
 			model: investigation.model ?? null,
 			effort: investigation.effort ?? null,
+			usage: this.parseUsage(investigation.usage),
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
 			awaitingApprovalAt:
 				investigation.awaitingApprovalAt?.toISOString() ?? null,

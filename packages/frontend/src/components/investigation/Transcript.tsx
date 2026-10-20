@@ -76,6 +76,7 @@ export function Transcript({
 	briefBy = "You",
 	report,
 	empty,
+	worked,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -91,7 +92,17 @@ export function Transcript({
 	report?: { title: string; summary: string } | null;
 	/** What shows before anything is sent: the new conversation's box. */
 	empty?: boolean;
+	/** Once a report exists: the step cards fold behind `Worked for 4m 12s - 23 steps`. */
+	worked?: { seconds: number; steps: number } | null;
 }) {
+	const [showWork, setShowWork] = useState(false);
+	// A citation that opens a step must find it, so a highlighted or opened step unfolds the work.
+	const folded =
+		!!worked &&
+		!showWork &&
+		steps?.highlight == null &&
+		(steps?.open.size ?? 0) === 0;
+	const firstTools = items.findIndex((i) => i.kind === "tools");
 	return (
 		<Conversation className="h-full" data-testid="transcript-scroller">
 			<ConversationContent className="px-4 pt-5 pb-2">
@@ -100,23 +111,59 @@ export function Transcript({
 					data-testid="transcript"
 					data-empty={empty ? "" : undefined}
 				>
-					{items.map((item) => (
-						<TranscriptRow
-							key={item.key}
-							item={item}
-							incidentId={incidentId}
-							cwd={cwd}
-							agent={agent}
-							steps={steps}
-							runName={runName}
-							briefBy={briefBy}
-							report={report}
-						/>
+					{items.map((item, i) => (
+						<Fragment key={item.key}>
+							{worked && i === firstTools && (
+								<WorkedToggle
+									worked={worked}
+									folded={folded}
+									onToggle={() => setShowWork((v) => !v)}
+								/>
+							)}
+							{(!folded || item.kind !== "tools") && (
+								<TranscriptRow
+									item={item}
+									incidentId={incidentId}
+									cwd={cwd}
+									agent={agent}
+									steps={steps}
+									runName={runName}
+									briefBy={briefBy}
+									report={report}
+								/>
+							)}
+						</Fragment>
 					))}
 				</ol>
 			</ConversationContent>
 			<ConversationScrollButton />
 		</Conversation>
+	);
+}
+
+/** `Worked for 4m 12s - 23 steps`: the report is out, so the steps wait behind one line. */
+function WorkedToggle({
+	worked,
+	folded,
+	onToggle,
+}: {
+	worked: { seconds: number; steps: number };
+	folded: boolean;
+	onToggle: () => void;
+}) {
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={onToggle}
+				aria-expanded={!folded}
+				className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				data-testid="worked-toggle"
+			>
+				Worked for {formatElapsed(worked.seconds)} · {worked.steps}{" "}
+				{worked.steps === 1 ? "step" : "steps"}
+			</button>
+		</li>
 	);
 }
 
