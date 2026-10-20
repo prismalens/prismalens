@@ -457,6 +457,6 @@ export class GatewayService {
 
 function howToConnect(category: SourceCategory): string {
 	return category === "deploys"
-		? "Send deploy events with `pl deploy` from the deploy job; see PrismaLens under Settings, Data sources."
+		? "Have the deploy job POST each release to PrismaLens's deploy endpoint, /api/webhooks/deploy; see PrismaLens under Settings, Data sources."
 		: "Connect one in PrismaLens under Settings, Data sources.";
 }

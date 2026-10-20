@@ -10,6 +10,7 @@ import {
 	CONNECTION_NAME_MAX,
 	type DetectedSource,
 	type McpPreview,
+	needsDisclosure,
 	oauthEndpoints,
 	type ParsedSourceCredential,
 	type ProbeReport,
@@ -83,7 +84,43 @@ export class SourcesService {
 		return {
 			categories,
 			detected: detectSources(this.env).filter((d) => !connected.has(d.type)),
+			disclosed: await this.disclosed(),
 		};
+	}
+
+	/** Connections whose grant reaches past what PrismaLens reads, for the row's disclosure line (OBJ-013). */
+	private async disclosed(): Promise<string[]> {
+		const rows = await this.prisma.connection.findMany({
+			where: {
+				status: { not: "REVOKED" },
+				integration: {
+					templateId: {
+						in: SOURCE_TYPES.filter(
+							(t) => t.oauth || t.id === MCP_TEMPLATE,
+						).map((t) => t.id),
+					},
+				},
+			},
+			select: {
+				id: true,
+				grantedScopes: true,
+				integration: { select: { templateId: true } },
+			},
+		});
+		const out: string[] = [];
+		for (const r of rows) {
+			const type = sourceType(r.integration.templateId);
+			const stored = await this.integrations.storedRow(r.id);
+			const c = stored?.stored.credential.ok
+				? stored.stored.credential.credential
+				: null;
+			if (!type || !c || c.kind === "none") continue;
+			// A pasted token's or an MCP server's scope can't be read, so it is disclosed.
+			const granted =
+				c.kind === "oauth" && type.oauth ? grantedOf(r.grantedScopes) : null;
+			if (needsDisclosure(type, granted)) out.push(r.id);
+		}
+		return out;
 	}
 
 	async setRunbooks(enabled: boolean): Promise<{ enabled: boolean }> {
@@ -101,8 +138,9 @@ export class SourcesService {
 	private async mcpReport(
 		draft: SourceDraft,
 		target: Target,
+		savedName?: string,
 	): Promise<ProbeReport> {
-		const preview = await this.mcpPreview(draft, target);
+		const preview = await this.mcpPreview(draft, target, savedName);
 		return {
 			type: MCP_TEMPLATE,
 			host: new URL(target.url).host,
@@ -124,10 +162,11 @@ export class SourcesService {
 	async mcpPreview(
 		draft: SourceDraft,
 		target = this.draftTarget(draft),
+		savedName?: string,
 	): Promise<McpPreview> {
 		if (target.type.id !== MCP_TEMPLATE)
 			throw new BadRequestException("Only an MCP server lists tools");
-		const name = await this.mcpName(draft);
+		const name = savedName ?? (await this.mcpName(draft));
 		if (!target.credential.ok)
 			throw new BadRequestException(target.credential.message);
 		return this.proxy.preview({
@@ -229,7 +268,7 @@ export class SourcesService {
 	async retest(connectionId: string): Promise<ProbeReport> {
 		const row = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
-			select: { connectionConfigEnc: true },
+			select: { connectionConfigEnc: true, grantedScopes: true },
 		});
 		const stored = row && (await this.integrations.storedRow(connectionId));
 		const type = stored && sourceType(stored.templateId);
@@ -247,18 +286,25 @@ export class SourcesService {
 				? config.baseUrl
 				: (stored.stored.baseUrl ?? type.url.default);
 		if (!url) throw new BadRequestException("The source has no URL saved");
-		return runProbes(
-			{
-				type,
-				url,
-				credential: stored.stored.credential,
-				serviceLabel: config.serviceLabel,
-			},
-			{
-				...PROBE_OPTS,
-				connection: this.integrations.sourceConnection(connectionId),
-			},
-		);
+		const target = {
+			type,
+			url,
+			credential: stored.stored.credential,
+			serviceLabel: config.serviceLabel,
+		};
+		const report =
+			type.id === MCP_TEMPLATE
+				? await this.mcpReport({ type: type.id, url }, target, config.name)
+				: await runProbes(target, {
+						...PROBE_OPTS,
+						connection: this.integrations.sourceConnection(connectionId),
+					});
+		const kind = stored.stored.credential.ok
+			? stored.stored.credential.credential.kind
+			: null;
+		if (kind === "oauth" || kind === "mcp-oauth")
+			report.discovered.grantedScopes = grantedOf(row.grantedScopes);
+		return report;
 	}
 
 	/** One write path for every connect flow: the credential goes through `writeStored` (OBJ-009). */
@@ -529,6 +575,15 @@ export class SourcesService {
 			credential,
 			serviceLabel: draft.serviceLabel,
 		};
+	}
+}
+
+function grantedOf(json: string): string[] | null {
+	try {
+		const v: unknown = JSON.parse(json);
+		return Array.isArray(v) && v.length ? v.map(String) : null;
+	} catch {
+		return null;
 	}
 }
 

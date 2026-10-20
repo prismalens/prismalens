@@ -541,6 +541,8 @@ export type DetectedSource = z.infer<typeof DetectedSourceSchema>;
 export const SourcesOverviewSchema = z.object({
 	categories: z.array(SourceCategoryViewSchema),
 	detected: z.array(DetectedSourceSchema),
+	/** Connections whose grant reaches past what PrismaLens reads (04, OBJ-013). */
+	disclosed: z.array(z.string()).optional(),
 });
 export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
 
@@ -582,6 +584,8 @@ export const ProbeReportSchema = z.object({
 		labels: z.array(z.string()).optional(),
 		serviceLabel: z.string().nullable().optional(),
 		identity: z.string().optional(),
+		/** A sign-in's granted scopes; null when the grant named none. */
+		grantedScopes: z.array(z.string()).nullable().optional(),
 	}),
 });
 export type ProbeReport = z.infer<typeof ProbeReportSchema>;

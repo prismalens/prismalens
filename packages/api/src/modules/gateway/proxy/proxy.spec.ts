@@ -205,7 +205,7 @@ describe("McpProxy (#848, 06)", () => {
 		});
 		const p = proxyOf([s], [conn("a", s.host)]);
 		await p.snapshot("r", 5000);
-		const r = (await p.call("r", "a__img", {}, signal())) as Record<string, unknown>;
+		const r = await p.call("r", "a__img", {}, signal());
 		expect(r.content).toEqual([image]);
 		expect(r.structuredContent).toEqual({ n: 1 });
 	});
