@@ -28,7 +28,6 @@ import {
 	effectiveAccess,
 	type FavouriteModel,
 	type HarnessesResponse,
-	type HarnessProbeOutcome,
 	type HarnessStatus,
 	type LocalDefault,
 	type RunChoice,
@@ -362,11 +361,6 @@ export class HarnessService implements OnApplicationBootstrap {
 			harness: selection.harness,
 			...(selection.pinnedBy ? { pinnedBy: selection.pinnedBy } : {}),
 		};
-	}
-
-	/** The last readiness check's verdict for this agent; null when none has run. */
-	checkedOutcome(id: HarnessId): HarnessProbeOutcome | null {
-		return this.models.checked(id)?.outcome ?? null;
 	}
 
 	/** The agent a run's own chip named: on PATH, or refused in the run's words. */

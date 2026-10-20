@@ -176,7 +176,6 @@ export class AcpAdapter {
 		attachments?: AttachmentRef[],
 		followUp?: FollowUpKind,
 		messageId?: string,
-		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"],
 	): CanonicalEvent {
 		return {
 			kind: "operator_message",
@@ -188,7 +187,6 @@ export class AcpAdapter {
 			...(followUp ? { followUp } : {}),
 			...(attachments?.length ? { attachments } : {}),
 			...(messageId ? { messageId } : {}),
-			...(via ? { via } : {}),
 		};
 	}
 

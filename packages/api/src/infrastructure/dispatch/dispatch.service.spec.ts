@@ -170,10 +170,7 @@ beforeEach(async () => {
 	timeline.create.mockClear();
 });
 
-function realDispatch(
-	resolveSelection: (asked: { harness?: string }) => Promise<unknown> = async (asked) => ({ runnable: true, harness: asked.harness ?? "opencode", auto: false }),
-	checkedOutcome: () => string | null = () => null,
-) {
+function realDispatch() {
 	const deliver = vi.fn(async () => {});
 	const telemetry = {
 		isEnabled: vi.fn(async () => true),
@@ -188,8 +185,7 @@ function realDispatch(
 		{ findById: vi.fn(async () => null) } as never,
 		timeline as never,
 		{
-			resolveSelection,
-			checkedOutcome,
+			resolveSelection: vi.fn(async () => ({ runnable: false })),
 			getSettings: vi.fn(async () => ({})),
 			effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised" })),
 		} as never,
@@ -394,7 +390,6 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 			mode: "queue",
 			kind: "chat",
 			restore: restoreDone,
-			to: { harness: "opencode" },
 		});
 		expect(attach).toHaveBeenCalledWith(done.id);
 	});
@@ -444,58 +439,6 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
 		expect(JSON.parse(rearmed.payload)).toMatchObject({ accessLevel: "supervised" });
 		expect(JSON.parse(rearmed.payload)).not.toHaveProperty("unattended");
-	});
-
-	describe("a follow-up in another agent, or after a restart (never a dead end)", () => {
-		it("hands off to a fresh session of the agent the chips name, at the run's own level", async () => {
-			const { service } = realDispatch();
-			const inc = await incident();
-			const ran = await thread(inc.id, { accessLevel: "auto-edits" });
-			await service.resumeInvestigation(ran.id, "second opinion?", "queue", "chat", [], { harness: "codex", model: "gpt-x" });
-			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } })).payload);
-			expect(payload.accessLevel).toBe("auto-edits");
-			expect(payload.resume).toMatchObject({ handoff: true, to: { harness: "codex", model: "gpt-x" } });
-		});
-
-		it("loads the run's own session when the chips keep its agent", async () => {
-			const { service } = realDispatch();
-			const inc = await incident();
-			const ran = await thread(inc.id);
-			await service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { effort: "high" });
-			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } })).payload);
-			expect(payload.resume).not.toHaveProperty("handoff");
-			expect(payload.resume.to).toEqual({ harness: "opencode", effort: "high" });
-		});
-
-		it("tells the agent a restart may have cut its last command short", async () => {
-			const { service } = realDispatch();
-			const inc = await incident();
-			const cut = await thread(inc.id, { status: "failed", endReason: "interrupted", acpSessionId: null });
-			await service.resumeInvestigation(cut.id, "carry on", "queue", "continue");
-			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: cut.id } })).payload);
-			expect(payload.resume).toMatchObject({ kind: "continue", handoff: true, afterRestart: true });
-		});
-
-		it("refuses a recipient the preflight fails, with the problem and the fix, and leaves the row alone", async () => {
-			const { service } = realDispatch(
-				vi.fn(async () => ({ runnable: false, failure: "pinned-harness-missing", reason: "Codex is not on this machine. Install: npm i -g @openai/codex", harness: "codex" })),
-			);
-			const inc = await incident();
-			const ran = await thread(inc.id);
-			await expect(
-				service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { harness: "codex" }),
-			).rejects.toThrow("Codex is not on this machine. Install: npm i -g @openai/codex Install it (");
-			expect(await read(ran.id)).toMatchObject({ status: "completed" });
-		});
-
-		it("refuses an agent whose last check asked for a sign-in", async () => {
-			const { service } = realDispatch(undefined, vi.fn(() => "sign-in-needed"));
-			const inc = await incident();
-			const ran = await thread(inc.id);
-			await expect(
-				service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { harness: "claude-code" }),
-			).rejects.toThrow("Claude Code is not signed in. Sign in:");
-		});
 	});
 
 	it("admits one of two follow-ups sent together", async () => {

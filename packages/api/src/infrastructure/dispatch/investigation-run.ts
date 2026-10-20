@@ -6,13 +6,7 @@
  * run dir, run one ACP session there, persist the stream and the report
  * (ADR 0002, 0003, 0005). No model call; no user checkout as cwd.
  */
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
@@ -55,9 +49,7 @@ import type {
 	Urgency,
 } from "@prismalens/contracts/schemas";
 import {
-	buildHandoff,
 	conductRun,
-	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
 	type PermissionPolicy,
 	type ResolvedConnector,
@@ -67,7 +59,6 @@ import {
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
-import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
@@ -400,21 +391,6 @@ function usageWriter(ports: RunPorts, id: string) {
 	};
 }
 
-/** Read as stored, not re-validated: a report an older schema wrote still hands off its hypotheses. */
-function storedReport(
-	raw: string | null | undefined,
-): InvestigationReport | null {
-	if (!raw) return null;
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		return parsed && typeof parsed === "object"
-			? (parsed as InvestigationReport)
-			: null;
-	} catch {
-		return null;
-	}
-}
-
 /** Only a session the harness can load again is worth keeping (#747). */
 function keepSession(
 	ports: RunPorts,
@@ -457,23 +433,18 @@ async function runFollowUp(
 		seqStart = (await ports.lastEventSeq(id)) + 1;
 		const inv = await ports.findInvestigation(id);
 		if (inv?.kind === "chat") kind = "chat";
-		const own = HARNESS_IDS.find((h) => h === inv?.harness);
-		const harness = resume.to?.harness ?? own;
-		const handoff = !!resume.handoff;
-		const sessionId = handoff ? undefined : inv?.acpSessionId;
+		const harness = HARNESS_IDS.find((h) => h === inv?.harness);
 		const blocked = !inv
 			? "the investigation is gone"
-			: !harness
-				? "it names no agent"
-				: !handoff && !sessionId
-					? "its agent kept no session to reopen"
-					: !inv.workspace
-						? "it recorded no workspace"
-						: null;
-		if (blocked || !inv?.workspace || !harness)
+			: !harness || !inv.acpSessionId
+				? "its agent kept no session to reopen"
+				: !inv.workspace
+					? "it recorded no workspace"
+					: null;
+		if (blocked || !inv?.acpSessionId || !inv.workspace || !harness)
 			throw new Error(`This run cannot be continued: ${blocked}.`);
 		const row = HARNESS_REGISTRY[harness];
-		if (!handoff && !row.resume)
+		if (!row.resume)
 			throw new Error(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
@@ -493,7 +464,6 @@ async function runFollowUp(
 			row.label,
 			ports,
 			io.signal,
-			handoff,
 		);
 
 		let incident: Record<string, unknown> | null = null;
@@ -532,61 +502,14 @@ async function runFollowUp(
 		storeRefused = base.refused;
 		delivered = base.delivered;
 		const store = base;
-		const asked = resume.to?.model !== undefined ? resume.to.model : undefined;
-		const pick = handoff
-			? await ports.resolveHarness({
-					harness,
-					...(asked !== undefined
-						? { model: asked }
-						: harness === own
-							? { model: inv.model }
-							: {}),
-					...(resume.to?.effort !== undefined
-						? { effort: resume.to.effort }
-						: harness === own
-							? { effort: inv.effort ?? null }
-							: {}),
-				})
-			: null;
-		const model = pick
-			? (pick.model ?? null)
-			: asked !== undefined
-				? asked
-				: inv.model;
-		const effort = pick
-			? (pick.effort ?? null)
-			: resume.to?.effort !== undefined
-				? resume.to.effort
-				: (inv.effort ?? null);
-		const modelSource = pick
-			? pick.modelSource
-			: followUpModelSource(harness, model);
+		const modelSource = followUpModelSource(harness, inv.model);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
-		const customModel = pick
-			? !!pick.customModel
-			: modelSource === "operator" &&
-				!!(await ports
-					.resolveHarness({ harness, model })
-					.then((r) => r.customModel)
-					.catch(() => false));
-		// A handoff keeps the run's level, never more.
-		const accessLevel = handoff
-			? inheritedLevel(data.accessLevel)
-			: data.accessLevel;
-		const seed = handoff
-			? buildHandoff({
-					events: await ports.events(id),
-					report: storedReport(inv.report),
-					accessLevel: inheritedLevel(data.accessLevel),
-					from: own ? HARNESS_REGISTRY[own].label : null,
-					afterRestart: !!resume.afterRestart,
-				})
-			: null;
-		if (seed) {
-			const file = join(workspace.cwd, HANDOFF_TRANSCRIPT_PATH);
-			mkdirSync(dirname(file), { recursive: true });
-			writeFileSync(file, seed.transcript);
-		}
+		const customModel =
+			modelSource === "operator" &&
+			!!(await ports
+				.resolveHarness({ harness, model: inv.model })
+				.then((r) => r.customModel)
+				.catch(() => false));
 		const usage = usageWriter(ports, id);
 		const outcome = await conductRun(
 			{
@@ -595,11 +518,11 @@ async function runFollowUp(
 				harness,
 				cwd: workspace.cwd,
 				runDir,
-				...(model ? { model } : {}),
+				...(inv.model ? { model: inv.model } : {}),
 				...(modelSource ? { modelSource } : {}),
 				...(customModel ? { customModel } : {}),
-				...(effort ? { effort } : {}),
-				...(accessLevel ? { accessLevel } : {}),
+				...(inv.effort ? { effort: inv.effort } : {}),
+				...(data.accessLevel ? { accessLevel: data.accessLevel } : {}),
 				env: getHarnessProviderKeys(harness, process.env),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
 				initTimeoutMs: INVESTIGATION_DEFAULTS.harnessInitTimeoutMs,
@@ -614,34 +537,8 @@ async function runFollowUp(
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
-				...(seed
-					? {
-							onSession: (s: { sessionId: string; loadSession: boolean }) =>
-								ports
-									.recordHandoff(id, {
-										harness,
-										model,
-										effort,
-										acpSessionId:
-											s.loadSession && row.resume ? s.sessionId : null,
-									})
-									.catch((e) =>
-										logger.warn("Failed to record the handoff's session", e),
-									),
-						}
-					: {}),
 				resume: {
-					...(sessionId ? { sessionId } : {}),
-					...(seed ? { handoff: seed.text } : {}),
-					...(resume.afterRestart ? { afterRestart: true } : {}),
-					via: {
-						harness,
-						model,
-						accessLevel: accessLevel ?? null,
-						...(seed
-							? { handoff: { carried: seed.carried, omitted: seed.omitted } }
-							: {}),
-					},
+					sessionId: inv.acpSessionId,
 					text: resume.text,
 					mode: resume.mode,
 					heads: workspace.repos.map((r) => ({ name: r.name, head: r.head })),
@@ -1154,7 +1051,6 @@ export async function rebuildWorkspace(
 	harnessLabel: string,
 	ports: RunPorts,
 	signal?: AbortSignal,
-	handoff = false,
 ): Promise<Workspace> {
 	const runDir = runDirFor(investigationId);
 	// Paths come back from the row; nothing outside this run's dir is ever replaced.
@@ -1181,15 +1077,12 @@ export async function rebuildWorkspace(
 		ws.repos.length === 1
 			? (ws.repos[0] as RunWorkspaceRepo).head.slice(0, 7)
 			: ws.repos.map((r) => `${r.name}@${r.head.slice(0, 7)}`).join(", ");
-	const how = handoff
-		? `Handing off to a fresh ${harnessLabel} session`
-		: `Continuing the same ${harnessLabel} session`;
 	return {
 		...ws,
 		repos,
 		note: ws.repos.length
-			? `${how} in a fresh workspace pinned to ${pinned}.`
-			: `${how}; this run had no repository.`,
+			? `Continuing the same ${harnessLabel} session in a fresh workspace pinned to ${pinned}.`
+			: `Continuing the same ${harnessLabel} session; this run had no repository.`,
 	};
 }
 
