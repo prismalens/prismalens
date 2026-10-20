@@ -11,9 +11,11 @@ export const Route = createFileRoute(
 )({
 	validateSearch: (
 		search: Record<string, unknown>,
-	): { call?: string; file?: string } => ({
+): { call?: string; file?: string; ask?: string } => ({
 		...(typeof search.call === "string" ? { call: search.call } : {}),
 		...(typeof search.file === "string" ? { file: search.file } : {}),
+		// A push names its ask (#859); the page says where that ask stands.
+		...(typeof search.ask === "string" ? { ask: search.ask } : {}),
 	}),
 	component: RunPage,
 });

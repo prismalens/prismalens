@@ -53,6 +53,7 @@
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "catalog:",
 		"svix": "^2.3.0",
+		"web-push": "^3.6.7",
 		"yaml": "^2.9.1",
 		"zod": "catalog:"
 	},
@@ -64,6 +65,7 @@
 		"@swc/core": "^1.16.13",
 		"@types/express": "^5.0.6",
 		"@types/node": "catalog:",
+		"@types/web-push": "^3.6.4",
 		"@vitest/coverage-v8": "^5.0.3",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
