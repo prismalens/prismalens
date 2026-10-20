@@ -6,10 +6,7 @@
  * probes the api runs (#848, uniform connect UX). Probes are reads only.
  */
 import { z } from "zod";
-import {
-	SOURCE_CREDENTIAL_KINDS,
-	type SourceCredentialKind,
-} from "./source-credential.js";
+import type { SourceCredentialKind } from "./source-credential.js";
 
 export const SOURCE_CATEGORIES = [
 	"metrics",
@@ -17,6 +14,7 @@ export const SOURCE_CATEGORIES = [
 	"scm",
 	"knowledge",
 	"deploys",
+	"mcp",
 ] as const;
 export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
 export const SourceCategorySchema = z.enum(SOURCE_CATEGORIES);
@@ -39,6 +37,7 @@ export const SOURCE_CATEGORY_INFO: Record<
 		label: "Deploys",
 		blind: "Investigations fall back to the git log for what changed.",
 	},
+	mcp: { label: "MCP servers", blind: "No vendor MCP server is connected." },
 };
 
 /** How a probe's answer is read: a 2xx, an array's length, a label list, a login, or a 5-minute line count. */
@@ -85,7 +84,13 @@ export interface SourceTypeDescriptor {
 	docsUrl: string;
 }
 
-const httpQueryKinds = SOURCE_CREDENTIAL_KINDS;
+const httpQueryKinds = [
+	"none",
+	"bearer",
+	"basic",
+	"header",
+	"mtls",
+] as const satisfies readonly SourceCredentialKind[];
 
 export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 	{
@@ -324,7 +329,36 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 		uses: "Clones the repositories bound to a service, read-only, for each run.",
 		docsUrl: "https://docs.prismalens.io/integrations/bitbucket/",
 	},
+	{
+		id: "mcp-server",
+		category: "mcp",
+		vendor: "MCP server",
+		slug: "mcp-server",
+		credentialKinds: ["bearer", "header", "mcp-oauth", "none"],
+		url: {
+			label: "MCP server URL",
+			placeholder: "https://n8n.example.com/mcp-server/http",
+			in: "config",
+		},
+		detect: {},
+		// Its test is `tools/list` through the proxy, not a probe (#848).
+		probes: [],
+		tools: [],
+		docsUrl: "https://docs.prismalens.io/guides/connect-a-source/",
+	},
 ];
+
+/** Templates that predate descriptors, with the category the gateway files them under. */
+export const TEMPLATE_ONLY_CATEGORY: Readonly<Record<string, SourceCategory>> =
+	{ "git-host-token": "scm", render: "deploys" };
+
+export function templateCategory(id: string): SourceCategory | undefined {
+	return sourceType(id)?.category ?? TEMPLATE_ONLY_CATEGORY[id];
+}
+
+/** A vendor MCP connection's name: it prefixes the tools it offers, so it never holds `__`. */
+export const CONNECTION_NAME_MAX = 16;
+export const CONNECTION_NAME = /^(?=.{1,16}$)[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /** A source PrismaLens reads without a connection: found in what the run already holds. */
 export interface BuiltinSourceDescriptor {
@@ -393,16 +427,19 @@ export const CONNECT_STEP_BUDGET: Record<SourceCategory, number> = {
 	scm: 3,
 	knowledge: 2,
 	deploys: 3,
+	mcp: 3,
 };
 
 // =============================================================================
 // API shapes
 // =============================================================================
 
+/** `removed`: a connection the run saw that no longer exists (#848, OBJ-010). */
 export const SourceStatusSchema = z.enum([
 	"connected",
-	"not-configured",
 	"unreachable",
+	"not-configured",
+	"removed",
 ]);
 export type SourceStatus = z.infer<typeof SourceStatusSchema>;
 
@@ -419,6 +456,25 @@ export const SourceCategoryViewSchema = z.object({
 			count: z.number().int().optional(),
 			lastErrorAt: z.string().optional(),
 			reason: z.string().optional(),
+			/** A vendor MCP connection's name and the user's one-line description. */
+			name: z.string().optional(),
+			description: z.string().optional(),
+			/** Tools offered this run, and what the discovery bounds left out. */
+			toolCount: z.number().int().optional(),
+			dropped: z
+				.array(
+					z.object({
+						count: z.number().int(),
+						why: z.enum([
+							"tool-count",
+							"schema-bytes",
+							"total-tools",
+							"total-bytes",
+							"received-bytes",
+						]),
+					}),
+				)
+				.optional(),
 		}),
 	),
 	tools: z.array(z.string()),
@@ -451,6 +507,11 @@ export const SourceDraftSchema = z.object({
 	useDetected: z.boolean().optional(),
 	serviceLabel: z.string().trim().min(1).optional(),
 	label: z.string().trim().min(1).optional(),
+	/** A vendor MCP connection's name (`CONNECTION_NAME`) and one-line description. */
+	name: z.string().trim().optional(),
+	description: z.string().trim().min(1).max(80).optional(),
+	/** The advanced scope override for a sign-in. */
+	scopes: z.array(z.string().trim().min(1)).optional(),
 });
 export type SourceDraft = z.infer<typeof SourceDraftSchema>;
 
@@ -482,4 +543,33 @@ export type ProbeReport = z.infer<typeof ProbeReportSchema>;
 export const ConnectSourceResponseSchema = z.object({
 	connectionId: z.string(),
 	report: ProbeReportSchema,
+});
+
+/** `redirectUri` is absent on a local install, which uses the pinned loopback callback. */
+export const OAuthStartInputSchema = z.object({
+	draft: SourceDraftSchema,
+	redirectUri: z.string().trim().url().optional(),
+});
+export const OAuthStartResponseSchema = z.object({
+	authorizationUrl: z.string(),
+});
+
+export const McpPreviewSchema = z.object({
+	ok: z.boolean(),
+	/** What it found, or why it failed, in PrismaLens's words. */
+	detail: z.string(),
+	tools: z.array(
+		z.object({
+			upstream: z.string(),
+			offered: z.string(),
+			shortened: z.boolean(),
+		}),
+	),
+});
+export type McpPreview = z.infer<typeof McpPreviewSchema>;
+
+export const RenameSourceInputSchema = z.object({
+	id: z.string(),
+	name: z.string().trim(),
+	description: z.string().trim().min(1).max(80),
 });

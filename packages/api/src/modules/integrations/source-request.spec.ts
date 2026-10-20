@@ -23,7 +23,7 @@ import {
 	SERVER_KEY,
 } from "./__fixtures__/mtls.js";
 import {
-	OffHostRedirectError,
+	OffOriginError,
 	SourceConfigError,
 	sourceRequestFn,
 	TRUNCATED_HEADER,
@@ -153,7 +153,7 @@ describe("sourceRequestFn: redirects", () => {
 		});
 		await expect(
 			sourceRequestFn(base, ok({ kind: "bearer", token: "t2" }))("GET", "/"),
-		).rejects.toBeInstanceOf(OffHostRedirectError);
+		).rejects.toBeInstanceOf(OffOriginError);
 		expect(otherHit).toBe(false);
 	});
 });
@@ -180,5 +180,45 @@ describe("sourceRequestFn: limits and unsupported kinds", () => {
 			"AWS SigV4 / assume-role credentials are not supported yet.",
 		);
 		expect(hit).toBe(false);
+	});
+});
+
+describe("sourceRequestFn: the first request stays on the origin (#848, OBJ-003)", () => {
+	const counting = () => {
+		const calls: string[] = [];
+		const fetchImpl = (async (url: string) => {
+			calls.push(url);
+			return new Response("{}");
+		}) as unknown as typeof fetch;
+		return { calls, fetchImpl };
+	};
+
+	for (const path of ["https://other.example/x", "//other.example/x", "HTTP://other.example/x"])
+		it(`refuses ${path} before any fetch`, async () => {
+			const { calls, fetchImpl } = counting();
+			const fn = sourceRequestFn(
+				"https://prom.example/prom",
+				ok({ kind: "bearer", token: "t3" }),
+				{ fetchImpl },
+			);
+			await expect(fn("GET", path)).rejects.toBeInstanceOf(OffOriginError);
+			expect(calls).toEqual([]);
+		});
+
+	it("refuses an absolute path on the mTLS path before connecting", async () => {
+		let otherHit = false;
+		const other = await listen(
+			createTlsServer({ cert: SERVER_CERT, key: SERVER_KEY }, (_req, res) => {
+				otherHit = true;
+				res.end();
+			}),
+			"https",
+		);
+		const fn = sourceRequestFn(
+			"https://127.0.0.1:1",
+			ok({ kind: "mtls", cert: CLIENT_CERT, key: CLIENT_KEY, ca: CA_CERT }),
+		);
+		await expect(fn("GET", `${other}/x`)).rejects.toBeInstanceOf(OffOriginError);
+		expect(otherHit).toBe(false);
 	});
 });

@@ -15,11 +15,8 @@ import { getTemplate } from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
-import {
-	credentialSecrets,
-	type SourceRequestOptions,
-	sourceRequestFn,
-} from "../integrations/source-request.js";
+import { openSource } from "../integrations/open-source.js";
+import type { SourceRequestOptions } from "../integrations/source-request.js";
 import {
 	CATEGORY_TOOLS,
 	type GatewayData,
@@ -237,27 +234,17 @@ export class GatewayService {
 		);
 	}
 
-	/** A source's request function; its credential is decrypted here and never leaves the api. */
 	private async openSource(
 		src: { id: string; label: string; kind: QueryKind },
 		opts: SourceRequestOptions,
 	): Promise<QuerySource> {
-		const unusable = (reason: string) => ({
-			...src,
-			secrets: [],
-			unusable: reason,
-		});
 		if (!this.integrations)
-			return unusable("PrismaLens cannot open this source here");
-		const base = await this.integrations.connectionBaseUrl(src.id);
-		if (!base) return unusable("the connection has no URL");
-		const parsed = await this.integrations.sourceCredential(src.id);
-		if (!parsed.ok) return unusable(parsed.message);
-		return {
-			...src,
-			secrets: credentialSecrets(parsed.credential),
-			request: sourceRequestFn(base, parsed, opts),
-		};
+			return {
+				...src,
+				secrets: [],
+				unusable: "PrismaLens cannot open this source here",
+			};
+		return (await openSource(this.integrations, src, opts)) as QuerySource;
 	}
 
 	/** Connected when the source's read-only verify path answers 2xx within the probe timeout. */

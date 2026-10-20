@@ -9,7 +9,11 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	ConnectSourceResponseSchema,
+	McpPreviewSchema,
+	OAuthStartInputSchema,
+	OAuthStartResponseSchema,
 	ProbeReportSchema,
+	RenameSourceInputSchema,
 	RunbooksToggleSchema,
 	SourceDraftSchema,
 	SourcesOverviewSchema,
@@ -65,4 +69,37 @@ export const sourcesContract = {
 		})
 		.input(RunbooksToggleSchema)
 		.output(RunbooksToggleSchema),
+
+	oauthStart: oc
+		.route({
+			method: "POST",
+			path: "/sources/oauth/start",
+			summary:
+				"Start a sign-in for a draft source; returns where to send the user",
+			tags: ["sources"],
+		})
+		.input(OAuthStartInputSchema)
+		.output(OAuthStartResponseSchema),
+
+	mcpPreview: oc
+		.route({
+			method: "POST",
+			path: "/sources/mcp/preview",
+			summary:
+				"List a draft MCP server's tools with the names they would be offered under",
+			tags: ["sources"],
+		})
+		.input(SourceDraftSchema)
+		.output(McpPreviewSchema),
+
+	rename: oc
+		.route({
+			method: "PUT",
+			path: "/sources/{id}/name",
+			summary:
+				"Rename an MCP connection; its tools take the new name from the next run",
+			tags: ["sources"],
+		})
+		.input(RenameSourceInputSchema)
+		.output(z.object({ ok: z.literal(true) })),
 };

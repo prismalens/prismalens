@@ -4,12 +4,14 @@
 import { describe, expect, it } from "vitest";
 import {
 	BUILTIN_SOURCES,
+	CONNECTION_NAME,
 	CONNECT_STEP_BUDGET,
 	connectSteps,
 	SOURCE_CATEGORIES,
 	SOURCE_TYPES,
 	sourceType,
 	sourceTypeBySlug,
+	templateCategory,
 	UNSUPPORTED_SCM_VENDORS,
 } from "./source-type.js";
 
@@ -66,7 +68,9 @@ describe("source type descriptors", () => {
 			expect(SOURCE_CATEGORIES).toContain(t.category);
 			expect(slugs.has(`${t.category}/${t.slug}`)).toBe(false);
 			slugs.add(`${t.category}/${t.slug}`);
-			expect(t.probes.some((p) => p.need === "required")).toBe(true);
+			// An MCP server is tested by listing its tools, not by a probe.
+			if (t.category !== "mcp")
+				expect(t.probes.some((p) => p.need === "required")).toBe(true);
 			expect(t.credentialKinds.length).toBeGreaterThan(0);
 		}
 	});
@@ -95,5 +99,27 @@ describe("source type descriptors", () => {
 		expect(sourceTypeBySlug("logs", "loki")?.id).toBe("loki");
 		expect(sourceTypeBySlug("scm", "github")?.id).toBe("github-token");
 		expect(sourceTypeBySlug("logs", "prometheus")).toBeUndefined();
+	});
+});
+
+describe("gateway contract (#848)", () => {
+	it("keeps descriptor ids unique", () => {
+		const ids = SOURCE_TYPES.map((t) => t.id);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+
+	it("CONNECTION_NAME takes n8n_prod and nothing that could hold __", () => {
+		expect(CONNECTION_NAME.test("n8n_prod")).toBe(true);
+		for (const bad of ["n8n__prod", "N8n", "1n8n", "a".repeat(17)])
+			expect(CONNECTION_NAME.test(bad)).toBe(false);
+		expect(CONNECTION_NAME.test("a".repeat(16))).toBe(true);
+	});
+
+	it("files template-only ids and descriptors under a category", () => {
+		expect(templateCategory("render")).toBe("deploys");
+		expect(templateCategory("git-host-token")).toBe("scm");
+		expect(templateCategory("prometheus")).toBe("metrics");
+		expect(templateCategory("mcp-server")).toBe("mcp");
+		expect(templateCategory("nope")).toBeUndefined();
 	});
 });

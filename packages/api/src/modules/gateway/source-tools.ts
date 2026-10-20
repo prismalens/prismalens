@@ -2,10 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { McpServer } from "@modelcontextprotocol/server";
-import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 import { z } from "zod";
+import type { OpenedSource } from "../integrations/open-source.js";
 import {
-	OffHostRedirectError,
+	OffOriginError,
 	SourceConfigError,
 	scrubSecrets,
 	TRUNCATED_HEADER,
@@ -18,17 +18,8 @@ export const QUERY_KINDS: readonly QueryKind[] = [
 	"loki",
 ];
 
-/** A connected source the gateway can query; the agent sees only id, label and kind. */
-export interface QuerySource {
-	id: string;
-	label: string;
-	kind: QueryKind;
-	request?: AuthenticatedRequestFn;
-	/** Every secret its credential holds, scrubbed from anything returned. */
-	secrets: string[];
-	/** Why it cannot be queried, in PrismaLens's own words. */
-	unusable?: string;
-}
+/** A connected source the gateway can query. */
+export type QuerySource = OpenedSource & { kind: QueryKind };
 
 export const LIMITS = {
 	/** Bytes read from an upstream response. */
@@ -64,8 +55,8 @@ function result(value: unknown, secrets: string[], isError = false): Result {
 
 /** Why a request failed, without upstream text that may echo a credential. */
 export function failureReason(e: unknown): string {
-	if (e instanceof OffHostRedirectError)
-		return "the source redirected to another host; PrismaLens does not follow it with your credential";
+	if (e instanceof OffOriginError)
+		return "the request would leave the source's origin; PrismaLens does not send your credential there";
 	if (e instanceof Error && e.name === "TimeoutError")
 		return "the source did not answer in time";
 	if (e instanceof SourceConfigError) return e.message;
@@ -147,17 +138,20 @@ export function registerSourceTools(
 					src.secrets,
 					true,
 				);
-			const text = await res.text();
-			if (!res.ok)
+			if (!res.ok) {
+				// The body may echo the credential in any encoding, so it is never read (#848, OBJ-001).
+				await res.body?.cancel();
 				return result(
 					{
 						source: src.label,
 						httpStatus: res.status,
-						detail: text.slice(0, 500),
+						error: `the source answered HTTP ${res.status}`,
 					},
 					src.secrets,
 					true,
 				);
+			}
+			const text = await res.text();
 			return result(
 				{ source: src.label, ...(shape(JSON.parse(text)) as object) },
 				src.secrets,
