@@ -85,7 +85,7 @@ describe("tables", () => {
 	});
 
 	it("lists vendors per category for --help", () => {
-		expect(vendorList()).toBe("metrics: prometheus, alertmanager · logs: loki · scm: github");
+		expect(vendorList()).toBe("metrics: prometheus, alertmanager · logs: loki · scm: github, gitlab, bitbucket");
 	});
 });
 
