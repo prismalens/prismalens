@@ -10517,6 +10517,20 @@
                         }
                       ]
                     },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -11681,6 +11695,20 @@
                                   "answered",
                                   "stopped",
                                   "error"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "endReason": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "interrupted",
+                                  "limited"
                                 ],
                                 "type": "string"
                               },
@@ -12880,6 +12908,20 @@
                         }
                       ]
                     },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -14030,6 +14072,20 @@
                                 "answered",
                                 "stopped",
                                 "error"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "endReason": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "interrupted",
+                                "limited"
                               ],
                               "type": "string"
                             },
@@ -15262,6 +15318,20 @@
                         }
                       ]
                     },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -15998,6 +16068,67 @@
                               "messageId": {
                                 "type": "string",
                                 "format": "uuid"
+                              },
+                              "via": {
+                                "type": "object",
+                                "properties": {
+                                  "harness": {
+                                    "type": "string"
+                                  },
+                                  "model": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "accessLevel": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "supervised",
+                                          "auto-edits",
+                                          "auto",
+                                          "full-access"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "handoff": {
+                                    "type": "object",
+                                    "properties": {
+                                      "carried": {
+                                        "type": "string"
+                                      },
+                                      "omitted": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "carried",
+                                      "omitted"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "harness",
+                                  "model",
+                                  "accessLevel"
+                                ]
                               }
                             },
                             "required": [
@@ -17731,6 +17862,20 @@
                         }
                       ]
                     },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "acpSessionId": {
                       "anyOf": [
                         {
@@ -18013,6 +18158,40 @@
                       "type": "string",
                       "format": "uuid"
                     }
+                  },
+                  "harness": {
+                    "enum": [
+                      "opencode",
+                      "claude-code",
+                      "codex",
+                      "gemini",
+                      "deepagents"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effort": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -18071,6 +18250,214 @@
                         "message": {
                           "type": "string",
                           "default": "The run ended, or has not started, before the message reached it"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/handoff": {
+      "get": {
+        "operationId": "investigations.handoff",
+        "summary": "Preview a follow-up's route, carried context and recipient preflight",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "harness",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "opencode",
+                "claude-code",
+                "codex",
+                "gemini",
+                "deepagents"
+              ],
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "route": {
+                      "enum": [
+                        "load",
+                        "handoff"
+                      ],
+                      "type": "string"
+                    },
+                    "harness": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents"
+                      ],
+                      "type": "string"
+                    },
+                    "carried": {
+                      "type": "string"
+                    },
+                    "omitted": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "accessLevel": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "supervised",
+                            "auto-edits",
+                            "auto",
+                            "full-access"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "preflight": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "problem": {
+                              "type": "string"
+                            },
+                            "fix": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "problem",
+                            "fix"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "route",
+                    "harness",
+                    "carried",
+                    "omitted",
+                    "accessLevel",
+                    "preflight",
+                    "note"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "The run is live, or kept nothing to continue from"
                         },
                         "data": {}
                       },
@@ -19651,6 +20038,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
