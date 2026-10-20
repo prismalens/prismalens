@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
 	ConnectSourceResponseSchema,
 	ProbeReportSchema,
+	RunbooksToggleSchema,
 	SourceDraftSchema,
 	SourcesOverviewSchema,
 } from "../schemas/index.js";
@@ -54,4 +55,14 @@ export const sourcesContract = {
 		})
 		.input(z.object({ id: z.string() }))
 		.output(ProbeReportSchema),
+
+	setRunbooks: oc
+		.route({
+			method: "PUT",
+			path: "/sources/runbooks",
+			summary: "Turn runbook discovery in the bound repos on or off",
+			tags: ["sources"],
+		})
+		.input(RunbooksToggleSchema)
+		.output(RunbooksToggleSchema),
 };

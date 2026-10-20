@@ -30,3 +30,12 @@ export function useConnectSource() {
 		},
 	});
 }
+
+export function useSetRunbooks() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.sources.setRunbooks.mutationOptions(),
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() }),
+	});
+}

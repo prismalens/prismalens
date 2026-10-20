@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/hooks/use-sources-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ConnectSourceDialog } from "./ConnectSourceDialog";
+import { RunbooksDialog } from "./RunbooksDialog";
 
 const STATUS_WORD = {
 	connected: { tone: "ok", word: "Connected" },
@@ -35,6 +36,7 @@ const STATUS_WORD = {
  */
 export function DataSources() {
 	const { data, isLoading } = useSourcesOverview();
+	const [runbooksOpen, setRunbooksOpen] = useState(false);
 	const [picked, setPicked] = useState<{
 		type: SourceTypeDescriptor;
 		detected?: DetectedSource;
@@ -57,10 +59,18 @@ export function DataSources() {
 							view={c}
 							detected={data?.detected ?? []}
 							onPick={(type, detected) => setPicked({ type, detected })}
+							onRunbooks={() => setRunbooksOpen(true)}
 						/>
 					))}
 				</Pool>
 			</SettingGroup>
+			<RunbooksDialog
+				source={data?.categories
+					.find((c) => c.category === "knowledge")
+					?.sources.find((s) => s.id === "runbooks")}
+				open={runbooksOpen}
+				onOpenChange={setRunbooksOpen}
+			/>
 			{picked && (
 				<ConnectSourceDialog
 					type={picked.type}
@@ -77,10 +87,12 @@ function CategoryRow({
 	view,
 	detected,
 	onPick,
+	onRunbooks,
 }: {
 	view: SourceCategoryView;
 	detected: DetectedSource[];
 	onPick: (type: SourceTypeDescriptor, detected?: DetectedSource) => void;
+	onRunbooks: () => void;
 }) {
 	const info = SOURCE_CATEGORY_INFO[view.category];
 	const state = STATUS_WORD[view.status];
@@ -141,7 +153,10 @@ function CategoryRow({
 					info.blind
 				) : (
 					<>
-						{view.sources.map((s) => s.label).join(", ")}
+						{view.sources
+							.filter((s) => s.status !== "not-configured")
+							.map((s) => s.label)
+							.join(", ")}
 						{broken?.reason && `. ${broken.label}: ${broken.reason}`}
 						{view.tools.length > 0 && `. ${view.tools.length} read-only tools`}
 					</>
@@ -157,6 +172,31 @@ function CategoryRow({
 				>
 					Test
 				</Button>
+			)}
+			{view.category === "knowledge" && (
+				<>
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={onRunbooks}
+						data-testid="connect-runbooks"
+					>
+						Runbooks in your repos
+					</Button>
+					{view.sources
+						.filter((s) => s.kind === "unsupported")
+						.map((s) => (
+							<Button
+								key={s.id}
+								variant="text"
+								size="sm"
+								disabled
+								data-testid={`unsupported-${s.id}`}
+							>
+								{s.label}: not supported yet
+							</Button>
+						))}
+				</>
 			)}
 			{types.map((t) => {
 				const d = found(t);

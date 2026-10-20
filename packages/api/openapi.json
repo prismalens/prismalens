@@ -32465,6 +32465,11 @@
                                   ],
                                   "type": "string"
                                 },
+                                "count": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
                                 "lastErrorAt": {
                                   "type": "string"
                                 },
@@ -32934,6 +32939,53 @@
                     "ok",
                     "probes",
                     "discovered"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/runbooks": {
+      "put": {
+        "operationId": "sources.setRunbooks",
+        "summary": "Turn runbook discovery in the bound repos on or off",
+        "tags": [
+          "sources"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "enabled"
                   ]
                 }
               }
