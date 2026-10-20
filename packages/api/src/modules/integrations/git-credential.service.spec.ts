@@ -68,6 +68,27 @@ describe("GitCredentialService & host-token (#810)", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("readHostToken: GitLab and Bitbucket hosts come from the API base URL, else the cloud host", () => {
+		const row = (templateId: string, creds: Record<string, unknown>) =>
+			({
+				id: `conn-${templateId}`,
+				label: "",
+				status: "ACTIVE",
+				tokenExpiresAt: null,
+				lastErrorMessage: null,
+				credentialsEnc: credentialsService.encrypt(creds),
+				connectionConfigEnc: null,
+				integration: { templateId, label: templateId },
+			}) as any;
+		const host = (templateId: string, creds: Record<string, unknown>) =>
+			readHostToken(row(templateId, creds), credentialsService)?.host;
+		expect(host("gitlab-token", { token: "glpat" })).toBe("gitlab.com");
+		expect(host("gitlab-token", { token: "glpat", baseUrl: "https://git.acme.io/api/v4" })).toBe("git.acme.io");
+		expect(host("bitbucket-token", { token: "bb" })).toBe("bitbucket.org");
+		expect(host("bitbucket-token", { token: "bb", baseUrl: "https://api.bitbucket.org/2.0" })).toBeTruthy();
+		expect(readHostToken(row("gitlab-token", {}), credentialsService)).toBeNull();
+	});
+
 	it("T1: folder -> none, label folder", async () => {
 		const ref: GitRepoRef = {
 			sourceKind: "folder",
