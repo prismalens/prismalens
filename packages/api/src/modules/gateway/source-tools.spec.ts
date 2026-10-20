@@ -38,6 +38,9 @@ async function upstream(
 
 function gateway(rows: Row[]) {
 	const prisma = {
+		setting: { findUnique: async () => null },
+		serviceRepository: { count: async () => 0 },
+		investigation: { findUnique: async () => null },
 		connection: {
 			findMany: async (args: {
 				where?: { integration?: { templateId?: string } };
@@ -127,6 +130,8 @@ describe("gateway source tools (#848 Phase 1)", () => {
 			"prometheus_alerts",
 			"prometheus_query",
 			"prometheus_query_range",
+			"runbooks_list",
+			"runbooks_read",
 			"sources_list",
 		]);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);

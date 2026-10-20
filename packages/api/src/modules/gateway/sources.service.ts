@@ -66,6 +66,11 @@ export class SourcesService {
 		};
 	}
 
+	async setRunbooks(enabled: boolean): Promise<{ enabled: boolean }> {
+		await this.gateway.setRunbooksEnabled(enabled);
+		return { enabled };
+	}
+
 	async test(draft: SourceDraft): Promise<ProbeReport> {
 		return runProbes(this.draftTarget(draft));
 	}

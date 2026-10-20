@@ -236,6 +236,30 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 	},
 ];
 
+/** A source PrismaLens reads without a connection: found in what the run already holds. */
+export interface BuiltinSourceDescriptor {
+	id: string;
+	category: SourceCategory;
+	label: string;
+	steps: readonly ConnectStep[];
+	tools: readonly string[];
+	docsUrl: string;
+}
+
+export const BUILTIN_SOURCES: readonly BuiltinSourceDescriptor[] = [
+	{
+		id: "runbooks",
+		category: "knowledge",
+		label: "Runbooks in your repos",
+		steps: ["toggle", "confirm"],
+		tools: ["runbooks_list", "runbooks_read"],
+		docsUrl: "https://docs.prismalens.io/integrations/runbooks/",
+	},
+];
+
+/** Knowledge bases teams keep runbooks in that PrismaLens cannot read yet. */
+export const UNSUPPORTED_KNOWLEDGE_VENDORS = ["Confluence", "Notion"] as const;
+
 export function sourceType(id: string): SourceTypeDescriptor | undefined {
 	return SOURCE_TYPES.find((t) => t.id === id);
 }
@@ -252,8 +276,11 @@ export function sourceTypeBySlug(
  * sorts first), submit the auth form or "use detected" (test and discover run on submit),
  * choose a discovered value when the descriptor asks, confirm.
  */
-export type ConnectStep = "pick" | "auth" | "choose" | "confirm";
-export function connectSteps(d: SourceTypeDescriptor): ConnectStep[] {
+export type ConnectStep = "pick" | "auth" | "choose" | "confirm" | "toggle";
+export function connectSteps(
+	d: SourceTypeDescriptor | BuiltinSourceDescriptor,
+): ConnectStep[] {
+	if ("steps" in d) return [...d.steps];
 	return [
 		"pick",
 		"auth",
@@ -291,6 +318,8 @@ export const SourceCategoryViewSchema = z.object({
 			label: z.string(),
 			kind: z.string(),
 			status: SourceStatusSchema,
+			/** Items the source holds, when it counts them (runbooks found for the run). */
+			count: z.number().int().optional(),
 			lastErrorAt: z.string().optional(),
 			reason: z.string().optional(),
 		}),
@@ -299,6 +328,8 @@ export const SourceCategoryViewSchema = z.object({
 	howToConnect: z.string().optional(),
 });
 export type SourceCategoryView = z.infer<typeof SourceCategoryViewSchema>;
+
+export const RunbooksToggleSchema = z.object({ enabled: z.boolean() });
 
 export const DetectedSourceSchema = z.object({
 	type: z.string(),
