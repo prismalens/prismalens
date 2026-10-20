@@ -200,6 +200,21 @@ export function ConnectSourceDialog({
 								data-testid="connect-url"
 							/>
 						</Field>
+						{type.scopes && (
+							<div
+								className="text-meta text-text-3"
+								data-testid="connect-scopes"
+							>
+								<div>Token scopes needed</div>
+								<ul>
+									{type.scopes.map((sc) => (
+										<li key={sc.key}>
+											<Mono>{sc.key}</Mono>: {sc.why}
+										</li>
+									))}
+								</ul>
+							</div>
+						)}
 						{type.credentialKinds.length > 1 && (
 							<Field label="Authentication" htmlFor={kindId}>
 								<Select

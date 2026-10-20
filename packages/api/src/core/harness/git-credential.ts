@@ -78,6 +78,17 @@ export function hostFromGithubBaseUrl(baseUrl: unknown): string {
 	}
 }
 
+/** The git host a saved GitLab or Bitbucket token belongs to, from its API base URL; `api.bitbucket.org` → `bitbucket.org`. */
+export function hostFromApiBaseUrl(baseUrl: unknown): string | null {
+	if (typeof baseUrl !== "string" || !baseUrl.trim()) return null;
+	try {
+		const host = new URL(baseUrl.trim()).host.toLowerCase();
+		return host === "api.bitbucket.org" ? "bitbucket.org" : host;
+	} catch {
+		return null;
+	}
+}
+
 /** The keys a saved credential may keep its token under; `apiKey` is what 0.5.0 GitHub token rows store. */
 export const TOKEN_KEYS = [
 	"token",

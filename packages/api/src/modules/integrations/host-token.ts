@@ -4,6 +4,7 @@
 import type { Connection, Integration } from "@prismalens/database";
 import { getTemplate } from "@prismalens/integrations";
 import {
+	hostFromApiBaseUrl,
 	hostFromGithubBaseUrl,
 	normalizeGitHost,
 	tokenFrom,
@@ -47,10 +48,18 @@ export function readHostToken(
 	} catch {
 		return null;
 	}
+	const templateId = conn.integration.templateId;
+	const baseUrl = creds.baseUrl ?? config.baseUrl;
 	const host =
-		conn.integration.templateId === "github-token"
-			? hostFromGithubBaseUrl(creds.baseUrl ?? config.baseUrl)
-			: normalizeGitHost(typeof config.host === "string" ? config.host : "");
+		templateId === "github-token"
+			? hostFromGithubBaseUrl(baseUrl)
+			: templateId === "gitlab-token"
+				? (hostFromApiBaseUrl(baseUrl) ?? "gitlab.com")
+				: templateId === "bitbucket-token"
+					? (hostFromApiBaseUrl(baseUrl) ?? "bitbucket.org")
+					: normalizeGitHost(
+							typeof config.host === "string" ? config.host : "",
+						);
 	const token = tokenFrom(creds);
 	if (!host || !token) return null;
 	return {

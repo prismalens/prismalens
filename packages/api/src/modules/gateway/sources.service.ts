@@ -320,6 +320,7 @@ function firstArray(body: unknown): unknown[] | null {
 		o?.data,
 		(o?.data as { alerts?: unknown } | undefined)?.alerts,
 		(o?.data as { result?: unknown } | undefined)?.result,
+		(body as { values?: unknown } | null)?.values,
 	];
 	return (candidates.find(Array.isArray) as unknown[] | undefined) ?? null;
 }
@@ -342,7 +343,8 @@ export function readProbe(
 			return { detail: `${labels.length} labels`, labels };
 		}
 		case "login": {
-			const login = (body as { login?: unknown } | null)?.login;
+			const who = body as Record<string, unknown> | null;
+			const login = who?.login ?? who?.username ?? who?.nickname;
 			return typeof login === "string"
 				? { detail: `as @${login}`, identity: login }
 				: { detail: "answered" };

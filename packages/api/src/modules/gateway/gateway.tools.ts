@@ -26,6 +26,8 @@ export const TEMPLATE_CATEGORY: Readonly<Record<string, SourceCategory>> = {
 	loki: "logs",
 	"github-token": "scm",
 	"git-host-token": "scm",
+	"gitlab-token": "scm",
+	"bitbucket-token": "scm",
 	render: "deploys",
 };
 
