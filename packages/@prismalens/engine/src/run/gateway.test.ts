@@ -6,7 +6,18 @@ import { PassThrough, Readable, Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import type { HarnessChild } from "../launch/types.js";
 import { AcpSession } from "../runner/acp-client.js";
-import { gatewayOffer } from "./gateway.js";
+import { type GatewayEntry, gatewayOffer } from "./gateway.js";
+
+function entry(confirmed = false): GatewayEntry {
+	return {
+		url: "http://127.0.0.1:3001/api/mcp/runs/r1",
+		token: "t0k",
+		promptLine: "",
+		tools: ["sources_list"],
+		confirmed: () => confirmed,
+		waitConfirmed: async () => confirmed,
+	};
+}
 
 /** An agent that advertises `mcpCapabilities` at `initialize` and records what `session/new` got. */
 function agent(mcpCapabilities: Record<string, boolean> | undefined) {
@@ -40,12 +51,13 @@ function agent(mcpCapabilities: Record<string, boolean> | undefined) {
 	return { child, sent };
 }
 
-async function openWith(mcpCapabilities: Record<string, boolean> | undefined) {
+async function openWith(
+	mcpCapabilities: Record<string, boolean> | undefined,
+	gateway = entry(),
+	delivery?: "mcp-config-file",
+) {
 	const { child, sent } = agent(mcpCapabilities);
-	const offer = gatewayOffer({
-		url: "http://127.0.0.1:3001/api/mcp/runs/r1",
-		token: "t0k",
-	});
+	const offer = gatewayOffer(gateway, delivery);
 	const session = new AcpSession({
 		command: "harness",
 		args: [],
@@ -72,6 +84,14 @@ describe("the gateway in session/new mcpServers (#848)", () => {
 				headers: [{ name: "Authorization", value: "Bearer t0k" }],
 			},
 		]);
+		// Offered is not taken: only a request with the run's token confirms it (OBJ-011).
+		expect(taken).toBe(false);
+		expect((await openWith({ http: true }, entry(true))).taken).toBe(true);
+	});
+
+	it("Given a run-file delivery, Then mcpServers stays empty and taken still means confirmed", async () => {
+		const { mcpServers, taken } = await openWith({ http: true }, entry(true), "mcp-config-file");
+		expect(mcpServers).toEqual([]);
 		expect(taken).toBe(true);
 	});
 

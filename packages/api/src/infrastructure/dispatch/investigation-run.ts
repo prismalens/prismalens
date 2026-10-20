@@ -232,7 +232,8 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
-		const gateway = ports.gateway?.lease(runId);
+		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
+		const gateway = await ports.gateway?.lease(runId).catch(() => null);
 		const outcome = await conductRun(
 			{
 				runId,
@@ -482,7 +483,7 @@ async function runFollowUp(
 				.resolveHarness({ harness, model: inv.model })
 				.then((r) => r.customModel)
 				.catch(() => false));
-		const gateway = ports.gateway?.lease(id);
+		const gateway = await ports.gateway?.lease(id).catch(() => null);
 		const outcome = await conductRun(
 			{
 				runId: id,

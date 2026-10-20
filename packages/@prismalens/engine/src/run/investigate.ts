@@ -53,7 +53,6 @@ import {
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
 import {
-	GATEWAY_PROMPT_LINE,
 	GATEWAY_SERVER_NAME,
 	type GatewayEntry,
 	gatewayOffer,
@@ -94,7 +93,9 @@ export interface RunInvestigationOptions {
 		| "sessionMeta"
 		| "companionBinary"
 	> &
-		Partial<Pick<HarnessDescriptor, "modelVia" | "adapterPackage">>;
+		Partial<
+			Pick<HarnessDescriptor, "modelVia" | "adapterPackage" | "gatewayDelivery">
+		>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
 	/** Per-run directory: harness config, data home, transcript. */
@@ -343,6 +344,7 @@ export type PrepareRunEnvOptions = Pick<
 	| "env"
 	| "accessLevel"
 	| "customModel"
+	| "gateway"
 >;
 
 /** The row's config files with the level's overlay merged into each JSON one. */
@@ -388,6 +390,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 		...(launch.shipped ? { shipped: true } : {}),
+		...(opts.gateway && descriptor.gatewayDelivery
+			? { gateway: { url: opts.gateway.url, token: opts.gateway.token } }
+			: {}),
 	};
 	const overlay = opts.accessLevel
 		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
@@ -416,6 +421,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		launch,
 	};
 }
+
+/** How long a run waits after `session/new` for the agent's first gateway request. */
+const GATEWAY_CONFIRM_MS = 5_000;
 
 export async function* runInvestigation(
 	opts: RunInvestigationOptions,
@@ -453,7 +461,9 @@ export async function* runInvestigation(
 		}
 	};
 
-	const offer = opts.gateway ? gatewayOffer(opts.gateway) : null;
+	const offer = opts.gateway
+		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
+		: null;
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
@@ -465,7 +475,10 @@ export async function* runInvestigation(
 		permission: levelPolicy(
 			keepMode ? "supervised" : level,
 			{ policy: opts.permission ?? denyAllPolicy },
-			{ unattended: !!opts.unattended },
+			{
+				unattended: !!opts.unattended,
+				...(opts.gateway ? { gateway: opts.gateway } : {}),
+			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
@@ -646,9 +659,15 @@ export async function* runInvestigation(
 			});
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
+		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
+		const confirmed =
+			opts.gateway && offer?.offered()
+				? await opts.gateway.waitConfirmed(GATEWAY_CONFIRM_MS)
+				: false;
 		if (offer)
-			yield adapter.sessionConfig("tools", GATEWAY_SERVER_NAME, offer.taken());
-		const toolsLine = offer?.taken() ? `\n\n${GATEWAY_PROMPT_LINE}` : "";
+			yield adapter.sessionConfig("tools", GATEWAY_SERVER_NAME, confirmed);
+		const toolsLine =
+			confirmed && opts.gateway ? `\n\n${opts.gateway.promptLine}` : "";
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
 		if (!keepMode && !(opts.resume && session.offeredModes.length === 0)) {
 			const refused = await applyMode(session, {

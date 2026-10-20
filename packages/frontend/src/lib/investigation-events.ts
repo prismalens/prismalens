@@ -376,7 +376,7 @@ export function sessionConfigLine(e: {
 	if (e.option === "tools")
 		return e.accepted
 			? "The agent took PrismaLens tools before the first prompt"
-			: "The agent does not take PrismaLens tools";
+			: "The agent did not load PrismaLens tools; a server named `prismalens` in your agent config can hide them.";
 	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
 	return e.accepted
 		? `The agent took ${what} before the first prompt`

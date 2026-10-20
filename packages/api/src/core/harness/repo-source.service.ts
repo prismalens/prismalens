@@ -78,6 +78,11 @@ const AGENT_CONFIG_NAMES = new Set([
 	".cursorrules",
 ]);
 
+/** Lowercased: Windows and default macOS filesystems ignore case, and so does the agent reading them (#848, OBJ-021). */
+const AGENT_CONFIG_LOWER = new Set(
+	[...AGENT_CONFIG_NAMES].map((n) => n.toLowerCase()),
+);
+
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
 
 /** Folder or URL; anything else is refused before git sees it. */
@@ -253,7 +258,9 @@ export class RepoSourceService {
 		const hits = new Set<string>();
 		for (const file of stdout.split("\0").filter(Boolean)) {
 			const parts = file.split("/");
-			const at = parts.findIndex((p) => AGENT_CONFIG_NAMES.has(p));
+			const at = parts.findIndex((p) =>
+				AGENT_CONFIG_LOWER.has(p.toLowerCase()),
+			);
 			if (at >= 0) hits.add(parts.slice(0, at + 1).join("/"));
 		}
 		for (const path of hits)

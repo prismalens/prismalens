@@ -13,7 +13,9 @@ export {
 	type ProxyPort,
 	type ProxySnapshot,
 } from "./proxy-port.js";
+export { SourceRegistry } from "./registry.js";
 export {
+	defineSourceTool,
 	SERVED_SIDE_EFFECTS,
 	SIDE_EFFECTS,
 	type SideEffect,

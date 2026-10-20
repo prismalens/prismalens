@@ -3,7 +3,6 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { McpServer } from "@modelcontextprotocol/server";
 import { parse } from "yaml";
 import { z } from "zod";
 
@@ -191,54 +190,4 @@ export async function readRunbook(
 	if (markdown.length > RUNBOOK_CHARS)
 		markdown = `${markdown.slice(0, RUNBOOK_CHARS)}\n…[truncated at ${RUNBOOK_CHARS} characters]`;
 	return { ok: true, path, markdown };
-}
-
-const json = (value: unknown, isError = false) => ({
-	content: [{ type: "text" as const, text: JSON.stringify(value, null, 1) }],
-	...(isError ? { isError: true } : {}),
-});
-
-/** The read-only runbook tools (#848): knowledge found in the repos bound to services. */
-export function registerRunbookTools(
-	server: McpServer,
-	data: RunbooksData,
-	runId: string,
-): void {
-	const annotations = { readOnlyHint: true, openWorldHint: false } as const;
-	server.registerTool(
-		"runbooks_list",
-		{
-			title: "Runbooks in the bound repos",
-			description:
-				"Runbooks found in the repositories bound to services, read at the commit this run saw: markdown under runbooks/ and docs/runbooks/, RUNBOOK*.md, and runbook links in catalog-info.yaml (links are returned as links, never fetched). Optionally for one service.",
-			inputSchema: z.object({
-				service: z.string().trim().min(1).max(200).optional(),
-			}),
-			annotations,
-		},
-		async ({ service }) => {
-			const runbooks = await data.list(runId, service);
-			return json(
-				runbooks.length
-					? { runbooks }
-					: { status: "not-configured", runbooks: [] },
-			);
-		},
-	);
-	server.registerTool(
-		"runbooks_read",
-		{
-			title: "Read a runbook",
-			description: `The markdown of a runbook runbooks_list returned, cut at ${RUNBOOK_CHARS} characters. Pass its path and service exactly as listed.`,
-			inputSchema: z.object({
-				path: z.string().trim().min(1).max(1_000),
-				service: z.string().trim().min(1).max(200),
-			}),
-			annotations,
-		},
-		async ({ path, service }) => {
-			const r = await data.read(runId, path, service);
-			return json(r, !r.ok);
-		},
-	);
 }

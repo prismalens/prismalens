@@ -16,6 +16,7 @@ import {
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
@@ -299,6 +300,25 @@ describe("repo-source.service", () => {
 				expect(existsSync(join(dest, gone)), gone).toBe(false);
 			}
 			expect(readFileSync(join(dest, "services/api/src/app.js"), "utf8")).toBe("code");
+		});
+
+		it("snapshot() strips agent config whatever its case (#848, OBJ-021)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			for (const path of [".GeMiNi/settings.json", "sub/Gemini.md", ".CLAUDE/x", "Agents.MD", "docs/gemini-notes.md"]) {
+				mkdirSync(join(src, path, ".."), { recursive: true });
+				writeFileSync(join(src, path), "x");
+			}
+			git(["add", "-A"], src);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "mixed case"], src);
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			const removed = await new RepoSourceService()
+				.snapshot({ kind: "folder", source: src }, dest)
+				.then(() => readdirSync(dest, { recursive: true }).map(String));
+			for (const gone of [".GeMiNi", "Gemini.md", ".CLAUDE", "Agents.MD"])
+				expect(removed.some((p) => p.split(/[\\/]/).includes(gone)), gone).toBe(false);
+			expect(readFileSync(join(dest, "docs/gemini-notes.md"), "utf8")).toBe("x");
 		});
 
 		it("the snapshot's .git is its own directory, not a `gitdir:` worktree link", async () => {

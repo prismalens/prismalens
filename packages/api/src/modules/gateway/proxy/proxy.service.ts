@@ -50,8 +50,6 @@ import {
 import { type McpConnection, openUpstream, type Upstream } from "./upstream.js";
 
 export const MCP_TEMPLATE = "mcp-server";
-/** Nest token the gateway injects `ProxyPort` by. */
-export const PROXY_PORT = "PROXY_PORT";
 
 interface RunState {
 	snapshot: ProxySnapshot;

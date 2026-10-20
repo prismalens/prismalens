@@ -99,7 +99,16 @@ export interface HarnessRunEnv {
 	companionPath?: string;
 	/** The run starts the adapter PrismaLens ships, not one on PATH (#818). */
 	shipped?: boolean;
+	/** PrismaLens's MCP gateway, set for a row with `gatewayDelivery` (#848). */
+	gateway?: { url: string; token: string };
 }
+
+/** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
+export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
+
+/** `configDir` joined without node:path, which this browser-bundled module cannot import. */
+const inConfigDir = (env: HarnessRunEnv, file: string) =>
+	`${env.configDir}${env.configDir.includes("\\") ? "\\" : "/"}${file}`;
 
 export interface HarnessDescriptor {
 	id: HarnessId;
@@ -123,6 +132,8 @@ export interface HarnessDescriptor {
 	acpEnv: (env: HarnessRunEnv) => Record<string, string>;
 	/** Files prismalens writes under configDir before the run; the harness reads nothing else. */
 	configFiles?: (env: HarnessRunEnv) => Record<string, string>;
+	/** The agent ignores ACP `mcpServers`; the gateway goes in a run file instead (#848). */
+	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
 	/** One line the doctor prints when the binary is missing. */
@@ -262,7 +273,7 @@ function geminiDefault(line: HarnessAccess["line"]): HarnessAccess {
 }
 
 const geminiUntrusted: HarnessAccess["line"] = (c) =>
-	`Gemini CLI runs the copy untrusted, so this level runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`;
+	`Gemini CLI keeps ${modeNamed(c, "default", "Default")} at this level, as Ask always does.`;
 
 const NO_MODE: HarnessAccess = {
 	mode: null,
@@ -509,11 +520,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
-		acpArgs: () => ["--experimental-acp"],
-		// Untrusted workspace gates .gemini/settings.json, commands, extensions,
-		// MCP servers, and GEMINI.md while keeping ACP mode functional (#634).
+		acpArgs: () => ["--experimental-acp", "--ignore-env"],
+		// trusted so MCP servers load; the snapshot strips .gemini and GEMINI.md, and --ignore-env skips workspace .env (#848)
 		acpEnv: () => ({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
+			GEMINI_CLI_TRUST_WORKSPACE: "true",
 		}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
@@ -538,10 +548,28 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "deepagents",
 		// deepagents-acp ships no console script; deepagents-code's `dcode --acp` is
 		// the ACP server (entry points of deepagents-code 0.1.71 on PyPI, #634).
-		// --no-mcp: no MCP servers from the snapshot or the user's config.
+		// `--acp` ignores ACP mcpServers: the gateway goes in by --mcp-config, beside the user's own servers (#848).
 		binary: "dcode",
-		acpArgs: () => ["--acp", "--no-mcp"],
+		gatewayDelivery: "mcp-config-file",
+		acpArgs: (env) =>
+			env.gateway
+				? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
+				: ["--acp"],
 		acpEnv: () => ({}),
+		configFiles: (env): Record<string, string> =>
+			env.gateway
+				? {
+						[GATEWAY_RUN_FILE]: JSON.stringify({
+							mcpServers: {
+								prismalens: {
+									type: "http",
+									url: env.gateway.url,
+									headers: { Authorization: `Bearer ${env.gateway.token}` },
+								},
+							},
+						}),
+					}
+				: {},
 		// The two keys `deepagents-acp --help` listed under ENVIRONMENT VARIABLES;
 		// not yet re-checked against `dcode`, which may read more providers.
 		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],

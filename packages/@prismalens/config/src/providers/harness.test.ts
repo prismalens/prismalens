@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	GATEWAY_RUN_FILE,
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
@@ -125,12 +126,22 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBeUndefined();
 	});
 
-	it("deepagents runs dcode's ACP server with no MCP servers (#634)", () => {
-		expect(HARNESS_REGISTRY.deepagents.binary).toBe("dcode");
-		expect(HARNESS_REGISTRY.deepagents.acpArgs(runEnv)).toEqual([
-			"--acp",
-			"--no-mcp",
-		]);
+	it("deepagents takes the gateway as an --mcp-config run file, and never --no-mcp (#848)", () => {
+		const d = HARNESS_REGISTRY.deepagents;
+		expect(d.binary).toBe("dcode");
+		expect(d.gatewayDelivery).toBe("mcp-config-file");
+		expect(d.acpArgs(runEnv)).toEqual(["--acp"]);
+		expect(d.configFiles?.(runEnv)).toEqual({});
+		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok" };
+		const args = d.acpArgs({ ...runEnv, gateway });
+		expect(args.slice(0, 2)).toEqual(["--acp", "--mcp-config"]);
+		expect(args[2]).toContain(GATEWAY_RUN_FILE);
+		expect(args).not.toContain("--trust-project-mcp");
+		expect(JSON.parse(d.configFiles?.({ ...runEnv, gateway })[GATEWAY_RUN_FILE] ?? "{}")).toEqual({
+			mcpServers: {
+				prismalens: { type: "http", url: gateway.url, headers: { Authorization: "Bearer tok" } },
+			},
+		});
 	});
 
 	it("claude-code, codex and gemini keep the user's own config and sign-in", () => {
@@ -165,10 +176,11 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		});
 	});
 
-	it("gemini marks workspace untrusted to keep repo config inert (#634)", () => {
+	it("gemini trusts the throwaway copy so MCP servers load, and skips its .env (#848)", () => {
 		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
+			GEMINI_CLI_TRUST_WORKSPACE: "true",
 		});
+		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toContain("--ignore-env");
 	});
 });
 
