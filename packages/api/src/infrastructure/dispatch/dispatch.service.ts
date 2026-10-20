@@ -14,6 +14,7 @@ import {
 	Logger,
 	OnApplicationShutdown,
 	OnModuleInit,
+	Optional,
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
 import {
@@ -53,6 +54,7 @@ import {
 	triggerFor,
 } from "../../core/telemetry/telemetry.service.js";
 import { ReportDeliveryService } from "../../modules/delivery/report-delivery.service.js";
+import { GatewayService } from "../../modules/gateway/gateway.service.js";
 import { IncidentsService } from "../../modules/incidents/incidents.service.js";
 import { ConnectorResolverService } from "../../modules/integrations/connector-resolver.service.js";
 import {
@@ -174,6 +176,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly contextPackService: ContextPackService,
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
+		@Optional() private readonly gateway?: GatewayService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -419,6 +422,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			resolveConnectors: (serviceId) =>
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
+			...(this.gateway ? { gateway: this.gateway } : {}),
 		};
 
 		this.dispatcher = new Dispatcher(

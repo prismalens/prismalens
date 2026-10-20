@@ -25,6 +25,7 @@
 	"dependencies": {
 		"@lezer/highlight": "^1.2.4",
 		"@lezer/lr": "^1.4.10",
+		"@modelcontextprotocol/server": "~2.3.1",
 		"@nestjs/common": "catalog:",
 		"@nestjs/config": "^12.0.1",
 		"@nestjs/core": "catalog:",
@@ -51,7 +52,8 @@
 		"helmet": "^8.3.0",
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "catalog:",
-		"svix": "^2.3.0"
+		"svix": "^2.3.0",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^10.6.0",

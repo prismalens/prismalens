@@ -165,6 +165,12 @@ export interface AcpSessionConfig {
 	askWindow?: () => { timeoutMs: number; clamped: boolean };
 	/** Reopen this session with `session/load` instead of starting one (#747). */
 	resume?: { sessionId: string };
+	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
+	mcpServers?: (
+		capabilities:
+			| import("@agentclientprotocol/sdk").McpCapabilities
+			| undefined,
+	) => import("@agentclientprotocol/sdk").McpServer[];
 }
 
 /** Outcomes the run's level gives without the operator; they never show an ask. */
@@ -582,7 +588,8 @@ export class AcpSession {
 			init?.agentCapabilities?._meta?.authStatus !== undefined;
 		const params = {
 			cwd: config.cwd,
-			mcpServers: [],
+			mcpServers:
+				config.mcpServers?.(init?.agentCapabilities?.mcpCapabilities) ?? [],
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};
 		if (config.resume) {

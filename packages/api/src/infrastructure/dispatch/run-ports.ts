@@ -24,7 +24,7 @@ import type {
 	RunCredential,
 	RunUsage,
 } from "@prismalens/contracts/schemas";
-import type { ResolvedConnector } from "@prismalens/engine";
+import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
 import type {
 	RepoSource,
 	Snapshot,
@@ -178,6 +178,11 @@ export interface RunPorts {
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
+	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
+	gateway?: {
+		lease(runId: string): GatewayEntry | null;
+		revoke(runId: string): void;
+	};
 	/**
 	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
 	 * credential the resolver picks (#673); `credential` is the one that cloned it.

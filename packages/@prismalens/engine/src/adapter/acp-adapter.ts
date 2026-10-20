@@ -211,7 +211,7 @@ export class AcpAdapter {
 
 	/** The harness's answer to `session/set_config_option` before the first prompt (R4.2). */
 	sessionConfig(
-		option: "model" | "effort",
+		option: "model" | "effort" | "tools",
 		value: string,
 		accepted: boolean,
 	): CanonicalEvent {
