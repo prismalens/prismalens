@@ -36,6 +36,7 @@ export interface ConnectionRow {
 	label: string;
 	status: string;
 	lastErrorAt: Date | null;
+	lastErrorMessage?: string | null;
 	integration: { templateId: string; label: string };
 }
 
@@ -55,6 +56,17 @@ export interface SourceViewDeps {
 const PING_TIMEOUT_MS = 2_000;
 
 export const labelOf = (r: ConnectionRow) => r.label || r.integration.label;
+
+/**
+ * A sign-in that needs the user: its stored message, which PrismaLens writes itself.
+ * Any other stored error may echo upstream text, so it is never shown (#848).
+ */
+export function signInReason(r: ConnectionRow): string | undefined {
+	if (r.lastErrorMessage?.startsWith("needs permission:"))
+		return `${r.lastErrorMessage} — sign in again`;
+	if (r.status === "REFRESH_FAILED") return "sign-in expired — sign in again";
+	return undefined;
+}
 
 /** Records every row the run meets; the map only grows until the run ends. */
 export function remember(
@@ -154,6 +166,9 @@ export async function sourceView(
 						)
 						.map((r): SourceItem => {
 							const probed = probes.get(r.id);
+							const reason =
+								signInReason(r) ??
+								(probed && !probed.ok ? probed.reason : undefined);
 							const status: SourceStatus = probed
 								? probed.ok
 									? "connected"
@@ -166,7 +181,7 @@ export async function sourceView(
 								label: labelOf(r),
 								kind: r.integration.templateId,
 								status,
-								...(probed && !probed.ok ? { reason: probed.reason } : {}),
+								...(reason ? { reason } : {}),
 								...(!probed && status === "unreachable" && r.lastErrorAt
 									? { lastErrorAt: r.lastErrorAt.toISOString() }
 									: {}),
@@ -210,6 +225,7 @@ async function mcpSources(
 			kind: r.integration.templateId,
 			name: labelOf(r),
 			status: r.status === "ACTIVE" ? "connected" : "unreachable",
+			...(signInReason(r) ? { reason: signInReason(r) } : {}),
 		}));
 	const ids = new Set(mcpRows.map((r) => r.id));
 	const inRun = run.snapshot.connections.filter((c) => ids.has(c.id));
@@ -221,14 +237,17 @@ async function mcpSources(
 						.catch(() => ({ ok: false, reason: "the server did not answer" }))
 				: { ok: c.status === "connected", reason: c.reason };
 			const left = (c.dropped ?? []).reduce((n, d) => n + d.count, 0);
-			const reason = live.ok
-				? left
-					? `offered ${c.tools.length} of ${c.tools.length + left} tools (limit reached)`
-					: undefined
-				: (live.reason ?? "the server did not answer");
+			const row = rows.find((r) => r.id === c.id) as ConnectionRow;
+			const reason =
+				signInReason(row) ??
+				(live.ok
+					? left
+						? `offered ${c.tools.length} of ${c.tools.length + left} tools (limit reached)`
+						: undefined
+					: (live.reason ?? "the server did not answer"));
 			return {
 				id: c.id,
-				label: labelOf(rows.find((r) => r.id === c.id) as ConnectionRow),
+				label: labelOf(row),
 				kind: "mcp-server",
 				name: c.name,
 				description: c.description,

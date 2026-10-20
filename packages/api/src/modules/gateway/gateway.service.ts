@@ -64,7 +64,7 @@ const SNAPSHOT_BUDGET_MS = 5_000;
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
 
 /** The vendor MCP proxy; bound by the module that provides it, `noProxy` otherwise. */
-export const PROXY_PORT = Symbol.for("prismalens.gateway.ProxyPort");
+export const PROXY_PORT = "PROXY_PORT";
 
 const RUNBOOKS_SETTING = "sources.runbooks.enabled";
 
@@ -271,6 +271,7 @@ export class GatewayService {
 				label: true,
 				status: true,
 				lastErrorAt: true,
+				lastErrorMessage: true,
 				integration: { select: { templateId: true, label: true } },
 			},
 		});
