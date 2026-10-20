@@ -73,6 +73,8 @@ export interface SourceTypeDescriptor {
 	/** The template's field for a bearer token, when it predates credential kinds. */
 	tokenField?: string;
 	detect: { urlEnv?: readonly string[]; tokenEnv?: readonly string[] };
+	/** Token scopes the vendor asks for, each with why PrismaLens needs it. */
+	scopes?: readonly { key: string; why: string }[];
 	probes: readonly SourceProbe[];
 	/** The label that names a service; `ask` puts the choice in front of the user. */
 	serviceLabel?: { preferred: readonly string[]; ask: boolean };
@@ -234,6 +236,94 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 		uses: "Clones the repositories bound to a service, read-only, for each run.",
 		docsUrl: "https://docs.prismalens.io/integrations/github/",
 	},
+	{
+		id: "gitlab-token",
+		category: "scm",
+		vendor: "GitLab",
+		slug: "gitlab",
+		credentialKinds: ["bearer"],
+		url: {
+			label: "API URL",
+			placeholder: "https://gitlab.example.com/api/v4",
+			default: "https://gitlab.com/api/v4",
+			in: "credentials",
+		},
+		tokenField: "apiKey",
+		detect: { tokenEnv: ["GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN"] },
+		scopes: [
+			{
+				key: "read_api",
+				why: "Lists projects and commits, so PrismaLens can match repositories to services and show what changed.",
+			},
+			{
+				key: "read_repository",
+				why: "Clones the repositories bound to a service, read-only, for each run.",
+			},
+		],
+		probes: [
+			{
+				id: "identity",
+				capability: "Read the token's user (read_api)",
+				need: "required",
+				why: "Confirms whose token this is.",
+				path: "user",
+				read: "login",
+			},
+			{
+				id: "repos",
+				capability: "List projects (read_api)",
+				need: "required",
+				why: "Matches your projects to services.",
+				path: "projects?membership=true&per_page=100",
+				read: "count",
+			},
+		],
+		tools: [],
+		uses: "Clones the repositories bound to a service, read-only, for each run.",
+		docsUrl: "https://docs.prismalens.io/integrations/gitlab/",
+	},
+	{
+		id: "bitbucket-token",
+		category: "scm",
+		vendor: "Bitbucket",
+		slug: "bitbucket",
+		credentialKinds: ["bearer"],
+		url: {
+			label: "API URL",
+			placeholder: "https://api.bitbucket.org/2.0",
+			default: "https://api.bitbucket.org/2.0",
+			in: "credentials",
+		},
+		tokenField: "apiKey",
+		detect: { tokenEnv: ["BITBUCKET_TOKEN", "BITBUCKET_ACCESS_TOKEN"] },
+		scopes: [
+			{
+				key: "repository:read",
+				why: "Lists repositories and commits, reads files, and clones the repositories bound to a service.",
+			},
+		],
+		probes: [
+			{
+				id: "repos",
+				capability: "List repositories (repository:read)",
+				need: "required",
+				why: "Matches your repositories to services.",
+				path: "repositories?role=member&pagelen=100",
+				read: "count",
+			},
+			{
+				id: "identity",
+				capability: "Read the token's user",
+				need: "optional",
+				why: "Shows whose token this is; repository tokens cannot read it.",
+				path: "user",
+				read: "login",
+			},
+		],
+		tools: [],
+		uses: "Clones the repositories bound to a service, read-only, for each run.",
+		docsUrl: "https://docs.prismalens.io/integrations/bitbucket/",
+	},
 ];
 
 /** A source PrismaLens reads without a connection: found in what the run already holds. */
@@ -259,6 +349,13 @@ export const BUILTIN_SOURCES: readonly BuiltinSourceDescriptor[] = [
 
 /** Knowledge bases teams keep runbooks in that PrismaLens cannot read yet. */
 export const UNSUPPORTED_KNOWLEDGE_VENDORS = ["Confluence", "Notion"] as const;
+
+/** Git hosts PrismaLens cannot read the API of yet. */
+export const UNSUPPORTED_SCM_VENDORS = [
+	"Gitea",
+	"Forgejo",
+	"Azure DevOps",
+] as const;
 
 export function sourceType(id: string): SourceTypeDescriptor | undefined {
 	return SOURCE_TYPES.find((t) => t.id === id);

@@ -9,10 +9,12 @@ import {
 import { getTemplate } from "../templates/index.js";
 import {
 	adapterSegments,
+	BitbucketAdapter,
 	createAdapter,
 	getAdapterSegments,
 	getTemplatesForSegment,
 	GitHubAdapter,
+	GitLabAdapter,
 	isAdapterSupported,
 	RenderAdapter,
 	templatesForSegment,
@@ -30,6 +32,20 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		expect(createAdapter("git-host-token")).toBeNull();
 	});
 
+	it("resolves gitlab-token and bitbucket-token to adapters that read commits", () => {
+		const gitlab = createAdapter("gitlab-token");
+		const bitbucket = createAdapter("bitbucket-token");
+
+		expect(gitlab).toBeInstanceOf(GitLabAdapter);
+		expect(bitbucket).toBeInstanceOf(BitbucketAdapter);
+		expect(getAdapterSegments(gitlab!)).toEqual(["vcs"]);
+		expect(getAdapterSegments(bitbucket!)).toEqual(["vcs"]);
+		for (const a of [gitlab, bitbucket]) {
+			expect(a?.vcs?.getCommitsSince).toBeTypeOf("function");
+			expect(a?.vcs?.getCommit).toBeTypeOf("function");
+		}
+	});
+
 	it("resolves render to its adapter", () => {
 		const renderAdapter = createAdapter("render");
 
@@ -42,6 +58,8 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 	it("resolves unknown templateIds to null cleanly", () => {
 		expect(createAdapter("gitlab")).toBeNull();
 		expect(createAdapter("bitbucket")).toBeNull();
+		expect(createAdapter("gitea-token")).toBeNull();
+		expect(createAdapter("azure-devops-token")).toBeNull();
 		expect(createAdapter("datadog")).toBeNull();
 		expect(createAdapter("slack")).toBeNull();
 		expect(createAdapter("slack-token")).toBeNull();
@@ -74,8 +92,9 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 		// templatesForSegment
 		expect(getTemplatesForSegment("deployment")).toEqual(["render"]);
 		expect(templatesForSegment("deployment")).toEqual(["render"]);
-		expect(getTemplatesForSegment("vcs")).toEqual(["github-token"]);
-		expect(templatesForSegment("vcs")).toEqual(["github-token"]);
+		const vcs = ["bitbucket-token", "github-token", "gitlab-token"];
+		expect(getTemplatesForSegment("vcs")).toEqual(vcs);
+		expect(templatesForSegment("vcs")).toEqual(vcs);
 		expect(getTemplatesForSegment("metrics")).toEqual(["prometheus"]);
 		expect(templatesForSegment("metrics")).toEqual(["prometheus"]);
 
@@ -84,16 +103,27 @@ describe("Exact-templateId Adapter Registry (#446)", () => {
 			"render",
 		]);
 		expect(getTemplatesForCapability("vcs:read_file")).toEqual([
+			"bitbucket-token",
 			"github-token",
+			"gitlab-token",
 		]);
 		expect(getTemplatesForCapability("vcs:list_orgs")).toEqual([
+			"bitbucket-token",
 			"github-token",
+			"gitlab-token",
 		]);
 		expect(getTemplatesForCapability("vcs:list_repos")).toEqual([
+			"bitbucket-token",
 			"github-token",
+			"gitlab-token",
 		]);
 		expect(getTemplatesForCapability("monitoring:read")).toEqual([
 			"prometheus",
+		]);
+
+		expect(getTemplatesForCapability("vcs:read_commits")).toEqual([
+			"bitbucket-token",
+			"gitlab-token",
 		]);
 
 		// Template-level capability asymmetry

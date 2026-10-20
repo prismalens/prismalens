@@ -37,15 +37,20 @@ export {
 export type { DeploymentProvider } from "./providers/deployment.interface.js";
 // Providers — git
 export type {
+	GitCommit,
 	GitProvider,
 	GitProviderContext,
 } from "./providers/git.interface.js";
 // Providers — adapters & registry (#446, #633)
 export {
 	adapterSegments,
+	BitbucketAdapter,
+	BitbucketVcsSegment,
 	createAdapter,
 	GitHubAdapter,
 	GitHubVcsSegment,
+	GitLabAdapter,
+	GitLabVcsSegment,
 	getAdapter,
 	getAdapterSegments,
 	getRegisteredTemplateIds,
@@ -76,12 +81,14 @@ export type {
 // Templates
 export {
 	alertmanager,
+	bitbucketToken,
 	getAllTemplates,
 	getTemplate,
 	getTemplatesByAuthMode,
 	getTemplatesByCategory,
 	gitHostToken,
 	githubToken,
+	gitlabToken,
 	isLegacyTemplateId,
 	LEGACY_TEMPLATE_IDS,
 	loki,

@@ -8,7 +8,9 @@ import {
 	connectSteps,
 	SOURCE_CATEGORIES,
 	SOURCE_TYPES,
+	sourceType,
 	sourceTypeBySlug,
+	UNSUPPORTED_SCM_VENDORS,
 } from "./source-type.js";
 
 const stepsIn = (category: string) =>
@@ -74,7 +76,22 @@ describe("source type descriptors", () => {
 			for (const p of t.probes) expect(p.path).not.toMatch(/delete|silence|create/i);
 	});
 
+	it("lists the scopes GitLab and Bitbucket ask for, each with why", () => {
+		const scopes = (id: string) => sourceType(id)?.scopes?.map((s) => s.key);
+		expect(scopes("gitlab-token")).toEqual(["read_api", "read_repository"]);
+		expect(scopes("bitbucket-token")).toEqual(["repository:read"]);
+		for (const id of ["gitlab-token", "bitbucket-token"])
+			for (const s of sourceType(id)?.scopes ?? [])
+				expect(s.why.length).toBeGreaterThan(10);
+	});
+
+	it("names the git hosts it cannot read yet", () => {
+		expect(UNSUPPORTED_SCM_VENDORS).toEqual(["Gitea", "Forgejo", "Azure DevOps"]);
+	});
+
 	it("resolves `pl connect <category> <vendor>`", () => {
+		expect(sourceTypeBySlug("scm", "gitlab")?.id).toBe("gitlab-token");
+		expect(sourceTypeBySlug("scm", "bitbucket")?.id).toBe("bitbucket-token");
 		expect(sourceTypeBySlug("logs", "loki")?.id).toBe("loki");
 		expect(sourceTypeBySlug("scm", "github")?.id).toBe("github-token");
 		expect(sourceTypeBySlug("logs", "prometheus")).toBeUndefined();

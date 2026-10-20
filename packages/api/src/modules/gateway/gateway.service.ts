@@ -8,6 +8,7 @@ import { HttpAdapterHost } from "@nestjs/core";
 import {
 	RunWorkspaceSchema,
 	UNSUPPORTED_KNOWLEDGE_VENDORS,
+	UNSUPPORTED_SCM_VENDORS,
 } from "@prismalens/contracts/schemas";
 import type { GatewayEntry } from "@prismalens/engine";
 import { getTemplate } from "@prismalens/integrations";
@@ -343,7 +344,7 @@ export class GatewayService {
 					],
 					tools: CATEGORY_TOOLS.knowledge ?? [],
 				};
-			const sources = rows
+			const connectable = rows
 				.filter((r) => TEMPLATE_CATEGORY[r.integration.templateId] === category)
 				.map((r) => {
 					const probed = probes.get(r.id);
@@ -365,9 +366,24 @@ export class GatewayService {
 							: {}),
 					};
 				});
-			const status: SourceStatus = sources.some((s) => s.status === "connected")
+			const sources =
+				category === "scm"
+					? [
+							...connectable,
+							...UNSUPPORTED_SCM_VENDORS.map((vendor) => ({
+								id: vendor.toLowerCase().replace(/ /g, "-"),
+								label: vendor,
+								kind: "unsupported",
+								status: "not-configured" as const,
+								reason: `${vendor} is not supported yet.`,
+							})),
+						]
+					: connectable;
+			const status: SourceStatus = connectable.some(
+				(s) => s.status === "connected",
+			)
 				? "connected"
-				: sources.length
+				: connectable.length
 					? "unreachable"
 					: "not-configured";
 			return {

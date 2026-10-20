@@ -5,19 +5,24 @@
  * Providers — unified exact-templateId registry and segmented adapters (#446)
  */
 
+import { BitbucketAdapter } from "./bitbucket/bitbucket.adapter.js";
 import { GitHubAdapter } from "./github/github.adapter.js";
+import { GitLabAdapter } from "./gitlab/gitlab.adapter.js";
 import { PrometheusAdapter } from "./prometheus/prometheus.adapter.js";
 import { RenderAdapter } from "./render/render.adapter.js";
 import type { ProviderAdapter, SegmentKind } from "./types.js";
 
+export { BitbucketAdapter, BitbucketVcsSegment } from "./bitbucket/index.js";
 // Deployment provider
 export type { DeploymentProvider } from "./deployment.interface.js";
 // Git provider
 export type {
+	GitCommit,
 	GitProvider,
 	GitProviderContext,
 } from "./git.interface.js";
 export { GitHubAdapter, GitHubVcsSegment } from "./github/index.js";
+export { GitLabAdapter, GitLabVcsSegment } from "./gitlab/index.js";
 // Metrics provider (#633)
 export {
 	type AlertRule,
@@ -43,7 +48,9 @@ export type {
 // ── Exact-templateId adapter registry ──
 
 const ADAPTER_REGISTRY: Record<string, new () => ProviderAdapter> = {
+	"bitbucket-token": BitbucketAdapter,
 	"github-token": GitHubAdapter,
+	"gitlab-token": GitLabAdapter,
 	prometheus: PrometheusAdapter,
 	render: RenderAdapter,
 };
