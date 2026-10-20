@@ -8,12 +8,18 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
 
-/** A redirect would carry the credential to a host it was not saved for (#848). */
-export class OffHostRedirectError extends Error {
-	constructor(origin: string) {
-		super(`the source redirected away from ${origin}; not followed`);
+/** A request or redirect would carry the credential off the origin it was saved for (#848). */
+export class OffOriginError extends Error {
+	constructor(origin: string, redirect = true) {
+		super(
+			redirect
+				? `the source redirected away from ${origin}; not followed`
+				: `the request leaves ${origin}; not sent`,
+		);
 	}
 }
+
+const ABSOLUTE_URL = /^[a-z][a-z0-9+.-]*:/i;
 
 /** The saved credential cannot be used; the message is PrismaLens's own, never upstream text. */
 export class SourceConfigError extends Error {}
@@ -57,6 +63,18 @@ export function credentialSecrets(c: SourceCredential): string[] {
 			return [c.value];
 		case "mtls":
 			return [c.key];
+		case "oauth":
+			return [c.refreshToken, c.accessToken, c.clientSecret].filter(
+				(s): s is string => !!s,
+			);
+		case "oauth-client":
+			return [c.clientSecret];
+		case "mcp-oauth":
+			return [
+				c.tokens?.access_token,
+				c.tokens?.refresh_token,
+				c.client?.client_secret,
+			].filter((s): s is string => !!s);
 		default:
 			return [];
 	}
@@ -90,9 +108,12 @@ export function sourceRequestFn(
 		const signal = options?.signal
 			? AbortSignal.any([timeout, options.signal])
 			: timeout;
+		if (ABSOLUTE_URL.test(path) || path.startsWith("//"))
+			throw new OffOriginError(origin, false);
 		const headers = { ...options?.headers, ...credentialHeaders(credential) };
 		// Relative to the base path, so a reverse-proxy prefix (http://host/prometheus) survives.
 		let url = new URL(path.replace(/^\/+/, ""), baseUrl.replace(/\/?$/, "/"));
+		if (url.origin !== origin) throw new OffOriginError(origin, false);
 		for (let hop = 0; ; hop++) {
 			const res =
 				credential.kind === "mtls"
@@ -116,7 +137,7 @@ export function sourceRequestFn(
 			if (!location) return opts.maxBytes ? capped(res, opts.maxBytes) : res;
 			await res.body?.cancel();
 			const next = new URL(location, url);
-			if (next.origin !== origin) throw new OffHostRedirectError(origin);
+			if (next.origin !== origin) throw new OffOriginError(origin);
 			if (hop >= maxRedirects) throw new Error("too many redirects");
 			url = next;
 		}

@@ -3,6 +3,7 @@
 
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { type RunbooksData, registerRunbookTools } from "./runbooks.js";
 import {
 	type QueryKind,
 	type QuerySource,
@@ -25,6 +26,8 @@ export const TEMPLATE_CATEGORY: Readonly<Record<string, SourceCategory>> = {
 	loki: "logs",
 	"github-token": "scm",
 	"git-host-token": "scm",
+	"gitlab-token": "scm",
+	"bitbucket-token": "scm",
 	render: "deploys",
 };
 
@@ -44,6 +47,8 @@ export interface SourceView {
 		label: string;
 		kind: string;
 		status: SourceStatus;
+		/** Items the source holds, when it counts them. */
+		count?: number;
 		/** For `unreachable`: when the last error was recorded. Never the error text, which may echo a credential. */
 		lastErrorAt?: string;
 		/** Why a probe failed, in PrismaLens's own words. */
@@ -77,7 +82,9 @@ export interface InvestigationsQuery {
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayData {
-	sources(): Promise<SourceView[]>;
+	/** `runId` scopes the knowledge count to what that run can read. */
+	sources(runId?: string): Promise<SourceView[]>;
+	runbooks: RunbooksData;
 	searchInvestigations(q: InvestigationsQuery): Promise<PastInvestigation[]>;
 	querySources(kind: QueryKind): Promise<QuerySource[]>;
 }
@@ -93,12 +100,14 @@ export const CATEGORY_TOOLS: Readonly<
 		"alertmanager_alerts",
 	],
 	logs: ["loki_query_range"],
-	knowledge: ["investigations_search"],
+	knowledge: ["investigations_search", "runbooks_list", "runbooks_read"],
 };
 
 export const GATEWAY_TOOL_NAMES = [
 	"sources_list",
 	"investigations_search",
+	"runbooks_list",
+	"runbooks_read",
 	...SOURCE_TOOL_NAMES,
 ] as const;
 
@@ -117,7 +126,7 @@ export function gatewayMcpServer(data: GatewayData, runId: string): McpServer {
 				"Every data category (metrics, logs, scm, deploys, knowledge) with its status: connected, not-configured or unreachable, and which tools read it. Call first to know what this run can reach.",
 			annotations: { readOnlyHint: true, openWorldHint: false },
 		},
-		async () => json(await data.sources()),
+		async () => json(await data.sources(runId)),
 	);
 	server.registerTool(
 		"investigations_search",
@@ -142,6 +151,7 @@ export function gatewayMcpServer(data: GatewayData, runId: string): McpServer {
 				}),
 			),
 	);
+	registerRunbookTools(server, data.runbooks, runId);
 	registerSourceTools(server, (kind) => data.querySources(kind));
 	return server;
 }

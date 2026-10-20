@@ -38,6 +38,9 @@ async function upstream(
 
 function gateway(rows: Row[]) {
 	const prisma = {
+		setting: { findUnique: async () => null },
+		serviceRepository: { count: async () => 0 },
+		investigation: { findUnique: async () => null },
 		connection: {
 			findMany: async (args: {
 				where?: { integration?: { templateId?: string } };
@@ -127,6 +130,8 @@ describe("gateway source tools (#848 Phase 1)", () => {
 			"prometheus_alerts",
 			"prometheus_query",
 			"prometheus_query_range",
+			"runbooks_list",
+			"runbooks_read",
 			"sources_list",
 		]);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
@@ -186,6 +191,25 @@ describe("gateway source tools (#848 Phase 1)", () => {
 		expect(out.text).not.toContain("leaky-token");
 		expect(JSON.parse(out.text)).toMatchObject({ httpStatus: 401 });
 	});
+
+	for (const status of [401, 403, 500])
+		it(`never forwards an upstream ${status} body, even an encoded credential (#848, OBJ-001)`, async () => {
+			const base = await upstream((req) => ({
+				status,
+				body: `upstream-says ${Buffer.from(String(req.headers.authorization)).toString("hex")}`,
+			}));
+			const g = gateway([
+				{ id: "p1", templateId: "prometheus", credentials: { kind: "bearer", token: "leaky-token" }, baseUrl: base },
+			]);
+			const out = await tool(g, "prometheus_query", { query: "up" });
+			expect(out.isError).toBe(true);
+			expect(out.text).not.toContain("upstream-says");
+			expect(JSON.parse(out.text)).toEqual({
+				source: "p1",
+				httpStatus: status,
+				error: `the source answered HTTP ${status}`,
+			});
+		});
 
 	it("caps Prometheus series, points per series, and result characters", async () => {
 		let shape: "series" | "points" | "huge" = "series";
@@ -275,7 +299,7 @@ describe("gateway source tools (#848 Phase 1)", () => {
 		]);
 		const out = await tool(g, "alertmanager_alerts", {});
 		expect(out.isError).toBe(true);
-		expect(out.text).toContain("redirected to another host");
+		expect(out.text).toContain("would leave the source's origin");
 		expect(otherHit).toBe(false);
 	});
 

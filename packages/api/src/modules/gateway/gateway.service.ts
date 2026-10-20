@@ -5,16 +5,18 @@ import type { AddressInfo } from "node:net";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
+import {
+	RunWorkspaceSchema,
+	UNSUPPORTED_KNOWLEDGE_VENDORS,
+	UNSUPPORTED_SCM_VENDORS,
+} from "@prismalens/contracts/schemas";
 import type { GatewayEntry } from "@prismalens/engine";
 import { getTemplate } from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
-import {
-	credentialSecrets,
-	type SourceRequestOptions,
-	sourceRequestFn,
-} from "../integrations/source-request.js";
+import { openSource } from "../integrations/open-source.js";
+import type { SourceRequestOptions } from "../integrations/source-request.js";
 import {
 	CATEGORY_TOOLS,
 	type GatewayData,
@@ -22,11 +24,18 @@ import {
 	type InvestigationsQuery,
 	type PastInvestigation,
 	SOURCE_CATEGORIES,
+	type SourceCategory,
 	type SourceStatus,
 	type SourceView,
 	TEMPLATE_CATEGORY,
 } from "./gateway.tools.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
+import {
+	listRunbooks,
+	type RunbookEntry,
+	type RunbookRepo,
+	readRunbook,
+} from "./runbooks.js";
 import {
 	failureReason,
 	LIMITS,
@@ -41,6 +50,8 @@ const QUERY_TIMEOUT_MS = 20_000;
 
 /** The route, under the global `api` prefix: one path per run. */
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
+
+const RUNBOOKS_SETTING = "sources.runbooks.enabled";
 
 const logger = new Logger({ context: "Gateway" });
 
@@ -108,10 +119,98 @@ export class GatewayService {
 	}
 
 	readonly data: GatewayData = {
-		sources: () => this.sources(),
+		sources: (runId) => this.sources(runId),
+		runbooks: {
+			list: async (runId, service) =>
+				(await this.runbooksEnabled())
+					? listRunbooks(await this.runbookRepos(runId), service)
+					: [],
+			read: async (runId, path, service) =>
+				(await this.runbooksEnabled())
+					? readRunbook(await this.runbookRepos(runId), path, service)
+					: {
+							ok: false,
+							error: "Runbook discovery is turned off in PrismaLens.",
+						},
+		},
 		searchInvestigations: (q) => this.searchInvestigations(q),
 		querySources: (kind) => this.querySources(kind),
 	};
+
+	/** On unless the operator switched it off: the connect flow for runbooks is a toggle. */
+	async runbooksEnabled(): Promise<boolean> {
+		const row = await this.prisma.setting.findUnique({
+			where: { key: RUNBOOKS_SETTING },
+			select: { value: true },
+		});
+		return row?.value !== "false";
+	}
+
+	async setRunbooksEnabled(enabled: boolean): Promise<void> {
+		await this.prisma.setting.upsert({
+			where: { key: RUNBOOKS_SETTING },
+			create: {
+				key: RUNBOOKS_SETTING,
+				value: String(enabled),
+				type: "boolean",
+				category: "sources",
+			},
+			update: { value: String(enabled) },
+		});
+	}
+
+	/** The repos the run recorded, each at the commit it saw. */
+	private async runbookRepos(runId: string): Promise<RunbookRepo[]> {
+		const row = await this.prisma.investigation.findUnique({
+			where: { id: runId },
+			select: { workspace: true },
+		});
+		if (!row?.workspace) return [];
+		try {
+			const ws = RunWorkspaceSchema.safeParse(JSON.parse(row.workspace));
+			return ws.success
+				? ws.data.repos
+						.filter((r) => r.services.length)
+						.map((r) => ({
+							name: r.name,
+							dir: r.dir,
+							head: r.head,
+							subPath: r.subPath,
+							services: r.services,
+						}))
+				: [];
+		} catch {
+			return [];
+		}
+	}
+
+	private async runbookSource(
+		runId: string | undefined,
+	): Promise<SourceView["sources"][number]> {
+		const base = {
+			id: "runbooks",
+			label: "Runbooks in your repos",
+			kind: "builtin",
+		};
+		if (!(await this.runbooksEnabled()))
+			return { ...base, status: "not-configured", reason: "Turned off." };
+		let found: RunbookEntry[] | null = null;
+		if (runId) found = await listRunbooks(await this.runbookRepos(runId));
+		const bound = found
+			? found.length
+			: await this.prisma.serviceRepository.count();
+		return bound
+			? {
+					...base,
+					status: "connected",
+					...(found ? { count: found.length } : {}),
+				}
+			: {
+					...base,
+					status: "not-configured",
+					reason: "No runbooks found in the repos bound to services.",
+				};
+	}
 
 	private async querySources(kind: QueryKind): Promise<QuerySource[]> {
 		const rows = await this.prisma.connection.findMany({
@@ -135,27 +234,17 @@ export class GatewayService {
 		);
 	}
 
-	/** A source's request function; its credential is decrypted here and never leaves the api. */
 	private async openSource(
 		src: { id: string; label: string; kind: QueryKind },
 		opts: SourceRequestOptions,
 	): Promise<QuerySource> {
-		const unusable = (reason: string) => ({
-			...src,
-			secrets: [],
-			unusable: reason,
-		});
 		if (!this.integrations)
-			return unusable("PrismaLens cannot open this source here");
-		const base = await this.integrations.connectionBaseUrl(src.id);
-		if (!base) return unusable("the connection has no URL");
-		const parsed = await this.integrations.sourceCredential(src.id);
-		if (!parsed.ok) return unusable(parsed.message);
-		return {
-			...src,
-			secrets: credentialSecrets(parsed.credential),
-			request: sourceRequestFn(base, parsed, opts),
-		};
+			return {
+				...src,
+				secrets: [],
+				unusable: "PrismaLens cannot open this source here",
+			};
+		return (await openSource(this.integrations, src, opts)) as QuerySource;
 	}
 
 	/** Connected when the source's read-only verify path answers 2xx within the probe timeout. */
@@ -185,7 +274,8 @@ export class GatewayService {
 		}
 	}
 
-	private async sources(): Promise<SourceView[]> {
+	/** Every category with its status; the Sources page and `sources_list` read the same answer. */
+	async sources(runId?: string): Promise<SourceView[]> {
 		const rows = await this.prisma.connection.findMany({
 			where: { status: { not: "REVOKED" } },
 			select: {
@@ -217,6 +307,7 @@ export class GatewayService {
 					)
 				: [],
 		);
+		const runbooks = await this.runbookSource(runId);
 		return SOURCE_CATEGORIES.map((category) => {
 			if (category === "knowledge")
 				return {
@@ -229,10 +320,18 @@ export class GatewayService {
 							kind: "builtin",
 							status: "connected",
 						},
+						runbooks,
+						...UNSUPPORTED_KNOWLEDGE_VENDORS.map((vendor) => ({
+							id: vendor.toLowerCase(),
+							label: vendor,
+							kind: "unsupported",
+							status: "not-configured" as const,
+							reason: `${vendor} is not supported yet.`,
+						})),
 					],
-					tools: ["investigations_search"],
+					tools: CATEGORY_TOOLS.knowledge ?? [],
 				};
-			const sources = rows
+			const connectable = rows
 				.filter((r) => TEMPLATE_CATEGORY[r.integration.templateId] === category)
 				.map((r) => {
 					const probed = probes.get(r.id);
@@ -254,9 +353,24 @@ export class GatewayService {
 							: {}),
 					};
 				});
-			const status: SourceStatus = sources.some((s) => s.status === "connected")
+			const sources =
+				category === "scm"
+					? [
+							...connectable,
+							...UNSUPPORTED_SCM_VENDORS.map((vendor) => ({
+								id: vendor.toLowerCase().replace(/ /g, "-"),
+								label: vendor,
+								kind: "unsupported",
+								status: "not-configured" as const,
+								reason: `${vendor} is not supported yet.`,
+							})),
+						]
+					: connectable;
+			const status: SourceStatus = connectable.some(
+				(s) => s.status === "connected",
+			)
 				? "connected"
-				: sources.length
+				: connectable.length
 					? "unreachable"
 					: "not-configured";
 			return {
@@ -266,8 +380,7 @@ export class GatewayService {
 				tools: CATEGORY_TOOLS[category] ?? [],
 				...(status === "not-configured"
 					? {
-							howToConnect:
-								"Connect one in PrismaLens under Settings, Integrations.",
+							howToConnect: howToConnect(category),
 						}
 					: {}),
 			};
@@ -340,4 +453,10 @@ export class GatewayService {
 				: null,
 		}));
 	}
+}
+
+function howToConnect(category: SourceCategory): string {
+	return category === "deploys"
+		? "Send deploy events with `pl deploy` from the deploy job; see PrismaLens under Settings, Data sources."
+		: "Connect one in PrismaLens under Settings, Data sources.";
 }
