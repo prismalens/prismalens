@@ -22,13 +22,13 @@ import {
 	type MetricsQueries,
 	type QueryBudget,
 	QueryBudgetExceededError,
-	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ChangeEventsService } from "../changes/change-events.service.js";
 import { ConnectorResolverService } from "../integrations/connector-resolver.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import { sourceRequestFn } from "../integrations/source-request.js";
 import { metricUnit } from "./metric-unit.js";
 import {
 	breaches,
@@ -547,7 +547,10 @@ export class ImpactService {
 			label: chosen.label,
 			baseUrl: chosen.baseUrl,
 			metrics,
-			request: urlOnlyRequestFn(chosen.baseUrl),
+			request: sourceRequestFn(
+				chosen.baseUrl,
+				await this.integrations.sourceCredential(chosen.connectionId),
+			),
 		};
 	}
 

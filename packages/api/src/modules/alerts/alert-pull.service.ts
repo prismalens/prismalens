@@ -12,10 +12,10 @@ import type { PrometheusAlert } from "@prismalens/contracts";
 import {
 	PrometheusMetricsSegment,
 	type RangeSeries,
-	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
+import { sourceRequestFn } from "../integrations/source-request.js";
 import { WebhooksService } from "../webhooks/webhooks.service.js";
 import { alertmanagerFingerprint } from "./alertmanager-fingerprint.js";
 
@@ -307,7 +307,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 					continue;
 				}
 
-				const requestFn = urlOnlyRequestFn(baseUrl);
+				const requestFn = sourceRequestFn(
+					baseUrl,
+					await this.integrationsService.sourceCredential(conn.id),
+				);
 				let seriesList: RangeSeries[] = [];
 				try {
 					seriesList = await metricsSegment.rangeQuery(requestFn, {
@@ -679,7 +682,10 @@ export class AlertPullService implements OnApplicationBootstrap {
 				fail("Connection has no baseUrl");
 				continue;
 			}
-			const requestFn = urlOnlyRequestFn(baseUrl);
+			const requestFn = sourceRequestFn(
+				baseUrl,
+				await this.integrationsService.sourceCredential(conn.id),
+			);
 
 			let rawAlerts: unknown;
 			try {
@@ -710,7 +716,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 	}
 
 	private async upLongEnough(
-		requestFn: ReturnType<typeof urlOnlyRequestFn>,
+		requestFn: ReturnType<typeof sourceRequestFn>,
 		now: Date,
 	): Promise<boolean> {
 		try {

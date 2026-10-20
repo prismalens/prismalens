@@ -48,7 +48,10 @@ describe("AlertPullService (#605)", () => {
 		};
 		alert: { findFirst: ReturnType<typeof vi.fn> };
 	};
-	let integrationsService: { connectionBaseUrl: ReturnType<typeof vi.fn> };
+	let integrationsService: {
+		connectionBaseUrl: ReturnType<typeof vi.fn>;
+		sourceCredential: ReturnType<typeof vi.fn>;
+	};
 	let webhooksService: {
 		processPrometheusAlert: ReturnType<typeof vi.fn>;
 		resolvePrometheusAlert: ReturnType<typeof vi.fn>;
@@ -78,6 +81,9 @@ describe("AlertPullService (#605)", () => {
 		};
 		integrationsService = {
 			connectionBaseUrl: vi.fn(),
+			sourceCredential: vi
+				.fn()
+				.mockResolvedValue({ ok: true, credential: { kind: "none" } }),
 		};
 		webhooksService = {
 			processPrometheusAlert: vi.fn().mockResolvedValue({ alertId: "alt-1", isNew: true }),

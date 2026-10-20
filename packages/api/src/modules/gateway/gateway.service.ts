@@ -6,9 +6,17 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import type { GatewayEntry } from "@prismalens/engine";
+import { getTemplate } from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { IntegrationsService } from "../integrations/integrations.service.js";
 import {
+	credentialSecrets,
+	type SourceRequestOptions,
+	sourceRequestFn,
+} from "../integrations/source-request.js";
+import {
+	CATEGORY_TOOLS,
 	type GatewayData,
 	gatewayMcpServer,
 	type InvestigationsQuery,
@@ -19,6 +27,17 @@ import {
 	TEMPLATE_CATEGORY,
 } from "./gateway.tools.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
+import {
+	failureReason,
+	LIMITS,
+	QUERY_KINDS,
+	type QueryKind,
+	type QuerySource,
+} from "./source-tools.js";
+
+/** sources_list's probe: cheap, read-only, short (#848). */
+const PROBE_TIMEOUT_MS = 2_000;
+const QUERY_TIMEOUT_MS = 20_000;
 
 /** The route, under the global `api` prefix: one path per run. */
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
@@ -43,6 +62,7 @@ export class GatewayService {
 	constructor(
 		private readonly prisma: PrismaService,
 		@Optional() private readonly http?: HttpAdapterHost,
+		@Optional() private readonly integrations?: IntegrationsService,
 	) {}
 
 	/** The run's gateway entry, or null when the api is not listening on a reachable address. */
@@ -90,7 +110,80 @@ export class GatewayService {
 	readonly data: GatewayData = {
 		sources: () => this.sources(),
 		searchInvestigations: (q) => this.searchInvestigations(q),
+		querySources: (kind) => this.querySources(kind),
 	};
+
+	private async querySources(kind: QueryKind): Promise<QuerySource[]> {
+		const rows = await this.prisma.connection.findMany({
+			where: {
+				status: { not: "REVOKED" },
+				integration: { templateId: kind },
+			},
+			select: {
+				id: true,
+				label: true,
+				integration: { select: { label: true } },
+			},
+		});
+		return Promise.all(
+			rows.map((r) =>
+				this.openSource(
+					{ id: r.id, label: r.label || r.integration.label, kind },
+					{ timeoutMs: QUERY_TIMEOUT_MS, maxBytes: LIMITS.responseBytes },
+				),
+			),
+		);
+	}
+
+	/** A source's request function; its credential is decrypted here and never leaves the api. */
+	private async openSource(
+		src: { id: string; label: string; kind: QueryKind },
+		opts: SourceRequestOptions,
+	): Promise<QuerySource> {
+		const unusable = (reason: string) => ({
+			...src,
+			secrets: [],
+			unusable: reason,
+		});
+		if (!this.integrations)
+			return unusable("PrismaLens cannot open this source here");
+		const base = await this.integrations.connectionBaseUrl(src.id);
+		if (!base) return unusable("the connection has no URL");
+		const parsed = await this.integrations.sourceCredential(src.id);
+		if (!parsed.ok) return unusable(parsed.message);
+		return {
+			...src,
+			secrets: credentialSecrets(parsed.credential),
+			request: sourceRequestFn(base, parsed, opts),
+		};
+	}
+
+	/** Connected when the source's read-only verify path answers 2xx within the probe timeout. */
+	private async probe(src: {
+		id: string;
+		label: string;
+		kind: QueryKind;
+	}): Promise<{ ok: true } | { ok: false; reason: string }> {
+		const opened = await this.openSource(src, {
+			timeoutMs: PROBE_TIMEOUT_MS,
+			maxBytes: 64 * 1024,
+		});
+		if (!opened.request)
+			return { ok: false, reason: opened.unusable ?? "unusable" };
+		const verify = getTemplate(src.kind)?.verify ?? {
+			method: "GET",
+			path: "/",
+		};
+		try {
+			const res = await opened.request(verify.method, verify.path);
+			await res.body?.cancel();
+			return res.ok
+				? { ok: true }
+				: { ok: false, reason: `the source answered HTTP ${res.status}` };
+		} catch (e) {
+			return { ok: false, reason: failureReason(e) };
+		}
+	}
 
 	private async sources(): Promise<SourceView[]> {
 		const rows = await this.prisma.connection.findMany({
@@ -103,6 +196,27 @@ export class GatewayService {
 				integration: { select: { templateId: true, label: true } },
 			},
 		});
+		const queryable = (t: string): t is QueryKind =>
+			(QUERY_KINDS as readonly string[]).includes(t);
+		const probes = new Map(
+			this.integrations
+				? await Promise.all(
+						rows
+							.filter((r) => queryable(r.integration.templateId))
+							.map(
+								async (r) =>
+									[
+										r.id,
+										await this.probe({
+											id: r.id,
+											label: r.label || r.integration.label,
+											kind: r.integration.templateId as QueryKind,
+										}),
+									] as const,
+							),
+					)
+				: [],
+		);
 		return SOURCE_CATEGORIES.map((category) => {
 			if (category === "knowledge")
 				return {
@@ -121,14 +235,21 @@ export class GatewayService {
 			const sources = rows
 				.filter((r) => TEMPLATE_CATEGORY[r.integration.templateId] === category)
 				.map((r) => {
-					const status: SourceStatus =
-						r.status === "ACTIVE" ? "connected" : "unreachable";
+					const probed = probes.get(r.id);
+					const status: SourceStatus = probed
+						? probed.ok
+							? "connected"
+							: "unreachable"
+						: r.status === "ACTIVE"
+							? "connected"
+							: "unreachable";
 					return {
 						id: r.id,
 						label: r.label || r.integration.label,
 						kind: r.integration.templateId,
 						status,
-						...(status === "unreachable" && r.lastErrorAt
+						...(probed && !probed.ok ? { reason: probed.reason } : {}),
+						...(!probed && status === "unreachable" && r.lastErrorAt
 							? { lastErrorAt: r.lastErrorAt.toISOString() }
 							: {}),
 					};
@@ -142,13 +263,11 @@ export class GatewayService {
 				category,
 				status,
 				sources,
-				tools: [],
+				tools: CATEGORY_TOOLS[category] ?? [],
 				...(status === "not-configured"
 					? {
 							howToConnect:
-								category === "logs"
-									? "PrismaLens has no logs integration yet."
-									: "Connect one in PrismaLens under Settings, Integrations.",
+								"Connect one in PrismaLens under Settings, Integrations.",
 						}
 					: {}),
 			};

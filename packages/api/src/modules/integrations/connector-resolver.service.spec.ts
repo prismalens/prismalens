@@ -21,6 +21,9 @@ describe("ConnectorResolverService (#633)", () => {
 		mockIntegrationsService = {
 			findServiceIntegrations: vi.fn(),
 			connectionBaseUrl: vi.fn(),
+			sourceCredential: vi
+				.fn()
+				.mockResolvedValue({ ok: true, credential: { kind: "none" } }),
 		};
 
 		service = new ConnectorResolverService(
@@ -79,6 +82,7 @@ describe("ConnectorResolverService (#633)", () => {
 			label: "Service Prometheus",
 			baseUrl: "http://svc-prom.internal:9090",
 			segments: ["metrics"],
+			authenticated: false,
 		});
 	});
 
@@ -130,6 +134,7 @@ describe("ConnectorResolverService (#633)", () => {
 			label: "Service Prometheus",
 			baseUrl: "http://svc-prom.internal:9090",
 			segments: ["metrics"],
+			authenticated: false,
 		});
 		expect(resolved).toContainEqual({
 			templateId: "alertmanager",
@@ -137,6 +142,7 @@ describe("ConnectorResolverService (#633)", () => {
 			label: "Global Alertmanager",
 			baseUrl: "http://global-am.internal:9093",
 			segments: [],
+			authenticated: false,
 		});
 	});
 
@@ -175,7 +181,9 @@ describe("ConnectorResolverService (#633)", () => {
 			expect.objectContaining({
 				where: {
 					status: "ACTIVE",
-					integration: { templateId: { in: ["prometheus", "alertmanager"] } },
+					integration: {
+						templateId: { in: ["prometheus", "alertmanager", "loki"] },
+					},
 				},
 			}),
 		);

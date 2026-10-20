@@ -349,6 +349,9 @@ export class IntegrationsController {
 			postCreationAction: template.postIntegrationCreation.action,
 			postCreationNavigateTo: template.postIntegrationCreation.navigateTo,
 			...(template.gitHost ? { gitHost: true } : {}),
+			...(template.credentialKinds
+				? { credentialKinds: [...template.credentialKinds] }
+				: {}),
 			...(template.display.listed === false ? { listed: false } : {}),
 		};
 	}

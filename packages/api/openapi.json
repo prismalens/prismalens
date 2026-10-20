@@ -27575,6 +27575,12 @@
                       "gitHost": {
                         "type": "boolean"
                       },
+                      "credentialKinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "listed": {
                         "type": "boolean"
                       }
@@ -27903,6 +27909,12 @@
                     },
                     "gitHost": {
                       "type": "boolean"
+                    },
+                    "credentialKinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "listed": {
                       "type": "boolean"
@@ -28867,6 +28879,12 @@
                               "gitHost": {
                                 "type": "boolean"
                               },
+                              "credentialKinds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
                               "listed": {
                                 "type": "boolean"
                               }
@@ -29395,6 +29413,12 @@
                             },
                             "gitHost": {
                               "type": "boolean"
+                            },
+                            "credentialKinds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
                             },
                             "listed": {
                               "type": "boolean"
