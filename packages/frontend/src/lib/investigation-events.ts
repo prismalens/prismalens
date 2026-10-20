@@ -225,6 +225,8 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 				detail: event.text,
 			};
 		case "session_config":
+			// the PrismaLens-tools line waits for the #848 UX pass
+			if (event.option === "tools") return null;
 			return {
 				key: `${event.branchId}-${event.seq}`,
 				icon: event.accepted ? "check" : "warning",
@@ -373,10 +375,6 @@ export function sessionConfigLine(e: {
 	value: string;
 	accepted: boolean;
 }): string {
-	if (e.option === "tools")
-		return e.accepted
-			? "The agent took PrismaLens tools before the first prompt"
-			: "The agent did not load PrismaLens tools; a server named `prismalens` in your agent config can hide them.";
 	const what = e.option === "model" ? `model ${e.value}` : `${e.value} effort`;
 	return e.accepted
 		? `The agent took ${what} before the first prompt`
@@ -903,6 +901,7 @@ export function deriveTranscript(
 				closeGroup();
 				break;
 			case "session_config":
+				if (event.option === "tools") break;
 				closeGroup();
 				items.push({
 					kind: "line",
