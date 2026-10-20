@@ -75,10 +75,11 @@ export async function listBounded(
 	do {
 		let page: { tools: UpstreamTool[]; nextCursor?: string };
 		try {
-			page = (await up.client.listTools(cursor ? { cursor } : undefined, {
-				signal,
-				cacheMode: "bypass",
-			})) as typeof page;
+			// One page per request: the SDK's listTools gathers every page (06).
+			page = (await up.client.request(
+				{ method: "tools/list", params: cursor ? { cursor } : {} },
+				{ signal },
+			)) as typeof page;
 		} catch (e) {
 			// A first page too large or unreadable: the connection offers nothing.
 			if (!kept.length && !drops.size) throw e;

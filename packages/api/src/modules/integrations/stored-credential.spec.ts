@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { bearerOf, readStored, writeStored } from "./stored-credential.js";
 
 describe("stored-credential (#848 lane B)", () => {
-	it('Legacy gitlab-token row {apiKey:"glpat-1", baseUrl:"https://git.acme.io/api/v4"} reads as {ok:true, credential:{kind:"bearer", token:"glpat-1"}} with baseUrl "https://git.acme.io/api/v4"', () => {
+	it("a legacy gitlab-token row reads as bearer with its baseUrl beside it", () => {
 		const legacy = {
 			apiKey: "glpat-1",
 			baseUrl: "https://git.acme.io/api/v4",
@@ -23,7 +23,7 @@ describe("stored-credential (#848 lane B)", () => {
 		});
 	});
 
-	it("Round trip byte-for-byte: JSON.stringify(writeStored('gitlab-token', readStored(...).credential.credential, readStored(...).baseUrl)) equals JSON.stringify of the original legacy row, for a row with baseUrl and one without", () => {
+	it("a legacy row round-trips byte for byte, with and without baseUrl", () => {
 		const rowWithBaseUrl = {
 			apiKey: "glpat-1",
 			baseUrl: "https://git.acme.io/api/v4",
@@ -50,7 +50,7 @@ describe("stored-credential (#848 lane B)", () => {
 		expect(JSON.stringify(written2)).toBe(JSON.stringify(rowWithoutBaseUrl));
 	});
 
-	it('An oauth row for gitlab-token {kind:"oauth", authorizationUrl:"https://git.acme.io/oauth/authorize", tokenUrl:"https://git.acme.io/oauth/token", redirectUri:"http://127.0.0.1:6474/callback", clientId:"c", scopes:["read_api"], refreshToken:"r1", baseUrl:"https://git.acme.io/api/v4"} reads as kind oauth WITHOUT baseUrl inside the credential, baseUrl returned beside it; writeStored of it with a rotated refreshToken "r2" keeps baseUrl and kind', () => {
+	it("an oauth row keeps baseUrl beside the credential, and a rotated refresh token keeps both", () => {
 		const oauthRow = {
 			kind: "oauth" as const,
 			authorizationUrl: "https://git.acme.io/oauth/authorize",
@@ -79,7 +79,7 @@ describe("stored-credential (#848 lane B)", () => {
 		expect(written.refreshToken).toBe("r2");
 	});
 
-	it('A prometheus blob {kind:"basic", username:"u", password:"p"} reads as basic and writeStored("prometheus", c) has no baseUrl key', () => {
+	it("a prometheus basic row reads as basic and writes no baseUrl", () => {
 		const blob = {
 			kind: "basic" as const,
 			username: "u",
@@ -96,14 +96,14 @@ describe("stored-credential (#848 lane B)", () => {
 		expect(written).toEqual(blob);
 	});
 
-	it('A prometheus blob {} reads as kind "none"', () => {
+	it("a prometheus row with no kind reads as none", () => {
 		const res = readStored("prometheus", {});
 		expect(res.credential.ok).toBe(true);
 		if (!res.credential.ok) throw new Error("Expected ok credential");
 		expect(res.credential.credential.kind).toBe("none");
 	});
 
-	it('bearerOf({Authorization:"Bearer abc"}) is "abc"; bearerOf({authorization:"Bearer x"}) is "x"; bearerOf({Authorization:"Basic y"}) is undefined', () => {
+	it("bearerOf reads only a Bearer Authorization header", () => {
 		expect(bearerOf({ Authorization: "Bearer abc" })).toBe("abc");
 		expect(bearerOf({ authorization: "Bearer x" })).toBe("x");
 		expect(bearerOf({ Authorization: "Basic y" })).toBeUndefined();
