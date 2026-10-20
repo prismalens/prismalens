@@ -19,8 +19,8 @@ import {
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
-	RunUsageSchema,
 	RunEndReasonSchema,
+	RunUsageSchema,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";

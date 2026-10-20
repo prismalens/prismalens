@@ -152,7 +152,11 @@ const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 export type FileOf = (source: string) => FileAt | null;
 
 /** One evidence item as a row: its step, or where it came from (the citation the panel and the tree share). */
-export function evidenceRow(e: Evidence, steps: StepOf, fileOf?: FileOf): DetailRow {
+export function evidenceRow(
+	e: Evidence,
+	steps: StepOf,
+	fileOf?: FileOf,
+): DetailRow {
 	const step = steps(e);
 	const file = fileOf?.(e.source) ?? null;
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
