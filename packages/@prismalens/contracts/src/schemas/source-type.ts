@@ -99,6 +99,8 @@ export interface SourceOAuth {
 	shippedApp?: "github" | "gitlab" | "bitbucket";
 	/** The PrismaLens-owned app is offered only on this origin. */
 	cloudOrigin?: string;
+	/** "/path"s on a self-managed host's own origin (GitHub Enterprise Server), off `cloudOrigin`. */
+	selfManaged?: { authorize: string; token: string };
 }
 
 const httpQueryKinds = [
@@ -237,6 +239,10 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			scopesBoundGrant: true,
 			shippedApp: "github",
 			cloudOrigin: "https://api.github.com",
+			selfManaged: {
+				authorize: "/login/oauth/authorize",
+				token: "/login/oauth/access_token",
+			},
 		},
 		url: {
 			label: "API URL",

@@ -40,9 +40,16 @@ describe("oauth-apps (#848)", () => {
 			authorizationUrl: "https://gitlab.acme.io/oauth/authorize",
 			tokenUrl: "https://gitlab.acme.io/oauth/token",
 		});
-		expect(oauthEndpoints(github, "https://github.acme.io/api/v3")).toEqual({
+		expect(oauthEndpoints(github, "https://api.github.com")).toEqual({
 			authorizationUrl: "https://github.com/login/oauth/authorize",
 			tokenUrl: "https://github.com/login/oauth/access_token",
+		});
+	});
+
+	it("a GitHub Enterprise Server URL signs in at that host, never github.com", () => {
+		expect(oauthEndpoints(github, "https://github.acme.io/api/v3")).toEqual({
+			authorizationUrl: "https://github.acme.io/login/oauth/authorize",
+			tokenUrl: "https://github.acme.io/login/oauth/access_token",
 		});
 	});
 

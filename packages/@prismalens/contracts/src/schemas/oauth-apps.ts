@@ -30,6 +30,7 @@ type OAuthDescriptor = {
 		scopesBoundGrant: boolean;
 		shippedApp?: ShippedAppVendor;
 		cloudOrigin?: string;
+		selfManaged?: { authorize: string; token: string };
 	};
 };
 
@@ -40,9 +41,13 @@ export function oauthEndpoints(
 ): { authorizationUrl: string; tokenUrl: string } | null {
 	if (!d.oauth) return null;
 	const origin = new URL(sourceUrl).origin;
+	const own =
+		d.oauth.selfManaged && d.oauth.cloudOrigin && origin !== d.oauth.cloudOrigin
+			? d.oauth.selfManaged
+			: d.oauth;
 	return {
-		authorizationUrl: new URL(d.oauth.authorize, origin).href,
-		tokenUrl: new URL(d.oauth.token, origin).href,
+		authorizationUrl: new URL(own.authorize, origin).href,
+		tokenUrl: new URL(own.token, origin).href,
 	};
 }
 

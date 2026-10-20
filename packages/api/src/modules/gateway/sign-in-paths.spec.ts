@@ -299,6 +299,36 @@ describe("GitHub with your own app", () => {
 	});
 });
 
+describe("GitHub Enterprise Server with your own app", () => {
+	it("authorizes and exchanges at the GHE host, and github.com sees nothing", async () => {
+		const ghe = vendor("ghe.acme.test", "/login/oauth/access_token", {
+			refresh: false,
+			scope: "repo",
+		});
+		const dotcom = vendor("github.com", "/login/oauth/access_token");
+		vendors.push(ghe, dotcom);
+		const { authorizationUrl } = await sources.oauthStart(
+			{
+				draft: {
+					type: "github-token",
+					url: "https://ghe.acme.test/api/v3",
+					credential: { clientId: "ghe-client", clientSecret: "ghe-secret" },
+				},
+			},
+			ORIGIN,
+		);
+		expect(new URL(authorizationUrl).origin).toBe("https://ghe.acme.test");
+		await approve(ghe, authorizationUrl);
+		expect(ghe.tokenCalls[0]?.body.get("client_secret")).toBe("ghe-secret");
+		expect(dotcom.tokenCalls).toHaveLength(0);
+		const { blob } = await rowOf("github-token");
+		expect(blob).toMatchObject({
+			tokenUrl: "https://ghe.acme.test/login/oauth/access_token",
+			baseUrl: "https://ghe.acme.test/api/v3",
+		});
+	});
+});
+
 describe("Bitbucket", () => {
 	it("signs in with HTTP Basic client authentication and clones as x-token-auth", async () => {
 		const v = vendor("bitbucket.org", "/site/oauth2/access_token");
