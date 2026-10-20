@@ -8,7 +8,7 @@
  * terminates on its own and the report validates within one retry. Its
  * permission mode is its own (#673 w21), so nothing here provokes a write.
  *
- *   PRISMALENS_HARNESS_MODEL=opencode/muse-spark-1.3-contributor-free \
+ *   PRISMALENS_HARNESS_MODEL=opencode/deepseek-v4.1-flash-free \
  *   tsx scripts/acp-admission.ts opencode /path/to/clone
  *
  * The predicates live in `admission-checks.ts` and are tested there; this file
