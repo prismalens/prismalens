@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	BUILTIN_SOURCES,
 	CONNECT_STEP_BUDGET,
 	connectSteps,
 	SOURCE_CATEGORIES,
@@ -23,7 +24,12 @@ describe("connect step counts (#848)", () => {
 			metrics: stepsIn("metrics"),
 			logs: stepsIn("logs"),
 			scm: stepsIn("scm"),
-		}).toEqual({ metrics: 3, logs: 4, scm: 3 });
+			knowledge: Math.max(
+				...BUILTIN_SOURCES.filter((b) => b.category === "knowledge").map(
+					(b) => connectSteps(b).length,
+				),
+			),
+		}).toEqual({ metrics: 3, logs: 4, scm: 3, knowledge: 2 });
 	});
 
 	it("keeps every descriptor within its category's budget", () => {
@@ -31,6 +37,14 @@ describe("connect step counts (#848)", () => {
 			expect(connectSteps(t).length).toBeLessThanOrEqual(
 				CONNECT_STEP_BUDGET[t.category],
 			);
+	});
+
+	it("keeps runbooks to a toggle and a confirm", () => {
+		for (const b of BUILTIN_SOURCES)
+			expect(connectSteps(b).length).toBeLessThanOrEqual(
+				CONNECT_STEP_BUDGET[b.category],
+			);
+		expect(connectSteps(BUILTIN_SOURCES[0]!)).toEqual(["toggle", "confirm"]);
 	});
 
 	it("starts with pick and ends with confirm, one form in between", () => {

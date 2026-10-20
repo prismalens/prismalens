@@ -23,6 +23,9 @@ export class SourcesController {
 			connect: implement(sourcesContract.connect).handler(({ input }) =>
 				this.sources.connect(input),
 			),
+			setRunbooks: implement(sourcesContract.setRunbooks).handler(({ input }) =>
+				this.sources.setRunbooks(input.enabled),
+			),
 			retest: implement(sourcesContract.retest).handler(({ input }) =>
 				this.sources.retest(input.id),
 			),

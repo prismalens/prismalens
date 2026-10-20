@@ -169,6 +169,7 @@ describe("gateway tools (#848)", () => {
 		]),
 	};
 	const investigation = {
+		findUnique: vi.fn(async () => null),
 		findMany: vi.fn(async () => [
 			{
 				id: RUN_B,
@@ -191,7 +192,12 @@ describe("gateway tools (#848)", () => {
 		method: string,
 		params: Record<string, unknown> = {},
 	): Promise<Record<string, unknown>> {
-		const g = gateway({ connection, investigation });
+		const g = gateway({
+			connection,
+			investigation,
+			setting: { findUnique: async () => null },
+			serviceRepository: { count: async () => 0 },
+		});
 		const entry = g.lease(RUN_A);
 		const res = await g.serve(RUN_A, rpc(RUN_A, method, params, entry?.token));
 		expect(res.status).toBe(200);
@@ -212,6 +218,8 @@ describe("gateway tools (#848)", () => {
 			"prometheus_alerts",
 			"prometheus_query",
 			"prometheus_query_range",
+			"runbooks_list",
+			"runbooks_read",
 			"sources_list",
 		]);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
@@ -237,6 +245,44 @@ describe("gateway tools (#848)", () => {
 			["deploys", "not-configured"],
 			["knowledge", "connected"],
 		]);
+	});
+
+	it("sources_list reports runbooks not-configured and names Confluence and Notion as not supported yet", async () => {
+		const out = await call("tools/call", { name: "sources_list" });
+		const text = (out.result as { content: { text: string }[] }).content[0]
+			?.text as string;
+		const knowledge = JSON.parse(text).find(
+			(c: { category: string }) => c.category === "knowledge",
+		);
+		expect(knowledge.tools).toEqual(
+			expect.arrayContaining(["runbooks_list", "runbooks_read"]),
+		);
+		expect(
+			knowledge.sources.map((s: { id: string; status: string }) => [
+				s.id,
+				s.status,
+			]),
+		).toEqual([
+			["prismalens-investigations", "connected"],
+			["runbooks", "not-configured"],
+			["confluence", "not-configured"],
+			["notion", "not-configured"],
+		]);
+		expect(knowledge.sources[2].reason).toBe("Confluence is not supported yet.");
+	});
+
+	it("lists the runbook tools as read-only", async () => {
+		const out = await call("tools/list");
+		const tools = (
+			out.result as {
+				tools: { name: string; annotations?: { readOnlyHint?: boolean } }[];
+			}
+		).tools.filter((t) => t.name.startsWith("runbooks_"));
+		expect(tools.map((t) => t.name).sort()).toEqual([
+			"runbooks_list",
+			"runbooks_read",
+		]);
+		expect(tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
 	});
 
 	it("investigations_search keeps the operator's recorded cause apart and never returns this run", async () => {
