@@ -68,6 +68,8 @@ export interface AcpUpdate {
 	 * for `tool_call_update` an array of `{ type:"content", content:{ type:"text", text } }`.
 	 */
 	content?: unknown;
+	/** Codex's output: `{ formatted_output, exit_code }` for a command, `{ result, error }` for MCP; it sends no `content`. */
+	rawOutput?: unknown;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
 }
@@ -334,7 +336,7 @@ export class AcpAdapter {
 		const ok = u.status !== "failed";
 		const preview = ruleDenied(u._meta)
 			? RULE_DENIED
-			: truncate(flattenAcpContent(u.content), this.previewLimit);
+			: truncate(toolOutputText(u), this.previewLimit);
 		return {
 			kind: "tool_result",
 			...this.base(),
@@ -536,6 +538,31 @@ export function askInput(rawInput: unknown): string | null {
 		return null;
 	}
 	return text.slice(0, ASK_DETAIL_LIMIT);
+}
+
+/** The tool's output text: `content` (Claude Code), else Codex's `rawOutput` or terminal `_meta`. */
+export function toolOutputText(u: AcpUpdate): string {
+	const fromContent = flattenAcpContent(u.content);
+	if (fromContent) return fromContent;
+	const out = u.rawOutput;
+	if (typeof out === "string") return out;
+	if (out && typeof out === "object") {
+		const o = out as Record<string, unknown>;
+		if (typeof o.formatted_output === "string" && o.formatted_output) {
+			return o.formatted_output;
+		}
+		const res = o.result as { content?: unknown } | null | undefined;
+		const fromMcp = flattenAcpContent(res?.content);
+		if (fromMcp) return fromMcp;
+		if (typeof o.error === "string" && o.error) return o.error;
+		if (o.error && typeof o.error === "object") {
+			const m = (o.error as { message?: unknown }).message;
+			if (typeof m === "string") return m;
+		}
+	}
+	const term = (u._meta as { terminal_output?: { data?: unknown } } | undefined)
+		?.terminal_output?.data;
+	return typeof term === "string" ? term : "";
 }
 
 function ruleDenied(meta: unknown): boolean {
