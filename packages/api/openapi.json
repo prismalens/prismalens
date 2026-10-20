@@ -9916,6 +9916,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -11041,6 +11051,16 @@
                                               "status"
                                             ]
                                           }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        },
+                                        "parentId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
                                         }
                                       },
                                       "required": [
@@ -12185,6 +12205,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -13296,6 +13326,16 @@
                                             "status"
                                           ]
                                         }
+                                      },
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
+                                      },
+                                      "parentId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
                                       }
                                     },
                                     "required": [
@@ -14473,6 +14513,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -16275,6 +16325,16 @@
                                               "status"
                                             ]
                                           }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        },
+                                        "parentId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
                                         }
                                       },
                                       "required": [
@@ -16895,6 +16955,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -18159,6 +18229,16 @@
                                   "status"
                                 ]
                               }
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "parentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
                             }
                           },
                           "required": [
@@ -18776,6 +18856,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [

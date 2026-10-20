@@ -142,7 +142,8 @@ export type StepOf = (
 /** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
 const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 
-function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
+/** One evidence item as a row: its step, or where it came from (the citation the panel and the tree share). */
+export function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 	const step = steps(e);
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
