@@ -660,9 +660,10 @@ export async function* runInvestigation(
 		}
 		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
 		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
-		const confirmed = opts.gateway
-			? await opts.gateway.waitConfirmed(GATEWAY_CONFIRM_MS)
-			: false;
+		const confirmed =
+			opts.gateway && offer?.offered()
+				? await opts.gateway.waitConfirmed(GATEWAY_CONFIRM_MS)
+				: false;
 		if (offer)
 			yield adapter.sessionConfig("tools", GATEWAY_SERVER_NAME, confirmed);
 		const toolsLine =

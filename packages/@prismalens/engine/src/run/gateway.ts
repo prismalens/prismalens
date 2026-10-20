@@ -45,13 +45,19 @@ export function gatewayOffer(
 	delivery?: "mcp-config-file",
 ): {
 	pick: (capabilities: McpCapabilities | undefined) => McpServer[];
+	/** The agent was handed the server, so waiting for its first request can pay off. */
+	offered: () => boolean;
 	taken: () => boolean;
 } {
+	let offered = delivery === "mcp-config-file";
 	return {
-		pick: (capabilities) =>
-			delivery !== "mcp-config-file" && capabilities?.http === true
-				? [gatewayServer(entry)]
-				: [],
+		pick: (capabilities) => {
+			if (delivery === "mcp-config-file" || capabilities?.http !== true)
+				return [];
+			offered = true;
+			return [gatewayServer(entry)];
+		},
+		offered: () => offered,
 		taken: () => entry.confirmed(),
 	};
 }
