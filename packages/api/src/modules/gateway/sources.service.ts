@@ -287,9 +287,22 @@ export class SourcesService {
 				: {}),
 			...p.config,
 		};
+		let label = p.label ?? `${type.vendor} ${new URL(url).host}`;
+		if (!p.label) {
+			const taken = new Set(
+				(
+					await this.prisma.connection.findMany({
+						where: { integrationId: integration.id },
+						select: { label: true },
+					})
+				).map((c) => c.label),
+			);
+			for (let n = 2; taken.has(label); n++)
+				label = `${type.vendor} ${new URL(url).host} (${n})`;
+		}
 		const connection = await this.integrations.createConnection({
 			integrationId: integration.id,
-			label: p.label ?? `${type.vendor} ${new URL(url).host}`,
+			label,
 			credentials: writeStored(
 				type.id,
 				p.credential,

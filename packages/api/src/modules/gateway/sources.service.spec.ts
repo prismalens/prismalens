@@ -135,6 +135,7 @@ describe("detectSources", () => {
 function service(over: { integrations?: Partial<IntegrationsService> } = {}) {
 	const prisma = {
 		integration: { findFirst: vi.fn(async () => ({ id: "int-1" })) },
+		connection: { findMany: vi.fn(async () => []) },
 	} as unknown as PrismaService;
 	const integrations = {
 		createConnection: vi.fn(async () => ({ id: "conn-1" })),
