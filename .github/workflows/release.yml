@@ -77,6 +77,7 @@ jobs:
   standalone:
     needs: draft
     uses: ./.github/workflows/standalone.yml
+    secrets: inherit
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
@@ -87,6 +88,7 @@ jobs:
   desktop:
     needs: draft
     uses: ./.github/workflows/desktop.yml
+    secrets: inherit
     with:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
