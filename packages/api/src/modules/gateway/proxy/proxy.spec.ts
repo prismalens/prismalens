@@ -287,3 +287,78 @@ describe("McpProxy discovery bounds (OBJ-019)", () => {
 		expect(snap.connections[1]?.tools).toHaveLength(1);
 	});
 });
+
+describe("McpProxy r4 findings", () => {
+	it("scrubs a credential echoed in an embedded text resource, keeping the resource (OBJ-024)", async () => {
+		const s = fake("a.test", [tool("res")], {
+			result: () => ({
+				content: [
+					{
+						type: "resource",
+						resource: { uri: "file:///x", mimeType: "text/plain", text: `key=${TOKEN}` },
+					},
+				],
+			}),
+		});
+		const p = proxyOf([s], [conn("a", s.host)]);
+		await p.snapshot("r", 5000);
+		const r = await p.call("r", "a__res", {}, signal());
+		expect(JSON.stringify(r)).not.toContain(TOKEN);
+		expect(r.content[0]).toMatchObject({
+			type: "resource",
+			resource: { uri: "file:///x", text: "key=[redacted]" },
+		});
+	});
+
+	it("discovery's 2 MB budget does not cap later calls or pings (OBJ-027)", async () => {
+		const big = "x".repeat(768 * 1024);
+		const s = fake("a.test", [tool("big")], {
+			result: () => ({ content: [{ type: "text", text: big }] }),
+		});
+		const p = proxyOf([s], [conn("a", s.host)]);
+		await p.snapshot("r", 5000);
+		for (let i = 0; i < 4; i++) {
+			const r = await p.call("r", "a__big", {}, signal());
+			expect(r.isError).toBeUndefined();
+		}
+		expect(await p.ping("r", "id-a", 2000)).toEqual({ ok: true });
+	});
+
+	it("measures definitions in UTF-8 bytes: 15,000 CJK characters exceed 16 KB (OBJ-033)", async () => {
+		const s = fake("a.test", [tool("cjk", { description: "界".repeat(15_000) }), tool("small")]);
+		const c = (await proxyOf([s], [conn("a", s.host)]).snapshot("r", 5000)).connections[0];
+		expect(c?.tools.map((t) => t.upstream)).toEqual(["small"]);
+		expect(c?.dropped).toEqual([{ count: 1, why: "schema-bytes" }]);
+	});
+
+	it("a first page of exactly 64 tools with a next cursor still reports truncation (OBJ-034)", async () => {
+		const s = fake(
+			"a.test",
+			Array.from({ length: 100 }, (_, i) => tool(`t${String(i).padStart(3, "0")}`)),
+			{ pageSize: 64 },
+		);
+		const c = (await proxyOf([s], [conn("a", s.host)]).snapshot("r", 5000)).connections[0];
+		expect(s.pages).toBe(1);
+		expect(c?.tools).toHaveLength(64);
+		expect(c?.dropped?.[0]?.why).toBe("tool-count");
+		expect(c?.dropped?.[0]?.count).toBeGreaterThan(0);
+	});
+});
+
+describe("McpProxy duplicate names (OBJ-026)", () => {
+	it("a second connection with a taken name offers nothing; calls reach only the first", async () => {
+		const prod = fake("prod.test", [tool("t")]);
+		const staging = fake("staging.test", [tool("t")]);
+		const a = conn("n8n_prod", prod.host);
+		const b = { ...conn("n8n_prod", staging.host), id: "id-other" };
+		const p = proxyOf([prod, staging], [a, b]);
+		const snap = await p.snapshot("r", 5000);
+		expect(snap.connections.map((c) => [c.id, c.status, c.tools.length])).toEqual([
+			["id-n8n_prod", "connected", 1],
+			["id-other", "unreachable", 0],
+		]);
+		await p.call("r", "n8n_prod__t", {}, signal());
+		expect(prod.calls).toHaveLength(1);
+		expect(staging.calls).toHaveLength(0);
+	});
+});

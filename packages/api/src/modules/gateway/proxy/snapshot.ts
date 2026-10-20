@@ -31,6 +31,7 @@ export const LIMITS = {
 export type SnapshotConnection = ProxySnapshot["connections"][number];
 
 export const newMeter = (): Meter => ({
+	active: true,
 	received: 0,
 	maxResponse: LIMITS.proxy.bytesPerPage,
 	maxTotal: LIMITS.proxy.receivedPerConnection,
@@ -93,10 +94,9 @@ export async function listBounded(
 				drop(stopped);
 				continue;
 			}
-			const size = JSON.stringify({
-				d: t.description ?? "",
-				s: t.inputSchema,
-			}).length;
+			const size = Buffer.byteLength(
+				JSON.stringify({ d: t.description ?? "", s: t.inputSchema }),
+			);
 			if (size > P.bytesPerTool) {
 				drop("schema-bytes");
 				continue;
@@ -122,8 +122,17 @@ export async function listBounded(
 			budget.bytes += size;
 		}
 		cursor = page.nextCursor;
-		if (cursor && kept.length >= P.toolsPerConnection) stopped ??= "tool-count";
-		if (cursor && budget.tools >= P.toolsPerRun) stopped ??= "total-tools";
+		const atBound =
+			kept.length >= P.toolsPerConnection
+				? "tool-count"
+				: budget.tools >= P.toolsPerRun
+					? "total-tools"
+					: null;
+		// More pages exist past a bound: at least one tool is left out, unseen.
+		if (cursor && atBound && !stopped) {
+			stopped = atBound;
+			drop(atBound);
+		}
 	} while (cursor && !stopped);
 	const names = allocateOfferedNames(
 		c.name,

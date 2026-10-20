@@ -13,7 +13,7 @@ import {
 import { LOOPBACK_REDIRECT_URI } from "@prismalens/contracts/schemas";
 import { OAuthLoopback } from "./oauth-loopback.js";
 
-export type SignInError = "state" | "denied" | "exchange" | "probe";
+export type SignInError = "state" | "denied" | "exchange" | "probe" | "name";
 export type SignInOutcome = { connectionId: string } | { error: SignInError };
 
 export interface PendingFlow {

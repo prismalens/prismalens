@@ -14,7 +14,7 @@ const RS = "https://mcp.test";
 const REDIRECT = "http://127.0.0.1:6474/callback";
 
 /** A resource server and an authorization server with discovery, DCR and rotating refresh. */
-function world(o: { challengeScope?: string } = {}) {
+function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
 	const w = {
 		issuer: "https://as.test",
 		tokenEndpoint: "https://as.test/token",
@@ -33,6 +33,8 @@ function world(o: { challengeScope?: string } = {}) {
 		unauthorized: 0,
 		forbidScope: null as null | string,
 		calls: 0,
+		/** The bearer the resource server saw last; its tool echoes it. */
+		lastAuth: "",
 	};
 	const mcp = createMcpHandler(
 		() => {
@@ -42,7 +44,9 @@ function world(o: { challengeScope?: string } = {}) {
 			}) as never);
 			s.setRequestHandler("tools/call", async () => {
 				w.calls++;
-				return { content: [{ type: "text", text: "you" }] } as never;
+				return {
+					content: [{ type: "text", text: `you, holding ${w.lastAuth}` }],
+				} as never;
 			});
 			return s;
 		},
@@ -51,8 +55,8 @@ function world(o: { challengeScope?: string } = {}) {
 	const json = (b: unknown, status = 200) =>
 		new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
 	const mint = () => {
-		const a = `A${++w.n}`;
-		const r = `R${w.n}`;
+		const a = `A${++w.n}-access-secret`;
+		const r = `R${w.n}-refresh-secret`;
 		w.access.add(a);
 		w.liveRefresh.add(r);
 		return json({ access_token: a, token_type: "Bearer", refresh_token: r, expires_in: 3600 });
@@ -70,13 +74,16 @@ function world(o: { challengeScope?: string } = {}) {
 				issuer: w.issuer,
 				authorization_endpoint: `${w.issuer}/authorize`,
 				token_endpoint: w.tokenEndpoint,
-				registration_endpoint: `${w.issuer}/register`,
+				...(o.dcr === false
+					? {}
+					: { registration_endpoint: `${w.issuer}/register` }),
 				response_types_supported: ["code"],
 				code_challenge_methods_supported: ["S256"],
 				scopes_supported: ["a", "b", "c", "offline_access"],
 			});
 		}
 		if (url.pathname === "/register") {
+			if (o.dcr === false) return new Response("no", { status: 404 });
 			const id = `dcr-${w.registered.length + 1}`;
 			w.registered.push(id);
 			return json({ ...JSON.parse(body), client_id: id }, 201);
@@ -97,6 +104,7 @@ function world(o: { challengeScope?: string } = {}) {
 		}
 		if (url.origin === RS && url.pathname === "/mcp") {
 			const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+			w.lastAuth = token;
 			if (!w.access.has(token)) {
 				w.unauthorized++;
 				if (w.holdUnauthorized?.n === w.unauthorized) await w.holdUnauthorized.until;
@@ -128,7 +136,7 @@ function approve(w: ReturnType<typeof world>["w"], authorizationUrl: string): UR
 	return new URLSearchParams({ code, state: u.searchParams.get("state") ?? "" });
 }
 
-function setup(o: { challengeScope?: string } = {}) {
+function setup(o: { challengeScope?: string; dcr?: boolean } = {}) {
 	const { w, fetchFn } = world(o);
 	const store = new Map<string, McpOAuthCredential>();
 	const problems: string[] = [];
@@ -160,11 +168,16 @@ function setup(o: { challengeScope?: string } = {}) {
 	};
 	proxy.connections = async () => [...store.keys()].sort().map(conn);
 	const signIns = new SignIns();
-	async function signIn(id: string, scopeOverride?: string) {
+	async function signIn(
+		id: string,
+		scopeOverride?: string,
+		client?: { client_id: string; client_secret?: string },
+	) {
 		const flow = await proxy.startSignIn({
 			serverUrl: `${RS}/mcp`,
 			redirectUri: REDIRECT,
 			scopeOverride,
+			...(client ? { client } : {}),
 			onSignedIn: async (credential) => {
 				store.set(id, credential);
 				return id;
@@ -173,7 +186,7 @@ function setup(o: { challengeScope?: string } = {}) {
 		await signIns.register(flow.state, flow, false);
 		return flow;
 	}
-	return { w, store, proxy, signIns, signIn, problems };
+	return { w, store, proxy, signIns, signIn, problems, conn };
 }
 
 const signal = () => new AbortController().signal;
@@ -304,5 +317,50 @@ describe("MCP insufficient scope", () => {
 		expect(r.isError).toBe(true);
 		expect(JSON.stringify(r.content)).toContain("needs permission: admin");
 		expect(problems).toContain("needs permission: admin");
+	});
+});
+
+describe("MCP r4 findings", () => {
+	it("a token refreshed during the call is scrubbed from its result (OBJ-023)", async () => {
+		const { w, proxy, store } = await signedIn();
+		await proxy.snapshot("run-1", 5000);
+		expireAccess(w);
+		const r = await proxy.call("run-1", "one__whoami", {}, signal());
+		const fresh = store.get("one")?.tokens?.access_token ?? "";
+		expect(w.refreshes).toHaveLength(1);
+		expect(fresh).toMatch(/^A/);
+		expect(JSON.stringify(r)).not.toContain(fresh);
+		expect(JSON.stringify(r)).toContain("[redacted]");
+	});
+
+	it("retesting a saved sign-in writes a rotated refresh token back to the connection (OBJ-025)", async () => {
+		const { w, proxy, store, conn } = await signedIn();
+		const before = store.get("one")?.tokens?.refresh_token;
+		expireAccess(w);
+		const c = conn("one");
+		const preview = await proxy.preview({
+			url: c.url,
+			name: c.name,
+			credential: c.credential,
+			connection: c.connection,
+		});
+		expect(preview.ok).toBe(true);
+		expect(w.refreshes).toHaveLength(1);
+		const after = store.get("one")?.tokens?.refresh_token;
+		expect(after).toBeTruthy();
+		expect(after).not.toBe(before);
+	});
+
+	it("a pasted client ID signs in where the server offers no registration (OBJ-031, API)", async () => {
+		const { w, store, signIns, signIn } = setup({ dcr: false });
+		const f = await signIn("one", undefined, { client_id: "pasted-id", client_secret: "pasted-secret" });
+		expect(new URL(f.authorizationUrl).searchParams.get("client_id")).toBe("pasted-id");
+		expect(await signIns.complete(approve(w, f.authorizationUrl))).toEqual({ connectionId: "one" });
+		expect(w.registered).toEqual([]);
+		expect(store.get("one")?.client).toMatchObject({
+			client_id: "pasted-id",
+			client_secret: "pasted-secret",
+			registered: "pasted",
+		});
 	});
 });

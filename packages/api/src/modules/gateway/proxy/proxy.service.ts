@@ -161,10 +161,18 @@ export class McpProxy implements ProxyPort {
 			byOffered: new Map(),
 		};
 		const budget = { tools: 0, bytes: 0 };
+		const names = new Set<string>();
 		// Run totals fill connection by connection in name order (06).
 		for (const o of opened) {
 			let view: SnapshotConnection;
-			if ("error" in o) view = unreachable(o.c, unreachableReason(o.error));
+			// A name already offered never routes a second instance's calls (OBJ-026).
+			const taken = names.has(o.c.name.toLowerCase());
+			names.add(o.c.name.toLowerCase());
+			if (taken) {
+				view = unreachable(o.c, "another MCP connection has this name");
+				if (!("error" in o)) void o.up.close();
+			} else if ("error" in o)
+				view = unreachable(o.c, unreachableReason(o.error));
 			else {
 				state.upstreams.set(o.c.id, o.up);
 				try {
@@ -176,6 +184,7 @@ export class McpProxy implements ProxyPort {
 					view = unreachable(o.c, unreachableReason(e));
 				}
 			}
+			if (!taken && !("error" in o)) o.up.meter.active = false;
 			for (const t of view.tools)
 				state.byOffered.set(t.offered, {
 					connectionId: o.c.id,
@@ -240,7 +249,11 @@ export class McpProxy implements ProxyPort {
 					timeout: CALL_TIMEOUT_MS,
 				},
 			)) as ProxyCallResult;
-			return scrubResult(result, credentialSecrets(current, c.id));
+			const after = await c.connection.load().catch(() => current);
+			return scrubResult(result, [
+				...credentialSecrets(current, c.id),
+				...credentialSecrets(after, c.id),
+			]);
 		} catch (e) {
 			const text = failureText(c.name, e);
 			if (text.includes("needs permission"))
@@ -266,18 +279,20 @@ export class McpProxy implements ProxyPort {
 		url: string;
 		name: string;
 		credential: SourceCredential;
+		/** A saved connection: refresh writes back to it under its own lock (OBJ-025). */
+		connection?: SourceConnection;
 	}): Promise<{
 		ok: boolean;
 		detail: string;
 		tools: { upstream: string; offered: string; shortened: boolean }[];
 	}> {
 		const c: McpConnection = {
-			id: `preview:${draft.url}`,
+			id: draft.connection?.id ?? `preview:${draft.url}`,
 			name: draft.name,
 			description: "",
 			url: draft.url,
 			credential: draft.credential,
-			connection: inMemory(draft.credential),
+			connection: draft.connection ?? inMemory(draft.credential),
 		};
 		let up: Upstream | null = null;
 		try {
@@ -322,7 +337,7 @@ export class McpProxy implements ProxyPort {
 		authorizationUrl: string;
 		complete(
 			params: URLSearchParams,
-		): Promise<{ connectionId: string } | { error: "exchange" | "probe" }>;
+		): Promise<{ connectionId: string } | { error: "exchange" | "name" }>;
 	}> {
 		const store = {
 			current: {
@@ -385,7 +400,11 @@ export class McpProxy implements ProxyPort {
 				} catch {
 					return { error: "exchange" };
 				}
-				return { connectionId: await p.onSignedIn(store.current) };
+				try {
+					return { connectionId: await p.onSignedIn(store.current) };
+				} catch {
+					return { error: "name" };
+				}
 			},
 		};
 	}

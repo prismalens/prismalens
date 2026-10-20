@@ -32,6 +32,8 @@ export class TooLargeError extends Error {}
 const MAX_REDIRECTS = 3;
 
 export interface Meter {
+	/** Discovery's budget; calls after the snapshot are not counted (OBJ-027). */
+	active: boolean;
 	/** Bytes received so far on this connection. */
 	received: number;
 	maxResponse: number;
@@ -42,7 +44,7 @@ export interface Meter {
 export type UsedTokens = WeakMap<Response, string>;
 
 function counted(res: Response, meter: Meter): Response {
-	if (!res.body) return res;
+	if (!res.body || !meter.active) return res;
 	let mine = 0;
 	const body = res.body.pipeThrough(
 		new TransformStream<Uint8Array, Uint8Array>({

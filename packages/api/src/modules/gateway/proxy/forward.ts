@@ -29,10 +29,22 @@ export function scrubResult(
 ): ProxyCallResult {
 	if (!secrets.length) return r;
 	const content = r.content.map((c) => {
-		const item = c as { type?: string; text?: string };
-		return item.type === "text" && typeof item.text === "string"
-			? { ...item, text: scrubSecrets(item.text, secrets) }
-			: c;
+		const item = c as {
+			type?: string;
+			text?: string;
+			resource?: { text?: unknown };
+		};
+		if (item.type === "text" && typeof item.text === "string")
+			return { ...item, text: scrubSecrets(item.text, secrets) };
+		if (item.type === "resource" && typeof item.resource?.text === "string")
+			return {
+				...item,
+				resource: {
+					...item.resource,
+					text: scrubSecrets(item.resource.text, secrets),
+				},
+			};
+		return c;
 	});
 	const structured =
 		r.structuredContent === undefined

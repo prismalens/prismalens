@@ -105,11 +105,17 @@ export class McpOAuthProvider implements OAuthClientProvider {
 		info: StoredOAuthClientInformation,
 	): Promise<void> {
 		if (!this.pending) throw new NeedsSignInError();
+		const prior = this.store.current.client;
 		await this.write({
 			client: {
 				client_id: info.client_id,
 				...(info.client_secret ? { client_secret: info.client_secret } : {}),
-				registered: this.clientMetadataUrl ? "cimd" : "dcr",
+				registered:
+					prior?.client_id === info.client_id
+						? prior.registered
+						: this.clientMetadataUrl
+							? "cimd"
+							: "dcr",
 			},
 		});
 	}

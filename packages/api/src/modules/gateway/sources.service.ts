@@ -31,6 +31,7 @@ import {
 	type OAuthHttp,
 	primeOAuthCache,
 	type SignInResult,
+	withConnectionLock,
 } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { CredentialsService } from "../integrations/crypto/credentials.service.js";
@@ -51,6 +52,9 @@ const PROBE_OPTS: SourceRequestOptions = {
 };
 
 type Env = Readonly<Record<string, string | undefined>>;
+
+/** One lock over every MCP name check and write, so two saves never take one name (OBJ-026). */
+const MCP_NAMES_LOCK = "mcp-connection-names";
 
 interface Target {
 	type: SourceTypeDescriptor;
@@ -138,9 +142,9 @@ export class SourcesService {
 	private async mcpReport(
 		draft: SourceDraft,
 		target: Target,
-		savedName?: string,
+		saved?: { name?: string; id: string },
 	): Promise<ProbeReport> {
-		const preview = await this.mcpPreview(draft, target, savedName);
+		const preview = await this.mcpPreview(draft, target, saved);
 		return {
 			type: MCP_TEMPLATE,
 			host: new URL(target.url).host,
@@ -162,17 +166,21 @@ export class SourcesService {
 	async mcpPreview(
 		draft: SourceDraft,
 		target = this.draftTarget(draft),
-		savedName?: string,
+		saved?: { name?: string; id: string },
 	): Promise<McpPreview> {
 		if (target.type.id !== MCP_TEMPLATE)
 			throw new BadRequestException("Only an MCP server lists tools");
-		const name = savedName ?? (await this.mcpName(draft));
+		const name = saved?.name ?? (await this.mcpName(draft));
 		if (!target.credential.ok)
 			throw new BadRequestException(target.credential.message);
 		return this.proxy.preview({
 			url: target.url,
 			name,
 			credential: target.credential.credential,
+			// A saved source refreshes into its own row, under its own lock (OBJ-025).
+			...(saved
+				? { connection: this.integrations.sourceConnection(saved.id) }
+				: {}),
 		});
 	}
 
@@ -208,6 +216,17 @@ export class SourcesService {
 		});
 		if (!row || row.integration.templateId !== MCP_TEMPLATE)
 			throw new NotFoundException("No MCP connection with that id");
+		return withConnectionLock(MCP_NAMES_LOCK, () =>
+			this.renameLocked(id, name, description, row.connectionConfigEnc),
+		);
+	}
+
+	private async renameLocked(
+		id: string,
+		name: string,
+		description: string,
+		configEnc: Uint8Array | null,
+	): Promise<{ ok: true }> {
 		const problem = validateConnectionName(
 			name,
 			(await this.proxy.connections())
@@ -217,8 +236,7 @@ export class SourcesService {
 		if (problem) throw new BadRequestException(problem);
 		let config: Record<string, string> = {};
 		try {
-			if (row.connectionConfigEnc)
-				config = this.credentials.decrypt(Buffer.from(row.connectionConfigEnc));
+			if (configEnc) config = this.credentials.decrypt(Buffer.from(configEnc));
 		} catch {
 			config = {};
 		}
@@ -251,17 +269,24 @@ export class SourcesService {
 		const credential = target.credential.ok
 			? target.credential.credential
 			: { kind: "none" as const };
-		const connectionId = await this.saveSource({
-			type: target.type,
-			url: target.url,
-			credential,
-			label: draft.label,
-			serviceLabel:
-				draft.serviceLabel ?? report.discovered.serviceLabel ?? undefined,
-			...(name && draft.description
-				? { config: { name, description: draft.description } }
-				: {}),
-		});
+		const save = () =>
+			this.saveSource({
+				type: target.type,
+				url: target.url,
+				credential,
+				label: draft.label,
+				serviceLabel:
+					draft.serviceLabel ?? report.discovered.serviceLabel ?? undefined,
+				...(name && draft.description
+					? { config: { name, description: draft.description } }
+					: {}),
+			});
+		const connectionId = name
+			? await withConnectionLock(MCP_NAMES_LOCK, async () => {
+					await this.mcpName({ ...draft, name });
+					return save();
+				})
+			: await save();
 		return { connectionId, report };
 	}
 
@@ -294,7 +319,10 @@ export class SourcesService {
 		};
 		const report =
 			type.id === MCP_TEMPLATE
-				? await this.mcpReport({ type: type.id, url }, target, config.name)
+				? await this.mcpReport({ type: type.id, url }, target, {
+						name: config.name,
+						id: connectionId,
+					})
 				: await runProbes(target, {
 						...PROBE_OPTS,
 						connection: this.integrations.sourceConnection(connectionId),
@@ -461,15 +489,18 @@ export class SourcesService {
 						}
 					: {}),
 				onSignedIn: (credential) =>
-					this.saveSource({
-						type,
-						url: draft.url,
-						credential,
-						label: draft.label ?? name,
-						config: { name, description: draft.description ?? "" },
-						grantedScopes: credential.scope
-							? credential.scope.split(" ")
-							: null,
+					withConnectionLock(MCP_NAMES_LOCK, async () => {
+						await this.mcpName({ ...draft, name });
+						return this.saveSource({
+							type,
+							url: draft.url,
+							credential,
+							label: draft.label ?? name,
+							config: { name, description: draft.description ?? "" },
+							grantedScopes: credential.scope
+								? credential.scope.split(" ")
+								: null,
+						});
 					}),
 			});
 		} catch {

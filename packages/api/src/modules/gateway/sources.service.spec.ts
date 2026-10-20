@@ -199,3 +199,52 @@ describe("SourcesService.connect", () => {
 		).rejects.toThrow(/does not take none/);
 	});
 });
+
+describe("MCP connection names stay unique (#848, OBJ-026)", () => {
+	it("two pending sign-ins with the same name: the second to finish is refused", async () => {
+		const saved: { id: string; name: string }[] = [];
+		const finishers: ((c: unknown) => Promise<string>)[] = [];
+		const prisma = {
+			integration: { findFirst: vi.fn(async () => ({ id: "int-1" })) },
+			connection: { findMany: vi.fn(async () => []) },
+		} as unknown as PrismaService;
+		const integrations = {
+			createConnection: vi.fn(
+				async (dto: { connectionConfig?: Record<string, string> }) => {
+					const id = `conn-${saved.length + 1}`;
+					saved.push({ id, name: dto.connectionConfig?.name ?? "" });
+					return { id };
+				},
+			),
+			createIntegration: vi.fn(),
+		} as unknown as IntegrationsService;
+		const proxy = {
+			connections: async () => saved.map((s) => ({ ...s })),
+			startSignIn: async (p: { onSignedIn: (c: unknown) => Promise<string> }) => {
+				finishers.push(p.onSignedIn);
+				return {
+					state: `s${finishers.length}`,
+					authorizationUrl: "https://as.test/authorize",
+					complete: async () => ({ connectionId: "x" }),
+				};
+			},
+		} as unknown as McpProxy;
+		const svc = new SourcesService(
+			prisma,
+			integrations,
+			{} as CredentialsService,
+			{} as GatewayService,
+			new SignIns(),
+			proxy,
+		);
+		const draft = (url: string) => ({
+			draft: { type: "mcp-server", url, name: "n8n_prod", description: "workflows" },
+		});
+		await svc.oauthStart(draft("https://prod.n8n.test/mcp"), "https://pl.example");
+		await svc.oauthStart(draft("https://staging.n8n.test/mcp"), "https://pl.example");
+		const credential = { kind: "mcp-oauth", serverUrl: "https://x", redirectUri: "https://pl.example/cb" };
+		await expect(finishers[0]?.(credential)).resolves.toBe("conn-1");
+		await expect(finishers[1]?.(credential)).rejects.toThrow(/already named n8n_prod/);
+		expect(saved.map((s) => s.name)).toEqual(["n8n_prod"]);
+	});
+});
