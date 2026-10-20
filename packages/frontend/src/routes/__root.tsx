@@ -14,6 +14,7 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { AlertTriangle, ServerOff } from "lucide-react";
+import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { NewIncidentProvider } from "@/components/shell/NewIncident";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
@@ -24,6 +25,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
+import { registerServiceWorker } from "@/lib/push";
 import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
@@ -54,6 +56,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
 			{ title: "PrismaLens" },
+			{ name: "theme-color", content: "#4f46e5" },
+			{ name: "apple-mobile-web-app-capable", content: "yes" },
 			{
 				name: "description",
 				content:
@@ -63,6 +67,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 		links: [
 			{ rel: "stylesheet", href: appCss },
 			{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+			// Installable as an app on a phone (#859).
+			{ rel: "manifest", href: "/manifest.webmanifest" },
+			{ rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
 		],
 		// The head function's `scripts` key is what router-core maps onto the
 		// match's `headScripts`, i.e. this renders INSIDE <head>. A raw <script>
@@ -77,6 +84,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
+	useEffect(registerServiceWorker, []);
 	return (
 		<html lang="en" className={DEFAULT_THEME} suppressHydrationWarning>
 			<head>
