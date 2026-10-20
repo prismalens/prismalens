@@ -18,7 +18,7 @@ export interface GatewayEntry {
 export const GATEWAY_SERVER_NAME = "prismalens";
 
 export const GATEWAY_PROMPT_LINE =
-	"PrismaLens tools (MCP server `prismalens`, read-only): `sources_list` says which data sources this run can reach; `investigations_search` finds past investigations and the causes operators recorded.";
+	"PrismaLens tools (MCP server `prismalens`, read-only): `sources_list` says which data sources this run can reach; `investigations_search` finds past investigations and the causes operators recorded; `prometheus_query`, `prometheus_query_range`, `prometheus_alerts`, `alertmanager_alerts` and `loki_query_range` read connected sources with the credentials PrismaLens holds.";
 
 export function gatewayServer(entry: GatewayEntry): McpServer {
 	return {

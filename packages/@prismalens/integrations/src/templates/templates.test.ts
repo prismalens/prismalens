@@ -7,6 +7,7 @@ import {
 	getAllTemplates,
 	getTemplate,
 	getTemplatesByCategory,
+	loki,
 	prometheus,
 } from "./index.js";
 
@@ -22,19 +23,21 @@ describe("observability templates (#633)", () => {
 		const observability = getTemplatesByCategory("observability");
 		expect(observability).toContain(prometheus);
 		expect(observability).toContain(alertmanager);
+		expect(getTemplate("loki")).toBe(loki);
+		expect(loki.verify?.path).toBe("/ready");
 	});
 
-	it("has no credential fields on purpose (URL only)", () => {
-		expect(prometheus.connectionCredentialFields).toEqual([]);
-		expect(alertmanager.connectionCredentialFields).toEqual([]);
-		expect(prometheus.display?.authModeLabel).toBe("URL only");
-		expect(alertmanager.display?.authModeLabel).toBe("URL only");
+	it("takes its credential as a kind, not fixed fields (#848)", () => {
+		for (const t of [prometheus, alertmanager, loki]) {
+			expect(t.connectionCredentialFields).toEqual([]);
+			expect(t.credentialKinds).toEqual(["none", "bearer", "basic", "header", "mtls"]);
+		}
 		expect(prometheus.verify?.path).toBe("/-/ready");
 		expect(alertmanager.verify?.path).toBe("/-/ready");
 	});
 
 	it("rejects userinfo credentials in baseUrl pattern", () => {
-		for (const t of [prometheus, alertmanager]) {
+		for (const t of [prometheus, alertmanager, loki]) {
 			const baseUrlField = t.connectionFields?.find((f) => f.name === "baseUrl");
 			expect(baseUrlField?.pattern).toBeDefined();
 			const regex = new RegExp(baseUrlField!.pattern!);
@@ -61,7 +64,6 @@ describe("observability templates (#633)", () => {
 			expect(baseUrlField?.description).toMatch(
 				/credentials and query strings in the url are not supported/i,
 			);
-			expect(baseUrlField?.description).toMatch(/read-only reverse proxy/i);
 		}
 	});
 });

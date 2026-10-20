@@ -84,6 +84,7 @@ export {
 	githubToken,
 	isLegacyTemplateId,
 	LEGACY_TEMPLATE_IDS,
+	loki,
 	prometheus,
 	render,
 } from "./templates/index.js";

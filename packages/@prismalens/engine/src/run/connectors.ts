@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	InvestigationContext,
-	TelemetryEndpoints,
+import {
+	type InvestigationContext,
+	type TelemetryEndpoints,
+	type TelemetrySource,
+	telemetrySources,
 } from "@prismalens/contracts/schemas";
 
 export interface ResolvedConnector {
@@ -12,7 +14,15 @@ export interface ResolvedConnector {
 	label: string;
 	baseUrl: string;
 	segments: string[];
+	/** Sends a credential PrismaLens holds; the agent reads it through the gateway, not curl (#848). */
+	authenticated?: boolean;
 }
+
+const SOURCE_KINDS = new Set<TelemetrySource["kind"]>([
+	"prometheus",
+	"alertmanager",
+	"loki",
+]);
 
 /** ADR 0007 §5: the engine port. Implemented by the API (credentials stay there); uncached; the engine never fetches. */
 export interface ConnectorProvider {
@@ -33,24 +43,36 @@ function unsafeEndpointReason(rawUrl: string): string | null {
 	return null;
 }
 
+/**
+ * The brief's telemetry: every usable source, plus the old single-URL fields (the shim,
+ * which keeps the prompt's curl recipes) taken from the first credential-free one.
+ */
 export function telemetryEndpointsFrom(
 	connectors: ResolvedConnector[],
 	warn: (message: string) => void = () => {},
 ): TelemetryEndpoints | undefined {
-	const usable = (templateId: string): string | undefined => {
-		const c = connectors.find((x) => x.templateId === templateId);
-		if (!c) return undefined;
+	const sources: TelemetrySource[] = [];
+	for (const c of connectors) {
+		if (!SOURCE_KINDS.has(c.templateId as TelemetrySource["kind"])) continue;
 		const reason = unsafeEndpointReason(c.baseUrl);
 		if (reason) {
 			warn(`${c.label}: ${reason}; left out of the investigation`);
-			return undefined;
+			continue;
 		}
-		return c.baseUrl.replace(/\/+$/, "");
-	};
-	const promUrl = usable("prometheus");
-	const amUrl = usable("alertmanager");
-	if (!promUrl && !amUrl) return undefined;
+		sources.push({
+			kind: c.templateId as TelemetrySource["kind"],
+			label: c.label,
+			url: c.baseUrl.replace(/\/+$/, ""),
+			...(c.authenticated ? { authenticated: true } : {}),
+		});
+	}
+	if (!sources.length) return undefined;
+	const open = (kind: TelemetrySource["kind"]) =>
+		sources.find((s) => s.kind === kind && !s.authenticated)?.url;
+	const promUrl = open("prometheus");
+	const amUrl = open("alertmanager");
 	return {
+		sources,
 		...(promUrl ? { prometheusUrl: promUrl } : {}),
 		...(amUrl ? { alertmanagerUrl: amUrl } : {}),
 	};
@@ -67,8 +89,9 @@ export function telemetryOrigins(
 	const t = context.telemetry;
 	const out = new Set<string>();
 	for (const raw of [
-		t?.prometheusUrl,
-		t?.alertmanagerUrl,
+		...telemetrySources(t)
+			.filter((s) => !s.authenticated)
+			.map((s) => s.url),
 		t?.apiUrl,
 		context.logs?.url,
 	]) {

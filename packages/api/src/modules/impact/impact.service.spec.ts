@@ -137,7 +137,10 @@ describe("ImpactService", () => {
 					? [{ templateId: "prometheus", connectionId, label: "prom", baseUrl, segments: ["metrics"] }]
 					: [],
 		};
-		const integrations = { baseUrlOf: () => baseUrl };
+		const integrations = {
+		baseUrlOf: () => baseUrl,
+		sourceCredential: async () => ({ ok: true, credential: { kind: "none" } }),
+	};
 		impact = new ImpactService(
 			prisma,
 			connectors as never,
@@ -403,7 +406,7 @@ describe("ImpactService", () => {
 			const broken = new ImpactService(
 				prisma,
 				{ resolve: async () => [{ templateId: "prometheus", connectionId, label: "p", baseUrl: "http://127.0.0.1:1", segments: [] }] } as never,
-				{ baseUrlOf: () => null } as never,
+				{ baseUrlOf: () => null, sourceCredential: async () => ({ ok: true, credential: { kind: "none" } }) } as never,
 				new ChangeEventsService(prisma, {} as never, {} as never),
 			);
 			expect(await broken.check(incidentId)).toMatchObject({

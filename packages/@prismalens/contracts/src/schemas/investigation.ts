@@ -813,13 +813,37 @@ export const FiringAlertSchema = z.object({
 });
 export type FiringAlert = z.infer<typeof FiringAlertSchema>;
 
+export const TelemetrySourceSchema = z.object({
+	kind: z.enum(["prometheus", "alertmanager", "loki"]),
+	label: z.string(),
+	url: z.string(),
+	/** Needs a credential PrismaLens holds: the agent reads it through the gateway's tools, not curl. */
+	authenticated: z.boolean().optional(),
+});
+export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
+
 /** Read-only telemetry + app endpoints the harness may query. */
 export const TelemetryEndpointsSchema = z.object({
+	/** Every connected source (#848). The two single-URL fields below are the shim older callers read. */
+	sources: z.array(TelemetrySourceSchema).optional(),
 	prometheusUrl: z.string().optional(),
 	alertmanagerUrl: z.string().optional(),
 	apiUrl: z.string().optional(),
 });
 export type TelemetryEndpoints = z.infer<typeof TelemetryEndpointsSchema>;
+
+/** The sources list, with a context that only has the old `prometheusUrl` / `alertmanagerUrl` read into it. */
+export function telemetrySources(t?: TelemetryEndpoints): TelemetrySource[] {
+	const out = [...(t?.sources ?? [])];
+	const legacy = [
+		["prometheus", t?.prometheusUrl],
+		["alertmanager", t?.alertmanagerUrl],
+	] as const;
+	for (const [kind, url] of legacy)
+		if (url && !out.some((s) => s.kind === kind && s.url === url))
+			out.push({ kind, label: kind, url });
+	return out;
+}
 
 // =============================================================================
 // ENGINE INVESTIGATION CONTEXT (ADR-0015) — the host-assembled input contract
