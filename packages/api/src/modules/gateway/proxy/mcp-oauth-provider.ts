@@ -95,6 +95,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
 		return {
 			client_id: c.client_id,
 			...(c.client_secret ? { client_secret: c.client_secret } : {}),
+			...(this.store.current.issuer
+				? { issuer: this.store.current.issuer }
+				: {}),
 		} as StoredOAuthClientInformation;
 	}
 
@@ -117,6 +120,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
 		return {
 			access_token: t.access_token,
 			token_type: "Bearer",
+			...(this.store.current.issuer
+				? { issuer: this.store.current.issuer }
+				: {}),
 			...(t.refresh_token ? { refresh_token: t.refresh_token } : {}),
 			...(t.expires_at
 				? {

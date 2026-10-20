@@ -89,7 +89,7 @@ function makeConnection(
 }
 
 describe("templateRequestFn (#848 lane B)", () => {
-	it('GitHub bearer row {apiKey:"ghp_x", baseUrl:"https://api.github.com"}: GET /user goes to https://api.github.com/user with headers Authorization "Bearer ghp_x", Accept "application/vnd.github.v3+json", X-GitHub-Api-Version "2022-11-28"', async () => {
+	it("a GitHub bearer row sends the template's headers to its base URL", async () => {
 		const { calls, fetchImpl } = fakeFetchQueue([
 			new Response(JSON.stringify({ login: "octocat" }), { status: 200 }),
 		]);
@@ -112,7 +112,7 @@ describe("templateRequestFn (#848 lane B)", () => {
 		});
 	});
 
-	it('Render row {apiKey:"rnd_x"} (no kind): GET /v1/owners goes to https://api.render.com/v1/owners with Authorization "Bearer rnd_x" and Accept "application/json"', async () => {
+	it("a Render row with no kind sends its token and Accept header", async () => {
 		const { calls, fetchImpl } = fakeFetchQueue([
 			new Response(JSON.stringify([]), { status: 200 }),
 		]);
