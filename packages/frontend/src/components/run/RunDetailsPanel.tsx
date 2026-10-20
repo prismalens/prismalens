@@ -323,7 +323,7 @@ function Sections({
 	);
 }
 
-function Row({
+export function Row({
 	row,
 	incidentId,
 	onJump,
@@ -333,8 +333,8 @@ function Row({
 	row: DetailRow;
 	incidentId: string;
 	onJump: (n: number) => void;
-	onOpenFile: (f: FileAt, origin: string) => void;
-	origin: string;
+	onOpenFile?: (f: FileAt, origin: string) => void;
+	origin?: string;
 }) {
 	return (
 		<div
@@ -374,11 +374,11 @@ function Row({
 						{row.sub}
 					</span>
 				)}
-				{row.file && (
+				{row.file && onOpenFile && (
 					<button
 						type="button"
 						id={origin}
-						onClick={() => row.file && onOpenFile(row.file, origin)}
+						onClick={() => row.file && onOpenFile(row.file, origin ?? "")}
 						className="self-start font-mono text-mono text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current [overflow-wrap:anywhere]"
 						data-testid="detail-file"
 					>
