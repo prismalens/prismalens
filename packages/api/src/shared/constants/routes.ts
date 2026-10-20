@@ -30,6 +30,7 @@ export const WEBHOOK_ROUTES = {
 	generic: "webhooks/generic",
 	prometheus: "webhooks/prometheus",
 	render: "webhooks/render",
+	deploy: "webhooks/deploy",
 } as const;
 
 /** Express-5 wildcard matching every webhook route, without the global prefix. */

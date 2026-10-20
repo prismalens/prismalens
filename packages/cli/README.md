@@ -72,6 +72,7 @@ install each.
 | `pair` | Print a one-time link that pairs another device with this instance, with `--tailscale` on its tailnet HTTPS address, or with `--operator` this machine's own browser. |
 | `connect` | Connect a data source the agent reads (metrics, logs, code): tests it with read-only probes, prints what passed, and saves it only when every required check passes. |
 | `sources` | List what investigations can read per category, connected or a blind spot; `sources test` re-runs the probes. |
+| `deploy` | Record a deploy from CI so investigations see what shipped: `prismalens deploy --service <name> --version <sha-or-tag>`. |
 | `reset` | Delete the workspace — database, secrets and logs — after naming the path and asking. |
 | `upgrade` | Upgrade the way PrismaLens was installed: npm, the installer, Homebrew or Scoop. A background service tries the new version first and goes back to the old one and its database if it fails. |
 | `service` | Run PrismaLens in the background for this user (`install`, `status`, `restart`, `uninstall`); Linux and macOS. `install --tailscale-serve` publishes it on your tailnet over HTTPS on every start. |

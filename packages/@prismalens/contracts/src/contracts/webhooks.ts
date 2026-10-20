@@ -16,6 +16,8 @@ export const WebhookDeliverySchema = z.object({
 export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
 
 import {
+	DeployWebhookResponseSchema,
+	DeployWebhookSchema,
 	GenericWebhookResponseSchema,
 	GenericWebhookSchema,
 	PrometheusWebhookResponseSchema,
@@ -66,6 +68,20 @@ export const webhooksContract = {
 		})
 		.input(RenderWebhookSchema)
 		.output(RenderWebhookResponseSchema),
+
+	/**
+	 * Record a deploy from any stack (#854); `prismalens deploy` calls it
+	 * POST /webhooks/deploy
+	 */
+	deploy: oc
+		.route({
+			method: "POST",
+			path: "/webhooks/deploy",
+			summary: "Record a deploy event",
+			tags: ["webhooks"],
+		})
+		.input(DeployWebhookSchema)
+		.output(DeployWebhookResponseSchema),
 
 	/**
 	 * The token a webhook sender presents. The operator's only (a loopback or

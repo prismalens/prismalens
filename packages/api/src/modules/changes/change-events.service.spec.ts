@@ -134,6 +134,7 @@ describe("ChangeEventsService", () => {
 			prisma,
 			new RepoSourceService(),
 			new GitCredentialService(prisma, credentials, integrations),
+			integrations,
 		);
 		server = await startGitHttpServer({ tls: false });
 

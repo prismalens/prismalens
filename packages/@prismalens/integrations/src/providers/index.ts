@@ -17,7 +17,11 @@ export type {
 	GitProvider,
 	GitProviderContext,
 } from "./git.interface.js";
-export { GitHubAdapter, GitHubVcsSegment } from "./github/index.js";
+export {
+	GitHubAdapter,
+	GitHubDeploymentsSegment,
+	GitHubVcsSegment,
+} from "./github/index.js";
 // Metrics provider (#633)
 export {
 	type AlertRule,
