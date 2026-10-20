@@ -12,6 +12,7 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
+	GATEWAY_RUN_FILE,
 	getHarnessProviderKeys,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
@@ -803,6 +804,7 @@ const RUN_WORKSPACE = [
 	"unmapped",
 	"home",
 	join("config", "node_modules"),
+	join("config", GATEWAY_RUN_FILE),
 ];
 
 function clearRunWorkspace(runDir: string): void {

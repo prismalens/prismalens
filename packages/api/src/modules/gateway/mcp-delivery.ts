@@ -32,21 +32,39 @@ const SOURCES_LIST_TOOL = {
 	annotations: { readOnlyHint: true, openWorldHint: false },
 };
 
-/** Text blocks over the cap are cut; images and other blocks pass unchanged. */
+/**
+ * One budget for the whole result: text blocks in order, then structured content,
+ * which is dropped whole when it does not fit. Images and other blocks pass unchanged.
+ */
 function capText(result: ProxyCallResult): ProxyCallResult {
+	let left = LIMITS.resultChars;
+	let cut = false;
+	const content = result.content.map((c) => {
+		const block = c as { type?: string; text?: string };
+		if (block.type !== "text" || typeof block.text !== "string") return c;
+		const text = block.text.slice(0, Math.max(0, left));
+		left -= block.text.length;
+		if (text.length === block.text.length) return c;
+		cut = true;
+		return { ...block, text };
+	});
+	const structured =
+		result.structuredContent === undefined
+			? 0
+			: JSON.stringify(result.structuredContent).length;
+	const keep = structured <= Math.max(0, left);
+	if (!cut && keep) return result;
+	const { structuredContent: _, ...rest } = result;
 	return {
-		...result,
-		content: result.content.map((c) => {
-			const block = c as { type?: string; text?: string };
-			return block.type === "text" &&
-				typeof block.text === "string" &&
-				block.text.length > LIMITS.resultChars
-				? {
-						...block,
-						text: `${block.text.slice(0, LIMITS.resultChars)}\n…[truncated at ${LIMITS.resultChars} characters]`,
-					}
-				: c;
-		}),
+		...rest,
+		...(keep ? { structuredContent: result.structuredContent } : {}),
+		content: [
+			...content,
+			{
+				type: "text",
+				text: `…[truncated at ${LIMITS.resultChars} characters${keep ? "" : "; structured content dropped"}]`,
+			},
+		],
 	};
 }
 
