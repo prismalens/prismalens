@@ -98,9 +98,9 @@ Feature: The conversation and the box
       And another run on INC-1 starts working
       Then the stopped run's box says "is working; message it or stop it" and sends nothing
 
-    Scenario: An agent that cannot continue says so
+    Scenario: An agent that kept no session continues in a fresh one
       Given the run was on deepagents and was stopped
-      Then the box reads "This run kept no agent session, so it can't continue. Start a new run." with "New run", and no field to type into
+      Then the box offers to continue in a fresh deepagents session, saying what it carries
 
   Rule: Agent controls
 

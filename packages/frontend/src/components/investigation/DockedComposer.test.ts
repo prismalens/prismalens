@@ -75,6 +75,13 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateHarnessSettings: () => ({ mutate: h.mutate }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@tanstack/react-query")>()),
+	useQuery: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/api/orpc-client", () => ({
+	orpc: { investigations: { handoff: { queryOptions: () => ({}) } } },
+}));
 vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => h.record,
 }));
@@ -178,17 +185,36 @@ describe("DockedComposer chips (#673 w52)", () => {
 		expect(h.mutate).not.toHaveBeenCalled();
 	});
 
-	it("on a finished run, opens a draft of that run plus the change, and never writes Settings", async () => {
+	it("on a finished run, the agent, model and effort chips pick the follow-up's agent; the level opens a draft, never broadening the follow-up", async () => {
 		setRecord({});
 		await render();
 		await click("pick-effort");
+		expect(q("effort").dataset.value).toBe("high");
 		await click("pick-mode");
 		const newRun = h.record.newRun as ReturnType<typeof vi.fn>;
 		expect(newRun.mock.calls.map((c) => c[0])).toEqual([
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "auto-edits" } },
-			{ choice: { harness: "opencode", model: "vendor/run", effort: "medium", accessLevel: "full-access" } },
+			{ choice: { harness: "opencode", model: "vendor/run", effort: "high", accessLevel: "full-access" } },
 		]);
 		expect(h.mutate).not.toHaveBeenCalled();
+	});
+
+	it("a finished run's follow-up goes to the agent the chips picked", async () => {
+		setRecord({});
+		await render();
+		await click("pick-agent");
+		const field = q("composer-input") as HTMLTextAreaElement;
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, "second opinion?");
+			field.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await click("composer-send");
+		expect(h.record.newRun).not.toHaveBeenCalled();
+		const run = h.record.run as { sendMessage: ReturnType<typeof vi.fn> };
+		expect(run.sendMessage).toHaveBeenCalledWith(
+			"second opinion?",
+			"queue",
+			expect.objectContaining({ to: { harness: "codex" } }),
+		);
 	});
 
 	it("sends the draft's own choice with the run, and nothing when it has none", async () => {

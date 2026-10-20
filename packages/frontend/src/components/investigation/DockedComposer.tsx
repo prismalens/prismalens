@@ -9,6 +9,7 @@ import {
 	isRunStateLive,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { type MutableRefObject, useState } from "react";
 import {
 	AccessChip,
@@ -29,8 +30,10 @@ import {
 } from "@/components/incidents/run-facts";
 import { startedBy, viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
 import { uploadAttachment } from "@/lib/attachments";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { handoffLine } from "@/lib/handoff-line";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
@@ -260,19 +263,47 @@ export function DockedComposer({
 
 	// A draft reads its own chips, then Settings, per field; Settings is never written here (#673 w52).
 	const own = record.draftChoice;
-	const runHarness = choice.harnesses.find((h) => h.id === inv?.harness);
+	// A finished run's chips pick where its follow-up goes; the run itself is unchanged.
+	const finished = !draft && !!inv && !live;
+	const [picks, setPicks] = useState<{ id: string; to: DraftChoice } | null>(
+		null,
+	);
+	const to = finished && picks?.id === inv?.id ? picks.to : {};
+	const runHarness = choice.harnesses.find(
+		(h) => h.id === (to.harness ?? inv?.harness),
+	);
 	const harness = draft
 		? (choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective)
 		: runHarness;
 	const hid = harness?.id as HarnessId;
 	const model = draft
 		? (own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "")
-		: (inv?.model ?? "");
+		: to.harness
+			? (to.model ?? choice.models[hid] ?? "")
+			: (to.model ?? inv?.model ?? "");
 	const effort = draft
 		? own.effort !== undefined
 			? own.effort
 			: (choice.efforts[hid] ?? null)
-		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+		: to.effort !== undefined
+			? to.effort
+			: to.harness
+				? (choice.efforts[hid] ?? null)
+				: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+	const preview = useQuery({
+		...orpc.investigations.handoff.queryOptions({
+			input: {
+				id: inv?.id ?? "",
+				...(to.harness ? { harness: to.harness } : {}),
+				...(to.model ? { model: to.model } : {}),
+			},
+		}),
+		enabled: finished && !ended && inv?.status !== "pending",
+		retry: false,
+	});
+	const handoff = preview.data
+		? handoffLine(preview.data, harness?.label ?? who.agent)
+		: null;
 	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
 	// An ended alert-started run's follow-up goes at the person's level, not its Auto (#673 w6-13).
@@ -301,8 +332,10 @@ export function DockedComposer({
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
 					: { ...now, accessLevel: c.level };
-		// On a run, the draft is this run with one change.
+		// On a run, the draft is this run with one change; a level never changes on a follow-up.
 		if (draft) record.setDraftChoice(next);
+		else if (finished && inv && c.kind !== "level")
+			setPicks({ id: inv.id, to: { ...to, ...next } });
 		else record.newRun({ choice: next });
 	};
 	const sent = {
@@ -330,6 +363,7 @@ export function DockedComposer({
 							? undefined
 							: `${harness?.label ?? own.harness} is not on this machine.`
 						: record.investigateBlocked;
+	const preflightBlock = finished ? (handoff?.problem ?? undefined) : undefined;
 	const blocked = !!blockedReason;
 
 	const chips = (
@@ -395,12 +429,25 @@ export function DockedComposer({
 					branchId,
 					attachments,
 					...(kind ? { kind } : {}),
+					...(finished && (to.harness || to.model || to.effort !== undefined)
+						? {
+								to: {
+									...(to.harness ? { harness: to.harness } : {}),
+									...(to.model ? { model: to.model } : {}),
+									...(to.effort !== undefined ? { effort: to.effort } : {}),
+								},
+							}
+						: {}),
 				});
 			}
 		}
 	};
 
-	const hint = ended ? null : thread.hint[action];
+	const hint = ended
+		? null
+		: finished && handoff && action !== "recheck"
+			? handoff.text
+			: thread.hint[action];
 	const above = hint ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
 			{hint}
@@ -466,7 +513,7 @@ export function DockedComposer({
 					dock={dock}
 					isPending={record.isStarting}
 					stopping={run.stopRequested}
-					blockedReason={blockedReason}
+					blockedReason={blockedReason ?? preflightBlock}
 					onStop={() => run.stop({ onError: stopFailed(toast) })}
 					undeliverable={run.undeliverable}
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}

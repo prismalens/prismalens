@@ -12,6 +12,8 @@ import {
 	EvidenceBlobQuerySchema,
 	EvidenceBlobSchema,
 	GetInvestigationEventsSchema,
+	HandoffPreviewQuerySchema,
+	HandoffPreviewSchema,
 	IdParamSchema,
 	InvestigationEventsPageSchema,
 	InvestigationQuerySchema,
@@ -131,6 +133,26 @@ export const investigationsContract = {
 			CONFLICT: {
 				message:
 					"The run ended, or has not started, before the message reached it",
+			},
+		}),
+
+	/**
+	 * What a finished run's follow-up would carry to the chosen agent, and whether it can take it
+	 * GET /investigations/:id/handoff
+	 */
+	handoff: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/handoff",
+			summary:
+				"Preview a follow-up's route, carried context and recipient preflight",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(HandoffPreviewQuerySchema))
+		.output(HandoffPreviewSchema)
+		.errors({
+			CONFLICT: {
+				message: "The run is live, or kept nothing to continue from",
 			},
 		}),
 

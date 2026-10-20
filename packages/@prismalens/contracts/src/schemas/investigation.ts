@@ -24,6 +24,7 @@ import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
 	LIVE_TURNS,
+	RUN_END_REASONS,
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
 
@@ -301,6 +302,7 @@ export const RunWorkspaceSchema = z.object({
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
+export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
@@ -345,6 +347,8 @@ export const InvestigationSchema = z.object({
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	/** How the last follow-up ended; null until one has (#673 w59). */
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
+	/** A failed run a restart cut off, or one its agent's usage limit ended; null otherwise. */
+	endReason: RunEndReasonSchema.nullable().optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
 	acpSessionId: z.string().nullable().optional(),
 	workspace: RunWorkspaceSchema.nullable().optional(),
@@ -573,10 +577,38 @@ export const SendInvestigationMessageSchema = z.object({
 	kind: FollowUpKindSchema.optional(),
 	/** Uploaded with `POST /incidents/{id}/attachments` first. */
 	attachments: AttachmentIdsSchema.optional(),
+	/** A finished run's follow-up may go to another agent or model; absent fields keep the run's. */
+	...RunChoiceSchema.shape,
 });
 export type SendInvestigationMessageInput = z.infer<
 	typeof SendInvestigationMessageSchema
 >;
+
+/** How a finished run's follow-up reaches an agent: its own session, or a handoff to a fresh one. */
+export const FollowUpRouteSchema = z.enum(["load", "handoff"]);
+export type FollowUpRoute = z.infer<typeof FollowUpRouteSchema>;
+
+/** Query of `GET /investigations/{id}/handoff`: the composer's chips for the follow-up. */
+export const HandoffPreviewQuerySchema = z.object({
+	harness: z.enum(HARNESS_IDS).optional(),
+	model: z.string().min(1).max(256).optional(),
+});
+
+/** What a follow-up would carry, shown before it is sent. */
+export const HandoffPreviewSchema = z.object({
+	route: FollowUpRouteSchema,
+	harness: z.enum(HARNESS_IDS),
+	/** e.g. "alert, 3 messages, report, 2 refuted hypotheses, 9 cited calls". */
+	carried: z.string(),
+	/** e.g. "31 tool calls (in the transcript file)"; null when nothing is left out. */
+	omitted: z.string().nullable(),
+	accessLevel: AccessLevelSchema.nullable(),
+	/** Set when the recipient cannot take it: what is wrong, and the fix. */
+	preflight: z.object({ problem: z.string(), fix: z.string() }).nullable(),
+	/** Set after a restart: the last command may or may not have completed. */
+	note: z.string().nullable(),
+});
+export type HandoffPreview = z.infer<typeof HandoffPreviewSchema>;
 
 export const SendInvestigationMessageResultSchema = z.object({
 	/** `resumed`: the run had finished and a follow-up reopened its session (#747). */
@@ -688,6 +720,17 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		attachments: z.array(AttachmentRefSchema).optional(),
 		/** The `message_queued` this delivers or gives up on; absent before #820. */
 		messageId: z.string().uuid().optional(),
+		/** A follow-up's first message: the agent, model and level that took it, and what a handoff carried. */
+		via: z
+			.object({
+				harness: z.string(),
+				model: z.string().nullable(),
+				accessLevel: AccessLevelSchema.nullable(),
+				handoff: z
+					.object({ carried: z.string(), omitted: z.string().nullable() })
+					.optional(),
+			})
+			.optional(),
 	}),
 	z.object({
 		/**
@@ -1038,6 +1081,12 @@ export const InvestigationJobDataSchema = z.object({
 			attachments: z.array(JobAttachmentSchema).optional(),
 			/** A continued run already ran a tool before it was stopped. */
 			sawEvidence: z.boolean().optional(),
+			/** The composer's chips for this follow-up; absent fields keep the run's. */
+			to: RunChoiceSchema.optional(),
+			/** A fresh session of `to.harness`, seeded with the handoff, instead of loading the run's own. */
+			handoff: z.boolean().optional(),
+			/** A restart cut the run off: the agent is told its last command may not have completed. */
+			afterRestart: z.boolean().optional(),
 			/** What the row said before the follow-up; a follow-up never changes it. */
 			restore: z.object({
 				status: WorkflowStatusSchema,
