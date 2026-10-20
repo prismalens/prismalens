@@ -68,6 +68,7 @@ export interface AcpUpdate {
 	 * for `tool_call_update` an array of `{ type:"content", content:{ type:"text", text } }`.
 	 */
 	content?: unknown;
+	rawOutput?: unknown;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
 }
@@ -334,7 +335,10 @@ export class AcpAdapter {
 		const ok = u.status !== "failed";
 		const preview = ruleDenied(u._meta)
 			? RULE_DENIED
-			: truncate(flattenAcpContent(u.content), this.previewLimit);
+			: truncate(
+					flattenAcpContent(u.content) || flattenMcpRawOutput(u.rawOutput),
+					this.previewLimit,
+				);
 		return {
 			kind: "tool_result",
 			...this.base(),
@@ -451,6 +455,18 @@ export function flattenAcpContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) return content.map(flattenAcpBlock).join("");
 	return flattenAcpBlock(content);
+}
+
+/** Codex sends an MCP call's outcome only as `rawOutput: { result, error }` (codex-acp createMcpRawOutput, #848). */
+function flattenMcpRawOutput(raw: unknown): string {
+	if (!raw || typeof raw !== "object") return "";
+	const { result, error } = raw as { result?: unknown; error?: unknown };
+	if (error && typeof error === "object" && "message" in error)
+		return String((error as { message: unknown }).message);
+	if (typeof error === "string") return error;
+	if (result && typeof result === "object" && "content" in result)
+		return flattenAcpContent((result as { content: unknown }).content);
+	return "";
 }
 
 function flattenAcpBlock(block: unknown): string {
