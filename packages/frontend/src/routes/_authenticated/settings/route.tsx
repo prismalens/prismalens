@@ -10,7 +10,6 @@ export type { SettingsTab };
 const TABS: SettingsTab[] = [
 	"harness",
 	"sources",
-	"data",
 	"integrations",
 	"devices",
 	"usage",

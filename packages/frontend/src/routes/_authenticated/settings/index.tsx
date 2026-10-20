@@ -10,7 +10,6 @@ import {
 	TelemetrySettings,
 } from "@/components/settings";
 import { AlertSources } from "@/components/settings/AlertSources";
-import { DataSources } from "@/components/settings/DataSources";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import {
 	SettingsFrame,
@@ -35,11 +34,6 @@ const SECTIONS = {
 		title: "Alert sources",
 		intro:
 			"Where alerts come from. Alertmanager can push to the webhook, or PrismaLens pulls from a URL.",
-	},
-	data: {
-		title: "Data sources",
-		intro:
-			"What the agent reads during an investigation: metrics, logs, code, knowledge and deploys. Connecting one takes a few steps and every check is a read.",
 	},
 	integrations: {
 		title: "Integrations",
@@ -86,7 +80,6 @@ function SettingsPage() {
 			{tab === "harness" && <HarnessSettings />}
 			{tab === "integrations" && <IntegrationsSettings />}
 			{tab === "sources" && <AlertSources />}
-			{tab === "data" && <DataSources />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "about" && <AboutSettings />}

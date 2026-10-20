@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { sourceType } from "@prismalens/contracts/schemas";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -23,7 +22,6 @@ import { orpc } from "@/lib/api/orpc-client";
 export type SettingsTab =
 	| "harness"
 	| "sources"
-	| "data"
 	| "integrations"
 	| "devices"
 	| "usage"
@@ -57,9 +55,6 @@ export function useSettingsSections(): SettingsSectionItem[] {
 	const pulled = (connections ?? []).filter((c) =>
 		PULL_TEMPLATES.has(c.templateId ?? ""),
 	).length;
-	const dataSources = (connections ?? []).filter((c) =>
-		sourceType(c.templateId ?? ""),
-	).length;
 	const named = [
 		...(reports?.slackConfigured ? ["Slack"] : []),
 		...listedIntegrations(integrations ?? [], connections ?? []).map(
@@ -84,15 +79,6 @@ export function useSettingsSections(): SettingsSectionItem[] {
 			tab: "sources",
 			label: "Alert sources",
 			line: connections ? sources || "None yet" : "",
-		},
-		{
-			tab: "data",
-			label: "Data sources",
-			line: connections
-				? dataSources
-					? `${dataSources} connected`
-					: "None yet"
-				: "",
 		},
 		{
 			tab: "integrations",
