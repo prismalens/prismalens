@@ -44,10 +44,10 @@ Feature: Agent and model picker
     Then the run asks for Codex, "gpt-5.6" and "high", and keeps them on the run
 
   Scenario: One model has one name, and a training tier says so
-    Given OpenCode offers "Claude Sonnet 5.5" and "Muse Spark 1.3 (free)"
+    Given OpenCode offers "Claude Sonnet 5.5" and "DeepSeek V4.1 Flash (free)"
     When I choose "Claude Sonnet 5.5"
     Then the picker's chip, the Settings row and the box on an incident all read "Claude Sonnet 5.5"
-    And "Muse Spark 1.3 (free)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice
+    And "DeepSeek V4.1 Flash (free)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice
 
   Scenario: Agents are shown by mark, the search names them, favourites across agents
     Then every rail tile is a tab showing the agent's mark and no label, and the search names the agent
