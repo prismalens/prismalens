@@ -111,7 +111,7 @@ export function registerSourceTools(
 			return result(
 				{
 					status: "not-configured",
-					howToConnect: `No ${kind} source is connected. Connect one in PrismaLens under Settings, Integrations.`,
+					howToConnect: `No ${kind} source is connected. Connect one in PrismaLens under Settings, Data sources.`,
 				},
 				[],
 			);

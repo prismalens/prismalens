@@ -27,6 +27,7 @@ export * from "./safe-url.js";
 export * from "./service.js";
 export * from "./settings.js";
 export * from "./source-credential.js";
+export * from "./source-type.js";
 export * from "./state-labels.js";
 export * from "./state-semantics.js";
 export * from "./timeline.js";

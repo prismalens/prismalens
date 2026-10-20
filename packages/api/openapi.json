@@ -32404,6 +32404,544 @@
         }
       }
     },
+    "/sources": {
+      "get": {
+        "operationId": "sources.overview",
+        "summary": "Every source category with its status, and what was detected",
+        "tags": [
+          "sources"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "category": {
+                            "enum": [
+                              "metrics",
+                              "logs",
+                              "scm",
+                              "knowledge",
+                              "deploys"
+                            ],
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "connected",
+                              "not-configured",
+                              "unreachable"
+                            ],
+                            "type": "string"
+                          },
+                          "sources": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "enum": [
+                                    "connected",
+                                    "not-configured",
+                                    "unreachable"
+                                  ],
+                                  "type": "string"
+                                },
+                                "lastErrorAt": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "label",
+                                "kind",
+                                "status"
+                              ]
+                            }
+                          },
+                          "tools": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "howToConnect": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "category",
+                          "status",
+                          "sources",
+                          "tools"
+                        ]
+                      }
+                    },
+                    "detected": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "env": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "env"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "categories",
+                    "detected"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/test": {
+      "post": {
+        "operationId": "sources.test",
+        "summary": "Run a source type's read-only probes against a draft",
+        "tags": [
+          "sources"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "credential": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "useDetected": {
+                    "type": "boolean"
+                  },
+                  "serviceLabel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "host": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "probes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "capability": {
+                            "type": "string"
+                          },
+                          "need": {
+                            "enum": [
+                              "required",
+                              "optional"
+                            ],
+                            "type": "string"
+                          },
+                          "why": {
+                            "type": "string"
+                          },
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "detail": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "capability",
+                          "need",
+                          "why",
+                          "ok",
+                          "detail"
+                        ]
+                      }
+                    },
+                    "discovered": {
+                      "type": "object",
+                      "properties": {
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "serviceLabel": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "identity": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "host",
+                    "ok",
+                    "probes",
+                    "discovered"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/connect": {
+      "post": {
+        "operationId": "sources.connect",
+        "summary": "Probe a draft and save it when every required probe passes",
+        "tags": [
+          "sources"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "credential": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "useDetected": {
+                    "type": "boolean"
+                  },
+                  "serviceLabel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connectionId": {
+                      "type": "string"
+                    },
+                    "report": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string"
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "probes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "capability": {
+                                "type": "string"
+                              },
+                              "need": {
+                                "enum": [
+                                  "required",
+                                  "optional"
+                                ],
+                                "type": "string"
+                              },
+                              "why": {
+                                "type": "string"
+                              },
+                              "ok": {
+                                "type": "boolean"
+                              },
+                              "detail": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "capability",
+                              "need",
+                              "why",
+                              "ok",
+                              "detail"
+                            ]
+                          }
+                        },
+                        "discovered": {
+                          "type": "object",
+                          "properties": {
+                            "labels": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "serviceLabel": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "identity": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "host",
+                        "ok",
+                        "probes",
+                        "discovered"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "connectionId",
+                    "report"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/{id}/test": {
+      "post": {
+        "operationId": "sources.retest",
+        "summary": "Re-run the probes for a saved source",
+        "tags": [
+          "sources"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "host": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "probes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "capability": {
+                            "type": "string"
+                          },
+                          "need": {
+                            "enum": [
+                              "required",
+                              "optional"
+                            ],
+                            "type": "string"
+                          },
+                          "why": {
+                            "type": "string"
+                          },
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "detail": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "capability",
+                          "need",
+                          "why",
+                          "ok",
+                          "detail"
+                        ]
+                      }
+                    },
+                    "discovered": {
+                      "type": "object",
+                      "properties": {
+                        "labels": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "serviceLabel": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "identity": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "host",
+                    "ok",
+                    "probes",
+                    "discovered"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/setup/status": {
       "get": {
         "operationId": "setup.getStatus",
