@@ -32,9 +32,17 @@ import {
 import { Transcript } from "@/components/investigation/Transcript";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
+import {
+	citedFile,
+	type FileAt,
+	fileKey,
+	filesRead,
+	locate,
+} from "@/lib/evidence-files";
 import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
@@ -61,6 +69,7 @@ import {
 import {
 	evidenceStep,
 	flaggedSteps,
+	type RunStep,
 	stepFromHash,
 	stepOfCall,
 } from "./run-steps";
@@ -141,6 +150,51 @@ export function RunPage() {
 	const [highlight, setHighlight] = useState<number | null>(null);
 	const toggleRef = useRef<HTMLButtonElement>(null);
 	const timer = useRef<number | undefined>(undefined);
+	const phone = useMediaQuery(PHONE);
+	const workspace = inv?.workspace;
+	const files = useMemo(() => filesRead(steps, workspace), [steps, workspace]);
+	// Keyed by file, not position: new tool calls never move the marked one.
+	const [viewing, setViewing] = useState<FileAt | null>(null);
+	const [active, setActive] = useState<string | null>(null);
+	const origin = useRef<string | null>(null);
+	const openFile = useCallback((f: FileAt, from: string) => {
+		origin.current = from;
+		setViewing(f);
+		setActive(fileKey(f));
+		setTab("evidence");
+		setPanel(true);
+	}, []);
+	const closeFile = useCallback(() => {
+		setViewing(null);
+		window.setTimeout(() => {
+			const el = origin.current
+				? document.getElementById(origin.current)
+				: null;
+			el?.scrollIntoView({ block: "center" });
+			el?.focus();
+		}, 0);
+	}, []);
+	const fileOfStep = useCallback(
+		(s: RunStep) =>
+			s.kind === "file" && s.path ? locate(s.path, workspace, s.line) : null,
+		[workspace],
+	);
+	const openStepFile = useCallback(
+		(s: RunStep) => {
+			const f = fileOfStep(s);
+			if (f) openFile(f, `open-step-${s.n}`);
+		},
+		[fileOfStep, openFile],
+	);
+	const openedCite = useRef<string | null>(null);
+	useEffect(() => {
+		const key = `${inv?.id}:${search.file}`;
+		if (!search.file || openedCite.current === key) return;
+		const f = citedFile(search.file, workspace);
+		if (!f) return;
+		openedCite.current = key;
+		openFile(f, "why-evidence");
+	}, [search.file, workspace, inv?.id, openFile]);
 
 	const jump = useCallback((n: number) => {
 		setOpen((o) => new Set(o).add(n));
@@ -316,6 +370,8 @@ export function RunPage() {
 								flagged: new Set(flaggedAt.values()),
 								onSeeFlag: seeFlag,
 								asks: run.asks,
+								fileOf: fileOfStep,
+								onOpenFile: openStepFile,
 							}}
 						/>
 					)}
@@ -345,6 +401,7 @@ export function RunPage() {
 					evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
 						live,
 						standing: standingRun(record, inv.id),
+						fileOf: (source) => citedFile(source, workspace),
 					})}
 					context={contextSections({
 						report,
@@ -359,6 +416,20 @@ export function RunPage() {
 					flaggedCount={flaggedCount}
 					steps={steps}
 					onJump={jump}
+					evidenceFiles={{
+						runId: inv.id,
+						files,
+						active,
+						viewing,
+						onOpen: openFile,
+						onClose: closeFile,
+						backLabel: origin.current?.startsWith("cite-")
+							? "Back to citation"
+							: origin.current?.startsWith("open-step-")
+								? "Back to the step"
+								: "Back to evidence",
+						phone,
+					}}
 				/>
 			)}
 		</div>

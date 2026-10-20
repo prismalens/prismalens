@@ -6,7 +6,9 @@ import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { type FileAt, type FileRead, fileKey } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
+import { EvidenceFileView } from "./EvidenceFileView";
 import {
 	type DetailLink,
 	type DetailRow,
@@ -49,6 +51,7 @@ export function RunDetailsPanel({
 	flaggedCount,
 	steps,
 	onJump,
+	evidenceFiles,
 }: {
 	title: string;
 	tab: DetailsTab;
@@ -61,6 +64,8 @@ export function RunDetailsPanel({
 	flaggedCount: number;
 	steps: RunStep[];
 	onJump: (n: number) => void;
+	/** The files the agent read and the one open at its commit (proposal item 2). */
+	evidenceFiles: EvidenceFiles;
 }) {
 	const [filter, setFilter] = useState<StepFilter>("all");
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -76,7 +81,16 @@ export function RunDetailsPanel({
 		aria: string;
 	}[] = [
 		{ id: "summary", label: "Summary", aria: "Summary" },
-		{ id: "evidence", label: "Evidence", aria: "Evidence" },
+		{
+			id: "evidence",
+			label: "Evidence",
+			aria: `Evidence, ${evidenceFiles.files.length} files read`,
+			aside: evidenceFiles.files.length ? (
+				<span aria-hidden className="ml-1.5 text-text-3 tabular-nums">
+					{evidenceFiles.files.length}
+				</span>
+			) : null,
+		},
 		{
 			id: "context",
 			label: "Context",
@@ -148,26 +162,51 @@ export function RunDetailsPanel({
 						))}
 					</TabsPrimitive.List>
 				</div>
-				{(["summary", "evidence", "context"] as const).map((id) => (
+				{evidenceFiles.viewing && (
 					<TabsPrimitive.Content
-						key={id}
-						value={id}
-						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-						data-testid={`run-details-${id}`}
+						value="evidence"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-evidence"
 					>
-						<Sections
-							sections={
-								id === "summary"
-									? summary
-									: id === "evidence"
-										? evidence
-										: context
-							}
-							incidentId={incidentId}
-							onJump={onJump}
+						<EvidenceFileView
+							runId={evidenceFiles.runId}
+							file={evidenceFiles.viewing}
+							onBack={evidenceFiles.onClose}
+							backLabel={evidenceFiles.backLabel}
+							phone={evidenceFiles.phone}
 						/>
 					</TabsPrimitive.Content>
-				))}
+				)}
+				{(["summary", "evidence", "context"] as const)
+					.filter((id) => id !== "evidence" || !evidenceFiles.viewing)
+					.map((id) => (
+						<TabsPrimitive.Content
+							key={id}
+							value={id}
+							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+							data-testid={`run-details-${id}`}
+						>
+							{id === "evidence" && (
+								<FilesRead
+									files={evidenceFiles.files}
+									active={evidenceFiles.active}
+									onOpen={evidenceFiles.onOpen}
+								/>
+							)}
+							<Sections
+								sections={
+									id === "summary"
+										? summary
+										: id === "evidence"
+											? evidence
+											: context
+								}
+								incidentId={incidentId}
+								onJump={onJump}
+								onOpenFile={evidenceFiles.onOpen}
+							/>
+						</TabsPrimitive.Content>
+					))}
 				<TabsPrimitive.Content
 					value="steps"
 					className="flex min-h-0 flex-1 flex-col"
@@ -255,10 +294,12 @@ function Sections({
 	sections,
 	incidentId,
 	onJump,
+	onOpenFile,
 }: {
 	sections: DetailSection[];
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: (f: FileAt, origin: string) => void;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -272,6 +313,8 @@ function Sections({
 							row={row}
 							incidentId={incidentId}
 							onJump={onJump}
+							onOpenFile={onOpenFile}
+							origin={`cite-${sec.title}-${i}`.replace(/\W+/g, "-")}
 						/>
 					))}
 				</section>
@@ -284,10 +327,14 @@ function Row({
 	row,
 	incidentId,
 	onJump,
+	onOpenFile,
+	origin,
 }: {
 	row: DetailRow;
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: (f: FileAt, origin: string) => void;
+	origin: string;
 }) {
 	return (
 		<div
@@ -326,6 +373,19 @@ function Row({
 					>
 						{row.sub}
 					</span>
+				)}
+				{row.file && (
+					<button
+						type="button"
+						id={origin}
+						onClick={() => row.file && onOpenFile(row.file, origin)}
+						className="self-start font-mono text-mono text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current [overflow-wrap:anywhere]"
+						data-testid="detail-file"
+					>
+						{row.file.path}
+						{row.file.line ? `:${row.file.line}` : ""} @{" "}
+						{row.file.sha.slice(0, 7)}
+					</button>
 				)}
 				{row.link && (
 					<LeaveLink link={row.link} incidentId={incidentId}>
@@ -404,5 +464,86 @@ function LeaveLink({
 		>
 			{children}
 		</Link>
+	);
+}
+
+/** What the Evidence tab needs to list the files read and open one. */
+export interface EvidenceFiles {
+	runId: string;
+	files: FileRead[];
+	/** The file last opened: it stays marked, wherever new reads land. */
+	active: string | null;
+	viewing: FileAt | null;
+	onOpen: (f: FileAt, origin: string) => void;
+	onClose: () => void;
+	backLabel: string;
+	phone: boolean;
+}
+
+/**
+ * The files the agent read, by repo and commit, each with its read count.
+ * Uncommitted work never reached the run's copy, so nothing of it is listed.
+ */
+function FilesRead({
+	files,
+	active,
+	onOpen,
+}: {
+	files: FileRead[];
+	active: string | null;
+	onOpen: (f: FileAt, origin: string) => void;
+}) {
+	if (files.length === 0) return null;
+	const repos = Array.from(new Map(files.map((f) => [f.repo, f.sha])));
+	return (
+		<section
+			className="mb-4 flex flex-col gap-1.5"
+			data-testid="evidence-files"
+		>
+			<h3 className="text-meta font-semibold text-text-2">
+				Files the agent read
+			</h3>
+			{repos.map(([repo, sha]) => (
+				<div key={repo} className="flex flex-col">
+					<span className="px-2 font-mono text-mono text-text-3">
+						{repo} @ {sha.slice(0, 7)}
+					</span>
+					<ul className="m-0 flex list-none flex-col p-0">
+						{files
+							.filter((f) => f.repo === repo)
+							.map((f) => {
+								const key = fileKey(f);
+								const origin = `read-${f.steps[0]}`;
+								return (
+									<li key={key}>
+										<button
+											type="button"
+											id={origin}
+											aria-current={key === active ? "true" : undefined}
+											onClick={() => onOpen(f, origin)}
+											className={cn(
+												"flex w-full items-baseline gap-2 rounded-control px-2 py-1 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3",
+												key === active && "bg-surface-3",
+											)}
+											data-testid="evidence-file-row"
+										>
+											<span className="min-w-0 flex-1 truncate font-mono text-mono text-text-1">
+												{f.path}
+											</span>
+											<span className="shrink-0 text-meta text-text-3 tabular-nums">
+												read x{f.reads}
+											</span>
+										</button>
+									</li>
+								);
+							})}
+					</ul>
+				</div>
+			))}
+			<p className="px-2 text-meta text-text-3">
+				Shown at the commit the run cloned. Uncommitted files were never in its
+				copy and are not kept.
+			</p>
+		</section>
 	);
 }
