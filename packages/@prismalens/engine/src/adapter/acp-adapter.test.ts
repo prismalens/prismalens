@@ -222,6 +222,40 @@ describe("AcpAdapter.normalize", () => {
 		});
 	});
 
+	it("previews an MCP result that Codex sends only as rawOutput (#848)", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "exec-1",
+			kind: "execute",
+			title: "mcp.prismalens.sources_list",
+			rawInput: { server: "prismalens", tool: "sources_list", arguments: {} },
+		});
+		// codex-acp 1.13.1 createMcpRawOutput: { result, error }, no `content`.
+		const result = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "exec-1",
+			status: "completed",
+			rawOutput: {
+				result: { content: [{ type: "text", text: '{"status":"removed"}' }] },
+				error: null,
+			},
+		});
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: { ok: true, preview: '{"status":"removed"}' },
+		});
+		const failed = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "exec-1",
+			status: "failed",
+			rawOutput: { result: null, error: { message: "upstream refused" } },
+		});
+		expect(failed).toMatchObject({
+			result: { ok: false, error: "upstream refused" },
+		});
+	});
+
 	it("marks a failed tool_call_update ok=false with the error preview", () => {
 		const adapter = new AcpAdapter(ctx);
 		adapter.normalize({ ...lsToolCall, title: "kubectl get", kind: "execute" });

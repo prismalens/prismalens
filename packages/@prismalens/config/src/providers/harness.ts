@@ -447,8 +447,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			},
 		},
 		modeMechanism: "acp",
-		// scripts/acp-admission.ts through the shipped adapter on claude 2.1.296, Haiku (#818). Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
+		// #848 live runs (gateway tools, a removed source, proxied MCP asks) through the shipped adapter on claude 2.1.303. Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "0.81.1", date: "2026-10-20", companion: "2.1.303" },
 		modelVia: "acp",
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		signInAtFirstTurn: true,
@@ -509,8 +509,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634). Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "1.13.1", date: "2026-09-24" },
+		// #848 live runs (gateway tools, a removed source, proxied MCP asks, an unattended run) on codex 0.163.0. Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "1.13.1", date: "2026-10-20" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
