@@ -1,7 +1,6 @@
 /**
  * A run's page, an Ask's, or a new conversation (#811), under its incident.
- * `#step-N` opens a step; `?call=` opens the tool call a report's evidence cites;
- * `?file=` opens the file a citation names, at the run's commit.
+ * `#step-N` opens a step; `?call=` opens the tool call a report's evidence cites.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { RunPage } from "@/components/run/RunPage";
@@ -9,11 +8,8 @@ import { RunPage } from "@/components/run/RunPage";
 export const Route = createFileRoute(
 	"/_authenticated/incidents/$id/conversation",
 )({
-	validateSearch: (
-		search: Record<string, unknown>,
-	): { call?: string; file?: string } => ({
+	validateSearch: (search: Record<string, unknown>): { call?: string } => ({
 		...(typeof search.call === "string" ? { call: search.call } : {}),
-		...(typeof search.file === "string" ? { file: search.file } : {}),
 	}),
 	component: RunPage,
 });

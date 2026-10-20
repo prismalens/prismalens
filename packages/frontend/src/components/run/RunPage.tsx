@@ -32,31 +32,19 @@ import {
 import { Transcript } from "@/components/investigation/Transcript";
 import { Hint } from "@/components/shared/Hint";
 import { Loading, Problem } from "@/components/shared/State";
-import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { useToast } from "@/hooks/use-toast";
 import { levelSandbox, sandboxLine } from "@/lib/access-levels";
-import {
-	citedFile,
-	type FileAt,
-	fileKey,
-	filesRead,
-	locate,
-} from "@/lib/evidence-files";
 import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
-import { endReasonStatus } from "@/lib/handoff-line";
-import { hypothesisTree } from "@/lib/hypothesis-tree";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
-import { HypothesisTree } from "./HypothesisTree";
 import { IncidentHeader } from "./IncidentHeader";
 import { type DetailsTab, RunDetailsPanel } from "./RunDetailsPanel";
 import { RunStrip, type StripChip } from "./RunStrip";
 import {
 	contextSections,
-	evidenceRow,
 	evidenceSections,
 	type SummaryFacts,
 	summarySections,
@@ -73,11 +61,9 @@ import {
 import {
 	evidenceStep,
 	flaggedSteps,
-	type RunStep,
 	stepFromHash,
 	stepOfCall,
 } from "./run-steps";
-import { usageView } from "./run-usage";
 
 const HIGHLIGHT_MS = 2400;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -154,51 +140,6 @@ export function RunPage() {
 	const [highlight, setHighlight] = useState<number | null>(null);
 	const toggleRef = useRef<HTMLButtonElement>(null);
 	const timer = useRef<number | undefined>(undefined);
-	const phone = useMediaQuery(PHONE);
-	const workspace = inv?.workspace;
-	const files = useMemo(() => filesRead(steps, workspace), [steps, workspace]);
-	// Keyed by file, not position: new tool calls never move the marked one.
-	const [viewing, setViewing] = useState<FileAt | null>(null);
-	const [active, setActive] = useState<string | null>(null);
-	const origin = useRef<string | null>(null);
-	const openFile = useCallback((f: FileAt, from: string) => {
-		origin.current = from;
-		setViewing(f);
-		setActive(fileKey(f));
-		setTab("evidence");
-		setPanel(true);
-	}, []);
-	const closeFile = useCallback(() => {
-		setViewing(null);
-		window.setTimeout(() => {
-			const el = origin.current
-				? document.getElementById(origin.current)
-				: null;
-			el?.scrollIntoView({ block: "center" });
-			el?.focus();
-		}, 0);
-	}, []);
-	const fileOfStep = useCallback(
-		(s: RunStep) =>
-			s.kind === "file" && s.path ? locate(s.path, workspace, s.line) : null,
-		[workspace],
-	);
-	const openStepFile = useCallback(
-		(s: RunStep) => {
-			const f = fileOfStep(s);
-			if (f) openFile(f, `open-step-${s.n}`);
-		},
-		[fileOfStep, openFile],
-	);
-	const openedCite = useRef<string | null>(null);
-	useEffect(() => {
-		const key = `${inv?.id}:${search.file}`;
-		if (!search.file || openedCite.current === key) return;
-		const f = citedFile(search.file, workspace);
-		if (!f) return;
-		openedCite.current = key;
-		openFile(f, "why-evidence");
-	}, [search.file, workspace, inv?.id, openFile]);
 
 	const jump = useCallback((n: number) => {
 		setOpen((o) => new Set(o).add(n));
@@ -302,10 +243,6 @@ export function RunPage() {
 				warn: substituted,
 			}
 		: null;
-	const usage = usageView(inv?.usage, who.agent);
-	const usageChip: StripChip | null = inv
-		? { text: usage.text, title: usage.title }
-		: null;
 	const code = codeChip(inv?.workspace);
 
 	const transcriptReport =
@@ -313,14 +250,6 @@ export function RunPage() {
 			? {
 					title: `${name} concluded: ${reportOutcome(report.rootCause)}`,
 					summary: report.summary,
-					detail: (
-						<HypothesisTree
-							tree={hypothesisTree(report)}
-							incidentId={incident.id}
-							rowOf={(e) => evidenceRow(e, (x) => evidenceStep(x, steps))}
-							onJump={jump}
-						/>
-					),
 				}
 			: null;
 
@@ -334,7 +263,6 @@ export function RunPage() {
 					label={stateWord.label}
 					detail={stateWord.detail}
 					model={modelChip}
-					usage={usageChip}
 					code={panel ? null : code}
 					onStop={
 						live ? () => run.stop({ onError: stopFailed(toast) }) : undefined
@@ -364,11 +292,6 @@ export function RunPage() {
 								startedBy(inv.triggerType) === "you" ? "You" : "PrismaLens"
 							}
 							report={transcriptReport}
-							worked={
-								transcriptReport && !live && steps.length > 0 && runTimed(inv)
-									? { seconds: runElapsed(inv, now), steps: steps.length }
-									: null
-							}
 							steps={{
 								all: steps,
 								open,
@@ -382,8 +305,6 @@ export function RunPage() {
 								flagged: new Set(flaggedAt.values()),
 								onSeeFlag: seeFlag,
 								asks: run.asks,
-								fileOf: fileOfStep,
-								onOpenFile: openStepFile,
 							}}
 						/>
 					)}
@@ -413,7 +334,6 @@ export function RunPage() {
 					evidence={evidenceSections(inv, (e) => evidenceStep(e, steps), {
 						live,
 						standing: standingRun(record, inv.id),
-						fileOf: (source) => citedFile(source, workspace),
 					})}
 					context={contextSections({
 						report,
@@ -428,20 +348,6 @@ export function RunPage() {
 					flaggedCount={flaggedCount}
 					steps={steps}
 					onJump={jump}
-					evidenceFiles={{
-						runId: inv.id,
-						files,
-						active,
-						viewing,
-						onOpen: openFile,
-						onClose: closeFile,
-						backLabel: origin.current?.startsWith("cite-")
-							? "Back to citation"
-							: origin.current?.startsWith("open-step-")
-								? "Back to the step"
-								: "Back to evidence",
-						phone,
-					}}
 				/>
 			)}
 		</div>
@@ -583,10 +489,8 @@ function summaryFacts(
 	const chat = inv.kind === "chat";
 	const live = !!state && isRunStateLive(state);
 	const f = inv.report?.fidelity;
-	const ended = state === "failed" && endReasonStatus(inv.endReason, ctx.agent);
-	const status: SummaryFacts["status"] = ended
-		? { ...ended, tone: "warn" }
-		: state === "failed"
+	const status: SummaryFacts["status"] =
+		state === "failed"
 			? {
 					text: "Failed",
 					tone: "danger",
@@ -639,10 +543,6 @@ function summaryFacts(
 				}
 			: null,
 		effort: effort ? cap(effort) : null,
-		usage: (() => {
-			const u = usageView(inv.usage, ctx.agent);
-			return { text: u.text, sub: u.title, reported: u.reported };
-		})(),
 		access: level
 			? {
 					text: ACCESS_LEVEL_LABEL[level],

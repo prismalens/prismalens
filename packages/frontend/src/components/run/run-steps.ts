@@ -32,9 +32,6 @@ export interface RunStep {
 	took: number | null;
 	/** The call's input, for a tool that names no command or path (an MCP tool, #673 w5-41). */
 	input: string | null;
-	/** The file a file tool named, as the agent wrote it, and the line it started at. */
-	path?: string | null;
-	line?: number | null;
 }
 
 const FILE_WORD = {
@@ -130,7 +127,6 @@ export function deriveSteps(
 			n: i + 1,
 			callId,
 			input: inputOf(call.name, call.args),
-			...fileOf(call.args),
 			title: describe(call.args) ?? command,
 			command,
 			kind:
@@ -150,17 +146,6 @@ export function deriveSteps(
 				: null,
 		};
 	});
-}
-
-/** The path a file tool named and the line it started at (`offset`, `line`). */
-function fileOf(args: Record<string, unknown>): {
-	path: string | null;
-	line: number | null;
-} {
-	const path = args.path ?? args.filePath ?? args.file_path;
-	const at = args.offset ?? args.line ?? args.start_line;
-	const line = typeof at === "number" && at >= 1 ? Math.floor(at) : null;
-	return { path: typeof path === "string" ? path : null, line };
 }
 
 /** A tool's arguments as indented JSON when they name no command or path. */

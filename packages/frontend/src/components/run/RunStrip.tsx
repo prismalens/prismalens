@@ -27,7 +27,6 @@ export function RunStrip({
 	label,
 	detail,
 	model,
-	usage,
 	code,
 	onStop,
 	stopping,
@@ -41,8 +40,6 @@ export function RunStrip({
 	label: string;
 	detail: string;
 	model?: StripChip | null;
-	/** What the harness reported using, or that it reported nothing. */
-	usage?: StripChip | null;
 	/** Hidden while the details panel is open: its Summary carries it. */
 	code?: StripChip | null;
 	/** Live only. */
@@ -78,7 +75,6 @@ export function RunStrip({
 				{detail}
 			</span>
 			{model && <Chip chip={model} testId="run-strip-model" />}
-			{usage && <Chip chip={usage} testId="run-strip-usage" />}
 			{code && <Chip chip={code} testId="run-strip-code" />}
 			{onStop && (
 				<Button

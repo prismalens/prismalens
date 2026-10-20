@@ -6,7 +6,6 @@ import {
 	type FollowUpKind,
 	isWorkflowLive,
 	isWorkflowTerminal,
-	type RunChoice,
 	type RunState,
 	runState,
 } from "@prismalens/contracts";
@@ -207,8 +206,6 @@ export function useInvestigationRun(investigationId: string | null) {
 				attachments?: AttachmentView[];
 				/** What the message asks for; a live row refuses a mismatch (#673 w59). */
 				kind?: FollowUpKind;
-				/** A finished run's follow-up in another agent or model. */
-				to?: RunChoice;
 			},
 		): Promise<void> => {
 			const attachments = opts?.attachments ?? [];
@@ -229,7 +226,6 @@ export function useInvestigationRun(investigationId: string | null) {
 					mode,
 					branchId: opts?.branchId,
 					...(opts?.kind ? { kind: opts.kind } : {}),
-					...opts?.to,
 					...(attachments.length
 						? { attachments: attachments.map((a) => a.id) }
 						: {}),

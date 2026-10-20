@@ -6,7 +6,6 @@ import type {
 	InvestigationReport,
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
-import type { FileAt } from "@/lib/evidence-files";
 import type { OperatorState, TranscriptItem } from "@/lib/investigation-events";
 import { commandText } from "@/lib/report-view";
 import { shortCredential } from "./run-labels";
@@ -33,8 +32,6 @@ export interface DetailRow {
 	step?: number;
 	/** Where an item with no step came from, shown in the step's place. */
 	from?: string;
-	/** A file the item cites, opened read-only at the run's commit. */
-	file?: FileAt;
 	/** Navigates away, named by `action` or by the row's own text. */
 	link?: DetailLink;
 	action?: string;
@@ -53,7 +50,6 @@ export interface SummaryFacts {
 	agent: string | null;
 	model: { text: string; sub?: string; warn: boolean } | null;
 	effort: string | null;
-	usage: { text: string; sub: string; reported: boolean } | null;
 	access: { text: string; sub: string } | null;
 	chat: boolean;
 }
@@ -99,8 +95,6 @@ export function summarySections(
 			sub: facts.model.sub,
 		});
 	if (facts.effort) used.push({ label: "Effort", text: facts.effort });
-	if (facts.usage)
-		used.push({ label: "Usage", text: facts.usage.text, sub: facts.usage.sub });
 	if (facts.access)
 		used.push({
 			label: "Access",
@@ -148,17 +142,8 @@ export type StepOf = (
 /** The prompt's ALERT_PAYLOAD block, cited by name; "alert" alone is not provenance (#834 review). */
 const ALERT_SOURCE = /\balert[\s_-]payload\b/i;
 
-/** The file an evidence item cites, at the run's commit; null when it names none. */
-export type FileOf = (source: string) => FileAt | null;
-
-/** One evidence item as a row: its step, or where it came from (the citation the panel and the tree share). */
-export function evidenceRow(
-	e: Evidence,
-	steps: StepOf,
-	fileOf?: FileOf,
-): DetailRow {
+function evidenceRow(e: Evidence, steps: StepOf): DetailRow {
 	const step = steps(e);
-	const file = fileOf?.(e.source) ?? null;
 	const alert = !step && e.status === "inferred" && ALERT_SOURCE.test(e.source);
 	return {
 		text: e.observation,
@@ -167,7 +152,6 @@ export function evidenceRow(
 				? `Inferred from ${e.source}`
 				: commandText(e.source),
 		...(step ? { step } : {}),
-		...(file ? { file } : {}),
 		// No step ran for it; say where it came from in the step's place (#831 w6-18).
 		...(alert ? { from: "From the alert" } : {}),
 	};
@@ -181,11 +165,7 @@ export function evidenceRow(
 export function evidenceSections(
 	inv: InvestigationWithRelations,
 	steps: StepOf,
-	opts: {
-		live: boolean;
-		standing: { runId: string; name: string } | null;
-		fileOf?: FileOf;
-	},
+	opts: { live: boolean; standing: { runId: string; name: string } | null },
 ): DetailSection[] {
 	const report = inv.report;
 	if (!report) {
@@ -205,13 +185,12 @@ export function evidenceSections(
 			});
 		return [{ title: opts.live ? "So far" : "No report", rows }];
 	}
-	return reportSections(report, steps, opts.fileOf);
+	return reportSections(report, steps);
 }
 
 function reportSections(
 	report: InvestigationReport,
 	steps: StepOf,
-	fileOf?: FileOf,
 ): DetailSection[] {
 	const out: DetailSection[] = [];
 	const [top, ...others] = report.hypotheses.filter(
@@ -226,7 +205,7 @@ function reportSections(
 				{ text: report.rootCause ?? top.statement, strong: true },
 				...top.evidence
 					.filter((e) => e.direction === "supports")
-					.map((e) => evidenceRow(e, steps, fileOf)),
+					.map((e) => evidenceRow(e, steps)),
 			],
 		});
 	else

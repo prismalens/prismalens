@@ -40,13 +40,6 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock("@tanstack/react-query", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@tanstack/react-query")>()),
-	useQuery: () => ({ data: undefined }),
-}));
-vi.mock("@/lib/api/orpc-client", () => ({
-	orpc: { investigations: { handoff: { queryOptions: () => ({}) } } },
-}));
 vi.mock("@/components/incidents/record-context", () => ({
 	useIncidentRecord: () => ({
 		run: {
