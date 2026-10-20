@@ -48,6 +48,48 @@ interface UpstreamTool {
 	inputSchema: Record<string, unknown>;
 }
 
+const sizeOf = (t: { description: string; inputSchema: unknown }) =>
+	Buffer.byteLength(JSON.stringify({ d: t.description, s: t.inputSchema }));
+
+/**
+ * The per-run totals, applied in name order after every catalogue was listed in
+ * parallel, so one stalled server never delays the others (OBJ-037).
+ */
+export function withinRunBudget(
+	view: SnapshotConnection,
+	budget: Budget,
+): SnapshotConnection {
+	const P = LIMITS.proxy;
+	const kept: SnapshotConnection["tools"] = [];
+	const drops = new Map<DroppedWhy, number>(
+		(view.dropped ?? []).map((d) => [d.why, d.count]),
+	);
+	for (const t of view.tools) {
+		const size = sizeOf(t);
+		const why: DroppedWhy | null =
+			budget.tools >= P.toolsPerRun
+				? "total-tools"
+				: budget.bytes + size > P.bytesPerRun
+					? "total-bytes"
+					: null;
+		if (why) {
+			drops.set(why, (drops.get(why) ?? 0) + 1);
+			continue;
+		}
+		kept.push(t);
+		budget.tools++;
+		budget.bytes += size;
+	}
+	const dropped = [...drops]
+		.filter(([, count]) => count > 0)
+		.map(([why, count]) => ({ count, why }));
+	return {
+		...view,
+		tools: kept,
+		...(dropped.length ? { dropped } : {}),
+	};
+}
+
 /** Why a connection offers nothing, in PrismaLens's own words. */
 export function unreachableReason(e: unknown): string {
 	if (e instanceof TooLargeError) return "tool list too large";

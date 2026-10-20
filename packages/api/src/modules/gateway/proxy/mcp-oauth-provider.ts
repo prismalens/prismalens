@@ -8,6 +8,7 @@
 import {
 	type AuthProvider,
 	auth,
+	extractWWWAuthenticateParams,
 	type FetchLike,
 	type OAuthClientInformationContext,
 	type OAuthClientMetadata,
@@ -262,9 +263,13 @@ export function lockedAuthProvider(p: {
 				if (!used || current.tokens?.access_token !== used) return;
 				const store: ProviderStore = { current, save: p.save };
 				try {
+					const { resourceMetadataUrl } = extractWWWAuthenticateParams(
+						ctx.response,
+					);
 					const r = await auth(new McpOAuthProvider(store), {
 						serverUrl: current.serverUrl,
 						fetchFn: authFetch(() => store.current, { fetch: p.fetch }),
+						...(resourceMetadataUrl ? { resourceMetadataUrl } : {}),
 					});
 					if (r !== "AUTHORIZED") throw new NeedsSignInError();
 				} catch (e) {

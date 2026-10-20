@@ -182,7 +182,10 @@ export function sourceRequestFn(
 			if (needs)
 				await opts.connection?.report?.({
 					kind: "needs-permission",
-					message: needs,
+					message: scrubSecrets(needs, [
+						...kindSecrets(credential, ctx.connectionId),
+						bearerOf(auth.headers) ?? "",
+					]),
 				});
 			const location =
 				res.status >= 300 && res.status < 400 && res.headers.get("location");

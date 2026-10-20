@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import type { SourceCredential } from "@prismalens/contracts/schemas";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SignIns } from "../sign-in.js";
 import type { McpOAuthCredential } from "./mcp-oauth-provider.js";
 import { McpProxy } from "./proxy.service.js";
@@ -14,7 +14,10 @@ const RS = "https://mcp.test";
 const REDIRECT = "http://127.0.0.1:6474/callback";
 
 /** A resource server and an authorization server with discovery, DCR and rotating refresh. */
-function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
+function world(
+	o: { challengeScope?: string; dcr?: boolean; metadataPath?: string } = {},
+) {
+	const prm = `${RS}${o.metadataPath ?? "/.well-known/oauth-protected-resource"}`;
 	const w = {
 		issuer: "https://as.test",
 		tokenEndpoint: "https://as.test/token",
@@ -32,6 +35,8 @@ function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
 		holdUnauthorized: null as null | { n: number; until: Promise<void> },
 		unauthorized: 0,
 		forbidScope: null as null | string,
+		/** Holds the next tools/call result until the promise settles. */
+		holdCall: null as null | Promise<void>,
 		calls: 0,
 		/** The bearer the resource server saw last; its tool echoes it. */
 		lastAuth: "",
@@ -44,8 +49,12 @@ function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
 			}) as never);
 			s.setRequestHandler("tools/call", async () => {
 				w.calls++;
+				const held = w.lastAuth;
+				const hold = w.holdCall;
+				w.holdCall = null;
+				if (hold) await hold;
 				return {
-					content: [{ type: "text", text: `you, holding ${w.lastAuth}` }],
+					content: [{ type: "text", text: `you, holding ${held}` }],
 				} as never;
 			});
 			return s;
@@ -66,8 +75,10 @@ function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
 		const body = req.method === "POST" ? await req.clone().text() : "";
 		w.seen.push({ url: req.url, method: req.method, body });
 		const url = new URL(req.url);
-		if (url.origin === RS && url.pathname.startsWith("/.well-known/oauth-protected-resource"))
+		if (url.href === prm || (!o.metadataPath && url.origin === RS && url.pathname.startsWith("/.well-known/oauth-protected-resource")))
 			return json({ resource: `${RS}/mcp`, authorization_servers: [w.issuer] });
+		if (url.origin === RS && url.pathname.startsWith("/.well-known/oauth-protected-resource"))
+			return new Response("no", { status: 404 });
 		if (url.pathname.startsWith("/.well-known/oauth-authorization-server") || url.pathname.startsWith("/.well-known/openid-configuration")) {
 			if (url.origin !== w.issuer) return new Response("no", { status: 404 });
 			return json({
@@ -111,7 +122,7 @@ function world(o: { challengeScope?: string; dcr?: boolean } = {}) {
 				return new Response(null, {
 					status: 401,
 					headers: {
-						"www-authenticate": `Bearer resource_metadata="${RS}/.well-known/oauth-protected-resource"${o.challengeScope ? `, scope="${o.challengeScope}"` : ""}`,
+						"www-authenticate": `Bearer resource_metadata="${prm}"${o.challengeScope ? `, scope="${o.challengeScope}"` : ""}`,
 					},
 				});
 			}
@@ -136,7 +147,9 @@ function approve(w: ReturnType<typeof world>["w"], authorizationUrl: string): UR
 	return new URLSearchParams({ code, state: u.searchParams.get("state") ?? "" });
 }
 
-function setup(o: { challengeScope?: string; dcr?: boolean } = {}) {
+function setup(
+	o: { challengeScope?: string; dcr?: boolean; metadataPath?: string } = {},
+) {
 	const { w, fetchFn } = world(o);
 	const store = new Map<string, McpOAuthCredential>();
 	const problems: string[] = [];
@@ -156,7 +169,11 @@ function setup(o: { challengeScope?: string; dcr?: boolean } = {}) {
 			credential: c,
 			connection: {
 				id,
-				load: async () => store.get(id) as SourceCredential,
+				load: async () => {
+					const c = store.get(id);
+					if (!c) throw new Error("Connection credential not found");
+					return c;
+				},
 				save: async (next) => {
 					store.set(id, next as McpOAuthCredential);
 				},
@@ -231,7 +248,9 @@ describe("MCP sign-in (#848, 06)", () => {
 	});
 });
 
-async function signedIn(o: { challengeScope?: string } = {}) {
+async function signedIn(
+	o: { challengeScope?: string; metadataPath?: string } = {},
+) {
 	const s = setup(o);
 	const f = await s.signIn("one");
 	await s.signIns.complete(approve(s.w, f.authorizationUrl));
@@ -362,5 +381,67 @@ describe("MCP r4 findings", () => {
 			client_secret: "pasted-secret",
 			registered: "pasted",
 		});
+	});
+});
+
+describe("MCP r5 findings", () => {
+	it("the token a call used is scrubbed even if its connection is deleted mid-call (OBJ-023)", async () => {
+		const { w, proxy, store } = await signedIn();
+		await proxy.snapshot("run-1", 5000);
+		expireAccess(w);
+		let release = () => {};
+		w.holdCall = new Promise<void>((r) => {
+			release = r;
+		});
+		const pending = proxy.call("run-1", "one__whoami", {}, signal());
+		await vi.waitFor(() => expect(w.calls).toBe(1));
+		const used = w.lastAuth;
+		store.delete("one");
+		release();
+		const r = await pending;
+		expect(used).toMatch(/^A/);
+		expect(JSON.stringify(r)).not.toContain(used);
+	});
+
+	it("the token a call used is scrubbed after another run rotates it again (OBJ-023)", async () => {
+		const { w, proxy } = await signedIn();
+		await proxy.snapshot("run-1", 5000);
+		await proxy.snapshot("run-2", 5000);
+		expireAccess(w);
+		let release = () => {};
+		w.holdCall = new Promise<void>((r) => {
+			release = r;
+		});
+		const pending = proxy.call("run-1", "one__whoami", {}, signal());
+		await vi.waitFor(() => expect(w.calls).toBe(1));
+		const used = w.lastAuth;
+		expireAccess(w);
+		await proxy.call("run-2", "one__whoami", {}, signal());
+		expect(w.refreshes).toHaveLength(2);
+		release();
+		const r = await pending;
+		expect(JSON.stringify(r)).not.toContain(used);
+	});
+
+	it("an insufficient_scope challenge naming the token never delivers or stores it (OBJ-035)", async () => {
+		const { w, proxy, problems, store } = await signedIn();
+		await proxy.snapshot("run-1", 5000);
+		const token = store.get("one")?.tokens?.access_token ?? "";
+		w.forbidScope = token;
+		const r = await proxy.call("run-1", "one__whoami", {}, signal());
+		expect(r.isError).toBe(true);
+		expect(JSON.stringify(r)).not.toContain(token);
+		expect(problems.join("\n")).not.toContain(token);
+		expect(problems.some((p) => p.startsWith("needs permission:"))).toBe(true);
+	});
+
+	it("refresh follows the challenged resource_metadata URL that sign-in used (OBJ-036)", async () => {
+		const { w, proxy, problems } = await signedIn({ metadataPath: "/custom/prm" });
+		await proxy.snapshot("run-1", 5000);
+		expireAccess(w);
+		const r = await proxy.call("run-1", "one__whoami", {}, signal());
+		expect(r.isError).toBeUndefined();
+		expect(w.refreshes).toHaveLength(1);
+		expect(problems).toEqual([]);
 	});
 });

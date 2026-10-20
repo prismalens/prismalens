@@ -70,6 +70,7 @@ export function toolFetch(
 	meter: Meter,
 	usedToken: UsedTokens,
 	base: typeof fetch = fetch,
+	held?: Set<string>,
 ): FetchLike {
 	const origin = new URL(serverUrl).origin;
 	return async (input, init) => {
@@ -79,6 +80,7 @@ export function toolFetch(
 		const bearer = bearerOf(
 			Object.fromEntries(new Headers(init?.headers).entries()),
 		);
+		if (bearer) held?.add(bearer);
 		for (let hop = 0; ; hop++) {
 			const res = await base(url.href, { ...init, redirect: "manual" });
 			const location =
@@ -100,11 +102,14 @@ export function toolFetch(
 export interface Upstream {
 	client: Client;
 	meter: Meter;
+	/** Every token this client sent or its refresh saved; a result is scrubbed of all (OBJ-023). */
+	held: Set<string>;
 	close(): Promise<void>;
 }
 
 export interface OpenOptions {
 	meter: Meter;
+	held: Set<string>;
 	fetch?: typeof fetch;
 	/** The `mcp-oauth` kind's lock-wrapped provider; built by the proxy. */
 	authProvider?: (usedToken: UsedTokens, fetchFn: FetchLike) => AuthProvider;
@@ -116,7 +121,13 @@ export async function openUpstream(
 	opts: OpenOptions,
 ): Promise<Upstream> {
 	const usedToken: UsedTokens = new WeakMap();
-	const fetchFn = toolFetch(c.url, opts.meter, usedToken, opts.fetch);
+	const fetchFn = toolFetch(
+		c.url,
+		opts.meter,
+		usedToken,
+		opts.fetch,
+		opts.held,
+	);
 	let headers: Record<string, string> = {};
 	if (c.credential.kind === "bearer" || c.credential.kind === "header")
 		headers = (
@@ -146,6 +157,7 @@ export async function openUpstream(
 	return {
 		client,
 		meter: opts.meter,
+		held: opts.held,
 		close: () => client.close().catch(() => undefined),
 	};
 }

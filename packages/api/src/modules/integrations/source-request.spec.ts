@@ -339,6 +339,21 @@ describe("sourceRequestFn: OAuth renewal and scope refusals (#848, 04)", () => {
 		).toEqual([]);
 	});
 
+	it("a challenge whose scope names the bearer token stores no token (OBJ-035)", async () => {
+		const token = "glpat-secret-token-1234";
+		const base = await fake((_req, res) => {
+			res.writeHead(403, {
+				"www-authenticate": `Bearer error="insufficient_scope", scope="${token}"`,
+			});
+			res.end("{}");
+		});
+		const problems: string[] = [];
+		const c: SourceCredential = { kind: "bearer", token };
+		await sourceRequestFn(base, ok(c), { connection: conn(c, problems) })("GET", "/x");
+		expect(problems).toHaveLength(1);
+		expect(problems.join()).not.toContain(token);
+	});
+
 	it("cuts an upstream scope to safe characters and 80 characters", async () => {
 		const [msg] = await refusal({
 			"www-authenticate": `Bearer error="insufficient_scope", scope="<b>${"a".repeat(200)}"`,

@@ -28,6 +28,8 @@ interface Fake {
 	/** Answer every request with this instead of MCP. */
 	raw?: () => Response;
 	result?: (name: string) => unknown;
+	/** tools/list waits for this before answering. */
+	holdList?: Promise<void>;
 }
 
 function fake(host: string, tools: FakeTool[], o: Partial<Fake> = {}): Fake {
@@ -51,6 +53,7 @@ function serve(f: Fake) {
 			);
 			s.setRequestHandler("tools/list", async (req) => {
 				f.pages++;
+				if (f.holdList) await f.holdList;
 				const size = f.pageSize ?? f.tools.length;
 				const start = Number(req.params?.cursor ?? 0);
 				const next = start + size;
@@ -360,5 +363,27 @@ describe("McpProxy duplicate names (OBJ-026)", () => {
 		await p.call("r", "n8n_prod__t", {}, signal());
 		expect(prod.calls).toHaveLength(1);
 		expect(staging.calls).toHaveLength(0);
+	});
+});
+
+describe("McpProxy discovery isolation (OBJ-037)", () => {
+	it("a catalogue that stalls past the budget does not take a healthy later one with it", async () => {
+		let release = () => {};
+		const stalled = fake("a.test", [tool("t")], {
+			holdList: new Promise<void>((r) => {
+				release = r;
+			}),
+		});
+		const healthy = fake("b.test", [tool("t")]);
+		const p = proxyOf([stalled, healthy], [conn("a", stalled.host), conn("b", healthy.host)]);
+		const started = Date.now();
+		const snap = await p.snapshot("r", 500);
+		const elapsed = Date.now() - started;
+		release();
+		expect(snap.connections.map((c) => [c.name, c.status, c.tools.length])).toEqual([
+			["a", "unreachable", 0],
+			["b", "connected", 1],
+		]);
+		expect(elapsed).toBeLessThan(1500);
 	});
 });

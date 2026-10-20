@@ -24,7 +24,10 @@ import {
 import { PrismaService } from "../../../core/prisma/prisma.service.js";
 import { CredentialsService } from "../../integrations/crypto/credentials.service.js";
 import { IntegrationsService } from "../../integrations/integrations.service.js";
-import type { SourceConnection } from "../../integrations/source-request.js";
+import {
+	type SourceConnection,
+	scrubSecrets,
+} from "../../integrations/source-request.js";
 import {
 	CALL_TIMEOUT_MS,
 	errorResult,
@@ -46,6 +49,7 @@ import {
 	newMeter,
 	type SnapshotConnection,
 	unreachableReason,
+	withinRunBudget,
 } from "./snapshot.js";
 import { type McpConnection, openUpstream, type Upstream } from "./upstream.js";
 
@@ -123,15 +127,24 @@ export class McpProxy implements ProxyPort {
 	}
 
 	private open(c: McpConnection, signal?: AbortSignal): Promise<Upstream> {
+		const held = new Set<string>();
 		return openUpstream(c, {
 			meter: newMeter(),
+			held,
 			fetch: this.fetchImpl,
 			signal,
 			authProvider: (usedToken) =>
 				lockedAuthProvider({
 					connectionId: c.id,
 					load: async () => (await c.connection.load()) as McpOAuthCredential,
-					save: (next) => c.connection.save(next),
+					save: (next) => {
+						for (const t of [
+							next.tokens?.access_token,
+							next.tokens?.refresh_token,
+						])
+							if (t) held.add(t);
+						return c.connection.save(next);
+					},
 					usedToken,
 					fetch: this.fetchImpl,
 					onNeedsSignIn: () =>
@@ -160,10 +173,23 @@ export class McpProxy implements ProxyPort {
 			connections: new Map(conns.map((c) => [c.id, c])),
 			byOffered: new Map(),
 		};
+		const listed = await Promise.all(
+			opened.map(async (o) => {
+				if ("error" in o) return unreachable(o.c, unreachableReason(o.error));
+				try {
+					return await withTimeout(
+						listBounded(o.c, o.up, { tools: 0, bytes: 0 }, deadline),
+						Math.max(1, budgetMs),
+					);
+				} catch (e) {
+					return unreachable(o.c, unreachableReason(e));
+				}
+			}),
+		);
 		const budget = { tools: 0, bytes: 0 };
 		const names = new Set<string>();
 		// Run totals fill connection by connection in name order (06).
-		for (const o of opened) {
+		for (const [i, o] of opened.entries()) {
 			let view: SnapshotConnection;
 			// A name already offered never routes a second instance's calls (OBJ-026).
 			const taken = names.has(o.c.name.toLowerCase());
@@ -175,14 +201,7 @@ export class McpProxy implements ProxyPort {
 				view = unreachable(o.c, unreachableReason(o.error));
 			else {
 				state.upstreams.set(o.c.id, o.up);
-				try {
-					view = await withTimeout(
-						listBounded(o.c, o.up, budget, deadline),
-						Math.max(1, budgetMs),
-					);
-				} catch (e) {
-					view = unreachable(o.c, unreachableReason(e));
-				}
+				view = withinRunBudget(listed[i] as SnapshotConnection, budget);
 			}
 			if (!taken && !("error" in o)) o.up.meter.active = false;
 			for (const t of view.tools)
@@ -235,6 +254,11 @@ export class McpProxy implements ProxyPort {
 		if (!row || row.status === "REVOKED")
 			return errorResult("This MCP connection was removed");
 		const current = await c.connection.load().catch(() => c.credential);
+		const secrets = () => [
+			...credentialSecrets(c.credential, c.id),
+			...credentialSecrets(current, c.id),
+			...up.held,
+		];
 		try {
 			const result = (await up.client.callTool(
 				{
@@ -249,13 +273,10 @@ export class McpProxy implements ProxyPort {
 					timeout: CALL_TIMEOUT_MS,
 				},
 			)) as ProxyCallResult;
-			const after = await c.connection.load().catch(() => current);
-			return scrubResult(result, [
-				...credentialSecrets(current, c.id),
-				...credentialSecrets(after, c.id),
-			]);
+			return scrubResult(result, secrets());
 		} catch (e) {
-			const text = failureText(c.name, e);
+			// A challenge's scope is upstream text too: the same exact-value check (OBJ-035).
+			const text = scrubSecrets(failureText(c.name, e), secrets());
 			if (text.includes("needs permission"))
 				await c.connection.report?.({
 					kind: "needs-permission",
