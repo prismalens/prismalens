@@ -16,10 +16,10 @@ export const WebhookDeliverySchema = z.object({
 export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
 
 import {
-	DeployWebhookResponseSchema,
-	DeployWebhookSchema,
 	AlertSourceWebhookResponseSchema,
 	AlertSourceWebhookSchema,
+	DeployWebhookResponseSchema,
+	DeployWebhookSchema,
 	GenericWebhookResponseSchema,
 	GenericWebhookSchema,
 	PrometheusWebhookResponseSchema,
