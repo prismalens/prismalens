@@ -3,7 +3,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { FileText } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import {
 	Conversation,
 	ConversationContent,
@@ -92,7 +92,7 @@ export function Transcript({
 	/** Who wrote the brief: you, or PrismaLens when the alert started the run. */
 	briefBy?: string;
 	/** The report card's title and summary, when the run reported. */
-	report?: { title: string; summary: string } | null;
+	report?: { title: string; summary: string; detail?: ReactNode } | null;
 	/** What shows before anything is sent: the new conversation's box. */
 	empty?: boolean;
 	/** Once a report exists: the step cards fold behind `Worked for 4m 12s - 23 steps`. */
@@ -187,7 +187,7 @@ function TranscriptRow({
 	steps?: TranscriptSteps;
 	runName?: string;
 	briefBy: string;
-	report?: { title: string; summary: string } | null;
+	report?: { title: string; summary: string; detail?: ReactNode } | null;
 }) {
 	switch (item.kind) {
 		case "prose":
@@ -340,6 +340,7 @@ function TranscriptRow({
 						<span dir="auto" className="text-text-2">
 							{report.summary}
 						</span>
+						{report.detail}
 						<Link
 							to="/incidents/$id"
 							params={{ id: incidentId }}

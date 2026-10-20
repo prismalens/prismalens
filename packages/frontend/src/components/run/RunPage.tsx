@@ -46,14 +46,17 @@ import {
 import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { endReasonStatus } from "@/lib/handoff-line";
+import { hypothesisTree } from "@/lib/hypothesis-tree";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
+import { HypothesisTree } from "./HypothesisTree";
 import { IncidentHeader } from "./IncidentHeader";
 import { type DetailsTab, RunDetailsPanel } from "./RunDetailsPanel";
 import { RunStrip, type StripChip } from "./RunStrip";
 import {
 	contextSections,
+	evidenceRow,
 	evidenceSections,
 	type SummaryFacts,
 	summarySections,
@@ -310,6 +313,14 @@ export function RunPage() {
 			? {
 					title: `${name} concluded: ${reportOutcome(report.rootCause)}`,
 					summary: report.summary,
+					detail: (
+						<HypothesisTree
+							tree={hypothesisTree(report)}
+							incidentId={incident.id}
+							rowOf={(e) => evidenceRow(e, (x) => evidenceStep(x, steps))}
+							onJump={jump}
+						/>
+					),
 				}
 			: null;
 
