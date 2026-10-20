@@ -279,7 +279,7 @@ console.log(`R5 resume: ${r5}`);
  */
 const r6 = await (async (): Promise<string> => {
 	if (harness !== "opencode") return "skipped (OpenCode only)";
-	const userModel = "opencode/space-bunny-free";
+	const userModel = "opencode/glm-5.3-flash-free";
 	const xdg = mkdtempSync(join(tmpdir(), "pl-r6-"));
 	mkdirSync(join(xdg, "opencode"));
 	writeFileSync(
