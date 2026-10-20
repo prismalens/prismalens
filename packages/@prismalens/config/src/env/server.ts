@@ -81,6 +81,21 @@ export const globalSchema = z.object({
 				"When set, incoming Render webhooks must include a valid webhook-signature or svix-signature header.",
 		),
 
+	PRISMALENS_SENTRY_WEBHOOK_SECRET: z
+		.string()
+		.min(16, "Sentry webhook secret must be at least 16 characters")
+		.optional()
+		.describe(
+			"Optional Sentry integration client secret. When set, a delivery with a valid Sentry-Hook-Signature is accepted on /webhooks/sentry, since Sentry cannot send a Bearer token.",
+		),
+	PRISMALENS_PAGERDUTY_WEBHOOK_SECRET: z
+		.string()
+		.min(16, "PagerDuty webhook secret must be at least 16 characters")
+		.optional()
+		.describe(
+			"Optional PagerDuty v3 webhook signing secret. When set, a delivery with a valid X-PagerDuty-Signature is accepted on /webhooks/pagerduty, since PagerDuty cannot send a Bearer token.",
+		),
+
 	PRISMALENS_CORS_ORIGIN: z
 		.string()
 		.optional()
