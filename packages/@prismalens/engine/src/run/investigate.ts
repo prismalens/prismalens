@@ -9,6 +9,7 @@
  */
 import {
 	appendFileSync,
+	chmodSync,
 	mkdirSync,
 	readFileSync,
 	writeFileSync,
@@ -371,7 +372,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const configDir = join(opts.runDir, "config");
 	const dataDir = join(opts.runDir, "home");
-	mkdirSync(configDir, { recursive: true });
+	// A run file can hold the run's gateway bearer: owner-only whatever the umask (#848, OBJ-029).
+	mkdirSync(configDir, { recursive: true, mode: 0o700 });
+	chmodSync(configDir, 0o700);
 	mkdirSync(dataDir, { recursive: true });
 	const companionPath = descriptor.companionBinary
 		? resolveOnPath(descriptor.companionBinary)
@@ -405,7 +408,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	)) {
 		const path = join(configDir, rel);
 		mkdirSync(join(path, ".."), { recursive: true });
-		writeFileSync(path, content);
+		writeFileSync(path, content, { mode: 0o600 });
+		chmodSync(path, 0o600);
 	}
 	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
 	return {

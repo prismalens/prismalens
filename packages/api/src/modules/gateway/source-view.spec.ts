@@ -295,3 +295,69 @@ describe("follow-ups for lane B (#848)", () => {
 		]);
 	});
 });
+
+describe("the proxied result budget (#848, OBJ-032)", () => {
+	const snapshot: ProxySnapshot = {
+		connections: [
+			{
+				id: "m1",
+				name: "n8n_prod",
+				description: "prod",
+				status: "connected",
+				tools: [{ offered: "n8n_prod__big", upstream: "big", description: "", inputSchema: { type: "object" } }],
+			},
+		],
+	};
+
+	async function delivered(result: { content: unknown[]; structuredContent?: unknown }) {
+		const g = setup([{ id: "m1", label: "n8n_prod", templateId: "mcp-server" }], {
+			snapshot: async () => snapshot,
+			call: async () => result,
+		});
+		const token = (await g.lease(RUN))?.token ?? "";
+		const res = await g.serve(
+			RUN,
+			new Request(`http://gateway/api/mcp/runs/${RUN}`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					accept: "application/json, text/event-stream",
+					"mcp-protocol-version": "2025-06-18",
+					authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method: "tools/call", params: { name: "n8n_prod__big", arguments: {} } }),
+			}),
+		);
+		const text = await res.text();
+		return JSON.parse(
+			text.startsWith("{") ? text : (text.split("\n").find((l) => l.startsWith("data: "))?.slice(6) ?? "{}"),
+		).result as { content: { type: string; text?: string }[]; structuredContent?: unknown };
+	}
+	const size = (r: { content: { text?: string }[]; structuredContent?: unknown }) =>
+		r.content.reduce((n, c) => n + (c.text?.length ?? 0), 0) +
+		(r.structuredContent === undefined ? 0 : JSON.stringify(r.structuredContent).length);
+
+	it("caps text across blocks, not per block", async () => {
+		const r = await delivered({
+			content: [
+				{ type: "text", text: "a".repeat(20_000) },
+				{ type: "text", text: "b".repeat(20_000) },
+			],
+		});
+		expect(size(r)).toBeLessThanOrEqual(32_200);
+	});
+
+	it("counts structured content in the budget", async () => {
+		const r = await delivered({
+			content: [{ type: "text", text: "short" }],
+			structuredContent: { rows: "x".repeat(200_000) },
+		});
+		expect(size(r)).toBeLessThanOrEqual(32_200);
+		expect(JSON.stringify(r.content)).toContain("structured content");
+	});
+
+	it("leaves a result inside the budget untouched", async () => {
+		const result = { content: [{ type: "text", text: "ok" }], structuredContent: { n: 1 } };
+		expect(await delivered(result)).toEqual(result);
+	});
+});
