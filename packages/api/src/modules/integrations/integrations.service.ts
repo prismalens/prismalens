@@ -577,7 +577,12 @@ export class IntegrationsService {
 			where: { id: connectionId },
 			select: { connectionConfigEnc: true },
 		});
-		return conn ? this.baseUrlOf(conn) : null;
+		if (!conn) return null;
+		return (
+			this.baseUrlOf(conn) ??
+			(await this.storedRow(connectionId))?.stored.baseUrl ??
+			null
+		);
 	}
 
 	/** The URL a URL-only source was added with; null when it has none. */

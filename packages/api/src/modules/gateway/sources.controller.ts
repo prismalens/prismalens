@@ -29,6 +29,27 @@ export class SourcesController {
 			retest: implement(sourcesContract.retest).handler(({ input }) =>
 				this.sources.retest(input.id),
 			),
+			oauthStart: implement(sourcesContract.oauthStart).handler(
+				({ input, context }) =>
+					this.sources.oauthStart(input, originOf(context.request)),
+			),
+			mcpPreview: implement(sourcesContract.mcpPreview).handler(({ input }) =>
+				this.sources.mcpPreview(input),
+			),
+			rename: implement(sourcesContract.rename).handler(({ input }) =>
+				this.sources.rename(input.id, input.name, input.description),
+			),
 		};
 	}
+}
+
+/** The browser's Origin; a local origin gets the pinned loopback callback (04). */
+function originOf(
+	request: { headers?: unknown } | undefined,
+): string | undefined {
+	const headers = request?.headers as
+		| Record<string, string | string[] | undefined>
+		| undefined;
+	const v = headers?.origin;
+	return typeof v === "string" ? v : undefined;
 }

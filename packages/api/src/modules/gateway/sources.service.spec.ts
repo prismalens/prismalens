@@ -14,6 +14,8 @@ import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { CredentialsService } from "../integrations/crypto/credentials.service.js";
 import type { IntegrationsService } from "../integrations/integrations.service.js";
 import type { GatewayService } from "./gateway.service.js";
+import { McpProxy } from "./proxy/proxy.service.js";
+import { SignIns } from "./sign-in.js";
 import { detectSources, runProbes, SourcesService } from "./sources.service.js";
 
 const servers: Server[] = [];
@@ -144,6 +146,8 @@ function service(over: { integrations?: Partial<IntegrationsService> } = {}) {
 		integrations,
 		{} as CredentialsService,
 		{} as GatewayService,
+		new SignIns(),
+		{} as McpProxy,
 	);
 	return { svc, integrations };
 }
