@@ -3,32 +3,29 @@
 
 import type { AddressInfo } from "node:net";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import {
 	RunWorkspaceSchema,
-	UNSUPPORTED_KNOWLEDGE_VENDORS,
-	UNSUPPORTED_SCM_VENDORS,
+	type SourceCategoryView,
 } from "@prismalens/contracts/schemas";
-import type { GatewayEntry } from "@prismalens/engine";
-import { getTemplate } from "@prismalens/integrations";
+import {
+	fenceUntrusted,
+	type GatewayEntry,
+	sanitizeUntrustedLine,
+} from "@prismalens/engine";
+import {
+	getTemplate,
+	noProxy,
+	type ProxyPort,
+	type SourceRegistry,
+} from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { openSource } from "../integrations/open-source.js";
 import type { SourceRequestOptions } from "../integrations/source-request.js";
-import {
-	CATEGORY_TOOLS,
-	type GatewayData,
-	gatewayMcpServer,
-	type InvestigationsQuery,
-	type PastInvestigation,
-	SOURCE_CATEGORIES,
-	type SourceCategory,
-	type SourceStatus,
-	type SourceView,
-	TEMPLATE_CATEGORY,
-} from "./gateway.tools.js";
+import { gatewayMcpServer, SOURCES_LIST } from "./mcp-delivery.js";
 import { bearerOf, RunTokens } from "./run-tokens.js";
 import {
 	listRunbooks,
@@ -39,31 +36,67 @@ import {
 import {
 	failureReason,
 	LIMITS,
-	QUERY_KINDS,
 	type QueryKind,
 	type QuerySource,
 } from "./source-tools.js";
+import {
+	type ConnectionRow,
+	labelOf,
+	type RunView,
+	remember,
+	type SourceItem,
+	sourceView,
+} from "./source-view.js";
+import {
+	type GatewayToolData,
+	gatewayRegistry,
+	type InvestigationsQuery,
+	type PastInvestigation,
+} from "./tools/index.js";
 
 /** sources_list's probe: cheap, read-only, short (#848). */
 const PROBE_TIMEOUT_MS = 2_000;
 const QUERY_TIMEOUT_MS = 20_000;
+/** How long `lease` waits for the vendor MCP servers to list their tools. */
+const SNAPSHOT_BUDGET_MS = 5_000;
 
 /** The route, under the global `api` prefix: one path per run. */
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
+
+/** The vendor MCP proxy; bound by the module that provides it, `noProxy` otherwise. */
+export const PROXY_PORT = Symbol.for("prismalens.gateway.ProxyPort");
 
 const RUNBOOKS_SETTING = "sources.runbooks.enabled";
 
 const logger = new Logger({ context: "Gateway" });
 
+interface RunState extends RunView {
+	confirmed: boolean;
+	waiters: Set<(ok: boolean) => void>;
+}
+
 /**
- * PrismaLens's read-only MCP doorway for the agents it launches (#848, ADR 0007 §5).
+ * PrismaLens's MCP doorway for the agents it launches (#848, ADR 0007 §5).
  * A run leases a bearer valid on its own path until the run ends.
  */
 @Injectable()
 export class GatewayService {
 	private readonly tokens = new RunTokens();
+	private readonly runs = new Map<string, RunState>();
+	readonly registry: SourceRegistry;
+	private readonly proxy: ProxyPort;
 	private readonly handler = createMcpHandler(
-		({ authInfo }) => gatewayMcpServer(this.data, authInfo?.clientId ?? ""),
+		({ authInfo }) =>
+			gatewayMcpServer(
+				{
+					registry: this.registry,
+					proxy: this.proxy,
+					sourcesList: (runId) => this.sourceView(runId),
+					snapshot: (runId) =>
+						this.runs.get(runId)?.snapshot ?? { connections: [] },
+				},
+				authInfo?.clientId ?? "",
+			),
 		{
 			responseMode: "json",
 			onerror: (e) => logger.warn(`gateway: ${e.message}`),
@@ -74,20 +107,64 @@ export class GatewayService {
 		private readonly prisma: PrismaService,
 		@Optional() private readonly http?: HttpAdapterHost,
 		@Optional() private readonly integrations?: IntegrationsService,
-	) {}
+		@Optional() @Inject(PROXY_PORT) proxy?: ProxyPort,
+	) {
+		this.proxy = proxy ?? noProxy;
+		this.registry = gatewayRegistry(this.data);
+	}
 
-	/** The run's gateway entry, or null when the api is not listening on a reachable address. */
-	lease(runId: string): GatewayEntry | null {
+	/**
+	 * The run's gateway entry, or null when the api is not listening on a reachable
+	 * address. The run's `seen` map starts with every connection that exists now.
+	 */
+	async lease(runId: string): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
+		const token = this.tokens.mint(runId);
+		const state: RunState = {
+			runId,
+			// A follow-up's lease keeps what the run already met.
+			seen: this.runs.get(runId)?.seen ?? new Map(),
+			snapshot: { connections: [] },
+			confirmed: false,
+			waiters: new Set(),
+		};
+		this.runs.set(runId, state);
+		remember(state.seen, await this.rows());
+		state.snapshot = await this.proxy
+			.snapshot(runId, SNAPSHOT_BUDGET_MS)
+			.catch(() => ({ connections: [] }));
+		const promptLine = gatewayPromptLine(
+			await this.sourceView(runId, { probe: false }),
+			state,
+		);
 		return {
 			url: `${base}/api/mcp/runs/${runId}`,
-			token: this.tokens.mint(runId),
+			token,
+			promptLine,
+			tools: [SOURCES_LIST, ...this.registry.list().map((t) => t.name)],
+			confirmed: () => state.confirmed,
+			waitConfirmed: (ms) =>
+				state.confirmed
+					? Promise.resolve(true)
+					: new Promise<boolean>((resolve) => {
+							const done = (ok: boolean) => {
+								clearTimeout(timer);
+								state.waiters.delete(done);
+								resolve(ok);
+							};
+							const timer = setTimeout(() => done(false), ms);
+							state.waiters.add(done);
+						}),
 		};
 	}
 
 	revoke(runId: string): void {
 		this.tokens.revoke(runId);
+		this.proxy.close(runId);
+		const state = this.runs.get(runId);
+		this.runs.delete(runId);
+		for (const done of state?.waiters ?? []) done(false);
 	}
 
 	async serve(runId: string, request: Request): Promise<Response> {
@@ -98,6 +175,11 @@ export class GatewayService {
 				{ error: "unauthorized" },
 				{ status: 401, headers: { "WWW-Authenticate": "Bearer" } },
 			);
+		}
+		const state = this.runs.get(runId);
+		if (state && !state.confirmed) {
+			state.confirmed = true;
+			for (const done of state.waiters) done(true);
 		}
 		return this.handler.fetch(request, {
 			authInfo: { token: token as string, clientId: runId, scopes: [] },
@@ -118,8 +200,7 @@ export class GatewayService {
 		return `${protocol}://${host}:${address.port}`;
 	}
 
-	readonly data: GatewayData = {
-		sources: (runId) => this.sources(runId),
+	readonly data: GatewayToolData = {
 		runbooks: {
 			list: async (runId, service) =>
 				(await this.runbooksEnabled())
@@ -134,8 +215,31 @@ export class GatewayService {
 						},
 		},
 		searchInvestigations: (q) => this.searchInvestigations(q),
-		querySources: (kind) => this.querySources(kind),
+		querySources: (kind, runId) => this.querySources(kind, runId),
 	};
+
+	/** Every category with its status. With a run id, removals the run saw read `removed` (OBJ-010). */
+	sourceView(
+		runId?: string,
+		opts?: { probe?: boolean },
+	): Promise<SourceCategoryView[]> {
+		return sourceView(
+			{
+				rows: () => this.rows(),
+				registry: this.registry,
+				proxy: this.proxy,
+				probe: this.integrations ? (src) => this.probe(src) : undefined,
+				runbookSource: (id) => this.runbookSource(id),
+			},
+			runId ? this.runs.get(runId) : undefined,
+			opts,
+		);
+	}
+
+	/** The Sources page's answer; a run's `sources_list` is `sourceView(runId)`. */
+	sources(runId?: string): Promise<SourceCategoryView[]> {
+		return this.sourceView(runId);
+	}
 
 	/** On unless the operator switched it off: the connect flow for runbooks is a toggle. */
 	async runbooksEnabled(): Promise<boolean> {
@@ -156,6 +260,19 @@ export class GatewayService {
 				category: "sources",
 			},
 			update: { value: String(enabled) },
+		});
+	}
+
+	private rows(): Promise<ConnectionRow[]> {
+		return this.prisma.connection.findMany({
+			where: { status: { not: "REVOKED" } },
+			select: {
+				id: true,
+				label: true,
+				status: true,
+				lastErrorAt: true,
+				integration: { select: { templateId: true, label: true } },
+			},
 		});
 	}
 
@@ -184,9 +301,7 @@ export class GatewayService {
 		}
 	}
 
-	private async runbookSource(
-		runId: string | undefined,
-	): Promise<SourceView["sources"][number]> {
+	private async runbookSource(runId: string | undefined): Promise<SourceItem> {
 		const base = {
 			id: "runbooks",
 			label: "Runbooks in your repos",
@@ -212,22 +327,19 @@ export class GatewayService {
 				};
 	}
 
-	private async querySources(kind: QueryKind): Promise<QuerySource[]> {
-		const rows = await this.prisma.connection.findMany({
-			where: {
-				status: { not: "REVOKED" },
-				integration: { templateId: kind },
-			},
-			select: {
-				id: true,
-				label: true,
-				integration: { select: { label: true } },
-			},
-		});
+	/** Rows are read per call, so a connection added or removed mid-run counts from the next call. */
+	private async querySources(
+		kind: QueryKind,
+		runId: string,
+	): Promise<QuerySource[]> {
+		const rows = (await this.rows()).filter(
+			(r) => r.integration.templateId === kind,
+		);
+		remember(this.runs.get(runId)?.seen, rows);
 		return Promise.all(
 			rows.map((r) =>
 				this.openSource(
-					{ id: r.id, label: r.label || r.integration.label, kind },
+					{ id: r.id, label: labelOf(r), kind },
 					{ timeoutMs: QUERY_TIMEOUT_MS, maxBytes: LIMITS.responseBytes },
 				),
 			),
@@ -272,119 +384,6 @@ export class GatewayService {
 		} catch (e) {
 			return { ok: false, reason: failureReason(e) };
 		}
-	}
-
-	/** Every category with its status; the Sources page and `sources_list` read the same answer. */
-	async sources(runId?: string): Promise<SourceView[]> {
-		const rows = await this.prisma.connection.findMany({
-			where: { status: { not: "REVOKED" } },
-			select: {
-				id: true,
-				label: true,
-				status: true,
-				lastErrorAt: true,
-				integration: { select: { templateId: true, label: true } },
-			},
-		});
-		const queryable = (t: string): t is QueryKind =>
-			(QUERY_KINDS as readonly string[]).includes(t);
-		const probes = new Map(
-			this.integrations
-				? await Promise.all(
-						rows
-							.filter((r) => queryable(r.integration.templateId))
-							.map(
-								async (r) =>
-									[
-										r.id,
-										await this.probe({
-											id: r.id,
-											label: r.label || r.integration.label,
-											kind: r.integration.templateId as QueryKind,
-										}),
-									] as const,
-							),
-					)
-				: [],
-		);
-		const runbooks = await this.runbookSource(runId);
-		return SOURCE_CATEGORIES.map((category) => {
-			if (category === "knowledge")
-				return {
-					category,
-					status: "connected",
-					sources: [
-						{
-							id: "prismalens-investigations",
-							label: "Past PrismaLens investigations",
-							kind: "builtin",
-							status: "connected",
-						},
-						runbooks,
-						...UNSUPPORTED_KNOWLEDGE_VENDORS.map((vendor) => ({
-							id: vendor.toLowerCase(),
-							label: vendor,
-							kind: "unsupported",
-							status: "not-configured" as const,
-							reason: `${vendor} is not supported yet.`,
-						})),
-					],
-					tools: CATEGORY_TOOLS.knowledge ?? [],
-				};
-			const connectable = rows
-				.filter((r) => TEMPLATE_CATEGORY[r.integration.templateId] === category)
-				.map((r) => {
-					const probed = probes.get(r.id);
-					const status: SourceStatus = probed
-						? probed.ok
-							? "connected"
-							: "unreachable"
-						: r.status === "ACTIVE"
-							? "connected"
-							: "unreachable";
-					return {
-						id: r.id,
-						label: r.label || r.integration.label,
-						kind: r.integration.templateId,
-						status,
-						...(probed && !probed.ok ? { reason: probed.reason } : {}),
-						...(!probed && status === "unreachable" && r.lastErrorAt
-							? { lastErrorAt: r.lastErrorAt.toISOString() }
-							: {}),
-					};
-				});
-			const sources =
-				category === "scm"
-					? [
-							...connectable,
-							...UNSUPPORTED_SCM_VENDORS.map((vendor) => ({
-								id: vendor.toLowerCase().replace(/ /g, "-"),
-								label: vendor,
-								kind: "unsupported",
-								status: "not-configured" as const,
-								reason: `${vendor} is not supported yet.`,
-							})),
-						]
-					: connectable;
-			const status: SourceStatus = connectable.some(
-				(s) => s.status === "connected",
-			)
-				? "connected"
-				: connectable.length
-					? "unreachable"
-					: "not-configured";
-			return {
-				category,
-				status,
-				sources,
-				tools: CATEGORY_TOOLS[category] ?? [],
-				...(status === "not-configured"
-					? {
-							howToConnect: howToConnect(category),
-						}
-					: {}),
-			};
-		});
 	}
 
 	private async searchInvestigations(
@@ -455,8 +454,41 @@ export class GatewayService {
 	}
 }
 
-function howToConnect(category: SourceCategory): string {
-	return category === "deploys"
-		? "Send deploy events with `pl deploy` from the deploy job; see PrismaLens under Settings, Data sources."
-		: "Connect one in PrismaLens under Settings, Data sources.";
+/** The prompt's tools paragraph (#848): what the run can call, built without probes. */
+export function gatewayPromptLine(
+	view: readonly SourceCategoryView[],
+	run: Pick<RunView, "snapshot">,
+): string {
+	const lines = [
+		"PrismaLens tools (MCP server `prismalens`). `sources_list` shows what this run can reach now.",
+	];
+	const reachable = view
+		.filter((c) => c.category !== "mcp" && c.tools.length)
+		.filter((c) => c.status !== "not-configured")
+		.map((c) => `${c.category}: ${c.tools.map((t) => `\`${t}\``).join(", ")}`);
+	if (reachable.length)
+		lines.push(`PrismaLens tools (read-only): ${reachable.join("; ")}.`);
+	const servers = run.snapshot.connections.filter(
+		(c) => c.status === "connected" && c.tools.length,
+	);
+	if (servers.length)
+		lines.push(
+			fenceUntrusted(
+				"MCP_SERVERS",
+				"Names and descriptions an operator entered in PrismaLens.",
+				`MCP servers connected in PrismaLens: ${servers
+					.map(
+						(c) =>
+							`\`${c.name}\` (${sanitizeUntrustedLine(c.description)}, ${c.tools.length} tools)`,
+					)
+					.join(
+						", ",
+					)}. Their tools are named \`<server>__<tool>\` and follow your permission level.`,
+			),
+		);
+	const missing = view
+		.filter((c) => c.category !== "mcp" && c.status === "not-configured")
+		.map((c) => c.category);
+	if (missing.length) lines.push(`Not connected: ${missing.join(", ")}.`);
+	return lines.join("\n");
 }

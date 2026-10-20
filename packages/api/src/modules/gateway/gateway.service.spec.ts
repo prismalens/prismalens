@@ -9,7 +9,14 @@ import { GatewayService } from "./gateway.service.js";
 const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";
 
-function gateway(prisma: Record<string, unknown> = {}) {
+const EMPTY = {
+	connection: { findMany: async () => [] },
+	setting: { findUnique: async () => null },
+	serviceRepository: { count: async () => 0 },
+	investigation: { findUnique: async () => null },
+};
+
+function gateway(prisma: Record<string, unknown> = EMPTY) {
 	const http = {
 		httpAdapter: {
 			getHttpServer: () => ({
@@ -54,22 +61,22 @@ async function body(res: Response): Promise<Record<string, unknown>> {
 }
 
 describe("gateway bearer (#848)", () => {
-	it("leases a loopback URL on the run's own path", () => {
-		const entry = gateway().lease(RUN_A);
+	it("leases a loopback URL on the run's own path", async () => {
+		const entry = await gateway().lease(RUN_A);
 		expect(entry?.url).toBe(`http://127.0.0.1:3001/api/mcp/runs/${RUN_A}`);
 		expect(entry?.token.length).toBeGreaterThan(30);
 	});
 
 	it("401 with no bearer", async () => {
 		const g = gateway();
-		g.lease(RUN_A);
+		await g.lease(RUN_A);
 		const res = await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize));
 		expect(res.status).toBe(401);
 	});
 
 	it("401 with a wrong bearer", async () => {
 		const g = gateway();
-		g.lease(RUN_A);
+		await g.lease(RUN_A);
 		const res = await g.serve(
 			RUN_A,
 			rpc(RUN_A, "initialize", initialize, "not-the-token"),
@@ -79,8 +86,8 @@ describe("gateway bearer (#848)", () => {
 
 	it("401 for run A's token on run B's path", async () => {
 		const g = gateway();
-		const a = g.lease(RUN_A);
-		g.lease(RUN_B);
+		const a = await g.lease(RUN_A);
+		await g.lease(RUN_B);
 		const res = await g.serve(
 			RUN_B,
 			rpc(RUN_B, "initialize", initialize, a?.token),
@@ -90,7 +97,7 @@ describe("gateway bearer (#848)", () => {
 
 	it("401 for a token after its run ended", async () => {
 		const g = gateway();
-		const a = g.lease(RUN_A);
+		const a = await g.lease(RUN_A);
 		const ok = await g.serve(
 			RUN_A,
 			rpc(RUN_A, "initialize", initialize, a?.token),
@@ -106,8 +113,8 @@ describe("gateway bearer (#848)", () => {
 
 	it("a new lease (a follow-up's session/load) retires the old token", async () => {
 		const g = gateway();
-		const first = g.lease(RUN_A);
-		const second = g.lease(RUN_A);
+		const first = await g.lease(RUN_A);
+		const second = await g.lease(RUN_A);
 		expect(
 			(await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize, first?.token)))
 				.status,
@@ -125,7 +132,7 @@ describe("gateway bearer (#848)", () => {
 	it("a run revokes its bearer when it fails before the agent starts", async () => {
 		const revoke = vi.fn();
 		const ports = new Proxy(
-			{ gateway: { lease: vi.fn(() => null), revoke } },
+			{ gateway: { lease: vi.fn(async () => null), revoke } },
 			{
 				get: (target, key) =>
 					key in target
@@ -198,7 +205,7 @@ describe("gateway tools (#848)", () => {
 			setting: { findUnique: async () => null },
 			serviceRepository: { count: async () => 0 },
 		});
-		const entry = g.lease(RUN_A);
+		const entry = await g.lease(RUN_A);
 		const res = await g.serve(RUN_A, rpc(RUN_A, method, params, entry?.token));
 		expect(res.status).toBe(200);
 		return body(res);
@@ -242,8 +249,9 @@ describe("gateway tools (#848)", () => {
 			["metrics", "connected"],
 			["logs", "not-configured"],
 			["scm", "unreachable"],
-			["deploys", "not-configured"],
 			["knowledge", "connected"],
+			["deploys", "not-configured"],
+			["mcp", "not-configured"],
 		]);
 	});
 

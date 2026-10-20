@@ -3,22 +3,29 @@
 
 /**
  * PrismaLens's own MCP gateway as an agent sees it (#848): one streamable-HTTP
- * entry in ACP `mcpServers`, with the run's bearer. Only HTTP is offered, since
- * every agent that honours the field takes it and opencode refuses SSE.
+ * entry in ACP `mcpServers`, or a run file for an agent that ignores that field.
+ * Only HTTP is offered, since every agent that honours the field takes it.
  */
 import type { McpCapabilities, McpServer } from "@agentclientprotocol/sdk";
 
-/** Where the run's gateway answers and the bearer valid for this run only. */
+/** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
 	url: string;
 	token: string;
+	/** The prompt's tools paragraph, built at lease without probes. */
+	promptLine: string;
+	/** PrismaLens's own tool names; proxied `<server>__<tool>` names are never here. */
+	tools: readonly string[];
+	/** True once a request carrying the run's token reached the gateway. */
+	confirmed(): boolean;
+	waitConfirmed(ms: number): Promise<boolean>;
 }
 
 /** Agents name a tool `mcp__<server>__<tool>`; the run's events show this name. */
 export const GATEWAY_SERVER_NAME = "prismalens";
 
-export const GATEWAY_PROMPT_LINE =
-	"PrismaLens tools (MCP server `prismalens`, read-only): `sources_list` says which data sources this run can reach; `investigations_search` finds past investigations and the causes operators recorded; `runbooks_list` and `runbooks_read` find and read the runbooks in the repositories bound to services; `prometheus_query`, `prometheus_query_range`, `prometheus_alerts`, `alertmanager_alerts` and `loki_query_range` read connected sources with the credentials PrismaLens holds.";
+export const GATEWAY_NOT_LOADED =
+	"The agent did not load PrismaLens tools; a server named `prismalens` in your agent config can hide them.";
 
 export function gatewayServer(entry: GatewayEntry): McpServer {
 	return {
@@ -29,17 +36,22 @@ export function gatewayServer(entry: GatewayEntry): McpServer {
 	};
 }
 
-/** Picks `mcpServers` from `initialize`'s capabilities and remembers whether the agent took the gateway. */
-export function gatewayOffer(entry: GatewayEntry): {
+/**
+ * Picks `mcpServers` from `initialize`'s capabilities. "Taken" means confirmed: only an
+ * authenticated request proves the agent loaded our server (OBJ-011).
+ */
+export function gatewayOffer(
+	entry: GatewayEntry,
+	delivery?: "mcp-config-file",
+): {
 	pick: (capabilities: McpCapabilities | undefined) => McpServer[];
 	taken: () => boolean;
 } {
-	let taken = false;
 	return {
-		pick: (capabilities) => {
-			taken = capabilities?.http === true;
-			return taken ? [gatewayServer(entry)] : [];
-		},
-		taken: () => taken,
+		pick: (capabilities) =>
+			delivery !== "mcp-config-file" && capabilities?.http === true
+				? [gatewayServer(entry)]
+				: [],
+		taken: () => entry.confirmed(),
 	};
 }

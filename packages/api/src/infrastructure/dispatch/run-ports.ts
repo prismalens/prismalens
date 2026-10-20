@@ -156,7 +156,7 @@ export interface RunPorts {
 	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
 	gateway?: {
-		lease(runId: string): GatewayEntry | null;
+		lease(runId: string): Promise<GatewayEntry | null>;
 		revoke(runId: string): void;
 	};
 	/**

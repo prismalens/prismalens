@@ -82,7 +82,7 @@ async function call(
 	method: string,
 	params: Record<string, unknown> = {},
 ): Promise<{ text: string; isError: boolean; raw: Record<string, unknown> }> {
-	const token = g.lease(RUN)?.token;
+	const token = (await g.lease(RUN))?.token;
 	const res = await g.serve(
 		RUN,
 		new Request(`http://gateway/api/mcp/runs/${RUN}`, {

@@ -48,3 +48,10 @@ export interface SourceTool<S extends z.ZodObject = z.ZodObject> {
 }
 
 export class SourceToolRefused extends Error {}
+
+/** Keeps a tool's `run` typed by its own input schema. */
+export function defineSourceTool<S extends z.ZodObject>(
+	tool: SourceTool<S>,
+): SourceTool {
+	return tool as unknown as SourceTool;
+}
