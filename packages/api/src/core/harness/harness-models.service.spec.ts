@@ -74,7 +74,7 @@ describe("HarnessModelsService (#639)", () => {
 
 	it("marks the training tier the catalogue flags, never guessed from the id", () => {
 		service.remember("opencode", [
-			{ id: "opencode/muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 (free)" },
+			{ id: "opencode/deepseek-v4.1-flash-free", name: "DeepSeek V4.1 Flash (free)" },
 		]);
 		expect(service.modelsFor("opencode").entries[0]?.status).toBe("training");
 	});
