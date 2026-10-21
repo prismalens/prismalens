@@ -22,7 +22,7 @@ const n = (x: number) => x.toLocaleString("en-US");
  */
 export function usageView(
 	usage: RunUsage | null | undefined,
-	opts: { live: boolean },
+	opts: { live: boolean; handedOff?: boolean },
 ): UsageView {
 	if (!usage)
 		return {
@@ -31,7 +31,9 @@ export function usageView(
 				text: "Not reported",
 				sub: opts.live
 					? "This session has sent no usage so far."
-					: "No usage arrived for this run. That is not zero.",
+					: opts.handedOff
+						? "This session sent no usage. That is not zero."
+						: "No usage arrived for this run. That is not zero.",
 			},
 			cost: null,
 		};

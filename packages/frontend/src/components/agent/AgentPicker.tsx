@@ -831,6 +831,7 @@ export function AccessChip({
 	level,
 	onLevel,
 	disabled,
+	lockedHint,
 	side = "top",
 	testId = "access-chip",
 }: {
@@ -838,6 +839,8 @@ export function AccessChip({
 	level: AccessLevel;
 	onLevel: (level: AccessLevel) => void;
 	disabled?: boolean;
+	/** Shown disabled, with this hint saying why: a follow-up keeps the run's level. */
+	lockedHint?: string;
 	side?: "top" | "bottom";
 	testId?: string;
 }) {
@@ -850,6 +853,23 @@ export function AccessChip({
 	];
 	const text = ACCESS_LEVEL_LABEL[level];
 	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
+	if (lockedHint)
+		return (
+			<Hint label={lockedHint} side={side}>
+				<span className="inline-flex">
+					<button
+						type="button"
+						disabled
+						className={cn(CHIP, "max-w-48")}
+						data-testid={testId}
+						aria-label={`Permission: ${text}`}
+					>
+						{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
+						<span className="truncate">{text}</span>
+					</button>
+				</span>
+			</Hint>
+		);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>

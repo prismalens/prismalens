@@ -55,8 +55,8 @@ export interface ComposerBoxProps {
 	live?: boolean;
 	onStop?: () => void;
 	stopping?: boolean;
-	/** The run kept no session: one way on instead of the box. */
-	ended?: { onNewRun: () => void; onRecheck?: () => void };
+	/** The run cannot take a message: one way on instead of the box, with the server's reason. */
+	ended?: { onNewRun: () => void; onRecheck?: () => void; reason?: string };
 	placeholder: string;
 	/** Files a prefilled draft starts with. */
 	initialFiles?: File[];
@@ -75,6 +75,10 @@ export interface ComposerBoxProps {
 	isPending?: boolean;
 	/** Why nothing can be sent now: chips and Send are withheld with it. */
 	blockedReason?: string;
+	/** A line under the box that leaves the text and chips live, e.g. an agent that can't take the run. */
+	notice?: string;
+	/** Send waits: a handoff preview is loading, or `notice` names what stops it. */
+	holdSend?: boolean;
 	undeliverable?: string | null;
 	onSaveAsNote?: (text: string) => void;
 	autoFocus?: boolean;
@@ -121,6 +125,8 @@ export function ComposerBox({
 	dock,
 	isPending,
 	blockedReason,
+	notice,
+	holdSend,
 	undeliverable,
 	onSaveAsNote,
 	autoFocus,
@@ -138,7 +144,8 @@ export function ComposerBox({
 	const current = actions.find((a) => a.id === action) ?? actions[0];
 	const hasText = !!text.trim();
 	const busy = sending || !!isPending;
-	const canSend = !busy && !blocked && (hasText || !current?.needsText);
+	const canSend =
+		!busy && !blocked && !holdSend && (hasText || !current?.needsText);
 
 	const shown = useRef(drafts);
 	shown.current = drafts;
@@ -234,8 +241,8 @@ export function ComposerBox({
 					data-testid="composer-no-session"
 				>
 					<span className="min-w-0 flex-1">
-						This run kept no agent session, so it can't continue. Start a new
-						run.
+						{ended.reason ??
+							"This run kept no agent session, so it can't continue. Start a new run."}
 					</span>
 					{ended.onRecheck && (
 						<Button
@@ -401,7 +408,7 @@ export function ComposerBox({
 					</PromptInputFooter>
 				</PromptInput>
 			</div>
-			{(blocked || refusal) && (
+			{(blocked || refusal || notice) && (
 				<p
 					className={cn(
 						"px-3 text-meta",
@@ -409,7 +416,7 @@ export function ComposerBox({
 					)}
 					data-testid={refusal ? "composer-refusal" : "composer-blocked"}
 				>
-					{refusal ?? blockedReason}
+					{refusal ?? (blocked ? blockedReason : notice)}
 				</p>
 			)}
 			{undeliverable && (
