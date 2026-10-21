@@ -12,6 +12,7 @@ import {
 	splitAgentText,
 	type TranscriptItem,
 } from "./investigation-events";
+import { formatClock } from "./format-time";
 import walk8 from "./__fixtures__/walk8-report-drafts.json";
 
 const RUN_ID = "00000000-0000-0000-0000-000000000001";
@@ -442,4 +443,124 @@ describe("pinnedTo for newer-run line (#673 w27)", () => {
 		).toBe("api@1a2b3c4, worker@5d6e7f8");
 	});
 });
+
+describe("deriveTranscript: handoff record", () => {
+	it("handoff-L3: resumed with via.handoff pushes a line item with the handoff record and no divider", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+				via: {
+					harness: "codex",
+					model: "gpt-6.1",
+					accessLevel: "auto",
+					handoff: {
+						from: "claude-code",
+						carried: "the alert and 2 messages",
+						omitted: null,
+					},
+				},
+			},
+		];
+
+		const items = deriveTranscript(events, 0, {
+			agentName: (id: string) =>
+				({ codex: "Codex", "claude-code": "Claude Code" })[id] ?? id,
+			modelName: () => "GPT-6.1",
+		});
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		const dividerItems = items.filter((item) => item.kind === "divider");
+
+		expect(lineItems).toHaveLength(1);
+		expect(lineItems[0]).toEqual({
+			kind: "line",
+			key: "handoff-main-1",
+			text: `Codex, GPT-6.1, took over from Claude Code at ${formatClock(ts)}, in a fresh session. It got the alert and 2 messages.`,
+		});
+		expect(dividerItems).toHaveLength(0);
+	});
+
+	it("handoff-L3: resumed without via pushes a divider starting with 'Resumed in the same session' and no handoff line", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+			},
+		];
+
+		const items = deriveTranscript(events, 0);
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		const dividerItems = items.filter((item) => item.kind === "divider");
+
+		expect(lineItems).toHaveLength(0);
+		expect(dividerItems).toHaveLength(1);
+		expect(dividerItems[0]?.text.startsWith("Resumed in the same session")).toBe(
+			true,
+		);
+	});
+
+	it("handoff-L3: via.handoff with null from and model produces the expected handoff line text", () => {
+		const ts = "2026-08-22T14:31:00Z";
+		const events: CanonicalEvent[] = [
+			{
+				kind: "operator_message",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				label: null,
+				ts,
+				text: "continue investigation",
+				mode: "now",
+				delivered: true,
+				resumed: [{ name: "repo", head: "1234567" }],
+				via: {
+					harness: "codex",
+					model: null,
+					accessLevel: "auto",
+					handoff: {
+						from: null,
+						carried: "the alert",
+						omitted: null,
+					},
+				},
+			},
+		];
+
+		const items = deriveTranscript(events, 0, {
+			agentName: (id: string) => ({ codex: "Codex" })[id] ?? id,
+		});
+
+		const lineItems = items.filter((item) => item.kind === "line");
+		expect(lineItems).toHaveLength(1);
+		expect(lineItems[0]).toEqual({
+			kind: "line",
+			key: "handoff-main-1",
+			text: `Codex, took over at ${formatClock(ts)}, in a fresh session. It got the alert.`,
+		});
+	});
+});
+
 
