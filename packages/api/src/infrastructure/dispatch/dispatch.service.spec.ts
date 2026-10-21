@@ -476,6 +476,31 @@ describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
 			expect(payload.resume).toMatchObject({ kind: "continue", handoff: true, afterRestart: true });
 		});
 
+		it("handoff-L9: omits afterRestart on follow-up when an earlier follow-up already ran", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const cut = await thread(inc.id, { status: "failed", endReason: "interrupted", acpSessionId: null });
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: cut.id,
+					seq: 1,
+					branchId: "run",
+					event: JSON.stringify({ kind: "operator_message", resumed: [], text: "earlier", mode: "queue", delivered: true }),
+				},
+			});
+			await service.resumeInvestigation(cut.id, "carry on", "queue", "continue");
+			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: cut.id } })).payload);
+			expect(payload.resume).not.toHaveProperty("afterRestart");
+		});
+
+		it("handoff-L9: afterRestart resolves false for non-interrupted and true for interrupted without follow-up events", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const run = await thread(inc.id);
+			expect(await service.afterRestart(run.id, "limited")).toBe(false);
+			expect(await service.afterRestart(run.id, "interrupted")).toBe(true);
+		});
+
 		it("refuses a recipient the preflight fails, with the problem and the fix, and leaves the row alone", async () => {
 			const { service } = realDispatch(
 				vi.fn(async () => ({ runnable: false, failure: "pinned-harness-missing", reason: "Codex is not on this machine. Install: npm i -g @openai/codex", harness: "codex" })),
