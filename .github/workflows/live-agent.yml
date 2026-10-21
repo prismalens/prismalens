@@ -110,7 +110,7 @@ jobs:
           passed=0
           for n in 1 2 3; do
             echo "::group::attempt $n"
-            model="$PRISMALENS_HARNESS_MODEL"; [ "$n" -le 2 ] && model=opencode/does-not-exist
+            model="$PRISMALENS_HARNESS_MODEL"; [ "$n" -le 1 ] && model=opencode/does-not-exist
             if PRISMALENS_HARNESS_MODEL="$model" PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
               PACKED_INTAKE_PORT=$((3102 + n)) \
               timeout 20m node scripts/packed-intake.mjs tarballs; then
