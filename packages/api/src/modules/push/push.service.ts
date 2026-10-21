@@ -29,6 +29,8 @@ import { askLinkState } from "./ask-state.js";
 const VAPID_SUBJECT = "https://prismalens.io";
 const TICK_MS = 5_000;
 const KEEP_DELIVERED_MS = 7 * 24 * 60 * 60 * 1000;
+/** A row is retried when a push service answers with an error that is not an expiry: tries, each at least this old. */
+const RETRY_AFTER_MS = [0, 5_000, 30_000, 120_000, 600_000];
 
 interface Subscription {
 	id: string;
@@ -102,32 +104,46 @@ export class PushService
 			orderBy: { createdAt: "asc" },
 			take: 100,
 		});
-		if (rows.length === 0) return 0;
+		const age = Date.now();
+		const due = rows.filter(
+			(r) =>
+				age - r.createdAt.getTime() >=
+				(RETRY_AFTER_MS[r.attempts] ?? RETRY_AFTER_MS.length - 1),
+		);
+		if (due.length === 0) return 0;
 		const subs = await this.prisma.pushSubscription.findMany({
 			where: { expiredAt: null, device: { revokedAt: null } },
 		});
 		const gone = new Set<string>();
-		for (const row of rows) {
+		let settled = 0;
+		for (const row of due) {
 			const payload: PushPayload = {
 				id: row.id,
 				kind: row.kind as PushKind,
 				investigationId: row.investigationId,
 				...(row.askId ? { askId: row.askId } : {}),
 			};
+			let retry = false;
 			for (const sub of subs) {
 				if (gone.has(sub.id)) continue;
 				const after = await this.deliver(sub, payload);
 				if (after.expiredAt) gone.add(sub.id);
+				else if (after.lastError) retry = true;
 			}
+			const settle = !retry || row.attempts + 1 >= RETRY_AFTER_MS.length;
+			if (settle) settled++;
 			await this.prisma.pushOutbox.update({
 				where: { id: row.id },
-				data: { deliveredAt: new Date(), attempts: { increment: 1 } },
+				data: {
+					attempts: { increment: 1 },
+					...(settle ? { deliveredAt: new Date() } : {}),
+				},
 			});
 		}
 		await this.prisma.pushOutbox.deleteMany({
 			where: { deliveredAt: { lt: new Date(Date.now() - KEEP_DELIVERED_MS) } },
 		});
-		return rows.length;
+		return settled;
 	}
 
 	private async deliver(
@@ -224,9 +240,10 @@ export class PushService
 		const askUrl = row.askId
 			? `${runUrl}?ask=${encodeURIComponent(row.askId)}`
 			: runUrl;
-		const asked = row.askId
-			? (await this.askState(row.investigationId, row.askId)).title
-			: null;
+		const asked =
+			row.askId && run
+				? (await this.askState(row.investigationId, row.askId)).title
+				: null;
 		switch (row.kind as PushKind) {
 			case "finding_ready":
 				return { title: "Finding ready", body: where, url: runUrl };

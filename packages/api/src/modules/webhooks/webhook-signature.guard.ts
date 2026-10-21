@@ -19,6 +19,7 @@ import {
 	SecretEnvVars,
 	secretFileName,
 } from "@prismalens/config";
+import type { Response } from "express";
 import type { RequestWithRawBody } from "../../middlewares/webhook-raw-body.middleware.js";
 import {
 	API_GLOBAL_PREFIX,
@@ -77,6 +78,12 @@ export class WebhookSignatureGuard implements CanActivate {
 			this.logger.warn(
 				"Webhook rejected: missing authorization or signature header",
 			);
+			// SNS sends credentials only after a 401 that challenges for Basic.
+			if (request.path === `/${API_GLOBAL_PREFIX}/${WEBHOOK_ROUTES.cloudwatch}`)
+				context
+					.switchToHttp()
+					.getResponse<Response>()
+					.setHeader("WWW-Authenticate", 'Basic realm="PrismaLens webhooks"');
 			throw new UnauthorizedException(
 				"Missing webhook authorization or signature header",
 			);

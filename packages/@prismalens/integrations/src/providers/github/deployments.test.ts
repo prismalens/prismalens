@@ -57,6 +57,44 @@ describe("GitHubDeploymentsSegment (#854)", () => {
 		]);
 	});
 
+	it("keeps a superseded deploy by its earlier successful status", async () => {
+		const request: AuthenticatedRequestFn = async (_m, path) =>
+			path.includes("/statuses")
+				? Response.json([
+						{ state: "inactive", created_at: "2026-10-01T12:00:00Z" },
+						{
+							state: "success",
+							target_url: "https://app.example/web",
+							created_at: "2026-10-01T10:00:00Z",
+						},
+					])
+				: Response.json([
+						{
+							id: 4,
+							sha: SHA,
+							ref: "v1.4.0",
+							environment: "production",
+							created_at: "2026-10-01T09:59:00Z",
+							creator: null,
+						},
+					]);
+		const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
+			request,
+			"acme/web",
+		);
+		expect(events).toEqual([
+			{
+				version: "v1.4.0",
+				environment: "production",
+				status: "succeeded",
+				sha: SHA,
+				actor: null,
+				url: "https://app.example/web",
+				at: "2026-10-01T10:00:00Z",
+			},
+		]);
+	});
+
 	it("uses the commit when the ref is a branch", async () => {
 		const request: AuthenticatedRequestFn = async (_m, path) =>
 			path.includes("/statuses")

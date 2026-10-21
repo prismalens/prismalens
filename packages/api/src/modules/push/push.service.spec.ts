@@ -139,6 +139,30 @@ describe("PushService", () => {
 		expect(await prisma.pushOutbox.count({ where: { investigationId: cancelled.id } })).toBe(0);
 	});
 
+	it("owes one push for a failure, however often the failed write repeats", async () => {
+		const inv = await run();
+		await investigations.updateStatusInternal(inv.id, "failed", undefined, "first");
+		await investigations.updateStatusInternal(inv.id, "failed", undefined, "again");
+		expect(await prisma.pushOutbox.count({ where: { investigationId: inv.id } })).toBe(1);
+	});
+
+	it("keeps a row pending while a push service errors, and settles it once the send lands", async () => {
+		const push = new PushService(prisma);
+		await subscribe(push);
+		const inv = await run();
+		await investigations.updateStatusInternal(inv.id, "failed");
+		sent.fail = { statusCode: 503 };
+		await push.flush();
+		const pending = await prisma.pushOutbox.findFirstOrThrow({ where: { investigationId: inv.id } });
+		expect(pending).toMatchObject({ deliveredAt: null, attempts: 1 });
+
+		sent.fail = null;
+		await prisma.pushOutbox.update({ where: { id: pending.id }, data: { createdAt: new Date(Date.now() - 60_000) } });
+		await push.flush();
+		expect(sent.calls).toHaveLength(1);
+		expect((await prisma.pushOutbox.findFirstOrThrow({ where: { investigationId: inv.id } })).deliveredAt).not.toBeNull();
+	});
+
 	it("writes finding_ready with a completed report, and none for a chat's answer", async () => {
 		const inv = await run();
 		await investigations.writeResultWithRelations(inv.id, {
@@ -213,6 +237,17 @@ describe("PushService", () => {
 		expect(words.title).toBe("An ask is waiting");
 		expect(words.body).toContain(INCIDENT_TEXT);
 		expect(words.url).toBe(`/investigations/${inv.id}?ask=${askId}`);
+	});
+
+	it("words an ask push for a run that was deleted, instead of a not-found", async () => {
+		const push = new PushService(prisma);
+		const row = await prisma.pushOutbox.create({
+			data: { kind: "ask_waiting", investigationId: randomUUID(), askId: randomUUID() },
+		});
+		expect(await push.notification(row.id)).toMatchObject({
+			title: "An ask is waiting",
+			body: "A run that was deleted",
+		});
 	});
 
 	it("marks a subscription the push service dropped as expired, and stops sending to it", async () => {

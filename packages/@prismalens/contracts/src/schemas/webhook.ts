@@ -110,12 +110,12 @@ export const DeployWebhookSchema = z.object({
 	version: z.string().min(1),
 	environment: z.string().min(1).default("production"),
 	status: DeployStatusSchema.default("succeeded"),
-	url: z.string().optional(),
+	url: z.url({ protocol: /^https?$/ }).optional(),
 	actor: z.string().optional(),
 	/** The commit the deploy shipped, when it is not the version itself. */
 	sha: z.string().optional(),
 	/** When it happened; the receipt time when absent. */
-	timestamp: z.string().optional(),
+	timestamp: z.iso.datetime({ offset: true }).optional(),
 });
 
 export const DeployWebhookResponseSchema = z.object({

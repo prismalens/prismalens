@@ -66,10 +66,12 @@ export class GitHubDeploymentsSegment implements DeploymentEventSource {
 		);
 		const events: DeploymentEvent[] = [];
 		for (const d of deployments) {
-			const [latest] = await get<GitHubDeploymentStatus[]>(
+			// GitHub marks a superseded deploy's newest status `inactive`; its earlier success is the one that shipped.
+			const statuses = await get<GitHubDeploymentStatus[]>(
 				request,
-				`${base}/${d.id}/statuses?per_page=1`,
+				`${base}/${d.id}/statuses?per_page=10`,
 			);
+			const latest = statuses.find((s) => s.state !== "inactive");
 			const status = latest ? STATUS[latest.state] : undefined;
 			if (!latest || !status) continue;
 			events.push({

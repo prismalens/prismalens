@@ -294,10 +294,11 @@ export class ChangeEventsService {
 		}
 	}
 
-	/** GitHub Deployments of a repository read with a saved token, kept in the push endpoint's row shape (#854). A failure is logged: commits still show. */
+	/** GitHub Deployments of a repository read with a saved token, kept in the push endpoint's row shape (#854). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
 	private async pullDeploys(link: Link): Promise<void> {
 		const repo = link.repository;
 		if (
+			link.subPath ||
 			repo.sourceKind === "folder" ||
 			!repo.connectionId ||
 			urlHost(repo.url) !== "github.com"

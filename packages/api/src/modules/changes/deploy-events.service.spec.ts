@@ -132,6 +132,24 @@ describe("deploy events (#854)", () => {
 		);
 	});
 
+	it("does not give a subPath service every deployment of the repository", async () => {
+		request.mockClear();
+		await (
+			changes as unknown as { pullDeploys(l: unknown): Promise<void> }
+		).pullDeploys({
+			serviceId,
+			serviceName: "checkout",
+			subPath: "services/checkout",
+			repository: {
+				sourceKind: "url",
+				connectionId: "c1",
+				url: "https://github.com/acme/monorepo",
+				fullName: "acme/monorepo",
+			},
+		});
+		expect(request).not.toHaveBeenCalled();
+	});
+
 	it("lists deploys in what changed, newest first", async () => {
 		await prisma.changeEvent.update({
 			where: { dedupeKey: "deploy:checkout:production:v2.0.1:succeeded" },

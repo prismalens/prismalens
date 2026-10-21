@@ -323,12 +323,15 @@ export class InvestigationsService {
 				? { ...updateData, liveTurn: null, stopRequestedAt: null }
 				: updateData,
 		};
-		// A failure owes a push, written with the failure or not at all (#859).
+		// A failure owes one push, written with the failure or not at all; a repeated write owes none (#859).
 		const { count } =
 			status === "failed"
 				? await this.prisma.$transaction(async (tx) => {
+						const alreadyFailed = await tx.investigation.count({
+							where: { id, status: "failed" },
+						});
 						const written = await tx.investigation.updateMany(write);
-						if (written.count > 0)
+						if (written.count > 0 && alreadyFailed === 0)
 							await owePush(tx, { kind: "run_failed", investigationId: id });
 						return written;
 					})

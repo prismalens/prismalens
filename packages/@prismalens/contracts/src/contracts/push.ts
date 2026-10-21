@@ -56,8 +56,8 @@ const AskStateSchema = z.object({
 });
 export type AskState = z.infer<typeof AskStateSchema>;
 
-const SubscribeInputSchema = z.object({
-	endpoint: z.string().url(),
+export const SubscribeInputSchema = z.object({
+	endpoint: z.url({ protocol: /^https$/ }),
 	keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
 });
 

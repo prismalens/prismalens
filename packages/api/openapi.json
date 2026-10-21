@@ -25767,7 +25767,8 @@
                     "default": "succeeded"
                   },
                   "url": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "uri"
                   },
                   "actor": {
                     "type": "string"
@@ -25776,7 +25777,8 @@
                     "type": "string"
                   },
                   "timestamp": {
-                    "type": "string"
+                    "type": "string",
+                    "format": "date-time"
                   }
                 },
                 "required": [

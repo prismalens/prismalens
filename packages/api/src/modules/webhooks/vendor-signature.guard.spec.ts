@@ -42,6 +42,34 @@ function request(
 const hmac = (secret: string, body: string) =>
 	createHmac("sha256", secret).update(body).digest("hex");
 
+describe("WebhookSignatureGuard, CloudWatch via SNS (#79)", () => {
+	beforeEach(() => {
+		vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+	});
+
+	it("challenges for Basic auth when the CloudWatch route arrives with no credentials", () => {
+		const setHeader = vi.fn();
+		const ctx = {
+			switchToHttp: () => ({
+				getRequest: () => ({
+					path: "/api/webhooks/cloudwatch",
+					headers: {},
+					query: {},
+					rawBody: Buffer.from("{}"),
+				}),
+				getResponse: () => ({ setHeader }),
+			}),
+		} as unknown as ExecutionContext;
+		expect(() => new WebhookSignatureGuard(config()).canActivate(ctx)).toThrow(
+			UnauthorizedException,
+		);
+		expect(setHeader).toHaveBeenCalledWith(
+			"WWW-Authenticate",
+			expect.stringMatching(/^Basic /),
+		);
+	});
+});
+
 describe("WebhookSignatureGuard, vendor signatures (#79)", () => {
 	const body = '{"action":"triggered"}';
 	beforeEach(() => {
