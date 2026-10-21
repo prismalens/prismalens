@@ -10,7 +10,7 @@ Minor release {{VERSION}}: the per-release checklist. The walk is the full walk;
 Site and docs checks (from #118 - Standing phase-exit issue, SDLC hygiene):
 
 - [ ] docs.prismalens.io updated: every new command, flag and config key this release shipped is documented (reference completeness), with input/output symmetry (what each command produces, where artifacts land).
-- [ ] **Adversarial docs-review workflow (REUSE variant)** run against the updated site: the 5-lens review plus red-team verify from the hub procedure `docs-review-reuse-template`. Findings triaged: quick wins applied, over-engineering rejected explicitly.
+- [ ] **Adversarial docs review** run against the updated site. Findings triaged: quick wins applied, over-engineering rejected explicitly.
 - [ ] prismalens.io site matches what this release ships: every product claim on `/` and `/about` checked against the packed artifact and docs.prismalens.io; no retired command or flag described; "not yet" / "in development" lines removed for anything that shipped.
 - [ ] Site imagery re-captured from a run on the packed release if the incident or report page changed: `site/public/screenshots/` and the evidence in `site/src/components/Refraction.astro`.
 - [ ] If the tagline or positioning changed: OG card and README banners re-rendered from `brand/sheet.html`, and the banners copied to `.github/assets/` in this repo.
