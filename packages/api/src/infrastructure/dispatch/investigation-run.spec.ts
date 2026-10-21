@@ -330,6 +330,21 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect(ws.repos.map((r) => r.name)).toEqual(["api", "api-2"]);
 		});
 
+		it("a repo whose folder name is a hidden agent config directory gets a safe name", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					repo("https://github.com/acme/.gemini", "checkout"),
+					repo("https://github.com/acme/api", "billing"),
+				]),
+				snapshotWith: cloneAs(async (_src: unknown, dest: string) => at(dest)),
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(ws.repos.map((r) => r.name)).toEqual(["_gemini", "api"]);
+		});
+
 		it("the run records the workspace on the row and hands the prompt every repo", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", mkdtempSync(join(os.tmpdir(), "pl-appdata-")));
 			const updateStatus = vi.fn(async () => true);

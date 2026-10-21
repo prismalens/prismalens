@@ -9,6 +9,7 @@ import {
 	querySource,
 	sourceArg,
 	timeArg,
+	toUnixSeconds,
 } from "../source-tools.js";
 
 export function lokiTools(
@@ -32,7 +33,7 @@ export function lokiTools(
 			openWorld: true,
 			run: ({ query, start, end, limit, source }, ctx) => {
 				const endS = end ?? String(Math.floor(now().getTime() / 1000));
-				const startS = start ?? String(Number(endS) - 3600);
+				const startS = start ?? String(toUnixSeconds(endS) - 3600);
 				return querySource(
 					sources,
 					ctx,

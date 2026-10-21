@@ -16,11 +16,14 @@ const EMPTY = {
 	investigation: { findUnique: async () => null },
 };
 
-function gateway(prisma: Record<string, unknown> = EMPTY) {
+function gateway(
+	prisma: Record<string, unknown> = EMPTY,
+	listening = "::",
+) {
 	const http = {
 		httpAdapter: {
 			getHttpServer: () => ({
-				address: () => ({ address: "::", family: "IPv6", port: 3001 }),
+				address: () => ({ address: listening, family: "IPv6", port: 3001 }),
 			}),
 		},
 	};
@@ -65,6 +68,11 @@ describe("gateway bearer (#848)", () => {
 		const entry = await gateway().lease(RUN_A);
 		expect(entry?.url).toBe(`http://127.0.0.1:3001/api/mcp/runs/${RUN_A}`);
 		expect(entry?.token.length).toBeGreaterThan(30);
+	});
+
+	it("keeps an IPv6 loopback listener reachable at [::1]", async () => {
+		const entry = await gateway(EMPTY, "::1").lease(RUN_A);
+		expect(entry?.url).toBe(`http://[::1]:3001/api/mcp/runs/${RUN_A}`);
 	});
 
 	it("401 with no bearer", async () => {

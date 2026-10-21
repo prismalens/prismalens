@@ -251,6 +251,27 @@ describe("gateway source tools (#848 Phase 1)", () => {
 		expect(out.text).toContain("larger than");
 	});
 
+	it("range queries given an RFC 3339 end default start and step without NaN", async () => {
+		const urls: string[] = [];
+		const base = await upstream((req) => {
+			urls.push(req.url ?? "");
+			return { body: { status: "success", data: { resultType: "matrix", result: [] } } };
+		});
+		const end = "2026-10-20T10:00:00Z";
+		const g = gateway([
+			{ id: "p1", templateId: "prometheus", credentials: {}, baseUrl: base },
+			{ id: "l1", templateId: "loki", credentials: {}, baseUrl: base },
+		]);
+		await tool(g, "prometheus_query_range", { query: "up", end });
+		await tool(g, "loki_query_range", { query: "{a=\"b\"}", end });
+		const seconds = Date.parse(end) / 1000;
+		for (const url of urls) {
+			expect(url).not.toContain("NaN");
+			expect(url).toContain(`start=${seconds - 3600}`);
+		}
+		expect(urls[0]).toContain("step=18s");
+	});
+
 	it("loki_query_range honours limit across streams and cuts long lines", async () => {
 		let url = "";
 		const base = await upstream((req) => {

@@ -90,6 +90,10 @@ export const timeArg = z
 	.max(40)
 	.regex(/^[0-9TZ:.+-]+$/, "RFC 3339 or unix seconds");
 
+/** Unix seconds for a `timeArg` (digits, or RFC 3339); NaN when it is neither. */
+export const toUnixSeconds = (t: string): number =>
+	/^\d+(\.\d+)?$/.test(t) ? Number(t) : Date.parse(t) / 1000;
+
 /** The run id lets the gateway note which connections a run met (OBJ-010). */
 export type QuerySources = (
 	kind: QueryKind,
