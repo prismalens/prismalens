@@ -36,6 +36,9 @@ const mockInvestigationsService = {
 const mockDispatchService = {
 	sendMessage: vi.fn(),
 	resumeInvestigation: vi.fn(),
+	planFollowUp: vi.fn(),
+	followUpLevel: vi.fn(),
+	afterRestart: vi.fn(),
 };
 
 function investigation(id: string, status: string) {
@@ -309,6 +312,86 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 		mockInvestigationsService.findById.mockResolvedValue(live(null));
 		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue" })).resolves.toEqual({ state: "queued", messageId: expect.any(String) });
 		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("InvestigationsController.handoff (#849)", () => {
+	let controller: InvestigationsController;
+
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		const module: TestingModule = await Test.createTestingModule({
+			controllers: [InvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: mockInvestigationsService },
+				{ provide: DispatchService, useValue: mockDispatchService },
+				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
+				{ provide: HarnessService, useValue: {} },
+			],
+		})
+			.overrideGuard(MutationThrottleGuard)
+			.useValue({ canActivate: () => true })
+			.compile();
+		controller = module.get(InvestigationsController);
+	});
+
+	function handoffHandler(): (a: { input: { id: string; harness?: string } }) => Promise<unknown> {
+		return (
+			controller.investigations() as unknown as Record<
+				string,
+				{ "~orpc": { handler: (a: { input: { id: string; harness?: string } }) => Promise<unknown> } }
+			>
+		).handoff["~orpc"].handler;
+	}
+
+	it("handoff-L11: load route reports preflight, access level and note", async () => {
+		const finished = {
+			...investigation("inv-1", "completed"),
+			harness: "opencode",
+			workspace: "{}",
+			endReason: null,
+		};
+		mockInvestigationsService.findById.mockResolvedValue(finished);
+		mockDispatchService.planFollowUp.mockResolvedValue({
+			route: "load",
+			harness: "opencode",
+			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
+		});
+		mockDispatchService.followUpLevel.mockResolvedValue("workspace-write");
+		mockDispatchService.afterRestart.mockResolvedValue(false);
+
+		const result = await handoffHandler()({ input: { id: "inv-1", harness: "opencode" } });
+
+		expect(result).toEqual({
+			route: "load",
+			harness: "opencode",
+			carried: "the agent's own session",
+			omitted: null,
+			accessLevel: "workspace-write",
+			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
+			note: null,
+		});
+	});
+
+	it("handoff-L11: refuses a running run with CONFLICT", async () => {
+		mockInvestigationsService.findById.mockResolvedValue(investigation("inv-1", "running"));
+
+		await expect(handoffHandler()({ input: { id: "inv-1" } })).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
+	it("handoff-L11: a completed run whose workspace is null rejects with exact message", async () => {
+		mockInvestigationsService.findById.mockResolvedValue({
+			...investigation("inv-1", "completed"),
+			workspace: null,
+		});
+
+		await expect(handoffHandler()({ input: { id: "inv-1" } })).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "This run recorded no workspace, so there is nothing to continue from.",
+		});
 	});
 });
 
