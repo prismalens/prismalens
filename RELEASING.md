@@ -37,7 +37,7 @@ What a patch walk does:
 
 What a patch walk does not do:
 - No full walk.
-- No site review, scripted live test or hub close-out. Those belong to a minor.
+- No site review, scripted live test or close-out. Those belong to a minor.
 
 ## Minor release
 A minor (`0.N.0`) happens only when a maintainer changes the `always-bump-patch` line on purpose, for a phase from the milestones ([VERSIONING.md](VERSIONING.md)).

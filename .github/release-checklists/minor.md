@@ -22,9 +22,9 @@ Live test (from #120 - Standing phase-exit issue, scripted live test):
 - [ ] Run the scripted live test against the **packed tarball** (not the source tree) on an sreforge incident scenario relevant to this release (validated: latency-cache-stampede, db-pool-exhaustion-deploy). Alert fires, then the PrismaLens path under test behaves end to end. Link the result (report/score) here.
 - Rule: a deterministic script, not an agent-driven run. Agents are for evals; gates must not flake.
 
-Hub close-out:
+Close-out:
 
-- [ ] Update the pinned roadmap #881 - Roadmap and handoff and run `mage index`.
+- [ ] Update the pinned roadmap #881 - Roadmap and handoff.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
