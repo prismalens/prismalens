@@ -22,6 +22,7 @@ import {
 	type OperatorState,
 	type TranscriptItem,
 } from "@/lib/investigation-events";
+import { useRenderProbe } from "@/lib/render-probe";
 import { shortPath } from "@/lib/report-view";
 import { type AskRecord, askEnd, askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
@@ -109,6 +110,7 @@ export function Transcript({
 	/** Drawn right under the report card, outside the fold: the hypotheses card. */
 	afterReport?: ReactNode;
 }) {
+	useRenderProbe("Transcript", { items, steps, worked, report });
 	const brief = items.findIndex(
 		(i) => i.kind === "operator" && i.state === "started",
 	);
@@ -204,6 +206,7 @@ function TranscriptRow({
 	briefBy: string;
 	report?: { title: string; summary: string } | null;
 }) {
+	useRenderProbe("TranscriptRow", { item, steps, report });
 	switch (item.kind) {
 		case "prose":
 			return (
@@ -434,6 +437,7 @@ function StepGroup({
 	steps?: TranscriptSteps;
 	cwd?: string | null;
 }) {
+	useRenderProbe("StepGroup", { item, steps });
 	const [unfolded, setUnfolded] = useState(false);
 	const byCall = new Map(steps?.all.map((s) => [s.callId, s]));
 	const own = item.callIds.flatMap((id) => {

@@ -48,6 +48,7 @@ import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
+import { useRenderProbe } from "@/lib/render-probe";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
 import {
@@ -95,6 +96,7 @@ export function RunPage() {
 	const { toast } = useToast();
 	const { incident, run, runs, draft } = record;
 	const now = useNow(1000);
+	useRenderProbe("RunPage", { now, run });
 	const search = useSearch({
 		from: "/_authenticated/incidents/$id/conversation",
 	});
