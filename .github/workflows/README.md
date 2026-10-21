@@ -44,6 +44,28 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | `packed-upgrade-smoke`, `gate-side-checks` | scripted fake ACP agent, on the packed tarball | every PR | no, until three recorded greens |
 | `harness-admission` | live free model on the pinned OpenCode | every PR for now (advisory); also nightly in `live-agent.yml` | no |
 
+One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
+`turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
+`e2e.yml` starts beside `ci.yml`, so it restores the newest cache saved before it gets there.
+`cross-os-smoke.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
+packing itself only if that job is missing or red.
+
+## `e2e.yml`: sharded, with a quarantine
+
+The suite runs as 2 shards (`--shard=n/2`), each on its own runner with its own stacks; the `pair`
+setup project runs in both. Every shard writes its flaky and failed tests to the job summary.
+
+A test tagged `@quarantine` leaves the `chromium` and `journeys` projects and runs in
+`chromium-quarantine` and `journeys-quarantine`, in a step with `continue-on-error`, on shard 1. Each
+quarantined test has an open `bug` issue named in a comment beside the tag, and the issue closes
+when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
+
+- **Not in `ci-gate` yet.** Adding `e2e` to `ci-gate`'s `needs`, and to `merge_group`, comes after the
+  quarantine has held for a while; that is #885's remaining step and needs the operator's go.
+- **`strict_required_status_checks_policy` is undecided.** The live ruleset still sets it to `true`
+  next to the merge queue. Whether to drop it is unconfirmed and recorded here as open; this file does
+  not decide it, and no workflow depends on either answer.
+
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
 script against the real harness on PATH; `live-agent.yml` calls it that way.
 

@@ -67,7 +67,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           if [ -f "$RUNNER_TEMP/playwright-main.json" ]; then
-            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E, shard ${{ matrix.shard }}/2" >> "$GITHUB_STEP_SUMMARY"
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E, shard ${{ matrix.shard }}/2" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       # Non-blocking by construction: a quarantined test may fail without failing the job.
@@ -85,7 +85,7 @@ jobs:
         if: ${{ !cancelled() && matrix.shard == 1 }}
         run: |
           if [ -f "$RUNNER_TEMP/playwright-quarantine.json" ]; then
-            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-quarantine.json" "Playwright E2E, quarantined (non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-quarantine.json" "Playwright E2E, quarantined (non-blocking)" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload Playwright Report
