@@ -208,6 +208,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						model: to.model,
 						effort: to.effort,
 						acpSessionId: to.acpSessionId,
+						usage: null,
 					},
 				});
 			},
@@ -918,7 +919,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(attachments.length ? { attachments } : {}),
 				to: { ...to, harness: plan.harness },
 				...(plan.route === "handoff" ? { handoff: true } : {}),
-				...(row.endReason === "interrupted" ? { afterRestart: true } : {}),
+				...((await this.afterRestart(id, row.endReason))
+					? { afterRestart: true }
+					: {}),
 			},
 		};
 		const admitted = await this.prisma.$transaction(async (tx) => {
@@ -982,6 +985,15 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		return alertHarness
 			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
 			: AccessLevelSchema.safeParse(row.accessLevel).data;
+	}
+
+	/** A restart cut the run off and no follow-up has run since, so the agent must be told. */
+	async afterRestart(id: string, endReason: string | null): Promise<boolean> {
+		if (endReason !== "interrupted") return false;
+		const followUps = await this.prisma.investigationEvent.count({
+			where: { investigationId: id, event: { contains: '"resumed":[' } },
+		});
+		return followUps === 0;
 	}
 
 	/**

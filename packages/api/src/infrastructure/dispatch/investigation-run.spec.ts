@@ -1107,7 +1107,10 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.resume.handoff).toContain("1. look at checkout\n2. not the cache");
 		expect(opts.resume.handoff).toContain("- [refuted] the cache");
 		expect(opts.resume.handoff).toContain("may or may not have completed");
-		expect(opts.resume.via).toMatchObject({ harness: "codex", handoff: { carried: "alert, 2 messages, report, 1 refuted hypothesis" } });
+		expect(opts.resume.via).toMatchObject({
+			harness: "codex",
+			handoff: { from: "opencode", carried: "the alert, 2 messages, the report and 1 refuted hypothesis" },
+		});
 	});
 
 	it("puts a continued run back when it fails before the row went live (R4.4)", async () => {

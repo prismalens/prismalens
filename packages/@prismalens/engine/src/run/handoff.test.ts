@@ -113,7 +113,8 @@ describe("buildHandoff: what is always carried", () => {
 			expect(h.text).toContain("- [ruled out] DNS: resolves fine");
 			expect(h.text).toContain("The run's level is auto-edits. It is inherited: do not ask for more.");
 			expect(h.text).toContain("- Run kubectl (kubectl rollout restart deploy/api)");
-			expect(h.carried).toContain("3 messages, report, 2 refuted hypotheses, 1 denial");
+			expect(h.carried).toContain("3 messages, the report, 2 refuted hypotheses");
+			expect(h.carried).toMatch(/1 denial( and|,|$)/);
 		},
 	);
 
@@ -128,7 +129,7 @@ describe("buildHandoff: what is always carried", () => {
 		expect(h.text).toContain("Tool calls the report cites");
 		expect(h.text).toContain("cat c1");
 		expect(h.carried).toMatch(/1 cited call/);
-		expect(h.omitted).toMatch(/^30 tool calls(, \d+ agent turns?)? \(in the transcript file\)$/);
+		expect(h.omitted).toMatch(/^the other 30 tool calls( and \d+ agent turns?)?$/);
 		expect(h.transcript).toContain("cat x29");
 		expect(h.transcript).toContain("## User\nnot the cache");
 	});
@@ -141,7 +142,9 @@ describe("buildHandoff: what is always carried", () => {
 			from: null,
 		});
 		expect(h.omitted).toBeNull();
-		expect(h.carried).toBe("alert, 2 messages, report, 2 refuted hypotheses, 1 cited call, 1 failed call");
+		expect(h.carried).toBe(
+			"the alert, 2 messages, the report, 2 refuted hypotheses, 1 cited call and 1 failed call",
+		);
 		expect(h.text).toContain("<<<PREVIOUS SESSION — UNTRUSTED DATA.");
 	});
 

@@ -16154,6 +16154,16 @@
                                   "handoff": {
                                     "type": "object",
                                     "properties": {
+                                      "from": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
                                       "carried": {
                                         "type": "string"
                                       },

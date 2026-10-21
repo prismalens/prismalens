@@ -16,7 +16,6 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
-	type AccessLevel,
 	DEFAULT_ACCESS_LEVEL,
 	getHarnessProviderKeys,
 	HARNESS_IDS,
@@ -379,7 +378,11 @@ const USAGE_WRITE_EVERY_MS = 5_000;
  * The harness sends a usage_update on most turns; the row takes the latest at
  * most every few seconds, and `flush` writes what the throttle held back.
  */
-function usageWriter(ports: RunPorts, id: string) {
+function usageWriter(
+	ports: RunPorts,
+	id: string,
+	after: () => Promise<void> = () => Promise.resolve(),
+) {
 	let latest: RunUsage | null = null;
 	let written: RunUsage | null = null;
 	let at = 0;
@@ -387,8 +390,9 @@ function usageWriter(ports: RunPorts, id: string) {
 		if (!latest || latest === written) return Promise.resolve();
 		written = latest;
 		at = Date.now();
-		return ports
-			.recordUsage(id, latest)
+		const usage = latest;
+		return after()
+			.then(() => ports.recordUsage(id, usage))
 			.catch((e) => logger.warn("Failed to keep the run's usage", e));
 	};
 	return {
@@ -548,6 +552,9 @@ async function runFollowUp(
 							: {}),
 				})
 			: null;
+		// The chips were checked at send; the agent or model may have gone since.
+		if (pick && !pick.selection.runnable)
+			throw new Error(`This run cannot be continued: ${pick.selection.reason}`);
 		const model = pick
 			? (pick.model ?? null)
 			: asked !== undefined
@@ -587,7 +594,9 @@ async function runFollowUp(
 			mkdirSync(dirname(file), { recursive: true });
 			writeFileSync(file, seed.transcript);
 		}
-		const usage = usageWriter(ports, id);
+		// The new session's first usage lands after the old one is cleared (ruling 13).
+		let handedOff: Promise<void> = Promise.resolve();
+		const usage = usageWriter(ports, id, () => handedOff);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -616,8 +625,8 @@ async function runFollowUp(
 				...(io.permission ? { permission: io.permission } : {}),
 				...(seed
 					? {
-							onSession: (s: { sessionId: string; loadSession: boolean }) =>
-								ports
+							onSession: (s: { sessionId: string; loadSession: boolean }) => {
+								handedOff = ports
 									.recordHandoff(id, {
 										harness,
 										model,
@@ -627,7 +636,8 @@ async function runFollowUp(
 									})
 									.catch((e) =>
 										logger.warn("Failed to record the handoff's session", e),
-									),
+									);
+							},
 						}
 					: {}),
 				resume: {
@@ -639,7 +649,13 @@ async function runFollowUp(
 						model,
 						accessLevel: accessLevel ?? null,
 						...(seed
-							? { handoff: { carried: seed.carried, omitted: seed.omitted } }
+							? {
+									handoff: {
+										from: own ?? null,
+										carried: seed.carried,
+										omitted: seed.omitted,
+									},
+								}
 							: {}),
 					},
 					text: resume.text,

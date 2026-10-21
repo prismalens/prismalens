@@ -33,7 +33,9 @@ export interface Handoff {
 	text: string;
 	/** The whole conversation, for the transcript file. */
 	transcript: string;
+	/** e.g. "the alert, 2 messages, the report and 9 cited calls". */
 	carried: string;
+	/** e.g. "the other 23 tool calls"; they stay in the transcript file. Null when nothing is left out. */
 	omitted: string | null;
 }
 
@@ -51,6 +53,12 @@ interface Call {
 
 const plural = (n: number, one: string, many = `${one}s`) =>
 	`${n} ${n === 1 ? one : many}`;
+
+/** "a, b and c": the parts read as one phrase in the composer hint and the transcript. */
+const list = (parts: string[]) =>
+	parts.length < 2
+		? (parts[0] ?? "")
+		: `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 
 function citedIds(report: InvestigationReport | null): Set<string> {
 	const ids = new Set<string>();
@@ -198,21 +206,25 @@ export function buildHandoff(input: HandoffInput): Handoff {
 	const refuted = (report?.hypotheses ?? []).filter(
 		(h) => h.status === "refuted",
 	).length;
-	const carried = [
-		"alert",
-		plural(messages.length, "message"),
-		...(report ? ["report"] : []),
+	const carried = list([
+		"the alert",
+		...(messages.length ? [plural(messages.length, "message")] : []),
+		...(report ? ["the report"] : []),
 		...(refuted
 			? [plural(refuted, "refuted hypothesis", "refuted hypotheses")]
 			: []),
 		...(denials.length ? [plural(denials.length, "denial")] : []),
 		...(citedOut.length ? [plural(citedOut.length, "cited call")] : []),
 		...(failedOut.length ? [plural(failedOut.length, "failed call")] : []),
-	].join(", ");
+	]);
 	const leftCalls = calls.length - citedOut.length - failedOut.length;
 	const leftTurns = turns.length - turnsOut.length;
 	const omittedParts = [
-		...(leftCalls > 0 ? [plural(leftCalls, "tool call")] : []),
+		...(leftCalls > 0
+			? [
+					`${citedOut.length + failedOut.length ? "the other " : ""}${plural(leftCalls, "tool call")}`,
+				]
+			: []),
 		...(leftTurns > 0 ? [plural(leftTurns, "agent turn")] : []),
 	];
 
@@ -231,9 +243,7 @@ export function buildHandoff(input: HandoffInput): Handoff {
 		].join("\n\n"),
 		transcript: renderTranscript(events),
 		carried,
-		omitted: omittedParts.length
-			? `${omittedParts.join(", ")} (in the transcript file)`
-			: null,
+		omitted: omittedParts.length ? list(omittedParts) : null,
 	};
 }
 

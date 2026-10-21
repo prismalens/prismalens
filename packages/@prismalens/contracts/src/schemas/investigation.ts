@@ -731,7 +731,12 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 				model: z.string().nullable(),
 				accessLevel: AccessLevelSchema.nullable(),
 				handoff: z
-					.object({ carried: z.string(), omitted: z.string().nullable() })
+					.object({
+						/** The agent the run was in before; null when it named none. */
+						from: z.string().nullable().optional(),
+						carried: z.string(),
+						omitted: z.string().nullable(),
+					})
 					.optional(),
 			})
 			.optional(),

@@ -743,6 +743,18 @@ export class InvestigationsService {
 		return count;
 	}
 
+	/** Every stored event of a run, in order. */
+	async allEvents(investigationId: string): Promise<CanonicalEvent[]> {
+		const all: CanonicalEvent[] = [];
+		let cursor: number | undefined;
+		do {
+			const page = await this.getEvents(investigationId, cursor, 1000);
+			all.push(...page.events);
+			cursor = page.nextCursor ?? undefined;
+		} while (cursor !== undefined);
+		return all;
+	}
+
 	/**
 	 * Read a page of the durable canonical event record for replay/history
 	 * (ADR-0018). Paginated by an exclusive `seq` cursor; each stored blob is parsed
@@ -758,18 +770,6 @@ export class InvestigationsService {
 	 *
 	 * @returns the parsed events plus the `nextCursor` (`seq` to resume from, or null).
 	 */
-	/** Every stored event of a run, in order. */
-	async allEvents(investigationId: string): Promise<CanonicalEvent[]> {
-		const all: CanonicalEvent[] = [];
-		let cursor: number | undefined;
-		do {
-			const page = await this.getEvents(investigationId, cursor, 1000);
-			all.push(...page.events);
-			cursor = page.nextCursor ?? undefined;
-		} while (cursor !== undefined);
-		return all;
-	}
-
 	async getEvents(
 		investigationId: string,
 		cursor: number | undefined,

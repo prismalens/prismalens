@@ -63,7 +63,10 @@ export interface RunPorts {
 	} | null>;
 	/** Every stored event of the run, in order; a handoff is built from them. */
 	events(id: string): Promise<CanonicalEvent[]>;
-	/** A handoff moved the thread to another session: the next follow-up loads that one. */
+	/**
+	 * A handoff moved the thread to another session: the next follow-up loads
+	 * that one, and the old session's usage is cleared (ruling 13).
+	 */
 	recordHandoff(
 		id: string,
 		to: {

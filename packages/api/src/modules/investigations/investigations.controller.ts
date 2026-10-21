@@ -324,7 +324,10 @@ export class InvestigationsController {
 							message: "Pick an agent to continue in.",
 						});
 					const level = await this.dispatchService.followUpLevel(inv);
-					const afterRestart = inv.endReason === "interrupted";
+					const afterRestart = await this.dispatchService.afterRestart(
+						inv.id,
+						inv.endReason,
+					);
 					const note = afterRestart ? RESTART_NOTE : null;
 					if (plan.route === "load")
 						return {
@@ -333,7 +336,7 @@ export class InvestigationsController {
 							carried: "the agent's own session",
 							omitted: null,
 							accessLevel: level ?? null,
-							preflight: null,
+							preflight: plan.preflight,
 							note,
 						};
 					const own = HARNESS_IDS.find((h) => h === inv.harness);
