@@ -29,7 +29,6 @@ export function lokiTools(
 				source: sourceArg,
 			}),
 			category: "logs",
-			sideEffect: "read_only",
 			openWorld: true,
 			run: ({ query, start, end, limit, source }, ctx) => {
 				const endS = end ?? String(Math.floor(now().getTime() / 1000));

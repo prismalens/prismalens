@@ -8,7 +8,6 @@ import { RUNBOOK_CHARS, type RunbooksData } from "../runbooks.js";
 export function runbookTools(data: RunbooksData): SourceTool[] {
 	const base = {
 		category: "knowledge",
-		sideEffect: "read_only",
 		openWorld: false,
 	} as const;
 	return [

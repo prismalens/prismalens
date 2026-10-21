@@ -38,7 +38,6 @@ const promData = (data: unknown) => {
 
 const base = {
 	category: "metrics",
-	sideEffect: "read_only",
 	openWorld: true,
 } as const;
 

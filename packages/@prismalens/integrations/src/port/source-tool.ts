@@ -8,17 +8,6 @@
 import type { SourceCategory } from "@prismalens/contracts/schemas";
 import type { z } from "zod";
 
-export const SIDE_EFFECTS = [
-	"none",
-	"read_only",
-	"mutating",
-	"external",
-] as const;
-export type SideEffect = (typeof SIDE_EFFECTS)[number];
-
-/** What the registry accepts until #865 designs an approval policy. */
-export const SERVED_SIDE_EFFECTS: readonly SideEffect[] = ["none", "read_only"];
-
 /** At most 46 characters and never `__`, which marks a proxied tool. */
 export const SOURCE_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
@@ -42,7 +31,6 @@ export interface SourceTool<S extends z.ZodObject = z.ZodObject> {
 	input: S;
 	/** Availability is the category's status in the view. */
 	category: SourceCategory;
-	sideEffect: SideEffect;
 	openWorld: boolean;
 	run(input: z.output<S>, ctx: SourceToolContext): Promise<SourceToolResult>;
 }

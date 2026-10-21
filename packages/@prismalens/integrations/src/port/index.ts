@@ -16,9 +16,6 @@ export {
 export { SourceRegistry } from "./registry.js";
 export {
 	defineSourceTool,
-	SERVED_SIDE_EFFECTS,
-	SIDE_EFFECTS,
-	type SideEffect,
 	SOURCE_TOOL_NAME,
 	type SourceTool,
 	type SourceToolContext,

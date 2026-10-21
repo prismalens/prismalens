@@ -3,16 +3,12 @@
 
 import type { SourceCategory } from "@prismalens/contracts/schemas";
 import {
-	SERVED_SIDE_EFFECTS,
 	SOURCE_TOOL_NAME,
 	type SourceTool,
 	type SourceToolContext,
 	SourceToolRefused,
 	type SourceToolResult,
 } from "./source-tool.js";
-
-const served = (tool: SourceTool): boolean =>
-	SERVED_SIDE_EFFECTS.includes(tool.sideEffect);
 
 /** The PrismaLens tools a gateway serves: read-only by construction (#848). */
 export class SourceRegistry {
@@ -29,10 +25,6 @@ export class SourceRegistry {
 			throw new SourceToolRefused(`"${tool.name}" is not a valid tool name`);
 		if (this.tools.has(tool.name))
 			throw new SourceToolRefused(`"${tool.name}" is already registered`);
-		if (!served(tool))
-			throw new SourceToolRefused(
-				`"${tool.name}" is ${tool.sideEffect ?? "missing a side-effect level"}; PrismaLens serves read-only tools only`,
-			);
 		this.tools.set(tool.name, tool);
 	}
 
@@ -55,11 +47,6 @@ export class SourceRegistry {
 		const tool = this.tools.get(name);
 		if (!tool)
 			return { isError: true, value: { error: "No such PrismaLens tool" } };
-		if (!served(tool))
-			return {
-				isError: true,
-				value: { error: "PrismaLens serves read-only tools only" },
-			};
 		const parsed = tool.input.safeParse(input ?? {});
 		if (!parsed.success)
 			return { isError: true, value: { error: parsed.error.issues } };
