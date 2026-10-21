@@ -27,6 +27,7 @@ vi.mock("../orpc-client", async (importOriginal) => {
 import { client } from "../orpc-client";
 
 const mockedGetEvents = vi.mocked(client.investigations.getEvents);
+type Page = Awaited<ReturnType<typeof client.investigations.getEvents>>;
 
 function makeStepEvent(
 	seq: number,
@@ -140,27 +141,15 @@ describe("use-investigation-events (#874)", () => {
 					return {
 						events: page1Events,
 						nextCursor: 2,
-					} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-						infer U
-					>
-						? U
-						: never;
+					} satisfies Page;
 				}
 				if (cursor === 2) {
 					return {
 						events: page2Events,
 						nextCursor: null,
-					} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-						infer U
-					>
-						? U
-						: never;
+					} satisfies Page;
 				}
-				return { events: [], nextCursor: null } as unknown as ReturnType<
-					typeof mockedGetEvents
-				> extends Promise<infer U>
-					? U
-					: never;
+				return { events: [], nextCursor: null } satisfies Page;
 			});
 
 			let hookResult:
@@ -213,11 +202,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: initialEvents,
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			let hookResult:
@@ -256,11 +241,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: [makeStepEvent(7), freshE8],
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			await act(async () => {
@@ -292,11 +273,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: initialEvents,
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			let hookResult:
@@ -329,11 +306,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: [makeStepEvent(2)],
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			await act(async () => {
@@ -355,11 +328,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: initialEvents,
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			function PollingComponent({ pollMs }: { pollMs?: number | false }) {
@@ -429,11 +398,7 @@ describe("use-investigation-events (#874)", () => {
 				return {
 					events: initialEvents,
 					nextCursor: null,
-				} as unknown as ReturnType<typeof mockedGetEvents> extends Promise<
-					infer U
-				>
-					? U
-					: never;
+				} satisfies Page;
 			});
 
 			function TestComponent() {

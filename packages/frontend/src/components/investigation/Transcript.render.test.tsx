@@ -207,8 +207,9 @@ describe("Transcript render probe (#874)", () => {
 		});
 
 		const counts = window.__renderProbe?.counts() ?? {};
-		expect(counts.TranscriptRow ?? 0).toBeLessThanOrEqual(2);
-		expect(counts.StepGroup ?? 0).toBeLessThanOrEqual(1);
+		// Its own group, and the Thinking line the finished call brings.
+		expect(counts.TranscriptRow).toBe(2);
+		expect(counts.StepGroup).toBe(1);
 	});
 
 	it("updates Thinking leaf on clock ticks without re-rendering rows", async () => {
