@@ -244,6 +244,29 @@ describe("AcpAdapter.normalize", () => {
 		expect(r).toMatchObject({ result: { preview: "from content" } });
 	});
 
+	it("keeps output an earlier update carried when the completed update is bare", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "c4",
+			kind: "execute",
+			title: "Terminal",
+			rawInput: { command: "ls" },
+		});
+		adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c4",
+			status: "in_progress",
+			rawOutput: { formatted_output: "a.ts" },
+		});
+		const r = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c4",
+			status: "completed",
+		});
+		expect(r).toMatchObject({ result: { preview: "a.ts" } });
+	});
+
 	it("shows the command Claude Code sends after opening the call empty (walk f16)", () => {
 		const adapter = new AcpAdapter(ctx);
 		adapter.normalize({

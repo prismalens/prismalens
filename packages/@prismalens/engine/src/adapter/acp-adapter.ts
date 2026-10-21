@@ -97,6 +97,8 @@ interface ToolMeta {
 	name: string;
 	kind?: string;
 	rawInput?: unknown;
+	/** Latest output an earlier update carried, cut to what a preview can show. */
+	output?: string;
 }
 
 export class AcpAdapter {
@@ -132,6 +134,7 @@ export class AcpAdapter {
 			case "tool_call_update": {
 				const toolCallId = u.toolCallId ?? "";
 				const filled = this.mergeToolMeta(toolCallId, u);
+				this.retainOutput(toolCallId, u);
 				// ACP sends only changed fields: no status means the call still runs (#820).
 				if (isTerminal(u.status)) {
 					const done = this.toolResult(u);
@@ -336,7 +339,7 @@ export class AcpAdapter {
 		const ok = u.status !== "failed";
 		const preview = ruleDenied(u._meta)
 			? RULE_DENIED
-			: truncate(toolOutputText(u), this.previewLimit);
+			: truncate(toolOutputText(u) || (meta?.output ?? ""), this.previewLimit);
 		return {
 			kind: "tool_result",
 			...this.base(),
@@ -350,6 +353,13 @@ export class AcpAdapter {
 				preview,
 			},
 		};
+	}
+
+	/** ACP sends only changed fields: a later bare `completed` must not lose output an earlier update carried. */
+	private retainOutput(toolCallId: string, u: AcpUpdate): void {
+		const meta = this.toolMeta.get(toolCallId);
+		const text = toolOutputText(u);
+		if (meta && text) meta.output = text.slice(0, this.previewLimit + 1);
 	}
 
 	/**
