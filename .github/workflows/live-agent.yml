@@ -18,7 +18,6 @@
 name: Live agent
 
 on:
-  pull_request:
   schedule:
     - cron: "47 2 * * *" # 02:47 UTC daily, on the default branch
   workflow_dispatch:
@@ -110,8 +109,7 @@ jobs:
           passed=0
           for n in 1 2 3; do
             echo "::group::attempt $n"
-            model="$PRISMALENS_HARNESS_MODEL"; [ "$n" -le 1 ] && model=opencode/does-not-exist
-            if PRISMALENS_HARNESS_MODEL="$model" PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
+            if PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
               PACKED_INTAKE_PORT=$((3102 + n)) \
               timeout 20m node scripts/packed-intake.mjs tarballs; then
               passed=$((passed + 1))
@@ -187,7 +185,7 @@ jobs:
   report-failure:
     name: Upsert the failing-check issue
     needs: [pack, packed-intake-live, harness-admission-live]
-    if: always()
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -201,7 +199,7 @@ jobs:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -eu
-          title="Live agent check failing on main (workflow test, ignore)"
+          title="Live agent check failing on main"
           failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries | map(select(.value.result == "failure") | .key) | join(", ")')
           body="The nightly live agent check failed on $(date -u +%F) at $GITHUB_SHA. Failed jobs: ${failed}. Run: ${RUN_URL}"
           number=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
