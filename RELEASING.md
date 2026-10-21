@@ -1,6 +1,6 @@
 # Releasing
 
-This file says what the release gate is and what a patch and a minor release do and do not do. Each release's Phase gate issue, filed by `.github/workflows/phase-gate.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate.
+This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/phase-gate.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
 
 ## The gate
 - A release publishes nothing to npm until one packed-tarball walk has passed on the release PR's base SHA. The pass is keyed to that SHA.
@@ -47,6 +47,16 @@ What a minor adds to a patch:
 - The site and docs checks in `.github/release-checklists/minor.md`: reference completeness on docs.prismalens.io, the adversarial docs review, the site's claims checked against the packed artifact, re-captured imagery when the pages it shows changed, and links validated on the built site.
 - A scripted live test against the packed tarball. A deterministic script, not an agent-driven run.
 - The close-out: update the pinned roadmap issue, #881 - Roadmap and handoff.
+
+## Patch and minor side by side
+| | Patch (`0.N.P`) | Minor (`0.N.0`) |
+| :--- | :--- | :--- |
+| Walk scope | Steps the diff changed, plus the fixed core | Every step, the fixed core included |
+| Unchanged steps | Carried forward with git-diff evidence | Nothing carries forward |
+| Site and docs checks | Docs sweep only | Reference completeness, adversarial docs review, site claims, imagery, built-site links, then the sweep |
+| Live test | None | Scripted, against the packed tarball |
+| Close-out | None | Update the pinned roadmap issue |
+| What bumps the version | The default: every release | A maintainer changes `always-bump-patch` on purpose |
 
 ## Major release
 Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not just the number after `0.9`."

@@ -683,7 +683,10 @@ function openWindow(path = "/"): void {
 	state.manage(window);
 	// A failed load or a dead renderer never paints; show the window anyway so
 	// the splash does not outlive the failure (#897).
+	let shown = false;
 	const firstShow = () => {
+		if (shown) return;
+		shown = true;
 		clearTimeout(firstShowTimer);
 		window?.show();
 		onFirstShow?.();

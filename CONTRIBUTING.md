@@ -444,7 +444,7 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-Each release is gated by its own Phase gate issue, which `phase-gate.yml` files
+Each 0.x release is gated by its own Phase gate issue, which `phase-gate.yml` files
 when the release's milestone is created, from the patch or minor template in
 `.github/release-checklists/`. A packed walk passes on the release PR's base SHA
 (see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
