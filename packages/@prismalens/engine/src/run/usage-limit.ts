@@ -37,7 +37,12 @@ export function usageLimitText(
 	if (isUsageLimitError(message)) return message;
 	if (!data?.includes("usageLimitExceeded")) return null;
 	const quoted = /"message":("(?:[^"\\]|\\.)*")/.exec(data)?.[1];
-	const said = quoted ? (JSON.parse(quoted) as string) : null;
+	let said: string | null = null;
+	try {
+		said = quoted ? (JSON.parse(quoted) as string) : null;
+	} catch {
+		said = null;
+	}
 	return said && isUsageLimitError(said)
 		? said
 		: `Usage limit reached: ${message}`;

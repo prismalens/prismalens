@@ -43,6 +43,13 @@ describe("usageLimitText", () => {
 		).toBe("You've hit your session limit · resets 6:10am");
 	});
 
+	it("falls back to the generic text when the nested message is not valid JSON", () => {
+		const data = String.raw`{"message":"bad \q escape","codexErrorInfo":"usageLimitExceeded"}`;
+		expect(usageLimitText("Internal error", data)).toBe(
+			"Usage limit reached: Internal error",
+		);
+	});
+
 	it("leaves every other error alone", () => {
 		expect(usageLimitText("Internal error", '{"message":"boom"}')).toBeNull();
 	});
