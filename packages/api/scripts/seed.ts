@@ -5,6 +5,7 @@
 // Standalone entry for `prisma db seed` (packages/@prismalens/database's
 // `prisma.seed`). There is no account to create (ADR 0001 §2); this seeds
 // demo data into an empty database.
+import { pathToFileURL } from "node:url";
 import { prisma, seedDemoData } from "@prismalens/database";
 
 export async function seed(db: typeof prisma): Promise<void> {
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
 	await seed(prisma);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 	main()
 		.catch((err) => {
 			console.error("seed: failed:", err);
