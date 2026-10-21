@@ -451,7 +451,7 @@ jobs:
     name: CI gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [build, test, pack, packed-smoke, lint]
+    needs: [build, test, pack, packed-smoke, lint, harness-admission]
     if: always()
     steps:
       - name: Assert every required job succeeded

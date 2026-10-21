@@ -42,7 +42,7 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
 | `packed-service` | none | every PR | no |
 | `packed-upgrade-smoke`, `gate-side-checks` | scripted fake ACP agent, on the packed tarball | every PR | no, until three recorded greens |
-| `harness-admission` (OpenCode and Claude Code legs) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | no, until three recorded greens |
+| `harness-admission` (OpenCode and Claude Code legs) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | yes |
 
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
 `turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
