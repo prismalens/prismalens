@@ -1,6 +1,6 @@
 **Close this issue LAST - the milestone is not done while it is open.**
 
-Minor release {{VERSION}}: the per-release checklist. The walk is the full walk; the steps are in [the release walk](https://github.com/prismalens/prismalens/blob/main/.github/release-checklists/walk.md).
+Minor release {{VERSION}}: the per-release checklist. The walk is the full walk; the steps are in [the release walk](https://github.com/prismalens/prismalens/blob/main/RELEASING.md).
 
 - [ ] **Full release walk**, every step of the walkthrough, including step 1 (install), the step 5 to 6 run and `pnpm gate:side-checks`.
 - [ ] **`cross-os-smoke` in registry mode** (`.github/workflows/cross-os-smoke.yml`) on the released {{VERSION}} artifact, which proves the published package installs and runs on Linux, macOS and Windows. Link the green 3-OS run here.

@@ -1,6 +1,6 @@
 # Release walk
 
-Nothing publishes to npm until one packed-tarball walk has passed on the exact commit the release PR would ship. Each release's Phase gate issue, filed by `phase-gate.yml` from `patch.md` or `minor.md` beside this file, tracks that walk. This file holds the steps. #673 was the 0.5.1 gate, and its record stays there.
+Nothing publishes to npm until one packed-tarball walk has passed on the exact commit the release PR would ship. Each release's Phase gate issue, filed by `.github/workflows/phase-gate.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks that walk. This file holds the steps. #673 was the 0.5.1 gate, and its record stays there.
 
 **Scope (operator ruling, 2026-10-21).** A patch release walks only the steps its diff changed, plus a fixed core: step 1 (install), a minimal step 5 to 6 run, and `pnpm gate:side-checks`. Each unchanged step carries forward with git-diff evidence that its files are untouched since the walk that last passed it. A minor release walks every step. Findings go in one `X.Y.Z walk findings` issue, one checkbox per finding with its evidence.
 

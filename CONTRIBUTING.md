@@ -387,7 +387,7 @@ with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 ### Release-gate side checks
 
 Before a release PR merges, a packed-tarball walk passes on its base SHA
-([`.github/release-checklists/walk.md`](.github/release-checklists/walk.md)).
+([`RELEASING.md`](RELEASING.md)).
 `pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
 side checks against that tarball, or packs the built CLI when no tarball is given:
 the telemetry notice and its four off switches, the update notice, the workspace
@@ -410,7 +410,7 @@ documentation.
 Each release is gated by its own Phase gate issue, which `phase-gate.yml` files
 when the release's milestone is created, from the patch or minor template in
 `.github/release-checklists/`. A packed walk passes on the release PR's base SHA
-(steps in [`walk.md`](.github/release-checklists/walk.md)), docs.prismalens.io
+(steps in [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
 documents every command, flag, configuration key and page the release changed
 (checked against the packed tarball, links validated on the built site), and a
 minor release runs a scripted live test against the tarball, not the source
