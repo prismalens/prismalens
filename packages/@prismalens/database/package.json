@@ -34,8 +34,8 @@
 		"db:seed": "prisma db seed --config prisma.config.ts"
 	},
 	"dependencies": {
-		"@prisma/adapter-better-sqlite3": "^7.10.0",
-		"@prisma/client": "^7.10.0",
+		"@prisma/adapter-better-sqlite3": "^7.10.1",
+		"@prisma/client": "^7.10.1",
 		"@prismalens/config": "workspace:*",
 		"better-sqlite3": "^13.0.3",
 		"dotenv": "catalog:"
