@@ -219,12 +219,15 @@ jobs:
     # `packed-smoke` proves the tarball boots; this proves a webhook delivery
     # becomes an open incident, an investigation starts without a human and
     # completes with a report citing real paths, and a resolution closes the
-    # incident. The harness is the pinned OpenCode on the keyless model, as in
-    # `harness-admission`; the repository under investigation is a small built-in
-    # fixture, not this checkout, so a free model finishes in minutes (#876).
+    # incident. On PRs the harness is the scripted fake ACP agent installed as
+    # `opencode` (scripts/fakes/sessions/intake.json), so a red run means the
+    # code is wrong, not that a free model was slow or refused (#884). The
+    # repository under investigation is a small built-in fixture (#876).
+    # `PACKED_INTAKE_AGENT=live` runs the same script on the pinned OpenCode and
+    # the keyless model; the nightly tier will use that.
     #
-    # ADVISORY, not in `ci-gate`'s `needs`: it has not yet run green three
-    # times in a row on this branch. Promote it once it has (#630).
+    # ADVISORY, not in `ci-gate`'s `needs`: promote it after three recorded
+    # greens on the scripted agent (#884).
     name: Packed intake (Prometheus webhook -> incident -> report)
     needs: pack
     runs-on: ubuntu-latest
@@ -239,9 +242,6 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Install the pinned OpenCode
-        run: npm install -g opencode-ai@1.18.30 && opencode --version
-
       - uses: actions/download-artifact@v8
         with:
           name: npm-tarballs
@@ -249,9 +249,9 @@ jobs:
 
       - name: Prometheus webhook to incident, unattended investigation, and back to resolved
         env:
+          PACKED_INTAKE_AGENT: fake
           PACKED_INTAKE_REPO: fixture
           PRISMALENS_HARNESS: opencode
-          PRISMALENS_HARNESS_MODEL: opencode/deepseek-v4.1-flash-free
         run: node scripts/packed-intake.mjs tarballs
 
   packed-service:
@@ -298,6 +298,10 @@ jobs:
   harness-admission:
     # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
     # this passes unattended on a real clone. First run: #561.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs`: it calls a free model live, and that
+    # tier's terms changed twice in 8 days (#884). Its live run moves to the
+    # nightly tier.
     name: Harness admission (opencode)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -369,7 +373,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, test, pack, packed-smoke, lint, harness-admission, coverage]
+    needs: [build, test, pack, packed-smoke, lint, coverage]
     if: always()
     steps:
       - name: Assert every required job succeeded

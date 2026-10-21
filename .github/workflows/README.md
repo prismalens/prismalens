@@ -30,6 +30,22 @@ The third blocker is not a check at all: `required_review_thread_resolution: tru
 on the same ruleset. An unresolved review thread blocks the merge button natively,
 with no workflow, token or status in the path.
 
+## `ci.yml` jobs: model kind, cadence, required
+
+A red `CI gate` should mean the code is wrong, never that a free model was slow,
+renamed or refused (#884). Live-model jobs are advisory and leave the gate.
+
+| Job | Model | Cadence | Required |
+| --- | --- | --- | --- |
+| `build`, `coverage`, `lint`, `pack`, `packed-smoke` | none | every PR | yes |
+| `test` | scripted fake agent | every PR | yes |
+| `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
+| `packed-service` | none | every PR | no |
+| `harness-admission` | live free model on the pinned OpenCode | every PR for now; moves to the nightly tier | no |
+
+`PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
+script against the real harness on PATH; the nightly tier will call it that way.
+
 ## Review is advisory; unresolved threads are what block
 
 `review-evidence` — a required commit status published by a `review-evidence.yml`

@@ -29,6 +29,9 @@
  *
  * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO (optional, see
  * above); PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
+ * PACKED_INTAKE_AGENT: "live" (default) uses the harness on PATH; "fake" puts the
+ * scripted ACP agent (scripts/fakes/sessions/intake.json) on PATH as `opencode`
+ * and needs PACKED_INTAKE_REPO=fixture, the repo that session cites (#884).
  */
 import { execFileSync, spawn } from "node:child_process";
 import {
@@ -41,7 +44,8 @@ import {
 	rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { delimiter, join, resolve, sep } from "node:path";
+import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
 
@@ -80,6 +84,14 @@ const REPO =
 			? resolve(process.env.PACKED_INTAKE_REPO)
 			: null;
 
+const AGENT = process.env.PACKED_INTAKE_AGENT ?? "live";
+if (AGENT !== "live" && AGENT !== "fake") {
+	throw new Error(`PACKED_INTAKE_AGENT must be live or fake, got ${AGENT}`);
+}
+if (AGENT === "fake" && process.env.PACKED_INTAKE_REPO !== "fixture") {
+	throw new Error("PACKED_INTAKE_AGENT=fake needs PACKED_INTAKE_REPO=fixture");
+}
+
 let child;
 let cleaned = false;
 function cleanup(exitCode) {
@@ -117,6 +129,15 @@ async function main() {
 	const bin = join(prefix, "node_modules", ".bin", "pl");
 	if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
 
+	let agentPath = process.env.PATH ?? "";
+	if (AGENT === "fake") {
+		const agentBin = join(prefix, "agent-bin");
+		mkdirSync(agentBin);
+		installFakeAgent(agentBin, { session: "intake", binaries: ["opencode"] });
+		agentPath = `${agentBin}${delimiter}${agentPath}`;
+		console.log("[packed-intake] agent: scripted fake as opencode");
+	}
+
 	const logPath = join(prefix, "up.log");
 	const logStream = createWriteStream(logPath);
 	let bootLog = "";
@@ -126,6 +147,7 @@ async function main() {
 		env: {
 			...process.env,
 			CI: process.env.CI ?? "true",
+			PATH: agentPath,
 			PRISMALENS_WORKSPACE_DIR: workspace,
 			// The default (quiet) console level sends info records to the log
 			// file only (#610) — the readiness line this script polls for is
