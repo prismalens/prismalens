@@ -301,6 +301,68 @@ jobs:
           if curl -fsS -m 2 http://127.0.0.1:3190/health; then echo "still serving after uninstall"; exit 1; fi
           test -f "$ws/PRISMALENS_AUTH_SECRET_FILE"
 
+  packed-upgrade-smoke:
+    # An installed tarball upgrades a database that predates `investigation_turns` and
+    # claims each legacy pending job with the right intent (#673). Package script
+    # `gate:packed-upgrade`; on the fake ACP agent, so a red run means the code is wrong.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs` (#885): promote it after three recorded greens.
+    name: Packed upgrade smoke
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Upgrade a populated database on the packed tarball
+        run: node scripts/packed-upgrade-smoke.mjs tarballs
+
+  gate-side-checks:
+    # The release gate's side checks (#673), scripted: telemetry, update notice, lock,
+    # reset, hosts and `pl upgrade` rollback, each in a throwaway HOME on the packed
+    # tarball. Package script `gate:side-checks`. The upgrade check needs a systemd user
+    # manager and reports SKIP without one.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs` (#885): promote it after three recorded greens.
+    name: Gate side checks (packed tarball)
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Run the side checks
+        run: |
+          set -eu
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          node scripts/gate-side-checks.mjs --tarball "$(ls tarballs/prismalens-*.tgz | head -1)"
+
   harness-admission:
     # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
     # this passes unattended on a real clone. First run: #561.

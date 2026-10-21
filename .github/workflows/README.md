@@ -41,6 +41,7 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | `test` | scripted fake agent | every PR on ubuntu, with the coverage floors (#58); macOS also on `merge_group` and pushes to `main` | yes |
 | `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
 | `packed-service` | none | every PR | no |
+| `packed-upgrade-smoke`, `gate-side-checks` | scripted fake ACP agent, on the packed tarball | every PR | no, until three recorded greens |
 | `harness-admission` | live free model on the pinned OpenCode | every PR for now (advisory); also nightly in `live-agent.yml` | no |
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
