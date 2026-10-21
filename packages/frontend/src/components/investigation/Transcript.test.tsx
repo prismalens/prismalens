@@ -4,10 +4,29 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { AskRecord } from "@/lib/run-asks";
 import { Transcript } from "./Transcript";
+
+vi.mock("@tanstack/react-router", () => ({
+	Link: ({
+		children,
+		to,
+		className,
+		"data-testid": testId,
+	}: {
+		children: React.ReactNode;
+		to: string;
+		className?: string;
+		"data-testid"?: string;
+	}) => (
+		<a href={to} className={className} data-testid={testId}>
+			{children}
+		</a>
+	),
+}));
 
 if (typeof globalThis.ResizeObserver === "undefined") {
 	globalThis.ResizeObserver = class ResizeObserver {
@@ -238,5 +257,199 @@ describe("a step you denied (#673 w8-18)", () => {
 		expect(
 			container.querySelector('[data-testid="step-verb"]')?.textContent,
 		).toBe("Denied by you");
+	});
+});
+
+describe("Worked fold", () => {
+	const reportData = {
+		title: "Investigation Report",
+		summary: "All systems recovered",
+	};
+
+	const items: TranscriptItem[] = [
+		{
+			kind: "operator",
+			key: "brief",
+			at: "2026-10-21T10:00:00Z",
+			state: "started",
+			mode: "now",
+			text: "Investigate outage",
+			attachments: [],
+		},
+		{
+			kind: "prose",
+			key: "p1",
+			text: "Checking logs...",
+		},
+		{
+			kind: "line",
+			key: "l1",
+			text: "Querying service status",
+		},
+		{
+			kind: "end",
+			key: "end",
+			report: true,
+		},
+	];
+
+	it("renders closed toggle with elapsed time, steps count, and hides middle items", async () => {
+		const onToggle = vi.fn();
+		const seconds = 252;
+		const steps = 23;
+
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds, steps, open: false, onToggle }}
+				/>,
+			);
+		});
+
+		const toggle = container.querySelector('[data-testid="worked-toggle"]');
+		expect(toggle).not.toBeNull();
+		expect(toggle?.textContent).toBe(
+			`Worked for ${formatElapsed(seconds)}, ${steps} steps`,
+		);
+		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+
+		expect(
+			container.querySelector('[data-testid="transcript-operator"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-report"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-prose"]'),
+		).toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-line"]'),
+		).toBeNull();
+	});
+
+	it("renders items when open and calls onToggle on click", async () => {
+		const onToggle = vi.fn();
+
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds: 252, steps: 23, open: true, onToggle }}
+				/>,
+			);
+		});
+
+		const toggle = container.querySelector(
+			'[data-testid="worked-toggle"]',
+		) as HTMLButtonElement | null;
+		expect(toggle).not.toBeNull();
+		expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+
+		expect(
+			container.querySelector('[data-testid="transcript-operator"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-prose"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-line"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-report"]'),
+		).not.toBeNull();
+
+		await act(async () => {
+			toggle?.click();
+		});
+
+		expect(onToggle).toHaveBeenCalledTimes(1);
+	});
+
+	it("formats singular step when steps is 1", async () => {
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds: 5, steps: 1, open: false, onToggle: () => {} }}
+				/>,
+			);
+		});
+
+		const toggle = container.querySelector('[data-testid="worked-toggle"]');
+		expect(toggle?.textContent).toBe("Worked for 5s, 1 step");
+	});
+
+	it("renders no toggle and every item when worked is null", async () => {
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={null}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="worked-toggle"]')).toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-operator"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-prose"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-line"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="transcript-report"]'),
+		).not.toBeNull();
+	});
+
+	it("renders afterReport immediately after report card and omits it when report is null", async () => {
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					afterReport={<li data-testid="after">hypotheses</li>}
+				/>,
+			);
+		});
+
+		const reportCard = container.querySelector(
+			'[data-testid="transcript-report"]',
+		);
+		const after = container.querySelector('[data-testid="after"]');
+		expect(reportCard).not.toBeNull();
+		expect(after).not.toBeNull();
+		expect(reportCard?.nextElementSibling).toBe(after);
+
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={null}
+					afterReport={<li data-testid="after">hypotheses</li>}
+				/>,
+			);
+		});
+
+		expect(container.querySelector('[data-testid="after"]')).toBeNull();
 	});
 });
