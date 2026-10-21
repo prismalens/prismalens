@@ -410,7 +410,7 @@ documentation.
 Each release is gated by its own Phase gate issue, which `phase-gate.yml` files
 when the release's milestone is created, from the patch or minor template in
 `.github/release-checklists/`. A packed walk passes on the release PR's base SHA
-(steps in [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
+(see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
 documents every command, flag, configuration key and page the release changed
 (checked against the packed tarball, links validated on the built site), and a
 minor release runs a scripted live test against the tarball, not the source
