@@ -456,7 +456,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page).toHaveURL(/\/incidents$/);
 	});
 
-	test("finished run offers action-follow-up and action-recheck; live run: Enter queues and Ctrl+Enter sends now", async ({
+	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
 		page,
 	}) => {
 		// 1. Finished run with report
@@ -477,12 +477,18 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		const actionChip = page.getByTestId("action-chip");
-		await expect(actionChip).toBeVisible({ timeout: 15_000 });
-		await actionChip.click();
-
-		await expect(page.getByTestId("action-follow-up")).toBeVisible();
-		await expect(page.getByTestId("action-recheck")).toBeVisible();
+		// Continuing is typing and sending (rulings 2, 3): no chip, the hint says where it goes.
+		await expect(page.getByTestId("composer-input")).toHaveAttribute(
+			"placeholder",
+			/^Message /,
+			{ timeout: 15_000 },
+		);
+		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(page.getByTestId("composer-hint")).toContainText(
+			"own session.",
+		);
+		await page.getByTestId("header-more").click();
+		await expect(page.getByTestId("header-investigate-again")).toBeVisible();
 		await page.keyboard.press("Escape");
 
 		// 2. Live run
@@ -506,6 +512,9 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.reload();
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
+		// The one-option Message chip is gone on live runs too (ruling 17).
+		await expect(input).toHaveAttribute("placeholder", "Message the agent");
+		await expect(page.getByTestId("action-chip")).toHaveCount(0);
 
 		// Enter queues
 		await input.fill("Message queued for pause");

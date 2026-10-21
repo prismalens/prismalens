@@ -200,8 +200,7 @@ describe("the box: one chip row, one Send (#811)", () => {
 		await render({});
 		expect(q("action-chip").tagName).toBe("BUTTON");
 		await render({ actions: [MESSAGE], action: "message", live: true });
-		expect(q("action-chip").tagName).toBe("SPAN");
-		expect(q("action-chip").textContent).toBe("Message");
+		expect(document.querySelector('[data-testid="action-chip"]')).toBeNull();
 	});
 
 	it("wraps chips instead of horizontal scrolling (#673 walk 4, QA-06)", async () => {

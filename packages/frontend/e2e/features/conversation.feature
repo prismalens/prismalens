@@ -65,7 +65,7 @@ Feature: The conversation and the box
 
     Scenario: Continue a stopped run to a report
       Given INC-1's run was stopped and OpenCode can reopen it
-      Then the box reads "Say what to change, or just continue" and no note explains it
+      Then the box reads "Message, then the agent name" and no note explains it
       When I type "Only look at the 14:02 deploy" and press Enter
       Then the run is working again and the agent's next message answers with what it had already found
       When the run finishes
@@ -73,7 +73,7 @@ Feature: The conversation and the box
 
     Scenario: A finished run takes follow-ups, the report stays
       Given INC-1's run finished with a report
-      When I send "Why the 14:02 deploy?" from the box reading "Say what to change, or just continue"
+      When I send "Why the 14:02 deploy?" from the box reading "Message "
       Then the agent answers in the conversation and the report is unchanged
 
     # T10 (#673 w59, OBJ-003): report presence gates the Report tab, not the run's state.
@@ -83,9 +83,9 @@ Feature: The conversation and the box
       Then the Report tab shows the report and the Overview's report pool shows it, the answer working under it
 
     # T24 (#673 w59, §3, OBJ-003, OBJ-007)
-    Scenario: A stopped reportless run reads Stopped by you and offers both verbs
+    Scenario: A stopped reportless run reads Stopped by you and sending continues it
       When I press "Stop" in the box
-      Then the status line reads "Stopped by you" and the verb chip offers "Investigate" and "Ask"
+      Then the status line reads "Stopped by you" and the box continues it to a report, with no verb chip
 
     Scenario: A chat in Error reads Ended after it answers
       Given the run is a chat that ended in an error
@@ -132,7 +132,7 @@ Feature: The conversation and the box
       When I send "Check the deploy diff" from the phone
       Then the laptop shows the message as "You" within 2 seconds
       When I press Stop on the laptop
-      Then the phone's status line reads "Stopped by you" and its box reads "Say what to change, or just continue"
+      Then the phone's status line reads "Stopped by you" and its box reads "Message, then the agent name"
 
   Rule: Ask
     PrismaLens answers an ask by the run's permission level: at Ask always it waits for you.

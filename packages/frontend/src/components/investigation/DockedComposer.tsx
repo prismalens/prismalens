@@ -6,6 +6,7 @@ import {
 	type FollowUpKind,
 	fidelityAccess,
 	type HarnessStatus,
+	type InvestigationWithRelations,
 	isRunStateLive,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
@@ -69,6 +70,8 @@ export function threadActions(t: {
 	reported: boolean;
 	name: string;
 	nextName: string;
+	/** Who a finished run's message goes to: its own agent, in its own session. */
+	agent: string;
 	defaultDraft: "ask" | "investigate";
 }): ThreadActions {
 	if (t.draft)
@@ -111,7 +114,7 @@ export function threadActions(t: {
 			],
 			initial: "message",
 			placeholder: "Message the agent",
-			hint: { message: "" },
+			hint: { message: "Reaches the agent at its next pause." },
 		};
 	if (t.chat)
 		return {
@@ -130,6 +133,7 @@ export function threadActions(t: {
 					"Follow-ups stay in this conversation. The latest answer also shows on the overview.",
 			},
 		};
+	// No continue control (rulings 2, 3): typing and sending continues; the run decides which kind.
 	if (t.continuable)
 		return {
 			actions: [
@@ -140,44 +144,69 @@ export function threadActions(t: {
 						"Resumes the agent's session and takes the run on to a report.",
 					needsText: true,
 				},
-				{
-					id: "follow-up",
-					label: "Ask",
-					detail: "A question in the same session. No report.",
-					needsText: true,
-				},
 			],
 			initial: "continue",
-			placeholder: "Say what to change, or just continue",
+			placeholder: `Message ${t.agent}`,
 			hint: {
-				continue: `Continuing resumes ${t.name}'s agent session and ends in a report on the overview.`,
-				"follow-up": `Asks in ${t.name}'s agent session. The answer shows here.`,
+				continue: `Continues in ${t.agent}'s own session and ends in a report on the overview.`,
 			},
 		};
-	const actions: ComposerAction[] = [
-		{
-			id: "follow-up",
-			label: `Continue ${t.name}`,
-			detail: `A follow-up in ${t.name}'s agent session. The answer shows here.`,
-			needsText: true,
-		},
-	];
-	if (t.reported)
-		actions.push({
-			id: "recheck",
-			label: "Investigate again",
-			detail: `Starts ${t.nextName} with this report quoted and anything typed here.`,
-			needsText: false,
-		});
 	return {
-		actions,
+		actions: [
+			{
+				id: "follow-up",
+				label: `Continue ${t.name}`,
+				detail: `A follow-up in ${t.name}'s agent session. The answer shows here.`,
+				needsText: true,
+			},
+		],
 		initial: "follow-up",
-		placeholder: "Say what to change, or just continue",
-		hint: {
-			"follow-up": `Continuing resumes ${t.name}'s agent session. Its answer shows here.`,
-			recheck: `${t.nextName} runs live and ends in a new report on the overview; ${t.name}'s finding stands until then.`,
-		},
+		placeholder: `Message ${t.agent}`,
+		hint: { "follow-up": `Continues in ${t.agent}'s own session.` },
 	};
+}
+
+/**
+ * The level a run's follow-up or recheck goes at: the run's own, or the
+ * person's Settings for an ended alert-started run (#673 w6-13).
+ */
+export function runFollowUpLevel(
+	inv: InvestigationWithRelations | null | undefined,
+	settings: AccessLevel,
+	live: boolean,
+): AccessLevel {
+	if (!live && startedBy(inv?.triggerType) === "PrismaLens") return settings;
+	return (
+		inv?.accessLevel ??
+		(inv?.report?.fidelity
+			? fidelityAccess(inv.report.fidelity, inv.agentMode)
+			: undefined) ??
+		"supervised"
+	);
+}
+
+/** Investigate again from a reported run: a new run with its report quoted; null when there is none. */
+export function useRecheck():
+	| ((text?: string, attachments?: string[]) => Promise<void>)
+	| null {
+	const record = useIncidentRecord();
+	const choice = useAgentChoice();
+	const inv = record.run.investigation;
+	const live = !!record.run.state && isRunStateLive(record.run.state);
+	const harness = choice.harnesses.find((h) => h.id === inv?.harness);
+	const report = inv?.report;
+	if (!inv || !report || live || inv.kind === "chat") return null;
+	const level = runFollowUpLevel(
+		inv,
+		defaultAccessOf(harness, choice.axes).level.level,
+		live,
+	);
+	return (text = "", attachments = []) =>
+		record.investigate({
+			text: recheckBrief(report, runNumber(record.runs, inv.id), text),
+			accessLevel: level,
+			attachments,
+		});
 }
 
 /** The destructive toast for a Stop that never reached the agent; the run strip's Stop shares it. */
@@ -226,6 +255,7 @@ export function DockedComposer({
 		reported: !!inv?.report,
 		name,
 		nextName: `Run ${runNumber(runs, "")}`,
+		agent: who.agent,
 		defaultDraft:
 			record.draftVerb ??
 			defaultVerb(
@@ -275,18 +305,9 @@ export function DockedComposer({
 		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
 	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
-	// An ended alert-started run's follow-up goes at the person's level, not its Auto (#673 w6-13).
-	const followUpAtSettings =
-		!draft && !live && startedBy(inv?.triggerType) === "PrismaLens";
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
-		: followUpAtSettings
-			? defaults.level.level
-			: (inv?.accessLevel ??
-				(inv?.report?.fidelity
-					? fidelityAccess(inv.report.fidelity, inv.agentMode)
-					: undefined) ??
-				"supervised");
+		: runFollowUpLevel(inv, defaults.level.level, live);
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
@@ -360,14 +381,9 @@ export function DockedComposer({
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
 
-	const recheck = async (text: string, attachments: string[]) => {
-		if (!inv?.report) return;
-		return record.investigate({
-			text: recheckBrief(inv.report, runNumber(runs, inv.id), text),
-			accessLevel,
-			attachments,
-		});
-	};
+	const rechecker = useRecheck();
+	const recheck = async (text: string, attachments: string[]) =>
+		rechecker?.(text, attachments);
 
 	const onSend = async ({ text, files }: ComposerSend, now: boolean) => {
 		const attachments = await upload(files);

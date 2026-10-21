@@ -624,15 +624,12 @@ Then(
 	async ({ page }) => {
 		await expect(page.getByTestId("latest-run-strip")).toContainText("stopped");
 		await page.getByTestId("latest-run-link").click();
-		// A stopped run that can reopen its session continues to a report (R4.4).
-		await expect(page.getByTestId("action-chip")).toHaveAttribute(
-			"data-action",
-			"continue",
-		);
+		// A stopped run that can reopen its session continues to a report (R4.4); sending continues it.
+		await expect(page.getByTestId("action-chip")).toHaveCount(0);
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Say what to change, or just continue",
+			/^Message /,
 		);
 	},
 );

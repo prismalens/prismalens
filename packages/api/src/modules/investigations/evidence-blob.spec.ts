@@ -99,6 +99,7 @@ describe("readEvidenceBlob: a folder source", () => {
 			path: "src/db/pool.ts",
 			kind: "file",
 			size: 16,
+			oid: git(["rev-parse", `${head}:src/db/pool.ts`], src),
 			content: "const max = 10;\n",
 			omitted: null,
 		});

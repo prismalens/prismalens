@@ -89,14 +89,15 @@ describe("evidenceSections (#811 data mapping)", () => {
 			standing: null,
 		});
 		expect(out.map((s) => s.title)).toEqual([
+			"Hypotheses",
 			"Likely cause",
 			"Ruled out",
 			"Checked",
 			"Not checked",
 			"Agent's suggested next steps",
 		]);
-		expect(out[0]?.rows[1]).toMatchObject({ text: "Over 200 notes is 2.9s", step: 2 });
-		expect(out[1]?.rows[0]).toMatchObject({ text: "A slow database", step: 3 });
+		expect(out[1]?.rows[1]).toMatchObject({ text: "Over 200 notes is 2.9s", step: 2 });
+		expect(out[2]?.rows[0]).toMatchObject({ text: "A slow database", step: 3 });
 	});
 
 	it("heads a run that named no cause with the no-cause words (#673 w8-13)", () => {
@@ -104,8 +105,8 @@ describe("evidenceSections (#811 data mapping)", () => {
 			live: false,
 			standing: null,
 		});
-		expect(out[0]?.title).toBe("No cause named");
-		expect(out[0]?.rows[0]).toMatchObject({ text: "The in-memory sort" });
+		expect(out[1]?.title).toBe("No cause named");
+		expect(out[1]?.rows[0]).toMatchObject({ text: "The in-memory sort" });
 		const bare = evidenceSections(
 			inv({ report: { ...report, rootCause: null, hypotheses: [] } }),
 			stepOf,
@@ -142,7 +143,7 @@ describe("evidenceSections (#811 data mapping)", () => {
 			stepOf,
 			{ live: false, standing: null },
 		);
-		const rows = out[0]?.rows ?? [];
+		const rows = out[1]?.rows ?? [];
 		expect(rows.find((r) => r.text === fromAlert.observation)).toMatchObject({
 			from: "From the alert",
 		});
