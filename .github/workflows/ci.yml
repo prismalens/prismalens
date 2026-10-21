@@ -33,6 +33,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One build per run (#885): `build` saves turbo's cache under this run's SHA, and the
+# jobs that `need` it restore it, so their `pnpm build` is a replay, not a compile.
+env:
+  TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
+
 jobs:
   build:
     name: Build & typecheck
@@ -52,6 +57,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Turbo cache (saved for the jobs that need this one)
+        uses: actions/cache@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
 
       - name: Build
         run: pnpm build
@@ -76,6 +88,7 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: build
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -100,6 +113,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Restore the build from the build job
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
       # Coverage floors (#58) run here: cli and database `test` already pass --coverage,
       # and the api's floor only evaluates under `test:cov`.
       - name: Test
@@ -119,6 +139,7 @@ jobs:
   # layout, and engines bugs that monorepo-resident tests structurally cannot.
   pack:
     name: Pack npm tarball
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -135,6 +156,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Restore the build from the build job
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
 
       - name: Pack script tests
         run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs

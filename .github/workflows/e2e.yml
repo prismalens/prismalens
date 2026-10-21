@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
+
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -37,6 +40,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # ci.yml's `build` job saves this cache. This workflow starts beside it, so it
+      # takes the newest one saved before it gets here: a replay for every unchanged package.
+      - name: Restore the turbo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
 
       - name: Build monorepo packages
         run: pnpm build
