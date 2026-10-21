@@ -159,4 +159,91 @@ describe("buildHandoff: what is always carried", () => {
 		expect(h.text).toContain(RESTART_NOTE);
 		expect(h.text).toContain("(no report yet)");
 	});
+
+	describe("handoff carried and omitted phrases", () => {
+		it("carries no report or calls when budget is 0 and reports omitted calls and turns (handoff-L1)", () => {
+			const testEvents = [
+				said(1, "hello"),
+				...call(2, "c1", true),
+				...call(4, "c2", true),
+			];
+			const h = buildHandoff({
+				events: testEvents,
+				report: null,
+				accessLevel: "supervised",
+				from: null,
+				budgetChars: 0,
+			});
+			expect(h.carried).toBe("the alert and 1 message");
+			expect(h.omitted).toBe("2 tool calls and 2 agent turns");
+		});
+
+		it("prefixes omitted with 'the other ' when some cited calls are carried (handoff-L1)", () => {
+			const reportWithCitation: InvestigationReport = {
+				summary: "test summary",
+				hypotheses: [
+					{
+						statement: "hypothesis 1",
+						status: "investigating",
+						evidence: [
+							{
+								observation: "c1 ran",
+								source: "cat c1",
+								direction: "supports",
+								status: "verified",
+								toolCallId: "c1",
+							},
+						],
+					},
+				],
+				ruledOut: [],
+				nextSteps: [],
+			} as unknown as InvestigationReport;
+
+			const testEvents = [
+				...call(1, "c1", true),
+				...call(3, "c2", true),
+			];
+			const h = buildHandoff({
+				events: testEvents,
+				report: reportWithCitation,
+				accessLevel: "supervised",
+				from: null,
+				budgetChars: 1_500,
+			});
+			expect(h.carried).toContain("1 cited call");
+			expect(h.omitted?.startsWith("the other ")).toBe(true);
+		});
+
+		it("formats singular and plural refuted hypotheses correctly (handoff-L1)", () => {
+			const makeReport = (count: number): InvestigationReport =>
+				({
+					summary: "test summary",
+					hypotheses: Array.from({ length: count }, (_, i) => ({
+						statement: `hypothesis ${i + 1}`,
+						status: "refuted",
+						evidence: [],
+					})),
+					ruledOut: [],
+					nextSteps: [],
+				}) as unknown as InvestigationReport;
+
+			const h1 = buildHandoff({
+				events: [],
+				report: makeReport(1),
+				accessLevel: "supervised",
+				from: null,
+			});
+			expect(h1.carried).toContain("1 refuted hypothesis");
+			expect(h1.carried).not.toContain("1 refuted hypotheses");
+
+			const h2 = buildHandoff({
+				events: [],
+				report: makeReport(2),
+				accessLevel: "supervised",
+				from: null,
+			});
+			expect(h2.carried).toContain("2 refuted hypotheses");
+		});
+	});
 });
