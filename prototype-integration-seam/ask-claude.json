@@ -1,0 +1,50 @@
+{
+ "harness": "claude",
+ "transport": "http",
+ "agent": {
+  "name": "@agentclientprotocol/claude-agent-acp",
+  "title": "Claude Agent",
+  "version": "0.81.1"
+ },
+ "mcpCapabilities": {
+  "http": true,
+  "sse": true
+ },
+ "stopReason": "end_turn",
+ "secs": 29,
+ "toolCalls": [
+  {
+   "tool_call": "ToolSearch",
+   "kind": "other",
+   "status": "pending"
+  },
+  {
+   "tool_call": "mcp__prismalens__sources_list",
+   "kind": "other",
+   "status": "pending"
+  },
+  {
+   "tool_call": "mcp__prismalens__prom_query",
+   "kind": "other",
+   "status": "pending"
+  },
+  {
+   "tool_call": "mcp__prismalens__prom_query",
+   "kind": "other",
+   "status": "pending"
+  },
+  {
+   "tool_call": "mcp__prismalens__github_get_latest_release",
+   "kind": "other",
+   "status": "pending"
+  },
+  {
+   "tool_call": "mcp__prismalens__git_run",
+   "kind": "other",
+   "status": "pending"
+  }
+ ],
+ "reply": "1. **Sources** (`sources_list`): prom (metrics), github (scm, 8 of 28 upstream tools exposed) and git (scm) are connected. datadog (logs) is `not-configured`.\n2. **Prom targets** (`prom_query`): `count(up)` returns 11. `up == 0` returns an empty result, so no target is down.\n3. **Latest prometheus/prometheus release** (`github_get_latest_release`): `v3.15.0`, named \"3.15.0 / 2026-09-24\".\n4. **Last commit touching `acp-client.ts`** (`git_run log -1`): `e1b73ef08ff742bc204a52501eea2607b565a6aa`, \"fix: #831 desktop notification, boot-pull counter, gate script isolation, doctor sign-in\".\n5. **Datadog error logs** (`sources_list`): the search couldn't run. Datadog is `not-configured` and offers no tools. Connect it with `pl connect logs datadog`. Until then the only other source it lists is prom, which holds metrics, not logs.",
+ "nonceExpected": "(server env)",
+ "serverLog": []
+}
