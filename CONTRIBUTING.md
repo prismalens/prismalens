@@ -423,7 +423,8 @@ with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
 ### Release-gate side checks
 
-Before a release PR merges, a packed-tarball walk passes on its base SHA (#673).
+Before a release PR merges, a packed-tarball walk passes on its base SHA
+([`RELEASING.md`](RELEASING.md)).
 `pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
 side checks against that tarball, or packs the built CLI when no tarball is given:
 the telemetry notice and its four off switches, the update notice, the workspace
@@ -443,22 +444,24 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-Every release milestone (`R1` through `R5`) carries three standing exit issues
-created when the milestone is created. All three carry the `post-release` label
-and are assigned to that milestone:
+Each 0.x release is gated by its own Phase gate issue, which `phase-gate.yml` files
+when the release's milestone is created, from the patch or minor template in
+`.github/release-checklists/`. A packed walk passes on the release PR's base SHA
+(see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
+documents every command, flag, configuration key and page the release changed
+(checked against the packed tarball, links validated on the built site), and a
+minor release runs a scripted live test against the tarball, not the source
+tree. A patch release walks the steps its diff changed plus a fixed core; a minor
+release walks everything. Each walk's findings go in the Phase gate issue or
+one linked `X.Y.Z walk findings` issue.
 
-- `docs: RN (<Name>) exit criteria`. The milestone does not close until
-  docs.prismalens.io documents every command, flag, and configuration key shipped
-  in the release, with input and output symmetry, validated links on the built
-  site, and an adversarial docs review.
-- `live-test: RN (<Name>) exit gate`. A scripted live test runs against the
-  packed tarball, not the source tree, across incident scenarios relevant to the
-  release.
-- `release: RN (<Name>)`. The release checklist itself, covering the
-  release-please PR, verification against npm, closure of the docs and
-  live-test exit issues, and narrative release notes.
+Milestones are versions, and exactly two are open: the current release and the
+next. When a release PR merges, close its milestone, move its open leftovers to
+the next one, and open the one after. Direction by theme lives in the pinned
+[Roadmap and handoff](https://github.com/prismalens/prismalens/issues/881) issue,
+not in milestones.
 
-In these exit issues, "Docs" means the published website at docs.prismalens.io.
+In the gate, "Docs" means the published website at docs.prismalens.io.
 Repository markdown files and package READMEs do not satisfy the documentation
 gate. A release can have a complete repository README and still fail the gate if
 shipped features lack published documentation on the website.
