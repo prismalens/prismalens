@@ -827,6 +827,33 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 			},
 		});
 	});
+
+	describe("ports: recordHandoff updates agent details and clears usage (handoff-L10)", () => {
+		it("updates harness, model, effort, acpSessionId and nulls usage (handoff-L10)", async () => {
+			const { ports } = realDispatch();
+			const inc = await incident();
+			const row = await thread(inc.id);
+
+			await prisma.investigation.update({
+				where: { id: row.id },
+				data: { usage: JSON.stringify({ used: 5, size: 10, at: "2026-10-21T08:00:00.000Z" }) },
+			});
+
+			await ports.recordHandoff(row.id, {
+				harness: "codex",
+				model: "gpt-x",
+				effort: "high",
+				acpSessionId: "s-2",
+			});
+
+			const updated = await read(row.id);
+			expect(updated.harness).toBe("codex");
+			expect(updated.model).toBe("gpt-x");
+			expect(updated.effort).toBe("high");
+			expect(updated.acpSessionId).toBe("s-2");
+			expect(updated.usage).toBeNull();
+		});
+	});
 });
 
 describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 window B)", () => {
