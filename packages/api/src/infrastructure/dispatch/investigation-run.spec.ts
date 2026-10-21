@@ -1113,6 +1113,68 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	});
 
+	it("refuses a recipient that is no longer runnable on handoff (handoff-L7)", async () => {
+		for (const bin of ["codex-acp", "codex-acp.cmd"])
+			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
+		const report = {
+			summary: "Pool exhausted",
+			rootCause: null,
+			hypotheses: [],
+			ruledOut: [],
+			nextSteps: [],
+		};
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				report: JSON.stringify(report),
+			})),
+			events: vi.fn(async () => []),
+			resolveHarness: vi.fn(async () => ({
+				selection: {
+					runnable: false,
+					failure: "model-unsupported",
+					reason: "Codex refuses gpt-x.",
+					harness: "codex",
+				},
+			})) as unknown as RunPorts["resolveHarness"],
+		});
+
+		const result = await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, to: { harness: "codex" }, handoff: true } },
+			io(),
+			ports,
+		);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(result.success).toBe(false);
+		expect(vi.mocked(ports.settleFollowUp).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{
+				status: "completed",
+				completedAt: new Date(restore.completedAt),
+				error: null,
+				lastTurnOutcome: "error",
+			},
+			{ stopped: false },
+		]);
+		expect(result.error).toContain("Codex refuses gpt-x.");
+		expect(ports.appendEvents).toHaveBeenCalledWith(
+			"inv-1",
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: "error",
+					message: expect.stringContaining("Codex refuses gpt-x."),
+				}),
+			]),
+		);
+	});
+
 	it("puts a continued run back when it fails before the row went live (R4.4)", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockRejectedValue(new Error("db down"));
