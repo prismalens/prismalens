@@ -17,6 +17,17 @@ describe("timeArg", () => {
 		}
 	});
 
+	it("rejects date-times without an explicit timezone", () => {
+		for (const v of [
+			"2026-02-28T10:00:00",
+			"2026-02-28T10:00",
+			"2026-02-28T10:00:00+0530",
+		]) {
+			expect(timeArg.safeParse(v).success).toBe(false);
+		}
+		expect(timeArg.safeParse("2026-02-28").success).toBe(true);
+	});
+
 	it("rejects non-existent calendar dates", () => {
 		for (const v of [
 			"2026-02-30T10:00:00Z",

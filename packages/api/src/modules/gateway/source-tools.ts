@@ -89,6 +89,14 @@ export const timeArg = z
 	.trim()
 	.max(40)
 	.regex(/^[0-9TZ:.+-]+$/, "RFC 3339 or unix seconds")
+	.refine(
+		(t) =>
+			/^\d+(\.\d+)?$/.test(t) ||
+			/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/.test(
+				t,
+			),
+		"RFC 3339 with an explicit timezone, or unix seconds",
+	)
 	.refine((t) => Number.isFinite(toUnixSeconds(t)), "RFC 3339 or unix seconds");
 
 /** Date.parse rolls 2026-02-30 over to March 2; the calendar day is checked apart. */
