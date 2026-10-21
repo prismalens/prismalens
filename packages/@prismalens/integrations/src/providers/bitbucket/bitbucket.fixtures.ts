@@ -67,6 +67,14 @@ export const commitsNewestFirst = [
 	commit("c1", "2026-09-01T09:00:00+00:00", [], "Old"),
 ];
 
+// A merge (M) whose second parent F1 is a feature-branch commit older than the cutoff, listed before the mainline P1.
+export const commitsWithMerge = [
+	commit("M", "2026-10-04T09:00:00+00:00", ["P1", "F1"], "Merge feature"),
+	commit("F1", "2026-09-01T09:00:00+00:00", ["P0"], "Old feature work"),
+	commit("P1", "2026-10-02T09:00:00+00:00", ["P0"], "Mainline fix"),
+	commit("P0", "2026-09-01T08:00:00+00:00", [], "Old"),
+];
+
 export const diffstat = {
 	values: [
 		{

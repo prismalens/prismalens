@@ -6,14 +6,32 @@ import {
 	getTemplate,
 	ProviderError,
 	RateLimitError,
+	SignInExpired,
 } from "@prismalens/integrations";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SourceConnection } from "./source-request.js";
 import { readStored } from "./stored-credential.js";
 import {
 	type TemplateConnection,
 	templateRequestFn,
 } from "./template-request.js";
+
+// An oauth credential would call the real token endpoint; its kind throws the expiry instead.
+vi.mock("@prismalens/integrations", async (original) => {
+	const actual = await original<typeof import("@prismalens/integrations")>();
+	return {
+		...actual,
+		credentialKind: (kind: Parameters<typeof actual.credentialKind>[0]) =>
+			kind === "oauth"
+				? {
+						kind,
+						authorize: async () => {
+							throw new actual.SignInExpired();
+						},
+					}
+				: actual.credentialKind(kind),
+	};
+});
 
 interface RecordedRequest {
 	url: string;
@@ -89,6 +107,35 @@ function makeConnection(
 }
 
 describe("templateRequestFn (#848 lane B)", () => {
+	it("reports an expired sign-in on the connection and rethrows it", async () => {
+		const { fetchImpl } = fakeFetchQueue([]);
+		const conn = makeConnection(
+			"gitlab-token",
+			{
+				kind: "oauth",
+				authorizationUrl: "https://gitlab.com/oauth/authorize",
+				tokenUrl: "https://gitlab.com/oauth/token",
+				redirectUri: "http://127.0.0.1:6474/callback",
+				clientId: "client",
+				scopes: ["read_api"],
+				refreshToken: "R0",
+				baseUrl: "https://gitlab.com/api/v4",
+			},
+			fetchImpl,
+		);
+		const reported: unknown[] = [];
+		conn.connection.report = async (p) => {
+			reported.push(p);
+		};
+
+		await expect(templateRequestFn(async () => conn)("GET", "/user")).rejects.toBeInstanceOf(
+			SignInExpired,
+		);
+		expect(reported).toEqual([
+			{ kind: "sign-in-expired", message: expect.any(String) },
+		]);
+	});
+
 	it("a GitHub bearer row sends the template's headers to its base URL", async () => {
 		const { calls, fetchImpl } = fakeFetchQueue([
 			new Response(JSON.stringify({ login: "octocat" }), { status: 200 }),

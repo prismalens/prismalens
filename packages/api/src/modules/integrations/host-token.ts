@@ -46,7 +46,7 @@ interface Decoded {
 	host: string;
 	stored: Stored;
 	blob: Record<string, unknown>;
-	/** What the fingerprint is taken over: the token, or the sign-in's long-lived secret. */
+	/** What the fingerprint is taken over: a pasted token, or what stays the same across a sign-in's refreshes. */
 	identity: string;
 }
 
@@ -81,7 +81,9 @@ function decode(conn: Row, credentials: CredentialsService): Decoded | null {
 	const c = stored.credential.ok ? stored.credential.credential : null;
 	const identity =
 		c?.kind === "oauth"
-			? (c.refreshToken ?? c.accessToken ?? null)
+			? c.refreshToken || c.accessToken
+				? `${c.tokenUrl}:${c.clientId}:${conn.id}`
+				: null
 			: c?.kind === "oauth-client"
 				? `${c.clientId}:${c.clientSecret}`
 				: tokenFrom(blob);

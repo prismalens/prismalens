@@ -7,11 +7,12 @@
  */
 import {
 	BadRequestException,
+	ConflictException,
 	Injectable,
 	type OnModuleDestroy,
 } from "@nestjs/common";
 import { LOOPBACK_REDIRECT_URI } from "@prismalens/contracts/schemas";
-import { OAuthLoopback } from "./oauth-loopback.js";
+import { LoopbackBusyError, OAuthLoopback } from "./oauth-loopback.js";
 
 export type SignInError = "state" | "denied" | "exchange" | "probe" | "name";
 export type SignInOutcome = { connectionId: string } | { error: SignInError };
@@ -70,7 +71,12 @@ export class SignIns implements OnModuleDestroy {
 		loopback: boolean,
 	): Promise<void> {
 		this.sweep();
-		if (loopback) await this.loopback.expect(state);
+		if (loopback)
+			await this.loopback.expect(state).catch((e: unknown) => {
+				throw e instanceof LoopbackBusyError
+					? new ConflictException(e.message)
+					: e;
+			});
 		this.pending.set(state, { flow, expiresAt: Date.now() + TTL_MS });
 	}
 

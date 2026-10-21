@@ -111,14 +111,14 @@ function mapRepo(p: GitLabProject): GitRepository {
 }
 
 function mapCommit(c: GitLabCommit): Omit<GitCommit, "files"> {
-	const subject = c.title || c.message.split("\n")[0] || "";
+	const [subject = "", ...rest] = (c.message || c.title || "").split("\n");
 	return {
 		sha: c.id,
 		parents: c.parent_ids.length,
 		committedAt: new Date(c.committed_date),
 		author: c.author_name,
 		subject,
-		body: c.message.slice(subject.length).trim(),
+		body: rest.join("\n").trim(),
 		tag: null,
 	};
 }

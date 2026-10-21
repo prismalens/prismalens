@@ -20,6 +20,8 @@ async function serve() {
 				: { body: fx.projectsPage1, headers: { "x-next-page": "2" } };
 		if (p === "/api/v4/projects/acme%2Fapi/repository/commits")
 			return { body: fx.commits };
+		if (p === "/api/v4/projects/acme%2Flong/repository/commits")
+			return { body: [fx.longTitleCommit] };
 		if (p.endsWith(`/repository/commits/${fx.MERGE_SHA}`))
 			return { body: fx.commits[0] };
 		if (p.endsWith("/diff")) return { body: fx.diff };
@@ -81,6 +83,20 @@ describe("GitLab VCS segment (#848)", () => {
 		const asked = api.requests.find((r) => r.url.includes("/commits?"));
 		expect(asked?.url).toContain("first_parent=true");
 		expect(asked?.url).toContain(encodeURIComponent(since.toISOString()));
+	});
+
+	it("builds subject and body from the message, not GitLab's truncated title", async () => {
+		const { gitlab, request } = await serve();
+		const [c] = await gitlab.getCommitsSince(
+			request,
+			"acme/long",
+			new Date("2026-10-01T00:00:00Z"),
+		);
+		expect(c).toMatchObject({
+			subject:
+				"Raise the database connection timeout for the checkout service under load",
+			body: "Body line",
+		});
 	});
 
 	it("gets a commit with the files it touched", async () => {

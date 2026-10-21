@@ -16,6 +16,7 @@ import {
 	interpolateRecord,
 	ProviderError,
 	RateLimitError,
+	SignInExpired,
 } from "@prismalens/integrations";
 import { tokenFrom } from "../../core/harness/git-credential.js";
 import type { SourceConnection } from "./source-request.js";
@@ -38,18 +39,27 @@ async function bearerValue(
 ): Promise<string> {
 	if (!credential || credential.kind === "none") return tokenFrom(t.blob) ?? "";
 	const kind = credentialKind(credential.kind) as CredentialKind;
-	const auth = await kind.authorize(
-		credential as never,
-		{
-			connectionId: t.connectionId,
-			origin: "",
-			fetch: t.fetchImpl ?? fetch,
-			load: t.connection.load,
-			save: t.connection.save,
-		},
-		renew ? { renew } : undefined,
-	);
-	return bearerOf(auth.headers) ?? "";
+	try {
+		const auth = await kind.authorize(
+			credential as never,
+			{
+				connectionId: t.connectionId,
+				origin: "",
+				fetch: t.fetchImpl ?? fetch,
+				load: t.connection.load,
+				save: t.connection.save,
+			},
+			renew ? { renew } : undefined,
+		);
+		return bearerOf(auth.headers) ?? "";
+	} catch (e) {
+		if (e instanceof SignInExpired)
+			await t.connection.report?.({
+				kind: "sign-in-expired",
+				message: e.message,
+			});
+		throw e;
+	}
 }
 
 function context(t: TemplateConnection, token: string): Record<string, string> {

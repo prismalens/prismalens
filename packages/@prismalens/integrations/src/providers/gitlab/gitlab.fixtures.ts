@@ -52,6 +52,17 @@ export const commits = [
 	},
 ];
 
+export const longTitleCommit = {
+	id: "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+	parent_ids: ["a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"],
+	committed_date: "2026-10-02T10:00:00.000+00:00",
+	author_name: "Ada Lovelace",
+	// GitLab cuts a long first line in `title` and adds an ellipsis; `message` keeps it whole.
+	title: "Raise the database connection timeout for the checkout…",
+	message:
+		"Raise the database connection timeout for the checkout service under load\n\nBody line",
+};
+
 export const diff = [
 	{ old_path: "src/db.ts", new_path: "src/db.ts" },
 	{ old_path: "old.md", new_path: "docs/new.md" },

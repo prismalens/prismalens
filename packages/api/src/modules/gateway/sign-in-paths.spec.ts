@@ -19,7 +19,7 @@ await vi.hoisted(async () => {
 const { PrismaService } = await import("../../core/prisma/prisma.service.js");
 const { CredentialsService } = await import("../integrations/crypto/credentials.service.js");
 const { IntegrationsService } = await import("../integrations/integrations.service.js");
-const { readHostToken } = await import("../integrations/host-token.js");
+const { hostTokenInfo, readHostToken } = await import("../integrations/host-token.js");
 const { SourcesService } = await import("./sources.service.js");
 const { SignIns } = await import("./sign-in.js");
 const { OAuthLoopback } = await import("./oauth-loopback.js");
@@ -229,6 +229,11 @@ describe("GitLab self-managed with your own app (OBJ-009)", () => {
 			refreshToken: "R1",
 			baseUrl: "https://gitlab.acme.test/api/v4",
 		});
+
+		// The fingerprint names the sign-in, so a rotated refresh token leaves it alone.
+		expect(hostTokenInfo(after.row, credentials)?.fingerprint).toBe(
+			hostTokenInfo(row, credentials)?.fingerprint,
+		);
 
 		const clone = await readHostToken(
 			after.row,

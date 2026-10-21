@@ -316,9 +316,13 @@ export class McpProxy implements ProxyPort {
 			connection: draft.connection ?? inMemory(draft.credential),
 		};
 		let up: Upstream | null = null;
+		const deadline = AbortSignal.timeout(10_000);
 		try {
-			up = await withTimeout(this.open(c), 10_000);
-			const view = await listBounded(c, up, { tools: 0, bytes: 0 });
+			up = await withTimeout(this.open(c, deadline), 10_000);
+			const view = await withTimeout(
+				listBounded(c, up, { tools: 0, bytes: 0 }, deadline),
+				10_000,
+			);
 			const names = allocateOfferedNames(
 				c.name,
 				view.tools.map((t) => t.upstream),

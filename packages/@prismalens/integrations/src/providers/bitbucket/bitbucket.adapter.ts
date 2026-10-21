@@ -90,12 +90,14 @@ async function paginateList<T>(
 	initialPath: string,
 	stop: (item: T) => boolean = () => false,
 	max = Number.POSITIVE_INFINITY,
+	keep: (item: T) => boolean = () => true,
 ): Promise<T[]> {
 	const results: T[] = [];
 	let path: string | null = initialPath;
 	for (let i = 0; path && i < PAGE_CAP && results.length < max; i++) {
 		const page: Page<T> = await json<Page<T>>(await request("GET", path));
 		for (const item of page.values) {
+			if (!keep(item)) continue;
 			if (stop(item)) return results;
 			results.push(item);
 		}
@@ -199,7 +201,7 @@ export class BitbucketVcsSegment implements GitProvider {
 		};
 	}
 
-	/** Bitbucket has no `since` filter: pages come newest first and stop at the first older commit. */
+	/** Bitbucket has no `since` filter or first-parent flag: pages come newest first, only the first-parent chain is kept, and paging stops at its first older commit. */
 	async getCommitsSince(
 		request: AuthenticatedRequestFn,
 		repo: string,
@@ -207,11 +209,18 @@ export class BitbucketVcsSegment implements GitProvider {
 		opts: { branch?: string; max?: number } = {},
 	): Promise<Omit<GitCommit, "files">[]> {
 		const branch = opts.branch ? `/${encodeURIComponent(opts.branch)}` : "";
+		let expected: string | undefined;
+		const mainline = (c: BitbucketCommit) => {
+			if (expected !== undefined && c.hash !== expected) return false;
+			expected = c.parents[0]?.hash ?? "";
+			return true;
+		};
 		const commits = await paginateList<BitbucketCommit>(
 			request,
 			`/repositories/${segments(repo)}/commits${branch}?pagelen=100`,
 			(c) => new Date(c.date) < since,
 			opts.max,
+			mainline,
 		);
 		return commits.map(mapCommit);
 	}

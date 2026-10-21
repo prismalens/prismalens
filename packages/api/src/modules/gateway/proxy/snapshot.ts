@@ -97,6 +97,8 @@ export function unreachableReason(e: unknown): string {
 	return failureReason(e);
 }
 
+const MAX_PAGES = 32;
+
 /**
  * Lists one connection's tools a page at a time, stopping at the per-connection and
  * per-run bounds. `budget` is shared across connections processed in name order.
@@ -115,6 +117,8 @@ export async function listBounded(
 	let keptBytes = 0;
 	let cursor: string | undefined;
 	let stopped: DroppedWhy | null = null;
+	const seenCursors = new Set<string>();
+	let pagesLeft = MAX_PAGES;
 	do {
 		let page: { tools: UpstreamTool[]; nextCursor?: string };
 		try {
@@ -164,6 +168,15 @@ export async function listBounded(
 			budget.bytes += size;
 		}
 		cursor = page.nextCursor;
+		// A server can repeat a cursor, or page forever on small pages.
+		if (cursor) {
+			const repeated = seenCursors.has(cursor);
+			seenCursors.add(cursor);
+			if ((repeated || --pagesLeft <= 0) && !stopped) {
+				stopped = "received-bytes";
+				drop(stopped);
+			}
+		}
 		const atBound =
 			kept.length >= P.toolsPerConnection
 				? "tool-count"

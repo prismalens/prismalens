@@ -27,6 +27,7 @@ import {
 	getAllTemplates,
 	getTemplate,
 	isLegacyTemplateId,
+	SignInExpired,
 } from "@prismalens/integrations";
 import {
 	GIT_HOST_RULE,
@@ -218,16 +219,22 @@ export class IntegrationsService {
 	/** A sign-in's git token is its current access token (#848). */
 	readonly authorizeHost: AuthorizeHost = async (connectionId, credential) => {
 		const conn = this.sourceConnection(connectionId);
-		const auth = await (
-			credentialKind(credential.kind) as CredentialKind
-		).authorize(credential as never, {
-			connectionId,
-			origin: "",
-			fetch,
-			load: conn.load,
-			save: conn.save,
-		});
-		return bearerOf(auth.headers) ?? null;
+		try {
+			const auth = await (
+				credentialKind(credential.kind) as CredentialKind
+			).authorize(credential as never, {
+				connectionId,
+				origin: "",
+				fetch,
+				load: conn.load,
+				save: conn.save,
+			});
+			return bearerOf(auth.headers) ?? null;
+		} catch (e) {
+			if (e instanceof SignInExpired)
+				await conn.report?.({ kind: "sign-in-expired", message: e.message });
+			throw e;
+		}
 	};
 
 	async saveStoredCredential(

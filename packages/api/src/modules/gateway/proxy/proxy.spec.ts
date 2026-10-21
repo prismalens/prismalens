@@ -30,6 +30,8 @@ interface Fake {
 	result?: (name: string) => unknown;
 	/** tools/list waits for this before answering. */
 	holdList?: Promise<void>;
+	/** tools/list always answers an empty page with this cursor. */
+	stuckCursor?: string;
 }
 
 function fake(host: string, tools: FakeTool[], o: Partial<Fake> = {}): Fake {
@@ -54,6 +56,7 @@ function serve(f: Fake) {
 			s.setRequestHandler("tools/list", async (req) => {
 				f.pages++;
 				if (f.holdList) await f.holdList;
+				if (f.stuckCursor) return { tools: [], nextCursor: f.stuckCursor } as never;
 				const size = f.pageSize ?? f.tools.length;
 				const start = Number(req.params?.cursor ?? 0);
 				const next = start + size;
@@ -345,6 +348,27 @@ describe("McpProxy r4 findings", () => {
 		expect(c?.tools).toHaveLength(64);
 		expect(c?.dropped?.[0]?.why).toBe("tool-count");
 		expect(c?.dropped?.[0]?.count).toBeGreaterThan(0);
+	});
+});
+
+describe("McpProxy paging bounds", () => {
+	it("stops on a repeated cursor and reports the unseen rest as dropped", async () => {
+		const s = fake("a.test", [], { stuckCursor: "same" });
+		const c = (await proxyOf([s], [conn("a", s.host)]).snapshot("r", 5000)).connections[0];
+		expect(s.pages).toBe(2);
+		expect(c?.dropped).toEqual([{ count: 1, why: "received-bytes" }]);
+	});
+
+	it("stops at 32 pages when every cursor is new", async () => {
+		const s = fake(
+			"a.test",
+			Array.from({ length: 200 }, (_, i) => tool(`t${String(i).padStart(3, "0")}`)),
+			{ pageSize: 1 },
+		);
+		const c = (await proxyOf([s], [conn("a", s.host)]).snapshot("r", 5000)).connections[0];
+		expect(s.pages).toBe(32);
+		expect(c?.tools).toHaveLength(32);
+		expect(c?.dropped?.[0]?.why).toBe("received-bytes");
 	});
 });
 

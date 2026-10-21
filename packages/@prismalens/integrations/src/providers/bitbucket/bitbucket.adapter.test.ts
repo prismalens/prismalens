@@ -22,6 +22,8 @@ async function serve() {
 		if (p === "/2.0/repositories/acme/api") return { body: repos.page1.values[0] };
 		if (p === "/2.0/repositories/acme/api/commits")
 			return { body: { values: fx.commitsNewestFirst } };
+		if (p === "/2.0/repositories/acme/merged/commits")
+			return { body: { values: fx.commitsWithMerge } };
 		if (p === "/2.0/repositories/acme/api/commit/c3")
 			return { body: fx.commitsNewestFirst[0] };
 		if (p === "/2.0/repositories/acme/api/diffstat/c3")
@@ -76,6 +78,16 @@ describe("Bitbucket VCS segment (#848)", () => {
 			body: "Raise it to 30s",
 			tag: null,
 		});
+	});
+
+	it("follows only the first-parent chain, so a merged branch's old commit neither appears nor ends paging", async () => {
+		const { bb, request } = await serve();
+		const commits = await bb.getCommitsSince(
+			request,
+			"acme/merged",
+			new Date("2026-10-01T00:00:00Z"),
+		);
+		expect(commits.map((c) => c.sha)).toEqual(["M", "P1"]);
 	});
 
 	it("gets a commit with files, using the old path for a deletion", async () => {
