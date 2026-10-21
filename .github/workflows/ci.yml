@@ -37,6 +37,7 @@ jobs:
   build:
     name: Build & typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -76,6 +77,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # engines.node is >=24 everywhere, the floor `pl doctor` enforces (#673 s6);
@@ -110,6 +112,7 @@ jobs:
   coverage:
     name: Coverage thresholds
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -144,6 +147,7 @@ jobs:
   pack:
     name: Pack npm tarball
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -183,6 +187,7 @@ jobs:
     name: Packed smoke (${{ matrix.image }})
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -334,6 +339,7 @@ jobs:
   lint:
     name: Lint (Biome)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
@@ -373,6 +379,7 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [build, test, pack, packed-smoke, lint, coverage]
     if: always()
     steps:

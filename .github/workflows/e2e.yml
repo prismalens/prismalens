@@ -16,6 +16,7 @@ jobs:
   e2e:
     name: Playwright E2E (Chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     # No service containers: dispatch is in-process over a SQLite job table, so the
     # app boots with no broker.
     steps:
