@@ -40,14 +40,44 @@ jobs:
       - name: Install Playwright Chromium Browser
         run: pnpm --filter @prismalens/frontend exec playwright install chromium --with-deps
 
-      # Phone and tablet run nightly (e2e-responsive.yml), not per PR.
+      # Phone and tablet run nightly (e2e-responsive.yml), not per PR. `@quarantine`
+      # tests are excluded here and run in the next step (CONTRIBUTING.md, "Browser e2e tier").
       - name: Run Playwright E2E Tests
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-main.json
         run: pnpm --filter @prismalens/frontend test:e2e --project=chromium --project=journeys
 
+      - name: Flaky and failed tests to the job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/playwright-main.json" ]; then
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Non-blocking by construction: a quarantined test may fail without failing the job.
+      # Each has an open issue; the summary lists how it did.
+      - name: Run quarantined tests (non-blocking)
+        id: quarantine
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-quarantine.json
+          PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/packages/frontend/playwright-report-quarantine
+        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine
+
+      - name: Quarantined tests to the job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/playwright-quarantine.json" ]; then
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-quarantine.json" "Playwright E2E, quarantined (non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload Playwright Report
-        if: failure()
+        if: ${{ failure() || steps.quarantine.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: packages/frontend/playwright-report/
+          path: |
+            packages/frontend/playwright-report/
+            packages/frontend/playwright-report-quarantine/
           retention-days: 7

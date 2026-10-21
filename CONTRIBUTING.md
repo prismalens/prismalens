@@ -84,6 +84,12 @@ Two things to know before running it locally:
 - On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
   re-running blind.
 
+A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` (a
+`{ tag: "@quarantine" }` option, or the tag line above a Gherkin scenario) with a comment naming its
+open `bug` issue, one per test. It then runs in the non-blocking `chromium-quarantine` and
+`journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its
+flaky and failed tests in the job summary.
+
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 

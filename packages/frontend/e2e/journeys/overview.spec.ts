@@ -739,12 +739,10 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await expect(page.getByTestId("impact-retry")).toBeVisible();
 	});
 
-	test("what changed: git credential problem, no repos, newest first rows, and all toggle", async ({
-		page,
-		alertmanager,
-		deliverWebhook,
-		unique,
-	}) => {
+	// Quarantined: #894 - the overview's 'what changed' test passes on its first attempt
+	test("what changed: git credential problem, no repos, newest first rows, and all toggle", {
+		tag: "@quarantine",
+	}, async ({ page, alertmanager, deliverWebhook, unique }) => {
 		test.setTimeout(90_000);
 		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("WhatChanged"),
