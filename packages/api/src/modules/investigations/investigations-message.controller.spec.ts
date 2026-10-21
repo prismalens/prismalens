@@ -358,7 +358,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 			harness: "opencode",
 			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
 		});
-		mockDispatchService.followUpLevel.mockResolvedValue("workspace-write");
+		mockDispatchService.followUpLevel.mockResolvedValue("auto-edits");
 		mockDispatchService.afterRestart.mockResolvedValue(false);
 
 		const result = await handoffHandler()({ input: { id: "inv-1", harness: "opencode" } });
@@ -368,7 +368,7 @@ describe("InvestigationsController.handoff (#849)", () => {
 			harness: "opencode",
 			carried: "the agent's own session",
 			omitted: null,
-			accessLevel: "workspace-write",
+			accessLevel: "auto-edits",
 			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
 			note: null,
 		});

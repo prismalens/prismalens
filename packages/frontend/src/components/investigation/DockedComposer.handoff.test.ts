@@ -215,7 +215,7 @@ describe("DockedComposer handoff states on a finished run", () => {
 			"Continues in a fresh OpenCode session, at Auto-accept edits.",
 		);
 		expect(spans[1]?.textContent).toBe(
-			" OpenCode gets alert and 3 messages. 10 tool calls stay in the transcript file, which OpenCode can read.",
+			"OpenCode gets alert and 3 messages. 10 tool calls stay in the transcript file, which OpenCode can read.",
 		);
 	});
 
