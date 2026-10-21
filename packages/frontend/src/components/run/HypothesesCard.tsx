@@ -10,6 +10,7 @@ import { Ban, Check, CheckCheck, CircleHelp, Maximize2 } from "lucide-react";
 import {
 	Component,
 	type ReactNode,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -414,12 +415,12 @@ class DrawingBoundary extends Component<
 export function useFocusLater() {
 	const t = useRef<number | undefined>(undefined);
 	useEffect(() => () => window.clearTimeout(t.current), []);
-	return (id: string) => {
+	return useCallback((id: string) => {
 		window.clearTimeout(t.current);
 		t.current = window.setTimeout(() => {
 			const el = document.getElementById(id);
 			el?.scrollIntoView({ block: "center" });
 			el?.focus();
 		}, 0);
-	};
+	}, []);
 }

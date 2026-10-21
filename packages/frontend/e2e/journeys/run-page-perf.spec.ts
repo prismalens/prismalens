@@ -108,6 +108,7 @@ interface Sample {
 	loafMs: number;
 	blockingMs: number;
 	renders: Record<string, number>;
+	why: [string, number][];
 }
 
 async function mark(page: Page): Promise<number> {
@@ -132,11 +133,28 @@ async function measure(page: Page, since: number): Promise<Sample> {
 				(
 					window as unknown as { __renderProbe?: Probe }
 				).__renderProbe?.counts() ?? {},
+			// The commonest reasons a component rendered, `name: reason`.
+			why: Object.entries(
+				(
+					(window as unknown as { __renderProbe?: Probe }).__renderProbe?.log ??
+					[]
+				).reduce<Record<string, number>>((acc, r) => {
+					const k = `${r.name}: ${r.reason}`;
+					acc[k] = (acc[k] ?? 0) + 1;
+					return acc;
+				}, {}),
+			)
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 6),
 		};
 	}, since);
 }
 
-type Probe = { reset(): void; counts(): Record<string, number> };
+type Probe = {
+	log: { name: string; reason: string }[];
+	reset(): void;
+	counts(): Record<string, number>;
+};
 
 function report(name: string, w: Sample | Record<string, unknown>) {
 	console.log(`[perf] ${name} ${JSON.stringify(w)}`);
@@ -189,13 +207,19 @@ test.describe("run page perf probe (#874)", () => {
 		const now = Date.now();
 		const burst = longRun(25, 251, now - 60_000).map((e) => JSON.stringify(e));
 		t = await mark(page);
-		// One task per frame, the way a browser dispatches SSE messages.
-		await page.evaluate(async (frames) => {
-			for (const f of frames) {
-				window.__liveStream.deliver(f);
-				await new Promise((r) => setTimeout(r, 0));
-			}
-		}, burst);
+		// 50 tasks queued at once, one per message, the way a replayed SSE chunk is dispatched.
+		await page.evaluate(
+			(frames) =>
+				new Promise<void>((done) => {
+					let n = 0;
+					for (const f of frames)
+						setTimeout(() => {
+							window.__liveStream.deliver(f);
+							if (++n === frames.length) done();
+						}, 0);
+				}),
+			burst,
+		);
 		await expect(
 			page.locator('[data-testid="step"][data-step="275"]'),
 		).toBeAttached({ timeout: 15_000 });
