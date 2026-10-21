@@ -644,13 +644,13 @@ Given(
 );
 
 Then(
-	/^(?:the box reads "(?:This run kept no agent session, so it can't continue\. Start a new run\.|This run can't continue\. Start a new run\.)" with "New run", and no field to type into)$/,
+	"the box offers to continue in a fresh deepagents session, saying what it carries",
 	async ({ page }) => {
-		await expect(page.getByTestId("composer-no-session")).toContainText(
-			"This run kept no agent session, so it can't continue. Start a new run.",
-		);
-		await expect(page.getByTestId("composer-new-run")).toHaveText("New run");
-		await expect(box(page)).toHaveCount(0);
+		const hint = page.getByTestId("composer-hint");
+		await expect(hint).toContainText("Continues in a fresh deepagents session");
+		await expect(hint).toContainText("deepagents gets the alert");
+		await expect(box(page)).toBeVisible();
+		await expect(page.getByTestId("composer-no-session")).toHaveCount(0);
 	},
 );
 

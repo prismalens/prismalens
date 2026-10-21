@@ -488,9 +488,8 @@ export function DockedComposer({
 				: undefined));
 	const above = hint.some(Boolean) ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
-			{hint.map((line, i) => (
+			{hint.map((line) => (
 				<span key={line} className="block">
-					{i > 0 ? " " : ""}
 					{line}
 				</span>
 			))}
@@ -547,7 +546,11 @@ export function DockedComposer({
 								}
 							: undefined
 					}
-					placeholder={finished ? `Message ${agentLabel}` : thread.placeholder}
+					placeholder={
+						finished && inv?.kind !== "chat"
+							? `Message ${agentLabel}`
+							: thread.placeholder
+					}
 					initialFiles={draft ? record.draftFiles : undefined}
 					onFilesChange={draft ? record.setDraftFiles : undefined}
 					boxRef={boxRef}
