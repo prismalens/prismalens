@@ -75,6 +75,7 @@ import {
 	operatorToken,
 	storedCandidates,
 } from "./session.js";
+import { type Splash, splashHtml, startWithSplash } from "./splash.js";
 import {
 	appendTail,
 	type BackendSpawn,
@@ -678,7 +679,11 @@ function openWindow(path = "/"): void {
 		},
 	});
 	state.manage(window);
-	window.once("ready-to-show", () => window?.show());
+	window.once("ready-to-show", () => {
+		window?.show();
+		onFirstShow?.();
+		onFirstShow = null;
+	});
 	// PRISMALENS_DESKTOP_SMOKE=<png path>: prove the window rendered the app,
 	// write the capture, quit. What CI runs under xvfb, and what a box with no
 	// display server to look at runs by hand.
@@ -919,6 +924,36 @@ function startUpdateChecks(): void {
 	void check();
 }
 
+function showSplash(): Splash {
+	const win = new BrowserWindow({
+		width: 360,
+		height: 280,
+		frame: false,
+		resizable: false,
+		show: false,
+		title: TITLE,
+		backgroundColor: backgroundColor(
+			nativeTheme.shouldUseDarkColors ? "dark" : "light",
+		),
+		...(process.platform === "darwin" ? {} : { icon: asset("icon.png") }),
+	});
+	const icon = `data:image/png;base64,${readFileSync(asset("icon.png")).toString("base64")}`;
+	const html = splashHtml(
+		nativeTheme.shouldUseDarkColors ? "dark" : "light",
+		icon,
+	);
+	win.once("ready-to-show", () => win.show());
+	void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+	return {
+		close: () => {
+			if (!win.isDestroyed()) win.destroy();
+		},
+	};
+}
+
+/** Opens the main window and runs `onFirstShow` once, when it first paints. */
+let onFirstShow: (() => void) | null = null;
+
 function afterBoot(): void {
 	booted = true;
 	buildTray();
@@ -957,8 +992,15 @@ if (!app.requestSingleInstanceLock()) {
 				showLookUpSelection: false,
 				showInspectElement: !app.isPackaged,
 			});
-			await boot();
-			afterBoot();
+			await startWithSplash({
+				showSplash,
+				boot,
+				openMain: (done) => {
+					onFirstShow = done;
+					afterBoot();
+				},
+				refuse,
+			});
 		})
 		.catch((error) => {
 			console.error(error);
