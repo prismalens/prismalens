@@ -41,10 +41,32 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | `test` | scripted fake agent | every PR | yes |
 | `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
 | `packed-service` | none | every PR | no |
-| `harness-admission` | live free model on the pinned OpenCode | every PR for now; moves to the nightly tier | no |
+| `harness-admission` | live free model on the pinned OpenCode | every PR for now (advisory); also nightly in `live-agent.yml` | no |
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
-script against the real harness on PATH; the nightly tier will call it that way.
+script against the real harness on PATH; `live-agent.yml` calls it that way.
+
+## `live-agent.yml` jobs: the live tier
+
+The live tier checks that the pinned agent and a real free model still complete
+an investigation. It runs nightly on `main` and on demand, and nothing requires
+it. The agent is pinned to the version `ci.yml` pins; it is not a run against
+agents' latest releases (#639, #712).
+
+| Job | Model | Cadence | Required |
+| --- | --- | --- | --- |
+| `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly on `main`; dispatch | no |
+| `harness-admission-live` | live free model on the pinned OpenCode | nightly on `main`; dispatch | no |
+| `report-failure` | none | after a failed nightly | no |
+
+- **Release gate:** dispatch it with `ref` set to the release PR's base SHA
+  (`gh workflow run live-agent.yml -f ref=<sha>`) and link the run from the PR.
+  Only the nightly schedule files the failure issue.
+- **On a failed night:** `report-failure` comments on the open issue titled
+  "Live agent check failing on main", or opens it, with the run link.
+- **Event streams:** each packed-intake attempt uploads its paged
+  `/api/investigations/:id/events` as `intake-events-attempt-<n>`, kept 30 days.
+  That is the recording source for #533.
 
 ## Review is advisory; unresolved threads are what block
 
@@ -120,6 +142,7 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
+| `live-agent.yml` | schedule, dispatch | nightly and release-dispatch live agent check: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
 | `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket |
 | `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
