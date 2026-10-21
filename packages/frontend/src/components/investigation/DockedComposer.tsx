@@ -460,7 +460,10 @@ export function DockedComposer({
 						? {
 								to: {
 									harness: to.harness,
-									...(to.model !== undefined ? { model: to.model } : {}),
+									// The picker's "" is the agent's own model, which the API spells null.
+									...(to.model !== undefined
+										? { model: to.model || null }
+										: {}),
 									...(to.effort !== undefined ? { effort: to.effort } : {}),
 								},
 							}

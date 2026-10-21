@@ -197,7 +197,7 @@ describe("DockedComposer send-to handoff (#849)", () => {
 			"check memory leak",
 			"queue",
 			expect.objectContaining({
-				to: { harness: "codex", model: "" },
+				to: { harness: "codex", model: null },
 			}),
 		);
 	});
