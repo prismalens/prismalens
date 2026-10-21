@@ -191,6 +191,82 @@ describe("AcpAdapter.normalize", () => {
 		expect(CanonicalEventSchema.safeParse(result).success).toBe(true);
 	});
 
+	it("previews Codex's rawOutput when the update carries no content", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "call_cx",
+			kind: "execute",
+			title: "rg --files",
+			rawInput: { command: "rg --files", cwd: "/r" },
+		});
+		const result = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "call_cx",
+			status: "completed",
+			rawOutput: { formatted_output: "a.ts\nb.ts\n", exit_code: 0 },
+		});
+		expect(result).toMatchObject({
+			kind: "tool_result",
+			result: { ok: true, preview: "a.ts\nb.ts\n" },
+		});
+	});
+
+	it("caps a Codex rawOutput preview and reads MCP results", () => {
+		const capped = new AcpAdapter({ ...ctx, previewLimit: 5 });
+		const r = capped.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c1",
+			status: "completed",
+			rawOutput: { formatted_output: "0123456789", exit_code: 0 },
+		});
+		expect(r).toMatchObject({ result: { preview: "01234…" } });
+		const mcp = new AcpAdapter(ctx).normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c2",
+			status: "completed",
+			rawOutput: {
+				result: { content: [{ type: "text", text: "pong" }] },
+				error: null,
+			},
+		});
+		expect(mcp).toMatchObject({ result: { preview: "pong" } });
+	});
+
+	it("keeps Claude content ahead of rawOutput", () => {
+		const r = new AcpAdapter(ctx).normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c3",
+			status: "completed",
+			content: [{ type: "content", content: { type: "text", text: "from content" } }],
+			rawOutput: { formatted_output: "from raw" },
+		});
+		expect(r).toMatchObject({ result: { preview: "from content" } });
+	});
+
+	it("keeps output an earlier update carried when the completed update is bare", () => {
+		const adapter = new AcpAdapter(ctx);
+		adapter.normalize({
+			sessionUpdate: "tool_call",
+			toolCallId: "c4",
+			kind: "execute",
+			title: "Terminal",
+			rawInput: { command: "ls" },
+		});
+		adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c4",
+			status: "in_progress",
+			rawOutput: { formatted_output: "a.ts" },
+		});
+		const r = adapter.normalize({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "c4",
+			status: "completed",
+		});
+		expect(r).toMatchObject({ result: { preview: "a.ts" } });
+	});
+
 	it("shows the command Claude Code sends after opening the call empty (walk f16)", () => {
 		const adapter = new AcpAdapter(ctx);
 		adapter.normalize({

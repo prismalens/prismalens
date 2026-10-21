@@ -104,3 +104,4 @@ packages/cli/.pack-staging/
 # Electron launcher: staged backend and built app
 packages/desktop/resources/
 packages/desktop/release/
+.turbo-cache/
