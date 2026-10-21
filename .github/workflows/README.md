@@ -42,7 +42,7 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
 | `packed-service` | none | every PR | no |
 | `packed-upgrade-smoke`, `gate-side-checks` | scripted fake ACP agent, on the packed tarball | every PR | no, until three recorded greens |
-| `harness-admission` | live free model on the pinned OpenCode | every PR for now (advisory); also nightly in `live-agent.yml` | no |
+| `harness-admission` (OpenCode and Claude Code legs) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | no, until three recorded greens |
 
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
 `turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
@@ -79,7 +79,7 @@ agents' latest releases (#639, #712).
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
 | `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly on `main`; dispatch | no |
-| `harness-admission-live` | live free model on the pinned OpenCode | nightly on `main`; dispatch | no |
+| `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly on `main`; dispatch | no |
 | `report-failure` | none | after a failed nightly | no |
 
 - **Release gate:** dispatch it with `ref` set to the release PR's base SHA

@@ -12,7 +12,6 @@ import {
 } from "../../../../scripts/fakes/fake-model-server.mjs";
 import { parseReport } from "../src/run/report.js";
 
-// SSE frames delimit JSON chunks and finish with [DONE] to end streaming turns.
 let server: FakeModelServer | undefined;
 let serverB: FakeModelServer | undefined;
 

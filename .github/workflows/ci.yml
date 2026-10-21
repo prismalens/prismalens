@@ -364,17 +364,27 @@ jobs:
           node scripts/gate-side-checks.mjs --tarball "$(ls tarballs/prismalens-*.tgz | head -1)"
 
   harness-admission:
-    # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
-    # this passes unattended on a real clone. First run: #561.
+    # Compatibility run (ADR 0003 §10): the pinned agent is real, its model is the
+    # scripted one in scripts/fakes/fake-model-server.mjs, so a red run means the code
+    # is wrong and the same commit gives the same verdict (#884). The live-model run is
+    # `harness-admission-live` in live-agent.yml.
     #
-    # ADVISORY, not in `ci-gate`'s `needs`: it calls a free model live, and that
-    # tier's terms changed twice in 8 days (#884). Its live run moves to the
-    # nightly tier.
-    name: Harness admission (opencode)
+    # ADVISORY, not in `ci-gate`'s `needs`: promote it after three recorded greens (#884).
+    name: Harness admission (${{ matrix.harness }}, scripted model)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: opencode
+            install: npm install -g opencode-ai@1.18.30 && opencode --version
+          - harness: claude-code
+            install: npm install -g @anthropic-ai/claude-code@2.1.296 && claude --version
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -391,13 +401,11 @@ jobs:
       - name: Build the packages the engine imports
         run: pnpm --filter "@prismalens/contracts..." build
 
-      - name: Install the pinned OpenCode
-        run: npm install -g opencode-ai@1.18.30 && opencode --version
+      - name: Install the pinned agent
+        run: ${{ matrix.install }}
 
-      - name: Run the admission script against this checkout
-        env:
-          PRISMALENS_HARNESS_MODEL: opencode/deepseek-v4.1-flash-free
-        run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"
+      - name: Run the admission (R1-R7) against the scripted model, 3 times
+        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
 
   lint:
     name: Lint (Biome)
