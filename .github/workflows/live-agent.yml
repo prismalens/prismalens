@@ -18,6 +18,7 @@
 name: Live agent
 
 on:
+  pull_request:
   schedule:
     - cron: "47 2 * * *" # 02:47 UTC daily, on the default branch
   workflow_dispatch:
@@ -185,7 +186,7 @@ jobs:
   report-failure:
     name: Upsert the failing-check issue
     needs: [pack, packed-intake-live, harness-admission-live]
-    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -199,7 +200,7 @@ jobs:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -eu
-          title="Live agent check failing on main"
+          title="Live agent check failing on main (workflow test, ignore)"
           failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries | map(select(.value.result == "failure") | .key) | join(", ")')
           body="The nightly live agent check failed on $(date -u +%F) at $GITHUB_SHA. Failed jobs: ${failed}. Run: ${RUN_URL}"
           number=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
