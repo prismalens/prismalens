@@ -6,9 +6,11 @@ import type {
 	InvestigationWithRelations,
 } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
+import type { FileAt } from "@/lib/evidence-files";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import {
 	contextSections,
+	evidenceRow,
 	evidenceSections,
 	filterSteps,
 	summarySections,
@@ -289,5 +291,133 @@ describe("filterSteps", () => {
 		expect(filterSteps(all, "file").map((x) => x.n)).toEqual([2]);
 		expect(filterSteps(all, "failed").map((x) => x.n)).toEqual([3]);
 		expect(filterSteps(all, "all")).toHaveLength(3);
+	});
+});
+
+describe("run-details sections and citations", () => {
+	it("adds usage and cost rows to what this run used when usage facts are provided", () => {
+		const baseFacts = {
+			status: { text: "Concluded: likely cause", tone: "ok" as const },
+			started: { text: "Today 01:05 by PrismaLens" },
+			took: { label: "Took" as const, text: "2m 16s" },
+			agent: "Claude Code 2.3.1",
+			model: { text: "Opus", warn: false },
+			effort: "High",
+			access: { text: "Auto", sub: "No sandbox on this machine." },
+			chat: false,
+		};
+
+		const withoutUsage = summarySections(inv({}), {
+			...baseFacts,
+			usage: undefined,
+		});
+		const usedWithout = withoutUsage.find((s) => s.title === "What this run used");
+		const labelsWithout = usedWithout?.rows.map((r) => r.label) ?? [];
+		expect(labelsWithout).not.toContain("Usage");
+		expect(labelsWithout).not.toContain("Cost");
+
+		const withUsageOnly = summarySections(inv({}), {
+			...baseFacts,
+			usage: { row: { text: "92,410 tokens", sub: "s" }, cost: null },
+		});
+		const usedWithOnly = withUsageOnly.find((s) => s.title === "What this run used")?.rows ?? [];
+		const effortIdx = usedWithOnly.findIndex((r) => r.label === "Effort");
+		expect(usedWithOnly[effortIdx + 1]).toMatchObject({
+			label: "Usage",
+			text: "92,410 tokens",
+			sub: "s",
+		});
+		expect(usedWithOnly.map((r) => r.label)).not.toContain("Cost");
+
+		const withCost = summarySections(inv({}), {
+			...baseFacts,
+			usage: {
+				row: { text: "92,410 tokens", sub: "s" },
+				cost: { text: "$0.42", sub: "estimated" },
+			},
+		});
+		const usedWithCost = withCost.find((s) => s.title === "What this run used")?.rows ?? [];
+		const usageIdx = usedWithCost.findIndex((r) => r.label === "Usage");
+		expect(usedWithCost[usageIdx + 1]).toMatchObject({
+			label: "Cost",
+			text: "$0.42",
+			sub: "estimated",
+		});
+	});
+
+	it("opens the hypotheses drawing when report has hypotheses, and omits the section without them", () => {
+		const withHyp = evidenceSections(inv({ report }), stepOf, {
+			live: false,
+			standing: null,
+		});
+		expect(withHyp[0]).toMatchObject({
+			title: "Hypotheses",
+			rows: [
+				{
+					text: expect.stringMatching(new RegExp(`^${report.hypotheses.length}\\b`)),
+					link: { kind: "hypotheses" },
+					action: "Open the drawing",
+				},
+			],
+		});
+
+		const withoutHyp = evidenceSections(
+			inv({ report: { ...report, hypotheses: [] } }),
+			stepOf,
+			{ live: false, standing: null },
+		);
+		expect(withoutHyp.map((s) => s.title)).not.toContain("Hypotheses");
+	});
+
+	it("resolves file citations with fileOf, keeping sub for commands and omitting sub for bare paths", () => {
+		const poolFile: FileAt = {
+			repo: "booklogr",
+			sha: "8e1d0b4",
+			path: "src/db/pool.ts",
+			line: 41,
+			end: 42,
+		};
+		const dummyFileOf = (source: string): FileAt | null =>
+			source.includes("src/db/pool.ts") ? poolFile : null;
+
+		const bareRow = evidenceRow(
+			{
+				observation: "Connection pool exhausted",
+				source: "src/db/pool.ts:41-42",
+				direction: "supports",
+				status: "verified",
+				toolCallId: "b",
+			},
+			stepOf,
+			dummyFileOf,
+		);
+		expect(bareRow.file).toEqual(poolFile);
+		expect(bareRow.sub).toBeUndefined();
+
+		const cmdRow = evidenceRow(
+			{
+				observation: "Added pool timeout",
+				source: "git show 8e1d0b4 -- src/db/pool.ts",
+				direction: "supports",
+				status: "verified",
+				toolCallId: "b",
+			},
+			stepOf,
+			dummyFileOf,
+		);
+		expect(cmdRow.file).toEqual(poolFile);
+		expect(cmdRow.sub).toBe("git show 8e1d0b4 -- src/db/pool.ts");
+
+		const noFileOfRow = evidenceRow(
+			{
+				observation: "Connection pool exhausted",
+				source: "src/db/pool.ts:41-42",
+				direction: "supports",
+				status: "verified",
+				toolCallId: "b",
+			},
+			stepOf,
+		);
+		expect(noFileOfRow.file).toBeUndefined();
 	});
 });
