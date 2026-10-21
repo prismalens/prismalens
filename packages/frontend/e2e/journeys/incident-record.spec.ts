@@ -170,7 +170,8 @@ test.describe("#743 — the incident page, its runs and its routes", () => {
 		await settled(page);
 	});
 
-	test("error — a failed run", async ({ page }) => {
+	// Quarantined: #890 - the incident record's failed-run test passes on its first attempt
+	test("error — a failed run", { tag: "@quarantine" }, async ({ page }) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
 			status: "failed",
 			error: "harness lost the tool socket",

@@ -84,6 +84,12 @@ Two things to know before running it locally:
 - On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
   re-running blind.
 
+A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` (a
+`{ tag: "@quarantine" }` option, or the tag line above a Gherkin scenario) with a comment naming its
+open `bug` issue, one per test. It then runs in the non-blocking `chromium-quarantine` and
+`journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its
+flaky and failed tests in the job summary.
+
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
@@ -94,6 +100,37 @@ API call. Nothing is seeded or written to the database by hand. The API scenario
 empty workspace; the e2e stack's demo seed is there only for screens that read. A walk finding is
 fixed together with the journey or scenario that would have caught it. How to write one:
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
+
+### Agent-loop checks: scripted on PRs, live nightly
+
+A PR never waits on a live model (#884). The agent loop is checked two ways:
+
+| Check | Model | Runs | Where |
+| --- | --- | --- | --- |
+| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
+| `harness-admission` (R1-R7) | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`) | every PR | `ci.yml` |
+| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `live-agent.yml` |
+
+Run the PR admission yourself, with the agent on PATH (`opencode@1.18.30` or `claude@2.1.296`):
+
+```bash
+pnpm --filter "@prismalens/contracts..." build
+node scripts/admission-fake.mjs opencode "$PWD" --repeat 3
+```
+
+```text
+run 1/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+run 2/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+run 3/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+fake model served 12 requests
+```
+
+The driver starts the server on `127.0.0.1`, points the agent at it (a provider block in a throwaway
+`XDG_CONFIG_HOME` for OpenCode, `ANTHROPIC_BASE_URL` for Claude Code), runs
+`packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
+R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
+function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
+A change that needs a live model to show up goes to `live-agent.yml`, not into a PR check.
 
 ## Database migrations
 
