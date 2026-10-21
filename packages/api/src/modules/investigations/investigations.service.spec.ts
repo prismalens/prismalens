@@ -15,6 +15,7 @@ function serviceWith(kind = "investigation", stopRequestedAt: Date | null = null
 		"stopRequestedAt" in where && stopRequestedAt !== null;
 	const tx = {
 		investigation: {
+			count: vi.fn(async () => 0),
 			updateMany: vi.fn(async ({ where }: { where: { stopRequestedAt?: null } }) => ({
 				count: refuses(where) ? 0 : 1,
 			})),
