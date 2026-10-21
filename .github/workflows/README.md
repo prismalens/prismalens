@@ -38,7 +38,7 @@ renamed or refused (#884). Live-model jobs are advisory and leave the gate.
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
 | `build`, `lint`, `pack`, `packed-smoke` | none | every PR | yes |
-| `test` | scripted fake agent | every PR; the ubuntu leg also enforces the coverage floors (#58) | yes |
+| `test` | scripted fake agent | every PR on ubuntu, with the coverage floors (#58); macOS also on `merge_group` and pushes to `main` | yes |
 | `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
 | `packed-service` | none | every PR | no |
 | `harness-admission` | live free model on the pinned OpenCode | every PR for now (advisory); also nightly in `live-agent.yml` | no |

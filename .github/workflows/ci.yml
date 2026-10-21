@@ -81,9 +81,9 @@ jobs:
     strategy:
       fail-fast: false
       # engines.node is >=24 everywhere, the floor `pl doctor` enforces (#673 s6);
-      # the matrix proves the suite is not ubuntu-only.
+      # macOS runs on the merge queue and main only, not on every PR push (#885).
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
         node: [24]
     steps:
       - uses: actions/checkout@v7
