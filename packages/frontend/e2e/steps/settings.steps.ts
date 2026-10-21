@@ -526,7 +526,7 @@ Then(
 			"Anthropic",
 		);
 		await expect(
-			rows.filter({ hasText: "Muse Spark 1.3 (free)" }),
+			rows.filter({ hasText: "DeepSeek V4.1 Flash (free)" }),
 		).toBeVisible();
 		const names = await rows.evaluateAll((els) =>
 			els.map((e) => e.getAttribute("data-model")),
@@ -839,7 +839,7 @@ Then(
 );
 
 Given(
-	/^OpenCode offers "Claude Sonnet 5\.5" and "Muse Spark 1\.3 \(free\)"$/,
+	/^OpenCode offers "Claude Sonnet 5\.5" and "DeepSeek V4\.1 Flash \(free\)"$/,
 	async ({ page, agents }) => {
 		agents.install(["opencode"], "picker");
 		await check(page, "opencode");
@@ -876,12 +876,14 @@ Then(
 );
 
 Then(
-	/^"Muse Spark 1\.3 \(free\)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice$/,
+	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice$/,
 	async ({ page }) => {
 		await openPicker(page);
 		await picker(page).getByTestId("rail-opencode").click();
 		const muse = picker(page)
-			.locator('[data-testid=model-option][data-model="Muse Spark 1.3 (free)"]')
+			.locator(
+				'[data-testid=model-option][data-model="DeepSeek V4.1 Flash (free)"]',
+			)
 			.first();
 		await expect(muse).toContainText("trains on your prompts");
 		// The agent's own model row's sub-line is the model OpenCode reports it serves, nothing more.
