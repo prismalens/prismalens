@@ -10,6 +10,7 @@ import {
 	querySource,
 	sourceArg,
 	timeArg,
+	toUnixSeconds,
 } from "../source-tools.js";
 
 const promData = (data: unknown) => {
@@ -37,7 +38,6 @@ const promData = (data: unknown) => {
 
 const base = {
 	category: "metrics",
-	sideEffect: "read_only",
 	openWorld: true,
 } as const;
 
@@ -89,8 +89,8 @@ export function prometheusTools(
 			input: range,
 			run: ({ query, start, end, step, source }, ctx) => {
 				const endS = end ?? String(Math.floor(now().getTime() / 1000));
-				const startS = start ?? String(Number(endS) - 3600);
-				const span = Number(endS) - Number(startS);
+				const startS = start ?? String(toUnixSeconds(endS) - 3600);
+				const span = toUnixSeconds(endS) - toUnixSeconds(startS);
 				const autoStep = Number.isFinite(span)
 					? `${Math.max(15, Math.ceil(span / LIMITS.pointsPerSeries))}s`
 					: "60s";

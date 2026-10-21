@@ -191,7 +191,7 @@ export class GatewayService {
 		const address = server?.address?.() as AddressInfo | string | null;
 		if (!address || typeof address === "string") return null;
 		const protocol = "setSecureContext" in server ? "https" : "http";
-		const wildcard = ["0.0.0.0", "::", "::1"].includes(address.address);
+		const wildcard = ["0.0.0.0", "::"].includes(address.address);
 		const host = wildcard
 			? "127.0.0.1"
 			: address.family === "IPv6"

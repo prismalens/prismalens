@@ -23,7 +23,6 @@ export function alertmanagerTools(sources: QuerySources): SourceTool[] {
 				source: sourceArg,
 			}),
 			category: "metrics",
-			sideEffect: "read_only",
 			openWorld: true,
 			run: ({ filter, includeSilenced, source }, ctx) => {
 				const params = new URLSearchParams({

@@ -886,14 +886,15 @@ function dedupeRepos(repos: IncidentRepo[]): {
 	return [...byKey.values()];
 }
 
-/** The folder a repo gets under `repos/`: the last segment of its display name, unique. */
+/** The folder a repo gets under `repos/`: the last segment of its display name, unique, never dot-led (`repos/.gemini` would be the cwd's own agent config). */
 function folderNames(repos: IncidentRepo[]): string[] {
 	const used = new Set<string>();
 	return repos.map((repo) => {
 		const base =
 			(displayNameFor(repo.sourceKind, repo.url).split("/").pop() ?? "")
 				.replace(/[^A-Za-z0-9._-]/g, "_")
-				.replace(/^\.+$/, "_") || "repo";
+				.replace(/^\.+$/, "_")
+				.replace(/^\./, "_") || "repo";
 		let name = base;
 		for (let n = 2; used.has(name); n++) name = `${base}-${n}`;
 		used.add(name);

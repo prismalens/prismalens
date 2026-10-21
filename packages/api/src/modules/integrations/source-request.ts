@@ -161,7 +161,15 @@ export function sourceRequestFn(
 		let renewed = false;
 		for (let hop = 0; ; hop++) {
 			const res = auth.tls
-				? await mtlsFetch(url, method, headers, auth.tls, signal, options?.body)
+				? await mtlsFetch(
+						url,
+						method,
+						headers,
+						auth.tls,
+						signal,
+						options?.body,
+						opts.maxBytes,
+					)
 				: await (opts.fetchImpl ?? fetch)(url.href, {
 						method,
 						headers,
@@ -206,6 +214,7 @@ function mtlsFetch(
 	c: NonNullable<Authorization["tls"]>,
 	signal: AbortSignal,
 	body?: string,
+	maxBytes?: number,
 ): Promise<Response> {
 	return new Promise((resolve, reject) => {
 		const req = httpsRequest(
@@ -220,12 +229,15 @@ function mtlsFetch(
 			},
 			(res) => {
 				const chunks: Buffer[] = [];
-				res.on("data", (d: Buffer) => chunks.push(d));
-				res.on("error", reject);
-				res.on("end", () => {
+				let size = 0;
+				let settled = false;
+				const finish = (truncated: boolean) => {
+					if (settled) return;
+					settled = true;
 					const h = new Headers();
 					for (const [k, v] of Object.entries(res.headers))
 						if (v !== undefined) h.set(k, Array.isArray(v) ? v.join(", ") : v);
+					if (truncated) h.set(TRUNCATED_HEADER, "1");
 					const status = res.statusCode ?? 502;
 					const empty = status === 204 || status === 304;
 					resolve(
@@ -235,7 +247,20 @@ function mtlsFetch(
 							headers: h,
 						}),
 					);
+				};
+				res.on("data", (d: Buffer) => {
+					if (settled) return;
+					if (maxBytes !== undefined && size + d.length > maxBytes) {
+						chunks.push(d.subarray(0, maxBytes - size));
+						finish(true);
+						res.destroy();
+						return;
+					}
+					chunks.push(d);
+					size += d.length;
 				});
+				res.on("error", reject);
+				res.on("end", () => finish(false));
 			},
 		);
 		req.on("error", reject);

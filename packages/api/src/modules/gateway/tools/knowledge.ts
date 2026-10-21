@@ -40,7 +40,6 @@ export function knowledgeTools(
 				limit: z.number().int().min(1).max(20).default(5),
 			}),
 			category: "knowledge",
-			sideEffect: "read_only",
 			openWorld: false,
 			run: async ({ query, service, limit }, ctx) => ({
 				value: await search({

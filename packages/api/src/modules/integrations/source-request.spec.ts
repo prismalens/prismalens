@@ -113,6 +113,32 @@ describe("sourceRequestFn: each credential kind reaches the upstream (#848)", ()
 		).rejects.toThrow();
 	});
 
+	it("mtls stops reading at maxBytes and marks the response truncated", async () => {
+		const server = createTlsServer(
+			{
+				cert: SERVER_CERT,
+				key: SERVER_KEY,
+				ca: CA_CERT,
+				requestCert: true,
+				rejectUnauthorized: true,
+			},
+			(_req, res) => {
+				res.write("a".repeat(600));
+				res.end("b".repeat(600));
+			},
+		);
+		const base = await listen(server, "https");
+		const mtls = ok({
+			kind: "mtls",
+			cert: CLIENT_CERT,
+			key: CLIENT_KEY,
+			ca: CA_CERT,
+		});
+		const res = await sourceRequestFn(base, mtls, { maxBytes: 100 })("GET", "/x");
+		expect(res.headers.get(TRUNCATED_HEADER)).toBe("1");
+		expect((await res.text()).length).toBe(100);
+	});
+
 	it("mtls refuses a plain http URL", async () => {
 		const fn = sourceRequestFn(
 			"http://127.0.0.1:1",

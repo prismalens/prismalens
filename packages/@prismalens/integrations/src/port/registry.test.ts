@@ -15,7 +15,6 @@ function tool(over: Partial<SourceTool> = {}): SourceTool {
 		description: "d",
 		input: z.object({ query: z.string() }),
 		category: "metrics",
-		sideEffect: "read_only",
 		openWorld: true,
 		run: async (input) => ({ value: input }),
 		...over,
@@ -23,13 +22,10 @@ function tool(over: Partial<SourceTool> = {}): SourceTool {
 }
 
 describe("SourceRegistry (#848)", () => {
-	it("refuses anything but a read-only tool with a valid, unique name", () => {
+	it("refuses an invalid or duplicate name", () => {
 		const r = new SourceRegistry();
 		r.register(tool());
 		for (const bad of [
-			tool({ name: "other", sideEffect: "mutating" }),
-			tool({ name: "other", sideEffect: "external" }),
-			tool({ name: "other", sideEffect: undefined as never }),
 			tool(),
 			tool({ name: "n8n_prod__list" }),
 			tool({ name: "Bad-Name" }),
@@ -63,17 +59,6 @@ describe("SourceRegistry (#848)", () => {
 		});
 		expect(await r.call("prometheus_query", { query: "up" }, ctx)).toEqual({
 			value: { query: "up" },
-		});
-	});
-
-	it("rechecks the level at call time", async () => {
-		const r = new SourceRegistry();
-		const t = tool();
-		r.register(t);
-		t.sideEffect = "mutating";
-		expect(await r.call("prometheus_query", { query: "up" }, ctx)).toEqual({
-			isError: true,
-			value: { error: "PrismaLens serves read-only tools only" },
 		});
 	});
 
