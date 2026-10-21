@@ -535,11 +535,21 @@ Then(
 Then(
 	"the run is working again and the agent's next message answers with what it had already found",
 	async ({ page }) => {
-		await expect(
-			page
-				.getByTestId("transcript-prose")
-				.filter({ hasText: "the index drop is still the only change" }),
-		).toBeVisible();
+		const said = page
+			.getByTestId("transcript-prose")
+			.filter({ hasText: "the index drop is still the only change" });
+		// If the run already reported, its work sits behind the fold.
+		await expect
+			.poll(async () => {
+				const fold = page.getByTestId("worked-toggle");
+				if (
+					(await fold.getAttribute("aria-expanded").catch(() => null)) ===
+					"false"
+				)
+					await fold.click();
+				return said.isVisible();
+			})
+			.toBe(true);
 		// The continued run is the run again, so it went live before its report.
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(["running", "completed"]).toContain(run?.status);

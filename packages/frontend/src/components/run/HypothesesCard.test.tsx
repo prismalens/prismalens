@@ -49,14 +49,28 @@ const sampleHypotheses: Hypothesis[] = [
 		id: "h1",
 		statement: "Connection pool exhaustion under load",
 		status: "confirmed",
-		evidence: [{ source: "src/db/pool.ts:41-42", thought: "high waiters" }],
+		evidence: [
+			{
+				observation: "high waiters",
+				source: "src/db/pool.ts:41-42",
+				direction: "supports",
+				status: "verified",
+			},
+		],
 	},
 	{
 		id: "h2",
 		parentId: "h1",
 		statement: "Stale connection timeouts not clearing",
 		status: "supported",
-		evidence: [{ source: "step:5", thought: "logs confirm" }],
+		evidence: [
+			{
+				observation: "logs confirm",
+				source: "step:5",
+				direction: "supports",
+				status: "verified",
+			},
+		],
 	},
 	{
 		id: "h3",

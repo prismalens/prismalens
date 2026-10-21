@@ -12,6 +12,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DockedComposer, runFollowUpLevel, threadActions } from "./DockedComposer";
 
+type FollowUpRun = Parameters<typeof runFollowUpLevel>[0];
+
 const h = vi.hoisted(() => {
 	const agent = (id: string, label: string) => ({
 		id,
@@ -326,7 +328,7 @@ describe("threadActions and runFollowUpLevel", () => {
 			triggerType: "auto_critical",
 			accessLevel: "auto" as const,
 		};
-		expect(runFollowUpLevel(inv as any, "supervised", false)).toBe("supervised");
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", false)).toBe("supervised");
 	});
 
 	it("runFollowUpLevel: returns full-access for a run with accessLevel: \"full-access\"", () => {
@@ -334,7 +336,7 @@ describe("threadActions and runFollowUpLevel", () => {
 			triggerType: "manual",
 			accessLevel: "full-access" as const,
 		};
-		expect(runFollowUpLevel(inv as any, "supervised", false)).toBe("full-access");
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", false)).toBe("full-access");
 	});
 
 	it("runFollowUpLevel: returns its own level for alert-started run while live", () => {
@@ -342,13 +344,13 @@ describe("threadActions and runFollowUpLevel", () => {
 			triggerType: "auto_critical",
 			accessLevel: "auto" as const,
 		};
-		expect(runFollowUpLevel(inv as any, "supervised", true)).toBe("auto");
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", true)).toBe("auto");
 	});
 
 	it("runFollowUpLevel: returns supervised for run with neither level nor report fidelity", () => {
 		const inv = {
 			triggerType: "manual",
 		};
-		expect(runFollowUpLevel(inv as any, "full-access", false)).toBe("supervised");
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "full-access", false)).toBe("supervised");
 	});
 });

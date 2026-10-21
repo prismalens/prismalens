@@ -289,6 +289,8 @@ describe("Worked fold", () => {
 		{
 			kind: "end",
 			key: "end",
+			tone: "done",
+			text: "Report ready",
 			report: true,
 		},
 	];
