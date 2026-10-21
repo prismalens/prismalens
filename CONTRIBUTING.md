@@ -386,7 +386,8 @@ with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
 ### Release-gate side checks
 
-Before a release PR merges, a packed-tarball walk passes on its base SHA (#673).
+Before a release PR merges, a packed-tarball walk passes on its base SHA
+([`.github/release-checklists/walk.md`](.github/release-checklists/walk.md)).
 `pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
 side checks against that tarball, or packs the built CLI when no tarball is given:
 the telemetry notice and its four off switches, the update notice, the workspace
@@ -406,14 +407,16 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-[#673](https://github.com/prismalens/prismalens/issues/673) gates every release.
-It is one standing issue, not a set created per milestone: a packed session
-passes on the release PR's base SHA, docs.prismalens.io documents every command,
-flag, configuration key and page the release changed (checked against the packed
-tarball, links validated on the built site), and a scripted live test runs
-against the tarball, not the source tree. A patch release walks the steps its
-diff changed plus a fixed core; a minor release walks everything. Each walk's
-findings go in one `0.5.N walk findings` issue.
+Each release is gated by its own Phase gate issue, which `phase-gate.yml` files
+when the release's milestone is created, from the patch or minor template in
+`.github/release-checklists/`. A packed walk passes on the release PR's base SHA
+(steps in [`walk.md`](.github/release-checklists/walk.md)), docs.prismalens.io
+documents every command, flag, configuration key and page the release changed
+(checked against the packed tarball, links validated on the built site), and a
+minor release runs a scripted live test against the tarball, not the source
+tree. A patch release walks the steps its diff changed plus a fixed core; a minor
+release walks everything. Each walk's findings go in one `X.Y.Z walk findings`
+issue.
 
 Milestones are versions, and exactly two are open: the current release and the
 next. When a release PR merges, close its milestone, move its open leftovers to
