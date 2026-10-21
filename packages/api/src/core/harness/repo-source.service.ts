@@ -235,6 +235,12 @@ export class RepoSourceService {
 				undefined,
 				signal,
 			);
+		// origin is the user's checkout or our mirror: refuse local-path push and fetch from the run (#676).
+		await this.git(
+			["-C", dest, "config", "protocol.file.allow", "never"],
+			undefined,
+			signal,
+		);
 		const check = await this.headOf(dest);
 		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(

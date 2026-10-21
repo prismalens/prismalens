@@ -220,7 +220,8 @@ jobs:
     # becomes an open incident, an investigation starts without a human and
     # completes with a report citing real paths, and a resolution closes the
     # incident. The harness is the pinned OpenCode on the keyless model, as in
-    # `harness-admission`; the repository under investigation is this checkout.
+    # `harness-admission`; the repository under investigation is a small built-in
+    # fixture, not this checkout, so a free model finishes in minutes (#876).
     #
     # ADVISORY, not in `ci-gate`'s `needs`: it has not yet run green three
     # times in a row on this branch. Promote it once it has (#630).
@@ -248,9 +249,9 @@ jobs:
 
       - name: Prometheus webhook to incident, unattended investigation, and back to resolved
         env:
-          PACKED_INTAKE_REPO: ${{ github.workspace }}
+          PACKED_INTAKE_REPO: fixture
           PRISMALENS_HARNESS: opencode
-          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
+          PRISMALENS_HARNESS_MODEL: opencode/deepseek-v4.1-flash-free
         run: node scripts/packed-intake.mjs tarballs
 
   packed-service:
@@ -323,7 +324,7 @@ jobs:
 
       - name: Run the admission script against this checkout
         env:
-          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
+          PRISMALENS_HARNESS_MODEL: opencode/deepseek-v4.1-flash-free
         run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"
 
   lint:
