@@ -17,6 +17,7 @@ import {
 } from "@nestjs/common";
 import { getConfig } from "@prismalens/config";
 import {
+	type AccessLevel,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -26,6 +27,7 @@ import {
 import type {
 	CanonicalEvent,
 	FollowUpKind,
+	FollowUpRoute,
 	InvestigationJobData,
 	JobAttachment,
 	OperatorMessageMode,
@@ -59,6 +61,10 @@ import {
 } from "../../modules/integrations/git-credential.service.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
+import {
+	followUpRoute,
+	handoffPreflight,
+} from "../../modules/investigations/follow-up-route.js";
 import { InvestigationsService } from "../../modules/investigations/investigations.service.js";
 import { StreamRelayService } from "../../modules/investigations/stream-relay.service.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
@@ -189,8 +195,21 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							workspace: investigation.workspace ?? null,
 							kind: investigation.kind,
 							stopRequestedAt: investigation.stopRequestedAt ?? null,
+							report: investigation.report ?? null,
 						}
 					: null;
+			},
+			events: (id) => this.investigationsService.allEvents(id),
+			recordHandoff: async (id, to) => {
+				await this.prisma.investigation.update({
+					where: { id },
+					data: {
+						harness: to.harness,
+						model: to.model,
+						effort: to.effort,
+						acpSessionId: to.acpSessionId,
+					},
+				});
 			},
 			updateStatus: async (id, dto) => {
 				const written = await this.investigationsService.updateStatusInternal(
@@ -831,6 +850,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		mode: OperatorMessageMode,
 		kind: FollowUpKind = "chat",
 		attachments: JobAttachment[] = [],
+		to: RunChoice = {},
 	): Promise<boolean> {
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },
@@ -844,9 +864,18 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				report: true,
 				triggerType: true,
 				harness: true,
+				model: true,
+				acpSessionId: true,
+				endReason: true,
 			},
 		});
 		if (!row || !isWorkflowTerminal(row.status)) return false;
+		const plan = await this.planFollowUp(row, to);
+		if (!plan) throw new FollowUpRefused("Pick an agent to continue in.");
+		if (plan.preflight)
+			throw new FollowUpRefused(
+				`${plan.preflight.problem} ${plan.preflight.fix}`,
+			);
 		if (kind === "continue") {
 			if (row.kind === "chat")
 				throw new FollowUpRefused(
@@ -861,14 +890,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					"Only a stopped or failed run can be continued.",
 				);
 		}
-		// The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
-		// A person's follow-up on an alert-started run takes the person's level, not its Auto (#818).
-		const alertHarness =
-			startedByAlert(row.triggerType) &&
-			HARNESS_IDS.find((h) => h === row.harness);
-		const accessLevel = alertHarness
-			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
-			: AccessLevelSchema.safeParse(row.accessLevel).data;
+		const accessLevel = await this.followUpLevel(row);
 		const sawEvidence =
 			kind === "continue" &&
 			(await this.prisma.investigationEvent.count({
@@ -894,6 +916,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				kind,
 				...(kind === "continue" ? { sawEvidence } : {}),
 				...(attachments.length ? { attachments } : {}),
+				to: { ...to, harness: plan.harness },
+				...(plan.route === "handoff" ? { handoff: true } : {}),
+				...(row.endReason === "interrupted" ? { afterRestart: true } : {}),
 			},
 		};
 		const admitted = await this.prisma.$transaction(async (tx) => {
@@ -940,6 +965,61 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.streamRelay.attach(id);
 		void this.dispatcher.tick();
 		return true;
+	}
+
+	/**
+	 * The run keeps the level it asked for; a row from before levels keeps the session's mode (#673 w21).
+	 * A person's follow-up on an alert-started run takes the person's level, not its Auto (#818).
+	 */
+	async followUpLevel(row: {
+		triggerType: string | null;
+		harness: string | null;
+		accessLevel: string | null;
+	}): Promise<AccessLevel | undefined> {
+		const alertHarness =
+			startedByAlert(row.triggerType) &&
+			HARNESS_IDS.find((h) => h === row.harness);
+		return alertHarness
+			? (await this.harnessService.effectiveChoice(alertHarness)).accessLevel
+			: AccessLevelSchema.safeParse(row.accessLevel).data;
+	}
+
+	/**
+	 * Where a finished run's follow-up goes and whether the recipient can take
+	 * it: installed, signed in where the last check says, and the model accepted.
+	 */
+	async planFollowUp(
+		row: {
+			harness: string | null;
+			acpSessionId: string | null;
+			model: string | null;
+		},
+		to: RunChoice,
+	): Promise<{
+		route: FollowUpRoute;
+		harness: HarnessId;
+		preflight: { problem: string; fix: string } | null;
+	} | null> {
+		const plan = followUpRoute(row, to.harness);
+		if (!plan) return null;
+		const model =
+			to.model !== undefined
+				? to.model
+				: plan.harness === row.harness
+					? row.model
+					: undefined;
+		const selection = await this.harnessService.resolveSelection({
+			harness: plan.harness,
+			...(model !== undefined ? { model } : {}),
+		});
+		return {
+			...plan,
+			preflight: handoffPreflight(
+				plan.harness,
+				selection,
+				this.harnessService.checkedOutcome(plan.harness),
+			),
+		};
 	}
 
 	/**

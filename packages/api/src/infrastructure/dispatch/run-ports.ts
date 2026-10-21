@@ -6,7 +6,11 @@ import type { HarnessSelection } from "@prismalens/config";
  * What one investigation run needs from the API, as functions, so the run is
  * testable without NestJS. Wired in dispatch.service.ts.
  */
-import type { AccessLevel, ModelSource } from "@prismalens/config/harness";
+import type {
+	AccessLevel,
+	HarnessId,
+	ModelSource,
+} from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	LiveTurn,
@@ -54,7 +58,21 @@ export interface RunPorts {
 		kind?: string | null;
 		/** Set once Stop was asked for; the run re-reads it to own its end (#673 w59). */
 		stopRequestedAt?: Date | string | null;
+		/** JSON InvestigationReport; a handoff carries it. */
+		report?: string | null;
 	} | null>;
+	/** Every stored event of the run, in order; a handoff is built from them. */
+	events(id: string): Promise<CanonicalEvent[]>;
+	/** A handoff moved the thread to another session: the next follow-up loads that one. */
+	recordHandoff(
+		id: string,
+		to: {
+			harness: HarnessId;
+			model: string | null;
+			effort: string | null;
+			acpSessionId: string | null;
+		},
+	): Promise<void>;
 	/**
 	 * A status write. False when the row refused it (cancelled, Stop asked for,
 	 * or gone): the caller then writes no timeline entry and delivers nothing.

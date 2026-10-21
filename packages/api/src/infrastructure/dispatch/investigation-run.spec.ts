@@ -69,6 +69,8 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		initLiveTurn: vi.fn(async () => {}),
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
+		events: vi.fn(async () => []),
+		recordHandoff: vi.fn(async () => {}),
 		recordSession: vi.fn(async () => {}),
 		recordUsage: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
@@ -1052,6 +1054,60 @@ describe("follow-up on a finished run (#747)", () => {
 			],
 		]);
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+	});
+
+	it("hands off to a fresh session of another agent, carrying every message and refuted hypothesis, at the run's own level or narrower", async () => {
+		for (const bin of ["codex-acp", "codex-acp.cmd"])
+			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
+		const report = {
+			summary: "Pool exhausted",
+			rootCause: null,
+			hypotheses: [
+				{ statement: "pool max=10", status: "supported", evidence: [] },
+				{ statement: "the cache", status: "refuted", evidence: [] },
+			],
+			ruledOut: [],
+			nextSteps: [],
+		};
+		const said = (text: string, seq: number): CanonicalEvent => ({
+			kind: "operator_message", runId: "inv-1", branchId: "run", path: [], seq, label: null, ts: new Date().toISOString(), text, mode: "queue", delivered: true,
+		});
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				report: JSON.stringify(report),
+			})),
+			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
+			resolveHarness: vi.fn(async () => ({ selection: { runnable: true, harness: "codex", auto: false }, model: "gpt-x" })) as never,
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, to: { harness: "codex" }, handoff: true, afterRestart: true } },
+			io(),
+			ports,
+		);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ harness: string; model: string; accessLevel: string; resume: { sessionId?: string; handoff: string; via: { harness: string; handoff: { carried: string } } } },
+		];
+		expect(opts.harness).toBe("codex");
+		expect(opts.model).toBe("gpt-x");
+		expect(opts.accessLevel).toBe("supervised");
+		expect(opts.resume.sessionId).toBeUndefined();
+		expect(opts.resume.handoff).toContain("1. look at checkout\n2. not the cache");
+		expect(opts.resume.handoff).toContain("- [refuted] the cache");
+		expect(opts.resume.handoff).toContain("may or may not have completed");
+		expect(opts.resume.via).toMatchObject({ harness: "codex", handoff: { carried: "alert, 2 messages, report, 1 refuted hypothesis" } });
 	});
 
 	it("puts a continued run back when it fails before the row went live (R4.4)", async () => {
