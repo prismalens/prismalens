@@ -57,6 +57,16 @@ function initRepo(dir: string, name = "a.txt", content = "v1"): string {
 	return git(["rev-parse", "HEAD"], dir);
 }
 
+/** Runs a git call expected to fail and returns its stderr. */
+function gitFails(args: string[], cwd: string): string {
+	try {
+		execFileSync("git", args, { cwd, env: GIT_ENV, stdio: "pipe" });
+	} catch (err) {
+		return String((err as { stderr?: Buffer }).stderr ?? "");
+	}
+	throw new Error(`git ${args.join(" ")} succeeded`);
+}
+
 function headOf(dir: string): string {
 	return git(["rev-parse", "HEAD"], dir);
 }
@@ -313,6 +323,23 @@ describe("repo-source.service", () => {
 			expect(lstatSync(gitPath).isDirectory()).toBe(true);
 		});
 
+		it("the snapshot can't push to the source checkout, by origin or by its path (#676)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			await new RepoSourceService().snapshot({ kind: "folder", source: src }, dest);
+
+			expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain(
+				"transport 'file' not allowed",
+			);
+			expect(gitFails(["push", src, "HEAD:refs/heads/y"], dest)).toContain(
+				"transport 'file' not allowed",
+			);
+			expect(git(["branch", "--list", "x", "y"], src)).toBe("");
+			expect(git(["branch", "-r"], dest)).not.toBe("");
+		});
+
 		it("checkFolder() on a subdirectory returns the top level as root and the subdir as prefix", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
@@ -435,6 +462,23 @@ describe("repo-source.service", () => {
 			await expect(
 				service.snapshot(src, join(tmp("pl-dest-"), "repo"), undefined, "0123456789abcdef0123456789abcdef01234567"),
 			).rejects.toThrow(/0123456789abcdef0123456789abcdef01234567|reference is not a tree|did not match/);
+		});
+
+		it("the snapshot can't push to the mirror it was cloned from (#676)", async () => {
+			const { bareDir, work } = makeBareRemote();
+			commitAndPush(work, "a.txt", "v1");
+			const url = `file://${bareDir}`;
+
+			const dest = join(tmp("pl-dest-"), "repo");
+			await new RepoSourceService().snapshot(
+				{ kind: "url", source: url, defaultBranch: "main" },
+				dest,
+			);
+
+			expect(gitFails(["push", "origin", "HEAD:refs/heads/x"], dest)).toContain(
+				"transport 'file' not allowed",
+			);
+			expect(git(["branch", "--list", "x"], mirrorPathFor(url))).toBe("");
 		});
 
 		it("a second commit pushed to the remote is picked up by the next snapshot()", async () => {
