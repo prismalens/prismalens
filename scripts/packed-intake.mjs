@@ -15,10 +15,11 @@
  * bearer token, asserts an open incident carries that alert's fingerprint,
  * POSTs the resolved payload, asserts the incident resolves.
  *
- * With PACKED_INTAKE_REPO=<git checkout> and a harness on PATH it goes one step
- * further: the alert carries a `service` label naming a service mapped to that
- * checkout, and the script asserts the app started an investigation on its own
- * and completed it with a report whose cited paths exist. No human creates an
+ * With PACKED_INTAKE_REPO=<git checkout> (or "fixture", a small built-in repo)
+ * and a harness on PATH it goes one step further: the alert carries a
+ * `service` label naming a service mapped to that repo, and the script asserts
+ * the app started an investigation on its own and completed it with a report
+ * whose cited paths exist. No human creates an
  * incident or presses Investigate (the unattended gate, prismalens#337).
  *
  * Usage: packed-intake.mjs <dir-with-tarball>
@@ -42,13 +43,11 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
+import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
 const FETCH_TIMEOUT_MS = 10_000;
-const REPO = process.env.PACKED_INTAKE_REPO
-	? resolve(process.env.PACKED_INTAKE_REPO)
-	: null;
 const SERVICE_NAME = "packed-intake";
 
 function findTarball() {
@@ -72,6 +71,14 @@ function findTarball() {
 const prefix = mkdtempSync(join(tmpdir(), "pl-intake-"));
 const workspace = join(prefix, "workspace");
 mkdirSync(workspace, { recursive: true });
+
+// "fixture" builds a small repo instead of reading a checkout (#876).
+const REPO =
+	process.env.PACKED_INTAKE_REPO === "fixture"
+		? makeIntakeFixtureRepo(join(prefix, "fixture"))
+		: process.env.PACKED_INTAKE_REPO
+			? resolve(process.env.PACKED_INTAKE_REPO)
+			: null;
 
 let child;
 let cleaned = false;
