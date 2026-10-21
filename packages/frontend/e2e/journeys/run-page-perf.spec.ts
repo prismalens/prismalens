@@ -189,8 +189,12 @@ test.describe("run page perf probe (#874)", () => {
 		const now = Date.now();
 		const burst = longRun(25, 251, now - 60_000).map((e) => JSON.stringify(e));
 		t = await mark(page);
-		await page.evaluate((frames) => {
-			for (const f of frames) window.__liveStream.deliver(f);
+		// One task per frame, the way a browser dispatches SSE messages.
+		await page.evaluate(async (frames) => {
+			for (const f of frames) {
+				window.__liveStream.deliver(f);
+				await new Promise((r) => setTimeout(r, 0));
+			}
 		}, burst);
 		await expect(
 			page.locator('[data-testid="step"][data-step="275"]'),

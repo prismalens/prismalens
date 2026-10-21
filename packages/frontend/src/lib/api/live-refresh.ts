@@ -2,7 +2,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { LiveTopic } from "@prismalens/contracts";
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import {
+	partialMatchKey,
+	type Query,
+	type QueryClient,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import { client, orpc } from "./orpc-client";
 
@@ -78,6 +83,16 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 	investigations: () => [orpc.investigations.key(), orpc.incidents.key()],
 };
 
+/** A run's event record and its files at a commit never change; the stream and catch-up extend the record (#874). */
+const IMMUTABLE: readonly unknown[][] = [
+	orpc.investigations.getEvents.key(),
+	orpc.investigations.getBlob.key(),
+];
+
+function mutable(query: Query): boolean {
+	return !IMMUTABLE.some((key) => partialMatchKey(query.queryKey, key));
+}
+
 export function invalidateTopics(
 	queryClient: QueryClient,
 	topics: readonly LiveTopic[],
@@ -87,7 +102,7 @@ export function invalidateTopics(
 		const id = JSON.stringify(queryKey);
 		if (seen.has(id)) continue;
 		seen.add(id);
-		void queryClient.invalidateQueries({ queryKey });
+		void queryClient.invalidateQueries({ queryKey, predicate: mutable });
 	}
 }
 

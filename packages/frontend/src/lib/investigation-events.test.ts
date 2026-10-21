@@ -174,7 +174,6 @@ describe("deriveStreamView", () => {
 		const fenced = `\`\`\`json\n${lookalike}\n\`\`\``;
 		const items = deriveTranscript(
 			[agentStep("main", 1, lookalike), agentStep("main", 2, fenced)],
-			0,
 		);
 		expect(items).toMatchObject([
 			{ kind: "prose", text: "", draft: lookalike },
@@ -310,7 +309,6 @@ describe("report drafts from walk 8 (#673 w8-14)", () => {
 				agentStep("main", 1, walk8.run2Answer),
 				agentStep("main", 2, walk8.run2Report),
 			],
-			0,
 		);
 		expect(items.map((i) => i.kind)).toEqual(["prose", "line"]);
 		const prose = items[0] as Extract<TranscriptItem, { kind: "prose" }>;
@@ -324,7 +322,6 @@ describe("report drafts from walk 8 (#673 w8-14)", () => {
 				agentStep("main", 1, walk8.run4Draft),
 				agentStep("main", 2, walk8.run4Report),
 			],
-			0,
 		);
 		expect(items[0]).toMatchObject({ kind: "prose", text: "" });
 		expect(items[1]).toMatchObject({ text: "Report drafted" });
@@ -394,7 +391,7 @@ describe("a report cut off mid-block (#673 walk 4)", () => {
 				delivered: true,
 			},
 		];
-		const items = deriveTranscript(events, Date.parse("2026-08-22T00:00:03Z"), {
+		const items = deriveTranscript(events, {
 			run: { status: "completed", live: false },
 		});
 		expect(items).toContainEqual(
