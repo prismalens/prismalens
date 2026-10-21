@@ -458,6 +458,7 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 		600_000,
 	);
 	if (!finished) {
+		await logStall(json, cookie, investigation.id);
 		throw new Error(
 			`investigation ${investigation.id} did not reach a terminal state within 10 minutes`,
 		);
@@ -522,6 +523,31 @@ async function findIncidentByFingerprint(
 			(!requireOpen || !["resolved", "closed"].includes(incident.status)),
 		15_000,
 	);
+}
+
+/** What a run that never finished was doing, so the next failure names its cause (#876). */
+async function logStall(json, cookie, id) {
+	try {
+		const events = [];
+		for (let cursor; ; ) {
+			const res = await json(
+				`/api/investigations/${id}/events?limit=200${cursor === undefined ? "" : `&cursor=${cursor}`}`,
+				{ headers: { cookie } },
+			);
+			const page = await res.json();
+			events.push(...page.events);
+			if (page.nextCursor == null || page.events.length === 0) break;
+			cursor = page.nextCursor;
+		}
+		console.error(
+			`[packed-intake] stalled run: ${events.length} events; last 8:`,
+		);
+		for (const e of events.slice(-8)) {
+			console.error(`  ${e.ts} ${e.kind} ${JSON.stringify(e).slice(0, 240)}`);
+		}
+	} catch (error) {
+		console.error(`[packed-intake] could not read the stalled run: ${error}`);
+	}
 }
 
 async function pollUntil(read, satisfies, timeoutMs) {
