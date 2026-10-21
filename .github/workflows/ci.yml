@@ -369,7 +369,7 @@ jobs:
     # is wrong and the same commit gives the same verdict (#884). The live-model run is
     # `harness-admission-live` in live-agent.yml.
     #
-    # ADVISORY, not in `ci-gate`'s `needs`: promote it after three recorded greens (#884).
+    # REQUIRED: listed in `ci-gate`'s `needs`; the scripted model makes the verdict deterministic (#884).
     name: Harness admission (${{ matrix.harness }}, scripted model)
     runs-on: ubuntu-latest
     timeout-minutes: 15

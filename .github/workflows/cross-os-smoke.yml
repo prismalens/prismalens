@@ -146,7 +146,7 @@ jobs:
         run: |
           mkdir -p /tmp/tarballs
           for i in $(seq 1 60); do
-            run_id=$(gh run list -R "$REPO" --workflow ci.yml --commit "$SHA" --event "$EVENT" --limit 1 --json databaseId -q '.[0].databaseId // empty')
+            run_id=$(gh run list -R "$REPO" --workflow ci.yml --commit "$SHA" --event "$EVENT" --limit 1 --json databaseId -q '.[0].databaseId // empty' || true)
             if [ -n "$run_id" ]; then
               state=$(gh run view -R "$REPO" "$run_id" --json jobs -q '.jobs[] | select(.name == "Pack npm tarball") | .conclusion' || true)
               case "$state" in

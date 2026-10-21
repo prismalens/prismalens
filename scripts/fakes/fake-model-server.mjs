@@ -291,7 +291,17 @@ export async function startFakeModelServer(options = {}) {
 	/** @type {import("./fake-model-server.d.mts").ModelRequest[]} */
 	const seen = [];
 
-	const server = createServer(async (httpReq, res) => {
+	const server = createServer((httpReq, res) => {
+		handle(httpReq, res).catch((err) => {
+			if (!res.headersSent)
+				res.writeHead(500, { "content-type": "application/json" });
+			res.end(JSON.stringify({ error: `fake-model-server: ${String(err)}` }));
+		});
+	});
+	async function handle(
+		/** @type {import("node:http").IncomingMessage} */ httpReq,
+		/** @type {import("node:http").ServerResponse} */ res,
+	) {
 		const path = (httpReq.url ?? "/").split("?")[0];
 		const json = (
 			/** @type {number} */ status,
@@ -336,7 +346,7 @@ export async function startFakeModelServer(options = {}) {
 				? openaiStream(req, reply)
 				: anthropicStream(req, reply),
 		);
-	});
+	}
 
 	await new Promise((resolve, reject) => {
 		server.once("error", reject);

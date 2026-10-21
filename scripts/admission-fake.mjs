@@ -120,6 +120,13 @@ function admissionOnce(harness, cloneDir, env) {
 		child.on("close", (code) =>
 			resolveRun({ code: code ?? 1, stdout, stderr }),
 		);
+		child.on("error", (err) => {
+			const detail =
+				/** @type {NodeJS.ErrnoException} */ (err).code === "ENOENT"
+					? "pnpm not found on PATH"
+					: `failed to start pnpm: ${err.message}`;
+			resolveRun({ code: 1, stdout, stderr: `${stderr}${detail}\n` });
+		});
 	});
 }
 

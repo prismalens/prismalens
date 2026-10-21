@@ -482,7 +482,10 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 		(inv) => inv !== undefined && !["pending", "running"].includes(inv.status),
 		600_000,
 	);
-	await saveEvents(json, cookie, investigation.id);
+	const exportError = await saveEvents(json, cookie, investigation.id).then(
+		() => undefined,
+		(error) => error,
+	);
 	if (!finished) {
 		await logStall(json, cookie, investigation.id);
 		throw new Error(
@@ -494,6 +497,7 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 			`investigation ${investigation.id} ended ${finished.status} without a report: ${finished.error ?? ""}`,
 		);
 	}
+	if (exportError) throw exportError;
 	const hypotheses = finished.report.hypotheses ?? [];
 	if (hypotheses.length === 0) {
 		throw new Error(
@@ -567,7 +571,7 @@ async function fetchEvents(json, cookie, id) {
 	return events;
 }
 
-/** The event stream to PACKED_INTAKE_EVENTS_OUT, the source for recordings (#533). */
+/** The event stream to PACKED_INTAKE_EVENTS_OUT (#533); throws so a completed attempt without its recording fails. */
 async function saveEvents(json, cookie, id) {
 	const out = process.env.PACKED_INTAKE_EVENTS_OUT;
 	if (!out) return;
@@ -579,6 +583,7 @@ async function saveEvents(json, cookie, id) {
 		console.log(`[packed-intake] saved ${events.length} events to ${out}`);
 	} catch (error) {
 		console.error(`[packed-intake] could not save the event stream: ${error}`);
+		throw error;
 	}
 }
 
