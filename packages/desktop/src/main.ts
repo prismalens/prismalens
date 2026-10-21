@@ -649,6 +649,8 @@ function runForStdout(plan: BackendSpawn): Promise<string> {
 	});
 }
 
+const FIRST_SHOW_MS = 15_000;
+
 function openWindow(path = "/"): void {
 	// `second-instance` and `activate` can fire while the backend is booting.
 	if (!ready) return;
@@ -679,11 +681,23 @@ function openWindow(path = "/"): void {
 		},
 	});
 	state.manage(window);
-	window.once("ready-to-show", () => {
+	// A failed load or a dead renderer never paints; show the window anyway so
+	// the splash does not outlive the failure (#897).
+	const firstShow = () => {
+		clearTimeout(firstShowTimer);
 		window?.show();
 		onFirstShow?.();
 		onFirstShow = null;
-	});
+	};
+	const firstShowTimer = setTimeout(firstShow, FIRST_SHOW_MS);
+	window.once("ready-to-show", firstShow);
+	window.webContents.on(
+		"did-fail-load",
+		(_e, _code, _desc, _url, isMainFrame) => {
+			if (isMainFrame) firstShow();
+		},
+	);
+	window.webContents.once("render-process-gone", firstShow);
 	// PRISMALENS_DESKTOP_SMOKE=<png path>: prove the window rendered the app,
 	// write the capture, quit. What CI runs under xvfb, and what a box with no
 	// display server to look at runs by hand.

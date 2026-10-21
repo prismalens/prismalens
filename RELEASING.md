@@ -20,7 +20,7 @@ This file says what the release gate is and what a patch and a minor release do 
 
 ## Before the walk
 - [ ] The release PR's checks are green on its head, `Packed intake` included.
-- [ ] `Standalone CLI` dispatched on the base (`gh workflow run standalone.yml --ref <base>`; it runs on no push).
+- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).
 - [ ] `Desktop` on the base. The desktop part of the walk uses its artifact.
 - [ ] Docs for this release's screens merged in `prismalens/prismalens.io`.
 
@@ -33,7 +33,7 @@ What a patch walk does:
 - Walks only the steps the release's diff changed.
 - Always walks a fixed core: install, a minimal run from an alert in to an investigation out, and `pnpm gate:side-checks`.
 - Carries each unchanged step forward, with git-diff evidence that its files are untouched since the walk that last passed it.
-- Runs the checks in `.github/release-checklists/patch.md`: the scoped walk, registry-mode `cross-os-smoke`, the docs sweep and the findings issue.
+- Runs the checks in `.github/release-checklists/patch.md`: the scoped walk, registry-mode `cross-os-smoke`, the docs sweep and the findings record.
 
 What a patch walk does not do:
 - No full walk.
@@ -52,7 +52,7 @@ What a minor adds to a patch:
 Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not just the number after `0.9`."
 
 ## Where findings go
-Each walk records its findings in one GitHub issue titled `X.Y.Z walk findings`: one checkbox per finding with its evidence, screenshots attached with `gh issue comment --attach`.
+Each walk records its findings in the Phase gate issue or one linked GitHub issue titled `X.Y.Z walk findings`: one checkbox per finding with its evidence, screenshots attached with `gh issue comment --attach`.
 
 ## Where this came from
 The operator scoped the walk to the release in a ruling on #673 - release gate: a packed-tarball session gates every release PR. Full walks of every feature had taken about nine rounds, with 37 to 50 findings each. The release-train model behind it: a change that misses one release catches the next ([Rust 1.0 trains](https://blog.rust-lang.org/2014/12/12/1.0-Timeline/), [RFC 507](https://rust-lang.github.io/rfcs/0507-release-channels.html)), and a study of feature-based versus time-based releases ([IFIP](https://dl.ifip.org/hal-01776290v1)).

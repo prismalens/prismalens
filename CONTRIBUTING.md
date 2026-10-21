@@ -452,8 +452,8 @@ documents every command, flag, configuration key and page the release changed
 (checked against the packed tarball, links validated on the built site), and a
 minor release runs a scripted live test against the tarball, not the source
 tree. A patch release walks the steps its diff changed plus a fixed core; a minor
-release walks everything. Each walk's findings go in one `X.Y.Z walk findings`
-issue.
+release walks everything. Each walk's findings go in the Phase gate issue or
+one linked `X.Y.Z walk findings` issue.
 
 Milestones are versions, and exactly two are open: the current release and the
 next. When a release PR merges, close its milestone, move its open leftovers to
