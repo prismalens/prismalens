@@ -90,7 +90,7 @@ if (opts.help) {
 	process.exit(0);
 }
 
-const root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
+let root;
 const procs = new Set();
 const results = [];
 
@@ -979,7 +979,7 @@ function cleanup() {
 		} catch {}
 	}
 	ctx?.stub?.server.close();
-	rmSync(root, { recursive: true, force: true });
+	if (root) rmSync(root, { recursive: true, force: true });
 }
 process.on("SIGINT", () => {
 	cleanup();
@@ -1010,6 +1010,7 @@ async function main() {
 				results.push(["SKIP", name, WIN32_SKIP]);
 		return printResults();
 	}
+	root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
 	const tarball = findOrPackTarball();
 	const prefix = join(root, "prefix");
 	log(`installing ${tarball}`);
