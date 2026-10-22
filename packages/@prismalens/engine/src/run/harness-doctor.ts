@@ -21,6 +21,7 @@ import {
 	type HarnessId,
 	NO_MODE_KEY,
 } from "@prismalens/config/harness";
+import { windowsSpawnPlan } from "../launch/process.js";
 import {
 	type AcpOfferedEffort,
 	type AcpOfferedMode,
@@ -83,10 +84,11 @@ function oneLine(message: string): string {
 /** The first x.y.z in `<bin> --version`, or null; never longer than 5 s. */
 export function versionOf(bin: string): Promise<string | null> {
 	return new Promise((resolve) => {
+		const plan = windowsSpawnPlan(bin, ["--version"]);
 		execFile(
-			bin,
-			["--version"],
-			{ timeout: 5_000, shell: process.platform === "win32" },
+			plan.command,
+			plan.args,
+			{ timeout: 5_000, ...plan.options },
 			(err, stdout) =>
 				resolve(
 					err ? null : (/\d+\.\d+\.\d+[\w.-]*/.exec(stdout)?.[0] ?? null),

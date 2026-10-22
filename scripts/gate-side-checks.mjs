@@ -33,6 +33,8 @@
  *
  * Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,lock,...]
  *   With no --tarball, packs the built CLI (`pack-cli.mjs --skip-build`).
+ *   POSIX-only (sh shims, script(1), systemd): on native Windows every check
+ *   prints SKIP and the run exits 0 (#902).
  */
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";
@@ -73,8 +75,20 @@ const NOTICE = /Usage data: PrismaLens counts feature use/;
 const READY = /It works once, for 15 minutes|Once it is listening/;
 
 const { values: opts } = parseArgs({
-	options: { tarball: { type: "string" }, only: { type: "string" } },
+	options: {
+		tarball: { type: "string" },
+		only: { type: "string" },
+		help: { type: "boolean", short: "h" },
+	},
 });
+const WIN32_SKIP =
+	'POSIX-only (sh shims, systemd); CI job "Gate side checks (packed tarball)" is the record';
+if (opts.help) {
+	console.log(`Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,update,lock,reset,hosts,upgrade]
+  With no --tarball, packs the built CLI (pack-cli.mjs --skip-build).
+  On native Windows every check prints SKIP and the run exits 0: ${WIN32_SKIP}.`);
+	process.exit(0);
+}
 
 const root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
 const procs = new Set();
@@ -990,6 +1004,12 @@ async function main() {
 				`--only takes ${known.join(", ")}; got ${unknown.join(", ") || "nothing"}`,
 			);
 	}
+	if (process.platform === "win32") {
+		for (const [name] of CHECKS)
+			if (!only || only.includes(name))
+				results.push(["SKIP", name, WIN32_SKIP]);
+		return printResults();
+	}
 	const tarball = findOrPackTarball();
 	const prefix = join(root, "prefix");
 	log(`installing ${tarball}`);
@@ -1018,6 +1038,10 @@ async function main() {
 			`${name}: ${status} (${Math.round((Date.now() - t0) / 1000)}s)${status === "FAIL" ? ` ${detail}` : ""}`,
 		);
 	}
+	return printResults();
+}
+
+function printResults() {
 	console.log("");
 	for (const [status, name, detail] of results)
 		console.log(`${status.padEnd(4)} ${name.padEnd(9)} ${detail}`);

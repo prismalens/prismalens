@@ -9,7 +9,7 @@
  * pairing per stack, since each worker has its own (playwright.config.ts).
  */
 
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test as setup } from "@playwright/test";
 import type { Stack } from "./stacks";
@@ -29,19 +29,14 @@ for (const stack of stacks) {
 			await page.goto("/");
 			await page.waitForLoadState("networkidle");
 
-			const out = execFileSync(
-				"pnpm",
-				[
-					"--silent",
-					"--filter",
-					"prismalens",
-					"dev",
-					"pair",
-					"--operator",
-					"--workspace",
-					stack.workspaceDir,
-				],
-				{ encoding: "utf8", shell: process.platform === "win32" },
+			// One command string, the workspace in the env `pl pair` reads: an args
+			// array with shell: true is DEP0190, and pnpm is a .cmd shim on Windows.
+			const out = execSync(
+				"pnpm --silent --filter prismalens dev pair --operator",
+				{
+					encoding: "utf8",
+					env: { ...process.env, PRISMALENS_WORKSPACE_DIR: stack.workspaceDir },
+				},
 			);
 			const token = out.match(/\/pair#([^\s#]+)/)?.[1];
 			expect(token, `no pairing link in:\n${out}`).toBeTruthy();
