@@ -85,15 +85,20 @@ function oneLine(message: string): string {
 export function versionOf(bin: string): Promise<string | null> {
 	return new Promise((resolve) => {
 		const plan = windowsSpawnPlan(bin, ["--version"]);
-		execFile(
-			plan.command,
-			plan.args,
-			{ timeout: 5_000, ...plan.options },
-			(err, stdout) =>
-				resolve(
-					err ? null : (/\d+\.\d+\.\d+[\w.-]*/.exec(stdout)?.[0] ?? null),
-				),
-		);
+		try {
+			execFile(
+				plan.command,
+				plan.args,
+				{ timeout: 5_000, ...plan.options },
+				(err, stdout) =>
+					resolve(
+						err ? null : (/\d+\.\d+\.\d+[\w.-]*/.exec(stdout)?.[0] ?? null),
+					),
+			);
+		} catch {
+			// Windows throws EFTYPE synchronously for a file it cannot exec.
+			resolve(null);
+		}
 	});
 }
 
