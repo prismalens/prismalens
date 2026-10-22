@@ -34,7 +34,7 @@ function runChecks(args) {
 
 test("win32 platform skips all six checks and exits 0", () => {
 	const res = runChecks(["--tarball", "x"]);
-	assert.equal(res.status, 0);
+	assert.equal(res.status, 0, res.stderr);
 	const skipLines = res.stdout
 		.split(/\r?\n/)
 		.filter((line) => line.startsWith("SKIP "));
@@ -50,7 +50,7 @@ test("win32 platform skips all six checks and exits 0", () => {
 
 test("--only lock,hosts on win32 gives exactly two SKIP lines and exits 0", () => {
 	const res = runChecks(["--tarball", "x", "--only", "lock,hosts"]);
-	assert.equal(res.status, 0);
+	assert.equal(res.status, 0, res.stderr);
 	const skipLines = res.stdout
 		.split(/\r?\n/)
 		.filter((line) => line.startsWith("SKIP "));
