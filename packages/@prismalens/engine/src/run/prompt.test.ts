@@ -359,5 +359,3 @@ describe("flaggedContent where values (#902)", () => {
 		expect(FLAGGED_WHERE).toContain("never which where value fits");
 	});
 });
-
-

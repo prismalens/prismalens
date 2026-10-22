@@ -307,6 +307,3 @@ describe("versionOf on Windows (#902)", () => {
 		},
 	);
 });
-
-
-
