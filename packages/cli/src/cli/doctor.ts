@@ -99,14 +99,17 @@ function checkAppDataDir(): Check {
 	}
 }
 
+/** The rows a PATH scan can find; the local agent lives in Settings, which the doctor can't read (#907). */
+function registryAgents(): (typeof HARNESS_REGISTRY)[HarnessId][] {
+	return Object.values(HARNESS_REGISTRY).filter((d) => d.id !== "local");
+}
+
 /** For every registry entry, is its binary on PATH — the existing PATH scan. */
 export function checkHarnessesOnPath(
 	path = process.env.PATH ?? "",
 	scan: PathScanOptions = {},
 ): Check[] {
-	return (
-		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
-	).map((descriptor) => {
+	return registryAgents().map((descriptor) => {
 		const resolved = resolveOnPath(descriptor.binary, path, scan);
 		const companion = descriptor.companionBinary
 			? resolveOnPath(descriptor.companionBinary, path, scan)
@@ -279,9 +282,7 @@ export async function checkHarnessHandshake(
 	scan: PathScanOptions = {},
 ): Promise<Handshake[]> {
 	// A Windows install under WSL is not "on PATH", so it is never probed (#673 w8).
-	const installed = (
-		Object.values(HARNESS_REGISTRY) as (typeof HARNESS_REGISTRY)[HarnessId][]
-	).filter((descriptor) =>
+	const installed = registryAgents().filter((descriptor) =>
 		harnessLaunch(descriptor, {
 			isOnPath: (bin) => resolveOnPath(bin, path, scan) !== null,
 			shippedAdapter,

@@ -421,3 +421,21 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 });
 
 
+
+describe("reservedEnvNames (#907)", () => {
+	it("names what PrismaLens sets on the child, the config-dir key and the custom-model key", async () => {
+		const { reservedEnvNames } = await import("./harness.js");
+		expect(reservedEnvNames("claude-code").sort()).toEqual(
+			[
+				"ANTHROPIC_CUSTOM_MODEL_OPTION",
+				"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+				"CLAUDE_CODE_EXECUTABLE",
+				"CLAUDE_CONFIG_DIR",
+			].sort(),
+		);
+		expect(reservedEnvNames("codex")).toEqual(
+			expect.arrayContaining(["DEFAULT_AUTH_REQUEST", "CODEX_PATH", "CODEX_HOME"]),
+		);
+		expect(reservedEnvNames("local")).toEqual([]);
+	});
+});

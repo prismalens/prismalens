@@ -75,7 +75,8 @@ export function permissionLine(
 	if (set) return `${ACCESS_LEVEL_LABEL[set]}, set here.`;
 	const fallback = `${ACCESS_LEVEL_LABEL[DEFAULT_ACCESS_LEVEL]}, PrismaLens default.`;
 	const id = harnessId(h);
-	if (id === "deepagents") return `${fallback} deepagents has no modes.`;
+	if (id === "deepagents" || id === "local")
+		return `${fallback} ${h.label} has no modes.`;
 	if (id === "opencode")
 		return `${fallback} OpenCode has per-tool rules, not one permission level.`;
 	const local = h.localDefault?.permission;

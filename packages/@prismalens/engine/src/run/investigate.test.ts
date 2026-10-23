@@ -1323,3 +1323,52 @@ describe("the agent's own mode (#673 w21)", () => {
 	});
 });
 
+
+describe("Settings → Agent runtime at spawn (#907)", () => {
+	function executable(): string {
+		const bin = join(tmp("bin"), "agent");
+		writeFileSync(bin, "#!/bin/sh\n");
+		chmodSync(bin, 0o755);
+		return bin;
+	}
+
+	it("hands a binary path to the adapter as CLAUDE_CODE_EXECUTABLE", () => {
+		const bin = executable();
+		const { env } = prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			binaryPath: bin,
+		});
+		expect(env.CLAUDE_CODE_EXECUTABLE).toBe(bin);
+	});
+
+	it("keeps PrismaLens's own vars over the operator's env", () => {
+		const { env } = prepareRunEnv({
+			harness: "claude-code",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			env: { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "0", CLAUDE_CONFIG_DIR: "/home/me/.claude-work" },
+		});
+		expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+		expect(env.CLAUDE_CONFIG_DIR).toBe("/home/me/.claude-work");
+	});
+
+	it.skipIf(process.platform === "win32")("spawns the local agent as its command plus arguments", () => {
+		const bin = executable();
+		const { launch } = prepareRunEnv({
+			harness: "local",
+			cwd: tmp("clone"),
+			runDir: tmp("run"),
+			binaryPath: bin,
+			launchArgs: ["agent.mjs", "--acp"],
+		});
+		expect(launch).toEqual({ command: bin, args: ["agent.mjs", "--acp"], env: {}, shipped: false });
+	});
+
+	it("records fidelity.runtime only when Settings set something", () => {
+		expect(buildRunFidelity("codex", {}, "read-only").runtime).toBeUndefined();
+		const runtime = { binaryPath: "/opt/codex", configDir: null, envNames: ["OPENAI_API_KEY"], args: [] };
+		expect(buildRunFidelity("codex", {}, "read-only", "acp-config", runtime).runtime).toEqual(runtime);
+	});
+});

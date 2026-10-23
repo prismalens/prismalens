@@ -11,6 +11,7 @@ export const HARNESS_IDS = [
 	"codex",
 	"gemini",
 	"deepagents",
+	"local",
 ] as const;
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
@@ -163,6 +164,8 @@ export interface HarnessDescriptor {
 	providerKeys?: readonly string[];
 	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
 	resume: boolean;
+	/** The env var naming the agent's own config folder, set from Settings → Agent → Config directory (#907). */
+	configDir?: { envKey: string; shownDefault: string };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -264,12 +267,16 @@ function geminiDefault(line: HarnessAccess["line"]): HarnessAccess {
 const geminiUntrusted: HarnessAccess["line"] = (c) =>
 	`Gemini CLI runs the copy untrusted, so this level runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`;
 
-const NO_MODE: HarnessAccess = {
-	mode: null,
-	mechanism: "none",
-	line: () =>
-		"deepagents has no modes; PrismaLens answers its asks by this level.",
-};
+function noMode(label: string): HarnessAccess {
+	return {
+		mode: null,
+		mechanism: "none",
+		line: () =>
+			`${label} has no modes; PrismaLens answers its asks by this level.`,
+	};
+}
+const NO_MODE = noMode("deepagents");
+const LOCAL_NO_MODE = noMode("Local agent");
 
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
@@ -442,6 +449,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		signInAtFirstTurn: true,
 		resume: true,
+		configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
 	},
 	codex: {
 		id: "codex",
@@ -504,6 +512,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		resume: true,
+		configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
 	},
 	gemini: {
 		id: "gemini",
@@ -532,6 +541,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		resume: true,
+		configDir: {
+			envKey: "GEMINI_CLI_HOME",
+			shownDefault: "your home folder (holds .gemini)",
+		},
 	},
 	deepagents: {
 		id: "deepagents",
@@ -558,6 +571,25 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
+		resume: false,
+	},
+	// One operator-set ACP command (#907): it reports no modes, so PrismaLens's ask policy decides each ask.
+	local: {
+		id: "local",
+		label: "Local agent",
+		binary: "",
+		acpArgs: () => [],
+		acpEnv: () => ({}),
+		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
+		access: {
+			supervised: LOCAL_NO_MODE,
+			"auto-edits": LOCAL_NO_MODE,
+			auto: LOCAL_NO_MODE,
+			"full-access": LOCAL_NO_MODE,
+		},
+		modeMechanism: "none",
+		modelVia: "acp",
+		loginHint: "It signs in on its own.",
 		resume: false,
 	},
 };
@@ -589,7 +621,7 @@ export function getHarnessProviderKeys(
 }
 
 /** A gateway receives the auth token, so plain http is allowed only on loopback. */
-function isSafeGatewayUrl(raw: string): boolean {
+export function isSafeGatewayUrl(raw: string): boolean {
 	let url: URL;
 	try {
 		url = new URL(raw);
@@ -651,7 +683,27 @@ export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
 	"codex",
 	"gemini",
 	"deepagents",
+	"local",
 ];
+
+/** Env names PrismaLens sets itself on this agent's child; Settings refuses them (#907). */
+export function reservedEnvNames(id: HarnessId): string[] {
+	const d = HARNESS_REGISTRY[id];
+	const names = new Set(
+		Object.keys(
+			d.acpEnv({
+				configDir: "x",
+				dataDir: "x",
+				cwd: "x",
+				companionPath: "x",
+				shipped: true,
+			}),
+		),
+	);
+	if (d.configDir) names.add(d.configDir.envKey);
+	if (d.customModelEnvKey) names.add(d.customModelEnvKey);
+	return [...names];
+}
 
 export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),

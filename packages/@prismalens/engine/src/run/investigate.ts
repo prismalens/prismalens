@@ -43,6 +43,7 @@ import {
 	type JobAttachment,
 	type OperatorMessageMode,
 	type RunFidelity,
+	type RunRuntimeNote,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
@@ -111,6 +112,12 @@ export interface RunInvestigationOptions {
 	accessLevel?: AccessLevel;
 	/** Env for the child; provider keys ride here. Registry isolation vars are layered on top. */
 	env?: NodeJS.ProcessEnv;
+	/** Settings → Agent → Binary path; for `local`, its command (#907). */
+	binaryPath?: string;
+	/** `local` only: its command's arguments. */
+	launchArgs?: string[];
+	/** What Settings set for this run, recorded as `fidelity.runtime`; names only. */
+	runtimeNote?: RunRuntimeNote | null;
 	limits?: RunLimits;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
@@ -293,6 +300,7 @@ export function buildRunFidelity(
 	model: { id?: string; source?: ModelSource } | undefined,
 	mode: string,
 	mechanism = "agent",
+	runtime?: RunRuntimeNote | null,
 ): RunFidelity {
 	return {
 		harness,
@@ -301,6 +309,7 @@ export function buildRunFidelity(
 		...(model?.id ? { model: model.id } : {}),
 		...(model?.source ? { modelSource: model.source } : {}),
 		mechanism,
+		...(runtime ? { runtime } : {}),
 	};
 }
 
@@ -335,6 +344,8 @@ export type PrepareRunEnvOptions = Pick<
 	| "env"
 	| "accessLevel"
 	| "customModel"
+	| "binaryPath"
+	| "launchArgs"
 >;
 
 /** The row's config files with the level's overlay merged into each JSON one. */
@@ -364,12 +375,18 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	mkdirSync(configDir, { recursive: true });
 	mkdirSync(dataDir, { recursive: true });
 	const companionPath = descriptor.companionBinary
-		? resolveOnPath(descriptor.companionBinary)
+		? (opts.binaryPath ?? resolveOnPath(descriptor.companionBinary))
 		: null;
 	// A swapped-in binary (tests, admission) runs as given; a row nobody installed fails to start.
-	const launch = (!opts.descriptor && harnessLaunch(descriptor)) || {
-		command: descriptor.binary,
-		args: [],
+	const launch = (!opts.descriptor &&
+		harnessLaunch(descriptor, {
+			...(opts.binaryPath ? { binaryPath: opts.binaryPath } : {}),
+			...(opts.launchArgs ? { launchArgs: opts.launchArgs } : {}),
+		})) || {
+		command: descriptor.companionBinary
+			? descriptor.binary
+			: (opts.binaryPath ?? descriptor.binary),
+		args: descriptor.companionBinary ? [] : (opts.launchArgs ?? []),
 		env: {},
 		shipped: false,
 	};
@@ -428,6 +445,7 @@ export async function* runInvestigation(
 		{ id: opts.model, source: opts.modelSource },
 		askedMode ?? NO_MODE_KEY,
 		access.mechanism,
+		opts.runtimeNote,
 	);
 	const { env, runEnv, launch } = prepareRunEnv({
 		...opts,
