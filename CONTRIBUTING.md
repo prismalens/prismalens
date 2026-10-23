@@ -384,14 +384,17 @@ Versioning and publishing run through
       `force-tag-creation` in `release-please-config.json`; without the forced
       tag a draft has none, and release-please could not find it next time).
    2. `standalone.yml` and `desktop.yml`, called with the tag, build from it
-      and attach the archives, `SHA256SUMS`, `install.sh`, `install.ps1` and
-      the desktop zips to the draft.
-   3. npm publishes: build, `publint`, then pack + publish via npm trusted
-      publishing (OIDC), no npm token secret. It goes before the release is
-      published because the in-app update notice reads `releases/latest`.
-   4. The draft is published (`gh release edit --draft=false`), which makes
+      and attach the archives, the CycloneDX SBOM, `install.sh`, `install.ps1`
+      and the desktop zips to the draft.
+   3. The `sums` job writes one `SHA256SUMS` over every asset on the draft and
+      one build-provenance attestation over it, then uploads `SHA256SUMS`.
+   4. npm publishes: build, `publint`, then pack + publish via npm trusted
+      publishing (OIDC), no npm token secret. `NPM_CONFIG_PROVENANCE=true`, so
+      a publish that cannot attach provenance fails. It goes before the release
+      is published because the in-app update notice reads `releases/latest`.
+   5. The draft is published (`gh release edit --draft=false`), which makes
       it immutable.
-   5. The Homebrew tap and Scoop bucket are updated from the published
+   6. The Homebrew tap and Scoop bucket are updated from the published
       `SHA256SUMS`.
 
    What a failure leaves: before npm, a draft release and nothing on npm;
@@ -422,6 +425,52 @@ The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
 with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
+### What each release artifact carries
+
+Each artifact is held to a standard by a gate that fails the PR or the release (#906):
+
+| Artifact | Standard | Gate |
+|---|---|---|
+| npm `prismalens` | `files` allowlist, npm provenance, copied (not bundled) first-party tree (#237) | `scripts/check-artifact.mjs` (path, size, licences), publint on the packed manifest, and a second pack that must match byte for byte, in `ci.yml` |
+| npm `@prismalens/agent-adapters` | one esbuild file per adapter, licence texts of everything inlined | `bundle.test.mjs` (ACP `initialize`), `check-artifact.mjs`, publint |
+| Standalone archives (5) | `app/` is the npm global tree relocated, pruned; Node is the binary and its LICENSE | `check-artifact.mjs` on every target, Windows PowerShell 5.1 install and Scoop install with long paths off |
+| `install.ps1` / `install.sh` | `.ps1` is ASCII only (no BOM: `irm \| iex` reads the body as text); `.sh` is UTF-8 without a BOM | `scripts/install/encoding.test.mjs`, `install.ps1 -Help` under `powershell -File` |
+| Desktop zips | asar, unsigned (#697) | `check-release-paths.mjs --paths --max-mb --max-files`, `missingLicences` in `pack-desktop.mjs` |
+| Every release asset | one `SHA256SUMS` and one build-provenance attestation (SLSA v1 Build L2) | `release.yml` `sums` job |
+| SBOM | CycloneDX from `npm sbom` over the linux-x64 `app/` tree, `prismalens-<v>.cdx.json` | `standalone.yml` asserts `bomFormat` and an `@prismalens/api` component |
+
+Budgets live in `scripts/artifact-budgets.json`: bytes and file count per artifact,
+and the unpacked size for each desktop OS. A change that grows an artifact past its
+budget raises the number in the same PR, with the reason.
+
+The path limit is 260 - 40 = **220** characters for a 20-character username, on every
+Windows prefix an artifact lands under: the npm global prefix, the installer's
+`%LOCALAPPDATA%\prismalens\runtime\<v>\`, and Scoop, which unpacks the whole archive
+into `_tmp` first. The deepest path today is a migration folder, whose names never
+change (#335):
+
+```
+C:\Users\uuuuuuuuuuuuuuuuuuuu\scoop\apps\prismalens\0.5.3\_tmp\     63
+prismalens-0.5.3-win32-x64/app/node_modules/@prismalens/database/
+  dist/prisma/sqlite/schema/20261007135949_investigation_kind_agent_mode/migration.sql   149
+                                                                      212 <= 220
+```
+
+So a migration folder name 9 characters longer than that one fails the PR that adds
+it. The gate on a Windows archive:
+
+```
+$ node scripts/check-artifact.mjs dist/standalone/prismalens-0.5.2-win32-x64.zip
+==> prismalens-0.5.2-win32-x64.zip
+  installer 191/220 C:\Users\uuuuuuuuuuuuuuuuuuuu\AppData\Local\prismalens\runtime\0.5.2\ + app\node_modules\@prismalens\database\dist\prisma\sqlite\schema\20261007135949_investigation_kind_agent_mode\migration.sql
+  scoop 212/220 C:\Users\uuuuuuuuuuuuuuuuuuuu\scoop\apps\prismalens\0.5.2\_tmp\ + prismalens-0.5.2-win32-x64\app\node_modules\@prismalens\database\dist\prisma\sqlite\schema\20261007135949_investigation_kind_agent_mode\migration.sql
+  win32-x64 78453080 bytes, 9335 files (budget 103624026 bytes, 22964 files)
+  licences: every package carries one
+```
+
+A zip is checked on Windows only (it extracts with Windows' own `tar.exe`); a
+`.tgz` or `.tar.gz` anywhere.
+
 ### Publishing `@prismalens/agent-adapters`
 
 Its pins move with the agent registry, not with a CLI release, so it publishes by
@@ -430,11 +479,16 @@ provenance. To inspect the tarball locally, run
 `pnpm --filter @prismalens/agent-adapters pack:npm`; it builds the package, then
 writes the tarball to `packages/@prismalens/agent-adapters/dist-pack/`.
 
-The tarball bundles the pinned adapters without their optional native agent
-copies, so installing it, or anything that depends on it, never downloads an
-agent binary; each adapter runs the user's own `claude` or `codex`. It carries the
-licence texts of the adapters and the agent libraries they load under
-`THIRD_PARTY_LICENSES/`.
+The build (`scripts/bundle.mjs`) bundles each pinned adapter, a `devDependency`,
+into one ESM file under `dist/adapters/` with esbuild, and writes
+`dist/adapters/bundled.json`: each adapter's version, script and the packages it
+inlined. `shippedAdapter()` reads that file. `@anthropic-ai/claude-agent-sdk` is
+not inlined: its licence is not permissive and the Claude adapter resolves it at
+runtime, so it ships as the one `bundleDependency`, copied flat without its
+dependencies, so installing the package never downloads an agent binary. Each
+adapter runs the user's own `claude` or `codex`. The licence text of every inlined
+package, and the SDK's, is under `THIRD_PARTY_LICENSES/`. Every input is pinned by
+`pnpm-lock.yaml`; packing runs no `npm install`.
 
 ### Release-gate side checks
 
