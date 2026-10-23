@@ -35,7 +35,7 @@ const STAND_IN = [
 	'import { createInterface } from "node:readline";',
 	'createInterface({ input: process.stdin }).on("line", (line) => {',
 	"	const { id, method } = JSON.parse(line);",
-	"	if (id !== undefined && method) process.stdout.write(`${JSON.stringify({ id, result: {} })}\n`);",
+	"	if (id !== undefined && method) process.stdout.write(JSON.stringify({ id, result: {} }) + String.fromCharCode(10));",
 	"});",
 ].join("\n");
 
