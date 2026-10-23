@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	chipModel,
 	defaultModelLine,
+	ModelChip,
 	EffortChip,
 	effortLevels,
 	AccessChip,
@@ -25,9 +26,13 @@ vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ label, children }: { label: string; children: React.ReactNode }) =>
 		React.createElement("span", { "data-hint": label }, children),
 }));
+const hooks = vi.hoisted(() => ({
+	harnesses: [] as unknown[],
+	settings: {} as Record<string, unknown>,
+}));
 vi.mock("@/lib/api/hooks", () => ({
-	useHarnesses: () => ({ data: { harnesses: [] }, isLoading: false }),
-	useHarnessSettings: () => ({ data: {}, isLoading: false }),
+	useHarnesses: () => ({ data: { harnesses: hooks.harnesses }, isLoading: false }),
+	useHarnessSettings: () => ({ data: hooks.settings, isLoading: false }),
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn() }),
 	useCheckHarness: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -37,6 +42,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	label: "Claude Code",
 	binary: "claude",
 	installed: true,
+	runnable: true,
 	tested: null,
 	install: "",
 	defaultModel: null,
@@ -45,6 +51,8 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	loginHint: "",
 	envModel: null,
 	windowsOnlyPath: null,
+	cliBinary: "",
+	configDir: null,
 	models: {
 		source: "harness",
 		asOf: "",
@@ -306,5 +314,46 @@ describe("modelName (#673)", () => {
 			},
 		});
 		expect(modelName(nonProvider, "opencode/foo")).toBe("Zen/Foo");
+	});
+});
+
+describe("one Default row and only runnable agents (#902 f10, #907)", () => {
+	const withDefault = claude({
+		models: {
+			source: "harness",
+			asOf: "",
+			entries: [
+				{ id: "default", name: "Default (recommended)", status: null },
+				{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null },
+			],
+		},
+	});
+	const codex = claude({ id: "codex", label: "Codex", runnable: false });
+	const render = (model: string) => {
+		hooks.harnesses = [withDefault, codex];
+		hooks.settings = { harness: "claude-code", models: model ? { "claude-code": model } : {} };
+		return renderToStaticMarkup(
+			React.createElement(ModelChip, { harness: withDefault, model, onPick: vi.fn() }),
+		);
+	};
+
+	it("lists one model-default row reading Default, and not the agent's own", () => {
+		const html = render("");
+		expect(html.match(/data-testid="model-default"/g)).toHaveLength(1);
+		expect(html).toContain(">Default<");
+		expect(html).not.toContain("Default (recommended)");
+		expect(html.match(/data-testid="model-option"/g)).toHaveLength(1);
+	});
+
+	it("ticks Default when the stored model is the folded id", () => {
+		const html = render("default");
+		expect(html).toMatch(/data-testid="model-default"[^>]*data-checked=""/);
+		expect(chipModel(withDefault, "default")).toBe("Sonnet 5.5");
+	});
+
+	it("gives an agent that can't run no rail tile", () => {
+		const html = render("");
+		expect(html).toContain('data-testid="rail-claude-code"');
+		expect(html).not.toContain('data-testid="rail-codex"');
 	});
 });

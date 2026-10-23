@@ -10,6 +10,7 @@ const claudeCode: HarnessStatus = {
 	label: "Claude Code",
 	binary: "claude-agent-acp",
 	installed: true,
+	runnable: true,
 	tested: null,
 	install: "",
 	defaultModel: null,
@@ -18,6 +19,8 @@ const claudeCode: HarnessStatus = {
 	loginHint: "",
 	envModel: null,
 	windowsOnlyPath: null,
+	cliBinary: "",
+	configDir: null,
 	models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 };
 

@@ -136,6 +136,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		label: "Claude Code",
 		binary: "claude",
 		installed: true,
+		runnable: true,
 		tested: null,
 		install: "",
 		defaultModel: null,
@@ -144,6 +145,8 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		loginHint: "",
 		envModel: null,
 		windowsOnlyPath: null,
+		cliBinary: "",
+		configDir: null,
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: {
 			at: "",
@@ -170,6 +173,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		label: "Codex",
 		binary: "codex",
 		installed: true,
+		runnable: true,
 		tested: null,
 		install: "",
 		defaultModel: null,
@@ -178,6 +182,8 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		loginHint: "",
 		envModel: null,
 		windowsOnlyPath: null,
+		cliBinary: "",
+		configDir: null,
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: {
 			at: "",
