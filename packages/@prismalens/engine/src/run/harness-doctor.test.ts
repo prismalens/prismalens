@@ -266,4 +266,44 @@ describe("versionOf", () => {
 	});
 });
 
+describe("versionOf on Windows (#902)", () => {
+	it.runIf(process.platform === "win32")(
+		"resolves version for tool.cmd including in paths with spaces",
+		async () => {
+			const dir = mkdtempSync(join(tmpdir(), "pl-version-test-"));
+			const spaceDir = mkdtempSync(join(tmpdir(), "pl version space-"));
+			try {
+				const toolCmd = join(dir, "tool.cmd");
+				writeFileSync(toolCmd, "@echo tool 4.5.6 (x)\r\n");
+				expect(await versionOf(toolCmd)).toBe("4.5.6");
 
+				const spaceCmd = join(spaceDir, "tool.cmd");
+				writeFileSync(spaceCmd, "@echo tool 4.5.6 (x)\r\n");
+				expect(await versionOf(spaceCmd)).toBe("4.5.6");
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+				rmSync(spaceDir, { recursive: true, force: true });
+			}
+		},
+	);
+
+	it.runIf(process.platform === "win32")(
+		"emits no DEP0190 warning when executing a .cmd",
+		async () => {
+			const dir = mkdtempSync(join(tmpdir(), "pl-version-warning-"));
+			const toolCmd = join(dir, "tool.cmd");
+			writeFileSync(toolCmd, "@echo tool 4.5.6 (x)\r\n");
+			const warnings: (Error & { code?: string })[] = [];
+			const onWarning = (w: Error & { code?: string }) => warnings.push(w);
+			process.on("warning", onWarning);
+			try {
+				await versionOf(toolCmd);
+				await new Promise((resolve) => setImmediate(resolve));
+				expect(warnings.filter((w) => w.code === "DEP0190")).toHaveLength(0);
+			} finally {
+				process.removeListener("warning", onWarning);
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
+});

@@ -1,8 +1,9 @@
 # Versioning
 
-prismalens is pre-1.0. Versions use semver's shape, but read against the
-[GitHub milestones](https://github.com/prismalens/prismalens/milestones). They track *which phase shipped*, not a stability
-promise.
+prismalens is pre-1.0. Versions use semver's shape, but read against the pinned
+[Roadmap and handoff](https://github.com/prismalens/prismalens/issues/881) issue,
+which says which theme each piece of work belongs to and which release holds it.
+They are not a stability promise.
 
 ## 0.x
 

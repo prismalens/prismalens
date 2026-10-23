@@ -29,6 +29,11 @@
  *
  * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO (optional, see
  * above); PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
+ * PACKED_INTAKE_AGENT: "live" (default) uses the harness on PATH; "fake" puts the
+ * scripted ACP agent (scripts/fakes/sessions/intake.json) on PATH as `opencode`
+ * and needs PACKED_INTAKE_REPO=fixture, the repo that session cites (#884).
+ * PACKED_INTAKE_EVENTS_OUT=<file> writes the investigation's paged event stream
+ * there once the run ends, completed or not; the nightly tier uploads it (#533).
  */
 import { execFileSync, spawn } from "node:child_process";
 import {
@@ -39,9 +44,11 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
 
@@ -80,6 +87,14 @@ const REPO =
 			? resolve(process.env.PACKED_INTAKE_REPO)
 			: null;
 
+const AGENT = process.env.PACKED_INTAKE_AGENT ?? "live";
+if (AGENT !== "live" && AGENT !== "fake") {
+	throw new Error(`PACKED_INTAKE_AGENT must be live or fake, got ${AGENT}`);
+}
+if (AGENT === "fake" && process.env.PACKED_INTAKE_REPO !== "fixture") {
+	throw new Error("PACKED_INTAKE_AGENT=fake needs PACKED_INTAKE_REPO=fixture");
+}
+
 let child;
 let cleaned = false;
 function cleanup(exitCode) {
@@ -117,6 +132,15 @@ async function main() {
 	const bin = join(prefix, "node_modules", ".bin", "pl");
 	if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
 
+	let agentPath = process.env.PATH ?? "";
+	if (AGENT === "fake") {
+		const agentBin = join(prefix, "agent-bin");
+		mkdirSync(agentBin);
+		installFakeAgent(agentBin, { session: "intake", binaries: ["opencode"] });
+		agentPath = `${agentBin}${delimiter}${agentPath}`;
+		console.log("[packed-intake] agent: scripted fake as opencode");
+	}
+
 	const logPath = join(prefix, "up.log");
 	const logStream = createWriteStream(logPath);
 	let bootLog = "";
@@ -126,6 +150,7 @@ async function main() {
 		env: {
 			...process.env,
 			CI: process.env.CI ?? "true",
+			PATH: agentPath,
 			PRISMALENS_WORKSPACE_DIR: workspace,
 			// The default (quiet) console level sends info records to the log
 			// file only (#610) — the readiness line this script polls for is
@@ -457,6 +482,10 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 		(inv) => inv !== undefined && !["pending", "running"].includes(inv.status),
 		600_000,
 	);
+	const exportError = await saveEvents(json, cookie, investigation.id).then(
+		() => undefined,
+		(error) => error,
+	);
 	if (!finished) {
 		await logStall(json, cookie, investigation.id);
 		throw new Error(
@@ -468,6 +497,7 @@ async function assertUnattendedInvestigation(json, cookie, incident) {
 			`investigation ${investigation.id} ended ${finished.status} without a report: ${finished.error ?? ""}`,
 		);
 	}
+	if (exportError) throw exportError;
 	const hypotheses = finished.report.hypotheses ?? [];
 	if (hypotheses.length === 0) {
 		throw new Error(
@@ -525,20 +555,42 @@ async function findIncidentByFingerprint(
 	);
 }
 
+/** Every event of an investigation, following `/events` paging to the end. */
+async function fetchEvents(json, cookie, id) {
+	const events = [];
+	for (let cursor; ; ) {
+		const res = await json(
+			`/api/investigations/${id}/events?limit=200${cursor === undefined ? "" : `&cursor=${cursor}`}`,
+			{ headers: { cookie } },
+		);
+		const page = await res.json();
+		events.push(...page.events);
+		if (page.nextCursor == null || page.events.length === 0) break;
+		cursor = page.nextCursor;
+	}
+	return events;
+}
+
+/** The event stream to PACKED_INTAKE_EVENTS_OUT (#533); throws so a completed attempt without its recording fails. */
+async function saveEvents(json, cookie, id) {
+	const out = process.env.PACKED_INTAKE_EVENTS_OUT;
+	if (!out) return;
+	try {
+		const events = await fetchEvents(json, cookie, id);
+		mkdirSync(dirname(resolve(out)), { recursive: true });
+		const body = JSON.stringify({ investigationId: id, events }, null, 2);
+		writeFileSync(resolve(out), `${body}\n`);
+		console.log(`[packed-intake] saved ${events.length} events to ${out}`);
+	} catch (error) {
+		console.error(`[packed-intake] could not save the event stream: ${error}`);
+		throw error;
+	}
+}
+
 /** What a run that never finished was doing, so the next failure names its cause (#876). */
 async function logStall(json, cookie, id) {
 	try {
-		const events = [];
-		for (let cursor; ; ) {
-			const res = await json(
-				`/api/investigations/${id}/events?limit=200${cursor === undefined ? "" : `&cursor=${cursor}`}`,
-				{ headers: { cookie } },
-			);
-			const page = await res.json();
-			events.push(...page.events);
-			if (page.nextCursor == null || page.events.length === 0) break;
-			cursor = page.nextCursor;
-		}
+		const events = await fetchEvents(json, cookie, id);
 		console.error(
 			`[packed-intake] stalled run: ${events.length} events; last 8:`,
 		);

@@ -160,6 +160,8 @@ const journeysDir = defineBddConfig({
 	outputDir: "e2e/.features-gen",
 });
 
+const QUARANTINE = /@quarantine/;
+
 const baseURL = PL_UP ? `http://localhost:${PL_UP_PORT}` : ownStack.frontendURL;
 
 export default defineConfig({
@@ -171,7 +173,10 @@ export default defineConfig({
 	// and the first-run journey mutates global setup state. The dev stack runs
 	// one stack per worker, so it parallelises.
 	workers: WORKERS,
-	reporter: "html",
+	// The json report feeds the CI job summary (flaky and failed lists); only CI names a file.
+	reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
+		? [["html"], ["json"]]
+		: "html",
 	use: { baseURL },
 	webServer: PL_UP
 		? [
@@ -230,12 +235,30 @@ export default defineConfig({
 					// vitest's own e2e/*.test.ts (stacks.test.ts): Playwright's default
 					// testMatch picks up *.test.ts too, so it must be told to skip them.
 					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
+					grepInvert: QUARANTINE,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
 				{
 					name: "journeys",
 					testDir: journeysDir,
+					grepInvert: QUARANTINE,
+					dependencies: ["pair"],
+					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
+				},
+				// `@quarantine` tests (rule in CONTRIBUTING.md, "Browser e2e tier"): the same
+				// stacks and specs, run by e2e.yml in a step that cannot fail the job.
+				{
+					name: "chromium-quarantine",
+					testIgnore: [/pl-up\//, /\.features-gen\//, /\.test\.ts$/],
+					grep: QUARANTINE,
+					dependencies: ["pair"],
+					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
+				},
+				{
+					name: "journeys-quarantine",
+					testDir: journeysDir,
+					grep: QUARANTINE,
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
