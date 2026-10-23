@@ -181,5 +181,37 @@ describe("HarnessStatusSchema", () => {
 			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 		});
 		expect(parsed.envModel).toBeNull();
+		expect(parsed).toMatchObject({ runnable: false, cliBinary: "", configDir: null });
+	});
+});
+
+describe("agent runtime settings (#907)", () => {
+	it("takes runtime fields, null clears, and refuses a bad env name or too many arguments", () => {
+		const ok = UpdateHarnessSettingsSchema.parse({
+			hiddenModels: { "claude-code": ["opus"] },
+			modelOrder: { codex: null },
+			binaryPaths: { "claude-code": "/opt/claude/bin/claude", gemini: null },
+			configDirs: { codex: "~/.codex-work" },
+			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://b.example", OLD: null } },
+			localAgent: { command: "/usr/bin/node", args: ["agent.mjs"] },
+		});
+		expect(ok.env?.["claude-code"]?.OLD).toBeNull();
+		expect(UpdateHarnessSettingsSchema.safeParse({ localAgent: null }).success).toBe(true);
+		expect(UpdateHarnessSettingsSchema.safeParse({ env: { codex: { "1BAD": "x" } } }).success).toBe(false);
+		expect(
+			UpdateHarnessSettingsSchema.safeParse({
+				localAgent: { command: "/x", args: Array.from({ length: 33 }, () => "a") },
+			}).success,
+		).toBe(false);
+		expect(UpdateHarnessSettingsSchema.safeParse({ binaryPaths: { codex: "  " } }).success).toBe(false);
+	});
+
+	it("reads names, never values, and whether this caller may edit runtime", () => {
+		const parsed = HarnessSettingsSchema.parse({
+			harness: "auto",
+			envNames: { "claude-code": ["ANTHROPIC_BASE_URL"] },
+			canEditRuntime: false,
+		});
+		expect(parsed.envNames?.["claude-code"]).toEqual(["ANTHROPIC_BASE_URL"]);
 	});
 });

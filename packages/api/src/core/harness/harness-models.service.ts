@@ -74,6 +74,12 @@ export class HarnessModelsService {
 		});
 	}
 
+	/** Drops what the last check saw, after a runtime field changed what the next run starts (#907). */
+	forget(id: HarnessId): void {
+		this.offered.delete(id);
+		this.checks.delete(id);
+	}
+
 	/** Null until a readiness check has answered for this harness. */
 	checked(id: HarnessId): HarnessStatus["checked"] {
 		return this.checks.get(id) ?? null;

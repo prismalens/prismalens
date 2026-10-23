@@ -6,7 +6,11 @@ import type { HarnessSelection } from "@prismalens/config";
  * What one investigation run needs from the API, as functions, so the run is
  * testable without NestJS. Wired in dispatch.service.ts.
  */
-import type { AccessLevel, ModelSource } from "@prismalens/config/harness";
+import type {
+	AccessLevel,
+	HarnessId,
+	ModelSource,
+} from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	LiveTurn,
@@ -19,6 +23,7 @@ import type {
 	RunCredential,
 } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
+import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
 	RepoSource,
 	Snapshot,
@@ -142,6 +147,8 @@ export interface RunPorts {
 		/** The model is one the operator added in Settings, Agent (#673 w57). */
 		customModel?: boolean;
 	}>;
+	/** The agent's env, binary path and arguments from Settings → Agent (#907). */
+	agentRuntime(id: HarnessId): Promise<AgentRuntime>;
 	getIncident(id: string): Promise<Record<string, unknown> | null>;
 	/**
 	 * The repos of the incident's service, then of each service its alerts name,

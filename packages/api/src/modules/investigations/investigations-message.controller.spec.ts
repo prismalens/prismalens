@@ -69,7 +69,7 @@ describe("InvestigationsController.message (#743)", () => {
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
-				{ provide: HarnessService, useValue: {} },
+				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)
@@ -244,7 +244,7 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 				{ provide: DispatchService, useValue: mockDispatchService },
 				{ provide: TelemetryService, useValue: telemetryStub() },
 				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
-				{ provide: HarnessService, useValue: {} },
+				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

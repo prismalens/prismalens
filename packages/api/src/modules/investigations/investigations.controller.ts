@@ -333,7 +333,9 @@ export class InvestigationsController {
 							)
 						: [];
 					if (TERMINAL_STATUSES.has(investigation.status)) {
-						const reason = followUpBlockedReason(investigation);
+						const reason = followUpBlockedReason(investigation, (id) =>
+							this.harnessService.launchProbe(id),
+						);
 						if (reason) throw new ORPCError("CONFLICT", { message: reason });
 						const kind =
 							input.kind ??
@@ -568,7 +570,9 @@ export class InvestigationsController {
 				resumeBlockedReason: null,
 				continuable: false,
 			};
-		const reason = followUpBlockedReason(investigation);
+		const reason = followUpBlockedReason(investigation, (id) =>
+			this.harnessService.launchProbe(id),
+		);
 		return {
 			resumable: reason === null,
 			resumeBlockedReason: reason,

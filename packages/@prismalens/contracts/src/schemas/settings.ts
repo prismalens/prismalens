@@ -155,6 +155,15 @@ export const HarnessStatusSchema = z.object({
 		.default(null),
 	/** Under WSL, a Windows install on PATH that cannot run here (#673 w8). Absent from older APIs. */
 	windowsOnlyPath: z.string().nullable().default(null),
+	/** It starts here and its last check, if any, answered (#907). Only these are listed and pickable. */
+	runnable: z.boolean().default(false),
+	/** The program Binary path names: the agent's own CLI, not its adapter; empty for the local agent. */
+	cliBinary: z.string().default(""),
+	/** The env var Config directory sets, and what unset means; null when the agent has none. */
+	configDir: z
+		.object({ envKey: z.string(), shownDefault: z.string() })
+		.nullable()
+		.default(null),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model
@@ -217,6 +226,19 @@ export type HarnessSelectionStatus = z.infer<
 const ModelIdSchema = z.string().min(1).max(200);
 const EffortValueSchema = z.string().min(1).max(64);
 const CustomModelsSchema = z.array(ModelIdSchema).max(50);
+/** An env var name, POSIX-style (#907). */
+export const EnvNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/);
+const PathSchema = z.string().trim().min(1).max(1024);
+const ModelListSchema = z.array(ModelIdSchema).max(500);
+/** The one local ACP agent: a command and its arguments, no shell (#907). */
+export const LocalAgentSchema = z.object({
+	command: PathSchema,
+	args: z.array(z.string().max(1024)).max(32),
+});
+export type LocalAgent = z.infer<typeof LocalAgentSchema>;
+/** The refusal a paired device gets for a runtime field (#907). */
+export const RUNTIME_HOST_ONLY =
+	"Only this machine's own session can change what an agent runs.";
 
 /**
  * Persisted harness choice; PRISMALENS_HARNESS wins over it. The model is
@@ -238,6 +260,23 @@ export const HarnessSettingsSchema = z.object({
 	customModels: z
 		.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema)
 		.optional(),
+	/** Models left out of the picker per agent; a model the agent adds later shows (#907). */
+	hiddenModels: z
+		.partialRecord(z.enum(HARNESS_IDS), ModelListSchema)
+		.optional(),
+	/** The operator's model order per agent; ids it doesn't name follow in the agent's order. */
+	modelOrder: z.partialRecord(z.enum(HARNESS_IDS), ModelListSchema).optional(),
+	/** The agent's own program, absolute; empty uses PATH. */
+	binaryPaths: z.partialRecord(z.enum(HARNESS_IDS), PathSchema).optional(),
+	/** The folder the agent's config-dir env var points at. */
+	configDirs: z.partialRecord(z.enum(HARNESS_IDS), PathSchema).optional(),
+	localAgent: LocalAgentSchema.optional(),
+	/** Names of the variables set per agent; values are never read back. */
+	envNames: z
+		.partialRecord(z.enum(HARNESS_IDS), z.array(EnvNameSchema))
+		.optional(),
+	/** False on a paired device: runtime fields are the host's alone. */
+	canEditRuntime: z.boolean().optional(),
 });
 export type HarnessSettings = z.infer<typeof HarnessSettingsSchema>;
 
@@ -262,6 +301,29 @@ export const UpdateHarnessSettingsSchema = z
 		customModels: z
 			.partialRecord(z.enum(HARNESS_IDS), CustomModelsSchema.nullable())
 			.optional(),
+		/** Each replaces that agent's list; `null` clears it. */
+		hiddenModels: z
+			.partialRecord(z.enum(HARNESS_IDS), ModelListSchema.nullable())
+			.optional(),
+		modelOrder: z
+			.partialRecord(z.enum(HARNESS_IDS), ModelListSchema.nullable())
+			.optional(),
+		/** Each merges per agent; `null` clears. Host only. */
+		binaryPaths: z
+			.partialRecord(z.enum(HARNESS_IDS), PathSchema.nullable())
+			.optional(),
+		configDirs: z
+			.partialRecord(z.enum(HARNESS_IDS), PathSchema.nullable())
+			.optional(),
+		/** Merges per agent and name; a `null` value removes the name. Host only. */
+		env: z
+			.partialRecord(
+				z.enum(HARNESS_IDS),
+				z.record(EnvNameSchema, z.string().max(8192).nullable()),
+			)
+			.optional(),
+		/** `null` removes the local agent. Host only. */
+		localAgent: LocalAgentSchema.nullable().optional(),
 	})
 	.strict();
 export type UpdateHarnessSettings = z.infer<typeof UpdateHarnessSettingsSchema>;

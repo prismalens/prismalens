@@ -9,7 +9,7 @@
  * a temp PATH holding stub binaries rather than mocking @prismalens/config —
  * the wiring between the service and the registry is the part worth covering.
  */
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaService } from "../prisma/prisma.service.js";
@@ -452,7 +452,7 @@ describe("HarnessService", () => {
 
 			const status = await s.getStatus();
 
-			expect(s.localDefaultOf).toHaveBeenCalledWith("opencode");
+			expect(s.localDefaultOf).toHaveBeenCalledWith("opencode", expect.any(Object));
 			const row = status.harnesses.find((h) => h.id === "opencode");
 			expect(row?.localDefault).toEqual(stubDefault);
 		});
@@ -590,5 +590,176 @@ describe("HarnessService.ensureReady (#673 w9)", () => {
 		expect(a).toEqual({ ready: true });
 		expect(b).toEqual({ ready: true });
 		expect(check).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("HarnessService agent runtime settings (#907)", () => {
+	const originalPath = process.env.PATH;
+	const originalBase = process.env.ANTHROPIC_BASE_URL;
+	let store: Record<string, { key: string; value: string; type: string }>;
+	const credentials = {
+		encryptToBase64: (v: unknown) => `enc:${Buffer.from(JSON.stringify(v)).toString("base64")}`,
+		decryptFromBase64: (c: string) => JSON.parse(Buffer.from(c.slice(4), "base64").toString()),
+	};
+	type Row = { value: string; type: string };
+
+	function runtimeService(check = vi.fn(async () => ({}))) {
+		const models = new HarnessModelsService();
+		const forget = vi.spyOn(models, "forget");
+		const prisma = {
+			setting: {
+				findUnique: vi.fn(async ({ where }: { where: { key: string } }) => store[where.key] ?? null),
+				upsert: vi.fn(async ({ where, create, update }: { where: { key: string }; create: Row; update: Row }) => {
+					const prev = store[where.key];
+					store[where.key] = prev ? { ...prev, ...update } : { ...create, key: where.key };
+				}),
+			},
+		};
+		const svc = new HarnessService(
+			prisma as unknown as PrismaService,
+			models,
+			{ check } as unknown as HarnessProbeService,
+			credentials as never,
+		);
+		return { svc, models, forget, check };
+	}
+
+	beforeEach(() => {
+		store = {};
+		process.env.PATH = mkdtempSync(join(tmpdir(), "harness-empty-"));
+		delete process.env.ANTHROPIC_BASE_URL;
+	});
+	afterAll(() => {
+		process.env.PATH = originalPath;
+		if (originalBase === undefined) delete process.env.ANTHROPIC_BASE_URL;
+		else process.env.ANTHROPIC_BASE_URL = originalBase;
+	});
+
+	it("round-trips every new field, and reads env names but never values", async () => {
+		const { svc } = runtimeService();
+		const bin = join(pathWith("claude"), "claude");
+		const dir = mkdtempSync(join(tmpdir(), "claude-work-"));
+		const node = join(pathWith("node-agent"), "node-agent");
+		const saved = await svc.updateSettings({
+			hiddenModels: { "claude-code": ["opus"] },
+			modelOrder: { "claude-code": ["sonnet", "opus"] },
+			binaryPaths: { "claude-code": bin },
+			configDirs: { "claude-code": dir },
+			localAgent: { command: node, args: ["--acp"] },
+			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://b.example" } },
+		});
+		expect(saved).toMatchObject({
+			hiddenModels: { "claude-code": ["opus"] },
+			modelOrder: { "claude-code": ["sonnet", "opus"] },
+			binaryPaths: { "claude-code": bin },
+			configDirs: { "claude-code": dir },
+			localAgent: { command: node, args: ["--acp"] },
+			envNames: { "claude-code": ["ANTHROPIC_BASE_URL"] },
+		});
+		expect(JSON.stringify(await svc.getSettings())).not.toContain("b.example");
+		expect(store.HARNESS_ENV?.type).toBe("encrypted");
+		expect(store.HARNESS_ENV?.value).not.toContain("b.example");
+		expect(store.HARNESS_ENV?.value).toContain("enc:");
+
+		const cleared = await svc.updateSettings({
+			hiddenModels: { "claude-code": null },
+			binaryPaths: { "claude-code": null },
+			localAgent: null,
+			env: { "claude-code": { ANTHROPIC_BASE_URL: null } },
+		});
+		expect(cleared.hiddenModels).toBeUndefined();
+		expect(cleared.binaryPaths).toBeUndefined();
+		expect(cleared.localAgent).toBeUndefined();
+		expect(cleared.envNames).toBeUndefined();
+	});
+
+	const refusals: [string, Record<string, unknown>, string, string, boolean][] = [
+		["a paired device", { binaryPaths: { codex: "/usr/bin/codex" } }, "FORBIDDEN", "Only this machine's own session can change what an agent runs.", false],
+		["a relative path", { binaryPaths: { codex: "bin/codex" } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
+		["a bare name not on PATH", { localAgent: { command: "nowhere-on-path", args: [] } }, "BAD_REQUEST", "Use a full path, like /usr/local/bin/claude.", true],
+		["a config dir on an agent with none", { configDirs: { opencode: "/tmp" } }, "BAD_REQUEST", "OpenCode has no config directory setting.", true],
+		["a name PrismaLens sets", { env: { "claude-code": { CLAUDE_CODE_EXECUTABLE: "x" } } }, "BAD_REQUEST", "Claude Code runs get CLAUDE_CODE_EXECUTABLE from PrismaLens; it can't be set here.", true],
+		["a PRISMALENS_ name", { env: { codex: { PRISMALENS_SECRET: "x" } } }, "BAD_REQUEST", "Codex runs get PRISMALENS_SECRET from PrismaLens; it can't be set here.", true],
+		["the config-dir key", { env: { "claude-code": { CLAUDE_CONFIG_DIR: "/x" } } }, "BAD_REQUEST", "Set CLAUDE_CONFIG_DIR with Config directory above.", true],
+		["a plain-http gateway", { env: { "claude-code": { ANTHROPIC_BASE_URL: "http://gw.example" } } }, "BAD_REQUEST", "ANTHROPIC_BASE_URL must be https unless it points at this machine: http://gw.example", true],
+	];
+	it.each(refusals)("refuses %s", async (_, patch, code, message, host) => {
+		const { svc } = runtimeService();
+		await expect(svc.updateSettings(patch, { host })).rejects.toMatchObject({ code, message });
+		expect(store.HARNESS_ENV).toBeUndefined();
+	});
+
+	it("refuses a missing program and a missing folder by path", async () => {
+		const { svc } = runtimeService();
+		const gone = join(mkdtempSync(join(tmpdir(), "gone-")), "claude");
+		await expect(svc.updateSettings({ binaryPaths: { "claude-code": gone } })).rejects.toMatchObject({
+			message: `No program at ${gone}.`,
+		});
+		await expect(svc.updateSettings({ configDirs: { codex: gone } })).rejects.toMatchObject({
+			message: `No folder at ${gone}.`,
+		});
+	});
+
+	it("refuses a 51st variable", async () => {
+		const { svc } = runtimeService();
+		const rows = Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`V${i}`, "x"]));
+		await expect(svc.updateSettings({ env: { codex: rows } })).rejects.toMatchObject({
+			message: "An agent takes at most 50 variables.",
+		});
+	});
+
+	it("layers host keys, then the config folder, then Environment rows", async () => {
+		process.env.ANTHROPIC_BASE_URL = "https://a.example";
+		const { svc } = runtimeService();
+		const dir = mkdtempSync(join(tmpdir(), "claude-work-"));
+		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://a.example");
+		expect((await svc.runtimeFor("claude-code")).note).toBeNull();
+		await svc.updateSettings({
+			configDirs: { "claude-code": dir },
+			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://b.example" } },
+		});
+		const runtime = await svc.runtimeFor("claude-code");
+		expect(runtime.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://b.example", CLAUDE_CONFIG_DIR: dir });
+		expect(runtime.note).toEqual({ binaryPath: null, configDir: dir, envNames: ["ANTHROPIC_BASE_URL"], args: [] });
+		expect((await svc.runtimeFor("codex")).env.ANTHROPIC_BASE_URL).toBeUndefined();
+	});
+
+	it("forgets the agent's check after a runtime save, then checks it with the new runtime", async () => {
+		const { svc, models, forget, check } = runtimeService();
+		models.rememberCheck("codex", { outcome: "answers-acp", detail: "answers ACP", servedModel: null, effort: null, images: false });
+		await svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "sk-1" } } });
+		expect(forget).toHaveBeenCalledWith("codex");
+		await vi.waitFor(() => expect(check).toHaveBeenCalled());
+		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }));
+		await svc.updateSettings({ hiddenModels: { codex: ["gpt-5"] } });
+		expect(forget).toHaveBeenCalledTimes(1);
+	});
+
+	it("marks runnable only what starts and whose last check answered", async () => {
+		process.env.PATH = pathWith("opencode", "gemini");
+		const { svc, models } = runtimeService();
+		models.rememberCheck("gemini", { outcome: "sign-in-needed", detail: "sign in needed", servedModel: null, effort: null, images: false });
+		const rows = Object.fromEntries((await svc.getStatus()).harnesses.map((h) => [h.id, h.runnable]));
+		expect(rows).toMatchObject({ opencode: true, gemini: false, codex: false, local: false });
+	});
+
+	it("auto never picks an agent whose check failed; a pin to it still holds", async () => {
+		process.env.PATH = pathWith("opencode", "gemini");
+		const { svc, models } = runtimeService();
+		models.rememberCheck("opencode", { outcome: "failed-to-start", detail: "failed to start", servedModel: null, effort: null, images: false });
+		expect(await svc.resolveSelection()).toMatchObject({ runnable: true, harness: "gemini" });
+		await svc.updateSettings({ harness: "opencode" });
+		expect(await svc.resolveSelection()).toMatchObject({ runnable: true, harness: "opencode" });
+	});
+
+	it("a binary path that stops existing reads as not on this machine", async () => {
+		const { svc } = runtimeService();
+		const dir = pathWith("codex");
+		await svc.updateSettings({ binaryPaths: { codex: join(dir, "codex") } });
+		rmSync(join(dir, "codex"));
+		expect(await svc.resolveSelection({ harness: "codex" })).toMatchObject({
+			runnable: false,
+			reason: expect.stringContaining("Codex is not on this machine"),
+		});
 	});
 });

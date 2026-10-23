@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Module } from "@nestjs/common";
+import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { HarnessService } from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
@@ -11,6 +12,7 @@ import { RepoSourceService } from "./repo-source.service.js";
 @Module({
 	imports: [PrismaModule],
 	providers: [
+		CredentialsService,
 		HarnessService,
 		RepoSourceService,
 		HarnessProbeService,

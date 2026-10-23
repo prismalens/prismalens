@@ -9,7 +9,10 @@ import {
 	type HarnessId,
 	resumeBlockedReason,
 } from "@prismalens/config/harness";
-import { harnessLaunch } from "@prismalens/config/harness-selection";
+import {
+	harnessLaunch,
+	type LaunchProbe,
+} from "@prismalens/config/harness-selection";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
@@ -65,6 +68,7 @@ function isForeignKeyViolation(error: unknown): boolean {
  */
 export function followUpBlockedReason(
 	inv: Pick<Investigation, "harness" | "acpSessionId" | "workspace">,
+	launchProbe: (id: HarnessId) => LaunchProbe = () => ({}),
 ): string | null {
 	const harness = (HARNESS_IDS as readonly string[]).includes(inv.harness ?? "")
 		? (inv.harness as HarnessId)
@@ -76,7 +80,8 @@ export function followUpBlockedReason(
 	if (!harness || !inv.acpSessionId)
 		return "This run's agent kept no session to reopen.";
 	const row = HARNESS_REGISTRY[harness];
-	if (!harnessLaunch(row)) return `${row.label} is no longer installed.`;
+	if (!harnessLaunch(row, launchProbe(harness)))
+		return `${row.label} is no longer installed.`;
 	if (!inv.workspace) return "This run recorded no workspace.";
 	return null;
 }
