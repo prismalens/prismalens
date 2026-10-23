@@ -61,8 +61,13 @@ export function insufficientScope(res: Response): string | null {
 	if (res.status !== 403) return null;
 	const challenge = res.headers.get("www-authenticate") ?? "";
 	let scope: string | undefined;
-	if (/error="?insufficient_scope"?/i.test(challenge))
-		scope = /scope="([^"]*)"/i.exec(challenge)?.[1] ?? "";
+	if (/error="?insufficient_scope"?/i.test(challenge)) {
+		// RFC 9110 auth-params may be a quoted string or a bare token.
+		const m = /\bscope\s*=\s*(?:"([^"]*)"|([!#$%&'*+.^_`|~0-9A-Za-z-]+))/i.exec(
+			challenge,
+		);
+		scope = m?.[1] ?? m?.[2] ?? "";
+	}
 	const accepted = res.headers.get("x-accepted-oauth-scopes");
 	if (scope === undefined && accepted?.trim()) {
 		// GitHub sends these on every answer; only a grant lacking all of them is a scope refusal.
