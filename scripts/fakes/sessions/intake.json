@@ -1,0 +1,70 @@
+{
+	"agent": { "name": "opencode", "version": "1.18.30-fake" },
+	"turns": [
+		[
+			{
+				"say": "The alert says the webhook answers 500 when the token file is empty. Reading the receiver first.\n"
+			},
+			{
+				"tool": {
+					"id": "call_webhook",
+					"title": "read {{cwd}}/src/webhook.js",
+					"kind": "read",
+					"rawInput": { "path": "{{cwd}}/src/webhook.js" },
+					"output": "5:\t\tconst expected = loadToken();\n11:\t\tres.writeHead(500).end(String(err));"
+				}
+			},
+			{
+				"tool": {
+					"id": "call_token",
+					"title": "read {{cwd}}/src/token.js",
+					"kind": "read",
+					"rawInput": { "path": "{{cwd}}/src/token.js" },
+					"output": "6:\tconst token = readFileSync(file, \"utf8\").trim();\n7:\tif (token === \"\") throw new Error(\"token file is empty\");"
+				}
+			},
+			{
+				"report": {
+					"summary": "loadToken throws on an empty token file and the webhook handler turns every throw into a 500.",
+					"rootCause": "src/token.js throws \"token file is empty\" for an empty token file, and the catch in src/webhook.js answers 500 instead of rejecting the request.",
+					"rootCauseCategory": "code",
+					"culprit": { "service": "packed-intake", "mechanism": null },
+					"hypotheses": [
+						{
+							"statement": "An empty token file makes loadToken throw, and the handler maps the throw to a 500",
+							"status": "supported",
+							"evidence": [
+								{
+									"observation": "loadToken throws when the trimmed token is empty.",
+									"source": "src/token.js:7",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_token"
+								},
+								{
+									"observation": "handlePrometheus catches any error from loadToken and writes a 500.",
+									"source": "src/webhook.js:11",
+									"direction": "supports",
+									"status": "verified",
+									"toolCallId": "call_webhook"
+								}
+							]
+						}
+					],
+					"ruledOut": [],
+					"coverage": {
+						"queried": ["src/webhook.js", "src/token.js"],
+						"notQueried": ["prometheus"]
+					},
+					"nextSteps": [
+						{
+							"title": "Answer 401 or 503 when the token file is empty, and alert on the empty file itself",
+							"detail": "The throw is at src/token.js:7 and the 500 at src/webhook.js:11.",
+							"priority": "high"
+						}
+					]
+				}
+			}
+		]
+	]
+}

@@ -6,80 +6,53 @@ on:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   phase-gate:
-    name: Enforce milestone phase-gate
+    name: File the release checklist
+    if: github.event.action == 'created'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Create phase-gate issue
-        if: github.event.action == 'created'
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/release-checklists
+
+      - name: File the release checklist
         env:
           MILESTONE_TITLE: ${{ github.event.milestone.title }}
         run: |
+          if [[ ! "$MILESTONE_TITLE" =~ ^0\.[0-9]+\.([0-9]+)$ ]]; then
+            echo "::warning::Milestone '$MILESTONE_TITLE' is not 0.Y.Z; no checklist filed (a major release has no template yet)."
+            exit 0
+          fi
+          KIND=patch
+          [ "${BASH_REMATCH[1]}" = "0" ] && KIND=minor
+
           ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
-          
-          # Check if an open issue with the title already exists
-          EXISTING=$(gh issue list --milestone "$MILESTONE_TITLE" --search "in:title Phase gate:" --json number -q 'length')
-          
-          if [ "$EXISTING" -eq "0" ]; then
-            read -r -d '' BODY << 'EOF' || true
-          **Close this issue LAST — the milestone is not done while it is open.**
-
-          Mechanical gate (born 2026-07-19, after 0.1.x/0.2 closed without it):
-
-          - [ ] Run the 11-step phase-completion checklist (hub: `notes/roadmap/phase-checklist.md`) — ledger, roadmap, architecture specs, ADR outcomes, build-history, render re-sync, `mage index`, review dates, hub PR.
-          - [ ] Run the `cross-os-smoke` workflow (`.github/workflows/cross-os-smoke.yml`) in registry mode for the release version — proves the RELEASED artifact (not a local build) installs and runs on Linux, macOS, and Windows — and link the green 3-OS run here.
-          - [ ] Docs sweep for every identifier this phase renamed/retired (env vars, config keys, flags, model ids, package names).
-          - [ ] Link the ritual PR + audit report here before closing.
-
-          🤖 Generated with [Claude Code](https://claude.com/claude-code)
-          EOF
-
+          EXISTING=$(gh issue list --milestone "$MILESTONE_TITLE" --state all --search "in:title Phase gate:" --json number -q 'length')
+          if [ "$EXISTING" -eq 0 ]; then
+            BODY=$(sed "s/{{VERSION}}/$MILESTONE_TITLE/g" ".github/release-checklists/$KIND.md")
             gh issue create --milestone "$MILESTONE_TITLE" --title "$ISSUE_TITLE" --body "$BODY"
           fi
 
-      - name: Verify all issues closed
-        if: github.event.action == 'closed'
+  close-check:
+    name: Flag a milestone closed before its gate
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Warn when the Phase gate issue is still open
         env:
           MILESTONE_TITLE: ${{ github.event.milestone.title }}
-          MILESTONE_NUMBER: ${{ github.event.milestone.number }}
         run: |
-          # List open issues in this milestone
-          OPEN_ISSUES_JSON=$(gh issue list --milestone "$MILESTONE_TITLE" --state open --json number,title)
-          OPEN_COUNT=$(echo "$OPEN_ISSUES_JSON" | jq 'length')
-          
-          if [ "$OPEN_COUNT" -gt 0 ]; then
-            echo "Milestone closed prematurely. Reopening."
-            # Reopen milestone
-            gh api -X PATCH "/repos/$GH_REPO/milestones/$MILESTONE_NUMBER" -f state=open
-            
-            # Find phase-gate issue
-            GATE_ISSUE_NUMBER=$(gh issue list --milestone "$MILESTONE_TITLE" --search "in:title Phase gate:" --json number -q '.[0].number')
-            
-            ISSUES_LIST=$(echo "$OPEN_ISSUES_JSON" | jq -r 'map("- #" + (.number|tostring) + " " + .title) | join("\n")')
-
-            ISSUE_NOUN="issues are"
-            if [ "$OPEN_COUNT" -eq "1" ]; then
-              ISSUE_NOUN="issue is"
-            fi
-
-            read -r -d '' COMMENT_BODY << EOF || true
-          The milestone was reopened because $OPEN_COUNT $ISSUE_NOUN still open:
-
-          $ISSUES_LIST
-          EOF
-            
-            if [ "$GATE_ISSUE_NUMBER" != "null" ] && [ -n "$GATE_ISSUE_NUMBER" ]; then
-              gh issue comment "$GATE_ISSUE_NUMBER" --body "$COMMENT_BODY"
-            else
-              # If phase-gate issue doesn't exist, create it with the comment
-              ISSUE_TITLE="Phase gate: anti-drift ritual + released-artifact verification"
-              gh issue create --milestone "$MILESTONE_TITLE" --title "$ISSUE_TITLE" --body "$COMMENT_BODY"
-            fi
-            
-            exit 1
+          OPEN=$(gh issue list --milestone "$MILESTONE_TITLE" --state open --search "in:title Phase gate:" --json number -q '.[0].number // empty')
+          if [ -n "$OPEN" ]; then
+            echo "::warning::Milestone '$MILESTONE_TITLE' was closed while Phase gate #$OPEN is still open."
+            gh issue comment "$OPEN" --body "Milestone $MILESTONE_TITLE was closed while this issue is still open. Close this issue last: finish the checklist, close it, then close the milestone. Reopen the milestone if the release is not done."
           fi

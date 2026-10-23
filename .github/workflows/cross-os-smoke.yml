@@ -42,6 +42,7 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
+      - "scripts/lib/app-boot-retry.mjs"
   push:
     branches: [main]
     paths:
@@ -49,6 +50,7 @@ on:
       - ".github/workflows/cross-os-smoke.yml"
       - "scripts/cross-os-smoke.sh"
       - "scripts/cross-os-app-boot.mjs"
+      - "scripts/lib/app-boot-retry.mjs"
   release:
     types: [published]
   workflow_dispatch:
@@ -110,8 +112,8 @@ jobs:
             ;;
           esac
 
-      # The release event starts this run and release.yml's publish job at the
-      # same moment, so the version may not be on npm yet.
+      # release.yml publishes npm before the release, but the registry can lag
+      # behind the `release: published` event by a few seconds.
       - name: Wait for the version on npm (release event)
         if: github.event_name == 'release' && steps.resolve.outputs.mode == 'registry'
         env:
@@ -129,29 +131,65 @@ jobs:
     needs: mode
     if: needs.mode.outputs.mode == 'tarball'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
     steps:
+      # ci.yml's `Pack npm tarball` job packs the same commit; wait for it and take its
+      # artifact (#885). Anything but a green pack there falls through to packing below.
+      - name: Reuse the tarball from ci.yml's pack job
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          mkdir -p /tmp/tarballs
+          for i in $(seq 1 60); do
+            run_id=$(gh run list -R "$REPO" --workflow ci.yml --commit "$SHA" --event "$EVENT" --limit 1 --json databaseId -q '.[0].databaseId // empty' || true)
+            if [ -n "$run_id" ]; then
+              state=$(gh run view -R "$REPO" "$run_id" --json jobs -q '.jobs[] | select(.name == "Pack npm tarball") | .conclusion' || true)
+              case "$state" in
+                success)
+                  gh run download -R "$REPO" "$run_id" -n npm-tarballs -D /tmp/tarballs && echo "found=true" >> "$GITHUB_OUTPUT" && exit 0
+                  break ;;
+                failure|cancelled|skipped) break ;;
+              esac
+            elif [ "$i" -ge 12 ]; then
+              break
+            fi
+            sleep 10
+          done
+          echo "No usable tarball from ci.yml; packing here."
+
       - uses: actions/checkout@v7
+        if: steps.reuse.outputs.found != 'true'
 
       - name: Setup pnpm
+        if: steps.reuse.outputs.found != 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node
+        if: steps.reuse.outputs.found != 'true'
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.reuse.outputs.found != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Pack tarball
+        if: steps.reuse.outputs.found != 'true'
         # `pnpm pack` cannot produce this artifact: the published package carries
         # the first-party closure as bundleDependencies, and pnpm's handling of
         # those has historically diverged from npm's. The pack script builds
         # everything, generates the dependency union, and asserts the tarball —
         # and it is the SAME script the publish job runs (issue #237).
         run: |
-          mkdir -p /tmp/tarballs
           node scripts/pack-cli.mjs --out /tmp/tarballs
           ls -l /tmp/tarballs
 
@@ -290,9 +328,10 @@ jobs:
           # Deliberately narrow, so an unrelated repo change cannot fail this
           # job. refusal-gate-check.mjs is the Part A assertion sequence this
           # script shares with packed-smoke.sh (#551) — it is a static import,
-          # so leaving it out fails at startup on all three OSes.
+          # so leaving it out fails at startup on all three OSes. So is app-boot-retry.mjs.
           sparse-checkout: |
             scripts/cross-os-app-boot.mjs
+            scripts/lib/app-boot-retry.mjs
             packages/@prismalens/engine/scripts/refusal-gate-check.mjs
             .nvmrc
           sparse-checkout-cone-mode: false

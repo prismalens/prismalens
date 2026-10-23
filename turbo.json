@@ -32,6 +32,10 @@
 			"dependsOn": ["^build"],
 			"outputs": ["coverage/**", "*.xml"]
 		},
+		"test:cov": {
+			"dependsOn": ["^build"],
+			"outputs": ["coverage/**"]
+		},
 		"test:e2e": {
 			"cache": false,
 			"dependsOn": ["^build"]

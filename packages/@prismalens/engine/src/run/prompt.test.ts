@@ -5,6 +5,7 @@ import type { InvestigationContext } from "@prismalens/contracts/schemas";
 import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
+	FLAGGED_WHERE,
 	newerRunNote,
 } from "./prompt.js";
 import { UNTRUSTED_DATA_METHOD_GUARD } from "./fence.js";
@@ -333,3 +334,28 @@ describe("newerRunNote (#673 w27)", () => {
 	});
 });
 
+describe("flaggedContent where values (#902)", () => {
+	const baseContext: InvestigationContext = {
+		alerts: [
+			{
+				alertname: "HighErrorRate",
+				severity: "critical",
+				labels: { service: "checkout" },
+				annotations: { summary: "5xx rate > 5%" },
+				startsAt: new Date().toISOString(),
+			},
+		],
+		service: {
+			name: "checkout",
+		},
+	};
+
+	it("embeds FLAGGED_WHERE into prompt and defines context-pack, tool-output, and ALERT_PAYLOAD", () => {
+		const prompt = buildInvestigationPrompt(baseContext);
+		expect(prompt).toContain(FLAGGED_WHERE);
+		expect(FLAGGED_WHERE).toContain('"context-pack"');
+		expect(FLAGGED_WHERE).toContain('"tool-output"');
+		expect(FLAGGED_WHERE).toContain("ALERT_PAYLOAD");
+		expect(FLAGGED_WHERE).toContain("never which where value fits");
+	});
+});

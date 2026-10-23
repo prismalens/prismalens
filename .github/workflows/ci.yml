@@ -33,10 +33,16 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One build per run (#885): `build` saves turbo's cache under this run's SHA, and the
+# jobs that `need` it restore it, so their `pnpm build` is a replay, not a compile.
+env:
+  TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo-cache
+
 jobs:
   build:
     name: Build & typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -51,6 +57,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Turbo cache (saved for the jobs that need this one)
+        uses: actions/cache@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
 
       - name: Build
         run: pnpm build
@@ -75,13 +88,15 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    needs: build
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # engines.node is >=24 everywhere, the floor `pl doctor` enforces (#673 s6);
-      # the matrix proves the suite is not ubuntu-only.
+      # macOS runs on the merge queue and main only, not on every PR push (#885).
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
         node: [24]
     steps:
       - uses: actions/checkout@v7
@@ -98,43 +113,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Restore the build from the build job
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      # Coverage floors (#58) run here: cli and database `test` already pass --coverage,
+      # and the api's floor only evaluates under `test:cov`.
       - name: Test
+        if: runner.os != 'Linux'
         run: pnpm test
 
-  # Coverage thresholds (#58). The policy has existed in the vitest configs since
-  # #58 but NOTHING EVER RAN IT: `pnpm test` is `vitest run`, with no --coverage,
-  # so the thresholds never evaluated and the numbers drifted into fiction (the
-  # api package claimed a 60% floor while sitting at 47%). This job makes the
-  # gate real. Package floors are ratchets set to measured reality — raise them
-  # as coverage improves; never lower one to make a red build pass.
-  coverage:
-    name: Coverage thresholds
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # The api suite imports @prismalens/database's built entry, so the
-      # workspace has to be built before coverage can run.
-      - name: Build
-        run: pnpm build
-
-      - name: Coverage (api, cli, database)
+      - name: Test with coverage thresholds
+        if: runner.os == 'Linux'
         run: |
-          pnpm --filter @prismalens/api test:cov
-          pnpm --filter prismalens test:cov
-          pnpm --filter @prismalens/database test:cov
+          pnpm turbo run test --filter='!@prismalens/api'
+          pnpm turbo run test:cov --filter=@prismalens/api
 
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
@@ -143,7 +139,9 @@ jobs:
   # layout, and engines bugs that monorepo-resident tests structurally cannot.
   pack:
     name: Pack npm tarball
+    needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -159,8 +157,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Restore the build from the build job
+        uses: actions/cache/restore@v6
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
       - name: Pack script tests
-        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs
+        run: node --test scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/app-boot-retry.test.mjs
+
+      - name: Agent adapters tarball
+        run: |
+          pnpm --filter @prismalens/agent-adapters build
+          node --test packages/@prismalens/agent-adapters/scripts/pack.test.mjs
 
       - name: Pack tarball
         # `pnpm pack` cannot produce this artifact: the published package carries
@@ -183,6 +193,7 @@ jobs:
     name: Packed smoke (${{ matrix.image }})
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -219,11 +230,15 @@ jobs:
     # `packed-smoke` proves the tarball boots; this proves a webhook delivery
     # becomes an open incident, an investigation starts without a human and
     # completes with a report citing real paths, and a resolution closes the
-    # incident. The harness is the pinned OpenCode on the keyless model, as in
-    # `harness-admission`; the repository under investigation is this checkout.
+    # incident. On PRs the harness is the scripted fake ACP agent installed as
+    # `opencode` (scripts/fakes/sessions/intake.json), so a red run means the
+    # code is wrong, not that a free model was slow or refused (#884). The
+    # repository under investigation is a small built-in fixture (#876).
+    # `PACKED_INTAKE_AGENT=live` runs the same script on the pinned OpenCode and
+    # the keyless model; the nightly tier will use that.
     #
-    # ADVISORY, not in `ci-gate`'s `needs`: it has not yet run green three
-    # times in a row on this branch. Promote it once it has (#630).
+    # ADVISORY, not in `ci-gate`'s `needs`: promote it after three recorded
+    # greens on the scripted agent (#884).
     name: Packed intake (Prometheus webhook -> incident -> report)
     needs: pack
     runs-on: ubuntu-latest
@@ -238,9 +253,6 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Install the pinned OpenCode
-        run: npm install -g opencode-ai@1.18.30 && opencode --version
-
       - uses: actions/download-artifact@v8
         with:
           name: npm-tarballs
@@ -248,9 +260,9 @@ jobs:
 
       - name: Prometheus webhook to incident, unattended investigation, and back to resolved
         env:
-          PACKED_INTAKE_REPO: ${{ github.workspace }}
+          PACKED_INTAKE_AGENT: fake
+          PACKED_INTAKE_REPO: fixture
           PRISMALENS_HARNESS: opencode
-          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
         run: node scripts/packed-intake.mjs tarballs
 
   packed-service:
@@ -294,14 +306,90 @@ jobs:
           if curl -fsS -m 2 http://127.0.0.1:3190/health; then echo "still serving after uninstall"; exit 1; fi
           test -f "$ws/PRISMALENS_AUTH_SECRET_FILE"
 
-  harness-admission:
-    # Compatibility run (ADR 0003 §10): a row's `tested` version holds only while
-    # this passes unattended on a real clone. First run: #561.
-    name: Harness admission (opencode)
+  packed-upgrade-smoke:
+    # An installed tarball upgrades a database that predates `investigation_turns` and
+    # claims each legacy pending job with the right intent (#673). Package script
+    # `gate:packed-upgrade`; on the fake ACP agent, so a red run means the code is wrong.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs` (#885): promote it after three recorded greens.
+    name: Packed upgrade smoke
+    needs: pack
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Upgrade a populated database on the packed tarball
+        run: node scripts/packed-upgrade-smoke.mjs tarballs
+
+  gate-side-checks:
+    # The release gate's side checks (#673), scripted: telemetry, update notice, lock,
+    # reset, hosts and `pl upgrade` rollback, each in a throwaway HOME on the packed
+    # tarball. Package script `gate:side-checks`. The upgrade check needs a systemd user
+    # manager and reports SKIP without one.
+    #
+    # ADVISORY, not in `ci-gate`'s `needs` (#885): promote it after three recorded greens.
+    name: Gate side checks (packed tarball)
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Run the side checks
+        run: |
+          set -eu
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          node scripts/gate-side-checks.mjs --tarball "$(ls tarballs/prismalens-*.tgz | head -1)"
+
+  harness-admission:
+    # Compatibility run (ADR 0003 §10): the pinned agent is real, its model is the
+    # scripted one in scripts/fakes/fake-model-server.mjs, so a red run means the code
+    # is wrong and the same commit gives the same verdict (#884). The live-model run is
+    # `harness-admission-live` in live-agent.yml.
+    #
+    # REQUIRED: listed in `ci-gate`'s `needs`; the scripted model makes the verdict deterministic (#884).
+    name: Harness admission (${{ matrix.harness }}, scripted model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: opencode
+            install: npm install -g opencode-ai@1.18.30 && opencode --version
+          - harness: claude-code
+            install: npm install -g @anthropic-ai/claude-code@2.1.296 && claude --version
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -318,17 +406,16 @@ jobs:
       - name: Build the packages the engine imports
         run: pnpm --filter "@prismalens/contracts..." build
 
-      - name: Install the pinned OpenCode
-        run: npm install -g opencode-ai@1.18.30 && opencode --version
+      - name: Install the pinned agent
+        run: ${{ matrix.install }}
 
-      - name: Run the admission script against this checkout
-        env:
-          PRISMALENS_HARNESS_MODEL: opencode/muse-spark-1.3-contributor-free
-        run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"
+      - name: Run the admission (R1-R7) against the scripted model, 3 times
+        run: node scripts/admission-fake.mjs "${{ matrix.harness }}" "$GITHUB_WORKSPACE" --repeat 3
 
   lint:
     name: Lint (Biome)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
@@ -368,7 +455,8 @@ jobs:
   ci-gate:
     name: CI gate
     runs-on: ubuntu-latest
-    needs: [build, test, pack, packed-smoke, lint, harness-admission, coverage]
+    timeout-minutes: 5
+    needs: [build, test, pack, packed-smoke, lint, harness-admission]
     if: always()
     steps:
       - name: Assert every required job succeeded

@@ -9,15 +9,19 @@ on:
       - "scripts/install/**"
       - "scripts/pack-cli.mjs"
       - ".github/workflows/standalone.yml"
-  release:
-    types: [published]
+  # release.yml calls this with the draft release's tag to attach the archives (#717).
+  workflow_call:
+    inputs:
+      release-tag:
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: standalone-${{ github.ref }}
+  group: standalone-${{ inputs.release-tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,6 +48,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -65,6 +71,33 @@ jobs:
 
       - name: Build standalone archive
         run: node scripts/build-standalone.mjs --out "$GITHUB_WORKSPACE/dist/standalone"
+
+      - name: Windows archive fits the 260-char path limit
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $userHome = "C:\Users\$('u' * 20)"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          $full = $z.Entries.FullName | Sort-Object Length -Descending | Select-Object -First 1
+          $z.Dispose()
+          $stripped = $full -replace '^[^/]+/', ''
+          # The deepest path each Windows install writes (#902): install.ps1 unpacks without the top dir
+          # into runtime\.new and renames it to runtime\<version>; Scoop expands the whole zip into _tmp.
+          $checks = @(
+            @{ prefix = "$userHome\AppData\Local\prismalens\runtime\$version\"; entry = $stripped },
+            @{ prefix = "$userHome\scoop\apps\prismalens\$version\_tmp\"; entry = $full }
+          )
+          $failed = $false
+          foreach ($c in $checks) {
+            $len = $c.prefix.Length + $c.entry.Length
+            "$len = prefix $($c.prefix.Length) ($($c.prefix)) + entry $($c.entry.Length) ($($c.entry))"
+            if ($len -gt 259) { $failed = $true }
+          }
+          "LongPathsEnabled on this runner: $((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').LongPathsEnabled)"
+          if ($failed) { Write-Error "A path passes 259 chars for a 20-char username; Windows PowerShell 5.1 can't install it on a default box. Shorten the deepest node_modules path."; exit 1 }
 
       - name: Smoke test standalone CLI (Unix)
         if: runner.os != 'Windows'
@@ -193,6 +226,38 @@ jobs:
           & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old" -OldVersion 0.5.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Installer under Windows PowerShell 5.1, long paths off, 20-char username
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $base = Join-Path $env:RUNNER_TEMP "mirror51"
+          New-Item -ItemType Directory "$base\v$version" -Force | Out-Null
+          Copy-Item $zip.FullName "$base\v$version"
+          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Out-File "$base\v$version\SHA256SUMS" -Encoding ascii
+          $env:LOCALAPPDATA = "C:\Users\$('u' * 20)\AppData\Local"
+          New-Item -ItemType Directory $env:LOCALAPPDATA -Force | Out-Null
+          $env:PRISMALENS_RELEASE_BASE_URL = "file:///" + $base.Replace('\', '/')
+          $env:PRISMALENS_VERSION = $version
+          $env:PRISMALENS_NO_MODIFY_PATH = "1"
+          $installer = "$env:GITHUB_WORKSPACE\scripts\install\install.ps1"
+          Set-Content "$env:RUNNER_TEMP\wp51.ps1" -Encoding ascii -Value @"
+          `$ErrorActionPreference = 'Stop'
+          "PowerShell `$(`$PSVersionTable.PSVersion)"
+          Get-Content -Raw -Encoding UTF8 '$installer' | iex
+          `$v = (& "`$env:LOCALAPPDATA\prismalens\bin\pl.cmd" --version).Trim()
+          if (`$v -ne '$version') { throw "pl --version printed `$v" }
+          & ([scriptblock]::Create((Get-Content -Raw -Encoding UTF8 '$installer'))) -Uninstall
+          if (Test-Path "`$env:LOCALAPPDATA\prismalens") { throw 'uninstall left the runtime behind' }
+          "@
+          $fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          $was = (Get-ItemProperty $fs).LongPathsEnabled
+          Set-ItemProperty $fs LongPathsEnabled 0
+          try { & powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\wp51.ps1"; $rc = $LASTEXITCODE }
+          finally { if ($null -ne $was) { Set-ItemProperty $fs LongPathsEnabled $was } }
+          exit $rc
+
       - name: Smoke the Homebrew formula (macOS)
         if: runner.os == 'macOS'
         env:
@@ -249,9 +314,9 @@ jobs:
           retention-days: 7
 
   attach:
-    name: Attach to the release
+    name: Attach to the draft release
     needs: build
-    if: github.event_name == 'release'
+    if: inputs.release-tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -259,6 +324,8 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release-tag }}
 
       - name: Download standalone archives
         uses: actions/download-artifact@v8
@@ -273,48 +340,11 @@ jobs:
         with:
           subject-path: archives/prismalens-*
 
-      - name: Generate SHA256SUMS and upload to release
+      - name: Generate SHA256SUMS and upload to the draft
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.release-tag }}
         run: |
           cd archives
           sha256sum prismalens-* > SHA256SUMS
           gh release upload "$TAG" prismalens-* SHA256SUMS "$GITHUB_WORKSPACE/scripts/install/install.sh" "$GITHUB_WORKSPACE/scripts/install/install.ps1" --repo "$GITHUB_REPOSITORY" --clobber
-
-  publish-manifests:
-    name: Update the Homebrew tap and Scoop bucket
-    needs: attach
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # Skips until the operator creates both repos and the token (#717).
-      - name: Write and push the formula and manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PM_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [ -z "$PM_TOKEN" ]; then
-            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
-            exit 0
-          fi
-          version="${TAG#v}"
-          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
-          node scripts/install/package-manifests.mjs --version "$version" --sums "$RUNNER_TEMP/SHA256SUMS" --out "$RUNNER_TEMP/manifests"
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          publish() {
-            repo="$1" src="$2" dest="$3" dir="$RUNNER_TEMP/clone-${1#*/}"
-            git clone --depth 1 "https://x-access-token:${PM_TOKEN}@github.com/${repo}.git" "$dir"
-            mkdir -p "$dir/$(dirname "$dest")"
-            cp "$src" "$dir/$dest"
-            git -C "$dir" add "$dest"
-            if git -C "$dir" diff --cached --quiet; then return 0; fi
-            git -C "$dir" commit -m "prismalens $version"
-            git -C "$dir" push origin HEAD:main
-          }
-          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
-          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
