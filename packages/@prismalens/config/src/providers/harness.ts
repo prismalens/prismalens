@@ -462,7 +462,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
 		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
-		// Set through its `mode` config option, the reply verified; 1.13.1 has no workspace-write (#673 w21).
+		// Set through its `mode` config option, the reply verified. Before 2.0 read-only let workspace edits through
+		// and there was no workspace-write (codex-acp#480); the fallback keeps an older PATH install working.
 		access: {
 			supervised: {
 				mode: "read-only",
@@ -498,8 +499,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634). Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "1.13.1", date: "2026-09-24" },
+		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846). Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "2.2.2", date: "2026-10-23" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
