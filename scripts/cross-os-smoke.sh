@@ -78,7 +78,7 @@ DOCTOR_OUT=$("$BIN/pl" doctor 2>&1)
 DOCTOR_EXIT=$?
 set -e
 [ "$DOCTOR_EXIT" -ne 0 ] || fail "doctor exited 0 in a clean env with no harness"
-echo "$DOCTOR_OUT" | grep -qi "harness" || fail "doctor output does not mention the missing harness:
+echo "$DOCTOR_OUT" | grep -qi "no agent can run" || fail "doctor output does not say no agent can run (#907):
 $DOCTOR_OUT"
 
 echo "==> unknown flag is rejected with exit 1"
