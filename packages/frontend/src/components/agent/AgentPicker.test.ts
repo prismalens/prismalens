@@ -53,6 +53,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	windowsOnlyPath: null,
 	cliBinary: "",
 	configDir: null,
+	providerKeys: [],
 	models: {
 		source: "harness",
 		asOf: "",

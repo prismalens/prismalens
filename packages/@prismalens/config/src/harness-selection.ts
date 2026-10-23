@@ -254,6 +254,8 @@ export interface HarnessStatus {
 	cliBinary: string;
 	/** The agent's config-folder env var and what unset means; null when it has none. */
 	configDir: { envKey: string; shownDefault: string } | null;
+	/** Provider key names the agent reads from its env. */
+	providerKeys: string[];
 }
 
 /** The launch probe for one agent, with its binary path or local command (#907). */
@@ -293,6 +295,7 @@ export function listHarnessStatus(
 						(d.companionBinary ? windowsInstall(d.companionBinary) : null)),
 			cliBinary: d.companionBinary ?? d.binary,
 			configDir: d.configDir ?? null,
+			providerKeys: [...(d.providerKeys ?? [])],
 			tested: d.tested ?? null,
 			install: d.install,
 			defaultModel: d.defaultModel ?? null,

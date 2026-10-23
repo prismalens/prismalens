@@ -29,6 +29,7 @@ const agent = (
 	windowsOnlyPath: null,
 	cliBinary: "",
 	configDir: null,
+	providerKeys: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: {
 		at: "",

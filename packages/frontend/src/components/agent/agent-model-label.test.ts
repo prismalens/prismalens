@@ -21,6 +21,7 @@ const claudeCode: HarnessStatus = {
 	windowsOnlyPath: null,
 	cliBinary: "",
 	configDir: null,
+	providerKeys: [],
 	models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 };
 

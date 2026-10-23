@@ -33,6 +33,7 @@ import {
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
+import { AddAgentDialog } from "./AddAgentDialog";
 import { testedHint, versionText } from "./AgentDetail";
 
 export { testedHint, versionText };
@@ -76,7 +77,17 @@ export function HarnessSettings() {
 	// Agents that can run, plus the saved or pinned one so the user's own choice never vanishes (#907).
 	const chosen = selection?.harness ?? (setting === "auto" ? null : setting);
 	const listed = harnesses.filter((h) => h.runnable || h.id === chosen);
-	const addAgent = null;
+	const [adding, setAdding] = useState(false);
+	const addAgent = (
+		<Button
+			variant="secondary"
+			size="sm"
+			onClick={() => setAdding(true)}
+			data-testid="harness-add-agent"
+		>
+			Add agent
+		</Button>
+	);
 
 	if (isLoading || settingsLoading) {
 		return (
@@ -131,13 +142,17 @@ export function HarnessSettings() {
 				testId="harness-registry"
 				actions={addAgent}
 			>
+				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
 				{listed.length === 0 ? (
-					<p
-						className="text-body text-text-2"
-						data-testid="harness-none-available"
-					>
-						No agent can run. Add one to start investigations.
-					</p>
+					<div className="flex flex-wrap items-center gap-3">
+						<p
+							className="text-body text-text-2"
+							data-testid="harness-none-available"
+						>
+							No agent can run. Add one to start investigations.
+						</p>
+						{addAgent}
+					</div>
 				) : (
 					<Pool>
 						{listed.map((harness) => (

@@ -40,6 +40,7 @@ const mockHarness = (
 	windowsOnlyPath: null,
 	cliBinary: "",
 	configDir: null,
+	providerKeys: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: null,
 	...over,

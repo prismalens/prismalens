@@ -15,7 +15,7 @@ import {
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
-import { Check, ChevronDown, Lock, Star } from "lucide-react";
+import { Check, ChevronDown, Lock, Plus, Star } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
 	ModelSelector,
@@ -25,6 +25,7 @@ import {
 	ModelSelectorItem,
 	ModelSelectorList,
 } from "@/components/ai/model-selector";
+import { AddAgentDialog } from "@/components/settings/AddAgentDialog";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
@@ -266,6 +267,7 @@ export function ModelChip({
 	const check = useCheckHarness();
 	const [open, setOpen] = useState(false);
 	const [tile, setTile] = useState<string | null>(null);
+	const [adding, setAdding] = useState(false);
 	const shown = tile ?? harness?.id ?? "starred";
 	const agent = harnesses.find((h) => h.id === shown);
 	// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907).
@@ -435,6 +437,21 @@ export function ModelChip({
 							<AgentMark id={h.id} className="size-5" />
 						</RailTile>
 					))}
+					{/* Every supported agent, set up or not, is one step away (#907, operator's clarification). */}
+					<Hint label="Add agent" side="left">
+						<button
+							type="button"
+							aria-label="Add agent"
+							onClick={() => {
+								setOpen(false);
+								setAdding(true);
+							}}
+							className="mt-auto inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+							data-testid="rail-add-agent"
+						>
+							<Plus className="size-4" />
+						</button>
+					</Hint>
 				</div>
 				<ModelSelector
 					key={shown}
@@ -572,6 +589,7 @@ export function ModelChip({
 					</ModelSelectorList>
 				</ModelSelector>
 			</PopoverContent>
+			{adding && <AddAgentDialog open onOpenChange={setAdding} />}
 		</Popover>
 	);
 }

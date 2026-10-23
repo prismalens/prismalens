@@ -159,6 +159,8 @@ export const HarnessStatusSchema = z.object({
 	runnable: z.boolean().default(false),
 	/** The program Binary path names: the agent's own CLI, not its adapter; empty for the local agent. */
 	cliBinary: z.string().default(""),
+	/** Provider key names the agent reads; Add agent's sign-in step offers them (#907). */
+	providerKeys: z.array(z.string()).default([]),
 	/** The env var Config directory sets, and what unset means; null when the agent has none. */
 	configDir: z
 		.object({ envKey: z.string(), shownDefault: z.string() })
