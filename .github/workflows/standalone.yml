@@ -212,7 +212,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/old"
           npm pack prismalens@0.5.0 --pack-destination "$RUNNER_TEMP/old"
-          node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/prismalens-0.5.0.tgz" --out "$GITHUB_WORKSPACE/dist/old"
+          node scripts/build-standalone.mjs --tarball "$RUNNER_TEMP/old/prismalens-0.5.0.tgz" --out "$GITHUB_WORKSPACE/dist/old" --allow-missing-licences
 
       - name: Installer end to end (Unix)
         if: runner.os != 'Windows'

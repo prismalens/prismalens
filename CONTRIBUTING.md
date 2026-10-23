@@ -464,7 +464,7 @@ $ node scripts/check-artifact.mjs dist/standalone/prismalens-0.5.2-win32-x64.zip
 ==> prismalens-0.5.2-win32-x64.zip
   installer 191/220 C:\Users\uuuuuuuuuuuuuuuuuuuu\AppData\Local\prismalens\runtime\0.5.2\ + app\node_modules\@prismalens\database\dist\prisma\sqlite\schema\20261007135949_investigation_kind_agent_mode\migration.sql
   scoop 212/220 C:\Users\uuuuuuuuuuuuuuuuuuuu\scoop\apps\prismalens\0.5.2\_tmp\ + prismalens-0.5.2-win32-x64\app\node_modules\@prismalens\database\dist\prisma\sqlite\schema\20261007135949_investigation_kind_agent_mode\migration.sql
-  win32-x64 78453080 bytes, 9335 files (budget 103624026 bytes, 22964 files)
+  win32-x64 78453080 bytes, 9335 files (budget 84355077 bytes, 10269 files)
   licences: every package carries one
 ```
 

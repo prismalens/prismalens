@@ -500,13 +500,18 @@ async function main() {
 		addLicences(appModules, join(REPO_ROOT, "packages", "desktop", "licences"));
 		const pruned = prune(appModules);
 		const missing = missingLicences(appDir);
-		if (missing.length > 0) {
+		// --allow-missing-licences: only for an already-published version rebuilt as an upgrade fixture.
+		if (
+			missing.length > 0 &&
+			!process.argv.includes("--allow-missing-licences")
+		) {
 			throw new Error(
 				`the archive carries no licence text for: ${missing.join(", ")}`,
 			);
 		}
+		for (const m of missing) console.log(`::warning::no licence text: ${m}`);
 		console.log(
-			`==> app/: pruned ${pruned} files; every package carries a licence text`,
+			`==> app/: pruned ${pruned} files; ${missing.length} packages without a licence text`,
 		);
 
 		// The runtime needs only the node binary: npm, corepack and headers stay out (#906).
