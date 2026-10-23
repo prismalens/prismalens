@@ -337,6 +337,20 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(warnings.join("\n")).toContain("unknown_stop_reason");
 	});
 
+	it("hands the host the harness's usage_update, and nothing from a harness that sends none", async () => {
+		const seen: unknown[] = [];
+		await collect("ok", {
+			onUsage: (u) => seen.push(u),
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_USAGE: "1" },
+		});
+		expect(seen).toEqual([
+			expect.objectContaining({ used: 182000, size: 440000, cost: { amount: 1.25, currency: "USD" } }),
+		]);
+		const none: unknown[] = [];
+		await collect("ok", { onUsage: (u) => none.push(u) });
+		expect(none).toEqual([]);
+	});
+
 	it("retries once in the same session when the first report is invalid", async () => {
 		const { events } = await collect("retry");
 		expect(events.at(-1)?.kind).toBe("report");

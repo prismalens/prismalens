@@ -10,6 +10,7 @@ import type { AccessLevel, ModelSource } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	LiveTurn,
+	RunEndReason,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -17,6 +18,7 @@ import type {
 	ContextPack,
 	RunChoice,
 	RunCredential,
+	RunUsage,
 } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
 import type {
@@ -76,6 +78,8 @@ export interface RunPorts {
 			accessLevel?: AccessLevel;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
+			/** On `failed`: the agent hit a usage limit. */
+			endReason?: RunEndReason;
 		},
 	): Promise<boolean>;
 	/** A row claimed with no `liveTurn` (queued before the column) gets one (#673 w59). */
@@ -110,6 +114,8 @@ export interface RunPorts {
 	 * write, not `updateStatus`, which would count a second run start.
 	 */
 	recordSession(id: string, acpSessionId: string): Promise<void>;
+	/** Keep the harness's latest `usage_update`. Its own write, like `recordSession`. */
+	recordUsage(id: string, usage: RunUsage): Promise<void>;
 	/** The oldest ask the agent waits on, or null once none waits (#673 w21). Its own write, like `recordSession`. */
 	markAwaitingApproval(id: string, since: Date | null): Promise<void>;
 	/**

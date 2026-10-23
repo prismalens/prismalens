@@ -45,6 +45,7 @@ import type {
 	EffortEstimate,
 	RecommendationCategory,
 	RecommendationPriority,
+	RunUsage,
 	Urgency,
 } from "@prismalens/contracts/schemas";
 import {
@@ -232,6 +233,7 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
+		const usage = usageWriter(ports, runId);
 		const outcome = await conductRun(
 			{
 				runId,
@@ -258,6 +260,7 @@ async function runJobInternal(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
@@ -266,6 +269,7 @@ async function runJobInternal(
 			},
 			{ sink, store },
 		);
+		await usage.flush();
 		await io.streamDone();
 
 		if (outcome.failureKind === "cancelled") {
@@ -358,6 +362,33 @@ async function runJobInternal(
 			clearRunWorkspace(runDirFor(unvalidated.investigationId));
 		}
 	}
+}
+
+const USAGE_WRITE_EVERY_MS = 5_000;
+
+/**
+ * The harness sends a usage_update on most turns; the row takes the latest at
+ * most every few seconds, and `flush` writes what the throttle held back.
+ */
+function usageWriter(ports: RunPorts, id: string) {
+	let latest: RunUsage | null = null;
+	let written: RunUsage | null = null;
+	let at = 0;
+	const write = () => {
+		if (!latest || latest === written) return Promise.resolve();
+		written = latest;
+		at = Date.now();
+		return ports
+			.recordUsage(id, latest)
+			.catch((e) => logger.warn("Failed to keep the run's usage", e));
+	};
+	return {
+		onUsage: (usage: RunUsage) => {
+			latest = usage;
+			if (Date.now() - at >= USAGE_WRITE_EVERY_MS) void write();
+		},
+		flush: write,
+	};
 }
 
 /** Only a session the harness can load again is worth keeping (#747). */
@@ -479,6 +510,7 @@ async function runFollowUp(
 				.resolveHarness({ harness, model: inv.model })
 				.then((r) => r.customModel)
 				.catch(() => false));
+		const usage = usageWriter(ports, id);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -501,6 +533,7 @@ async function runFollowUp(
 				},
 				onPolicyWarning: (message) => logger.warn(message),
 				onHarnessDrift: (message) => logger.warn(message),
+				onUsage: usage.onUsage,
 				signal: io.signal,
 				...(io.steer ? { steer: io.steer } : {}),
 				...(io.permission ? { permission: io.permission } : {}),
@@ -526,6 +559,7 @@ async function runFollowUp(
 				store,
 			},
 		);
+		await usage.flush();
 		await io.streamDone();
 		report = outcome.report;
 		end =
