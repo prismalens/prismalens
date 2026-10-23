@@ -203,10 +203,24 @@ try {
 
 	$dest = Join-Path $runtimeRoot $Version
 	Step "Installing to $dest"
-	Expand-Archive -Path $archiveFile -DestinationPath $staging -Force
-	$unpacked = Join-Path $staging "prismalens-$Version-$target"
-	if (-not (Test-Path $unpacked)) { Fail "Unexpected archive layout" }
-	New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+	# Unpack beside $dest, not under %TEMP%: Windows PowerShell 5.1 can't reach paths of 260+
+	# chars on a default box, and standalone.yml holds the archive to that from here (#902).
+	# System32's bsdtar, not a tar on PATH: Git's GNU tar can't read a zip.
+	$unpacked = Join-Path $runtimeRoot ".new"
+	$tar = Join-Path $env:SystemRoot "System32\tar.exe"
+	if (-not (Test-Path $tar)) { Fail "$tar is missing (Windows 10 1803 and later ship it); use npm install -g prismalens" }
+	try {
+		if (Test-Path $unpacked) { Remove-Item $unpacked -Recurse -Force }
+		New-Item -ItemType Directory -Path $unpacked -Force | Out-Null
+		$out = & $tar -xf $archiveFile -C $unpacked --strip-components 1 2>&1
+		if ($LASTEXITCODE -ne 0) { throw ($out | Out-String) }
+	} catch {
+		$why = "$_".Trim()
+		Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
+		if ($why -match 'too long|PathTooLong') { $why += " (a path in it is longer than Windows allows; set LongPathsEnabled or use npm install -g prismalens)" }
+		Fail "Couldn't unpack $archive into ${unpacked}: $why"
+	}
+	if (-not (Test-Path (Join-Path $unpacked "bin\pl.cmd"))) { Fail "Unexpected archive layout" }
 	try {
 		if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
 		Move-Item -Path $unpacked -Destination $dest

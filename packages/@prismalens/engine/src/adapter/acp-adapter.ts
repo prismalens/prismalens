@@ -72,6 +72,8 @@ export interface AcpUpdate {
 	used?: number;
 	size?: number;
 	cost?: { amount?: unknown; currency?: unknown } | null;
+	/** Codex's output: `{ formatted_output, exit_code }` for a command, `{ result, error }` for MCP; it sends no `content`. */
+	rawOutput?: unknown;
 	/** Harness extras; Claude Code names a call its own settings refused here. */
 	_meta?: unknown;
 }
@@ -99,6 +101,8 @@ interface ToolMeta {
 	name: string;
 	kind?: string;
 	rawInput?: unknown;
+	/** Latest output an earlier update carried, cut to what a preview can show. */
+	output?: string;
 }
 
 export class AcpAdapter {
@@ -134,6 +138,7 @@ export class AcpAdapter {
 			case "tool_call_update": {
 				const toolCallId = u.toolCallId ?? "";
 				const filled = this.mergeToolMeta(toolCallId, u);
+				this.retainOutput(toolCallId, u);
 				// ACP sends only changed fields: no status means the call still runs (#820).
 				if (isTerminal(u.status)) {
 					const done = this.toolResult(u);
@@ -338,7 +343,7 @@ export class AcpAdapter {
 		const ok = u.status !== "failed";
 		const preview = ruleDenied(u._meta)
 			? RULE_DENIED
-			: truncate(flattenAcpContent(u.content), this.previewLimit);
+			: truncate(toolOutputText(u) || (meta?.output ?? ""), this.previewLimit);
 		return {
 			kind: "tool_result",
 			...this.base(),
@@ -352,6 +357,13 @@ export class AcpAdapter {
 				preview,
 			},
 		};
+	}
+
+	/** ACP sends only changed fields: a later bare `completed` must not lose output an earlier update carried. */
+	private retainOutput(toolCallId: string, u: AcpUpdate): void {
+		const meta = this.toolMeta.get(toolCallId);
+		const text = toolOutputText(u);
+		if (meta && text) meta.output = text.slice(0, this.previewLimit + 1);
 	}
 
 	/**
@@ -540,6 +552,31 @@ export function askInput(rawInput: unknown): string | null {
 		return null;
 	}
 	return text.slice(0, ASK_DETAIL_LIMIT);
+}
+
+/** The tool's output text: `content` (Claude Code), else Codex's `rawOutput` or terminal `_meta`. */
+export function toolOutputText(u: AcpUpdate): string {
+	const fromContent = flattenAcpContent(u.content);
+	if (fromContent) return fromContent;
+	const out = u.rawOutput;
+	if (typeof out === "string") return out;
+	if (out && typeof out === "object") {
+		const o = out as Record<string, unknown>;
+		if (typeof o.formatted_output === "string" && o.formatted_output) {
+			return o.formatted_output;
+		}
+		const res = o.result as { content?: unknown } | null | undefined;
+		const fromMcp = flattenAcpContent(res?.content);
+		if (fromMcp) return fromMcp;
+		if (typeof o.error === "string" && o.error) return o.error;
+		if (o.error && typeof o.error === "object") {
+			const m = (o.error as { message?: unknown }).message;
+			if (typeof m === "string") return m;
+		}
+	}
+	const term = (u._meta as { terminal_output?: { data?: unknown } } | undefined)
+		?.terminal_output?.data;
+	return typeof term === "string" ? term : "";
 }
 
 function ruleDenied(meta: unknown): boolean {
