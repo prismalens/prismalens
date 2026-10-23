@@ -9,7 +9,7 @@ import { getAppDataDir, secretFileName } from "@prismalens/config";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	checkAnyHarnessOnPath,
+	checkAnyAgentRunnable,
 	checkAutoSelection,
 	checkGit,
 	checkHarnessesOnPath,
@@ -17,6 +17,7 @@ import {
 	checkInstalls,
 	checkWebhookToken,
 	checkWebhookUrl,
+	type Handshake,
 	sandboxSummary,
 	summary,
 } from "./doctor.js";
@@ -66,20 +67,22 @@ describe("doctor — harness detection", () => {
 		expect(model?.detail).toContain("Settings → Agent → Model");
 	});
 
-	it("is a HARD failure, listing every registry harness, when none is on PATH", () => {
+	it("is a HARD failure, listing every installable agent, when none can run", () => {
 		process.env.PATH = tempPathDir; // empty dir — nothing resolvable
 
 		const perHarness = checkHarnessesOnPath();
 		expect(perHarness.every((check) => !check.pass)).toBe(true);
+		expect(perHarness.some((check) => check.name.includes("Local agent"))).toBe(false);
 
-		const overall = checkAnyHarnessOnPath(perHarness);
-		expect(overall.pass).toBe(false);
-		expect(overall.hard).toBe(true);
+		const overall = checkAnyAgentRunnable([]);
+		expect(overall).toMatchObject({ name: "Agent ready", pass: false, hard: true });
 		// The ERROR line carries the install commands themselves, not just the ids (#337 run e, G12).
-		expect(overall.detail).toContain("Install one:");
+		expect(overall.detail).toContain("Set one up with Add agent in Settings → Agent, or install one:");
 		for (const descriptor of Object.values(HARNESS_REGISTRY)) {
+			if (descriptor.id === "local") continue;
 			expect(overall.detail).toContain(descriptor.install);
 		}
+		expect(checkAutoSelection()).toEqual([]);
 	});
 
 	it("names Claude Code when the claude companion is present and runs through the shipped adapter", () => {
@@ -106,10 +109,61 @@ describe("doctor — harness detection", () => {
 			check.name.includes(descriptor.label),
 		);
 		expect(match?.pass).toBe(true);
+	});
+});
 
-		const overall = checkAnyHarnessOnPath(perHarness);
-		expect(overall.pass).toBe(true);
-		expect(overall.hard).toBe(true);
+describe("doctor — quiet about agents that can't run (#907)", () => {
+	const shake = (
+		id: Handshake["id"],
+		over: Partial<Handshake> & { detail: string },
+	): Handshake => ({
+		id,
+		servedModel: null,
+		signInUnchecked: false,
+		signedOut: false,
+		ready: false,
+		...over,
+		check: {
+			name: `Harness ACP handshake: ${HARNESS_REGISTRY[id].label}`,
+			pass: !!over.ready,
+			detail: over.detail,
+			hard: false,
+		},
+	});
+
+	it("names only the ready agent, with a success summary, beside a signed-out and a failing one", () => {
+		const handshakes = [
+			shake("claude-code", { ready: true, detail: "answers ACP; signed in" }),
+			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
+			shake("deepagents", { detail: "failed to start: boom" }),
+		];
+		const agent = checkAnyAgentRunnable(handshakes);
+		expect(agent).toEqual({ name: "Agent ready", pass: true, detail: "Claude Code ready", hard: true });
+		const printed = [agent, ...handshakes.filter((h) => h.ready).map((h) => h.check)];
+		expect(printed.filter((c) => !c.pass)).toEqual([]);
+		expect(printed.map((c) => c.detail).join("\n")).not.toMatch(/OpenCode|Gemini CLI|deepagents/);
+		expect(summary(printed, handshakes, "claude-code")).toEqual({
+			level: "success",
+			line: "All required checks passed.",
+		});
+	});
+
+	it("is one error carrying each installed agent's reason when none can run", () => {
+		const handshakes = [
+			shake("gemini", { signedOut: true, detail: "answers ACP; not signed in" }),
+			shake("deepagents", { detail: "failed to start: boom" }),
+		];
+		const agent = checkAnyAgentRunnable(handshakes);
+		expect(agent.pass).toBe(false);
+		expect(agent.detail).toContain("\n  Gemini CLI: answers ACP; not signed in");
+		expect(agent.detail).toContain("\n  deepagents: failed to start: boom");
+		expect(agent.detail).toContain(
+			"Agents set up only in Settings (binary path, local agent) are checked there, not here.",
+		);
+		expect(summary([agent], handshakes)).toEqual({
+			level: "error",
+			line: "No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
+		});
 	});
 });
 
@@ -155,6 +209,7 @@ describe("doctor — harness ACP handshake", () => {
 			servedModel: null,
 			signInUnchecked: false,
 			signedOut: false,
+			ready: true,
 			check: {
 				name: `Harness ACP handshake: ${HARNESS_REGISTRY.opencode.label}`,
 				pass: true,
@@ -199,11 +254,13 @@ describe("doctor — harness ACP handshake", () => {
 		const results = await checkHarnessHandshake();
 		const claude = results.find((h) => h.id === "claude-code");
 		expect(claude?.signInUnchecked).toBe(true);
-		expect(claude?.check).toMatchObject({ pass: false, hard: false });
+		expect(claude?.check).toMatchObject({ pass: true, hard: false });
 		expect(claude?.check.detail).toMatch(
 			/^answers ACP, fake 0;.*; sign-in not checked until a run starts: `claude \/login`/,
 		);
-		const verdict = summary([claude!.check], results);
+		// Only the selected agent's unseen sign-in is a warning (#907).
+		expect(summary([claude!.check], results).level).toBe("success");
+		const verdict = summary([claude!.check], results, "claude-code");
 		expect(verdict.level).toBe("warn");
 		expect(verdict.line).toBe(
 			"Required checks passed. Claude Code checks its sign-in only when a run starts, so a run fails there if it is not signed in.",
@@ -223,12 +280,12 @@ describe("doctor — harness ACP handshake", () => {
 		installFakeClaude("signed-out");
 		const results = await checkHarnessHandshake();
 		const claude = results.find((h) => h.id === "claude-code");
-		expect(claude).toMatchObject({ signedOut: true, signInUnchecked: false });
+		expect(claude).toMatchObject({ signedOut: true, signInUnchecked: false, ready: false });
 		expect(claude?.check).toMatchObject({ pass: false, hard: false });
 		expect(claude?.check.detail).toMatch(
 			/^answers ACP, fake 0;.*; not signed in: `claude \/login`/,
 		);
-		const verdict = summary([claude!.check], results);
+		const verdict = summary([], results, "claude-code");
 		expect(verdict).toEqual({
 			level: "warn",
 			line: "Required checks passed. Claude Code is not signed in, so a run fails until it is.",
@@ -247,13 +304,13 @@ describe("doctor — harness ACP handshake", () => {
 
 	it("ends in an error, not the sign-in warning, when a required check fails", () => {
 		const git = { name: "Git", pass: false, detail: "git missing", hard: true };
-		const harness = { name: "Harness available", pass: false, detail: "", hard: true };
+		const harness = { name: "Agent ready", pass: false, detail: "", hard: true };
 		expect(summary([git], [])).toEqual({
 			level: "error",
 			line: "1 required check(s) failed. Fix the above before running `pl up`.",
 		});
 		expect(summary([harness], []).line).toBe(
-			"No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed.",
+			"No agent can run. `pl up` still starts, but Investigate stays disabled until one can.",
 		);
 	});
 

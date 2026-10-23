@@ -311,9 +311,12 @@ export function listHarnessStatus(
 
 /** Every auto-order row's install line, for the doctor's ERROR and the app's tooltip. */
 export function installHints(): string {
-	return HARNESS_AUTO_ORDER.map(
-		(id) => `${HARNESS_REGISTRY[id].label}: ${HARNESS_REGISTRY[id].install}`,
-	).join("; ");
+	// The local agent has nothing to install; Settings → Agent sets it up.
+	return HARNESS_AUTO_ORDER.filter((id) => id !== "local")
+		.map(
+			(id) => `${HARNESS_REGISTRY[id].label}: ${HARNESS_REGISTRY[id].install}`,
+		)
+		.join("; ");
 }
 
 export function resolveHarnessSelection(

@@ -242,18 +242,28 @@ export function checkInstalls(
 	};
 }
 
+const AGENT_READY = "Agent ready";
+
 /**
- * HARD: at least one registry harness must be on PATH. Prismalens never bundles
- * or installs a harness (#337 C3/C4) — this is the detect-and-report failure.
+ * HARD: at least one agent must answer its handshake signed in. An agent that is
+ * absent or can't run is not a warning unless none can (#907); this one line names why.
  */
-export function checkAnyHarnessOnPath(perHarness: Check[]): Check {
-	const pass = perHarness.some((c) => c.pass);
+export function checkAnyAgentRunnable(handshakes: Handshake[]): Check {
+	const ready = handshakes.filter((h) => h.ready);
+	if (ready.length > 0)
+		return {
+			name: AGENT_READY,
+			pass: true,
+			detail: `${ready.map((h) => HARNESS_REGISTRY[h.id].label).join(", ")} ready`,
+			hard: true,
+		};
+	const failed = handshakes.map(
+		(h) => `\n  ${HARNESS_REGISTRY[h.id].label}: ${h.check.detail}`,
+	);
 	return {
-		name: "Harness available",
-		pass,
-		detail: pass
-			? "at least one harness is installed"
-			: `no harness found on PATH. Install one: ${installHints()}`,
+		name: AGENT_READY,
+		pass: false,
+		detail: `no agent can run. Set one up with Add agent in Settings → Agent, or install one: ${installHints()}${failed.join("")}\n  Agents set up only in Settings (binary path, local agent) are checked there, not here.`,
 		hard: true,
 	};
 }
@@ -268,6 +278,8 @@ export interface Handshake {
 	signInUnchecked: boolean;
 	/** It answered and said it is not signed in (#831). */
 	signedOut: boolean;
+	/** It answered and is not signed out: the only agents the doctor names (#907). */
+	ready: boolean;
 }
 
 /**
@@ -309,9 +321,10 @@ export async function checkHarnessHandshake(
 			servedModel: answered ? (probe.servedModel ?? null) : null,
 			signInUnchecked,
 			signedOut,
+			ready: answered && !signedOut,
 			check: {
 				name: `Harness ACP handshake: ${descriptor.label}`,
-				pass: answered && !signInUnchecked && !signedOut,
+				pass: answered && !signedOut,
 				detail: `${probe.detail}${sandboxSummary(probe.sandbox)}; ${signIn}`,
 				hard: false,
 			},
@@ -346,6 +359,8 @@ export function checkAutoSelection(
 ): Check[] {
 	const envHarness = process.env.PRISMALENS_HARNESS;
 	const selection = resolveHarnessSelection({ envHarness, pinSource: "env" });
+	// No agent at all is the Agent ready line's to say, once (#907).
+	if (!selection.runnable && selection.failure === "no-harness") return [];
 	if (!selection.runnable) {
 		return [
 			{
@@ -539,25 +554,29 @@ export function checkWebhookUrl(
 	};
 }
 
-/** The closing line: an agent whose sign-in the doctor can't see turns a pass into a warning, never ✔ (#673 S1). */
+/**
+ * The closing line: the selected agent's sign-in the doctor can't see turns a
+ * pass into a warning (#673 S1); other agents' sign-in is not its concern (#907).
+ */
 export function summary(
 	checks: Check[],
 	handshakes: Handshake[],
+	selected: HarnessId | null = null,
 ): { level: "success" | "warn" | "error"; line: string } {
 	const hardFailures = checks.filter((c) => c.hard && !c.pass);
 	if (hardFailures.length > 0) {
-		const onlyHarness = hardFailures.every(
-			(c) => c.name === "Harness available",
-		);
+		const onlyAgent = hardFailures.every((c) => c.name === AGENT_READY);
 		return {
 			level: "error",
-			line: onlyHarness
-				? "No harness on PATH. `pl up` still starts, but Investigate stays disabled until one is installed."
+			line: onlyAgent
+				? "No agent can run. `pl up` still starts, but Investigate stays disabled until one can."
 				: `${hardFailures.length} required check(s) failed. Fix the above before running \`pl up\`.`,
 		};
 	}
 	const labels = (pick: (h: Handshake) => boolean) =>
-		handshakes.filter(pick).map((h) => HARNESS_REGISTRY[h.id].label);
+		handshakes
+			.filter((h) => h.id === selected && pick(h))
+			.map((h) => HARNESS_REGISTRY[h.id].label);
 	const signedOut = labels((h) => h.signedOut);
 	const unchecked = labels((h) => h.signInUnchecked);
 	const notes = [
@@ -619,15 +638,20 @@ export default defineCommand({
 				handshakes.map((h) => [h.id, h.servedModel]),
 			);
 
+			const selection = resolveHarnessSelection({
+				envHarness: process.env.PRISMALENS_HARNESS,
+				pinSource: "env",
+			});
+			// Agents that are absent or can't run print nothing; Agent ready speaks for them (#907).
 			const checks: Check[] = [
 				checkNodeVersion(),
 				checkAppDataDir(),
 				checkPath(),
 				checkInstalls(),
 				...checkGit(),
-				...harnessChecks,
-				checkAnyHarnessOnPath(harnessChecks),
-				...handshakes.map((h) => h.check),
+				...harnessChecks.filter((c) => c.pass),
+				checkAnyAgentRunnable(handshakes),
+				...handshakes.filter((h) => h.ready).map((h) => h.check),
 				...checkAutoSelection(servedModels),
 				checkWebhookToken(),
 				checkPortHost(),
@@ -644,7 +668,11 @@ export default defineCommand({
 			}
 			consola.log("");
 
-			const verdict = summary(checks, handshakes);
+			const verdict = summary(
+				checks,
+				handshakes,
+				selection.runnable ? selection.harness : null,
+			);
 			consola[verdict.level](verdict.line);
 			if (verdict.level === "error") process.exit(1);
 		} catch (err) {
