@@ -92,6 +92,7 @@ application.log
 
 # Packaging artifacts (scripts/pack-cli.mjs)
 packages/cli/dist-pack/
+packages/@prismalens/agent-adapters/dist-pack/
 packages/cli/.pack-staging/
 *.tgz
 
@@ -104,3 +105,4 @@ packages/cli/.pack-staging/
 # Electron launcher: staged backend and built app
 packages/desktop/resources/
 packages/desktop/release/
+.turbo-cache/

@@ -88,11 +88,30 @@ export const timeArg = z
 	.string()
 	.trim()
 	.max(40)
-	.regex(/^[0-9TZ:.+-]+$/, "RFC 3339 or unix seconds");
+	.regex(/^[0-9TZ:.+-]+$/, "RFC 3339 or unix seconds")
+	.refine(
+		(t) =>
+			/^\d+(\.\d+)?$/.test(t) ||
+			/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/.test(
+				t,
+			),
+		"RFC 3339 with an explicit timezone, or unix seconds",
+	)
+	.refine((t) => Number.isFinite(toUnixSeconds(t)), "RFC 3339 or unix seconds");
 
-/** Unix seconds for a `timeArg` (digits, or RFC 3339); NaN when it is neither. */
-export const toUnixSeconds = (t: string): number =>
-	/^\d+(\.\d+)?$/.test(t) ? Number(t) : Date.parse(t) / 1000;
+/** Date.parse rolls 2026-02-30 over to March 2; the calendar day is checked apart. */
+const realDay = (t: string): boolean => {
+	const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+	if (!m) return true;
+	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+	return new Date(Date.UTC(y, mo - 1, d)).getUTCDate() === d;
+};
+
+/** Unix seconds for a `timeArg` (digits, or RFC 3339); NaN when it is neither or the day is not real. */
+export function toUnixSeconds(t: string): number {
+	if (/^\d+(\.\d+)?$/.test(t)) return Number(t);
+	return realDay(t) ? Date.parse(t) / 1000 : Number.NaN;
+}
 
 /** The run id lets the gateway note which connections a run met (OBJ-010). */
 export type QuerySources = (

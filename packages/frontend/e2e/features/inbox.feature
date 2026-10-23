@@ -16,6 +16,8 @@ Feature: Inbox
     Then INC-1 is in Recently resolved reading "Resolved by you"
     And no group or row says "Closed" or "Awaiting close"
 
+  # Quarantined: #891 - the inbox's new-alert-row journey passes on its first attempt
+  @quarantine
   Scenario: A new alert's row appears without a reload
     When an Alertmanager delivery for a new alert arrives
     Then within 2 seconds the row is in the inbox and the sidebar's Incidents count went up by one

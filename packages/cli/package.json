@@ -1,6 +1,6 @@
 {
 	"name": "prismalens",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"description": "Self-hosted incident investigation: an alert arrives, the coding agent you already use investigates a snapshot of the service's code, and the run, evidence and cause stay on the incident.",
 	"license": "Apache-2.0",
 	"type": "module",
@@ -54,7 +54,7 @@
 		"@prismalens/database": "workspace:*",
 		"@prismalens/engine": "workspace:*",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "^5.0.3",
+		"@vitest/coverage-v8": "^5.0.5",
 		"tsup": "^8.5.1",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
