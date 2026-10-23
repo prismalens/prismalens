@@ -111,6 +111,10 @@ import {
 import { builtinModules, createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	NATIVE_COPIES,
+	stageAdapters,
+} from "../packages/@prismalens/agent-adapters/scripts/pack.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -139,13 +143,10 @@ const PINNED = {
 const VENDORED = ["@prisma/adapter-better-sqlite3"];
 
 /**
- * First-party packages whose pinned dependencies are installed inside them with
- * `--omit=optional`, never hoisted: the ACP adapters run the user's own claude /
- * codex, and their optional native copies are ~620 MB nobody runs (#818).
+ * Staged by the package's own pack script, never hoisted: its pins, the native-copy
+ * strip and the licence texts live there once, for npm and for this tarball (#818).
  */
 const NESTED = ["@prismalens/agent-adapters"];
-const NATIVE_COPIES =
-	/node_modules\/(@anthropic-ai\/claude-agent-sdk-|@openai\/codex-)[a-z]/;
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -614,6 +615,14 @@ function assertTarball(tarball, copiedNames) {
 			if (!has((e) => e === entry))
 				fail(`the tarball has no ${dep} inside ${name}`);
 		}
+		if (
+			!has((e) =>
+				e.startsWith(
+					`package/node_modules/@prismalens/${short}/THIRD_PARTY_LICENSES/`,
+				),
+			)
+		)
+			fail(`the tarball has no THIRD_PARTY_LICENSES inside ${name}`);
 	}
 	const natives = entries.filter((e) => NATIVE_COPIES.test(e));
 	if (natives.length > 0) {
@@ -760,6 +769,10 @@ export function packCli() {
 		const { dir, manifest } = workspace.get(name);
 		const target = join(stagedModules, name.replace("@prismalens/", ""));
 		mkdirSync(target, { recursive: true });
+		if (NESTED.includes(name)) {
+			stageAdapters(target);
+			continue;
+		}
 
 		const distDir = join(dir, "dist");
 		if (!existsSync(distDir)) fail(`${name} has no dist/ — it was never built`);
@@ -776,40 +789,8 @@ export function packCli() {
 
 		writeFileSync(
 			join(target, "package.json"),
-			`${JSON.stringify(
-				NESTED.includes(name)
-					? { ...stagedManifest(manifest), dependencies: manifest.dependencies }
-					: stagedManifest(manifest),
-				null,
-				"\t",
-			)}\n`,
+			`${JSON.stringify(stagedManifest(manifest), null, "\t")}\n`,
 		);
-		if (NESTED.includes(name)) {
-			for (const [dep, spec] of Object.entries(manifest.dependencies ?? {})) {
-				if (!/^\d+\.\d+\.\d+$/.test(spec))
-					fail(`${name} must pin ${dep} exactly, not ${spec}`);
-			}
-			console.log(`==> installing ${name}'s pins without optional deps`);
-			run(
-				"npm",
-				[
-					"install",
-					"--omit=optional",
-					"--omit=dev",
-					"--ignore-scripts",
-					"--no-package-lock",
-					"--no-audit",
-					"--no-fund",
-					"--loglevel",
-					"warn",
-				],
-				target,
-			);
-			for (const file of walkFiles(join(target, "node_modules"))) {
-				if (isNoise(file)) rmSync(file);
-			}
-		}
-
 		if (name === "@prismalens/database") {
 			// Migration SQL + schema, applied at first boot through the
 			// better-sqlite3 adapter. The `prisma` CLI is NOT in the published

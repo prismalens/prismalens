@@ -7,8 +7,8 @@
  * tarball upgrade a populated database that predates `investigation_turns`,
  * and claim each legacy pending job with the right intent?
  *
- * Installs the tarball, migrates a fresh workspace to every shipped migration
- * but `investigation_turns`, seeds four incidents each holding one pending job
+ * Installs the tarball, migrates a fresh workspace to the shipped migrations
+ * before `investigation_turns`, seeds four incidents each holding one pending job
  * of a legacy payload form (first investigation, chat, Ask with no kind,
  * continue), then boots `pl up` on it with the fake ACP agent on PATH. The
  * agent holds each turn until released, so the script reads every claimed
@@ -157,17 +157,16 @@ async function seed(pkgRoot) {
 	);
 	const shipped = migrator.resolveMigrationsDir();
 	const before = mkdtempSync(join(prefix, "migrations-"));
-	let skipped = 0;
-	for (const name of readdirSync(shipped)) {
-		if (!existsSync(join(shipped, name, "migration.sql"))) continue;
-		if (name.endsWith(TURNS)) {
-			skipped++;
-			continue;
-		}
-		cpSync(join(shipped, name), join(before, name), { recursive: true });
-	}
-	if (skipped !== 1)
+	// The runner refuses a history that is not an ordered prefix (#335), so the
+	// pre-upgrade database holds the migrations before `investigation_turns`, not all but it.
+	const names = readdirSync(shipped)
+		.filter((name) => existsSync(join(shipped, name, "migration.sql")))
+		.sort();
+	const at = names.findIndex((name) => name.endsWith(TURNS));
+	if (at < 0)
 		throw new Error(`the tarball ships no ${TURNS} migration to upgrade to`);
+	for (const name of names.slice(0, at))
+		cpSync(join(shipped, name), join(before, name), { recursive: true });
 	const databaseFile = join(workspace, "prismalens.db");
 	await migrator.runMigrations({
 		databaseFile,
