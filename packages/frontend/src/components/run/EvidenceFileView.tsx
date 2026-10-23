@@ -11,6 +11,7 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Loading, Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 import {
@@ -82,7 +83,7 @@ export function EvidenceFileView({
 		ok && blob.content !== null && blob.kind === "file"
 			? blob.size > PLAIN_TEXT_OVER
 			: false;
-	return (
+	const view = (
 		<section
 			aria-label={`${file.path} at ${sha7}`}
 			className={cn(
@@ -193,6 +194,9 @@ export function EvidenceFileView({
 			)}
 		</section>
 	);
+	// The page frame is position:fixed, a stacking context its z-50 cannot leave, so on
+	// a phone the sheet sat under the z-40 topbar; the body is the only way out (#874).
+	return phone ? createPortal(view, document.body) : view;
 }
 
 function Say({
