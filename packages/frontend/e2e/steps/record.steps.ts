@@ -21,6 +21,7 @@ import {
 	LIVE,
 	type Made,
 	openBoard,
+	openWork,
 	waitForRun,
 } from "./product";
 
@@ -272,6 +273,7 @@ Then(
 		await expect(page.getByTestId("reconnect-line")).toBeHidden({
 			timeout: 15_000,
 		});
+		await openWork(page);
 		await expect(page.getByTestId("transcript")).toContainText(
 			"recent commits",
 			{
