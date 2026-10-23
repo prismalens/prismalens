@@ -67,24 +67,32 @@ when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
   not decide it, and no workflow depends on either answer.
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
-script against the real harness on PATH; `live-agent.yml` calls it that way.
+script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls it that way.
 
-## `live-agent.yml` jobs: the live tier
+## `ci.yml` live jobs: the live tier
 
 The live tier checks that the pinned agent and a real free model still complete
 an investigation. It runs nightly on `main` and on demand, and nothing requires
-it. The agent is pinned to the version `ci.yml` pins; it is not a run against
-agents' latest releases (#639, #712).
+it. The agent is pinned to the version `harness-admission` pins; it is not a run
+against agents' latest releases (#639, #712).
+
+The live jobs run only on `schedule` and `workflow_dispatch`, and the PR jobs and
+`CI gate` run on every event except those two, so one run is either the PR tier or
+the live tier, never both. A live run has its own concurrency group
+(`live-agent-<ref>`) and is never cancelled, so it and a push run on `main` cannot
+cancel each other.
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
+| `live-pack` | none; packs the tarball the live intake installs | nightly on `main`; dispatch | no |
 | `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly on `main`; dispatch | no |
 | `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly on `main`; dispatch | no |
 | `report-failure` | none | after a failed nightly | no |
 
-- **Release gate:** dispatch it with `ref` set to the release PR's base SHA
-  (`gh workflow run live-agent.yml -f ref=<sha>`) and link the run from the PR.
-  Only the nightly schedule files the failure issue.
+- **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
+  (`gh workflow run ci.yml --ref main -f ref=<sha>`) and link the run from the PR.
+  Only the nightly schedule files the failure issue. Dispatch on `main`, not on a
+  PR branch: a dispatched run on a branch adds a skipped `CI gate` to its head commit.
 - **On a failed night:** `report-failure` comments on the open issue titled
   "Live agent check failing on main", or opens it, with the run link.
 - **Event streams:** each packed-intake attempt uploads its paged
@@ -161,11 +169,10 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push` | build, test, lint, pack; aggregates to `CI gate` |
+| `ci.yml` | `pull_request`, `push`, `merge_group`, schedule, dispatch | build, test, lint, pack; aggregates to `CI gate`. Nightly and on dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
-| `live-agent.yml` | schedule, dispatch | nightly and release-dispatch live agent check: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
 | `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket |
 | `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
