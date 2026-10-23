@@ -51,6 +51,7 @@ import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { reportCitedPaths } from "./lib/cited-paths.mjs";
 import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -150,7 +151,7 @@ async function main() {
 	const tgz = findTarball();
 	console.log(`[packed-intake] tarball: ${tgz}`);
 	console.log(`[packed-intake] installing into ${prefix}`);
-	execFileSync(
+	installWithRetry(
 		"npm",
 		[
 			"install",

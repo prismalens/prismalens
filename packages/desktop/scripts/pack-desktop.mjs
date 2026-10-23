@@ -34,6 +34,7 @@ import {
 	missingLicences,
 	prune,
 } from "../../../scripts/lib/node-modules-tree.mjs";
+import { installWithRetry } from "../../../scripts/lib/npm-install-retry.mjs";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(here, "../../..");
@@ -59,7 +60,7 @@ const npm =
 	process.platform === "win32"
 		? { command: "cmd.exe", prefix: ["/d", "/c", "npm"] }
 		: { command: "npm", prefix: [] };
-execFileSync(
+installWithRetry(
 	npm.command,
 	[
 		...npm.prefix,

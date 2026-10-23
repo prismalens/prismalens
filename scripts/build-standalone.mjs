@@ -26,6 +26,7 @@ import {
 	missingLicences,
 	prune,
 } from "./lib/node-modules-tree.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(__filename);
@@ -463,7 +464,7 @@ async function main() {
 			env.Path = env.PATH;
 		}
 
-		execFileSync(
+		installWithRetry(
 			bundledNode,
 			[
 				bundledNpmCli,

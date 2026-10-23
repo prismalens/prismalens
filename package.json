@@ -27,6 +27,7 @@
 		"format-and-lint:fix": "biome check . --write",
 		"e2e:libs": "node scripts/e2e-libs.mjs",
 		"publint": "pnpm --filter prismalens exec publint --strict",
+		"publint:packed": "publint packages/cli/.pack-staging --pack npm --strict && publint packages/@prismalens/agent-adapters/.pack-staging --pack npm --strict",
 		"pack": "node scripts/pack-cli.mjs",
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
 		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs"

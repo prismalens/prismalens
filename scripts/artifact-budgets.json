@@ -9,5 +9,5 @@
 	"win32-x64": { "bytes": 103624026, "files": 22964 },
 	"desktop-Linux": { "mb": 461, "files": 1000 },
 	"desktop-Windows": { "mb": 547, "files": 1000 },
-	"desktop-macOS": { "mb": 547, "files": 1000 }
+	"desktop-macOS": { "mb": 463, "files": 1000 }
 }

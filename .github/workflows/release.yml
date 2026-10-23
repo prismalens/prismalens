@@ -81,8 +81,6 @@ jobs:
       release-tag: ${{ needs.draft.outputs.tag }}
     permissions:
       contents: write
-      id-token: write
-      attestations: write
 
   desktop:
     needs: draft
@@ -92,9 +90,36 @@ jobs:
     permissions:
       contents: write
 
+  # One SHA256SUMS over every asset on the draft, and one build-provenance attestation
+  # over it: `gh attestation verify <asset> --repo prismalens/prismalens` (#906).
+  sums:
+    name: Checksums and provenance
+    needs: [draft, standalone, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release download "$TAG" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -D assets --repo "$GITHUB_REPOSITORY"
+      - name: Write SHA256SUMS
+        run: cd assets && sha256sum $(ls | LC_ALL=C sort) > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - name: Upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+
   npm:
     name: Publish to npm
-    needs: [draft, standalone, desktop]
+    needs: [draft, sums]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -126,9 +151,11 @@ jobs:
       - if: steps.npm.outputs.published != 'true'
         run: pnpm publint
       # An older version finished after a newer one must not take npm's `latest`.
+      # Provenance is required, so a publish that cannot make it fails closed (#906).
       - if: steps.npm.outputs.published != 'true'
         env:
           DIST_TAG: ${{ needs.draft.outputs.latest == 'true' && 'latest' || 'previous' }}
+          NPM_CONFIG_PROVENANCE: "true"
         run: node scripts/pack-cli.mjs --publish --tag "$DIST_TAG"
 
   # npm goes first: publishing the release is what the in-app update notice reads
