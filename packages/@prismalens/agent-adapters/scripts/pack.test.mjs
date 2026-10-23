@@ -104,4 +104,5 @@ test("the packed tarball carries the bundles, the SDK flat, no native copy, and 
 		),
 	);
 	assert.equal(sdk.optionalDependencies, undefined);
+	assert.equal(sdk.peerDependencies, undefined);
 });

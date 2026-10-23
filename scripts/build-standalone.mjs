@@ -12,6 +12,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -19,6 +20,12 @@ import {
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	addLicences,
+	hollowPackages,
+	missingLicences,
+	prune,
+} from "./lib/node-modules-tree.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(__filename);
@@ -276,11 +283,11 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$TARGET")" >/dev/null 2>&1 && pwd)"
 export PRISMALENS_INSTALL=standalone
 if [ -f "$SCRIPT_DIR/../node/bin/node" ]; then
-  exec "$SCRIPT_DIR/../node/bin/node" "$SCRIPT_DIR/../lib/node_modules/prismalens/dist/bin/prismalens.js" "$@"
+  exec "$SCRIPT_DIR/../node/bin/node" "$SCRIPT_DIR/../app/dist/bin/prismalens.js" "$@"
 elif [ -f "$SCRIPT_DIR/../node/node.exe" ]; then
-  exec "$SCRIPT_DIR/../node/node.exe" "$SCRIPT_DIR/../lib/node_modules/prismalens/dist/bin/prismalens.js" "$@"
+  exec "$SCRIPT_DIR/../node/node.exe" "$SCRIPT_DIR/../app/dist/bin/prismalens.js" "$@"
 else
-  exec "$SCRIPT_DIR/../node/node" "$SCRIPT_DIR/../lib/node_modules/prismalens/dist/bin/prismalens.js" "$@"
+  exec "$SCRIPT_DIR/../node/node" "$SCRIPT_DIR/../app/dist/bin/prismalens.js" "$@"
 fi
 `;
 
@@ -295,7 +302,7 @@ if exist "%SCRIPT_DIR%..\\node\\node.exe" (
 ) else (
   set "NODE_EXE=%SCRIPT_DIR%..\\node\\bin\\node"
 )
-"%NODE_EXE%" "%SCRIPT_DIR%..\\lib\\node_modules\\prismalens\\dist\\bin\\prismalens.js" %*
+"%NODE_EXE%" "%SCRIPT_DIR%..\\app\\dist\\bin\\prismalens.js" %*
 `;
 
 	if (isWindows) {
@@ -436,9 +443,9 @@ async function main() {
 			throw new Error(`Bundled npm-cli.js not found in ${nodeDir}`);
 		}
 
-		// 2. Install tarball with the BUNDLED node's npm
-		const libDir = join(bundleDir, "lib");
-		mkdirSync(libDir, { recursive: true });
+		// 2. Install the tarball globally with the BUNDLED node's npm, then relocate the
+		// package to <bundle>/app: the npm global tree, minus the lib/node_modules prefix (#906).
+		const globalDir = join(stage, ".g");
 		console.log(`==> Installing ${tarballPath} with bundled node npm`);
 		const nodeBinDir = dirname(bundledNode);
 		const rawPath =
@@ -461,8 +468,9 @@ async function main() {
 			[
 				bundledNpmCli,
 				"install",
+				"-g",
 				"--prefix",
-				libDir,
+				globalDir,
 				"--omit=dev",
 				"--no-audit",
 				"--no-fund",
@@ -473,6 +481,47 @@ async function main() {
 				env,
 			},
 		);
+		const installed = [
+			join(globalDir, "lib", "node_modules", "prismalens"),
+			join(globalDir, "node_modules", "prismalens"),
+		].find((p) => existsSync(p));
+		if (!installed)
+			throw new Error(`npm installed no prismalens under ${globalDir}`);
+		const appDir = join(bundleDir, "app");
+		renameSync(installed, appDir);
+		rmSync(globalDir, { recursive: true, force: true });
+
+		const hollow = hollowPackages(appDir);
+		if (hollow.length > 0) {
+			throw new Error(`npm left packages empty: ${hollow.join(", ")}`);
+		}
+		const appModules = join(appDir, "node_modules");
+		addLicences(appModules, join(REPO_ROOT, "packages", "desktop", "licences"));
+		const pruned = prune(appModules);
+		const missing = missingLicences(appDir);
+		if (missing.length > 0) {
+			throw new Error(
+				`the archive carries no licence text for: ${missing.join(", ")}`,
+			);
+		}
+		console.log(
+			`==> app/: pruned ${pruned} files; every package carries a licence text`,
+		);
+
+		// The runtime needs only the node binary: npm, corepack and headers stay out (#906).
+		const keep = isWindows
+			? new Set(["node.exe", "LICENSE"])
+			: new Set(["bin", "LICENSE"]);
+		for (const entry of readdirSync(nodeDir)) {
+			if (!keep.has(entry))
+				rmSync(join(nodeDir, entry), { recursive: true, force: true });
+		}
+		if (!isWindows) {
+			for (const entry of readdirSync(join(nodeDir, "bin"))) {
+				if (entry !== "node")
+					rmSync(join(nodeDir, "bin", entry), { recursive: true, force: true });
+			}
+		}
 
 		// 3. Write launchers in <stage>/bin/
 		const binDir = join(bundleDir, "bin");

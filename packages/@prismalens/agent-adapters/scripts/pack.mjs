@@ -111,9 +111,15 @@ export function stageAdapters(staging) {
 	});
 	const sdk = JSON.parse(readFileSync(join(to, "package.json"), "utf8"));
 	sdk["//"] =
-		"dependencies and optionalDependencies dropped by @prismalens/agent-adapters scripts/pack.mjs (#818)";
-	sdk.dependencies = undefined;
-	sdk.optionalDependencies = undefined;
+		"dependencies, optional and peer dependencies dropped by @prismalens/agent-adapters scripts/pack.mjs (#818, #906)";
+	// Its peers too: npm would treat them as part of the bundle and leave them empty (#906).
+	for (const field of [
+		"dependencies",
+		"optionalDependencies",
+		"peerDependencies",
+		"peerDependenciesMeta",
+	])
+		sdk[field] = undefined;
 	writeFileSync(
 		join(to, "package.json"),
 		`${JSON.stringify(sdk, null, 2)}
