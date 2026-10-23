@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -218,5 +219,42 @@ test.describe("Add agent (#907)", () => {
 		await page.getByTestId("rail-add-agent").click();
 		await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
 		await expect(page.getByTestId("add-agent-tile-codex")).toBeVisible();
+	});
+});
+
+test.describe("Add agent on the real stack (#907)", () => {
+	test("a Local ACP command running the fake agent joins the list after its check", async ({
+		page,
+	}) => {
+		test.setTimeout(90_000);
+		const fake = fileURLToPath(
+			new URL("../../../../scripts/fakes/fake-acp-agent.mjs", import.meta.url),
+		);
+		try {
+			await page.goto("/settings?tab=harness");
+			await expect(page.getByTestId("harness-settings")).toBeVisible({
+				timeout: 15_000,
+			});
+			await page.getByTestId("harness-add-agent").first().click();
+			await page.getByTestId("add-agent-tile-local").click();
+			await page.getByTestId("add-agent-command").fill(process.execPath);
+			await page
+				.getByTestId("add-agent-args")
+				.fill(`${JSON.stringify(fake)} --session success`);
+			await page.getByTestId("add-agent-next").click();
+			await expect(page.getByTestId("add-agent-signin")).toBeVisible();
+			await page.getByTestId("add-agent-next").click();
+			await page.getByTestId("add-agent-check-and-add").click();
+			await expect(page.getByTestId("add-agent-dialog")).toHaveCount(0, {
+				timeout: 30_000,
+			});
+			await expect(
+				page.getByTestId("harness-registry").getByTestId("harness-row-local"),
+			).toBeVisible();
+		} finally {
+			await page.request.patch("/api/settings/harness", {
+				data: { localAgent: null },
+			});
+		}
 	});
 });
