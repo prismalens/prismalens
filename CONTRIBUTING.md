@@ -109,7 +109,7 @@ A PR never waits on a live model (#884). The agent loop is checked two ways:
 | --- | --- | --- | --- |
 | `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
 | `harness-admission` (R1-R7) | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`) | every PR | `ci.yml` |
-| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `live-agent.yml` |
+| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `ci.yml` (schedule and dispatch only) |
 
 Run the PR admission yourself, with the agent on PATH (`opencode@1.18.30` or `claude@2.1.296`):
 
@@ -130,7 +130,7 @@ The driver starts the server on `127.0.0.1`, points the agent at it (a provider 
 `packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
 R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
 function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
-A change that needs a live model to show up goes to `live-agent.yml`, not into a PR check.
+A change that needs a live model to show up goes to the live jobs in `ci.yml`, not into a PR check.
 
 ## Database migrations
 
