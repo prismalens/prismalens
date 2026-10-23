@@ -97,9 +97,44 @@ if (AGENT === "fake" && process.env.PACKED_INTAKE_REPO !== "fixture") {
 
 let child;
 let cleaned = false;
+
+// The API leads each ACP agent in its own process group, so SIGKILL on `pl up`
+// alone orphans it; walk by parent pid instead (#904). pgrep: Linux runner only.
+function descendantPids(root) {
+	const found = [];
+	const queue = [root];
+	while (queue.length > 0) {
+		let out = "";
+		try {
+			out = execFileSync("pgrep", ["-P", String(queue.shift())], {
+				encoding: "utf8",
+			});
+		} catch {
+			continue;
+		}
+		for (const line of out.split("\n")) {
+			const pid = Number(line);
+			if (pid > 0) {
+				found.push(pid);
+				queue.push(pid);
+			}
+		}
+	}
+	return found;
+}
+
 function cleanup(exitCode) {
 	if (cleaned) return;
 	cleaned = true;
+	if (child?.pid) {
+		for (const pid of descendantPids(child.pid).reverse()) {
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				// already gone
+			}
+		}
+	}
 	try {
 		child?.kill("SIGKILL");
 	} catch {
