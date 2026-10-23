@@ -409,34 +409,36 @@ export function ModelChip({
 					search.current?.focus();
 				}}
 			>
-				<div
-					ref={rail}
-					role="tablist"
-					aria-orientation="vertical"
-					aria-label="Agents"
-					onKeyDown={onRailKeys}
-					className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto bg-surface-1 py-1.5 [scrollbar-width:none]"
-					data-testid="picker-rail"
-				>
-					<RailTile
-						on={shown === "starred"}
-						label="Starred"
-						onClick={() => setTile("starred")}
-						testId="rail-starred"
+				<div className="flex min-h-0 flex-col items-center bg-surface-1 pb-1.5">
+					<div
+						ref={rail}
+						role="tablist"
+						aria-orientation="vertical"
+						aria-label="Agents"
+						onKeyDown={onRailKeys}
+						className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-1.5 [scrollbar-width:none]"
+						data-testid="picker-rail"
 					>
-						<StarredMark className="size-[18px]" />
-					</RailTile>
-					{onRail.map((h) => (
 						<RailTile
-							key={h.id}
-							on={shown === h.id}
-							label={unreadyReason(h) ?? h.label}
-							onClick={() => setTile(h.id)}
-							testId={`rail-${h.id}`}
+							on={shown === "starred"}
+							label="Starred"
+							onClick={() => setTile("starred")}
+							testId="rail-starred"
 						>
-							<AgentMark id={h.id} className="size-5" />
+							<StarredMark className="size-[18px]" />
 						</RailTile>
-					))}
+						{onRail.map((h) => (
+							<RailTile
+								key={h.id}
+								on={shown === h.id}
+								label={unreadyReason(h) ?? h.label}
+								onClick={() => setTile(h.id)}
+								testId={`rail-${h.id}`}
+							>
+								<AgentMark id={h.id} className="size-5" />
+							</RailTile>
+						))}
+					</div>
 					{/* Every supported agent, set up or not, is one step away (#907, operator's clarification). */}
 					<Hint label="Add agent" side="left">
 						<button
@@ -446,7 +448,7 @@ export function ModelChip({
 								setOpen(false);
 								setAdding(true);
 							}}
-							className="mt-auto inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
+							className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
 							data-testid="rail-add-agent"
 						>
 							<Plus className="size-4" />

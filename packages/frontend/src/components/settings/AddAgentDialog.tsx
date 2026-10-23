@@ -214,7 +214,7 @@ export function AddAgentDialog({
 
 				{step === 0 && (
 					<div className="grid gap-3">
-						<div className="grid grid-cols-2 gap-2" role="radiogroup">
+						<div className="grid grid-cols-2 gap-2">
 							{agents.map((h) => (
 								<Tile
 									key={h.id}
@@ -402,8 +402,7 @@ function Tile({
 	return (
 		<button
 			type="button"
-			role="radio"
-			aria-checked={on}
+			aria-pressed={on}
 			onClick={onClick}
 			className={cn(
 				"flex min-h-14 items-center gap-2.5 rounded-control bg-surface-2 px-3 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3",
