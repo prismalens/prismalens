@@ -75,6 +75,7 @@ import {
 	operatorToken,
 	storedCandidates,
 } from "./session.js";
+import { type Splash, splashHtml, startWithSplash } from "./splash.js";
 import {
 	appendTail,
 	type BackendSpawn,
@@ -648,6 +649,8 @@ function runForStdout(plan: BackendSpawn): Promise<string> {
 	});
 }
 
+const FIRST_SHOW_MS = 15_000;
+
 function openWindow(path = "/"): void {
 	// `second-instance` and `activate` can fire while the backend is booting.
 	if (!ready) return;
@@ -678,7 +681,26 @@ function openWindow(path = "/"): void {
 		},
 	});
 	state.manage(window);
-	window.once("ready-to-show", () => window?.show());
+	// A failed load or a dead renderer never paints; show the window anyway so
+	// the splash does not outlive the failure (#897).
+	let shown = false;
+	const firstShow = () => {
+		if (shown) return;
+		shown = true;
+		clearTimeout(firstShowTimer);
+		window?.show();
+		onFirstShow?.();
+		onFirstShow = null;
+	};
+	const firstShowTimer = setTimeout(firstShow, FIRST_SHOW_MS);
+	window.once("ready-to-show", firstShow);
+	window.webContents.on(
+		"did-fail-load",
+		(_e, _code, _desc, _url, isMainFrame) => {
+			if (isMainFrame) firstShow();
+		},
+	);
+	window.webContents.once("render-process-gone", firstShow);
 	// PRISMALENS_DESKTOP_SMOKE=<png path>: prove the window rendered the app,
 	// write the capture, quit. What CI runs under xvfb, and what a box with no
 	// display server to look at runs by hand.
@@ -919,6 +941,36 @@ function startUpdateChecks(): void {
 	void check();
 }
 
+function showSplash(): Splash {
+	const win = new BrowserWindow({
+		width: 360,
+		height: 280,
+		frame: false,
+		resizable: false,
+		show: false,
+		title: TITLE,
+		backgroundColor: backgroundColor(
+			nativeTheme.shouldUseDarkColors ? "dark" : "light",
+		),
+		...(process.platform === "darwin" ? {} : { icon: asset("icon.png") }),
+	});
+	const icon = `data:image/png;base64,${readFileSync(asset("icon.png")).toString("base64")}`;
+	const html = splashHtml(
+		nativeTheme.shouldUseDarkColors ? "dark" : "light",
+		icon,
+	);
+	win.once("ready-to-show", () => win.show());
+	void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+	return {
+		close: () => {
+			if (!win.isDestroyed()) win.destroy();
+		},
+	};
+}
+
+/** Opens the main window and runs `onFirstShow` once, when it first paints. */
+let onFirstShow: (() => void) | null = null;
+
 function afterBoot(): void {
 	booted = true;
 	buildTray();
@@ -957,8 +1009,15 @@ if (!app.requestSingleInstanceLock()) {
 				showLookUpSelection: false,
 				showInspectElement: !app.isPackaged,
 			});
-			await boot();
-			afterBoot();
+			await startWithSplash({
+				showSplash,
+				boot,
+				openMain: (done) => {
+					onFirstShow = done;
+					afterBoot();
+				},
+				refuse,
+			});
 		})
 		.catch((error) => {
 			console.error(error);

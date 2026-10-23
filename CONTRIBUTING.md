@@ -84,6 +84,12 @@ Two things to know before running it locally:
 - On failure, CI uploads the `playwright-report` artifact (7-day retention); read that rather than
   re-running blind.
 
+A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` (a
+`{ tag: "@quarantine" }` option, or the tag line above a Gherkin scenario) with a comment naming its
+open `bug` issue, one per test. It then runs in the non-blocking `chromium-quarantine` and
+`journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its
+flaky and failed tests in the job summary.
+
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
@@ -94,6 +100,37 @@ API call. Nothing is seeded or written to the database by hand. The API scenario
 empty workspace; the e2e stack's demo seed is there only for screens that read. A walk finding is
 fixed together with the journey or scenario that would have caught it. How to write one:
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
+
+### Agent-loop checks: scripted on PRs, live nightly
+
+A PR never waits on a live model (#884). The agent loop is checked two ways:
+
+| Check | Model | Runs | Where |
+| --- | --- | --- | --- |
+| `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
+| `harness-admission` (R1-R7) | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`) | every PR | `ci.yml` |
+| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `live-agent.yml` |
+
+Run the PR admission yourself, with the agent on PATH (`opencode@1.18.30` or `claude@2.1.296`):
+
+```bash
+pnpm --filter "@prismalens/contracts..." build
+node scripts/admission-fake.mjs opencode "$PWD" --repeat 3
+```
+
+```text
+run 1/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+run 2/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+run 3/3: exit 0 R1-R4=pass R5=pass R6=pass R7=skipped
+fake model served 12 requests
+```
+
+The driver starts the server on `127.0.0.1`, points the agent at it (a provider block in a throwaway
+`XDG_CONFIG_HOME` for OpenCode, `ANTHROPIC_BASE_URL` for Claude Code), runs
+`packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
+R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
+function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
+A change that needs a live model to show up goes to `live-agent.yml`, not into a PR check.
 
 ## Database migrations
 
@@ -325,9 +362,10 @@ than letting it evaporate.
 
 ## Releases and package publishing
 
-One package publishes to npm: `prismalens` (the CLI). Its first-party library
-closure is `private: true` and bundled into the CLI tarball at build time, so
-it never publishes separately (issue #193).
+Two packages publish to npm: `prismalens` (the CLI) and
+`@prismalens/agent-adapters`. The CLI's other first-party libraries are
+`private: true` and bundled into the CLI tarball at build time, so they never
+publish separately (issue #193).
 
 Versioning and publishing run through
 [release-please](https://github.com/googleapis/release-please)
@@ -384,9 +422,24 @@ The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
 with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
 
+### Publishing `@prismalens/agent-adapters`
+
+Its pins move with the agent registry, not with a CLI release, so it publishes by
+hand: run the `Publish agent adapters` workflow, which publishes with npm
+provenance. To inspect the tarball locally, run
+`pnpm --filter @prismalens/agent-adapters pack:npm`; it builds the package, then
+writes the tarball to `packages/@prismalens/agent-adapters/dist-pack/`.
+
+The tarball bundles the pinned adapters without their optional native agent
+copies, so installing it, or anything that depends on it, never downloads an
+agent binary; each adapter runs the user's own `claude` or `codex`. It carries the
+licence texts of the adapters and the agent libraries they load under
+`THIRD_PARTY_LICENSES/`.
+
 ### Release-gate side checks
 
-Before a release PR merges, a packed-tarball walk passes on its base SHA (#673).
+Before a release PR merges, a packed-tarball walk passes on its base SHA
+([`RELEASING.md`](RELEASING.md)).
 `pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
 side checks against that tarball, or packs the built CLI when no tarball is given:
 the telemetry notice and its four off switches, the update notice, the workspace
@@ -406,22 +459,24 @@ Product documentation lives on the documentation website at
 only the root `README.md`, package `README.md` files, and contributor process
 documentation.
 
-Every release milestone (`R1` through `R5`) carries three standing exit issues
-created when the milestone is created. All three carry the `post-release` label
-and are assigned to that milestone:
+Each 0.x release is gated by its own Phase gate issue, which `phase-gate.yml` files
+when the release's milestone is created, from the patch or minor template in
+`.github/release-checklists/`. A packed walk passes on the release PR's base SHA
+(see [`RELEASING.md`](RELEASING.md)), docs.prismalens.io
+documents every command, flag, configuration key and page the release changed
+(checked against the packed tarball, links validated on the built site), and a
+minor release runs a scripted live test against the tarball, not the source
+tree. A patch release walks the steps its diff changed plus a fixed core; a minor
+release walks everything. Each walk's findings go in the Phase gate issue or
+one linked `X.Y.Z walk findings` issue.
 
-- `docs: RN (<Name>) exit criteria`. The milestone does not close until
-  docs.prismalens.io documents every command, flag, and configuration key shipped
-  in the release, with input and output symmetry, validated links on the built
-  site, and an adversarial docs review.
-- `live-test: RN (<Name>) exit gate`. A scripted live test runs against the
-  packed tarball, not the source tree, across incident scenarios relevant to the
-  release.
-- `release: RN (<Name>)`. The release checklist itself, covering the
-  release-please PR, verification against npm, closure of the docs and
-  live-test exit issues, and narrative release notes.
+Milestones are versions, and exactly two are open: the current release and the
+next. When a release PR merges, close its milestone, move its open leftovers to
+the next one, and open the one after. Direction by theme lives in the pinned
+[Roadmap and handoff](https://github.com/prismalens/prismalens/issues/881) issue,
+not in milestones.
 
-In these exit issues, "Docs" means the published website at docs.prismalens.io.
+In the gate, "Docs" means the published website at docs.prismalens.io.
 Repository markdown files and package READMEs do not satisfy the documentation
 gate. A release can have a complete repository README and still fail the gate if
 shipped features lack published documentation on the website.

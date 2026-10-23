@@ -64,7 +64,7 @@ export type AcpStreamItem =
 	| { kind: "nudge" };
 
 /**
- * Every value SDK 1.4.0's types allow, for the fields a harness drifts on
+ * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
  * first. The SDK's zod schemas are private and its transport drops or strips
  * what they reject, so the transport stays ours and these lists are how the
  * SDK stays the authority (#639 rec 2). The `Covers` check below fails to
@@ -78,10 +78,14 @@ const KNOWN_UPDATES = [
 	"compaction_update",
 	"config_option_update",
 	"current_mode_update",
+	"notice",
 	"plan",
 	"plan_removed",
 	"plan_update",
 	"session_info_update",
+	"session_message",
+	"session_message_chunk",
+	"subagent_update",
 	"tool_call",
 	"tool_call_update",
 	"usage_update",
@@ -133,7 +137,7 @@ const KNOWN: Record<AcpDrift["field"], ReadonlySet<string>> = {
 };
 
 /**
- * A value the harness sent that SDK 1.4.0 does not know. It is logged and the
+ * A value the harness sent that SDK 1.9.0 does not know. It is logged and the
  * message passes through unchanged; drift never fails a run. Extra fields are
  * not drift: ACP allows them (`_meta`, custom variants).
  */

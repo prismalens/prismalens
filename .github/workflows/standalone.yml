@@ -72,6 +72,33 @@ jobs:
       - name: Build standalone archive
         run: node scripts/build-standalone.mjs --out "$GITHUB_WORKSPACE/dist/standalone"
 
+      - name: Windows archive fits the 260-char path limit
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $userHome = "C:\Users\$('u' * 20)"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          $full = $z.Entries.FullName | Sort-Object Length -Descending | Select-Object -First 1
+          $z.Dispose()
+          $stripped = $full -replace '^[^/]+/', ''
+          # The deepest path each Windows install writes (#902): install.ps1 unpacks without the top dir
+          # into runtime\.new and renames it to runtime\<version>; Scoop expands the whole zip into _tmp.
+          $checks = @(
+            @{ prefix = "$userHome\AppData\Local\prismalens\runtime\$version\"; entry = $stripped },
+            @{ prefix = "$userHome\scoop\apps\prismalens\$version\_tmp\"; entry = $full }
+          )
+          $failed = $false
+          foreach ($c in $checks) {
+            $len = $c.prefix.Length + $c.entry.Length
+            "$len = prefix $($c.prefix.Length) ($($c.prefix)) + entry $($c.entry.Length) ($($c.entry))"
+            if ($len -gt 259) { $failed = $true }
+          }
+          "LongPathsEnabled on this runner: $((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem').LongPathsEnabled)"
+          if ($failed) { Write-Error "A path passes 259 chars for a 20-char username; Windows PowerShell 5.1 can't install it on a default box. Shorten the deepest node_modules path."; exit 1 }
+
       - name: Smoke test standalone CLI (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -198,6 +225,38 @@ jobs:
           Pop-Location
           & pwsh -NoProfile -File scripts/install/smoke-installer.ps1 -NewDir "$env:GITHUB_WORKSPACE\dist\standalone" -NewVersion $version -OldDir "$env:GITHUB_WORKSPACE\dist\old" -OldVersion 0.5.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Installer under Windows PowerShell 5.1, long paths off, 20-char username
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\standalone\*.zip" | Select-Object -First 1
+          $version = $zip.Name -replace '^prismalens-(.+)-win32-x64\.zip$', '$1'
+          $base = Join-Path $env:RUNNER_TEMP "mirror51"
+          New-Item -ItemType Directory "$base\v$version" -Force | Out-Null
+          Copy-Item $zip.FullName "$base\v$version"
+          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Out-File "$base\v$version\SHA256SUMS" -Encoding ascii
+          $env:LOCALAPPDATA = "C:\Users\$('u' * 20)\AppData\Local"
+          New-Item -ItemType Directory $env:LOCALAPPDATA -Force | Out-Null
+          $env:PRISMALENS_RELEASE_BASE_URL = "file:///" + $base.Replace('\', '/')
+          $env:PRISMALENS_VERSION = $version
+          $env:PRISMALENS_NO_MODIFY_PATH = "1"
+          $installer = "$env:GITHUB_WORKSPACE\scripts\install\install.ps1"
+          Set-Content "$env:RUNNER_TEMP\wp51.ps1" -Encoding ascii -Value @"
+          `$ErrorActionPreference = 'Stop'
+          "PowerShell `$(`$PSVersionTable.PSVersion)"
+          Get-Content -Raw -Encoding UTF8 '$installer' | iex
+          `$v = (& "`$env:LOCALAPPDATA\prismalens\bin\pl.cmd" --version).Trim()
+          if (`$v -ne '$version') { throw "pl --version printed `$v" }
+          & ([scriptblock]::Create((Get-Content -Raw -Encoding UTF8 '$installer'))) -Uninstall
+          if (Test-Path "`$env:LOCALAPPDATA\prismalens") { throw 'uninstall left the runtime behind' }
+          "@
+          $fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+          $was = (Get-ItemProperty $fs).LongPathsEnabled
+          Set-ItemProperty $fs LongPathsEnabled 0
+          try { & powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\wp51.ps1"; $rc = $LASTEXITCODE }
+          finally { if ($null -ne $was) { Set-ItemProperty $fs LongPathsEnabled $was } }
+          exit $rc
 
       - name: Smoke the Homebrew formula (macOS)
         if: runner.os == 'macOS'
