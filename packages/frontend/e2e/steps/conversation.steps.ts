@@ -22,6 +22,7 @@ import {
 	incidentByTitle,
 	LIVE,
 	type Made,
+	openWork,
 	QUIET,
 	sidewaysOverflow,
 	visit,
@@ -505,23 +506,6 @@ Given(
 		await expect(strip(page)).toHaveText(/^Stopped by you/);
 	},
 );
-
-/** A reported run folds its work behind "Worked for …"; open it to read what the agent did. */
-async function openWork(page: Page): Promise<void> {
-	const fold = page.getByTestId("worked-toggle");
-	await expect(
-		page
-			.getByTestId("transcript-report")
-			.or(page.getByTestId("transcript-end"))
-			.or(page.getByTestId("transcript-thinking"))
-			.first(),
-	).toBeVisible({ timeout: 15_000 });
-	if (
-		(await fold.count()) &&
-		(await fold.getAttribute("aria-expanded")) === "false"
-	)
-		await fold.click();
-}
 
 Then(
 	'the box reads "Message, then the agent name" and no note explains it',
