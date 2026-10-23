@@ -1,5 +1,41 @@
 # prismalens
 
+## [0.5.2](https://github.com/prismalens/prismalens/compare/v0.5.1...v0.5.2) (2026-10-23)
+
+
+### Features
+
+* **agent-adapters:** publish the package to npm with its adapters bundled and no native agent copies ([cfb6f25](https://github.com/prismalens/prismalens/commit/cfb6f2589ff634f43d2b54dccc16419e1f968698))
+
+
+### Bug Fixes
+
+* **#897:** milestone close-out warning returns, splash shows once, RELEASING scoped to 0.x with a patch-vs-minor table ([8f78851](https://github.com/prismalens/prismalens/commit/8f78851abbd5bb8b7fda6ff3993e9f4244e5721c))
+* **#897:** phase-gate takes only 0.x milestones, findings wording matches the templates, desktop splash outlives no failed load ([6d22e63](https://github.com/prismalens/prismalens/commit/6d22e639d828c34e6f22932e82eed0f6585a1284))
+* **#902:** side checks make their temp root only when they run ([687a2b7](https://github.com/prismalens/prismalens/commit/687a2b78fef16afe7fa5821eb15928018a752100))
+* **#902:** versionOf resolves null when Windows refuses to exec the file ([abe3713](https://github.com/prismalens/prismalens/commit/abe37131b7615729d24a78f927008b91cae96c31))
+* 0.5.2 walk findings (side checks on Windows, app-boot EINVAL retry, DEP0190, flagged-content location) ([a5a3920](https://github.com/prismalens/prismalens/commit/a5a39209efa5cf3251c294a6bfc8665d2a9fc987))
+* 0.5.2 walk findings (side checks on Windows, app-boot EINVAL retry, DEP0190, flagged-content location) ([7fcee0e](https://github.com/prismalens/prismalens/commit/7fcee0ef723bc628cecc563363711831e415ab20)), closes [#902](https://github.com/prismalens/prismalens/issues/902)
+* **agent-adapters:** pin npm for trusted publishing, build before pack:npm, remove the staging dir ([d5c9841](https://github.com/prismalens/prismalens/commit/d5c9841a57564c04d1bde165621cd00af56f5327))
+* **api:** a run's snapshot can't push to the user's checkout or the mirror ([87441f9](https://github.com/prismalens/prismalens/commit/87441f9d926f0adcfafd3b7105bf3a946cffe4cb))
+* **api:** a run's snapshot can't push to the user's checkout or the mirror ([0d5697d](https://github.com/prismalens/prismalens/commit/0d5697d47433fdadf8a29ebb8db9294195b17fd3))
+* **api:** the demo seed runs on Windows ([fbb446e](https://github.com/prismalens/prismalens/commit/fbb446e5107605f5cf2e262a5776d5c347432eb4))
+* **api:** the demo seed runs on Windows ([79b18ac](https://github.com/prismalens/prismalens/commit/79b18acb7ff2a35aecd4286e21b85fcc1b5b5da4))
+* **ci:** follow the new free model in the picker e2e and the R6 user model ([927028f](https://github.com/prismalens/prismalens/commit/927028ff544efb41b4fd22a3b1f30fcde8099e4c))
+* **ci:** opencode free model moved to deepseek-v4.1-flash-free ([9da8e4f](https://github.com/prismalens/prismalens/commit/9da8e4fe325aa6778e5fab4ec9b33240dc08ed97))
+* **ci:** opencode free model moved to deepseek-v4.1-flash-free ([fbb9fe9](https://github.com/prismalens/prismalens/commit/fbb9fe9302b6d7545b1c9c696800a160d4857354))
+* **ci:** packed intake investigates a small fixture repo ([#876](https://github.com/prismalens/prismalens/issues/876)) ([64690c7](https://github.com/prismalens/prismalens/commit/64690c7a1e0264225273b6013aec253cac873a01))
+* **ci:** packed intake investigates a small fixture repo, not the whole checkout ([#876](https://github.com/prismalens/prismalens/issues/876)) ([995ead8](https://github.com/prismalens/prismalens/commit/995ead816837228f1eb7dcec1d695069ee575c45))
+* **ci:** packed-upgrade-smoke seeds the migrations before investigation_turns, not all but it (refs [#885](https://github.com/prismalens/prismalens/issues/885)) ([7280304](https://github.com/prismalens/prismalens/commit/72803049b16220fb7096a73d2407a88e3c66cf80))
+* **deps:** TanStack Start to the patched release for GHSA-qx66-fv34-fjm8 ([f0840be](https://github.com/prismalens/prismalens/commit/f0840bef14559b49550f54888ed86bc4dc8f1128))
+* **deps:** TanStack Start to the patched release for GHSA-qx66-fv34-fjm8 ([d6c942a](https://github.com/prismalens/prismalens/commit/d6c942aed61774c785ab7e868c2d45f3dd1996c4))
+* **engine:** keep a Codex tool's output from an earlier update when the completed update is bare ([7f0c00b](https://github.com/prismalens/prismalens/commit/7f0c00be0a8bb314f0d77aa55100acb854b3208c))
+* **engine:** list the session updates ACP SDK 1.9.0 adds in the drift guard ([465519c](https://github.com/prismalens/prismalens/commit/465519cb58950323a6a164490bb086f65ebaa773))
+* **engine:** preview Codex tool output from rawOutput ([11dd8aa](https://github.com/prismalens/prismalens/commit/11dd8aaafed7f3496947a89ed7602ef80f9f7f3e))
+* **engine:** preview Codex tool output from rawOutput ([5c3131d](https://github.com/prismalens/prismalens/commit/5c3131d7c8c3e4d4abc5e359da7e71b15799f269))
+* **install:** the Windows installer extracts within the path limit ([723e8ec](https://github.com/prismalens/prismalens/commit/723e8ecde9fa5034b0b3fc035e456c3f887be79c))
+* **install:** the Windows installer extracts within the path limit ([a93334c](https://github.com/prismalens/prismalens/commit/a93334cf39aa9701e37fdb8c29f6ed01eee74710)), closes [#902](https://github.com/prismalens/prismalens/issues/902)
+
 ## [0.5.1](https://github.com/prismalens/prismalens/compare/v0.5.0...v0.5.1) (2026-10-13)
 
 
