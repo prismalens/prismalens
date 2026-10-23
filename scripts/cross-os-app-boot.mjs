@@ -109,6 +109,7 @@ import { promisify } from "node:util";
 // Relative to this module's own URL, so it resolves whatever the cwd is — and
 // it is why this job's sparse-checkout list carries a second entry.
 import { assertRefusalGate } from "../packages/@prismalens/engine/scripts/refusal-gate-check.mjs";
+import { retryableFetchError } from "./lib/app-boot-retry.mjs";
 
 const WIN = process.platform === "win32";
 const BOOT_TIMEOUT_S = Number(process.env.PL_APP_BOOT_TIMEOUT ?? 180);
@@ -268,16 +269,15 @@ mkdirSync(workspace, { recursive: true });
 const logPath = join(scratch, "up.log");
 const base = `http://127.0.0.1:${port}`;
 
-// Windows runners sometimes reuse a pooled socket the server closed (#742); one
-// retry gets a fresh connection. Never the one-use pairing redeem: the reset
-// POST may already have spent its token.
+// One retry on a fresh connection for a transient socket error (#742, #902).
 const rawFetch = fetch;
 globalThis.fetch = async (url, init) => {
 	try {
 		return await rawFetch(url, init);
 	} catch (error) {
-		if (error?.cause?.code !== "ECONNRESET") throw error;
-		if (String(url).endsWith("/api/pairing/redeem")) throw error;
+		const reason = retryableFetchError(error, url);
+		if (!reason) throw error;
+		console.log(`    RETRY ${init?.method ?? "GET"} ${url} after ${reason}`);
 		return rawFetch(url, init);
 	}
 };

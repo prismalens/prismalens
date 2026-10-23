@@ -487,7 +487,7 @@ export async function* runInvestigation(
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
-				`harness drift: ${drift.method} ${drift.field}=${JSON.stringify(drift.value)} (unknown to ACP SDK 1.4.0; passed through)`,
+				`harness drift: ${drift.method} ${drift.field}=${JSON.stringify(drift.value)} (unknown to ACP SDK 1.9.0; passed through)`,
 			);
 		},
 	});
