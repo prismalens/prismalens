@@ -44,11 +44,17 @@ export interface DeploymentEvent {
 	at: string;
 }
 
-/** A platform that can list the deploys of one repository, read-only. */
+/** The span a read must cover, normally an incident's what-changed window. */
+export interface DeploymentWindow {
+	since: Date;
+	until: Date;
+}
+
+/** A platform that can list the deploys of one repository in a window, read-only. */
 export interface DeploymentEventSource {
 	listDeploymentEvents(
 		request: AuthenticatedRequestFn,
 		repository: string,
-		limit?: number,
+		window: DeploymentWindow,
 	): Promise<DeploymentEvent[]>;
 }

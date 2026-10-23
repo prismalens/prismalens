@@ -9,6 +9,7 @@ import { providerHttpError } from "../../engine/provider-http-error.js";
 import type {
 	DeploymentEvent,
 	DeploymentEventSource,
+	DeploymentWindow,
 } from "../deployment.interface.js";
 import type { AuthenticatedRequestFn } from "../types.js";
 
@@ -53,17 +54,35 @@ async function get<T>(
 	return response.json() as Promise<T>;
 }
 
+const PER_PAGE = 100;
+const MAX_PAGES = 10;
+// A deploy created shortly before the window can still finish inside it.
+const LEAD_MS = 60 * 60 * 1000;
+
 export class GitHubDeploymentsSegment implements DeploymentEventSource {
 	async listDeploymentEvents(
 		request: AuthenticatedRequestFn,
 		repository: string,
-		limit = 30,
+		window: DeploymentWindow,
 	): Promise<DeploymentEvent[]> {
 		const base = `/repos/${repository}/deployments`;
-		const deployments = await get<GitHubDeployment[]>(
-			request,
-			`${base}?per_page=${limit}`,
-		);
+		const from = window.since.getTime() - LEAD_MS;
+		const to = window.until.getTime();
+		const deployments: GitHubDeployment[] = [];
+		// GitHub lists deployments newest first; page back until the window's start is passed.
+		for (let page = 1; page <= MAX_PAGES; page++) {
+			const batch = await get<GitHubDeployment[]>(
+				request,
+				`${base}?per_page=${PER_PAGE}&page=${page}`,
+			);
+			for (const d of batch) {
+				const at = Date.parse(d.created_at);
+				if (at >= from && at <= to) deployments.push(d);
+			}
+			const oldest = batch.at(-1);
+			if (batch.length < PER_PAGE || !oldest) break;
+			if (Date.parse(oldest.created_at) < from) break;
+		}
 		const events: DeploymentEvent[] = [];
 		for (const d of deployments) {
 			// GitHub marks a superseded deploy's newest status `inactive`; its earlier success is the one that shipped.

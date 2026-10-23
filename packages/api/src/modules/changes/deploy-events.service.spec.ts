@@ -93,6 +93,8 @@ describe("deploy events (#854)", () => {
 		).toBeNull();
 	});
 
+	const WINDOW = { start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 60_000) };
+
 	it("keeps a GitHub deployment in the same row shape as a push", async () => {
 		request.mockImplementation(async (_m: string, path: string) =>
 			path.includes("/statuses")
@@ -109,7 +111,9 @@ describe("deploy events (#854)", () => {
 					]),
 		);
 		await (
-			changes as unknown as { pullDeploys(l: unknown): Promise<void> }
+			changes as unknown as {
+				pullDeploys(l: unknown, w: { start: Date; end: Date }): Promise<void>;
+			}
 		).pullDeploys({
 			serviceId,
 			serviceName: "checkout",
@@ -119,7 +123,7 @@ describe("deploy events (#854)", () => {
 				url: "https://github.com/acme/checkout",
 				fullName: "acme/checkout",
 			},
-		});
+		}, WINDOW);
 		const row = await prisma.changeEvent.findUnique({
 			where: { dedupeKey: "deploy:checkout:production:v2.0.2:succeeded" },
 		});
@@ -135,7 +139,9 @@ describe("deploy events (#854)", () => {
 	it("does not give a subPath service every deployment of the repository", async () => {
 		request.mockClear();
 		await (
-			changes as unknown as { pullDeploys(l: unknown): Promise<void> }
+			changes as unknown as {
+				pullDeploys(l: unknown, w: { start: Date; end: Date }): Promise<void>;
+			}
 		).pullDeploys({
 			serviceId,
 			serviceName: "checkout",
@@ -146,7 +152,7 @@ describe("deploy events (#854)", () => {
 				url: "https://github.com/acme/monorepo",
 				fullName: "acme/monorepo",
 			},
-		});
+		}, WINDOW);
 		expect(request).not.toHaveBeenCalled();
 	});
 

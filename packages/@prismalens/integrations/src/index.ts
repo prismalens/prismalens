@@ -38,6 +38,7 @@ export type {
 	DeploymentEvent,
 	DeploymentEventSource,
 	DeploymentProvider,
+	DeploymentWindow,
 } from "./providers/deployment.interface.js";
 // Providers — git
 export type {

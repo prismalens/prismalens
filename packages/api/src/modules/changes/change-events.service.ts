@@ -167,7 +167,10 @@ export class ChangeEventsService {
 		const sync: Sync = { at: now, done: false, run: Promise.resolve() };
 		sync.run = Promise.all(
 			scope.links.map((l) =>
-				Promise.all([this.syncLink(l, scope.window), this.pullDeploys(l)]),
+				Promise.all([
+					this.syncLink(l, scope.window),
+					this.pullDeploys(l, scope.window),
+				]),
 			),
 		).then(
 			() => {
@@ -295,7 +298,10 @@ export class ChangeEventsService {
 	}
 
 	/** GitHub Deployments of a repository read with a saved token, kept in the push endpoint's row shape (#854). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
-	private async pullDeploys(link: Link): Promise<void> {
+	private async pullDeploys(
+		link: Link,
+		window: { start: Date; end: Date },
+	): Promise<void> {
 		const repo = link.repository;
 		if (
 			link.subPath ||
@@ -308,6 +314,7 @@ export class ChangeEventsService {
 			const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
 				this.integrations.createRequestFn(repo.connectionId),
 				repo.fullName,
+				{ since: window.start, until: window.end },
 			);
 			const writes = events.map((e) => {
 				const record: DeployRecord = {
