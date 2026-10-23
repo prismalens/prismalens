@@ -362,9 +362,10 @@ than letting it evaporate.
 
 ## Releases and package publishing
 
-One package publishes to npm: `prismalens` (the CLI). Its first-party library
-closure is `private: true` and bundled into the CLI tarball at build time, so
-it never publishes separately (issue #193).
+Two packages publish to npm: `prismalens` (the CLI) and
+`@prismalens/agent-adapters`. The CLI's other first-party libraries are
+`private: true` and bundled into the CLI tarball at build time, so they never
+publish separately (issue #193).
 
 Versioning and publishing run through
 [release-please](https://github.com/googleapis/release-please)
@@ -420,6 +421,20 @@ Versioning and publishing run through
 The release PR is created with the `RELEASE_PAT` repo secret, not the default
 `GITHUB_TOKEN`: this repo forbids Actions from creating PRs, and a PR opened
 with `GITHUB_TOKEN` never triggers CI (GitHub anti-recursion).
+
+### Publishing `@prismalens/agent-adapters`
+
+Its pins move with the agent registry, not with a CLI release, so it publishes by
+hand: run the `Publish agent adapters` workflow, which publishes with npm
+provenance. To inspect the tarball locally, run
+`pnpm --filter @prismalens/agent-adapters pack:npm`; it builds the package, then
+writes the tarball to `packages/@prismalens/agent-adapters/dist-pack/`.
+
+The tarball bundles the pinned adapters without their optional native agent
+copies, so installing it, or anything that depends on it, never downloads an
+agent binary; each adapter runs the user's own `claude` or `codex`. It carries the
+licence texts of the adapters and the agent libraries they load under
+`THIRD_PARTY_LICENSES/`.
 
 ### Release-gate side checks
 
