@@ -336,10 +336,12 @@ describe("ContextPackService", () => {
 		const pack = await service.assemble("inc-1");
 
 		expect(pack?.priorIncidents[0]).toMatchObject({
+			rootCause: null,
 			recordedCause: null,
 			agentRootCause: "payments-api regression",
 			agentSummary: null,
 		});
+		expect(pack?.priorIncidents[0].rootCause).toBeNull();
 	});
 
 	it("keeps the operator's recorded cause apart from the agent's root cause", async () => {
@@ -361,10 +363,14 @@ describe("ContextPackService", () => {
 		const pack = await service.assemble("inc-1");
 
 		expect(pack?.priorIncidents[0]).toMatchObject({
+			rootCause: "expired TLS cert on the gateway",
 			recordedCause: "expired TLS cert on the gateway",
 			agentRootCause: "payments-api regression",
 			agentSummary: "500s from payments",
 		});
+		expect(pack?.priorIncidents[0].rootCause).toBe(
+			pack?.priorIncidents[0].recordedCause,
+		);
 	});
 
 	it("caps each cause field at 500 characters", async () => {
@@ -426,6 +432,7 @@ describe("ContextPackService", () => {
 			{
 				reference: "INC-9",
 				title: "orders 500s",
+				rootCause: null,
 				recordedCause: null,
 				agentRootCause: null,
 				agentSummary: "orders pool exhausted",

@@ -70,6 +70,8 @@ export const PriorIncidentFactSchema = z.object({
 	reference: z.string().max(40),
 	/** Untrusted-ish free text (operator-authored). Capped. */
 	title: z.string().max(200),
+	/** @deprecated Kept for extend-only (#840); same value as recordedCause. */
+	rootCause: z.string().max(500).nullable(),
 	/** The cause the operator recorded on that incident, when they did. */
 	recordedCause: z.string().max(500).nullable(),
 	/** The latest completed run's root cause: the agent's claim, unconfirmed. */
