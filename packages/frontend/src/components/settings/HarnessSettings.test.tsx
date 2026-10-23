@@ -4,12 +4,15 @@
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts";
+import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessSettings, testedHint, versionText } from "./HarnessSettings";
 
 const mutateSpy = vi.fn();
+const mockSelection: { harness: string | null } = { harness: "claude-code" };
+const mockSettings: Record<string, unknown> = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
 
 const mockHarnesses: HarnessStatus[] = [
@@ -55,8 +58,8 @@ const mockHarnesses: HarnessStatus[] = [
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		installed: false,
-		runnable: false,
+		installed: true,
+		runnable: true,
 		tested: null,
 		install: "npm i -g opencode",
 		defaultModel: null,
@@ -76,16 +79,14 @@ vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {
 			harnesses: mockHarnesses,
-			selection: { harness: "claude-code" },
+			selection: mockSelection,
 		},
 		isLoading: false,
 		isError: false,
 		refetch: vi.fn(),
 	}),
 	useHarnessSettings: () => ({
-		data: {
-			harness: "claude-code",
-		},
+		data: mockSettings,
 		isLoading: false,
 	}),
 	useUpdateHarnessSettings: () => ({
@@ -99,6 +100,23 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutateAsync: vi.fn(),
 		isPending: false,
 	}),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+	Link: ({
+		children,
+		to,
+		search,
+		...rest
+	}: {
+		children: React.ReactNode;
+		to: string;
+		search?: Record<string, string>;
+	}) => (
+		<a href={`${to}?${new URLSearchParams(search).toString()}`} {...rest}>
+			{children}
+		</a>
+	),
 }));
 
 let mockChoice = {
@@ -185,148 +203,67 @@ afterEach(async () => {
 	}
 });
 
-describe("HarnessSettings custom models (#673 w57)", () => {
-	it("shows gw-a for installed claude-code and excludes uninstalled agents", async () => {
+describe("HarnessSettings agents list (#907)", () => {
+	it("lists only agents that can run, each with a chevron to its page", async () => {
 		await act(async () => {
 			root.render(<HarnessSettings />);
 		});
-
-		const claudeRow = container.querySelector(
-			'[data-testid="custom-models-claude-code"]',
+		expect(
+			container.querySelector('[data-testid="harness-row-claude-code"]'),
+		).not.toBeNull();
+		expect(
+			container.querySelector('[data-testid="harness-row-codex"]'),
+		).toBeNull();
+		expect(container.textContent).not.toContain("not installed");
+		const link = container.querySelector(
+			'[data-testid="harness-open-claude-code"]',
 		);
-		expect(claudeRow).not.toBeNull();
-		expect(claudeRow?.textContent).toContain("gw-a");
-
-		const codexRow = container.querySelector(
-			'[data-testid="custom-models-codex"]',
+		expect(link?.getAttribute("href")).toBe(
+			"/settings?tab=harness&agent=claude-code",
 		);
-		expect(codexRow).toBeNull();
+		expect(
+			container.querySelector('[data-testid="harness-custom-models"]'),
+		).toBeNull();
 	});
 
-	it("types ' gw-b ' and submits, calling mutate with trimmed list", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const input = container.querySelector(
-			'[data-testid="custom-model-input"]',
-		) as HTMLInputElement | null;
-		expect(input).not.toBeNull();
-
-		await act(async () => {
-			const setter = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			setter?.call(input, " gw-b ");
-			input?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		const form = input?.closest("form");
-		expect(form).not.toBeNull();
-
-		await act(async () => {
-			form?.dispatchEvent(
-				new Event("submit", { bubbles: true, cancelable: true }),
-			);
-		});
-
-		expect(mutateSpy).toHaveBeenCalledTimes(1);
-		expect(mutateSpy).toHaveBeenCalledWith(
-			{ customModels: { "claude-code": ["gw-a", "gw-b"] } },
-			expect.anything(),
-		);
+	it("shows the one warning when no agent can run", async () => {
+		const saved = mockHarnesses.map((h) => h.runnable);
+		for (const h of mockHarnesses) h.runnable = false;
+		mockSelection.harness = null;
+		mockSettings.harness = "auto";
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector('[data-testid="harness-none-available"]')
+					?.textContent,
+			).toBe("No agent can run. Add one to start investigations.");
+			expect(
+				container.querySelector('[data-testid^="harness-row-"]'),
+			).toBeNull();
+		} finally {
+			mockHarnesses.forEach((h, i) => {
+				h.runnable = saved[i] ?? false;
+			});
+			mockSelection.harness = "claude-code";
+			mockSettings.harness = "claude-code";
+		}
 	});
 
-	it("submitting duplicate 'gw-a' sends nothing", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const input = container.querySelector(
-			'[data-testid="custom-model-input"]',
-		) as HTMLInputElement | null;
-		expect(input).not.toBeNull();
-
-		await act(async () => {
-			const setter = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			setter?.call(input, "gw-a");
-			input?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		const form = input?.closest("form");
-		expect(form).not.toBeNull();
-
-		await act(async () => {
-			form?.dispatchEvent(
-				new Event("submit", { bubbles: true, cancelable: true }),
-			);
-		});
-
-		expect(mutateSpy).not.toHaveBeenCalled();
-	});
-
-	it("clicking remove opens dialog and cancel sends nothing", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const removeButton = container.querySelector(
-			'[data-testid="custom-model-remove"]',
-		) as HTMLButtonElement | null;
-		expect(removeButton).not.toBeNull();
-
-		await act(async () => {
-			removeButton?.click();
-		});
-
-		const dialog = document.body.querySelector('[data-float="dialog"]');
-		expect(dialog).not.toBeNull();
-		expect(dialog?.textContent).toContain("Remove this custom model?");
-
-		const cancelButton = Array.from(
-			document.body.querySelectorAll("button"),
-		).find((b) => b.textContent?.trim() === "Cancel");
-		expect(cancelButton).toBeDefined();
-
-		await act(async () => {
-			cancelButton?.click();
-		});
-
-		expect(mutateAsyncSpy).not.toHaveBeenCalled();
-		expect(mutateSpy).not.toHaveBeenCalled();
-	});
-
-	it("clicking remove and confirming calls mutateAsync with model removed", async () => {
-		await act(async () => {
-			root.render(<HarnessSettings />);
-		});
-
-		const removeButton = container.querySelector(
-			'[data-testid="custom-model-remove"]',
-		) as HTMLButtonElement | null;
-		expect(removeButton).not.toBeNull();
-
-		await act(async () => {
-			removeButton?.click();
-		});
-
-		const confirmButton = Array.from(
-			document.body.querySelectorAll("button"),
-		).find((b) => b.textContent?.trim() === "Remove");
-		expect(confirmButton).toBeDefined();
-
-		await act(async () => {
-			confirmButton?.click();
-		});
-
-		expect(mutateAsyncSpy).toHaveBeenCalledTimes(1);
-		expect(mutateAsyncSpy).toHaveBeenCalledWith({
-			customModels: { "claude-code": [] },
-		});
+	it("keeps the saved agent listed when it can't run", async () => {
+		const saved = mockHarnesses[0].runnable;
+		mockHarnesses[0].runnable = false;
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			expect(
+				container.querySelector('[data-testid="harness-row-claude-code"]'),
+			).not.toBeNull();
+		} finally {
+			mockHarnesses[0].runnable = saved;
+		}
 	});
 });
 

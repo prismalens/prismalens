@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 export { AboutSettings, useAbout } from "./AboutSettings";
+export { AgentDetail } from "./AgentDetail";
 export { AlertSources } from "./AlertSources";
 export { ConnectionFormDialog } from "./ConnectionFormDialog";
 export { DangerZoneSettings } from "./DangerZoneSettings";

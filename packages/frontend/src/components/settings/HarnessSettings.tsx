@@ -21,24 +21,27 @@ import {
 	type HarnessProbeResult,
 	type HarnessStatus,
 } from "@prismalens/contracts";
-import { X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
-import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
 import { Mono } from "@/components/shared/Mono";
+import { testedHint, versionText } from "./AgentDetail";
+
+export { testedHint, versionText };
+
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading, Problem } from "@/components/shared/State";
 import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -65,10 +68,15 @@ interface ProbeState {
 
 export function HarnessSettings() {
 	const { data, isLoading, isError, refetch } = useHarnesses();
-	const { isLoading: settingsLoading } = useHarnessSettings();
+	const { data: settings, isLoading: settingsLoading } = useHarnessSettings();
+	const setting = settings?.harness ?? "auto";
 
 	const harnesses = data?.harnesses ?? [];
 	const selection = data?.selection;
+	// Agents that can run, plus the saved or pinned one so the user's own choice never vanishes (#907).
+	const chosen = selection?.harness ?? (setting === "auto" ? null : setting);
+	const listed = harnesses.filter((h) => h.runnable || h.id === chosen);
+	const addAgent = null;
 
 	if (isLoading || settingsLoading) {
 		return (
@@ -117,29 +125,30 @@ export function HarnessSettings() {
 				</Pool>
 			</SettingGroup>
 
-			<CustomModels harnesses={harnesses} />
-
 			<SettingGroup
-				title="Agents on this machine"
-				count={harnesses.filter((h) => h.installed).length || undefined}
+				title="Agents"
+				count={listed.length || undefined}
 				testId="harness-registry"
-				description={
-					harnesses.length > 0 && harnesses.every((h) => !h.installed) ? (
-						<span data-testid="harness-none-available">
-							None found on PATH. Runs start once one of these is installed.
-						</span>
-					) : undefined
-				}
+				actions={addAgent}
 			>
-				<Pool>
-					{harnesses.map((harness) => (
-						<AgentRow
-							key={harness.id}
-							harness={harness}
-							inUse={selection?.harness === harness.id}
-						/>
-					))}
-				</Pool>
+				{listed.length === 0 ? (
+					<p
+						className="text-body text-text-2"
+						data-testid="harness-none-available"
+					>
+						No agent can run. Add one to start investigations.
+					</p>
+				) : (
+					<Pool>
+						{listed.map((harness) => (
+							<AgentRow
+								key={harness.id}
+								harness={harness}
+								inUse={selection?.harness === harness.id}
+							/>
+						))}
+					</Pool>
+				)}
 			</SettingGroup>
 		</div>
 	);
@@ -257,120 +266,6 @@ function AccessRows() {
 				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}
 			/>
 		</SettingRow>
-	);
-}
-
-/**
- * Model ids the operator adds per agent, for a gateway or an endpoint whose
- * models the agent does not list itself; the picker shows them (#673 w57).
- */
-function CustomModels({ harnesses }: { harnesses: HarnessStatus[] }) {
-	const agents = harnesses.filter((h) => h.installed && h.modelVia === "acp");
-	if (agents.length === 0) return null;
-	return (
-		<SettingGroup
-			title="Custom models"
-			description="Models your endpoint serves that the agent does not list itself. PrismaLens never checks them; a run on one that the endpoint does not serve fails."
-			testId="harness-custom-models"
-		>
-			<Pool>
-				{agents.map((h) => (
-					<CustomModelRow key={h.id} harness={h} />
-				))}
-			</Pool>
-		</SettingGroup>
-	);
-}
-
-function CustomModelRow({ harness }: { harness: HarnessStatus }) {
-	const id = harness.id as HarnessId;
-	const { customModels } = useAgentChoice();
-	const update = useUpdateHarnessSettings();
-	const list = customModels[id] ?? [];
-	const [draft, setDraft] = useState("");
-	const [removing, setRemoving] = useState<string | null>(null);
-	const add = (e: FormEvent) => {
-		e.preventDefault();
-		const model = draft.trim();
-		if (!model || list.includes(model)) return setDraft("");
-		update.mutate(
-			{ customModels: { [id]: [...list, model] } },
-			{ onSuccess: () => setDraft("") },
-		);
-	};
-	return (
-		<Row
-			testId={`custom-models-${harness.id}`}
-			lead={<AgentMark id={harness.id} className="size-5" />}
-			label={harness.label}
-			stackOnPhone
-			meta={
-				list.length === 0 ? (
-					"None added"
-				) : (
-					<span className="flex min-w-0 flex-wrap gap-1.5">
-						{list.map((model) => (
-							<span
-								key={model}
-								className="inline-flex h-6 max-w-56 items-center gap-1 rounded-control bg-surface-3 pr-0.5 pl-2 text-meta text-text-1"
-								data-testid="custom-model"
-							>
-								<Mono className="truncate">{model}</Mono>
-								<button
-									type="button"
-									aria-label={`Remove ${model}`}
-									onClick={() => setRemoving(model)}
-									className="inline-flex size-5 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4 hover:text-text-1"
-									data-testid="custom-model-remove"
-								>
-									<X className="size-3" />
-								</button>
-							</span>
-						))}
-					</span>
-				)
-			}
-			trailing={
-				<form onSubmit={add} className="flex items-center gap-2">
-					<Input
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						placeholder="Model id"
-						aria-label={`Model id for ${harness.label}`}
-						maxLength={200}
-						className="h-7 w-44"
-						data-testid="custom-model-input"
-					/>
-					<Button
-						type="submit"
-						variant="secondary"
-						size="sm"
-						disabled={!draft.trim() || update.isPending}
-						data-testid="custom-model-add"
-					>
-						Add custom model
-					</Button>
-				</form>
-			}
-			below={
-				<DestructiveConfirm
-					open={removing !== null}
-					onOpenChange={(open) => !open && setRemoving(null)}
-					title="Remove this custom model?"
-					description={`${removing ?? ""} leaves the ${harness.label} picker. A run already set to it keeps it until you pick another.`}
-					confirmLabel="Remove"
-					isPending={update.isPending}
-					error={update.error}
-					onConfirm={() =>
-						update.mutateAsync({
-							customModels: {
-								[id]: list.filter((m) => m !== removing),
-							},
-						})
-					}
-				/>
-			}
-		/>
 	);
 }
 
@@ -501,49 +396,31 @@ function AgentRow({
 				) : undefined
 			}
 			trailing={
-				harness.installed && (
-					<Button
-						variant="secondary"
-						size="sm"
-						onClick={handleCheck}
-						disabled={checking}
-						data-testid={`harness-check-${harness.id}`}
+				<span className="flex items-center gap-1">
+					{harness.installed && (
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={handleCheck}
+							disabled={checking}
+							data-testid={`harness-check-${harness.id}`}
+						>
+							{checking ? "Checking" : "Check"}
+						</Button>
+					)}
+					<Link
+						to="/settings"
+						search={{ tab: "harness", agent: harnessId }}
+						aria-label={`Open ${harness.label}`}
+						className="inline-flex size-8 items-center justify-center rounded-control text-text-3 hover:bg-surface-3 hover:text-text-1"
+						data-testid={`harness-open-${harness.id}`}
 					>
-						{checking ? "Checking" : "Check"}
-					</Button>
-				)
+						<ChevronRight className="size-4" />
+					</Link>
+				</span>
 			}
 		/>
 	);
-}
-
-/**
- * The version the last check read beside the tested one, so neither reads as the
- * other (#818 w5-31). Behind a shipped adapter, the agent CLI's own version.
- */
-export function versionText(h: HarnessStatus): string | null {
-	const cli = h.checked?.companionVersion ?? null;
-	const ran = cli ?? h.checked?.version ?? null;
-	const tested = cli
-		? (h.tested?.companion ?? null)
-		: (h.tested?.version ?? null);
-	if (ran && tested) return `${ran}, tested with ${tested}`;
-	// No CLI version on record for the test run, so name the adapter's (#831 w6-3).
-	if (cli && h.tested) return `${cli}, adapter tested with ${h.tested.version}`;
-	if (ran) return ran;
-	const t = h.tested;
-	return t ? `tested with ${t.companion ?? t.version}` : null;
-}
-
-/** The version note's hover line; behind a shipped adapter it names both the CLI and the adapter. */
-export function testedHint(h: HarnessStatus): string {
-	const t = h.tested;
-	if (!t) return "No compatibility run yet";
-	if (t.companion)
-		return `PrismaLens was tested with ${h.label} ${t.companion} through its adapter ${t.version}`;
-	if (h.checked?.companionVersion)
-		return `PrismaLens was tested with its adapter ${t.version}`;
-	return `PrismaLens was tested with ${t.version}`;
 }
 
 /** A check's verdict as a word (look ruling §1.3, agent row). */

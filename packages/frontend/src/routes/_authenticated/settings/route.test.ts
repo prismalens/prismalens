@@ -21,3 +21,13 @@ describe("Settings tab search (w8-2)", () => {
 		expect(merged({ tab: "integrations" }).tab).toBe("integrations");
 	});
 });
+
+describe("Settings agent page search (#907)", () => {
+	it("keeps a known agent only under the Agent tab", () => {
+		expect(merged({ tab: "harness", agent: "codex" }).agent).toBe("codex");
+		expect(merged({ tab: "harness", agent: "local" }).agent).toBe("local");
+		expect(merged({ tab: "devices", agent: "codex" }).agent).toBeUndefined();
+		expect(merged({ agent: "codex" }).agent).toBeUndefined();
+		expect(merged({ tab: "harness", agent: "nope" }).agent).toBeUndefined();
+	});
+});
