@@ -55,7 +55,7 @@ test.describe("#523 — the settings frame", () => {
 
 		const pickerList = page.getByTestId("agent-picker-list");
 		await expect(pickerList).toBeVisible();
-		// The rail opens on the agent the next run uses; Agent default saves at
+		// The rail opens on the agent the next run uses; the Default row saves at
 		// once and closes the picker.
 		const def = pickerList.getByTestId("model-default");
 		if ((await def.count()) > 0) {

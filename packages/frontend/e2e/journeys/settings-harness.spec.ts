@@ -166,9 +166,21 @@ async function serveHarnesses(
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
-			body: JSON.stringify({ harnesses, selection }),
+			body: JSON.stringify({ harnesses: withRunnable(harnesses), selection }),
 		});
 	});
+}
+
+/** The #907 fields a fixture leaves out: it can run when installed and its last check, if any, answered. */
+function withRunnable(harnesses: HarnessFixture[]) {
+	return harnesses.map((h) => ({
+		runnable:
+			h.installed && (!h.checked || h.checked.outcome === "answers-acp"),
+		cliBinary: h.binary,
+		configDir: null,
+		providerKeys: [],
+		...h,
+	}));
 }
 
 async function failHarnesses(page: Page): Promise<void> {
@@ -194,23 +206,45 @@ type SettingsFixture = {
 	efforts?: Record<string, string | null>;
 	accessLevels?: Record<string, string | null>;
 	favourites?: { harness: string; model: string }[];
+	hiddenModels?: Record<string, string[] | null>;
+	modelOrder?: Record<string, string[] | null>;
+	envNames?: Record<string, string[]>;
 };
 
 /** The persisted harness choice `GET /settings/harness` answers with. */
 async function serveHarnessSettings(
 	page: Page,
 	settings: SettingsFixture,
+	patches: Record<string, unknown>[] = [],
 ): Promise<void> {
 	let current = { ...settings };
 	await page.route(isHarnessSettingsUrl, async (route) => {
 		if (route.request().method() === "PATCH") {
-			const body = (route.request().postDataJSON() || {}) as Record<
+			const { env, ...body } = (route.request().postDataJSON() || {}) as Record<
 				string,
 				unknown
 			>;
+			patches.push(env ? { ...body, env } : body);
+			// The server keeps values and answers names only (#907).
+			const names = { ...current.envNames };
+			for (const [id, rows] of Object.entries(
+				(env ?? {}) as Record<string, Record<string, string | null>>,
+			))
+				names[id] = Object.entries(rows)
+					.filter(([, v]) => v !== null)
+					.map(([n]) => n);
 			current = {
 				...current,
 				...body,
+				envNames: names,
+				hiddenModels: {
+					...current.hiddenModels,
+					...(body.hiddenModels as Record<string, string[] | null> | undefined),
+				},
+				modelOrder: {
+					...current.modelOrder,
+					...(body.modelOrder as Record<string, string[] | null> | undefined),
+				},
 				models: {
 					...current.models,
 					...(body.models as Record<string, string | null> | undefined),
@@ -259,7 +293,7 @@ async function openHarnessSettings(
 const card = (page: Page) => page.getByTestId("harness-settings");
 
 test.describe("Investigation agent settings card (#501/#609)", () => {
-	test("lists every registry harness, marking the one not installed", async ({
+	test("only runnable agents are listed; one warning when none can run (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -275,14 +309,196 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		for (const h of [OPENCODE_INSTALLED, CLAUDE_INSTALLED, CODEX_INSTALLED]) {
 			const row = registry.getByTestId(`harness-row-${h.id}`);
 			await expect(row).toContainText(h.label);
-			await expect(row).not.toContainText("not installed");
+			await expect(row.getByTestId(`harness-open-${h.id}`)).toHaveAttribute(
+				"href",
+				`/settings?tab=harness&agent=${h.id}`,
+			);
 		}
-		await expect(registry.getByTestId("harness-row-deepagents")).toContainText(
-			"not installed",
+		await expect(registry.getByTestId("harness-row-deepagents")).toHaveCount(0);
+		await expect(registry.getByText("not installed")).toHaveCount(0);
+		await expect(registry.getByTestId("harness-add-agent")).toBeVisible();
+		await expect(page.getByTestId("harness-none-available")).toHaveCount(0);
+
+		await page.unroute(isHarnessesUrl);
+		await serveHarnesses(page, NOTHING, {
+			runnable: false,
+			harness: null,
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: NO_HARNESS_REASON,
+		});
+		await page.reload();
+		await expect(page.getByTestId("harness-none-available")).toHaveText(
+			"No agent can run. Add one to start investigations.",
 		);
-		await expect(
-			registry.getByText("not installed", { exact: true }),
-		).toHaveCount(1);
+		await expect(registry.locator('[data-testid^="harness-row-"]')).toHaveCount(
+			0,
+		);
+	});
+
+	test("one Default row when the agent lists its own default (#902 f10)", async ({
+		page,
+	}) => {
+		const claude: HarnessFixture = {
+			...CLAUDE_INSTALLED,
+			modelVia: "acp",
+			models: {
+				source: "harness",
+				asOf: "2026-10-23T00:00:00Z",
+				entries: [
+					{ id: "default", name: "Default (recommended)", status: null },
+					{ id: "fixture-sonnet", name: "Fixture Sonnet", status: null },
+				],
+			},
+		};
+		await serveHarnesses(page, [claude], {
+			runnable: true,
+			harness: "claude-code",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason: null,
+		});
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(
+			page,
+			{ harness: "claude-code", models: { "claude-code": "default" } },
+			patches,
+		);
+		await page.goto("/settings?tab=harness");
+		await page.getByTestId("agent-picker").click();
+		const list = page.getByTestId("agent-picker-list");
+		const def = list.getByTestId("model-default");
+		await expect(def).toHaveCount(1);
+		await expect(def).toContainText("Default");
+		await expect(def).toHaveAttribute("data-checked", "");
+		await expect(list).not.toContainText("Default (recommended)");
+		await expect(list.getByTestId("model-option")).toHaveCount(1);
+		await list.getByTestId("model-option").click();
+		await page.getByTestId("agent-picker").click();
+		await list.getByTestId("model-default").click();
+		expect(patches.at(-1)).toEqual({
+			harness: "claude-code",
+			models: { "claude-code": null },
+		});
+	});
+
+	test("hide, star and reorder a model from the agent page", async ({
+		page,
+	}) => {
+		await serveHarnesses(
+			page,
+			[{ ...OPENCODE_INSTALLED, modelVia: "acp" }, CLAUDE_INSTALLED],
+			{
+				runnable: true,
+				harness: "opencode",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(page, { harness: "opencode" }, patches);
+		await page.goto("/settings?tab=harness&agent=opencode");
+		await expect(page.getByTestId("agent-detail-title")).toHaveText("OpenCode");
+		const models = page.getByTestId("agent-models");
+		await expect(page.getByTestId("agent-models-count")).toHaveText(
+			"2 of 2 shown",
+		);
+
+		await models.getByLabel("Show Fixture Old in the picker").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				hiddenModels: { opencode: ["vendor/fixture-old"] },
+			});
+		await models.getByLabel("Star Fixture Old").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				favourites: [{ harness: "opencode", model: "vendor/fixture-old" }],
+			});
+		await models.getByLabel("Move Fixture Old up").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				modelOrder: {
+					opencode: ["vendor/fixture-old", "vendor/fixture-current"],
+				},
+			});
+		await expect(models.getByLabel("Move Fixture Old up")).toBeDisabled();
+
+		// The picker leaves the hidden model out.
+		await page.getByTestId("agent-detail-back").click();
+		await page.getByTestId("agent-picker").click();
+		const list = page.getByTestId("agent-picker-list");
+		await list.getByTestId("rail-opencode").click();
+		await expect(list.getByTestId("model-option")).toHaveCount(1);
+		await expect(list.getByTestId("model-option")).toHaveAttribute(
+			"data-model",
+			"Fixture Current",
+		);
+	});
+
+	test("binary path refusal shows under the field", async ({ page }) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		await serveHarnessSettings(page, { harness: "opencode" });
+		await page.route(isHarnessSettingsUrl, async (route) => {
+			if (route.request().method() !== "PATCH") return route.fallback();
+			await route.fulfill({
+				status: 400,
+				contentType: "application/json",
+				body: JSON.stringify({
+					defined: false,
+					code: "BAD_REQUEST",
+					status: 400,
+					message: "No program at /nope/opencode.",
+				}),
+			});
+		});
+		await page.goto("/settings?tab=harness&agent=opencode");
+		const input = page.getByTestId("runtime-binary-input");
+		await input.fill("/nope/opencode");
+		await input.press("Enter");
+		await expect(page.getByTestId("runtime-binary-error")).toHaveText(
+			"No program at /nope/opencode.",
+		);
+	});
+
+	test("env variable is added by name and never shown", async ({ page }) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(page, { harness: "opencode" }, patches);
+		await page.goto("/settings?tab=harness&agent=opencode");
+		await page.getByTestId("env-name").fill("OPENROUTER_API_KEY");
+		await expect(page.getByTestId("env-value")).toHaveAttribute(
+			"type",
+			"password",
+		);
+		await page.getByTestId("env-value").fill("sk-or-secret");
+		await page.getByTestId("env-add-button").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({
+				env: { opencode: { OPENROUTER_API_KEY: "sk-or-secret" } },
+			});
+		await expect(page.getByTestId("env-row-OPENROUTER_API_KEY")).toContainText(
+			"••••••",
+		);
+		await expect(page.getByTestId("agent-environment")).not.toContainText(
+			"sk-or-secret",
+		);
 	});
 
 	test("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
@@ -441,7 +657,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 	});
 
-	test("shows the install hint for a harness that is not installed", async ({
+	test("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -453,11 +669,15 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
+		await page.getByTestId("harness-add-agent").first().click();
 		await expect(
-			page
-				.getByTestId("harness-registry")
-				.getByText("pip install deepagents-acp"),
-		).toBeVisible();
+			page.getByTestId("add-agent-tile-deepagents-state"),
+		).toHaveText("Not installed");
+		await page.getByTestId("add-agent-tile-deepagents").click();
+		await page.getByTestId("add-agent-next").click();
+		await expect(page.getByTestId("add-agent-verdict")).toContainText(
+			"pip install deepagents-acp",
+		);
 	});
 
 	test("names the agent the gate would start, auto-selected", async ({
@@ -1001,5 +1221,47 @@ test.describe("Design evidence (#501/#609)", () => {
 		await renderCard("dark", RUNNABLE);
 		await renderCard("light", NOTHING);
 		await renderCard("light", "error");
+	});
+
+	test("agent page and Add agent dialog, light and dark (#907)", async ({
+		page,
+		baseURL,
+	}, testInfo) => {
+		test.setTimeout(90_000);
+		await serveHarnessSettings(page, {
+			harness: "opencode",
+			envNames: { opencode: ["OPENROUTER_API_KEY"] },
+		});
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: true,
+			harness: "opencode",
+			pinned: false,
+			pinnedBy: null,
+			blockedReason: null,
+		});
+		for (const theme of ["light", "dark"] as const) {
+			await page
+				.context()
+				.addCookies([
+					{ name: "prismalens-theme", value: theme, url: baseURL as string },
+				]);
+			await page.goto("/settings?tab=harness&agent=opencode");
+			await expect(page.locator("html")).toHaveClass(new RegExp(theme));
+			await expect(page.getByTestId("agent-detail")).toBeVisible({
+				timeout: 15_000,
+			});
+			await page.screenshot({
+				path: testInfo.outputPath(`agent-page-${theme}.png`),
+				fullPage: true,
+				animations: "disabled",
+			});
+			await page.goto("/settings?tab=harness");
+			await page.getByTestId("harness-add-agent").first().click();
+			await expect(page.getByTestId("add-agent-dialog")).toBeVisible();
+			await page.screenshot({
+				path: testInfo.outputPath(`add-agent-${theme}.png`),
+				animations: "disabled",
+			});
+		}
 	});
 });

@@ -888,7 +888,7 @@ Then(
 		await expect(muse).toContainText("trains on your prompts");
 		// The agent's own model row's sub-line is the model OpenCode reports it serves, nothing more.
 		await expect(picker(page).getByTestId("model-default")).toContainText(
-			"Agent's own model",
+			"Default",
 		);
 		await expect(picker(page).getByTestId("model-default")).not.toContainText(
 			"PrismaLens",
