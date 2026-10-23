@@ -197,10 +197,7 @@ test.describe("Evidence file view resize (#874)", () => {
 		await expect(line1500).toBeInViewport({ timeout: 5000 });
 	});
 
-	// The phone sheet's Back sits under the topbar at any phone width, so the flow cannot reach step 2 (#874 PR).
-	test.fixme("Phone: cited line in view after viewport resize", async ({
-		page,
-	}) => {
+	test("Phone: cited line in view after viewport resize", async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await setupPage(page);
 
