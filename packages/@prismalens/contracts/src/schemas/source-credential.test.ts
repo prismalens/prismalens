@@ -59,63 +59,21 @@ describe("parseSourceCredential (#848)", () => {
 	});
 });
 
-describe("OAuth credential kinds (#848)", () => {
-	const oauth = {
-		kind: "oauth",
-		authorizationUrl: "https://gitlab.com/oauth/authorize",
-		tokenUrl: "https://gitlab.com/oauth/token",
-		redirectUri: "https://prismalens.example/api/sources/oauth/callback",
-		clientId: "cid",
-		scopes: ["read_api"],
-		refreshToken: "r1",
-	};
-
-	it("accepts an oauth sign-in with a refresh token", () => {
-		expect(parseSourceCredential(oauth).ok).toBe(true);
-	});
-
-	it("refuses oauth without redirectUri, or with neither token", () => {
-		const { redirectUri: _, ...noRedirect } = oauth;
-		expect(parseSourceCredential(noRedirect).ok).toBe(false);
-		const { refreshToken: __, ...noToken } = oauth;
-		expect(parseSourceCredential(noToken).ok).toBe(false);
-		expect(parseSourceCredential({ ...noToken, accessToken: "a" }).ok).toBe(true);
-	});
-
-	it("refuses an http: token URL for oauth and oauth-client", () => {
-		expect(parseSourceCredential({ ...oauth, tokenUrl: "http://gitlab.com/oauth/token" }).ok).toBe(false);
-		const client = {
-			kind: "oauth-client",
-			tokenUrl: "https://bitbucket.org/site/oauth2/access_token",
-			clientId: "key",
-			clientSecret: "secret",
-		};
-		expect(parseSourceCredential(client).ok).toBe(true);
-		expect(
-			parseSourceCredential({ ...client, tokenUrl: "http://bitbucket.org/site/oauth2/access_token" }).ok,
-		).toBe(false);
-	});
-
-	it("OBJ-017: http redirect only on a loopback IP literal", () => {
-		const at = (redirectUri: string) => parseSourceCredential({ ...oauth, redirectUri }).ok;
-		expect(at("http://127.0.0.1:6474/callback")).toBe(true);
-		expect(at("http://[::1]:6474/callback")).toBe(true);
-		expect(at("http://localhost:6474/callback")).toBe(false);
-		expect(at("http://example.com/cb")).toBe(false);
-	});
-
-	it("mcp-oauth needs an https server and pins issuer and token endpoint as https", () => {
+describe("sign-in kinds left (#848)", () => {
+	it("refuses oauth, oauth-client and mcp-oauth as unknown kinds", () => {
+		expect(SOURCE_CREDENTIAL_KINDS).toEqual(["none", "bearer", "basic", "header", "mtls"]);
 		const mcp = {
 			kind: "mcp-oauth",
 			serverUrl: "https://n8n.example.com/mcp",
 			redirectUri: "http://127.0.0.1:6474/callback",
-			issuer: "https://auth.example.com",
-			tokenEndpoint: "https://auth.example.com/token",
-			client: { client_id: "c", registered: "dcr" },
-			tokens: { access_token: "a", refresh_token: "r" },
+			tokens: { access_token: "a" },
 		};
-		expect(parseSourceCredential(mcp).ok).toBe(true);
-		expect(parseSourceCredential({ ...mcp, serverUrl: "http://n8n.example.com/mcp" }).ok).toBe(false);
-		expect(parseSourceCredential({ ...mcp, tokenEndpoint: "http://auth.example.com/token" }).ok).toBe(false);
+		expect(parseSourceCredential(mcp)).toEqual({
+			ok: false,
+			reason: "invalid",
+			message: 'Unknown credential kind "mcp-oauth".',
+		});
+		for (const kind of ["oauth", "oauth-client"])
+			expect(parseSourceCredential({ kind })).toMatchObject({ ok: false, reason: "invalid" });
 	});
 });

@@ -68,9 +68,7 @@ describe("source type descriptors", () => {
 			expect(SOURCE_CATEGORIES).toContain(t.category);
 			expect(slugs.has(`${t.category}/${t.slug}`)).toBe(false);
 			slugs.add(`${t.category}/${t.slug}`);
-			// An MCP server is tested by listing its tools, not by a probe.
-			if (t.category !== "mcp")
-				expect(t.probes.some((p) => p.need === "required")).toBe(true);
+			expect(t.probes.some((p) => p.need === "required")).toBe(true);
 			expect(t.credentialKinds.length).toBeGreaterThan(0);
 		}
 	});
@@ -119,7 +117,7 @@ describe("gateway contract (#848)", () => {
 		expect(templateCategory("render")).toBe("deploys");
 		expect(templateCategory("git-host-token")).toBe("scm");
 		expect(templateCategory("prometheus")).toBe("metrics");
-		expect(templateCategory("mcp-server")).toBe("mcp");
+		expect(templateCategory("mcp-server")).toBeUndefined();
 		expect(templateCategory("nope")).toBeUndefined();
 	});
 });

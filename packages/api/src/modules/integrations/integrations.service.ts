@@ -60,6 +60,7 @@ import type {
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 import { sourceRequestFn } from "./source-request.js";
+import { readStored } from "./stored-credential.js";
 
 export interface ConnectionWithIntegration extends Connection {
 	integration: Integration;
@@ -566,16 +567,20 @@ export class IntegrationsService implements OnModuleInit {
 	): Promise<ParsedSourceCredential> {
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
-			select: { credentialsEnc: true },
+			select: {
+				credentialsEnc: true,
+				integration: { select: { templateId: true } },
+			},
 		});
 		if (!conn)
 			return { ok: false, reason: "invalid", message: "Connection not found" };
 		try {
-			return parseSourceCredential(
+			return readStored(
+				conn.integration.templateId,
 				this.credentialsService.decrypt<unknown>(
 					Buffer.from(conn.credentialsEnc),
 				),
-			);
+			).credential;
 		} catch {
 			return {
 				ok: false,

@@ -63,18 +63,6 @@ export function credentialSecrets(c: SourceCredential): string[] {
 			return [c.value];
 		case "mtls":
 			return [c.key];
-		case "oauth":
-			return [c.refreshToken, c.accessToken, c.clientSecret].filter(
-				(s): s is string => !!s,
-			);
-		case "oauth-client":
-			return [c.clientSecret];
-		case "mcp-oauth":
-			return [
-				c.tokens?.access_token,
-				c.tokens?.refresh_token,
-				c.client?.client_secret,
-			].filter((s): s is string => !!s);
 		default:
 			return [];
 	}
