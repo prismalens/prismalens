@@ -398,12 +398,12 @@ When('I open "booklogr-api"', async ({ page }) => {
 });
 
 Then(
-	'I see "Code the run reads", "Telemetry", "Dependencies", "Runs" and "Incidents" on one page with no tabs',
+	'I see "Code the run reads", "Connections", "Dependencies", "Runs" and "Incidents" on one page with no tabs',
 	async ({ page }) => {
 		const service = page.getByTestId("service-page");
 		for (const title of [
 			"Code the run reads",
-			"Telemetry",
+			"Connections",
 			"Dependencies",
 			"Runs",
 			"Incidents",

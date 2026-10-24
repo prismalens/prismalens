@@ -1149,8 +1149,11 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		await visit(page, `/services/${svcId}`);
 
-		// Edit impact metric
-		const editBtn = page.getByTestId("service-metric-edit");
+		// Map the connection, then edit its impact metric in place (#848)
+		await page.getByTestId("mapping-add").click();
+		const editBtn = page.getByRole("button", {
+			name: "Edit the mapping of Prometheus Main",
+		});
 		await expect(editBtn).toBeVisible();
 		await editBtn.click();
 
