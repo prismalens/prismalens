@@ -86,10 +86,8 @@ function matchersOf(selector: string | undefined): string[] {
 	return m;
 }
 
-const cut = (v: unknown) =>
-	typeof v === "string" && v.length > LIMITS.labelChars
-		? `${v.slice(0, LIMITS.labelChars)}…`
-		: v;
+const cut = (v: unknown, max = LIMITS.labelChars) =>
+	typeof v === "string" && v.length > max ? `${v.slice(0, max)}…` : v;
 
 /** A label map with each value cut to `LIMITS.labelChars`. */
 function cutLabels(labels: unknown): unknown {
@@ -165,8 +163,7 @@ const promResult = (data: unknown) => {
 		LIMITS.series,
 	);
 	let pointsDropped = 0;
-	const result = items.map((raw) => {
-		const s = "metric" in raw ? { ...raw, metric: cutLabels(raw.metric) } : raw;
+	const result = items.map((s) => {
 		if (!Array.isArray(s.values)) return s;
 		const values = s.values as unknown[];
 		pointsDropped += Math.max(0, values.length - LIMITS.pointsPerSeries);
@@ -261,20 +258,7 @@ export const SNAPSHOT_QUERIES: Record<
 				(!Number.isFinite(ended) || ended >= w.start.getTime())
 			);
 		});
-		const { items, dropped } = cap(
-			inWindow.map((a) =>
-				a && typeof a === "object"
-					? {
-							...a,
-							labels: cutLabels((a as { labels?: unknown }).labels),
-							annotations: cutLabels(
-								(a as { annotations?: unknown }).annotations,
-							),
-						}
-					: a,
-			),
-			LIMITS.alerts,
-		);
+		const { items, dropped } = cap(inWindow, LIMITS.alerts);
 		return {
 			summary: `${items.length + dropped} active alerts in the window${selector ? ` for ${selector}` : ""}`,
 			data: { alerts: items, ...(dropped ? { alertsDropped: dropped } : {}) },
@@ -308,14 +292,9 @@ export const SNAPSHOT_QUERIES: Record<
 				? (streams as { stream?: unknown; values?: [string, string][] }[])
 				: []
 		).map((s) => {
-			const values = (s.values ?? []).map(([ts, line]) => [
-				ts,
-				line.length > LIMITS.logLineChars
-					? `${line.slice(0, LIMITS.logLineChars)}…`
-					: line,
-			]);
+			const values = s.values ?? [];
 			lines += values.length;
-			return { stream: cutLabels(s.stream), values };
+			return { stream: s.stream, values };
 		});
 		return {
 			summary: `${lines} error log lines from ${result.length} streams for ${used}${selector === undefined ? " (the default selector)" : ""}`,
@@ -405,4 +384,24 @@ export function cutStrings(v: unknown): unknown {
 			Object.entries(v).map(([k, x]) => [k, cutStrings(x)]),
 		);
 	return cut(v);
+}
+
+const LABEL_KEYS = new Set(["metric", "labels", "annotations", "stream"]);
+
+/** Label values and log lines cut to their limits. Run it on scrubbed data: a cut can split a credential (#848). */
+export function cutSnapshot(v: unknown): unknown {
+	if (Array.isArray(v)) return v.map(cutSnapshot);
+	if (!v || typeof v !== "object") return v;
+	return Object.fromEntries(
+		Object.entries(v).map(([k, x]) => [
+			k,
+			LABEL_KEYS.has(k)
+				? cutLabels(x)
+				: k === "values" && Array.isArray(x)
+					? x.map((p) =>
+							Array.isArray(p) ? p.map((s) => cut(s, LIMITS.logLineChars)) : p,
+						)
+					: cutSnapshot(x),
+		]),
+	);
 }

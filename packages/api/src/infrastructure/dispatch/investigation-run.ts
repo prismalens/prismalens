@@ -12,6 +12,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	realpathSync,
+	rmdirSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -1376,6 +1377,30 @@ function realOf(p: string): string {
 	return join(realpathSync(head), ...tail);
 }
 
+/** Creates `dir`, then checks where it landed: a parent swapped for a link after `inside` must not leave a directory outside `root` (#848). */
+function mkdirInside(root: string, dir: string): void {
+	const first = mkdirSync(dir, { recursive: true });
+	const real = relative(realpathSync(root), realpathSync(dir));
+	if (!real.startsWith("..") && !isAbsolute(real)) return;
+	// Only what this call created, deepest first, and only while empty; Windows prefixes `first` with `\\?\`.
+	const top = first?.replace(/^\\\\\?\\/, "");
+	const made: string[] = [];
+	for (let p = resolve(dir); top; p = dirname(p)) {
+		made.push(p);
+		if (relative(top, p) === "") break;
+		if (dirname(p) === p) {
+			made.length = 0;
+			break;
+		}
+	}
+	try {
+		for (const p of made) rmdirSync(p);
+	} catch {}
+	throw new Error(
+		`Repository sub-path escapes the snapshot: ${relative(root, dir)}`,
+	);
+}
+
 function whereFrom(repo: {
 	sourceKind: string;
 	url: string;
@@ -1538,7 +1563,7 @@ function unmappedWorkspace(
 	checkoutsSkipped: CheckoutSkipped[] = [],
 ): Workspace {
 	const cwd = join(runDir, "unmapped");
-	mkdirSync(cwd, { recursive: true });
+	mkdirInside(runDir, cwd);
 	return { layout: "unmapped", cwd, repos: [], checkoutsSkipped, note };
 }
 
@@ -1665,7 +1690,7 @@ export async function rebuildWorkspace(
 	}
 	// The checkout may have restored a link on the cwd's path, so check again before creating it.
 	inside(runDir, relative(runDir, ws.cwd));
-	mkdirSync(ws.cwd, { recursive: true });
+	mkdirInside(runDir, ws.cwd);
 	const pinned =
 		ws.repos.length === 1
 			? (ws.repos[0] as RunWorkspaceRepo).head.slice(0, 7)

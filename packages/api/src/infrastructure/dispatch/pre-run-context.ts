@@ -31,6 +31,7 @@ import { Logger } from "@prismalens/logger";
 import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
 import {
 	boundSnapshot,
+	cutSnapshot,
 	cutStrings,
 	type SnapshotWindow,
 } from "../../modules/integrations/source-query.js";
@@ -180,13 +181,15 @@ export function buildPreRunSnapshot(input: {
 		const n = (counts.get(t.kind) ?? 0) + 1;
 		counts.set(t.kind, n);
 		const name = `telemetry-${t.kind}-${n}.json`;
-		const head = cutStrings({
-			source: who,
-			fetchedAt: input.now.toISOString(),
-			window,
-		}) as object;
+		// Scrub, then cut: a cut first would leave a prefix of a long secret (#848).
+		const head = cutStrings(
+			scrubDeep(
+				{ source: who, fetchedAt: input.now.toISOString(), window },
+				secrets,
+			),
+		) as object;
 		const { text, truncated } = boundSnapshot(
-			scrubDeep(t.part.data, secrets),
+			cutSnapshot(scrubDeep(t.part.data, secrets)),
 			(data) =>
 				clean(
 					JSON.stringify(

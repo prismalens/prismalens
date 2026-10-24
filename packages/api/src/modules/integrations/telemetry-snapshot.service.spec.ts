@@ -7,7 +7,7 @@ import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contract
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationsController } from "./integrations.controller.js";
 import type { OpenedSource } from "./open-source.js";
-import { boundSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
+import { boundSnapshot, cutSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
 import {
 	envSource,
 	fetchSnapshot,
@@ -382,7 +382,7 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		expect(lokiWithSel.part.summary).toContain('{app="order"}');
 	});
 
-	it("query: a 100 KB label is cut to 512 characters", async () => {
+	it("query: a 100 KB label is cut to 512 characters by cutSnapshot", async () => {
 		const longLabel = "x".repeat(100_000);
 		const url = await upstream((req) => {
 			if (req.url?.startsWith("/api/v2/alerts")) {
@@ -415,14 +415,18 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		]).sources({});
 		const out = await fetchSnapshot(sources, WINDOW);
 		const expectedCut = `${"x".repeat(512)}…`;
+		const cutOf = (o: unknown) => (o as { part: { data: unknown } }).part.data;
 		const promPart = (out[0] as { part: { data: { firing: { result: [{ metric: { job: string } }] } } } }).part;
 		const amPart = (out[1] as { part: { data: { alerts: [{ labels: { env: string }; annotations: { note: string } }] } } }).part;
 		const lokiPart = (out[2] as { part: { data: { result: [{ stream: { tag: string } }] } } }).part;
 
-		expect(promPart.data.firing.result[0]?.metric.job).toBe(expectedCut);
-		expect(amPart.data.alerts[0]?.labels.env).toBe(expectedCut);
-		expect(amPart.data.alerts[0]?.annotations.note).toBe(expectedCut);
-		expect(lokiPart.data.result[0]?.stream.tag).toBe(expectedCut);
+		const cutProm = cutSnapshot(cutOf(out[0])) as typeof promPart.data;
+		const cutAm = cutSnapshot(cutOf(out[1])) as typeof amPart.data;
+		const cutLoki = cutSnapshot(cutOf(out[2])) as typeof lokiPart.data;
+		expect(cutProm.firing.result[0]?.metric.job).toBe(expectedCut);
+		expect(cutAm.alerts[0]?.labels.env).toBe(expectedCut);
+		expect(cutAm.alerts[0]?.annotations.note).toBe(expectedCut);
+		expect(cutLoki.result[0]?.stream.tag).toBe(expectedCut);
 	});
 
 	it("query: empty on a 200 response with no data", async () => {
