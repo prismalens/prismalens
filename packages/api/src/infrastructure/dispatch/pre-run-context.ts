@@ -28,7 +28,7 @@ import type {
 } from "../../modules/gateway/runbooks.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import { scrubSecrets } from "../../modules/integrations/source-request.js";
-import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.js";
+import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
 
 const logger = new Logger({ context: "PreRunContext" });
 

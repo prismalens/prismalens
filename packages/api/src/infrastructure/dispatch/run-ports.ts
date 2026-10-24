@@ -30,7 +30,7 @@ import type {
 	Snapshot,
 } from "../../core/harness/repo-source.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
-import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.js";
+import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { RunbookDoc } from "./pre-run-context.js";

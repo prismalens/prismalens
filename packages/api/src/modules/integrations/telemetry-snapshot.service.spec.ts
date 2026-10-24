@@ -11,7 +11,7 @@ import {
 	fetchSnapshot,
 	type SnapshotSource,
 	TelemetrySnapshotService,
-} from "./telemetry-snapshot.js";
+} from "./telemetry-snapshot.service.js";
 
 const servers: Server[] = [];
 afterEach(async () => {

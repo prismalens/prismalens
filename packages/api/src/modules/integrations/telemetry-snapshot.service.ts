@@ -3,8 +3,8 @@
 
 import { Injectable, Optional } from "@nestjs/common";
 import { sourceType } from "@prismalens/contracts/schemas";
-import type { PrismaService } from "../../core/prisma/prisma.service.js";
-import type { IntegrationsService } from "./integrations.service.js";
+import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { IntegrationsService } from "./integrations.service.js";
 import { type OpenedSource, openSource } from "./open-source.js";
 import {
 	failureReason,

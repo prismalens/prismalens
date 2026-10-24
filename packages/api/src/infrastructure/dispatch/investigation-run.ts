@@ -69,7 +69,7 @@ import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
-import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.js";
+import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import {
 	readPreRunContext,

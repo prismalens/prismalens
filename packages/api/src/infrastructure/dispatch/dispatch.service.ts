@@ -61,7 +61,7 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../../modules/integrations/git-credential.service.js";
-import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-snapshot.js";
+import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import {

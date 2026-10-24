@@ -9,7 +9,7 @@ import { CredentialsService } from "./crypto/credentials.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { TelemetrySnapshotService } from "./telemetry-snapshot.js";
+import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 @Module({
