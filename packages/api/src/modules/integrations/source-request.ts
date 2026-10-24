@@ -69,6 +69,12 @@ export function insufficientScope(res: Response): string | null {
 		scope = m?.[1] ?? m?.[2] ?? "";
 	}
 	const accepted = res.headers.get("x-accepted-oauth-scopes");
+	// A challenge that refuses without naming a scope takes the scope GitHub says it accepts.
+	if (scope?.trim() === "" && accepted?.trim())
+		scope = accepted
+			.split(/[\s,]+/)
+			.filter(Boolean)
+			.join(" ");
 	if (scope === undefined && accepted?.trim()) {
 		// GitHub sends these on every answer; only a grant lacking all of them is a scope refusal.
 		const held = (res.headers.get("x-oauth-scopes") ?? "")

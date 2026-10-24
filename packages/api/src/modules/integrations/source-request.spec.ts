@@ -355,6 +355,15 @@ describe("sourceRequestFn: OAuth renewal and scope refusals (#848, 04)", () => {
 		).toEqual(["needs permission: read_api"]);
 	});
 
+	it("a challenge with no scope takes X-Accepted-OAuth-Scopes", async () => {
+		expect(
+			await refusal({
+				"www-authenticate": 'Bearer error="insufficient_scope"',
+				"x-accepted-oauth-scopes": "repo",
+			}),
+		).toEqual(["needs permission: repo"]);
+	});
+
 	it("GitHub's X-Accepted-OAuth-Scopes on a 403 names the scope", async () => {
 		expect(
 			await refusal({ "x-accepted-oauth-scopes": "repo", "x-oauth-scopes": "" }),
