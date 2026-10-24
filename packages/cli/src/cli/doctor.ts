@@ -14,6 +14,7 @@
  *  - a harness on PATH (prismalens never bundles or installs one — #337 C3/C4),
  *    and the model a run would ask it for
  *  - the port/host `pl up` will bind, informational only
+ *  - the env fallbacks a run would use (#848)
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -491,6 +492,64 @@ export function checkGit(
 	return checks;
 }
 
+const TELEMETRY_ENV = ["PROMETHEUS", "ALERTMANAGER", "LOKI"] as const;
+const isSet = (env: NodeJS.ProcessEnv, name: string) => !!env[name]?.trim();
+const setWord = (env: NodeJS.ProcessEnv, name: string) =>
+	`${name} ${isSet(env, name) ? "set" : "not set"}`;
+
+/**
+ * The env a run falls back to (#848, ADR 0007 §5-6): telemetry URLs by origin and
+ * which git tokens are set. Never a token's or a host's value.
+ */
+export function checkEnvFallbacks(
+	env: NodeJS.ProcessEnv = process.env,
+): Check[] {
+	const telemetry = TELEMETRY_ENV.flatMap((kind) => {
+		const raw = env[`${kind}_URL`]?.trim();
+		if (!raw) return [];
+		let origin: string;
+		try {
+			origin = new URL(raw).origin;
+		} catch {
+			return [`${kind}_URL is not a URL`];
+		}
+		return [`${kind}_URL ${origin} (${setWord(env, `${kind}_TOKEN`)})`];
+	});
+	const git = [
+		...["GH_TOKEN", "GITHUB_TOKEN"]
+			.filter((v) => isSet(env, v))
+			.map((v) => `${v} set, for github.com`),
+		...(isSet(env, "GH_HOST")
+			? [
+					`GH_HOST set, with ${setWord(env, "GH_ENTERPRISE_TOKEN")} and ${setWord(env, "GITHUB_ENTERPRISE_TOKEN")}`,
+				]
+			: ["GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]
+					.filter((v) => isSet(env, v))
+					.map((v) => `${v} set, but GH_HOST is not, so no host takes it`)),
+		...(isSet(env, "GITLAB_TOKEN")
+			? [
+					`GITLAB_TOKEN set, for gitlab.com${isSet(env, "GITLAB_HOST") ? " and GITLAB_HOST" : ""}`,
+				]
+			: isSet(env, "GITLAB_HOST")
+				? ["GITLAB_HOST set, with GITLAB_TOKEN not set"]
+				: []),
+	];
+	return [
+		{
+			name: "Environment fallbacks",
+			pass: true,
+			detail: `telemetry, this shell only: ${telemetry.length ? telemetry.join("; ") : "none"}. Used when no connection is mapped, or inside a mapped connection of the same origin that stores no credential`,
+			hard: false,
+		},
+		{
+			name: "Environment fallbacks",
+			pass: true,
+			detail: `git, this shell only: ${git.length ? git.join("; ") : "none"}. Used when no token is stored for the host, or when an unpinned stored token cannot reach a repository`,
+			hard: false,
+		},
+	];
+}
+
 /** What `pl up` would pick, without creating the instance file the doctor only reports on. */
 function workspacePort(): number {
 	const workspace = getAppDataDir();
@@ -624,6 +683,7 @@ export default defineCommand({
 				checkPath(),
 				checkInstalls(),
 				...checkGit(),
+				...checkEnvFallbacks(),
 				...harnessChecks,
 				checkAnyHarnessOnPath(harnessChecks),
 				...handshakes.map((h) => h.check),
