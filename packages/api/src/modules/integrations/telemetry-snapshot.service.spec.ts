@@ -11,6 +11,7 @@ import {
 	envSource,
 	fetchSnapshot,
 	type SnapshotSource,
+	type SourceOutcome,
 	TelemetrySnapshotService,
 } from "./telemetry-snapshot.service.js";
 
@@ -723,7 +724,10 @@ describe("connection selection and credential matrix (#848 C5)", () => {
 		const svc = new TelemetrySnapshotService(prisma as never, intMock as never);
 		const out = await svc.fetch("inc-1", WINDOW);
 		const attempted = out.sources.filter((s) => s.status === "skipped" || s.status === "found" || s.status === "empty");
-		const notRead = out.sources.filter((s) => s.status === "not-read");
+		const notRead = out.sources.filter(
+			(s): s is SourceOutcome & { status: "not-read"; reason: string } =>
+				s.status === "not-read",
+		);
 		expect(attempted.length).toBe(6);
 		expect(notRead.length).toBe(2);
 		expect(notRead[0]?.reason).toBe("over the 6-source limit");

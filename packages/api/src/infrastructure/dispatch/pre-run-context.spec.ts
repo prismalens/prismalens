@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildPreRunSnapshot, parseStoredSnapshot, snapshotWindow } from "./pre-run-context.js";
+import {
+	buildPreRunSnapshot,
+	parseStoredSnapshot,
+	snapshotWindow,
+	writeReadCopies,
+} from "./pre-run-context.js";
 
 const NOW = new Date("2026-10-24T10:00:00Z");
 const WINDOW = { start: new Date("2026-10-24T09:00:00Z"), end: NOW };
@@ -80,43 +88,49 @@ describe("the run's pre-run snapshot (#848)", () => {
 		expect(snapshotWindow([alert(null)], NOW).start).toEqual(new Date("2026-10-24T09:00:00Z"));
 	});
 
-	it("200 log lines of 1,000 three-byte characters stay under 262,144 bytes, with truncated recorded", () => {
-		const euro = "\u20AC";
-		const line = euro.repeat(1000);
-		const ctx = writePreRunContext(runDir, {
-			window: WINDOW,
-			telemetry: [
-				{
-					kind: "loki",
-					label: "loki-prod",
-					from: "set",
-					status: "found",
-					part: {
-						summary: "200 lines",
-						data: {
-							result: [
-								{
-									stream: { service: "checkout" },
-									values: Array.from({ length: 200 }, (_, i) => [String(i), line]),
-								},
-							],
+	it("200 log lines of 1,000 three-byte characters stay under 262,144 bytes, with truncated recorded", async () => {
+		const runDir = mkdtempSync(join(os.tmpdir(), "pl-prerun-"));
+		try {
+			const euro = "\u20AC";
+			const line = euro.repeat(1000);
+			const ctx = buildPreRunSnapshot({
+				window: WINDOW,
+				telemetry: [
+					{
+						kind: "loki",
+						label: "loki-prod",
+						from: "set",
+						status: "found",
+						part: {
+							summary: "200 lines",
+							data: {
+								result: [
+									{
+										stream: { service: "checkout" },
+										values: Array.from({ length: 200 }, (_, i) => [String(i), line]),
+									},
+								],
+							},
+							count: 200,
 						},
-						count: 200,
+						secrets: [],
 					},
-					secrets: [],
-				},
-			],
-			pastIncidents: [],
-			runbooks: [],
-			now: NOW,
-		});
-		const file = join(runDir, CONTEXT_DIR, "telemetry-loki-1.json");
-		const content = readFileSync(file);
-		expect(content.byteLength).toBeLessThanOrEqual(262_144);
-		expect(ctx.sources[0]?.truncated).toEqual({
-			dropped: expect.any(Number),
-			reason: "the 256 KiB snapshot limit",
-		});
-		expect(ctx.sources[0]?.truncated?.dropped).toBeGreaterThan(0);
+				],
+				pastIncidents: [],
+				runbooks: [],
+				now: NOW,
+			});
+			await writeReadCopies([{ dir: runDir }], "run-1", ctx);
+			const file = join(runDir, ".prismalens/runs/run-1", "telemetry-loki-1.json");
+			const content = readFileSync(file);
+			expect(content.byteLength).toBeLessThanOrEqual(262_144);
+			expect(ctx.sources[0]?.truncated).toEqual({
+				dropped: expect.any(Number),
+				reason: "the 256 KiB snapshot limit",
+			});
+			expect(ctx.sources[0]?.truncated?.dropped).toBeGreaterThan(0);
+		} finally {
+			rmSync(runDir, { recursive: true, force: true });
+		}
 	});
 });

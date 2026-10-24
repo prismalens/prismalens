@@ -13,7 +13,7 @@ import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
 import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData } from "@prismalens/contracts";
-import { type conductRun, withSkippedSources } from "@prismalens/engine";
+import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
@@ -1609,6 +1609,15 @@ describe("toolsServer per run and follow-up (#848)", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
+	function findWorkspaceCall(mock: { mock: { calls: unknown[] } }): [string, { workspace?: string }] {
+		const call = (mock.mock.calls as [string, { workspace?: string }][]).find(
+			([, dto]) => dto?.workspace !== undefined,
+		);
+		expect(call).toBeDefined();
+		if (!call) throw new Error("expected call with workspace");
+		return call;
+	}
+
 	it("toolsServer: the first run persists toolsServer in workspace JSON and leases with it", async () => {
 		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
 		const updateStatus = vi.fn(async () => true);
@@ -1628,9 +1637,8 @@ describe("toolsServer per run and follow-up (#848)", () => {
 		);
 		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
 		const leasedName = lease.mock.calls[0]?.[1];
-		const updateCall = updateStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
-		expect(updateCall).toBeDefined();
-		const parsed = JSON.parse(updateCall![1].workspace ?? "{}");
+		const updateCall = findWorkspaceCall(updateStatus);
+		const parsed = JSON.parse(updateCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe(leasedName);
 	});
 
@@ -1710,9 +1718,8 @@ describe("toolsServer per run and follow-up (#848)", () => {
 		);
 
 		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234");
-		const followUpCall = followUpStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
-		expect(followUpCall).toBeDefined();
-		const parsed = JSON.parse(followUpCall![1].workspace ?? "{}");
+		const followUpCall = findWorkspaceCall(followUpStatus);
+		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe("prismalens-reused1234");
 	});
 
@@ -1792,9 +1799,8 @@ describe("toolsServer per run and follow-up (#848)", () => {
 
 		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
 		const leasedName = lease.mock.calls[0]?.[1];
-		const followUpCall = followUpStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
-		expect(followUpCall).toBeDefined();
-		const parsed = JSON.parse(followUpCall![1].workspace ?? "{}");
+		const followUpCall = findWorkspaceCall(followUpStatus);
+		const parsed = JSON.parse(followUpCall[1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe(leasedName);
 	});
 
@@ -1881,17 +1887,23 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 
 			const ports = fakePorts({
 				incidentRepos: vi.fn(async () => repoUrls.map((u, i) => makeRepo(u, `svc-${i}`))),
-				snapshotWith: vi.fn(async (ref: any, dest: string, signal?: AbortSignal) => {
-					const url = typeof ref === "string" ? ref : ref.url;
-					if (url.endsWith("repo-7")) {
-						abortedSignal = signal;
-						return new Promise(() => {});
-					}
-					return {
-						snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
-						credential: PUBLIC_CREDENTIAL,
-					};
-				}),
+				snapshotWith: vi.fn(
+					async (
+						ref: any,
+						dest: string,
+						signal?: AbortSignal,
+					): Promise<{ snap: Snapshot; credential: typeof PUBLIC_CREDENTIAL }> => {
+						const url = typeof ref === "string" ? ref : ref.url;
+						if (url.endsWith("repo-7")) {
+							abortedSignal = signal;
+							return new Promise(() => {});
+						}
+						return {
+							snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
+							credential: PUBLIC_CREDENTIAL,
+						};
+					},
+				),
 			});
 
 			const wsPromise = resolveWorkspace(minimalData(), ports);
@@ -1956,7 +1968,12 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 				snapshotWith: vi.fn(async () => {
 					throw new Error("clone failed");
 				}),
-				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(async () => {}),
+					load: vi.fn(async () => null),
+				},
 			});
 
 			await runInvestigationJob(
@@ -1967,12 +1984,12 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			);
 
 			expect(mocks.conductRun).toHaveBeenCalled();
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: Parameters<typeof withPreRunCoverage>[1] }];
 			expect(opts.cwd).toContain("unmapped");
 			const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
 			expect(entry.metadata?.mapped).toBe(false);
 			expect(entry.description).toContain("Ran without code: no repository could be checked out: URL https://github.com/acme/primary (clone failed).");
-			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			const report = withPreRunCoverage({ coverage: { queried: [], notQueried: [] } }, opts.context);
 			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/primary: not checked out before the run, clone failed");
 		} finally {
 			vi.unstubAllEnvs();
@@ -1999,7 +2016,12 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 				snapshotWith: vi.fn(async () => {
 					throw new Error("network down");
 				}),
-				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(async () => {}),
+					load: vi.fn(async () => null),
+				},
 			});
 
 			await runInvestigationJob(
@@ -2010,12 +2032,12 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			);
 
 			expect(mocks.conductRun).toHaveBeenCalled();
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: Parameters<typeof withPreRunCoverage>[1] }];
 			expect(opts.cwd).toContain("unmapped");
 			const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
 			expect(entry.metadata?.mapped).toBe(false);
 			expect(entry.description).toContain("Ran without code: no repository could be checked out");
-			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			const report = withPreRunCoverage({ coverage: { queried: [], notQueried: [] } }, opts.context);
 			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/repo-a: not checked out before the run, network down");
 			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/repo-b: not checked out before the run, network down");
 		} finally {
@@ -2049,7 +2071,12 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 						credential: PUBLIC_CREDENTIAL,
 					};
 				}),
-				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(async () => {}),
+					load: vi.fn(async () => null),
+				},
 			});
 
 			await runInvestigationJob(
@@ -2064,8 +2091,8 @@ describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
 			expect(entry.metadata?.mapped).toBe(true);
 			expect(entry.metadata?.repo).toBe("https://github.com/acme/secondary");
 			expect(entry.description).toContain("Not included, because it could not be copied: URL https://github.com/acme/primary (primary clone error).");
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
-			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: Parameters<typeof withPreRunCoverage>[1] }];
+			const report = withPreRunCoverage({ coverage: { queried: [], notQueried: [] } }, opts.context);
 			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/primary: not checked out before the run, primary clone error");
 		} finally {
 			vi.unstubAllEnvs();
