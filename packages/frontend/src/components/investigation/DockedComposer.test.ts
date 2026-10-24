@@ -10,7 +10,9 @@
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DockedComposer } from "./DockedComposer";
+import { DockedComposer, runFollowUpLevel, threadActions } from "./DockedComposer";
+
+type FollowUpRun = Parameters<typeof runFollowUpLevel>[0];
 
 const h = vi.hoisted(() => {
 	const agent = (id: string, label: string) => ({
@@ -245,5 +247,110 @@ describe("the follow-up chip on an alert-started run (#673 w6-13)", () => {
 		h.record.run = alertRun("working");
 		await render();
 		expect(q("mode").dataset.value).toBe("auto");
+	});
+});
+
+describe("threadActions and runFollowUpLevel", () => {
+	it("live: one action; placeholder \"Message the agent\"; its hint \"Reaches the agent at its next pause.\"", () => {
+		const res = threadActions({
+			draft: false,
+			live: true,
+			chat: false,
+			continuable: false,
+			reported: false,
+			name: "Run 1",
+			nextName: "Run 2",
+			agent: "Claude Code",
+			defaultDraft: "investigate",
+		});
+		expect(res.actions).toHaveLength(1);
+		expect(res.placeholder).toBe("Message the agent");
+		expect(res.hint[res.actions[0].id]).toBe("Reaches the agent at its next pause.");
+	});
+
+	it("finished and continuable, agent \"Claude Code\": one action, id \"continue\"; placeholder \"Message Claude Code\"; hint \"Continues in Claude Code's own session and ends in a report on the overview.\"", () => {
+		const res = threadActions({
+			draft: false,
+			live: false,
+			chat: false,
+			continuable: true,
+			reported: false,
+			name: "Run 1",
+			nextName: "Run 2",
+			agent: "Claude Code",
+			defaultDraft: "investigate",
+		});
+		expect(res.actions).toHaveLength(1);
+		expect(res.actions[0].id).toBe("continue");
+		expect(res.placeholder).toBe("Message Claude Code");
+		expect(res.hint.continue).toBe(
+			"Continues in Claude Code's own session and ends in a report on the overview.",
+		);
+	});
+
+	it("finished, reported, not continuable: one action, id \"follow-up\"; no action with id \"recheck\"; placeholder \"Message Claude Code\"; hint \"Continues in Claude Code's own session.\"", () => {
+		const res = threadActions({
+			draft: false,
+			live: false,
+			chat: false,
+			continuable: false,
+			reported: true,
+			name: "Run 1",
+			nextName: "Run 2",
+			agent: "Claude Code",
+			defaultDraft: "investigate",
+		});
+		expect(res.actions).toHaveLength(1);
+		expect(res.actions[0].id).toBe("follow-up");
+		expect(res.actions.some((a) => a.id === "recheck")).toBe(false);
+		expect(res.placeholder).toBe("Message Claude Code");
+		expect(res.hint["follow-up"]).toBe("Continues in Claude Code's own session.");
+	});
+
+	it("draft: two actions, ask and investigate", () => {
+		const res = threadActions({
+			draft: true,
+			live: false,
+			chat: false,
+			continuable: false,
+			reported: false,
+			name: "Run 1",
+			nextName: "Run 2",
+			agent: "Claude Code",
+			defaultDraft: "ask",
+		});
+		expect(res.actions).toHaveLength(2);
+		expect(res.actions.map((a) => a.id)).toEqual(["ask", "investigate"]);
+	});
+
+	it("runFollowUpLevel: returns settings level for ended run started by PrismaLens", () => {
+		const inv = {
+			triggerType: "auto_critical",
+			accessLevel: "auto" as const,
+		};
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", false)).toBe("supervised");
+	});
+
+	it("runFollowUpLevel: returns full-access for a run with accessLevel: \"full-access\"", () => {
+		const inv = {
+			triggerType: "manual",
+			accessLevel: "full-access" as const,
+		};
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", false)).toBe("full-access");
+	});
+
+	it("runFollowUpLevel: returns its own level for alert-started run while live", () => {
+		const inv = {
+			triggerType: "auto_critical",
+			accessLevel: "auto" as const,
+		};
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "supervised", true)).toBe("auto");
+	});
+
+	it("runFollowUpLevel: returns supervised for run with neither level nor report fidelity", () => {
+		const inv = {
+			triggerType: "manual",
+		};
+		expect(runFollowUpLevel(inv as unknown as FollowUpRun, "full-access", false)).toBe("supervised");
 	});
 });

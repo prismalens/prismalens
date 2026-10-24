@@ -6,7 +6,9 @@ import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { citationText, type FileAt } from "@/lib/evidence-files";
 import { cn } from "@/lib/utils";
+import { EvidenceFileView } from "./EvidenceFileView";
 import {
 	type DetailLink,
 	type DetailRow,
@@ -17,6 +19,24 @@ import {
 import type { RunStep } from "./run-steps";
 
 export type DetailsTab = "summary" | "evidence" | "context" | "steps";
+
+/** Opens a cited file; `origin` is the id of the control that opened it, which gets focus back. */
+export type OpenFile = (f: FileAt, origin: string) => void;
+
+/** What the Evidence tab needs to open a file the run read, and the one open now. */
+export interface EvidenceFiles {
+	runId: string;
+	viewing: FileAt | null;
+	onOpen: OpenFile;
+	onClose: () => void;
+	backLabel: string;
+	phone: boolean;
+	reads: number[];
+	codeHost: string | null;
+	/** The file a Steps row opens; null when the step names none in the clone. */
+	stepFile: (s: RunStep) => FileAt | null;
+	onOpenHypotheses: () => void;
+}
 
 const TONE = {
 	ok: "text-ok",
@@ -49,6 +69,7 @@ export function RunDetailsPanel({
 	flaggedCount,
 	steps,
 	onJump,
+	files,
 }: {
 	title: string;
 	tab: DetailsTab;
@@ -61,6 +82,7 @@ export function RunDetailsPanel({
 	flaggedCount: number;
 	steps: RunStep[];
 	onJump: (n: number) => void;
+	files: EvidenceFiles;
 }) {
 	const [filter, setFilter] = useState<StepFilter>("all");
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -148,26 +170,49 @@ export function RunDetailsPanel({
 						))}
 					</TabsPrimitive.List>
 				</div>
-				{(["summary", "evidence", "context"] as const).map((id) => (
+				{files.viewing && (
 					<TabsPrimitive.Content
-						key={id}
-						value={id}
-						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
-						data-testid={`run-details-${id}`}
+						value="evidence"
+						className="flex min-h-0 flex-1 flex-col"
+						data-testid="run-details-evidence"
 					>
-						<Sections
-							sections={
-								id === "summary"
-									? summary
-									: id === "evidence"
-										? evidence
-										: context
-							}
-							incidentId={incidentId}
+						<EvidenceFileView
+							key={`${files.viewing.sha}:${files.viewing.path}`}
+							runId={files.runId}
+							file={files.viewing}
+							onBack={files.onClose}
+							backLabel={files.backLabel}
+							phone={files.phone}
+							reads={files.reads}
 							onJump={onJump}
+							codeHost={files.codeHost}
 						/>
 					</TabsPrimitive.Content>
-				))}
+				)}
+				{(["summary", "evidence", "context"] as const)
+					.filter((id) => id !== "evidence" || !files.viewing)
+					.map((id) => (
+						<TabsPrimitive.Content
+							key={id}
+							value={id}
+							className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
+							data-testid={`run-details-${id}`}
+						>
+							<Sections
+								sections={
+									id === "summary"
+										? summary
+										: id === "evidence"
+											? evidence
+											: context
+								}
+								incidentId={incidentId}
+								onJump={onJump}
+								onOpenFile={files.onOpen}
+								onOpenHypotheses={files.onOpenHypotheses}
+							/>
+						</TabsPrimitive.Content>
+					))}
 				<TabsPrimitive.Content
 					value="steps"
 					className="flex min-h-0 flex-1 flex-col"
@@ -203,39 +248,47 @@ export function RunDetailsPanel({
 									: "No steps match."}
 							</li>
 						)}
-						{shown.map((s) => (
-							<li key={s.callId}>
-								<button
-									type="button"
-									onClick={() => onJump(s.n)}
-									className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
-									data-testid="steps-row"
-									data-step={s.n}
-								>
-									<span className="w-11 shrink-0 text-meta text-text-3">
-										Step {s.n}
-									</span>
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span
-											className={cn(
-												"truncate",
-												s.ok === false ? "text-danger" : "text-text-1",
-											)}
-										>
-											{s.title}
+						{shown.map((s) => {
+							const file = files.stepFile(s);
+							const id = `steps-row-${s.n}`;
+							return (
+								<li key={s.callId}>
+									<button
+										type="button"
+										id={id}
+										// A step that read a file in the clone opens it; any other jumps to the step.
+										onClick={() =>
+											file ? files.onOpen(file, id) : onJump(s.n)
+										}
+										className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
+										data-testid="steps-row"
+										data-step={s.n}
+									>
+										<span className="w-11 shrink-0 text-meta text-text-3">
+											Step {s.n}
 										</span>
-										{s.title !== s.command && (
-											<span className="truncate font-mono text-mono text-text-3">
-												{s.command}
+										<span className="flex min-w-0 flex-1 flex-col">
+											<span
+												className={cn(
+													"truncate",
+													s.ok === false ? "text-danger" : "text-text-1",
+												)}
+											>
+												{s.title}
 											</span>
-										)}
-									</span>
-									<span className="shrink-0 text-meta text-text-3 tabular-nums">
-										{clock(s.at)}
-									</span>
-								</button>
-							</li>
-						))}
+											{s.title !== s.command && (
+												<span className="truncate font-mono text-mono text-text-3">
+													{s.command}
+												</span>
+											)}
+										</span>
+										<span className="shrink-0 text-meta text-text-3 tabular-nums">
+											{clock(s.at)}
+										</span>
+									</button>
+								</li>
+							);
+						})}
 					</ol>
 				</TabsPrimitive.Content>
 			</TabsPrimitive.Root>
@@ -255,10 +308,14 @@ function Sections({
 	sections,
 	incidentId,
 	onJump,
+	onOpenFile,
+	onOpenHypotheses,
 }: {
 	sections: DetailSection[];
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: OpenFile;
+	onOpenHypotheses: () => void;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
@@ -272,6 +329,9 @@ function Sections({
 							row={row}
 							incidentId={incidentId}
 							onJump={onJump}
+							onOpenFile={onOpenFile}
+							onOpenHypotheses={onOpenHypotheses}
+							origin={`cite-${sec.title}-${i}`.replace(/\W+/g, "-")}
 						/>
 					))}
 				</section>
@@ -284,10 +344,16 @@ function Row({
 	row,
 	incidentId,
 	onJump,
+	onOpenFile,
+	onOpenHypotheses,
+	origin,
 }: {
 	row: DetailRow;
 	incidentId: string;
 	onJump: (n: number) => void;
+	onOpenFile: OpenFile;
+	onOpenHypotheses: () => void;
+	origin: string;
 }) {
 	return (
 		<div
@@ -327,10 +393,33 @@ function Row({
 						{row.sub}
 					</span>
 				)}
-				{row.link && (
-					<LeaveLink link={row.link} incidentId={incidentId}>
+				{row.file && (
+					<button
+						type="button"
+						id={origin}
+						onClick={() => row.file && onOpenFile(row.file, origin)}
+						className="self-start rounded-control text-left font-mono text-mono text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current [overflow-wrap:anywhere]"
+						data-testid="detail-file"
+					>
+						{citationText(row.file)}
+					</button>
+				)}
+				{row.link?.kind === "hypotheses" ? (
+					<button
+						type="button"
+						id={origin}
+						onClick={onOpenHypotheses}
+						className="self-start rounded-control text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
+						data-testid="detail-hypotheses"
+					>
 						{row.action ?? "Open"}
-					</LeaveLink>
+					</button>
+				) : (
+					row.link && (
+						<LeaveLink link={row.link} incidentId={incidentId}>
+							{row.action ?? "Open"}
+						</LeaveLink>
+					)
 				)}
 			</span>
 			{row.step !== undefined && (
@@ -365,7 +454,7 @@ function LeaveLink({
 	incidentId,
 	children,
 }: {
-	link: DetailLink;
+	link: Exclude<DetailLink, { kind: "hypotheses" }>;
 	incidentId: string;
 	children: ReactNode;
 }) {

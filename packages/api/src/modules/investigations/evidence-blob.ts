@@ -40,10 +40,16 @@ export function objectDirFor(
 	return existsSync(join(mirror, "HEAD")) ? mirror : null;
 }
 
-function git(args: string[], cwd: string, timeoutMs = READ_TIMEOUT_MS) {
+function git(
+	args: string[],
+	cwd: string,
+	timeoutMs = READ_TIMEOUT_MS,
+	raw = false,
+) {
 	return spawnGit(["--no-replace-objects", ...args], {
 		cwd,
 		timeoutMs,
+		raw,
 		env: {
 			...gitEnv({ source: "none" }),
 			// A path is a name, never a glob: `*` in it matches only `*`.
@@ -106,11 +112,38 @@ export async function readEvidenceBlob(
 			...at,
 			kind,
 			size,
+			oid,
 			content: null,
 			omitted: "too-large",
 		};
-	const { stdout: content } = await git(["cat-file", "blob", oid], dir);
-	if (content.slice(0, 8000).includes("\0"))
-		return { state: "ok", ...at, kind, size, content: null, omitted: "binary" };
-	return { state: "ok", ...at, kind, size, content, omitted: null };
+	const { bytes = Buffer.alloc(0) } = await git(
+		["cat-file", "blob", oid],
+		dir,
+		READ_TIMEOUT_MS,
+		true,
+	);
+	const content = utf8Text(bytes);
+	if (content === null)
+		return {
+			state: "ok",
+			...at,
+			kind,
+			size,
+			oid,
+			content: null,
+			omitted: "binary",
+		};
+	return { state: "ok", ...at, kind, size, oid, content, omitted: null };
+}
+
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true });
+
+/** The text, or null for a NUL in the head or bytes that are not UTF-8: reported as binary, never decoded (ruling 14). */
+function utf8Text(bytes: Buffer): string | null {
+	if (bytes.subarray(0, 8000).includes(0)) return null;
+	try {
+		return strictUtf8.decode(bytes);
+	} catch {
+		return null;
+	}
 }
