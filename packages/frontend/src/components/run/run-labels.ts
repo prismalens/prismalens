@@ -126,7 +126,7 @@ export function codeChip(
 		| { repos: { name: string; credential?: RunCredential }[] }
 		| null
 		| undefined,
-): { text: string; title: string } | null {
+): { text: string; title: string; warn?: boolean } | null {
 	const repos = (workspace?.repos ?? []).flatMap((r) =>
 		r.credential ? [{ name: r.name, credential: r.credential }] : [],
 	);
@@ -137,11 +137,16 @@ export function codeChip(
 	const title = repos
 		.map((r) => {
 			const c = r.credential;
-			const line = `Cloned with ${c.label}, via ${c.via}${c.fallback ? ". Your machine's git was refused, so a saved token was used" : ""}`;
+			const line = `Cloned with ${c.label}, via ${c.via}${c.fallback ? ". Your machine's git was refused, so a saved token was used" : ""}${c.fallbackFrom ? ". Fell back" : ""}`;
 			return repos.length > 1 ? `${r.name}: ${line}` : line;
 		})
 		.join("; ");
-	return { text: `Code: ${short.join(", ")}`, title };
+	const fell = repos.some((r) => r.credential.fallbackFrom);
+	return {
+		text: `Code: ${short.join(", ")}${fell ? ", fell back" : ""}`,
+		title,
+		...(fell ? { warn: true } : {}),
+	};
 }
 
 /** The header's firing word: `Firing for 12h 48m`, `Not firing`, or nothing without alerts. */

@@ -403,7 +403,7 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});
 
-	test("no agent ready: inbox-tile-agent and inbox-setup show, linking to /settings?tab=harness", async ({
+	test("no agent ready: inbox-tile-agent and inbox-setup show, linking to /settings?tab=agent", async ({
 		page,
 	}) => {
 		// Stub harnesses endpoint to simulate no agent checked/ready
@@ -422,9 +422,9 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 		await expect(page.getByTestId("inbox-setup")).toBeVisible();
 
 		const setupLink = page.getByTestId("inbox-setup-agent");
-		await expect(setupLink).toHaveAttribute("href", "/settings?tab=harness");
+		await expect(setupLink).toHaveAttribute("href", "/settings?tab=agent");
 		await setupLink.click();
-		await expect(page).toHaveURL(/\/settings\?tab=harness/);
+		await expect(page).toHaveURL(/\/settings\?tab=agent/);
 
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	});

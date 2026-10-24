@@ -45,8 +45,8 @@ function AlertsPage() {
 	const navigate = useNavigate();
 	const { search } = useAlertWindow();
 	const pull = usePullAlerts();
-	const { sidebarFolded } = useLayoutPrefs();
-	const listInSidebar = useMediaQuery(SIDEBAR_FULL) && !sidebarFolded;
+	const { sidebar } = useLayoutPrefs();
+	const listInSidebar = useMediaQuery(SIDEBAR_FULL) && sidebar === "full";
 	const stats = useQuery({
 		...orpc.alerts.getStats.queryOptions({ input: {} }),
 		refetchInterval: useLiveRefreshInterval(),

@@ -95,5 +95,10 @@ export function useInvestigationEventsHistory(
 		return () => window.clearInterval(id);
 	}, [pollMs, catchUp]);
 
-	return { data: query.data, catchUp };
+	return {
+		data: query.data,
+		catchUp,
+		isLoading: query.isLoading,
+		isError: query.isError,
+	};
 }

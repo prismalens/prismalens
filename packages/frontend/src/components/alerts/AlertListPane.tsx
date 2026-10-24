@@ -88,7 +88,7 @@ export function usePullAlerts() {
 			if (result.sources === 0) {
 				toast({
 					title: "No Alertmanager or Prometheus connection is configured",
-					description: "Add one under Settings, Alert sources.",
+					description: "Add one under Settings, Alert intake.",
 				});
 				return;
 			}
@@ -257,7 +257,7 @@ export function AlertListPane({
 						action={
 							sidebar ? undefined : (
 								<Button variant="text" size="sm" asChild>
-									<Link to="/settings" search={{ tab: "sources" }}>
+									<Link to="/settings" search={{ tab: "alert-intake" }}>
 										Add an alert source
 									</Link>
 								</Button>

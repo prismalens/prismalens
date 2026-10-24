@@ -707,7 +707,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
-		// Prometheus is added under Alert sources; Integrations filters it out.
+		// Prometheus is added under Sources (#848).
 		await expect(page.getByTestId("impact-connect")).toHaveAttribute(
 			"href",
 			"/settings?tab=sources",
@@ -1149,8 +1149,11 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 
 		await visit(page, `/services/${svcId}`);
 
-		// Edit impact metric
-		const editBtn = page.getByTestId("service-metric-edit");
+		// Map the connection, then edit its impact metric in place (#848)
+		await page.getByTestId("mapping-add").click();
+		const editBtn = page.getByRole("button", {
+			name: "Edit the mapping of Prometheus Main",
+		});
 		await expect(editBtn).toBeVisible();
 		await editBtn.click();
 

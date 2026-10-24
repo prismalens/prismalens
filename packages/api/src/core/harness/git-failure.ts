@@ -102,7 +102,7 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	)
 		return fail(
 			"token-expired",
-			`Token "${token}" expired on ${formatDay(input.tokenExpiresAt)}. Replace it in Settings → Integrations.`,
+			`Token "${token}" expired on ${formatDay(input.tokenExpiresAt)}. Replace it in Settings → Sources.`,
 			"replace-token",
 		);
 	if (
@@ -135,7 +135,7 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	if (source !== "connection" && has(stderr, COULD_NOT_READ_USER))
 		return fail(
 			"no-credential",
-			`No credential for ${host}. Add a Git host token in Settings → Integrations, or sign your machine's git in to ${host}.`,
+			`No credential for ${host}. Add a Git host token in Settings → Sources, or sign your machine's git in to ${host}.`,
 			"add-credential",
 		);
 	if (source === "machine" && has(stderr, /Host key verification failed/i))
