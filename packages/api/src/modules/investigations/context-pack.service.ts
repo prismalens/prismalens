@@ -326,16 +326,18 @@ export class ContextPackService {
 					b.c.createdAt.getTime() - a.c.createdAt.getTime(),
 			);
 
-		const cause = (c: (typeof candidates)[number]): string | null => {
-			const run = c.investigations[0];
-			const text = c.actualCause ?? run?.rootCause ?? run?.summary ?? null;
-			return text ? text.slice(0, 500) : null;
-		};
+		const cap = (text: string | null | undefined) =>
+			text ? text.slice(0, 500) : null;
+		const causes = (c: (typeof candidates)[number]) => ({
+			recordedCause: cap(c.actualCause),
+			agentRootCause: cap(c.investigations[0]?.rootCause),
+			agentSummary: cap(c.investigations[0]?.summary),
+		});
 		return [
 			...merged.map((c) => ({
 				reference: `INC-${c.number}`,
 				title: c.title.slice(0, 200),
-				rootCause: cause(c),
+				...causes(c),
 				matchedOn: ["merged into this incident"],
 			})),
 			...scored.map(({ c, serviceName, sharedLabels }) => {
@@ -348,7 +350,7 @@ export class ContextPackService {
 				return {
 					reference: `INC-${c.number}`,
 					title: c.title.slice(0, 200),
-					rootCause: cause(c),
+					...causes(c),
 					matchedOn: matchedOn.slice(0, 10),
 				};
 			}),
