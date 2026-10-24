@@ -1492,18 +1492,23 @@ describe("harness tool call live events and summary (#848)", () => {
 			},
 			calls: () => [...callList],
 		};
-		let usageCount = 0;
-		const { events } = await collect("retry", {
-			env: { ...process.env, FAKE_ACP_MODE: "retry", FAKE_MCP_HTTP: "1", FAKE_USAGE: "1" },
-			gateway,
-			onUsage: () => {
-				usageCount++;
-				if (usageCount === 2) {
-					callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
-					onCallCb?.({ name: "incident_notes", at: call2At });
-				}
+		const gate = join(tmp("retry-gate"), "gate");
+		const run = collect("retry", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "retry",
+				FAKE_MCP_HTTP: "1",
+				FAKE_RETRY_GATE: gate,
 			},
+			gateway,
 		});
+
+		await vi.waitFor(() => expect(existsSync(`${gate}.ready`)).toBe(true));
+		callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
+		onCallCb?.({ name: "incident_notes", at: call2At });
+		writeFileSync(`${gate}.release`, "go");
+
+		const { events } = await run;
 
 		const toolCalls = events.filter((e) => e.kind === "harness_tool_call");
 		expect(toolCalls).toHaveLength(1);
