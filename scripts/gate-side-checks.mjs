@@ -928,10 +928,27 @@ async function checkUpgrade() {
 		`0.0.1 should be refused as older: ${older.code} ${older.out.slice(-300)}`,
 	);
 	const upgrade = await runPl(["upgrade", "--version", next], env, cli);
-	assert(
-		upgrade.code === 0,
-		`pl upgrade --version ${next} exited ${upgrade.code}: ${upgrade.out.slice(-600)}`,
-	);
+	if (upgrade.code !== 0) {
+		// What `pl upgrade` runs, run by hand in the same env, says why npm said nothing.
+		const probe = WIN
+			? await run(
+					"cmd",
+					[
+						"/c",
+						"npm",
+						"install",
+						"-g",
+						`prismalens@${next}`,
+						"--loglevel=verbose",
+					],
+					env,
+				)
+			: { out: "" };
+		assert(
+			false,
+			`pl upgrade --version ${next} exited ${upgrade.code}: ${upgrade.out.slice(-1200)} | by hand: ${probe.code} ${probe.out.slice(-1800)}`,
+		);
+	}
 	const after = await runPl(["--version"], env, cli);
 	assert(
 		after.out.trim() === next,
