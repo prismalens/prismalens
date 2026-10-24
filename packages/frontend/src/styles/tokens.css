@@ -25,18 +25,19 @@
 		0 12px 32px oklch(0 0 0 / 0.14), 0 2px 6px oklch(0 0 0 / 0.08);
 	--scrim: oklch(0 0 0 / 0.35);
 
+	/* text-3, danger, live, ok and warn (and dark text-3) moved 0.02 to 0.06 L for AA on surface-3 (#848). */
 	--text-1: oklch(0.18 0.004 285);
 	--text-2: oklch(0.45 0.01 285);
-	--text-3: oklch(0.52 0.012 285);
+	--text-3: oklch(0.5 0.012 285);
 
 	--accent: oklch(0.5 0.2 277);
 	--accent-solid: oklch(0.52 0.2 277);
 	--accent-fg: oklch(0.985 0 0);
-	--danger: oklch(0.54 0.22 27);
+	--danger: oklch(0.5 0.22 27);
 	--danger-solid: oklch(0.52 0.22 27);
-	--live: oklch(0.5 0.11 195);
-	--ok: oklch(0.5 0.14 160);
-	--warn: oklch(0.53 0.15 75);
+	--live: oklch(0.46 0.11 195);
+	--ok: oklch(0.44 0.14 160);
+	--warn: oklch(0.47 0.15 75);
 	--sev-critical: var(--danger);
 	--sev-high: oklch(0.54 0.17 50);
 	--sev-medium: var(--warn);
@@ -126,7 +127,7 @@
 
 	--text-1: oklch(0.95 0.003 285);
 	--text-2: oklch(0.74 0.01 285);
-	--text-3: oklch(0.64 0.012 285);
+	--text-3: oklch(0.68 0.012 285);
 
 	--accent: oklch(0.72 0.15 277);
 	--accent-solid: oklch(0.54 0.17 277);
@@ -137,6 +138,27 @@
 	--warn: oklch(0.8 0.14 80);
 	--sev-high: oklch(0.75 0.16 50);
 	--sev-low: oklch(0.72 0.12 250);
+}
+
+/* Touch layouts: every control is a 48 px target (#848, OBJ-012); a switch's row is its target. */
+@media (pointer: coarse), (max-width: 767px) {
+	:root {
+		--header-h: 48px;
+	}
+	:where(
+		button:not([role="switch"]),
+		[role="tab"],
+		[role="radio"],
+		[role="option"],
+		[role="menuitem"],
+		[role="combobox"],
+		select,
+		input:not([type="checkbox"], [type="radio"], [type="hidden"]),
+		nav a,
+		header a
+	) {
+		min-height: 48px;
+	}
 }
 
 /* One focus mark for every control; layered so a component's own ring, until
