@@ -41,7 +41,7 @@ describe("follow-up label (#673 walk 4)", () => {
 			resumed: [{ name: "repo", head: "3b7e0d" }],
 			followUp: "chat",
 		} as CanonicalEvent;
-		const items = deriveTranscript([event], T0, { run: ended });
+		const items = deriveTranscript([event], { run: ended });
 		const op = items.find((i) => i.kind === "operator");
 		expect(op).toMatchObject({ state: "asked" });
 	});
@@ -53,7 +53,7 @@ describe("follow-up label (#673 walk 4)", () => {
 			resumed: [{ name: "repo", head: "3b7e0d" }],
 			followUp: "continue",
 		} as CanonicalEvent;
-		const items = deriveTranscript([event], T0, { run: ended });
+		const items = deriveTranscript([event], { run: ended });
 		const op = items.find((i) => i.kind === "operator");
 		expect(op).toMatchObject({ state: "resumed" });
 	});
@@ -64,7 +64,7 @@ describe("follow-up label (#673 walk 4)", () => {
 			...operator(0, "What failed?"),
 			resumed: [{ name: "repo", head: "3b7e0d" }],
 		} as CanonicalEvent;
-		const items = deriveTranscript([event], T0, {
+		const items = deriveTranscript([event], {
 			run: { ...ended, kind: "chat" },
 		});
 		const op = items.find((i) => i.kind === "operator");
@@ -77,7 +77,7 @@ describe("follow-up label (#673 walk 4)", () => {
 			...operator(0, "Continue investigation"),
 			resumed: [{ name: "repo", head: "3b7e0d" }],
 		} as CanonicalEvent;
-		const items = deriveTranscript([event], T0, {
+		const items = deriveTranscript([event], {
 			run: { ...ended, kind: "investigation" },
 		});
 		const op = items.find((i) => i.kind === "operator");
