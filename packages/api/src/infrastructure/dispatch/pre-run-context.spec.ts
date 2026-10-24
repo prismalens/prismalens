@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildPreRunSnapshot,
 	parseStoredSnapshot,
 	snapshotWindow,
+	summaryOf,
 	writeReadCopies,
 } from "./pre-run-context.js";
 
@@ -132,5 +145,286 @@ describe("the run's pre-run snapshot (#848)", () => {
 		} finally {
 			rmSync(runDir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("safe writing of read copies and scrubbing (#848)", () => {
+	function fingerprint(dir: string): Record<string, string> {
+		const result: Record<string, string> = {};
+		if (!existsSync(dir)) return result;
+		function walk(current: string) {
+			for (const name of readdirSync(current)) {
+				const full = join(current, name);
+				const rel = relative(dir, full).replace(/\\/g, "/");
+				try {
+					const st = lstatSync(full);
+					if (st.isSymbolicLink()) {
+						result[rel] = "symlink";
+					} else if (st.isDirectory()) {
+						result[rel] = "dir";
+						walk(full);
+					} else if (st.isFile()) {
+						result[rel] = createHash("sha256").update(readFileSync(full)).digest("hex");
+					}
+				} catch {
+					result[rel] = "error";
+				}
+			}
+		}
+		walk(dir);
+		return result;
+	}
+
+	function initGitRepo(dir: string) {
+		execSync("git init", { cwd: dir, stdio: "ignore" });
+		execSync("git config user.email test@example.com", { cwd: dir, stdio: "ignore" });
+		execSync("git config user.name Test", { cwd: dir, stdio: "ignore" });
+	}
+
+	const sampleSnapshot = buildPreRunSnapshot({
+		window: WINDOW,
+		telemetry: [
+			{
+				kind: "loki",
+				label: "logs",
+				from: "set",
+				status: "found",
+				part: { summary: "3 logs", data: { entries: [] }, count: 3 },
+				secrets: [],
+			},
+		],
+		pastIncidents: [],
+		runbooks: [],
+		now: NOW,
+	});
+
+	it("refuses a nested runs symlink (POSIX) or junction (Windows) and leaves dirs untouched", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-refuse-"));
+		const cwd = join(tmp, "cwd");
+		const outside = join(tmp, "outside");
+		mkdirSync(cwd);
+		mkdirSync(outside);
+		mkdirSync(join(outside, "target"));
+		mkdirSync(join(cwd, ".prismalens"));
+		if (process.platform === "win32") {
+			symlinkSync(join(outside, "target"), join(cwd, ".prismalens", "runs"), "junction");
+		} else {
+			symlinkSync(join(outside, "target"), join(cwd, ".prismalens", "runs"), "dir");
+		}
+
+		const beforeCwd = fingerprint(cwd);
+		const beforeOutside = fingerprint(outside);
+
+		const res = await writeReadCopies([{ dir: cwd }], "run-symlink", sampleSnapshot);
+		expect(res.state).toBe("failed");
+		expect(fingerprint(cwd)).toEqual(beforeCwd);
+		expect(fingerprint(outside)).toEqual(beforeOutside);
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("refuses an untracked or symlinked .gitignore and leaves dirs untouched", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-git-"));
+		const cwd = join(tmp, "cwd");
+		const outside = join(tmp, "outside");
+		mkdirSync(cwd);
+		mkdirSync(outside);
+		mkdirSync(join(cwd, ".prismalens", "runs"), { recursive: true });
+		writeFileSync(join(cwd, ".prismalens", "runs", ".gitignore"), "existing");
+
+		const beforeCwd = fingerprint(cwd);
+		const beforeOutside = fingerprint(outside);
+
+		const res = await writeReadCopies([{ dir: cwd }], "run-git", sampleSnapshot);
+		expect(res.state).toBe("failed");
+		expect(res.reason).toContain("an existing .prismalens/runs/.gitignore belongs to the repository");
+		expect(fingerprint(cwd)).toEqual(beforeCwd);
+		expect(fingerprint(outside)).toEqual(beforeOutside);
+
+		if (process.platform !== "win32") {
+			rmSync(join(cwd, ".prismalens", "runs", ".gitignore"));
+			writeFileSync(join(outside, "ignored"), "*\n");
+			symlinkSync(join(outside, "ignored"), join(cwd, ".prismalens", "runs", ".gitignore"));
+			const bCwd = fingerprint(cwd);
+			const bOut = fingerprint(outside);
+			const res2 = await writeReadCopies([{ dir: cwd }], "run-git2", sampleSnapshot);
+			expect(res2.state).toBe("failed");
+			expect(fingerprint(cwd)).toEqual(bCwd);
+			expect(fingerprint(outside)).toEqual(bOut);
+		}
+
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("refuses a tracked .prismalens file, tracked symlink, or tracked empty .gitignore", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-tracked-"));
+		const repoDir = join(tmp, "repo");
+		const outside = join(tmp, "outside");
+		mkdirSync(repoDir);
+		mkdirSync(outside);
+		initGitRepo(repoDir);
+
+		writeFileSync(join(repoDir, ".prismalens"), "tracked file");
+		execSync("git add .prismalens && git commit -m track-file", { cwd: repoDir, stdio: "ignore" });
+
+		let beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
+		let beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		let beforeRepo = fingerprint(repoDir);
+		let beforeOutside = fingerprint(outside);
+
+		let res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-1", sampleSnapshot);
+		expect(res.state).toBe("failed");
+		expect(res.reason).toContain(".prismalens is not a folder");
+		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
+		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(fingerprint(repoDir)).toEqual(beforeRepo);
+		expect(fingerprint(outside)).toEqual(beforeOutside);
+		execSync("git rm -f .prismalens", { cwd: repoDir, stdio: "ignore" });
+
+		// Tracked file inside .prismalens folder
+		mkdirSync(join(repoDir, ".prismalens"));
+		writeFileSync(join(repoDir, ".prismalens", "tracked.txt"), "tracked");
+		execSync("git add .prismalens/tracked.txt && git commit -m track-in-dir", { cwd: repoDir, stdio: "ignore" });
+
+		beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
+		beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		beforeRepo = fingerprint(repoDir);
+		beforeOutside = fingerprint(outside);
+
+		res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-1b", sampleSnapshot);
+		expect(res.state).toBe("failed");
+		expect(res.reason).toContain("the repository tracks .prismalens");
+		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
+		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(fingerprint(repoDir)).toEqual(beforeRepo);
+		expect(fingerprint(outside)).toEqual(beforeOutside);
+		execSync("git rm -rf .prismalens", { cwd: repoDir, stdio: "ignore" });
+
+		if (process.platform !== "win32") {
+			symlinkSync(outside, join(repoDir, ".prismalens"));
+			execSync("git add .prismalens && git commit -m track-symlink", { cwd: repoDir, stdio: "ignore" });
+
+			beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
+			beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+			beforeRepo = fingerprint(repoDir);
+			beforeOutside = fingerprint(outside);
+
+			res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-2", sampleSnapshot);
+			expect(res.state).toBe("failed");
+			expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
+			expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+			expect(fingerprint(repoDir)).toEqual(beforeRepo);
+			expect(fingerprint(outside)).toEqual(beforeOutside);
+			execSync("git rm -f .prismalens", { cwd: repoDir, stdio: "ignore" });
+		}
+
+		mkdirSync(join(repoDir, ".prismalens", "runs"), { recursive: true });
+		writeFileSync(join(repoDir, ".prismalens", "runs", ".gitignore"), "");
+		execSync("git add .prismalens/runs/.gitignore && git commit -m track-gitignore", { cwd: repoDir, stdio: "ignore" });
+
+		beforeStatus = execSync("git status --porcelain", { cwd: repoDir }).toString();
+		beforeLs = execSync("git ls-files -s", { cwd: repoDir }).toString();
+		beforeRepo = fingerprint(repoDir);
+		beforeOutside = fingerprint(outside);
+
+		res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-3", sampleSnapshot);
+		expect(res.state).toBe("failed");
+		expect(execSync("git status --porcelain", { cwd: repoDir }).toString()).toBe(beforeStatus);
+		expect(execSync("git ls-files -s", { cwd: repoDir }).toString()).toBe(beforeLs);
+		expect(fingerprint(repoDir)).toEqual(beforeRepo);
+		expect(fingerprint(outside)).toEqual(beforeOutside);
+
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("an absent .prismalens is written, with a clean git status", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-absent-"));
+		const repoDir = join(tmp, "repo");
+		mkdirSync(repoDir);
+		initGitRepo(repoDir);
+		writeFileSync(join(repoDir, "file.txt"), "hello");
+		execSync("git add file.txt && git commit -m init", { cwd: repoDir, stdio: "ignore" });
+
+		const res = await writeReadCopies([{ dir: repoDir, checkout: repoDir }], "run-clean", sampleSnapshot);
+		expect(res.state).toBe("written");
+		expect(existsSync(join(repoDir, ".prismalens", "runs", "run-clean", "index.json"))).toBe(true);
+		expect(execSync("git status --porcelain", { cwd: repoDir }).toString().trim()).toBe("");
+
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("multi layout: writes two copies", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-multi-"));
+		const t1 = join(tmp, "t1");
+		const t2 = join(tmp, "t2");
+		mkdirSync(t1);
+		mkdirSync(t2);
+
+		const res = await writeReadCopies([{ dir: t1 }, { dir: t2 }], "run-multi", sampleSnapshot);
+		expect(res.state).toBe("written");
+		expect(existsSync(join(t1, ".prismalens", "runs", "run-multi", "index.json"))).toBe(true);
+		expect(existsSync(join(t2, ".prismalens", "runs", "run-multi", "index.json"))).toBe(true);
+
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("a traversal runId throws before any write", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-trav-"));
+		const before = fingerprint(tmp);
+
+		await expect(writeReadCopies([{ dir: tmp }], "../escape", sampleSnapshot)).rejects.toThrow(
+			/Invalid run id/,
+		);
+		expect(fingerprint(tmp)).toEqual(before);
+
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("scrubbing: a quoted bearer, a multi-line key, and a 3-character token (skipped)", () => {
+		const quotedBearer = '"Bearer secret-token-xyz"';
+		const multiLineKey = "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgk\n-----END PRIVATE KEY-----";
+		const shortToken = "abc";
+
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "prom",
+					from: "set",
+					status: "found",
+					part: {
+						summary: `alerts with ${quotedBearer}`,
+						data: {
+							auth: quotedBearer,
+							key: multiLineKey,
+							short: shortToken,
+						},
+						count: 1,
+					},
+					secrets: [quotedBearer, multiLineKey, shortToken],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+
+		const storedText = JSON.stringify(snap);
+		expect(storedText).not.toContain(quotedBearer);
+		expect(storedText).not.toContain(multiLineKey);
+		expect(storedText).toContain(shortToken);
+
+		const parsedStored = JSON.parse(storedText);
+		const jsonDump = JSON.stringify(parsedStored);
+		expect(jsonDump).not.toContain(quotedBearer);
+		expect(jsonDump).not.toContain(multiLineKey);
+
+		const excerpt = snap.sources[0]?.excerpt ?? "";
+		expect(excerpt).not.toContain(quotedBearer);
+		expect(excerpt).not.toContain(multiLineKey);
+
+		const indexDump = JSON.stringify(summaryOf(snap));
+		expect(indexDump).not.toContain(quotedBearer);
+		expect(indexDump).not.toContain(multiLineKey);
 	});
 });

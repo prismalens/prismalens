@@ -507,4 +507,53 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			expect(resMissing).toMatchObject({ ok: false, state: "invalid", reason: "invalid" });
 		});
 	});
+
+	describe("testedAt tracking on testConnection and updateConnection (#848)", () => {
+		it("testedAt is set by a passing Test and cleared by an address edit", async () => {
+			const connEnc = credentialsService.encrypt({ kind: "none" });
+			const configEnc = credentialsService.encrypt({ baseUrl: "http://prom:9090" });
+			const conn = {
+				id: "conn-tested-1",
+				label: "Prometheus",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "prometheus",
+					label: "Prometheus",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			globalThis.fetch = vi.fn(async () => new Response("ready", { status: 200 })) as any;
+
+			await service.testConnection("conn-tested-1");
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "conn-tested-1" },
+					data: expect.objectContaining({
+						testedAt: expect.any(Date),
+					}),
+				}),
+			);
+
+			mockPrisma.connection.update.mockClear();
+			await service.updateConnection("conn-tested-1", {
+				connectionConfig: { baseUrl: "http://new-prom:9090" },
+			});
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "conn-tested-1" },
+					data: expect.objectContaining({
+						testedAt: null,
+					}),
+				}),
+			);
+		});
+	});
 });

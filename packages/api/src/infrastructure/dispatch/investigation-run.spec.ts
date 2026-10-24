@@ -1109,6 +1109,132 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.context.preRun).toMatchObject({ state: "ready", sources: saved.sources });
 	});
 
+	it("follow-up when load returns null gives unavailable and fetches no telemetry (#848)", async () => {
+		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
+		const ports = followUpPorts({
+			preRun: {
+				telemetry,
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async () => {}),
+				load: vi.fn(async () => null),
+			},
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob({ id: "job-null-load", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(telemetry).not.toHaveBeenCalled();
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { state: string; reason: string } } }];
+		expect(opts.context.preRun).toEqual({ state: "unavailable", reason: "no stored snapshot for this run" });
+		const { PreRunContextSchema } = await import("@prismalens/contracts/schemas");
+		expect(PreRunContextSchema.safeParse(opts.context.preRun).success).toBe(true);
+	});
+
+	it("save on first run, then follow-up loads and rewrites the read copies (#848)", async () => {
+		let savedSnapshotText: string | undefined;
+		mocks.conductRun.mockResolvedValue({ runId: "inv-good", report: null, error: null, failureKind: "none" });
+		const { delimiter } = await import("node:path");
+		const gitDir = process.platform === "win32" ? "C:\\Program Files\\Git\\cmd" : "/usr/bin";
+		vi.stubEnv("PATH", `${join(tmp, "bin")}${delimiter}${gitDir}`);
+		const firstPorts = fakePorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({
+					sources: [
+						{
+							kind: "loki" as const,
+							label: "LOKI_URL",
+							from: "env" as const,
+							status: "found" as const,
+							part: { summary: "3 error log lines", data: { result: [] }, count: 3 },
+							secrets: [],
+						},
+					],
+					notConfigured: [],
+					endpoints: [],
+				})),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async (_id: string, text: string) => {
+					savedSnapshotText = text;
+				}),
+				load: vi.fn(async () => null),
+			},
+		});
+
+		await runInvestigationJob(
+			{ id: "job-good-first", investigationId: "inv-good", attempts: 1 },
+			{ investigationId: "inv-good", incidentId: "inc-1" },
+			io(),
+			firstPorts,
+		);
+		expect(savedSnapshotText).toBeDefined();
+
+		mocks.conductRun.mockReset();
+		const followPorts = followUpPorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async () => {}),
+				load: vi.fn(async () => savedSnapshotText!),
+			},
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => {
+				mkdirSync(dest, { recursive: true });
+				const { execSync } = await import("node:child_process");
+				execSync("git init", { cwd: dest, stdio: "ignore" });
+				return { path: dest, head: HEAD, branch: null };
+			}),
+		});
+		let followCopied = false;
+		mocks.conductRun.mockImplementation(async (o: { cwd: string }, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			followCopied = existsSync(join(o.cwd, ".prismalens", "runs", "inv-1", "telemetry-loki-1.json"));
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-follow-good", investigationId: "inv-1", attempts: 1 }, data, io(), followPorts);
+		expect(result.error).toBeUndefined();
+		expect(result.success).toBe(true);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { state: string; copy: { state: string } } } }];
+		expect(opts.context.preRun?.state).toBe("ready");
+		expect(opts.context.preRun?.copy.state).toBe("written");
+		expect(followCopied).toBe(true);
+	});
+
+	it("a load that never settles still lets conductRun start within 5 s on follow-up (#848)", async () => {
+		vi.useFakeTimers();
+		try {
+			const neverSettlingLoad = new Promise<string | null>(() => {});
+			const ports = followUpPorts({
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(async () => {}),
+					load: vi.fn(() => neverSettlingLoad),
+				},
+			});
+			mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+				await run.store.create();
+				return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+			});
+
+			const jobPromise = runInvestigationJob({ id: "job-load-timeout", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+			await vi.advanceTimersByTimeAsync(5_100);
+			const result = await jobPromise;
+
+			expect(result.success).toBe(true);
+			const [opts] = mocks.conductRun.mock.calls[0] as [
+				{ context: { preRun?: { state: string; reason?: string } } },
+			];
+			expect(opts.context.preRun?.state).toBe("unavailable");
+			expect(opts.context.preRun?.reason).toBe("the stored snapshot did not load in 5 s");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("hands off to a fresh session of another agent, carrying every message and refuted hypothesis, at the run's own level or narrower", async () => {
 		for (const bin of ["codex-acp", "codex-acp.cmd"])
 			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
@@ -1589,6 +1715,121 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		await runInvestigationJob(...job("inv-a"), io(), ports);
 		await runInvestigationJob(...job("inv-b"), io(), ports);
 		expect(telemetry).toHaveBeenCalledTimes(2);
+	});
+
+	it("a failed save gives not-saved with copy.written, and the prompt keeps the excerpts and the warning (#848)", async () => {
+		const ports = fakePorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({
+					sources: [
+						{
+							kind: "loki" as const,
+							label: "LOKI_URL",
+							from: "env" as const,
+							status: "found" as const,
+							part: { summary: "3 error log lines", data: { result: [] }, count: 3 },
+							secrets: [],
+						},
+					],
+					notConfigured: [],
+					endpoints: [],
+				})),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async () => {
+					throw new Error("disk full");
+				}),
+				load: vi.fn(async () => null),
+			},
+		});
+
+		const result = await runInvestigationJob(...job("inv-save-fail"), io(), ports);
+
+		expect(result.success).toBe(true);
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ context: { preRun?: { state: string; saveError?: string; copy: { state: string }; sources: unknown[] } } },
+		];
+		const pre = opts.context.preRun;
+		expect(pre?.state).toBe("not-saved");
+		expect(pre?.saveError).toBe("disk full");
+		expect(pre?.copy.state).toBe("written");
+		const { buildInvestigationPrompt } = await import("@prismalens/engine");
+		const prompt = buildInvestigationPrompt(opts.context as never);
+		expect(prompt).toContain("This snapshot was not saved, so a follow-up on this run will not have it.");
+		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
+	});
+
+	it("a good save with a failed copy gives ready with copy.failed, and every source line stays (#848)", async () => {
+		const cwd = join(tmp, "runs", "inv-copy-fail", "unmapped");
+		mkdirSync(cwd, { recursive: true });
+		writeFileSync(join(cwd, ".prismalens"), "not a directory");
+
+		const ports = fakePorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({
+					sources: [
+						{
+							kind: "loki" as const,
+							label: "LOKI_URL",
+							from: "env" as const,
+							status: "found" as const,
+							part: { summary: "3 error log lines", data: { result: [] }, count: 3 },
+							secrets: [],
+						},
+					],
+					notConfigured: [],
+					endpoints: [],
+				})),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async () => {}),
+				load: vi.fn(async () => null),
+			},
+		});
+
+		const result = await runInvestigationJob(...job("inv-copy-fail"), io(), ports);
+
+		expect(result.success).toBe(true);
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ context: { preRun?: { state: string; copy: { state: string; reason?: string }; sources: unknown[] } } },
+		];
+		const pre = opts.context.preRun;
+		expect(pre?.state).toBe("ready");
+		expect(pre?.copy.state).toBe("failed");
+		expect(pre?.copy.reason).toContain(".prismalens is not a folder");
+		expect(pre?.sources).toEqual([
+			expect.objectContaining({ label: "LOKI_URL", status: "found" }),
+		]);
+		const { buildInvestigationPrompt } = await import("@prismalens/engine");
+		const prompt = buildInvestigationPrompt(opts.context as never);
+		expect(prompt).not.toContain("Read copies are in");
+		expect(prompt).toContain("LOKI_URL (loki): 3 error log lines");
+	});
+
+	it("a save that never settles still lets conductRun start within 5 s (#848)", async () => {
+		vi.useFakeTimers();
+		try {
+			const neverSettlingSave = new Promise<void>(() => {});
+			const ports = fakePorts({
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(() => neverSettlingSave),
+					load: vi.fn(async () => null),
+				},
+			});
+
+			const jobPromise = runInvestigationJob(...job("inv-save-timeout"), io(), ports);
+			await vi.advanceTimersByTimeAsync(5_100);
+			const result = await jobPromise;
+
+			expect(result.success).toBe(true);
+			const [opts] = mocks.conductRun.mock.calls[0] as [
+				{ context: { preRun?: { state: string; saveError?: string } } },
+			];
+			expect(opts.context.preRun?.state).toBe("not-saved");
+			expect(opts.context.preRun?.saveError).toBe("the save did not finish in 5 s");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
