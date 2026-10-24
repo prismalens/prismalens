@@ -514,7 +514,7 @@ function ManySources({
 				))}
 			</div>
 			<div className="mb-3 flex flex-col gap-3">
-				<label className="raised flex h-10 items-center gap-2 rounded-pool px-3">
+				<div className="raised flex h-10 items-center gap-2 rounded-pool px-3">
 					<Search className="size-4 text-text-3" aria-hidden />
 					<Input
 						value={query}
@@ -524,7 +524,7 @@ function ManySources({
 						className="h-8 flex-1 bg-transparent px-0"
 						data-testid="sources-search"
 					/>
-				</label>
+				</div>
 				<fieldset
 					aria-label="Kind"
 					className="m-0 flex gap-1.5 overflow-x-auto border-0 p-0.5"
