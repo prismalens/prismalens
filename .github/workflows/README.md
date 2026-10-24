@@ -1,7 +1,7 @@
 # Workflows
 
-Ten workflow files is more surface than one operator can hold in their head, and
-the dangerous subset is small. This file names that subset. Tracked in #301
+The workflow files here are more surface than one operator can hold in their head,
+and the dangerous subset is small. This file names that subset. Tracked in #301
 (review-lane rollout); the ruling that asked for it is
 `fable-ruling-4-ci-surface.md`.
 
@@ -49,6 +49,17 @@ One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turb
 `e2e.yml` starts beside `ci.yml`, so it restores the newest cache saved before it gets there.
 `cross-os-smoke.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
 packing itself only if that job is missing or red.
+
+```mermaid
+flowchart LR
+    build["ci.yml build"] -- "saves turbo-OS-SHA" --> cache[(".turbo-cache")]
+    cache -- "restores" --> test["test (ubuntu)"]
+    cache -- "restores" --> pack["Pack npm tarball"]
+    cache -. "newest turbo-OS-* saved before it starts" .-> e2e["e2e.yml"]
+    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks"]
+    pack -. "polled, then downloaded" .-> xos["cross-os-smoke.yml"]
+    xos -. "pack missing or red: packs itself" .-> xos
+```
 
 ## `e2e.yml`: sharded, with a quarantine
 
@@ -118,7 +129,6 @@ What replaced it:
 | Mechanism | What it does |
 | --- | --- |
 | `claude-code-review.yml` | reviews every same-repo PR and posts **inline findings** (`--comment` in its `prompt:` is what makes it post at all) |
-| `claude-fix.yml` | fixer lane: org members summon with `@claude fix` on a PR; applies fixes on the PR branch and pushes; holds the repo's only model-adjacent `contents: write`; cannot submit reviews, resolve threads, or merge — the reviewer or operator does those |
 | `required_review_thread_resolution` | any unresolved thread — from that reviewer or a human — blocks merge |
 | `coderabbit_review` label | **manual** admission of an online CodeRabbit review via `.coderabbit.yaml`'s `auto_review.labels` valve, for sensitive paths or a second opinion |
 
@@ -180,6 +190,9 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
-| `claude-fix.yml` | `issue_comment`, `pull_request_review_comment` | org-summoned online fixer (`@claude fix`); holds `contents: write`, cannot review/resolve/merge |
 | `claude.yml` | `@claude` mentions | labour tool; cannot submit or resolve reviews |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |
+| `publish-agent-adapters.yml` | dispatch only | publishes `@prismalens/agent-adapters` to npm with provenance (CONTRIBUTING.md, "Publishing `@prismalens/agent-adapters`") |
+| `pr-state.yml` | `pull_request_target` | caller stub for `prismalens/gh-workflows`: reports the PR's state to the review telemetry; checks nothing out |
+| `review-findings-sweep.yml` | `pull_request` closed, `pull_request_review`, weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: sweeps review findings into the review telemetry |
+| `telemetry-health.yml` | weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: weekly health report on the review telemetry |

@@ -9,7 +9,11 @@ import {
 	AnswerAskResultSchema,
 	AnswerAskSchema,
 	CreateInvestigationSchema,
+	EvidenceBlobQuerySchema,
+	EvidenceBlobSchema,
 	GetInvestigationEventsSchema,
+	HandoffPreviewQuerySchema,
+	HandoffPreviewSchema,
 	IdParamSchema,
 	InvestigationEventsPageSchema,
 	InvestigationQuerySchema,
@@ -133,6 +137,26 @@ export const investigationsContract = {
 		}),
 
 	/**
+	 * What a finished run's follow-up would carry to the chosen agent, and whether it can take it
+	 * GET /investigations/:id/handoff
+	 */
+	handoff: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/handoff",
+			summary:
+				"Preview a follow-up's route, carried context and recipient preflight",
+			tags: ["investigations"],
+		})
+		.input(IdParamSchema.merge(HandoffPreviewQuerySchema))
+		.output(HandoffPreviewSchema)
+		.errors({
+			CONFLICT: {
+				message: "The run is live, or kept nothing to continue from",
+			},
+		}),
+
+	/**
 	 * Approve or deny the agent's permission ask on a live run (#673 w21)
 	 * POST /investigations/:id/asks/:askId
 	 */
@@ -193,4 +217,18 @@ export const investigationsContract = {
 		})
 		.input(IdParamSchema)
 		.output(InvestigationReportMarkdownSchema),
+
+	/**
+	 * A file the run read, at the commit it recorded: read-only, tracked blobs only
+	 * GET /investigations/:id/blob?sha=&path=
+	 */
+	getBlob: oc
+		.route({
+			method: "GET",
+			path: "/investigations/{id}/blob",
+			summary: "Read a file at the commit the run recorded",
+			tags: ["investigations"],
+		})
+		.input(EvidenceBlobQuerySchema)
+		.output(EvidenceBlobSchema),
 };

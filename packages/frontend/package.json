@@ -23,6 +23,7 @@
 		"@orpc/contract": "catalog:",
 		"@orpc/openapi-client": "^1.15.7",
 		"@orpc/tanstack-query": "^1.15.7",
+		"@pierre/diffs": "1.5.2",
 		"@prismalens/auth": "workspace:*",
 		"@prismalens/config": "workspace:*",
 		"@prismalens/contracts": "workspace:*",

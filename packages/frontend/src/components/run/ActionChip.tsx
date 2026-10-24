@@ -23,8 +23,9 @@ export interface ComposerAction {
 }
 
 /**
- * The box's first chip (#811): what Send does. With one action it is a
- * label; with more, a menu (Radix: arrow keys move, Enter picks, Esc closes).
+ * The box's first chip (#811): what Send does, as a menu (Radix: arrow keys
+ * move, Enter picks, Esc closes). With one action there is no choice, so no
+ * chip: the placeholder and hint line say what Send does (ruling 17).
  */
 export function ActionChip({
 	actions,
@@ -38,17 +39,7 @@ export function ActionChip({
 	disabled?: boolean;
 }) {
 	const current = actions.find((a) => a.id === value) ?? actions[0];
-	if (!current) return null;
-	if (actions.length < 2)
-		return (
-			<span
-				className={cn(CHIP, "pointer-events-none text-text-1")}
-				data-testid="action-chip"
-				data-action={current.id}
-			>
-				{current.label}
-			</span>
-		);
+	if (!current || actions.length < 2) return null;
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
