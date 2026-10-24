@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import util from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GitHostViewSchema } from "@prismalens/contracts/schemas";
 import { envTokenFor, GitCredential } from "../../core/harness/git-credential.js";
 import { GitFailure } from "../../core/harness/git-failure.js";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -16,6 +17,7 @@ import {
 	type GitRepoRef,
 } from "./git-credential.service.js";
 import { type HostToken, isGitHostTemplate, pickOf, readHostToken } from "./host-token.js";
+import { IntegrationsController } from "./integrations.controller.js";
 import type { IntegrationsService } from "./integrations.service.js";
 
 // Mock git-spawn so gitConfigRead and spawnGit can be controlled
@@ -1222,6 +1224,188 @@ describe("GitCredentialService & host-token (#810)", () => {
 			} finally {
 				process.env = originalEnv;
 			}
+		});
+	});
+
+	describe("C16b git hosts API: hosts() and sourcesGitHosts (#848)", () => {
+		it("lists git hosts with their order, stored, env, machine, ambiguous, and unpinnedRepos", async () => {
+			const past = new Date(Date.now() - 3600_000);
+			const connAEnc = credentialsService.encrypt({ token: "ghp_a" });
+			const connBEnc = credentialsService.encrypt({ token: "ghp_b" });
+			const connCEnc = credentialsService.encrypt({ token: "ghp_c_exp" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+
+			const testedTime = new Date("2026-10-24T12:00:00Z");
+
+			mockPrisma.connection.findMany.mockResolvedValue([
+				{
+					id: "conn-gh-a",
+					label: "Token A",
+					status: "ACTIVE",
+					tokenExpiresAt: null,
+					testedAt: testedTime,
+					lastErrorMessage: null,
+					credentialsEnc: connAEnc,
+					connectionConfigEnc: configEnc,
+					integration: { templateId: "git-host-token", label: "Git host token" },
+				},
+				{
+					id: "conn-gh-b",
+					label: "Token B",
+					status: "ACTIVE",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: null,
+					credentialsEnc: connBEnc,
+					connectionConfigEnc: configEnc,
+					integration: { templateId: "git-host-token", label: "Git host token" },
+				},
+				{
+					id: "conn-gh-exp",
+					label: "Token Expired",
+					status: "ACTIVE",
+					tokenExpiresAt: past,
+					testedAt: testedTime,
+					lastErrorMessage: null,
+					credentialsEnc: connCEnc,
+					connectionConfigEnc: configEnc,
+					integration: { templateId: "git-host-token", label: "Git host token" },
+				},
+				{
+					id: "conn-gh-revoked",
+					label: "Token Revoked",
+					status: "REVOKED",
+					tokenExpiresAt: null,
+					testedAt: null,
+					lastErrorMessage: null,
+					credentialsEnc: connAEnc,
+					connectionConfigEnc: configEnc,
+					integration: { templateId: "git-host-token", label: "Git host token" },
+				},
+			]);
+
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{
+					id: "repo-1",
+					url: "https://github.com/org/repo1.git",
+					metadata: { credentialConnectionId: "conn-gh-a" },
+				},
+				{
+					id: "repo-2",
+					url: "https://github.com/org/repo2.git",
+					metadata: null,
+				},
+				{
+					id: "repo-3",
+					url: "https://github.com/org/repo3.git",
+					metadata: { credentialConnectionId: "conn-not-on-host" },
+				},
+				{
+					id: "repo-gl",
+					url: "https://gitlab.com/org/gl-repo.git",
+					metadata: null,
+				},
+			]);
+
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			vi.mocked(gitSpawnMod.gitConfigRead).mockImplementation(async (args: string[]) => {
+				if (args.includes("https://github.com/")) {
+					return { stdout: "!gh auth git-credential", stderr: "" };
+				}
+				if (args.includes("https://gitlab.com/")) {
+					return { stdout: "!glab auth git-credential", stderr: "" };
+				}
+				return { stdout: "", stderr: "" };
+			});
+
+			const env = {
+				GH_TOKEN: "ghp_env_val",
+				GITLAB_TOKEN: "glpat_env_val",
+			};
+
+			const hosts = await service.hosts(env as any);
+
+			// Schema validation
+			expect(hosts).toBeDefined();
+			expect(hosts.every((h) => GitHostViewSchema.safeParse(h).success)).toBe(true);
+
+			// Hosts sorted
+			expect(hosts.map((h) => h.host)).toEqual(["github.com", "gitlab.com"]);
+
+			const gh = hosts.find((h) => h.host === "github.com")!;
+			// Order has pin, stored, env, machine
+			expect(gh.order).toEqual(["pin", "stored", "env", "machine"]);
+			// Revoked token is omitted from stored
+			expect(gh.stored.map((s) => s.connectionId)).toEqual(["conn-gh-a", "conn-gh-b", "conn-gh-exp"]);
+			// Expired status mapped to TOKEN_EXPIRED
+			expect(gh.stored.find((s) => s.connectionId === "conn-gh-exp")?.status).toBe("TOKEN_EXPIRED");
+			// testedAt ISO or null
+			expect(gh.stored.find((s) => s.connectionId === "conn-gh-a")?.testedAt).toBe(testedTime.toISOString());
+			expect(gh.stored.find((s) => s.connectionId === "conn-gh-b")?.testedAt).toBeNull();
+			// pinnedRepos lists repo-1 for conn-gh-a
+			expect(gh.stored.find((s) => s.connectionId === "conn-gh-a")?.pinnedRepos).toEqual([
+				{ repositoryId: "repo-1", url: "https://github.com/org/repo1.git" },
+			]);
+			// unpinnedRepos includes unpinned repo-2 and repo-3 whose pick names a token not on this host
+			expect(gh.unpinnedRepos).toEqual([
+				{ repositoryId: "repo-2", url: "https://github.com/org/repo2.git" },
+				{ repositoryId: "repo-3", url: "https://github.com/org/repo3.git" },
+			]);
+			// ambiguous: true because >1 stored tokens and at least one unpinned repo
+			expect(gh.ambiguous).toBe(true);
+			// env fingerprint 8 hex
+			expect(gh.env).toEqual({
+				variable: "GH_TOKEN",
+				fingerprint: expect.stringMatching(/^[0-9a-f]{8}$/),
+			});
+			// machine helper parsed
+			expect(gh.machine).toEqual({ helper: "gh" });
+
+			const gl = hosts.find((h) => h.host === "gitlab.com")!;
+			expect(gl.order).toEqual(["env", "machine"]);
+			expect(gl.stored).toEqual([]);
+			expect(gl.ambiguous).toBe(false);
+			expect(gl.env).toEqual({
+				variable: "GITLAB_TOKEN",
+				fingerprint: expect.stringMatching(/^[0-9a-f]{8}$/),
+			});
+			expect(gl.machine).toEqual({ helper: "glab" });
+		});
+
+		it("IntegrationsController.sourcesGitHosts calls gitCredentials.hosts()", async () => {
+			const controller = new IntegrationsController(
+				mockIntegrations,
+				service,
+				{} as any,
+			);
+			const spy = vi.spyOn(service, "hosts").mockResolvedValueOnce([]);
+			const orpc = controller.sourcesGitHosts() as any;
+			const handler = orpc["~orpc"]?.handler ?? orpc;
+			const res = await handler({ context: {} });
+			expect(res).toEqual([]);
+			expect(spy).toHaveBeenCalled();
+		});
+
+		it("readHostToken preserves testedAt date or null", () => {
+			const testedAt = new Date("2026-10-24T12:00:00Z");
+			const connWithTested: any = {
+				id: "c-tested",
+				integration: { templateId: "git-host-token", label: "Tested" },
+				credentialsEnc: credentialsService.encrypt({ token: "tok" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+				status: "ACTIVE",
+				testedAt,
+			};
+			expect(readHostToken(connWithTested, credentialsService)?.testedAt).toEqual(testedAt);
+
+			const connWithoutTested: any = {
+				id: "c-untested",
+				integration: { templateId: "git-host-token", label: "Untested" },
+				credentialsEnc: credentialsService.encrypt({ token: "tok" }),
+				connectionConfigEnc: credentialsService.encrypt({ host: "github.com" }),
+				status: "ACTIVE",
+			};
+			expect(readHostToken(connWithoutTested, credentialsService)?.testedAt).toBeNull();
 		});
 	});
 });
