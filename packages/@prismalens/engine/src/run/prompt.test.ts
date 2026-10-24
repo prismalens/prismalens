@@ -443,3 +443,80 @@ describe("investigationPromptParts (#817)", () => {
 	});
 });
 
+describe("pre-run prompt states and copy failures (#848)", () => {
+	const baseCtx: InvestigationContext = {
+		alerts: [{ alertname: "A", severity: "high", labels: {}, annotations: {}, startsAt: null }],
+	};
+
+	it("state not-saved adds the warning line while keeping excerpts", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "not-saved",
+				saveError: "disk full",
+				copy: { state: "written", dir: ".prismalens/runs/r1" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				checkoutsSkipped: [],
+				files: [{ name: "telemetry-loki-1.json", about: "loki logs" }],
+				sources: [
+					{
+						kind: "loki",
+						label: "loki",
+						from: "set",
+						status: "found",
+						detail: "5 logs",
+						file: "telemetry-loki-1.json",
+						excerpt: "some logs",
+					},
+				],
+			},
+		});
+		expect(prompt).toContain("This snapshot was not saved, so a follow-up on this run will not have it.");
+		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
+	});
+
+	it("state unavailable renders Not available: <reason>", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "unavailable",
+				reason: "no stored snapshot for this run",
+			},
+		});
+		expect(prompt).toContain("PRE-RUN CONTEXT\n  Not available: no stored snapshot for this run.");
+		expect(prompt).not.toContain("PRE_RUN_TELEMETRY");
+	});
+
+	it("copy failed drops the folder line while sources remain", () => {
+		const prompt = buildInvestigationPrompt({
+			...baseCtx,
+			preRun: {
+				state: "ready",
+				copy: { state: "failed", reason: ".prismalens is not a folder" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				checkoutsSkipped: [],
+				files: [{ name: "telemetry-loki-1.json", about: "loki logs" }],
+				sources: [
+					{
+						kind: "loki",
+						label: "loki",
+						from: "set",
+						status: "found",
+						detail: "5 logs",
+						file: "telemetry-loki-1.json",
+						excerpt: "some logs",
+					},
+				],
+			},
+		});
+		expect(prompt).not.toContain("Read copies are in");
+		expect(prompt).toContain("Read: loki (loki): 5 logs.");
+		expect(prompt).toContain("<<<PRE_RUN_TELEMETRY — UNTRUSTED DATA.");
+	});
+});

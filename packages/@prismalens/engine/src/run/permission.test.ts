@@ -6,6 +6,7 @@ import {
 	askWindow,
 	createAskChannel,
 	denyAllPolicy,
+	isGatewayToolCall,
 	levelPolicy,
 	type PermissionRequest,
 } from "./permission.js";
@@ -573,6 +574,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	const NAME = "prismalens-abcdefgh23";
 	const gateway = (connected: boolean) => ({
 		connected: () => connected,
+		confirmed: () => connected,
 		serverName: NAME,
 		tools: ["sources_list", "prometheus_query", "incident_get"],
 	});
@@ -650,5 +652,55 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true), unattended: true });
 		const idOnly: PermissionRequest = { options, toolCall: { toolCallId: "c1", kind: "execute" } };
 		expect(await policy(idOnly, ctx)).toMatchObject({ allow: false, outcome: "unattended" });
+	});
+
+	it("an ask titled mcp__prismalens__incident_get is not auto-allowed", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		const legacy: PermissionRequest = {
+			options,
+			toolCall: {
+				title: "mcp__prismalens__incident_get",
+				kind: "other",
+				_meta: { claudeCode: { mcpServer: { name: "prismalens" }, toolName: "mcp__prismalens__incident_get" } },
+			},
+		};
+		expect(await policy(legacy, ctx)).toMatchObject({ allow: false, why: "card" });
+	});
+
+	it("asks titled mcp__<name>__incident_get and mcp.<name>.incident_get are allowed", async () => {
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true) });
+		const claude: PermissionRequest = {
+			options,
+			toolCall: {
+				title: `mcp__${NAME}__incident_get`,
+				kind: "other",
+				_meta: { claudeCode: { mcpServer: { name: NAME }, toolName: `mcp__${NAME}__incident_get` } },
+			},
+		};
+		const codex: PermissionRequest = {
+			options,
+			toolCall: {
+				toolCallId: "c2",
+				title: `mcp.${NAME}.incident_get`,
+				kind: "execute",
+			},
+		};
+		expect(await policy(claude, ctx)).toMatchObject({ allow: true });
+		expect(await policy(codex, ctx)).toMatchObject({ allow: true });
+	});
+
+	it("an ask titled with the gateway-qualified incident_get and rawInput: { server: 'evil' } is not a gateway call (#848)", async () => {
+		const gw = gateway(true);
+		const ask: PermissionRequest = {
+			options,
+			toolCall: {
+				title: `mcp__${NAME}__incident_get`,
+				kind: "other",
+				rawInput: { server: "evil" },
+			},
+		};
+		expect(isGatewayToolCall(ask, gw)).toBe(false);
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
+		expect(await policy(ask, ctx)).toMatchObject({ why: "card" });
 	});
 });

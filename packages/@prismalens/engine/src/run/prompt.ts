@@ -133,6 +133,10 @@ export function renderPreRun(context: InvestigationContext): string {
 		lines.push(
 			`  Runbooks: skipped before the run, ${sanitizeUntrustedLine(p.runbooksSkipped)}.`,
 		);
+	if (p.telemetrySkipped)
+		lines.push(
+			`  Telemetry: skipped before the run, ${sanitizeUntrustedLine(p.telemetrySkipped)}.`,
+		);
 	if (p.state === "not-saved")
 		lines.push(
 			"  This snapshot was not saved, so a follow-up on this run will not have it.",
