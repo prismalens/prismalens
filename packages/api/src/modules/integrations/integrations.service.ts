@@ -9,6 +9,10 @@ import {
 	type OnModuleInit,
 } from "@nestjs/common";
 import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
+import {
+	type ParsedSourceCredential,
+	parseSourceCredential,
+} from "@prismalens/contracts/schemas";
 import type {
 	Connection,
 	Integration,
@@ -23,7 +27,6 @@ import {
 	getAllTemplates,
 	getTemplate,
 	isLegacyTemplateId,
-	urlOnlyRequestFn,
 } from "@prismalens/integrations";
 import {
 	GIT_HOST_RULE,
@@ -56,6 +59,13 @@ import type {
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
+import { sourceRequestFn } from "./source-request.js";
+import { readStored, type StoredState } from "./stored-credential.js";
+
+/** A source's stored credential, and whether one was saved at all (#848). */
+export type SourceCredentialRead = ParsedSourceCredential & {
+	state: StoredState;
+};
 
 export interface ConnectionWithIntegration extends Connection {
 	integration: Integration;
@@ -394,6 +404,7 @@ export class IntegrationsService implements OnModuleInit {
 			integration.templateId,
 			dto.connectionConfig,
 		);
+		checkSourceCredential(integration.templateId, dto.credentials);
 		const connection = await this.prisma.connection.create({
 			data: {
 				integrationId: dto.integrationId,
@@ -448,6 +459,7 @@ export class IntegrationsService implements OnModuleInit {
 
 		if (dto.status !== undefined) updateData.status = dto.status;
 		if (dto.credentials) {
+			checkSourceCredential(connection.integration.templateId, dto.credentials);
 			updateData.credentialsEnc = this.credentialsService.encrypt(
 				dto.credentials,
 			);
@@ -460,6 +472,8 @@ export class IntegrationsService implements OnModuleInit {
 				),
 			);
 		}
+		// A new address or credential has not passed a Test yet (#848).
+		if (dto.credentials || dto.connectionConfig) updateData.testedAt = null;
 
 		return this.prisma.connection.update({
 			where: { id },
@@ -554,6 +568,40 @@ export class IntegrationsService implements OnModuleInit {
 		}
 	}
 
+	/** The credential a URL-addressed source sends (#848); a row saved before kinds is `none`. */
+	async sourceCredential(connectionId: string): Promise<SourceCredentialRead> {
+		const conn = await this.prisma.connection.findUnique({
+			where: { id: connectionId },
+			select: {
+				credentialsEnc: true,
+				integration: { select: { templateId: true } },
+			},
+		});
+		if (!conn)
+			return {
+				ok: false,
+				reason: "invalid",
+				message: "Connection not found",
+				state: "invalid",
+			};
+		try {
+			const stored = readStored(
+				conn.integration.templateId,
+				this.credentialsService.decrypt<unknown>(
+					Buffer.from(conn.credentialsEnc),
+				),
+			);
+			return { ...stored.credential, state: stored.state };
+		} catch {
+			return {
+				ok: false,
+				reason: "invalid",
+				message: "Saved credentials could not be read",
+				state: "invalid",
+			};
+		}
+	}
+
 	async testConnection(id: string): Promise<TestConnectionResult> {
 		const connection = await this.findConnectionById(id);
 		if (!connection) {
@@ -578,10 +626,10 @@ export class IntegrationsService implements OnModuleInit {
 				if (!base) {
 					testResult = { success: false, error: "Connection has no baseUrl" };
 				} else {
-					const res = await urlOnlyRequestFn(base)(
-						template.verify.method,
-						template.verify.path,
-					);
+					const res = await sourceRequestFn(
+						base,
+						await this.sourceCredential(id),
+					)(template.verify.method, template.verify.path);
 					testResult = res.ok
 						? { success: true }
 						: {
@@ -609,6 +657,7 @@ export class IntegrationsService implements OnModuleInit {
 					consecutiveErrors: testResult.success
 						? 0
 						: connection.consecutiveErrors + 1,
+					...(testResult.success ? { testedAt: new Date() } : {}),
 				},
 			});
 
@@ -1205,4 +1254,19 @@ async function releaseRepositories(
 				data: { metadata: JSON.stringify(meta) },
 			});
 		}
+}
+
+/** A source with credential kinds refuses an unknown, malformed or not-yet-supported kind by name. */
+function checkSourceCredential(
+	templateId: string,
+	credentials: Record<string, string>,
+): void {
+	const kinds = getTemplate(templateId)?.credentialKinds;
+	if (!kinds) return;
+	const parsed = parseSourceCredential(credentials);
+	if (!parsed.ok) throw new BadRequestException(parsed.message);
+	if (!kinds.includes(parsed.credential.kind))
+		throw new BadRequestException(
+			`This source does not take ${parsed.credential.kind} credentials.`,
+		);
 }

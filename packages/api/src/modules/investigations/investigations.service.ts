@@ -21,6 +21,10 @@ import {
 	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
 import {
+	PreRunSnapshotSchema,
+	type PreRunSummary,
+} from "@prismalens/contracts/schemas";
+import {
 	type Investigation,
 	Prisma,
 	type Recommendation,
@@ -40,6 +44,25 @@ import {
 } from "./dto/index.js";
 
 export type { Investigation };
+
+/** The run's stored pre-run snapshot without the files' text or the excerpts; null on a run from before #848. */
+export function preRunSummaryOf(
+	raw: string | null | undefined,
+): PreRunSummary | null {
+	if (!raw) return null;
+	try {
+		const parsed = PreRunSnapshotSchema.safeParse(JSON.parse(raw));
+		if (!parsed.success) return null;
+		const snap = parsed.data;
+		return {
+			...snap,
+			sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
+			files: snap.files.map(({ name, about }) => ({ name, about })),
+		};
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Prisma P2003: a write referenced a row that does not exist. On this path it

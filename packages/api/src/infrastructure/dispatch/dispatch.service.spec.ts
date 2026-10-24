@@ -802,6 +802,7 @@ describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
 				pick: "pinned-conn-id",
 			},
 			expect.any(Function),
+			undefined,
 		);
 		expect(mockRepoSource.snapshot).toHaveBeenCalledWith(
 			{

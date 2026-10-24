@@ -9,6 +9,7 @@
  */
 import {
 	appendFileSync,
+	chmodSync,
 	mkdirSync,
 	readFileSync,
 	writeFileSync,
@@ -45,7 +46,11 @@ import {
 	type RunFidelity,
 	type RunUsage,
 } from "@prismalens/contracts/schemas";
-import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
+import {
+	AcpAdapter,
+	type HarnessToolsTurn,
+	mapStopReason,
+} from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
@@ -53,6 +58,7 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
@@ -91,7 +97,9 @@ export interface RunInvestigationOptions {
 		| "sessionMeta"
 		| "companionBinary"
 	> &
-		Partial<Pick<HarnessDescriptor, "modelVia" | "adapterPackage">>;
+		Partial<
+			Pick<HarnessDescriptor, "modelVia" | "adapterPackage" | "gatewayDelivery">
+		>;
 	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
 	/** Per-run directory: harness config, data home, transcript. */
@@ -168,6 +176,8 @@ export interface RunInvestigationOptions {
 	seqStart?: number;
 	/** The harness's session id once it is open, and whether it can be loaded again. */
 	onSession?: (s: { sessionId: string; loadSession: boolean }) => void;
+	/** PrismaLens's MCP gateway for this run; offered only to an agent that takes HTTP MCP servers (#848). */
+	gateway?: GatewayEntry;
 	signal?: AbortSignal;
 }
 
@@ -346,6 +356,7 @@ export type PrepareRunEnvOptions = Pick<
 	| "env"
 	| "accessLevel"
 	| "customModel"
+	| "gateway"
 >;
 
 /** The row's config files with the level's overlay merged into each JSON one. */
@@ -372,7 +383,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const configDir = join(opts.runDir, "config");
 	const dataDir = join(opts.runDir, "home");
-	mkdirSync(configDir, { recursive: true });
+	// A run file can hold the run's gateway bearer: owner-only whatever the umask (#848, OBJ-029).
+	mkdirSync(configDir, { recursive: true, mode: 0o700 });
+	chmodSync(configDir, 0o700);
 	mkdirSync(dataDir, { recursive: true });
 	const companionPath = descriptor.companionBinary
 		? resolveOnPath(descriptor.companionBinary)
@@ -391,6 +404,15 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(opts.model ? { model: opts.model } : {}),
 		...(companionPath ? { companionPath } : {}),
 		...(launch.shipped ? { shipped: true } : {}),
+		...(opts.gateway && descriptor.gatewayDelivery
+			? {
+					gateway: {
+						url: opts.gateway.url,
+						token: opts.gateway.token,
+						name: opts.gateway.serverName,
+					},
+				}
+			: {}),
 	};
 	const overlay = opts.accessLevel
 		? HARNESS_REGISTRY[opts.harness]?.access[opts.accessLevel].configPatch
@@ -403,7 +425,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	)) {
 		const path = join(configDir, rel);
 		mkdirSync(join(path, ".."), { recursive: true });
-		writeFileSync(path, content);
+		writeFileSync(path, content, { mode: 0o600 });
+		chmodSync(path, 0o600);
 	}
 	const customKey = HARNESS_REGISTRY[opts.harness]?.customModelEnvKey;
 	return {
@@ -419,6 +442,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		launch,
 	};
 }
+
+/** How long a run waits after `session/new` for the agent's first gateway request. */
+const GATEWAY_CONFIRM_MS = 5_000;
 
 export async function* runInvestigation(
 	opts: RunInvestigationOptions,
@@ -445,17 +471,23 @@ export async function* runInvestigation(
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
 	const transcript = join(opts.runDir, "transcript.jsonl");
+	// session/new carries the gateway bearer; the transcript never stores it (#848).
+	const bearer = opts.gateway?.token;
 	const wire = (direction: "in" | "out", line: string): void => {
+		const m = bearer ? line.replaceAll(bearer, "[redacted]") : line;
 		try {
 			appendFileSync(
 				transcript,
-				`${JSON.stringify({ t: Date.now(), d: direction, m: line })}\n`,
+				`${JSON.stringify({ t: Date.now(), d: direction, m })}\n`,
 			);
 		} catch {
 			// best effort (ADR 0002 §6)
 		}
 	};
 
+	const offer = opts.gateway
+		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
+		: null;
 	// The launcher's wall clock starts at spawn, in open().
 	let spawnedAt = Date.now();
 	const session = new AcpSession({
@@ -467,7 +499,10 @@ export async function* runInvestigation(
 		permission: levelPolicy(
 			keepMode ? "supervised" : level,
 			{ policy: opts.permission ?? denyAllPolicy },
-			{ unattended: !!opts.unattended },
+			{
+				unattended: !!opts.unattended,
+				...(opts.gateway ? { gateway: opts.gateway } : {}),
+			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
 		askWindow: () =>
@@ -484,6 +519,7 @@ export async function* runInvestigation(
 		...(opts.resume?.sessionId
 			? { resume: { sessionId: opts.resume.sessionId } }
 			: {}),
+		...(offer ? { mcpServers: offer.pick } : {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -587,6 +623,14 @@ export async function* runInvestigation(
 				);
 			} else if (item.kind === "nudge") {
 				yield* recordQueued();
+			} else if (item.kind === "harness_tool_call") {
+				if (opts.gateway)
+					yield adapter.harnessToolCall(
+						opts.gateway.serverName,
+						item.name,
+						item.at,
+						toolsTurn,
+					);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -615,12 +659,25 @@ export async function* runInvestigation(
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
 	 */
-	const leftovers = function* (): Generator<CanonicalEvent> {
+	const toolsSummary = function* (): Generator<CanonicalEvent> {
+		unCalled?.();
+		if (offer && opts.gateway && !summarized) {
+			summarized = true;
+			yield adapter.harnessTools(
+				opts.gateway.serverName,
+				toolsTurn,
+				opts.gateway.connected(),
+				opts.gateway.calls(),
+			);
+		}
+	};
+	const leftovers = function* (tools = true): Generator<CanonicalEvent> {
 		for (const askId of openAsks)
 			yield adapter.permissionAnswer(askId, "stopped");
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
+		if (tools) yield* toolsSummary();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
 				line.text,
@@ -637,6 +694,11 @@ export async function* runInvestigation(
 		session.cancel();
 	});
 	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
+	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
+	let summarized = false;
+	const unCalled = opts.gateway?.onCall((c) =>
+		session.inject({ kind: "harness_tool_call", ...c }),
+	);
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
@@ -654,6 +716,13 @@ export async function* runInvestigation(
 		}
 		if (opts.resume?.sessionId)
 			wire("in", JSON.stringify({ replayed: session.replayed }));
+		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
+		const connected =
+			opts.gateway && offer?.offered()
+				? await opts.gateway.waitConnected(GATEWAY_CONFIRM_MS)
+				: false;
+		const toolsLine =
+			connected && opts.gateway ? `\n\n${opts.gateway.promptLine}` : "";
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
 		if (
 			!keepMode &&
@@ -713,6 +782,7 @@ export async function* runInvestigation(
 			yield adapter.sessionConfig("model", chosenModel, took === chosenModel);
 			if (took !== chosenModel) {
 				const offered = session.models.map((m) => m.id).join(", ");
+				yield* toolsSummary();
 				yield adapter.error(
 					configId
 						? `${label} would not switch to ${chosenModel}; it offered ${offered || "no models"}`
@@ -734,6 +804,7 @@ export async function* runInvestigation(
 			const ok = await sendEffort();
 			yield adapter.sessionConfig("effort", opts.effort, ok);
 			if (!ok) {
+				yield* toolsSummary();
 				yield adapter.error(
 					`${label} would not take ${opts.effort} effort; it offered ${session.effort?.values.join(", ") || "none"}`,
 				);
@@ -795,7 +866,7 @@ export async function* runInvestigation(
 			);
 			outcome = yield* turn(
 				promptParts(
-					buildChatPrompt(opts.context, message, { noNetwork }),
+					buildChatPrompt(opts.context, message, { noNetwork }) + toolsLine,
 					opts.attachments,
 				),
 			);
@@ -816,6 +887,7 @@ export async function* runInvestigation(
 						noNetwork,
 						level,
 					}) +
+						toolsLine +
 						(brief ? `\n\n${brief}` : "") +
 						(opts.promptSuffix ? `\n\n${opts.promptSuffix}` : ""),
 					opts.attachments,
@@ -850,15 +922,18 @@ export async function* runInvestigation(
 				),
 			);
 		}
-		yield* leftovers();
+		// Report repair turns still reach the tools, so their calls count until the end (#848).
+		yield* leftovers(false);
 
 		if ("error" in outcome) {
+			yield* toolsSummary();
 			yield adapter.error(
 				opts.signal?.aborted ? CANCELLED_MESSAGE : outcome.error,
 			);
 			return;
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
+			yield* toolsSummary();
 			yield adapter.error(CANCELLED_MESSAGE);
 			return;
 		}
@@ -868,6 +943,7 @@ export async function* runInvestigation(
 			opts.kind === "chat" ||
 			(opts.resume && opts.resume.kind !== "continue")
 		) {
+			yield* toolsSummary();
 			yield adapter.branchDone(mapStopReason(outcome.stop));
 			return;
 		}
@@ -888,31 +964,36 @@ export async function* runInvestigation(
 				opts.signal?.aborted ||
 				("stop" in retry && retry.stop === "cancelled")
 			) {
+				yield* toolsSummary();
 				yield adapter.error(CANCELLED_MESSAGE);
 				return;
 			}
 			if ("error" in retry) {
+				yield* toolsSummary();
 				yield adapter.error(retry.error);
 				return;
 			}
 			parsed = parseReport(text);
 		}
 		if (!parsed.ok) {
+			yield* toolsSummary();
 			yield adapter.error(
 				`report did not validate after ${retries === 1 ? "one retry" : "two retries"} (${parsed.reason}: ${parsed.detail})`,
 			);
 			return;
 		}
 		if (!sawEvidence) {
+			yield* toolsSummary();
 			yield adapter.error("investigation produced no evidence: no tool ran");
 			return;
 		}
+		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
+		const gapped = noNetwork
+			? withSandboxGap(parsed.report, label)
+			: parsed.report;
 		yield adapter.report(
-			stampReport(
-				noNetwork ? withSandboxGap(parsed.report, label) : parsed.report,
-				fidelity,
-			),
+			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),
 		);
 	} catch (err) {
 		yield* leftovers();
@@ -954,6 +1035,71 @@ function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 		coverage: {
 			...report.coverage,
 			notQueried: [...report.coverage.notQueried, gap],
+		},
+	};
+}
+
+const FROM_WORDS = {
+	set: "saved in PrismaLens",
+	env: "from the environment",
+} as const;
+
+/**
+ * What PrismaLens read before the run, in the report's coverage whatever the agent wrote (#848):
+ * found and empty sources under queried; skipped and not-read sources, skipped runbooks and
+ * checkouts, and a snapshot that was not saved, copied or there, under what we could not check.
+ */
+export function withPreRunCoverage<
+	R extends { coverage: { queried: string[]; notQueried: string[] } },
+>(report: R, context: Pick<InvestigationContext, "preRun">): R {
+	const pre = context.preRun;
+	if (!pre) return report;
+	const queried: string[] = [];
+	const notQueried: string[] = [];
+	if (pre.state !== "unavailable") {
+		for (const s of pre.sources) {
+			const who = `${s.label} (${s.kind}, ${FROM_WORDS[s.from]}${s.overridesEnv ? `, overrides ${s.overridesEnv}` : ""})`;
+			if (s.status === "found") queried.push(`${who}: ${s.detail}`);
+			else if (s.status === "empty")
+				queried.push(`${who}: queried, nothing for the window`);
+			else if (s.status === "skipped")
+				notQueried.push(`${who}: skipped before the run, ${s.detail}`);
+			else notQueried.push(`${who}: not read, ${s.detail}`);
+		}
+		if (pre.runbooksSkipped)
+			notQueried.push(
+				`Runbooks: skipped before the run, ${pre.runbooksSkipped}`,
+			);
+		if (pre.telemetrySkipped)
+			notQueried.push(
+				`Telemetry: skipped before the run, ${pre.telemetrySkipped}`,
+			);
+	}
+	for (const c of pre.checkoutsSkipped ?? [])
+		notQueried.push(
+			`Repository ${c.repo}: not checked out before the run, ${c.reason}`,
+		);
+	if (pre.state === "not-saved")
+		notQueried.push(
+			"Pre-run snapshot: not saved; a follow-up will not have it",
+		);
+	if (pre.state !== "unavailable" && pre.copy.state === "failed")
+		notQueried.push(
+			`Pre-run read copy: not written, ${pre.copy.reason ?? "no working directory took it"}`,
+		);
+	if (pre.state === "unavailable")
+		notQueried.push(`Pre-run snapshot: not available, ${pre.reason}`);
+	const add = (have: string[], lines: string[]) =>
+		lines.filter((l) => !have.includes(l));
+	const q = add(report.coverage.queried, queried);
+	const n = add(report.coverage.notQueried, notQueried);
+	if (!q.length && !n.length) return report;
+	return {
+		...report,
+		coverage: {
+			...report.coverage,
+			queried: [...report.coverage.queried, ...q],
+			notQueried: [...report.coverage.notQueried, ...n],
 		},
 	};
 }
