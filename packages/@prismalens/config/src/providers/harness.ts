@@ -136,6 +136,8 @@ export interface HarnessDescriptor {
 	gatewayDelivery?: "mcp-config-file";
 	/** `_meta` on ACP `session/new`, for isolation a harness takes only there. */
 	sessionMeta?: () => Record<string, unknown>;
+	/** PrismaLens's brief goes in as an appended system prompt (`_meta.systemPrompt.append`); otherwise in the first prompt (#817). */
+	systemPromptVia?: "claude-meta";
 	/** One line the doctor prints when the binary is missing. */
 	install: string;
 	/**
@@ -389,6 +391,9 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 				},
 			},
 		}),
+		// claude-agent-acp 0.81.1 reads `_meta.systemPrompt` on session/new and session/load
+		// (acp-agent.js:6215-6232; load reaches it through getOrCreateSession, :6084-6112).
+		systemPromptVia: "claude-meta",
 		// Anthropic SDK default env var (docs.anthropic.com).
 		// ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN: Claude Code's documented gateway pair (LLM gateway, Ollama).
 		// The model keys too: a gateway serves its own model ids, not Anthropic's (walk f18).

@@ -911,6 +911,7 @@ async function runFollowUp(
 							},
 						}
 					: {}),
+				...(kind === "chat" ? { kind: "chat" as const } : {}),
 				resume: {
 					...(sessionId ? { sessionId } : {}),
 					...(seed ? { handoff: seed.text } : {}),
