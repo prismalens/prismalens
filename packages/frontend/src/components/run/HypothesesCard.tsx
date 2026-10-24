@@ -83,14 +83,16 @@ export function HypothesesCard(props: HypothesesProps) {
 			: "No hypotheses."
 	}`;
 	const clip = useRef<HTMLDivElement>(null);
+	const inner = useRef<HTMLDivElement>(null);
 	const [clipped, setClipped] = useState(false);
 	useLayoutEffect(() => {
 		const el = clip.current;
-		if (!el) return;
+		const content = inner.current;
+		if (!el || !content) return;
 		const measure = () => setClipped(el.scrollHeight > CLIP_PX + 1);
 		measure();
 		const ro = new ResizeObserver(measure);
-		for (const child of Array.from(el.children)) ro.observe(child);
+		ro.observe(content);
 		return () => ro.disconnect();
 	}, []);
 	const act = (inPreview: boolean) => (cite: Cite, origin: string) => {
@@ -133,7 +135,9 @@ export function HypothesesCard(props: HypothesesProps) {
 				style={{ maxHeight: CLIP_PX }}
 				data-clipped={clipped ? "" : undefined}
 			>
-				<Drawn {...props} onCite={act(false)} scope="card" />
+				<div ref={inner}>
+					<Drawn {...props} onCite={act(false)} scope="card" />
+				</div>
 			</div>
 			<Dialog open={props.preview} onOpenChange={props.onPreview}>
 				<DialogContent
