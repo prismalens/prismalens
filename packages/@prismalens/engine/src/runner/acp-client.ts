@@ -151,6 +151,8 @@ export interface AcpSessionConfig {
 	command: string;
 	args: string[];
 	cwd: string;
+	/** Sent instead of `cwd` when the agent advertises `additionalDirectories` (#918). */
+	roots?: { cwd: string; additional: string[] };
 	env?: NodeJS.ProcessEnv;
 	launcher?: HarnessLauncher;
 	limits?: RunLimits;
@@ -589,8 +591,13 @@ export class AcpSession {
 			init?.agentCapabilities?.promptCapabilities?.image === true;
 		this.pushesAuthStatus =
 			init?.agentCapabilities?._meta?.authStatus !== undefined;
+		const roots =
+			init?.agentCapabilities?.sessionCapabilities?.additionalDirectories !=
+				null && config.roots;
 		const params = {
-			cwd: config.cwd,
+			...(roots
+				? { cwd: roots.cwd, additionalDirectories: roots.additional }
+				: { cwd: config.cwd }),
 			mcpServers: [],
 			...(config.sessionMeta ? { _meta: config.sessionMeta } : {}),
 		};

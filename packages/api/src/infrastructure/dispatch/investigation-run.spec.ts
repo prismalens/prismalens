@@ -370,8 +370,18 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					via: "none",
 				});
 			}
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
-			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+			const [opts] = mocks.conductRun.mock.calls[0] as [
+				{
+					cwd: string;
+					roots?: { cwd: string; additional: string[] };
+					context: { workspace?: { repos: { path: string }[] } };
+				},
+			];
+			// One parent for an agent without extra directories; the primary repo plus the rest for one with them (#918).
+			const parent = join(process.env.PRISMALENS_WORKSPACE_DIR ?? "", "worktrees", "pl-inv-1");
+			expect(opts.cwd).toBe(parent);
+			expect(opts.roots).toEqual({ cwd: join(parent, "api"), additional: [join(parent, "worker")] });
+			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual([join(parent, "api"), join(parent, "worker")]);
 		});
 
 		it("keeps the harness's last usage_update on the row, and writes nothing for a harness that sends none", async () => {

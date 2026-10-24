@@ -3,11 +3,10 @@
 
 /**
  * A service names its code as a local folder or a git URL. Every run gets a
- * fresh snapshot of the committed HEAD under the app-data dir, so the harness
- * cwd is never the user's checkout and never a worktree linked into it
- * (ADR 0004 §2, #629). A URL is kept as a bare mirror and refreshed before each
- * snapshot; a saved token rides as a per-command header, never in the URL or
- * the mirror's config.
+ * fresh snapshot of the committed HEAD under the app-data dir, never the user's
+ * checkout: a folder as a worktree of it (#918), a URL as a clone of its bare
+ * mirror, refreshed before each snapshot (ADR 0004 §2, #629). A saved token
+ * rides as a per-command header, never in the URL or the mirror's config.
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -29,6 +28,7 @@ import {
 	remoteGitEnv,
 	spawnGit,
 } from "./git-spawn.js";
+import { addRunWorktree } from "./run-worktree.js";
 
 export { tokenUsernameFor } from "./git-credential.js";
 
@@ -180,25 +180,44 @@ export class RepoSourceService {
 	}
 
 	/**
-	 * A fresh clone of the committed HEAD into `dest`. Local clones hardlink objects, so both kinds are fast.
+	 * The committed HEAD, or commit `at`, at `dest`: a locked worktree of a folder (#918), a clone of a URL's mirror.
 	 * `signal` kills this run's git; a mirror refresh shared with other callers keeps going, this caller just stops waiting.
-	 * `at` pins the clone to that commit instead (a follow-up rebuilds the first run's workspace, #747).
+	 * `at` pins it to that commit (a follow-up rebuilds the first run's workspace, #747); `runId` names the lock.
 	 */
 	async snapshot(
 		src: RepoSource,
 		dest: string,
 		signal?: AbortSignal,
 		at?: string,
+		runId?: string,
 	): Promise<Snapshot> {
 		signal?.throwIfAborted();
-		const from =
-			src.kind === "folder"
-				? src.source
-				: await abortable(this.ensureMirror(src), signal);
+		if (src.kind === "folder") {
+			const commit = at ?? (await this.headOf(src.source)).head;
+			try {
+				await addRunWorktree(src.source, dest, commit, runId ?? dest, signal);
+			} catch (err) {
+				if (signal?.aborted) throw signal.reason;
+				throw err instanceof Error ? new Error(err.message) : err;
+			}
+		} else await this.cloneMirror(src, dest, signal, at);
+		const check = await this.headOf(dest);
+		this.logger.log(
+			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}`,
+		);
+		return { path: dest, ...check };
+	}
+
+	private async cloneMirror(
+		src: RepoSource,
+		dest: string,
+		signal?: AbortSignal,
+		at?: string,
+	): Promise<void> {
+		const from = await abortable(this.ensureMirror(src), signal);
 		rmSync(dest, { recursive: true, force: true });
 		mkdirSync(join(dest, ".."), { recursive: true });
-		const branch =
-			src.kind === "url" && !at ? src.defaultBranch?.trim() || null : null;
+		const branch = !at ? src.defaultBranch?.trim() || null : null;
 		await this.git(
 			[
 				"clone",
@@ -218,17 +237,12 @@ export class RepoSourceService {
 				undefined,
 				signal,
 			);
-		// origin is the user's checkout or our mirror: refuse local-path push and fetch from the run (#676).
+		// origin is our mirror: refuse local-path push and fetch from the run (#676).
 		await this.git(
 			["-C", dest, "config", "protocol.file.allow", "never"],
 			undefined,
 			signal,
 		);
-		const check = await this.headOf(dest);
-		this.logger.log(
-			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}`,
-		);
-		return { path: dest, ...check };
 	}
 
 	/**

@@ -50,7 +50,7 @@ function renderSurfaces(
 	const repos = context.workspace?.repos ?? [];
 	if (repos.length) {
 		surfaces.push(
-			`  - Application SOURCE CODE: ${repos.length} repositories under your current working directory:`,
+			`  - Application SOURCE CODE: ${repos.length} repositories, one folder each:`,
 			...repos.map(
 				(r) =>
 					`      ${r.path}  services: ${r.services.join(", ")}  (at ${r.head.slice(0, 12)})${

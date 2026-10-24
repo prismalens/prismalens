@@ -77,13 +77,13 @@ describe("buildInvestigationPrompt (#633)", () => {
 			workspace: {
 				repos: [
 					{
-						path: "api/",
+						path: "/w/pl-1/api",
 						services: ["checkout", "cart"],
 						subPath: null,
 						head: "1a2b3c4d5e6f7a8b9c0d",
 					},
 					{
-						path: "worker/",
+						path: "/w/pl-1/worker",
 						services: ["jobs"],
 						subPath: "svc/jobs",
 						head: "5d6e7f8a9b0c1d2e3f4a",
@@ -96,7 +96,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 			"- Application SOURCE CODE is in your current working directory",
 		);
 		expect(prompt).toContain(
-			"  - Application SOURCE CODE: 2 repositories under your current working directory:\n      api/  services: checkout, cart  (at 1a2b3c4d5e6f)\n      worker/  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
+			"  - Application SOURCE CODE: 2 repositories, one folder each:\n      /w/pl-1/api  services: checkout, cart  (at 1a2b3c4d5e6f)\n      /w/pl-1/worker  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
 		);
 	});
 
