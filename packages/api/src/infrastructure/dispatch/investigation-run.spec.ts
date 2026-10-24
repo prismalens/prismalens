@@ -434,6 +434,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const bin = join(tmp, "bin");
 			mkdirSync(bin);
 			writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+			writeFileSync(join(bin, "opencode.cmd"), "@echo off\n");
 			vi.stubEnv("PATH", bin);
 			const resolvedCred = {
 				source: "connection" as const,
@@ -994,6 +995,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const bin = join(tmp, "bin");
 		mkdirSync(bin);
 		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		writeFileSync(join(bin, "opencode.cmd"), "@echo off\n");
 		vi.stubEnv("PATH", bin);
 		mocks.conductRun.mockReset();
 	});
@@ -1587,5 +1589,212 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		await runInvestigationJob(...job("inv-a"), io(), ports);
 		await runInvestigationJob(...job("inv-b"), io(), ports);
 		expect(telemetry).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("toolsServer per run and follow-up (#848)", () => {
+	let tmp: string;
+	beforeEach(() => {
+		tmp = mkdtempSync(join(os.tmpdir(), "pl-toolsserver-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		const bin = join(tmp, "bin");
+		mkdirSync(bin);
+		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		writeFileSync(join(bin, "opencode.cmd"), "@echo off\n");
+		vi.stubEnv("PATH", bin);
+		mocks.conductRun.mockReset();
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("toolsServer: the first run persists toolsServer in workspace JSON and leases with it", async () => {
+		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
+		const updateStatus = vi.fn(async () => true);
+		const ports = fakePorts({
+			updateStatus,
+			gateway: { lease, revoke: vi.fn() },
+		});
+		mocks.conductRun.mockImplementation(async (_o, ioRun: { store: { create(): Promise<void> } }) => {
+			await ioRun.store.create();
+			return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+		});
+		await runInvestigationJob(
+			{ id: "job-ts-1", investigationId: "inv-ts-1", attempts: 1 },
+			{ investigationId: "inv-ts-1", incidentId: "inc-1" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+		expect(lease).toHaveBeenCalledWith("inv-ts-1", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		const leasedName = lease.mock.calls[0]?.[1];
+		const updateCall = updateStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
+		expect(updateCall).toBeDefined();
+		const parsed = JSON.parse(updateCall![1].workspace ?? "{}");
+		expect(parsed.toolsServer).toBe(leasedName);
+	});
+
+	it("toolsServer: a follow-up reuses recorded toolsServer and writes it in rebuilt workspace", async () => {
+		const runDir = join(tmp, "runs", "inv-followup");
+		mkdirSync(runDir, { recursive: true });
+		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
+		const followUpStatus = vi.fn(async () => {});
+		const ports = fakePorts({
+			gateway: { lease, revoke: vi.fn() },
+			followUpStatus,
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-followup",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: JSON.stringify({
+					layout: "single",
+					cwd: join(runDir, "repo"),
+					toolsServer: "prismalens-reused1234",
+					repos: [
+						{
+							name: "repo",
+							dir: join(runDir, "repo"),
+							sourceKind: "url",
+							url: "https://github.com/acme/api",
+							subPath: null,
+							connectionId: null,
+							head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+							branch: "main",
+							services: ["checkout"],
+							credential: { source: "none", label: "public", via: "none" },
+						},
+					],
+				}),
+			})),
+			lastEventSeq: vi.fn(async () => 10),
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => ({
+				path: dest,
+				head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+				branch: "main",
+			})),
+		});
+
+		mocks.conductRun.mockImplementation(
+			async (_o, ioRun: { store: { create(): Promise<void>; append(e: CanonicalEvent): Promise<void> } }) => {
+				await ioRun.store.create();
+				await ioRun.store.append({
+					kind: "operator_message",
+					runId: "inv-followup",
+					branchId: "b",
+					path: [],
+					ts: "2026-10-11T00:00:00.000Z",
+					seq: 42,
+					text: "go",
+					mode: "queue",
+					delivered: true,
+				});
+				return { runId: "inv-followup", report: null, error: null, failureKind: "none" };
+			},
+		);
+
+		await runInvestigationJob(
+			{ id: "job-followup", investigationId: "inv-followup", attempts: 1 },
+			{
+				investigationId: "inv-followup",
+				incidentId: "inc-followup",
+				resume: {
+					text: "continue",
+					mode: "queue",
+					restore: { status: "completed", completedAt: "2026-09-30T10:00:00.000Z", error: null },
+				},
+			},
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(lease).toHaveBeenCalledWith("inv-followup", "prismalens-reused1234");
+		const followUpCall = followUpStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
+		expect(followUpCall).toBeDefined();
+		const parsed = JSON.parse(followUpCall![1].workspace ?? "{}");
+		expect(parsed.toolsServer).toBe("prismalens-reused1234");
+	});
+
+	it("toolsServer: a follow-up of a legacy run with no toolsServer leases a fresh name", async () => {
+		const runDir = join(tmp, "runs", "inv-legacy");
+		mkdirSync(runDir, { recursive: true });
+		const lease = vi.fn(async (_id: string, serverName: string) => ({ serverName }) as never);
+		const followUpStatus = vi.fn(async () => {});
+		const ports = fakePorts({
+			gateway: { lease, revoke: vi.fn() },
+			followUpStatus,
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-legacy",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: JSON.stringify({
+					layout: "single",
+					cwd: join(runDir, "repo"),
+					repos: [
+						{
+							name: "repo",
+							dir: join(runDir, "repo"),
+							sourceKind: "url",
+							url: "https://github.com/acme/api",
+							subPath: null,
+							connectionId: null,
+							head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+							branch: "main",
+							services: ["checkout"],
+							credential: { source: "none", label: "public", via: "none" },
+						},
+					],
+				}),
+			})),
+			lastEventSeq: vi.fn(async () => 10),
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => ({
+				path: dest,
+				head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+				branch: "main",
+			})),
+		});
+
+		mocks.conductRun.mockImplementation(
+			async (_o, ioRun: { store: { create(): Promise<void>; append(e: CanonicalEvent): Promise<void> } }) => {
+				await ioRun.store.create();
+				await ioRun.store.append({
+					kind: "operator_message",
+					runId: "inv-legacy",
+					branchId: "b",
+					path: [],
+					ts: "2026-10-11T00:00:00.000Z",
+					seq: 42,
+					text: "go",
+					mode: "queue",
+					delivered: true,
+				});
+				return { runId: "inv-legacy", report: null, error: null, failureKind: "none" };
+			},
+		);
+
+		await runInvestigationJob(
+			{ id: "job-legacy", investigationId: "inv-legacy", attempts: 1 },
+			{
+				investigationId: "inv-legacy",
+				incidentId: "inc-legacy",
+				resume: {
+					text: "continue",
+					mode: "queue",
+					restore: { status: "completed", completedAt: "2026-09-30T10:00:00.000Z", error: null },
+				},
+			},
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+
+		expect(lease).toHaveBeenCalledWith("inv-legacy", expect.stringMatching(/^prismalens-[a-z2-7]{10}$/));
+		const leasedName = lease.mock.calls[0]?.[1];
+		const followUpCall = followUpStatus.mock.calls.find(([, dto]) => dto.workspace !== undefined);
+		expect(followUpCall).toBeDefined();
+		const parsed = JSON.parse(followUpCall![1].workspace ?? "{}");
+		expect(parsed.toolsServer).toBe(leasedName);
 	});
 });

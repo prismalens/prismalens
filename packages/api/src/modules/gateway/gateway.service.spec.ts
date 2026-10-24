@@ -252,6 +252,12 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
 	});
 
+	it("toolsServer: lease carries the given serverName in the prompt line and entry", async () => {
+		const entry = await gateway().lease(RUN_A, "prismalens-customname12");
+		expect(entry?.serverName).toBe("prismalens-customname12");
+		expect(entry?.promptLine).toContain("MCP server `prismalens-customname12`");
+	});
+
 	for (const name of ["prometheus_query", "loki_query_range", "alertmanager_alerts", "sources_list", "vendor__tool"])
 		it(`${name} is not a tool any more`, async () => {
 			const out = await call("tools/call", { name, arguments: {} });

@@ -6,7 +6,7 @@ import { PassThrough, Readable, Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import type { HarnessChild } from "../launch/types.js";
 import { AcpSession } from "../runner/acp-client.js";
-import { type GatewayEntry, gatewayOffer } from "./gateway.js";
+import { type GatewayEntry, gatewayOffer, newGatewayServerName } from "./gateway.js";
 
 function entry(confirmed = false): GatewayEntry {
 	return {
@@ -121,5 +121,15 @@ describe("the gateway in session/new mcpServers (#848)", () => {
 		expect(
 			sent.find((m) => m.method === "session/new")?.params?.mcpServers,
 		).toEqual([]);
+	});
+});
+
+describe("newGatewayServerName (#848)", () => {
+	it("two runs get different names, each matching ^prismalens-[a-z2-7]{10}$", () => {
+		const a = newGatewayServerName();
+		const b = newGatewayServerName();
+		expect(a).toMatch(/^prismalens-[a-z2-7]{10}$/);
+		expect(b).toMatch(/^prismalens-[a-z2-7]{10}$/);
+		expect(a).not.toBe(b);
 	});
 });
