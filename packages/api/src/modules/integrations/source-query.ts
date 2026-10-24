@@ -378,17 +378,31 @@ export function boundSnapshot(
 	limit = SNAPSHOT_BYTES,
 ): { text: string; truncated?: { dropped: number; reason: string } } {
 	let text = render(data);
-	if (Buffer.byteLength(text) <= limit || !data || typeof data !== "object")
-		return { text };
-	const copy = structuredClone(data) as Shrinkable;
+	if (Buffer.byteLength(text) <= limit) return { text };
 	let dropped = 0;
-	while (Buffer.byteLength(text) > limit) {
-		const n = dropOldestLines(copy) || dropTrailing(copy);
-		if (!n) break;
-		dropped += n;
-		text = render(copy);
+	if (data && typeof data === "object") {
+		const copy = structuredClone(data) as Shrinkable;
+		while (Buffer.byteLength(text) > limit) {
+			const n = dropOldestLines(copy) || dropTrailing(copy);
+			if (!n) break;
+			dropped += n;
+			text = render(copy);
+		}
 	}
 	if (Buffer.byteLength(text) > limit)
 		text = render({ omitted: TRUNCATED_REASON });
+	// `render` adds its own header, which can be over the limit by itself (#848).
+	if (Buffer.byteLength(text) > limit)
+		text = JSON.stringify({ omitted: TRUNCATED_REASON });
 	return { text, truncated: { dropped, reason: TRUNCATED_REASON } };
+}
+
+/** Every string in `v` cut to `LIMITS.labelChars`, for metadata that rides on each render. */
+export function cutStrings(v: unknown): unknown {
+	if (Array.isArray(v)) return v.map(cutStrings);
+	if (v && typeof v === "object")
+		return Object.fromEntries(
+			Object.entries(v).map(([k, x]) => [k, cutStrings(x)]),
+		);
+	return cut(v);
 }

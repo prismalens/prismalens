@@ -8,13 +8,21 @@
  */
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import { getAppDataDir } from "@prismalens/config";
 import {
 	DEFAULT_ACCESS_LEVEL,
@@ -1345,13 +1353,27 @@ function inside(root: string, sub: string | null): string {
 	// Across Windows drives `relative` stays absolute, so `..` alone is not the test.
 	if (rel.startsWith("..") || isAbsolute(rel) || resolve(root, rel) !== dir)
 		throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
-	// A sub-path the repo turned into a link must not move the cwd outside the snapshot.
-	if (sub && existsSync(dir)) {
-		const real = relative(realpathSync(root), realpathSync(dir));
+	// A sub-path the repo turned into a link must not move the cwd outside the snapshot,
+	// even one not created yet: its deepest existing ancestor is what mkdir follows (#848).
+	if (sub) {
+		const real = relative(realOf(root), realOf(dir));
 		if (real.startsWith("..") || isAbsolute(real))
 			throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
 	}
 	return dir;
+}
+
+/** `p` with its deepest existing ancestor canonicalised and the missing tail appended. */
+function realOf(p: string): string {
+	const tail: string[] = [];
+	let head = p;
+	while (!lstatSync(head, { throwIfNoEntry: false })) {
+		const up = dirname(head);
+		if (up === head) break;
+		tail.unshift(basename(head));
+		head = up;
+	}
+	return join(realpathSync(head), ...tail);
 }
 
 function whereFrom(repo: {
@@ -1641,6 +1663,8 @@ export async function rebuildWorkspace(
 		);
 		repos.push({ ...repo, credential });
 	}
+	// The checkout may have restored a link on the cwd's path, so check again before creating it.
+	inside(runDir, relative(runDir, ws.cwd));
 	mkdirSync(ws.cwd, { recursive: true });
 	const pinned =
 		ws.repos.length === 1
