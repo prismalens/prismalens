@@ -93,7 +93,7 @@ cat > package.json <<EOF
 EOF
 
 echo "==> npm install (clean scratch dir, engines enforced)"
-npm install --engine-strict --no-audit --no-fund --loglevel=error || fail "npm install of the packed tarball failed"
+node "$SCRIPT_DIR/lib/npm-install-retry.mjs" npm install --engine-strict --no-audit --no-fund --loglevel=error || fail "npm install of the packed tarball failed"
 
 BIN="$SCRATCH/node_modules/.bin"
 [ -x "$BIN/prismalens" ] || fail "prismalens bin not linked"

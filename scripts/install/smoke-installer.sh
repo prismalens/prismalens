@@ -59,7 +59,7 @@ health() {
 sql() {
 	c_rt="$work/home/.local/share/prismalens/runtime/$1"
 	"$c_rt/node/bin/node" -e "
-		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/lib/node_modules/prismalens'] }));
+		const Database = require(require.resolve('better-sqlite3', { paths: ['$c_rt/app'] }));
 		const db = new Database(process.argv[1]);
 		const stmt = db.prepare(process.argv[2]);
 		console.log(stmt.reader ? Object.values(stmt.get() ?? { v: '' })[0] : stmt.run().changes);

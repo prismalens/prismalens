@@ -55,6 +55,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
 import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
+import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 // pnpm's npm_config_* would reach the npm we spawn as unknown-config warnings.
 const CLEAN_ENV = Object.fromEntries(
@@ -118,7 +119,7 @@ function findOrPackTarball() {
 }
 
 function npmInstall(prefix, spec, extraEnv = {}) {
-	execFileSync(
+	installWithRetry(
 		"npm",
 		[
 			"install",
@@ -130,7 +131,7 @@ function npmInstall(prefix, spec, extraEnv = {}) {
 			spec,
 		],
 		{
-			stdio: ["ignore", "ignore", "inherit"],
+			stdout: "ignore",
 			env: { ...CLEAN_ENV, ...extraEnv },
 		},
 	);
