@@ -9,7 +9,6 @@ import {
 	IntegrationsService,
 	parseTokenExpiration,
 } from "./integrations.service.js";
-import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 // Mock git-spawn so spawnGit can be controlled cleanly
 vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
@@ -282,56 +281,6 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			expect(parseTokenExpiration("invalid-date")).toBeNull();
 			expect(parseTokenExpiration("2026-10-17T09:30:00Z")).toBeNull();
 			expect(parseTokenExpiration("Sun, 17 Oct 2026 09:30:00 GMT")).toBeNull();
-		});
-	});
-
-	describe("T15: sweep leaves an expired api_key row ACTIVE and never calls resolveAccessToken for it", () => {
-		it("does not select non-oauth2 templates during proactive refresh sweep", async () => {
-			const processor = new TokenRefreshProcessor(
-				mockPrisma as unknown as PrismaService,
-				service,
-			);
-
-			const resolveSpy = vi.spyOn(service, "resolveAccessToken");
-
-			// Expiring connections query should filter to OAUTH2_TEMPLATE_IDS only
-			mockPrisma.connection.findMany.mockImplementation(async (args: any) => {
-				const templateIn = args?.where?.integration?.templateId?.in ?? [];
-				expect(templateIn).not.toContain("git-host-token");
-				expect(templateIn).not.toContain("github-token");
-				expect(templateIn).not.toContain("github-app");
-				return [];
-			});
-
-			await processor.process();
-
-			expect(resolveSpy).not.toHaveBeenCalled();
-		});
-	});
-
-	describe("T15b: a legacy github-app row is not selected during sweep", () => {
-		it("excludes github-app from the sweep's OAUTH2_TEMPLATE_IDS query", async () => {
-			const processor = new TokenRefreshProcessor(
-				mockPrisma as unknown as PrismaService,
-				service,
-			);
-
-			mockPrisma.connection.findMany.mockResolvedValue([]);
-
-			await processor.process();
-
-			expect(mockPrisma.connection.findMany).toHaveBeenCalledWith(
-				expect.objectContaining({
-					where: expect.objectContaining({
-						status: "ACTIVE",
-						integration: {
-							templateId: {
-								in: expect.not.arrayContaining(["github-app"]),
-							},
-						},
-					}),
-				}),
-			);
 		});
 	});
 

@@ -1,35 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// Types
-export type {
-	AuthManagerDeps,
-	OAuth2StoreDeps,
-	PermissionCheckResult,
-	RefreshableConnection,
-	RefreshDeps,
-	StartAuthorizationParams,
-} from "./engine/index.js";
+// Credential kinds (#848)
+export * from "./credentials/index.js";
 // Engine
 export {
 	AuthError,
-	AuthManager,
 	assertCapability,
 	CapabilityNotSupportedError,
 	CredentialsInvalidError,
-	checkOAuthScopes,
 	getCapabilities,
 	getTemplatesForCapability,
 	hasCapability,
 	interpolate,
 	interpolateRecord,
 	interpolateWithFunctions,
-	OAuth2Flow,
 	ProviderError,
 	RateLimitError,
-	TokenExpiredError,
-	TokenRefreshError,
-	TokenRefresher,
 	TokenVault,
 	urlOnlyRequestFn,
 } from "./engine/index.js";
@@ -39,15 +26,20 @@ export * from "./port/index.js";
 export type { DeploymentProvider } from "./providers/deployment.interface.js";
 // Providers — git
 export type {
+	GitCommit,
 	GitProvider,
 	GitProviderContext,
 } from "./providers/git.interface.js";
 // Providers — adapters & registry (#446, #633)
 export {
 	adapterSegments,
+	BitbucketAdapter,
+	BitbucketVcsSegment,
 	createAdapter,
 	GitHubAdapter,
 	GitHubVcsSegment,
+	GitLabAdapter,
+	GitLabVcsSegment,
 	getAdapter,
 	getAdapterSegments,
 	getRegisteredTemplateIds,
@@ -78,12 +70,14 @@ export type {
 // Templates
 export {
 	alertmanager,
+	bitbucketToken,
 	getAllTemplates,
 	getTemplate,
 	getTemplatesByAuthMode,
 	getTemplatesByCategory,
 	gitHostToken,
 	githubToken,
+	gitlabToken,
 	isLegacyTemplateId,
 	LEGACY_TEMPLATE_IDS,
 	loki,
@@ -93,11 +87,8 @@ export {
 export type {
 	AuthMode,
 	AuthTemplate,
-	OAuth2Config,
-	OAuthStateData,
 	TemplateField,
 	TemplateFieldOption,
-	TokenResult,
 } from "./types.js";
 export {
 	AuthModeSchema,

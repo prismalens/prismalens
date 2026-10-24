@@ -129,7 +129,6 @@ describe("ChangeEventsService", () => {
 		const integrations = new IntegrationsService(prisma, credentials, {
 			capture: vi.fn(async () => {}),
 		} as unknown as ConstructorParameters<typeof IntegrationsService>[2]);
-		integrations.onModuleInit();
 		service = new ChangeEventsService(
 			prisma,
 			new RepoSourceService(),

@@ -9,7 +9,6 @@ import { CredentialsService } from "./crypto/credentials.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 describe("Legacy GitHub App upgrade path (§1.5.3, D9, S15)", () => {
 	let integrationsService: IntegrationsService;
@@ -73,7 +72,7 @@ describe("Legacy GitHub App upgrade path (§1.5.3, D9, S15)", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("mandatory upgrade path: sweep ignores row, Settings lists legacy: true, preview shows legacy-link, Delete detaches repos and removes Integration", async () => {
+	it("mandatory upgrade path: Settings lists legacy: true, preview shows legacy-link, Delete detaches repos and removes Integration", async () => {
 		// 1. Seed a 0.5.0-shaped Integration: templateId "github-app", clientSecretEnc set (app private key)
 		const integrationId = "int-legacy-gh-app";
 		const connectionId = "conn-legacy-gh-app";
@@ -121,28 +120,6 @@ describe("Legacy GitHub App upgrade path (§1.5.3, D9, S15)", () => {
 			connectionId,
 			metadata: null,
 		};
-
-		// 2. Token sweep selects nothing and logs no warning
-		const processor = new TokenRefreshProcessor(
-			mockPrisma as unknown as PrismaService,
-			integrationsService,
-		);
-
-		// findMany during sweep filters where status: ACTIVE, lt cutoff, templateId in OAUTH2_TEMPLATE_IDS
-		mockPrisma.connection.findMany.mockImplementation(async (args: any) => {
-			const templateIn = args?.where?.integration?.templateId?.in;
-			if (templateIn) {
-				// Assert github-app is not in the sweep template filter
-				expect(templateIn).not.toContain("github-app");
-				// Does not select this legacy connection
-				return [];
-			}
-			return [legacyConnection];
-		});
-
-		const resolveSpy = vi.spyOn(integrationsService, "resolveAccessToken");
-		await processor.process();
-		expect(resolveSpy).not.toHaveBeenCalled();
 
 		// 3. Settings list returns the row with legacy: true
 		mockPrisma.connection.findMany.mockResolvedValue([legacyConnection]);

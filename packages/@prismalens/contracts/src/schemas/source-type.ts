@@ -74,6 +74,8 @@ export interface SourceTypeDescriptor {
 	detect: { urlEnv?: readonly string[]; tokenEnv?: readonly string[] };
 	/** Token scopes the vendor asks for, each with why PrismaLens needs it. */
 	scopes?: readonly { key: string; why: string }[];
+	/** Sign-in (#848): set where the vendor offers OAuth. */
+	oauth?: SourceOAuth;
 	probes: readonly SourceProbe[];
 	/** The label that names a service; `ask` puts the choice in front of the user. */
 	serviceLabel?: { preferred: readonly string[]; ask: boolean };
@@ -82,6 +84,23 @@ export interface SourceTypeDescriptor {
 	/** What the agent does with it when it has no gateway tool. */
 	uses?: string;
 	docsUrl: string;
+}
+
+export interface SourceOAuth {
+	/** Absolute, or "/path" resolved against the source URL's origin. */
+	authorize: string;
+	token: string;
+	/** What PrismaLens asks for: the read-only scopes where they exist. */
+	scopes: readonly string[];
+	/** Granted scopes counted as read-only, for the disclosure rule. */
+	readScopes: readonly string[];
+	/** False where the provider ignores requested scopes. */
+	scopesBoundGrant: boolean;
+	shippedApp?: "github" | "gitlab" | "bitbucket";
+	/** The PrismaLens-owned app is offered only on this origin. */
+	cloudOrigin?: string;
+	/** "/path"s on a self-managed host's own origin (GitHub Enterprise Server), off `cloudOrigin`. */
+	selfManaged?: { authorize: string; token: string };
 }
 
 const httpQueryKinds = [
@@ -210,7 +229,21 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 		category: "scm",
 		vendor: "GitHub",
 		slug: "github",
-		credentialKinds: ["bearer"],
+		credentialKinds: ["bearer", "oauth"],
+		oauth: {
+			authorize: "https://github.com/login/oauth/authorize",
+			token: "https://github.com/login/oauth/access_token",
+			// `repo` is the only scope that reads private code, and it also writes.
+			scopes: ["repo"],
+			readScopes: [],
+			scopesBoundGrant: true,
+			shippedApp: "github",
+			cloudOrigin: "https://api.github.com",
+			selfManaged: {
+				authorize: "/login/oauth/authorize",
+				token: "/login/oauth/access_token",
+			},
+		},
 		url: {
 			label: "API URL",
 			placeholder: "https://api.github.com",
@@ -246,7 +279,16 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 		category: "scm",
 		vendor: "GitLab",
 		slug: "gitlab",
-		credentialKinds: ["bearer"],
+		credentialKinds: ["bearer", "oauth"],
+		oauth: {
+			authorize: "/oauth/authorize",
+			token: "/oauth/token",
+			scopes: ["read_api", "read_repository"],
+			readScopes: ["read_api", "read_repository"],
+			scopesBoundGrant: true,
+			shippedApp: "gitlab",
+			cloudOrigin: "https://gitlab.com",
+		},
 		url: {
 			label: "API URL",
 			placeholder: "https://gitlab.example.com/api/v4",
@@ -292,7 +334,17 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 		category: "scm",
 		vendor: "Bitbucket",
 		slug: "bitbucket",
-		credentialKinds: ["bearer"],
+		credentialKinds: ["bearer", "oauth", "oauth-client"],
+		oauth: {
+			authorize: "https://bitbucket.org/site/oauth2/authorize",
+			token: "https://bitbucket.org/site/oauth2/access_token",
+			// Set on the consumer; Bitbucket ignores requested scopes.
+			scopes: [],
+			readScopes: ["repository", "account"],
+			scopesBoundGrant: false,
+			shippedApp: "bitbucket",
+			cloudOrigin: "https://api.bitbucket.org",
+		},
 		url: {
 			label: "API URL",
 			placeholder: "https://api.bitbucket.org/2.0",
@@ -495,6 +547,8 @@ export type DetectedSource = z.infer<typeof DetectedSourceSchema>;
 export const SourcesOverviewSchema = z.object({
 	categories: z.array(SourceCategoryViewSchema),
 	detected: z.array(DetectedSourceSchema),
+	/** Connections whose grant reaches past what PrismaLens reads (04, OBJ-013). */
+	disclosed: z.array(z.string()).optional(),
 });
 export type SourcesOverview = z.infer<typeof SourcesOverviewSchema>;
 
@@ -536,6 +590,8 @@ export const ProbeReportSchema = z.object({
 		labels: z.array(z.string()).optional(),
 		serviceLabel: z.string().nullable().optional(),
 		identity: z.string().optional(),
+		/** A sign-in's granted scopes; null when the grant named none. */
+		grantedScopes: z.array(z.string()).nullable().optional(),
 	}),
 });
 export type ProbeReport = z.infer<typeof ProbeReportSchema>;

@@ -78,6 +78,17 @@ export function hostFromGithubBaseUrl(baseUrl: unknown): string {
 	}
 }
 
+/** The git host a saved GitLab or Bitbucket token belongs to, from its API base URL; `api.bitbucket.org` → `bitbucket.org`. */
+export function hostFromApiBaseUrl(baseUrl: unknown): string | null {
+	if (typeof baseUrl !== "string" || !baseUrl.trim()) return null;
+	try {
+		const host = new URL(baseUrl.trim()).host.toLowerCase();
+		return host === "api.bitbucket.org" ? "bitbucket.org" : host;
+	} catch {
+		return null;
+	}
+}
+
 /** The keys a saved credential may keep its token under; `apiKey` is what 0.5.0 GitHub token rows store. */
 export const TOKEN_KEYS = [
 	"token",
@@ -112,16 +123,18 @@ export class GitCredential {
 	readonly effectiveUrl?: string;
 	#token?: string;
 	#host?: string;
+	#username?: string;
 
 	constructor(
 		display: GitCredentialDisplay,
 		token?: string,
-		opts: { effectiveUrl?: string; host?: string } = {},
+		opts: { effectiveUrl?: string; host?: string; username?: string } = {},
 	) {
 		this.display = display;
 		if (opts.effectiveUrl) this.effectiveUrl = opts.effectiveUrl;
 		this.#token = token;
 		this.#host = opts.host;
+		this.#username = opts.username;
 	}
 
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
@@ -130,7 +143,7 @@ export class GitCredential {
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
-		const user = tokenUsernameFor(url.hostname);
+		const user = this.#username ?? tokenUsernameFor(url.hostname);
 		return `Authorization: Basic ${Buffer.from(`${user}:${this.#token}`).toString("base64")}`;
 	}
 

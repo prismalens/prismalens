@@ -5,7 +5,7 @@ import type { AuthenticatedRequestFn } from "../providers/types.js";
 
 /**
  * URL-only authenticated request function (#633).
- * Reaches an unauthenticated endpoint directly without routing through AuthManager.
+ * Reaches an unauthenticated endpoint directly without a credential.
  */
 export function urlOnlyRequestFn(
 	baseUrl: string,

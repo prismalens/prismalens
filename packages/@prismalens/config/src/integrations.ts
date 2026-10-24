@@ -20,6 +20,7 @@ export const CapabilitySchema = z.enum([
 	"vcs:list_repos",
 	"vcs:read_file",
 	"vcs:read_commit_status",
+	"vcs:read_commits",
 	"deployment:list_services",
 	"deployment:get_service",
 	"deployment:list_deploys",

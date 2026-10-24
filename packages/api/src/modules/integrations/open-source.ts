@@ -39,9 +39,12 @@ export async function openSource(
 	const credential = parsed.credential;
 	return {
 		...src,
-		request: sourceRequestFn(base, parsed, opts),
+		request: sourceRequestFn(base, parsed, {
+			...opts,
+			connection: integrations.sourceConnection?.(src.id),
+		}),
 		get secrets() {
-			return credentialSecrets(credential);
+			return credentialSecrets(credential, src.id);
 		},
 	};
 }

@@ -38,7 +38,7 @@ export class UpdateIntegrationDto {
 export class UpdateConnectionDto {
 	@IsOptional()
 	@IsObject()
-	credentials?: Record<string, string>;
+	credentials?: Record<string, unknown>;
 
 	@IsOptional()
 	@IsObject()

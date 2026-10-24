@@ -9,7 +9,6 @@ import { CredentialsService } from "./crypto/credentials.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
-import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 @Module({
 	imports: [PrismaModule, ConfigModule],
@@ -17,7 +16,6 @@ import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 	providers: [
 		IntegrationsService,
 		CredentialsService,
-		TokenRefreshProcessor,
 		ConnectorResolverService,
 		GitCredentialService,
 	],

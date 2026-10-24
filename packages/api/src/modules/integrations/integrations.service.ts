@@ -6,12 +6,12 @@ import {
 	Injectable,
 	Logger,
 	NotFoundException,
-	type OnModuleInit,
 } from "@nestjs/common";
 import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import {
 	type ParsedSourceCredential,
 	parseSourceCredential,
+	type SourceCredential,
 } from "@prismalens/contracts/schemas";
 import type {
 	Connection,
@@ -20,13 +20,14 @@ import type {
 } from "@prismalens/database";
 import {
 	type AuthenticatedRequestFn,
-	AuthManager,
-	type AuthManagerDeps,
 	type AuthTemplate,
+	type CredentialKind,
 	createAdapter,
+	credentialKind,
 	getAllTemplates,
 	getTemplate,
 	isLegacyTemplateId,
+	SignInExpired,
 } from "@prismalens/integrations";
 import {
 	GIT_HOST_RULE,
@@ -58,8 +59,25 @@ import type {
 	UpdateConnectionDto,
 	UpdateIntegrationDto,
 } from "./dto/update-connection.dto.js";
-import { type HostToken, pickOf, readHostToken } from "./host-token.js";
-import { sourceRequestFn } from "./source-request.js";
+import {
+	type AuthorizeHost,
+	type HostToken,
+	hostTokenInfo,
+	pickOf,
+	readHostToken,
+} from "./host-token.js";
+import {
+	type CredentialProblem,
+	type SourceConnection,
+	sourceRequestFn,
+} from "./source-request.js";
+import {
+	bearerOf,
+	readStored,
+	type Stored,
+	writeStored,
+} from "./stored-credential.js";
+import { templateRequestFn, verifyTemplate } from "./template-request.js";
 
 export interface ConnectionWithIntegration extends Connection {
 	integration: Integration;
@@ -118,10 +136,8 @@ function normalizedConfig(
 }
 
 @Injectable()
-export class IntegrationsService implements OnModuleInit {
+export class IntegrationsService {
 	private readonly logger = new Logger(IntegrationsService.name);
-	private authManager!: AuthManager;
-	private authManagerInitialized = false;
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -129,104 +145,131 @@ export class IntegrationsService implements OnModuleInit {
 		private readonly telemetry: TelemetryService,
 	) {}
 
-	onModuleInit(): void {
-		this.initAuthManager();
-	}
-
-	private initAuthManager(): void {
-		if (this.authManagerInitialized) return;
-		const vault = this.credentialsService.getVault();
-
-		const deps: AuthManagerDeps = {
-			getConnection: async (connectionId: string) => {
-				const conn = await this.prisma.connection.findUnique({
-					where: { id: connectionId },
-					include: { integration: true },
-				});
-				if (!conn) return null;
-				return {
-					id: conn.id,
-					integrationId: conn.integrationId,
-					credentialsEnc: Buffer.from(conn.credentialsEnc),
-					tokenExpiresAt: conn.tokenExpiresAt,
-				};
-			},
-			getTemplate: async (integrationId: string) => {
-				const integration = await this.prisma.integration.findUnique({
-					where: { id: integrationId },
-				});
-				if (!integration) return null;
-				const template = getTemplate(integration.templateId);
-				if (!template) return null;
-				const clientId = integration.clientIdEnc
-					? vault.decrypt(Buffer.from(integration.clientIdEnc))
-					: "";
-				const clientSecret = integration.clientSecretEnc
-					? vault.decrypt(Buffer.from(integration.clientSecretEnc))
-					: "";
-				return { template, clientId, clientSecret };
-			},
-			updateConnectionTokens: async (connectionId, data) => {
-				await this.prisma.connection.update({
-					where: { id: connectionId },
-					data: {
-						credentialsEnc: new Uint8Array(
-							data.credentialsEnc,
-						) as Uint8Array<ArrayBuffer>,
-						tokenExpiresAt: data.tokenExpiresAt,
-						lastRefreshedAt: data.lastRefreshedAt,
-						status: data.status,
-						consecutiveErrors: data.consecutiveErrors,
-					},
-				});
-			},
-			markConnectionError: async (connectionId, error, status) => {
-				await this.prisma.connection.update({
-					where: { id: connectionId },
-					data: {
-						status,
-						lastErrorMessage: error,
-						lastErrorAt: new Date(),
-						consecutiveErrors: { increment: 1 },
-					},
-				});
-			},
-			getTemplateForConnection: async (connectionId: string) => {
-				const conn = await this.prisma.connection.findUnique({
-					where: { id: connectionId },
-					include: { integration: true },
-				});
-				if (!conn) return null;
-				return getTemplate(conn.integration.templateId) ?? null;
-			},
-			getConnectionCredentials: async (connectionId: string) => {
-				const conn = await this.prisma.connection.findUnique({
-					where: { id: connectionId },
-				});
-				if (!conn) return null;
-				return this.credentialsService.decrypt<Record<string, unknown>>(
-					Buffer.from(conn.credentialsEnc),
-				);
-			},
-		};
-
-		this.authManager = new AuthManager(vault, deps);
-		this.authManagerInitialized = true;
-	}
-
-	private getAuthManager(): AuthManager {
-		return this.authManager;
-	}
-
-	/**
-	 * Create a bound authenticated request function for a connection.
-	 * This replaces raw accessToken passing — the git provider calls
-	 * request(method, path) and AuthManager handles auth headers + token refresh.
-	 */
+	/** A connection's request function through its template (#848). */
 	public createRequestFn(connectionId: string): AuthenticatedRequestFn {
-		const authManager = this.getAuthManager();
-		return (method, path, opts) =>
-			authManager.request(connectionId, method, path, opts);
+		return templateRequestFn(async () => {
+			const row = await this.storedRow(connectionId);
+			const template = row && getTemplate(row.templateId);
+			if (!row || !template)
+				throw new NotFoundException("Connection not found");
+			return {
+				connectionId,
+				template,
+				blob: row.blob,
+				stored: row.stored,
+				connection: this.sourceConnection(connectionId),
+			};
+		});
+	}
+
+	/** The decrypted credential row of a connection, read through `readStored`. */
+	async storedRow(connectionId: string): Promise<{
+		templateId: string;
+		blob: Record<string, unknown>;
+		stored: Stored;
+	} | null> {
+		const conn = await this.prisma.connection.findUnique({
+			where: { id: connectionId },
+			select: {
+				credentialsEnc: true,
+				integration: { select: { templateId: true } },
+			},
+		});
+		if (!conn) return null;
+		let blob: Record<string, unknown> = {};
+		try {
+			blob = this.credentialsService.decrypt<Record<string, unknown>>(
+				Buffer.from(conn.credentialsEnc),
+			);
+		} catch {
+			return {
+				templateId: conn.integration.templateId,
+				blob,
+				stored: {
+					credential: {
+						ok: false,
+						reason: "invalid",
+						message: "Saved credentials could not be read",
+					},
+				},
+			};
+		}
+		return {
+			templateId: conn.integration.templateId,
+			blob,
+			stored: readStored(conn.integration.templateId, blob),
+		};
+	}
+
+	/** Load, write back a rotated token, and record a problem on the row (#848, OBJ-007/009). */
+	sourceConnection(connectionId: string): SourceConnection {
+		return {
+			id: connectionId,
+			load: async () => {
+				const row = await this.storedRow(connectionId);
+				if (!row?.stored.credential.ok)
+					throw new NotFoundException("Connection credential not found");
+				return row.stored.credential.credential;
+			},
+			save: (next) => this.saveStoredCredential(connectionId, next),
+			report: (problem) => this.recordCredentialProblem(connectionId, problem),
+		};
+	}
+
+	/** A sign-in's git token is its current access token (#848). */
+	readonly authorizeHost: AuthorizeHost = async (connectionId, credential) => {
+		const conn = this.sourceConnection(connectionId);
+		try {
+			const auth = await (
+				credentialKind(credential.kind) as CredentialKind
+			).authorize(credential as never, {
+				connectionId,
+				origin: "",
+				fetch,
+				load: conn.load,
+				save: conn.save,
+			});
+			return bearerOf(auth.headers) ?? null;
+		} catch (e) {
+			if (e instanceof SignInExpired)
+				await conn.report?.({ kind: "sign-in-expired", message: e.message });
+			throw e;
+		}
+	};
+
+	async saveStoredCredential(
+		connectionId: string,
+		credential: SourceCredential,
+	): Promise<void> {
+		const row = await this.storedRow(connectionId);
+		if (!row) return;
+		await this.prisma.connection.update({
+			where: { id: connectionId },
+			data: {
+				credentialsEnc: this.credentialsService.encrypt(
+					writeStored(row.templateId, credential, row.stored.baseUrl),
+				),
+				lastRefreshedAt: new Date(),
+			},
+		});
+	}
+
+	private async recordCredentialProblem(
+		connectionId: string,
+		problem: CredentialProblem,
+	): Promise<void> {
+		await this.prisma.connection
+			.update({
+				where: { id: connectionId },
+				data: {
+					...(problem.kind === "sign-in-expired"
+						? { status: "REFRESH_FAILED" }
+						: {}),
+					lastErrorMessage: problem.message,
+					lastErrorAt: new Date(),
+				},
+			})
+			.catch(() => undefined);
 	}
 
 	// =========================================================================
@@ -288,7 +331,7 @@ export class IntegrationsService implements OnModuleInit {
 				label: dto.label,
 				clientIdEnc,
 				clientSecretEnc,
-				scopes: JSON.stringify(dto.scopes ?? template.oauth2?.scopes ?? []),
+				scopes: JSON.stringify(dto.scopes ?? []),
 				callbackUrl: dto.callbackUrl,
 			},
 		});
@@ -506,8 +549,7 @@ export class IntegrationsService implements OnModuleInit {
 	gitHostInfo(
 		conn: ConnectionWithIntegration,
 	): { host: string; fingerprint: string } | null {
-		const t = readHostToken(conn, this.credentialsService);
-		return t ? { host: t.host, fingerprint: t.fingerprint } : null;
+		return hostTokenInfo(conn, this.credentialsService);
 	}
 
 	/**
@@ -542,7 +584,12 @@ export class IntegrationsService implements OnModuleInit {
 			where: { id: connectionId },
 			select: { connectionConfigEnc: true },
 		});
-		return conn ? this.baseUrlOf(conn) : null;
+		if (!conn) return null;
+		return (
+			this.baseUrlOf(conn) ??
+			(await this.storedRow(connectionId))?.stored.baseUrl ??
+			null
+		);
 	}
 
 	/** The URL a URL-only source was added with; null when it has none. */
@@ -564,25 +611,14 @@ export class IntegrationsService implements OnModuleInit {
 	async sourceCredential(
 		connectionId: string,
 	): Promise<ParsedSourceCredential> {
-		const conn = await this.prisma.connection.findUnique({
-			where: { id: connectionId },
-			select: { credentialsEnc: true },
-		});
-		if (!conn)
-			return { ok: false, reason: "invalid", message: "Connection not found" };
-		try {
-			return parseSourceCredential(
-				this.credentialsService.decrypt<unknown>(
-					Buffer.from(conn.credentialsEnc),
-				),
-			);
-		} catch {
-			return {
+		const row = await this.storedRow(connectionId);
+		return (
+			row?.stored.credential ?? {
 				ok: false,
 				reason: "invalid",
-				message: "Saved credentials could not be read",
-			};
-		}
+				message: "Connection not found",
+			}
+		);
 	}
 
 	async testConnection(id: string): Promise<TestConnectionResult> {
@@ -621,7 +657,9 @@ export class IntegrationsService implements OnModuleInit {
 							};
 				}
 			} else {
-				testResult = await this.getAuthManager().verifyConnection(id);
+				testResult = template
+					? await verifyTemplate(this.createRequestFn(id), template)
+					: { success: true };
 			}
 
 			await this.prisma.connection.update({
@@ -669,7 +707,11 @@ export class IntegrationsService implements OnModuleInit {
 	private async testGitHostToken(
 		connection: ConnectionWithIntegration,
 	): Promise<TestConnectionResult> {
-		const token = readHostToken(connection, this.credentialsService);
+		const token = await readHostToken(
+			connection,
+			this.credentialsService,
+			this.authorizeHost,
+		);
 		if (!token)
 			return { success: false, error: "This connection has no host or token." };
 		const { details, rejected } = await this.lsRemoteMatching(token);
@@ -728,7 +770,10 @@ export class IntegrationsService implements OnModuleInit {
 			via: token.templateId,
 			fingerprint: token.fingerprint,
 		};
-		const cred = new GitCredential(display, token.token, { host: token.host });
+		const cred = new GitCredential(display, token.token, {
+			host: token.host,
+			username: token.username,
+		});
 		const details: string[] = [];
 		let rejected: string | null = null;
 		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
@@ -800,14 +845,6 @@ export class IntegrationsService implements OnModuleInit {
 			);
 			return { rejected: false };
 		}
-	}
-
-	// =========================================================================
-	// TOKEN RESOLUTION (auth-mode-aware)
-	// =========================================================================
-
-	async resolveAccessToken(connectionId: string): Promise<string> {
-		return this.getAuthManager().resolveAccessToken(connectionId);
 	}
 
 	async updateConnectionConfig(
@@ -1241,7 +1278,7 @@ async function releaseRepositories(
 /** A source with credential kinds refuses an unknown, malformed or not-yet-supported kind by name. */
 function checkSourceCredential(
 	templateId: string,
-	credentials: Record<string, string>,
+	credentials: Record<string, unknown>,
 ): void {
 	const kinds = getTemplate(templateId)?.credentialKinds;
 	if (!kinds) return;

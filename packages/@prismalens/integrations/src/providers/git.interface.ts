@@ -5,7 +5,7 @@
  * Git Provider Interface
  *
  * Abstraction layer for git hosting services (GitHub, etc.).
- * Uses an injected authenticated request function (from AuthManager.request)
+ * Uses an injected authenticated request function (from the api's template-request)
  * instead of raw access tokens.
  */
 import type {
@@ -21,6 +21,18 @@ import type { AuthenticatedRequestFn } from "./types.js";
  */
 export interface GitProviderContext {
 	authMode?: AuthMode;
+}
+
+/** A change on the default branch, in the row shape `readHistory` gives for a clone (#848). */
+export interface GitCommit {
+	sha: string;
+	parents: number;
+	committedAt: Date;
+	author: string;
+	subject: string;
+	body: string;
+	tag: string | null;
+	files: string[];
 }
 
 /**
@@ -55,4 +67,19 @@ export interface GitProvider {
 	getAuthenticatedUser(
 		request: AuthenticatedRequestFn,
 	): Promise<{ id: string; login: string; name?: string; avatarUrl?: string }>;
+
+	/** First-parent commits since a time, newest first, without files. Read-only. */
+	getCommitsSince?(
+		request: AuthenticatedRequestFn,
+		repo: string,
+		since: Date,
+		opts?: { branch?: string; max?: number },
+	): Promise<Omit<GitCommit, "files">[]>;
+
+	/** One commit with the paths it touched. Read-only. */
+	getCommit?(
+		request: AuthenticatedRequestFn,
+		repo: string,
+		sha: string,
+	): Promise<GitCommit>;
 }

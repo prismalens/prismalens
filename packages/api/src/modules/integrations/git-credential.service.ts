@@ -236,6 +236,7 @@ export class GitCredentialService {
 		return new GitCredential(r.display, r.token?.token, {
 			effectiveUrl: r.effectiveUrl,
 			host: r.token?.host,
+			username: r.token?.username,
 		});
 	}
 
@@ -417,9 +418,12 @@ export class GitCredentialService {
 			include: { integration: true },
 			orderBy: { createdAt: "asc" },
 		});
-		return rows
-			.map((row) => readHostToken(row, this.credentials))
-			.filter((t): t is HostToken => t !== null);
+		const tokens = await Promise.all(
+			rows.map((row) =>
+				readHostToken(row, this.credentials, this.integrations.authorizeHost),
+			),
+		);
+		return tokens.filter((t): t is HostToken => t !== null);
 	}
 
 	private async legacyLink(

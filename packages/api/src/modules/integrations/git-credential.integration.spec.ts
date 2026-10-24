@@ -124,7 +124,6 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 			credentialsService,
 			telemetryService,
 		);
-		integrationsService.onModuleInit();
 
 		gitCredentialService = new GitCredentialService(
 			prisma,

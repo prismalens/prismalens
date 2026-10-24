@@ -14,7 +14,7 @@ import {
 	parseSourceCredential,
 	type SourceCredential,
 } from "@prismalens/contracts/schemas";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CA_CERT,
 	CLIENT_CERT,
@@ -246,5 +246,162 @@ describe("sourceRequestFn: the first request stays on the origin (#848, OBJ-003)
 		);
 		await expect(fn("GET", `${other}/x`)).rejects.toBeInstanceOf(OffOriginError);
 		expect(otherHit).toBe(false);
+	});
+});
+
+describe("sourceRequestFn: OAuth renewal and scope refusals (#848, 04)", () => {
+	const TOKEN_URL = "https://as.test/token";
+	function mockTokenEndpoint(tokens: string[]) {
+		const real = globalThis.fetch;
+		const calls: URLSearchParams[] = [];
+		const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+			const url = String(input instanceof Request ? input.url : input);
+			if (url !== TOKEN_URL) return real(input, init);
+			calls.push(new URLSearchParams(String(init?.body ?? "")));
+			return new Response(
+				JSON.stringify({
+					access_token: tokens.shift(),
+					token_type: "Bearer",
+					expires_in: 3600,
+				}),
+				{ headers: { "content-type": "application/json" } },
+			);
+		});
+		return { calls, restore: () => spy.mockRestore() };
+	}
+	const oauthCred = (refreshToken: string): SourceCredential => ({
+		kind: "oauth",
+		authorizationUrl: "https://as.test/authorize",
+		tokenUrl: TOKEN_URL,
+		redirectUri: "http://127.0.0.1:6474/callback",
+		clientId: "c",
+		scopes: [],
+		refreshToken,
+	});
+	const conn = (c: SourceCredential, problems: string[] = []) => ({
+		id: `conn-${Math.random()}`,
+		load: async () => c,
+		save: async () => {},
+		report: async (p: { message: string }) => {
+			problems.push(p.message);
+		},
+	});
+
+	it("a 401 then a 200 retries once with a renewed token, for OAuth only", async () => {
+		const seen: string[] = [];
+		const base = await fake((req, res) => {
+			seen.push(String(req.headers.authorization));
+			res.statusCode = seen.length === 1 ? 401 : 200;
+			res.end("{}");
+		});
+		const token = mockTokenEndpoint(["A1", "A2"]);
+		try {
+			const c = oauthCred("R0");
+			const res = await sourceRequestFn(base, ok(c), { connection: conn(c) })(
+				"GET",
+				"/x",
+			);
+			expect(res.status).toBe(200);
+			expect(seen).toEqual(["Bearer A1", "Bearer A2"]);
+			expect(token.calls).toHaveLength(2);
+		} finally {
+			token.restore();
+		}
+	});
+
+	it("a bearer token's 401 is not retried", async () => {
+		let hits = 0;
+		const base = await fake((_req, res) => {
+			hits++;
+			res.statusCode = 401;
+			res.end();
+		});
+		const res = await sourceRequestFn(base, ok({ kind: "bearer", token: "t" }))(
+			"GET",
+			"/x",
+		);
+		expect(res.status).toBe(401);
+		expect(hits).toBe(1);
+	});
+
+	const refusal = async (headers: Record<string, string>) => {
+		const base = await fake((_req, res) => {
+			res.writeHead(403, headers);
+			res.end("{}");
+		});
+		const problems: string[] = [];
+		const c: SourceCredential = { kind: "bearer", token: "t" };
+		await sourceRequestFn(base, ok(c), { connection: conn(c, problems) })(
+			"GET",
+			"/x",
+		);
+		return problems;
+	};
+
+	it("a 403 insufficient_scope challenge sets needs permission with its scope", async () => {
+		expect(
+			await refusal({
+				"www-authenticate":
+					'Bearer error="insufficient_scope", scope="read_repository"',
+			}),
+		).toEqual(["needs permission: read_repository"]);
+	});
+
+	it("reads an unquoted scope token too", async () => {
+		expect(
+			await refusal({
+				"www-authenticate": "Bearer error=insufficient_scope, scope=read_api",
+			}),
+		).toEqual(["needs permission: read_api"]);
+	});
+
+	it("a challenge with no scope takes X-Accepted-OAuth-Scopes", async () => {
+		expect(
+			await refusal({
+				"www-authenticate": 'Bearer error="insufficient_scope"',
+				"x-accepted-oauth-scopes": "repo",
+			}),
+		).toEqual(["needs permission: repo"]);
+	});
+
+	it("GitHub's X-Accepted-OAuth-Scopes on a 403 names the scope", async () => {
+		expect(
+			await refusal({ "x-accepted-oauth-scopes": "repo", "x-oauth-scopes": "" }),
+		).toEqual(["needs permission: repo"]);
+	});
+
+	it("a rate-limit 403 or a grant that holds the scope is not a scope refusal", async () => {
+		expect(
+			await refusal({
+				"x-accepted-oauth-scopes": "repo",
+				"x-ratelimit-remaining": "0",
+			}),
+		).toEqual([]);
+		expect(
+			await refusal({ "x-accepted-oauth-scopes": "repo", "x-oauth-scopes": "repo" }),
+		).toEqual([]);
+	});
+
+	it("a challenge whose scope names the bearer token stores no token (OBJ-035)", async () => {
+		const token = "glpat-secret-token-1234";
+		const base = await fake((_req, res) => {
+			res.writeHead(403, {
+				"www-authenticate": `Bearer error="insufficient_scope", scope="${token}"`,
+			});
+			res.end("{}");
+		});
+		const problems: string[] = [];
+		const c: SourceCredential = { kind: "bearer", token };
+		await sourceRequestFn(base, ok(c), { connection: conn(c, problems) })("GET", "/x");
+		expect(problems).toHaveLength(1);
+		expect(problems.join()).not.toContain(token);
+	});
+
+	it("cuts an upstream scope to safe characters and 80 characters", async () => {
+		const [msg] = await refusal({
+			"www-authenticate": `Bearer error="insufficient_scope", scope="<b>${"a".repeat(200)}"`,
+		});
+		expect(msg).toMatch(/^needs permission: ba+$/);
+		expect(msg?.length).toBeLessThanOrEqual("needs permission: ".length + 80);
 	});
 });

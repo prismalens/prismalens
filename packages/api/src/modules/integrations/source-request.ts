@@ -6,7 +6,15 @@ import type {
 	ParsedSourceCredential,
 	SourceCredential,
 } from "@prismalens/contracts/schemas";
-import type { AuthenticatedRequestFn } from "@prismalens/integrations";
+import {
+	type AuthenticatedRequestFn,
+	type Authorization,
+	type CredentialKind,
+	credentialKind,
+	credentialSecrets as kindSecrets,
+	SignInExpired,
+} from "@prismalens/integrations";
+import { bearerOf } from "./stored-credential.js";
 
 /** A request or redirect would carry the credential off the origin it was saved for (#848). */
 export class OffOriginError extends Error {
@@ -30,54 +38,71 @@ export interface SourceRequestOptions {
 	maxBytes?: number;
 	maxRedirects?: number;
 	fetchImpl?: typeof fetch;
+	/** A saved connection: refresh reads and writes its row, and problems land on it. */
+	connection?: SourceConnection;
+}
+
+/** What a request learned about the credential; the connection's row shows it (#848). */
+export type CredentialProblem =
+	| { kind: "needs-permission"; message: string }
+	| { kind: "sign-in-expired"; message: string };
+
+export interface SourceConnection {
+	id: string;
+	load(): Promise<SourceCredential>;
+	save(next: SourceCredential): Promise<void>;
+	report?(problem: CredentialProblem): Promise<void>;
+}
+
+const REFRESHING = new Set<SourceCredential["kind"]>(["oauth", "oauth-client"]);
+
+/** `needs permission: <scope>` from a 403, or null when the 403 is about something else. */
+export function insufficientScope(res: Response): string | null {
+	if (res.status !== 403) return null;
+	const challenge = res.headers.get("www-authenticate") ?? "";
+	let scope: string | undefined;
+	if (/error="?insufficient_scope"?/i.test(challenge)) {
+		// RFC 9110 auth-params may be a quoted string or a bare token.
+		const m = /\bscope\s*=\s*(?:"([^"]*)"|([!#$%&'*+.^_`|~0-9A-Za-z-]+))/i.exec(
+			challenge,
+		);
+		scope = m?.[1] ?? m?.[2] ?? "";
+	}
+	const accepted = res.headers.get("x-accepted-oauth-scopes");
+	// A challenge that refuses without naming a scope takes the scope GitHub says it accepts.
+	if (scope?.trim() === "" && accepted?.trim())
+		scope = accepted
+			.split(/[\s,]+/)
+			.filter(Boolean)
+			.join(" ");
+	if (scope === undefined && accepted?.trim()) {
+		// GitHub sends these on every answer; only a grant lacking all of them is a scope refusal.
+		const held = (res.headers.get("x-oauth-scopes") ?? "")
+			.split(/[\s,]+/)
+			.filter(Boolean);
+		const wants = accepted.split(/[\s,]+/).filter(Boolean);
+		if (
+			res.headers.get("x-ratelimit-remaining") !== "0" &&
+			!wants.some((w) => held.includes(w))
+		)
+			scope = wants.join(" ");
+	}
+	if (scope === undefined) return null;
+	const clean = scope
+		.replace(/[^A-Za-z0-9:._ -]/g, "")
+		.slice(0, 80)
+		.trim();
+	return `needs permission: ${clean || "unknown"}`;
 }
 
 export const TRUNCATED_HEADER = "x-prismalens-truncated";
 
-export function credentialHeaders(c: SourceCredential): Record<string, string> {
-	switch (c.kind) {
-		case "bearer":
-			return { Authorization: `Bearer ${c.token}` };
-		case "basic":
-			return {
-				Authorization: `Basic ${Buffer.from(`${c.username}:${c.password}`).toString("base64")}`,
-			};
-		case "header":
-			return { [c.name]: c.value };
-		default:
-			return {};
-	}
-}
-
 /** Every secret string a credential holds, for scrubbing anything that leaves the api. */
-export function credentialSecrets(c: SourceCredential): string[] {
-	switch (c.kind) {
-		case "bearer":
-			return [c.token];
-		case "basic":
-			return [
-				c.password,
-				Buffer.from(`${c.username}:${c.password}`).toString("base64"),
-			];
-		case "header":
-			return [c.value];
-		case "mtls":
-			return [c.key];
-		case "oauth":
-			return [c.refreshToken, c.accessToken, c.clientSecret].filter(
-				(s): s is string => !!s,
-			);
-		case "oauth-client":
-			return [c.clientSecret];
-		case "mcp-oauth":
-			return [
-				c.tokens?.access_token,
-				c.tokens?.refresh_token,
-				c.client?.client_secret,
-			].filter((s): s is string => !!s);
-		default:
-			return [];
-	}
+export function credentialSecrets(
+	c: SourceCredential,
+	connectionId?: string,
+): string[] {
+	return kindSecrets(c, connectionId);
 }
 
 export function scrubSecrets(text: string, secrets: string[]): string {
@@ -110,29 +135,77 @@ export function sourceRequestFn(
 			: timeout;
 		if (ABSOLUTE_URL.test(path) || path.startsWith("//"))
 			throw new OffOriginError(origin, false);
-		const headers = { ...options?.headers, ...credentialHeaders(credential) };
+		const kind = credentialKind(credential.kind) as CredentialKind;
+		const ctx = {
+			connectionId: opts.connection?.id ?? `draft:${origin}`,
+			origin,
+			fetch: opts.fetchImpl ?? fetch,
+			load: opts.connection?.load ?? (async () => credential),
+			save: opts.connection?.save ?? (async () => {}),
+			signal,
+		};
+		const authorize = async (renew?: { failedToken: string }) => {
+			try {
+				return await kind.authorize(
+					credential as never,
+					ctx,
+					renew ? { renew } : undefined,
+				);
+			} catch (e) {
+				if (e instanceof SignInExpired)
+					await opts.connection?.report?.({
+						kind: "sign-in-expired",
+						message: e.message,
+					});
+				throw e;
+			}
+		};
+		let auth: Authorization = await authorize();
+		const headersOf = (a: Authorization) => ({
+			...options?.headers,
+			...a.headers,
+		});
+		let headers = headersOf(auth);
 		// Relative to the base path, so a reverse-proxy prefix (http://host/prometheus) survives.
 		let url = new URL(path.replace(/^\/+/, ""), baseUrl.replace(/\/?$/, "/"));
 		if (url.origin !== origin) throw new OffOriginError(origin, false);
+		let renewed = false;
 		for (let hop = 0; ; hop++) {
-			const res =
-				credential.kind === "mtls"
-					? await mtlsFetch(
-							url,
-							method,
-							headers,
-							credential,
-							signal,
-							options?.body,
-							opts.maxBytes,
-						)
-					: await (opts.fetchImpl ?? fetch)(url.href, {
-							method,
-							headers,
-							body: options?.body,
-							signal,
-							redirect: "manual",
-						});
+			const res = auth.tls
+				? await mtlsFetch(
+						url,
+						method,
+						headers,
+						auth.tls,
+						signal,
+						options?.body,
+						opts.maxBytes,
+					)
+				: await (opts.fetchImpl ?? fetch)(url.href, {
+						method,
+						headers,
+						body: options?.body,
+						signal,
+						redirect: "manual",
+					});
+			// OAuth only: one retry with a renewed token.
+			if (res.status === 401 && !renewed && REFRESHING.has(credential.kind)) {
+				renewed = true;
+				await res.body?.cancel();
+				auth = await authorize({ failedToken: bearerOf(auth.headers) ?? "" });
+				headers = headersOf(auth);
+				hop--;
+				continue;
+			}
+			const needs = insufficientScope(res);
+			if (needs)
+				await opts.connection?.report?.({
+					kind: "needs-permission",
+					message: scrubSecrets(needs, [
+						...kindSecrets(credential, ctx.connectionId),
+						bearerOf(auth.headers) ?? "",
+					]),
+				});
 			const location =
 				res.status >= 300 && res.status < 400 && res.headers.get("location");
 			if (!location) return opts.maxBytes ? capped(res, opts.maxBytes) : res;
@@ -149,7 +222,7 @@ function mtlsFetch(
 	url: URL,
 	method: string,
 	headers: Record<string, string>,
-	c: Extract<SourceCredential, { kind: "mtls" }>,
+	c: NonNullable<Authorization["tls"]>,
 	signal: AbortSignal,
 	body?: string,
 	maxBytes?: number,

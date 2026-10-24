@@ -32579,6 +32579,12 @@
                           "env"
                         ]
                       }
+                    },
+                    "disclosed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -32733,6 +32739,19 @@
                         },
                         "identity": {
                           "type": "string"
+                        },
+                        "grantedScopes": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       }
                     }
@@ -32898,6 +32917,19 @@
                             },
                             "identity": {
                               "type": "string"
+                            },
+                            "grantedScopes": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         }
@@ -33015,6 +33047,19 @@
                         },
                         "identity": {
                           "type": "string"
+                        },
+                        "grantedScopes": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       }
                     }

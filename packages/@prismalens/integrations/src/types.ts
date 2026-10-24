@@ -50,27 +50,6 @@ export type TemplateFieldOption = z.infer<typeof TemplateFieldOptionSchema>;
 export type TemplateField = z.infer<typeof TemplateFieldSchema>;
 
 // =============================================================================
-// OAUTH2 CONFIG
-// =============================================================================
-
-export interface OAuth2Config {
-	authorizationUrl: string;
-	tokenUrl: string;
-	refreshUrl?: string;
-	scopes?: string[];
-	scopeSeparator?: string;
-	authorizationParams?: Record<string, string>;
-	tokenAuthMethod?: "body" | "header";
-	tokenResponseMetadata?: string[];
-	rotatesRefreshToken?: boolean;
-	tokensNeverExpire?: boolean;
-	disablePkce?: boolean;
-	clientCredentialSource?: "body" | "header" | "both";
-	refreshBuffer?: number;
-	grantType?: "authorization_code" | "client_credentials";
-}
-
-// =============================================================================
 // AUTH TEMPLATE
 // =============================================================================
 
@@ -88,7 +67,6 @@ export interface AuthTemplate {
 	integrationCredentialFields?: TemplateField[];
 	/** Secrets for Connection setup (apiKey, password, token) */
 	connectionCredentialFields?: TemplateField[];
-	oauth2?: OAuth2Config;
 	authenticate: {
 		headers?: Record<string, string>;
 		query?: Record<string, string>;
@@ -127,33 +105,4 @@ export interface AuthTemplate {
 		/** False keeps a template working for saved rows but out of the Add menu. */
 		listed?: boolean;
 	};
-}
-
-// =============================================================================
-// OAUTH STATE (for DB persistence)
-// =============================================================================
-
-export interface OAuthStateData {
-	state: string;
-	integrationId: string;
-	userId: string;
-	organizationId?: string;
-	callbackUrl: string;
-	connectionConfigEnc?: Buffer | null;
-	codeVerifier?: string | null;
-	metadata?: Record<string, unknown>;
-	expiresAt: Date;
-}
-
-// =============================================================================
-// TOKEN RESULT (from OAuth token exchange)
-// =============================================================================
-
-export interface TokenResult {
-	accessToken: string;
-	refreshToken?: string | null;
-	tokenType: string;
-	expiresIn?: number | null;
-	grantedScopes?: string[];
-	metadata?: Record<string, unknown>;
 }
