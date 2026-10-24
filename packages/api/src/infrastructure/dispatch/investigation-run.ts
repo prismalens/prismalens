@@ -72,7 +72,7 @@ import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
-import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
+import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import {
 	readPreRunContext,
@@ -282,10 +282,11 @@ async function runJobInternal(
 					"telemetry",
 					() =>
 						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
+							data.incidentId,
 							window,
 							io.signal,
 						),
-					[],
+					null,
 					TELEMETRY_MS,
 				)
 			: null;
@@ -309,6 +310,12 @@ async function runJobInternal(
 				signal: io.signal,
 			});
 			if (preRun) context.preRun = preRun;
+			// The prompt names the sources the selection picked, not every connector (#848).
+			const picked = await telemetry;
+			if (picked)
+				context.telemetry = telemetryEndpointsFrom(picked.endpoints, (m) =>
+					logger.warn(m),
+				);
 		}
 		const sink: InvestigationSink = async (event) => {
 			await io.emit(event);
@@ -480,7 +487,7 @@ async function gatherPreRun(
 	runDir: string,
 	input: {
 		window: SnapshotWindow;
-		telemetry: Promise<SourceOutcome[]>;
+		telemetry: Promise<TelemetrySnapshot | null>;
 		pastIncidents: ContextPack["priorIncidents"];
 		checkoutsSkipped: CheckoutSkipped[];
 		signal: AbortSignal;
@@ -493,7 +500,8 @@ async function gatherPreRun(
 		]);
 		return writePreRunContext(runDir, {
 			window: input.window,
-			telemetry,
+			telemetry: telemetry?.sources ?? [],
+			notConfigured: telemetry?.notConfigured ?? [],
 			pastIncidents: input.pastIncidents,
 			runbooks: runbooks.entries,
 			...(runbooks.skipped ? { runbooksSkipped: runbooks.skipped } : {}),

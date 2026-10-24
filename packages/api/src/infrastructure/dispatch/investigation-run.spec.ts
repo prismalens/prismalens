@@ -1086,7 +1086,7 @@ describe("follow-up on a finished run (#747)", () => {
 			runbooks: [],
 			now: new Date("2026-10-24T10:00:00Z"),
 		});
-		const telemetry = vi.fn(async () => []);
+		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
 		const ports = followUpPorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
 			await run.store.create();
@@ -1513,10 +1513,14 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 	it("starts the run with a skipped source named in its context, writes the files, and keeps them after the run", async () => {
 		const ports = fakePorts({
 			preRun: {
-				telemetry: vi.fn(async () => [
-					{ kind: "prometheus" as const, label: "prod prom", from: "set" as const, status: "skipped" as const, reason: "the source did not answer in time" },
-					{ kind: "loki" as const, label: "LOKI_URL", from: "env" as const, status: "found" as const, part: { summary: "3 error log lines from 1 streams", data: { result: [] }, count: 3 }, secrets: [] },
-				]),
+				telemetry: vi.fn(async () => ({
+					sources: [
+						{ kind: "prometheus" as const, label: "prod prom", from: "set" as const, status: "skipped" as const, reason: "the source did not answer in time" },
+						{ kind: "loki" as const, label: "LOKI_URL", from: "env" as const, status: "found" as const, part: { summary: "3 error log lines from 1 streams", data: { result: [] }, count: 3 }, secrets: [] },
+					],
+					notConfigured: [],
+					endpoints: [],
+				})),
 				runbooks: vi.fn(async () => ({ entries: [] })),
 			},
 		});
@@ -1556,7 +1560,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 	});
 
 	it("each new investigation fetches afresh", async () => {
-		const telemetry = vi.fn(async () => []);
+		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
 		const ports = fakePorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
 		await runInvestigationJob(...job("inv-a"), io(), ports);
 		await runInvestigationJob(...job("inv-b"), io(), ports);

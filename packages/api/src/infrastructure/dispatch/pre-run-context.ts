@@ -87,6 +87,7 @@ export function writePreRunContext(
 		window: SnapshotWindow;
 		telemetry: readonly SourceOutcome[];
 		pastIncidents: ContextPack["priorIncidents"];
+		notConfigured?: PreRunContext["notConfigured"];
 		runbooks: readonly RunbookEntry[];
 		runbooksSkipped?: string;
 		checkoutsSkipped?: readonly CheckoutSkipped[];
@@ -100,12 +101,18 @@ export function writePreRunContext(
 	const sources: PreRunSource[] = [];
 	const counts = new Map<string, number>();
 	for (const t of input.telemetry) {
-		const who = { kind: t.kind, label: t.label, from: t.from };
-		if (t.status === "skipped") {
+		const who = {
+			kind: t.kind,
+			label: t.label,
+			from: t.from,
+			...(t.facts ?? {}),
+		};
+		const why = t.facts?.selectedBy ? ` (${t.facts.selectedBy})` : "";
+		if (!("part" in t)) {
 			logger.warn(
-				`pre-run: skipped ${t.label} (${t.kind}, ${t.from}): ${t.reason}`,
+				`pre-run: ${t.status === "skipped" ? "skipped" : "not read"} ${t.label} (${t.kind}, ${t.from})${why}: ${t.reason}`,
 			);
-			sources.push({ ...who, status: "skipped", detail: t.reason });
+			sources.push({ ...who, status: t.status, detail: t.reason });
 			continue;
 		}
 		const n = (counts.get(t.kind) ?? 0) + 1;
@@ -127,7 +134,9 @@ export function writePreRunContext(
 			),
 		);
 		writeFileSync(join(dir, name), text);
-		logger.info(`pre-run: read ${t.label} (${t.kind}): ${t.part.summary}`);
+		logger.info(
+			`pre-run: read ${t.label} (${t.kind})${why}: ${t.part.summary}`,
+		);
 		files.push({ name, about: `${t.label} (${t.kind}): ${t.part.summary}` });
 		sources.push({
 			...who,
@@ -162,6 +171,9 @@ export function writePreRunContext(
 		fetchedAt: input.now.toISOString(),
 		sources,
 		files,
+		...(input.notConfigured?.length
+			? { notConfigured: [...input.notConfigured] }
+			: {}),
 		...(input.runbooksSkipped
 			? { runbooksSkipped: input.runbooksSkipped }
 			: {}),

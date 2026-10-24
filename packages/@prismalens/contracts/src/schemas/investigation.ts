@@ -917,14 +917,38 @@ export const TelemetrySourceSchema = z.object({
 });
 export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
 
+/** Why a telemetry unit was picked (#848); `selectionText` words it. */
+export const PreRunSelectionSchema = z.object({
+	rule: z.enum(["tag-match", "untagged", "other-tag", "only-unmapped", "env"]),
+	service: z.string(),
+	priority: z.number().optional(),
+	/** The deployment the incident names. */
+	deployment: z.string().optional(),
+	tagFrom: z.enum(["alert", "deploy-event"]).optional(),
+	/** Env was used because every mapped connection is turned off. */
+	mappedOff: z.boolean().optional(),
+});
+export type PreRunSelection = z.infer<typeof PreRunSelectionSchema>;
+
 /** One telemetry source PrismaLens read before the run, or skipped (#848 ruling 2026-10-24). */
 export const PreRunSourceSchema = z.object({
 	kind: TelemetrySourceSchema.shape.kind,
 	label: z.string(),
 	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
 	from: z.enum(["env", "set"]),
-	/** `found`: it answered with data for the window; `empty`: it answered with none. */
-	status: z.enum(["found", "empty", "skipped"]),
+	connectionId: z.string().optional(),
+	envVar: z.string().optional(),
+	credentialFrom: z.enum(["stored", "env", "none"]).optional(),
+	/** The env token this stored credential overrides on the same origin. */
+	overridesEnv: z.string().optional(),
+	services: z.array(z.string()).optional(),
+	/** The connection's deployment tag. */
+	deployment: z.string().optional(),
+	selector: z.string().optional(),
+	selection: PreRunSelectionSchema.optional(),
+	selectedBy: z.string().optional(),
+	/** `found`: it answered with data for the window; `empty`: with none; `not-read`: over the limit. */
+	status: z.enum(["found", "empty", "skipped", "not-read"]),
 	/** Read: what it held, one line. Skipped: why, in PrismaLens's own words. */
 	detail: z.string(),
 	/** The file under `dir` holding what was fetched. */
@@ -950,6 +974,10 @@ export const PreRunContextSchema = z.object({
 	fetchedAt: z.string(),
 	sources: z.array(PreRunSourceSchema),
 	files: z.array(z.object({ name: z.string(), about: z.string() })),
+	/** Kinds no connection or env serves for the incident's services. */
+	notConfigured: z
+		.array(z.object({ kind: z.string(), services: z.array(z.string()) }))
+		.optional(),
 	/** Why the runbook scan did not run, when it did not. */
 	runbooksSkipped: z.string().optional(),
 	checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),

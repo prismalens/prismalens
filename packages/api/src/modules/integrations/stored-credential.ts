@@ -12,32 +12,42 @@ import {
 	sourceType,
 } from "@prismalens/contracts/schemas";
 
+/** `absent`: no kind and no token was ever saved; an explicit `{ kind: "none" }` is `set` (#848). */
+export type StoredState = "set" | "absent" | "invalid";
+
 export interface Stored {
 	credential: ParsedSourceCredential;
+	state: StoredState;
 	/** The URL kept beside the token (GitHub, GitLab, Bitbucket); config holds it otherwise. */
 	baseUrl?: string;
 }
+
+const stateOf = (c: ParsedSourceCredential): StoredState =>
+	c.ok ? "set" : "invalid";
 
 export function readStored(templateId: string, blob: unknown): Stored {
 	const obj =
 		blob && typeof blob === "object" ? (blob as Record<string, unknown>) : {};
 	const tokenField = sourceType(templateId)?.tokenField;
 	const baseUrl = typeof obj.baseUrl === "string" ? obj.baseUrl : undefined;
-	if (tokenField && typeof obj.kind !== "string") {
+	const url = baseUrl ? { baseUrl } : {};
+	const token = tokenField ? obj[tokenField] : undefined;
+	if (
+		typeof obj.kind !== "string" &&
+		(token === undefined || (typeof token === "string" && !token.trim()))
+	)
 		return {
-			credential: parseSourceCredential({
-				kind: "bearer",
-				token: obj[tokenField],
-			}),
-			...(baseUrl ? { baseUrl } : {}),
+			credential: { ok: true, credential: { kind: "none" } },
+			state: "absent",
+			...url,
 		};
+	if (tokenField && typeof obj.kind !== "string") {
+		const credential = parseSourceCredential({ kind: "bearer", token });
+		return { credential, state: stateOf(credential), ...url };
 	}
-	if (!tokenField) return { credential: parseSourceCredential(obj) };
 	const { baseUrl: _drop, ...rest } = obj;
-	return {
-		credential: parseSourceCredential(rest),
-		...(baseUrl ? { baseUrl } : {}),
-	};
+	const credential = parseSourceCredential(tokenField ? rest : obj);
+	return { credential, state: stateOf(credential), ...url };
 }
 
 export function writeStored(

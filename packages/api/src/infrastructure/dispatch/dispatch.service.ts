@@ -431,8 +431,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			...(telemetrySnapshot
 				? {
 						preRun: {
-							telemetry: (window, signal) =>
-								telemetrySnapshot.fetch(window, signal),
+							telemetry: (incidentId, window, signal) =>
+								telemetrySnapshot.fetch(incidentId, window, signal),
 							runbooks: (runId, signal) =>
 								this.gateway?.runbookIndex(runId, signal) ??
 								Promise.resolve({ entries: [] }),

@@ -60,7 +60,12 @@ import type {
 } from "./dto/update-connection.dto.js";
 import { type HostToken, pickOf, readHostToken } from "./host-token.js";
 import { sourceRequestFn } from "./source-request.js";
-import { readStored } from "./stored-credential.js";
+import { readStored, type StoredState } from "./stored-credential.js";
+
+/** A source's stored credential, and whether one was saved at all (#848). */
+export type SourceCredentialRead = ParsedSourceCredential & {
+	state: StoredState;
+};
 
 export interface ConnectionWithIntegration extends Connection {
 	integration: Integration;
@@ -562,9 +567,7 @@ export class IntegrationsService implements OnModuleInit {
 	}
 
 	/** The credential a URL-addressed source sends (#848); a row saved before kinds is `none`. */
-	async sourceCredential(
-		connectionId: string,
-	): Promise<ParsedSourceCredential> {
+	async sourceCredential(connectionId: string): Promise<SourceCredentialRead> {
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
 			select: {
@@ -573,19 +576,26 @@ export class IntegrationsService implements OnModuleInit {
 			},
 		});
 		if (!conn)
-			return { ok: false, reason: "invalid", message: "Connection not found" };
+			return {
+				ok: false,
+				reason: "invalid",
+				message: "Connection not found",
+				state: "invalid",
+			};
 		try {
-			return readStored(
+			const stored = readStored(
 				conn.integration.templateId,
 				this.credentialsService.decrypt<unknown>(
 					Buffer.from(conn.credentialsEnc),
 				),
-			).credential;
+			);
+			return { ...stored.credential, state: stored.state };
 		} catch {
 			return {
 				ok: false,
 				reason: "invalid",
 				message: "Saved credentials could not be read",
+				state: "invalid",
 			};
 		}
 	}

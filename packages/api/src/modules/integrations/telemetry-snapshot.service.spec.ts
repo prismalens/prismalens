@@ -105,7 +105,7 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 			]).sources({}),
 			WINDOW,
 		);
-		expect(out.map((o) => [o.kind, o.status, o.status === "skipped" ? o.reason : o.part.summary])).toEqual([
+		expect(out.map((o) => [o.kind, o.status, "part" in o ? o.part.summary : o.reason])).toEqual([
 			["prometheus", "found", "1 alerts firing in the window, 1 scrape targets down in the window"],
 			["alertmanager", "found", "2 active alerts in the window"],
 			["loki", "found", '1 error log lines from 1 streams for {service_name="checkout"} (the default selector)'],
@@ -121,11 +121,12 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		const slow = await upstream(() => null);
 		const fast = await upstream(prometheus);
 		const started = Date.now();
+		// Two unmapped connections of one kind are not read (#848), so each comes from its own service.
 		const out = await fetchSnapshot(
-			await service([
-				{ id: "slow", templateId: "prometheus", baseUrl: slow, credentials: {} },
-				{ id: "fast", templateId: "prometheus", baseUrl: fast, credentials: {} },
-			]).sources({}),
+			[
+				...(await service([{ id: "slow", templateId: "prometheus", baseUrl: slow, credentials: {} }]).sources({})),
+				...(await service([{ id: "fast", templateId: "prometheus", baseUrl: fast, credentials: {} }]).sources({})),
+			],
 			WINDOW,
 			{ timeoutMs: 300 },
 		);
@@ -177,21 +178,19 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		expect(JSON.stringify(out)).not.toContain("s3cret");
 	});
 
-	it("the env comes first: PROMETHEUS_URL and PROMETHEUS_TOKEN win over a saved Prometheus", async () => {
+	it("with nothing mapped, the only saved connection comes before the env, and the env serves a kind with none (#848)", async () => {
 		const auth: (string | undefined)[] = [];
 		const url = await upstream((req) => {
 			auth.push(req.headers.authorization);
 			return prometheus(req);
 		});
-		const sources = await service([
-			{ id: "saved", templateId: "prometheus", baseUrl: "http://127.0.0.1:1", credentials: {} },
-			{ id: "am", templateId: "alertmanager", baseUrl: url, credentials: {} },
-		]).sources({ PROMETHEUS_URL: url, PROMETHEUS_TOKEN: "env-token" });
-		expect(sources.map((s) => [s.kind, s.label, s.from])).toEqual([
-			["prometheus", "PROMETHEUS_URL", "env"],
-			["alertmanager", "am", "set"],
-		]);
-		const [prom] = await fetchSnapshot(sources.slice(0, 1), WINDOW);
+		const saved = await service([
+			{ id: "saved", templateId: "prometheus", baseUrl: url, credentials: {} },
+		]).sources({ PROMETHEUS_URL: "http://127.0.0.1:1", PROMETHEUS_TOKEN: "env-token" });
+		expect(saved.map((s) => [s.kind, s.label, s.from])).toEqual([["prometheus", "saved", "set"]]);
+		const sources = await service([]).sources({ PROMETHEUS_URL: url, PROMETHEUS_TOKEN: "env-token" });
+		expect(sources.map((s) => [s.kind, s.label, s.from])).toEqual([["prometheus", "PROMETHEUS_URL", "env"]]);
+		const [prom] = await fetchSnapshot(sources, WINDOW);
 		expect(prom).toMatchObject({ status: "found", secrets: ["env-token"] });
 		expect(auth[0]).toBe("Bearer env-token");
 	});

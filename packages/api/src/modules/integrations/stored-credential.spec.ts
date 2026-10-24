@@ -19,6 +19,7 @@ describe("stored-credential (#848)", () => {
 					token: "glpat-1",
 				},
 			},
+			state: "set",
 			baseUrl: "https://git.acme.io/api/v4",
 		});
 	});

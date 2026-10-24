@@ -31,7 +31,7 @@ import type {
 } from "../../core/harness/repo-source.service.js";
 import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
-import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
+import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 
@@ -186,10 +186,12 @@ export interface RunPorts {
 	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/** The pre-run fetch (#848 ruling 2026-10-24); each part is best effort and never fails the run. */
 	preRun?: {
+		/** Picked by the incident's services; the selection reads the database inside the run's telemetry budget. */
 		telemetry(
+			incidentId: string,
 			window: SnapshotWindow,
 			signal?: AbortSignal,
-		): Promise<SourceOutcome[]>;
+		): Promise<TelemetrySnapshot>;
 		/** Read from the workspace the run recorded, so after `recordWorkspace`; titles and paths only. */
 		runbooks(runId: string, signal?: AbortSignal): Promise<RunbookIndex>;
 	};
