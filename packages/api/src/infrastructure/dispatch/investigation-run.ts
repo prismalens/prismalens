@@ -243,7 +243,13 @@ async function runJobInternal(
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
-		const gateway = await ports.gateway?.lease(runId).catch(() => null);
+		const gateway = await ports.gateway?.lease(runId).catch((e) => {
+			logger.warn(
+				"Could not lease the MCP gateway; the run has no PrismaLens tools",
+				e,
+			);
+			return null;
+		});
 		const usage = usageWriter(ports, runId);
 		const outcome = await conductRun(
 			{
@@ -574,7 +580,13 @@ async function runFollowUp(
 			? pick.modelSource
 			: followUpModelSource(harness, model);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
-		const gateway = await ports.gateway?.lease(id).catch(() => null);
+		const gateway = await ports.gateway?.lease(id).catch((e) => {
+			logger.warn(
+				"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
+				e,
+			);
+			return null;
+		});
 		const customModel = pick
 			? !!pick.customModel
 			: modelSource === "operator" &&

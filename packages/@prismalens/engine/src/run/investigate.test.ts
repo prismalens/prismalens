@@ -82,6 +82,25 @@ async function collect(mode: string, extra?: Partial<Parameters<typeof runInvest
 }
 
 describe("runInvestigation over a fake ACP harness", () => {
+	it("offers the gateway in session/new but keeps its bearer out of the transcript (#848)", async () => {
+		const token = "run-bearer-0123456789abcdef";
+		const { runDir } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway: {
+				url: "http://127.0.0.1:1/mcp",
+				token,
+				promptLine: "",
+				tools: [],
+				confirmed: () => false,
+				waitConfirmed: async () => false,
+			},
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).toContain("http://127.0.0.1:1/mcp");
+		expect(wire).toContain("Bearer [redacted]");
+		expect(wire).not.toContain(token);
+	});
+
 	it("sets the chosen model over session/set_config_option and records what the harness took (R4.2)", async () => {
 		const { events, runDir } = await collect("ok", {
 			model: "asked/model",

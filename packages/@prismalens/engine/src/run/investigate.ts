@@ -465,11 +465,14 @@ export async function* runInvestigation(
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
 	const transcript = join(opts.runDir, "transcript.jsonl");
+	// session/new carries the gateway bearer; the transcript never stores it (#848).
+	const bearer = opts.gateway?.token;
 	const wire = (direction: "in" | "out", line: string): void => {
+		const m = bearer ? line.replaceAll(bearer, "[redacted]") : line;
 		try {
 			appendFileSync(
 				transcript,
-				`${JSON.stringify({ t: Date.now(), d: direction, m: line })}\n`,
+				`${JSON.stringify({ t: Date.now(), d: direction, m })}\n`,
 			);
 		} catch {
 			// best effort (ADR 0002 §6)
