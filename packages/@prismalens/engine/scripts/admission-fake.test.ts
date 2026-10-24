@@ -140,6 +140,22 @@ describe("admission-fake agentEnv", () => {
 		expect(env.PRISMALENS_HARNESS_MODEL).toBeUndefined();
 	});
 
+	it("configures a codex home whose provider speaks Responses to the loopback fake", () => {
+		tempHome = mkdtempSync(join(tmpdir(), "pl-test-home-"));
+		const fake = {
+			url: "http://127.0.0.1:45678",
+			openaiBaseUrl: "http://127.0.0.1:45678/v1",
+		};
+
+		const env = agentEnv("codex", fake, tempHome);
+		expect(env.CODEX_HOME?.startsWith(tempHome)).toBe(true);
+		expect(env.OPENAI_API_KEY).toBe("scripted");
+		const toml = readFileSync(join(env.CODEX_HOME as string, "config.toml"), "utf8");
+		expect(toml).toContain(`base_url = "${fake.openaiBaseUrl}"`);
+		expect(toml).toContain('wire_api = "responses"');
+		expect(toml).toContain('env_key = "OPENAI_API_KEY"');
+	});
+
 	it("contains no PRISMALENS_ keys other than PRISMALENS_HARNESS_MODEL", () => {
 		tempHome = mkdtempSync(join(tmpdir(), "pl-test-home-"));
 		const fake = {

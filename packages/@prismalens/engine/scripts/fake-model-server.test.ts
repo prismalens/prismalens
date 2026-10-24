@@ -471,3 +471,82 @@ describe("fake-model-server HTTP", () => {
 		expect(data.choices[0].message.content).toBe("custom response");
 	});
 });
+
+describe("fake-model-server on the Responses API", () => {
+	const post = (base: string, body: unknown) =>
+		fetch(`${base}/v1/responses`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+	it("reads Codex's input items: the shell tool, the step, and a function_call_output as a tool result", () => {
+		const tools = [{ type: "function", name: "exec_command" }];
+		const step = viewOf("responses", {
+			input: [
+				{
+					type: "message",
+					role: "user",
+					content: [
+						{
+							type: "input_text",
+							text: "ADMISSION STEP, required: run exactly `ls` with the shell tool.",
+						},
+					],
+				},
+			],
+			tools,
+		});
+		expect(admissionScript(step)).toEqual({
+			tool: { name: "exec_command", input: { cmd: "ls" } },
+		});
+		const after = viewOf("responses", {
+			input: [
+				{ type: "message", role: "user", content: [{ type: "input_text", text: "go" }] },
+				{ type: "function_call_output", call_id: "call_1", output: "x" },
+			],
+			tools,
+		});
+		expect(after.lastIsToolResult).toBe(true);
+		expect(parseReport((admissionScript(after) as { say: string }).say).ok).toBe(true);
+	});
+
+	it("answers the structured requests Codex makes with JSON that fits their schema", () => {
+		const schema = (properties: string[]) => ({
+			text: {
+				format: {
+					type: "json_schema",
+					schema: { properties: Object.fromEntries(properties.map((p) => [p, {}])) },
+				},
+			},
+			input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "x" }] }],
+		});
+		const review = admissionScript(viewOf("responses", schema(["outcome", "rationale"])));
+		expect(JSON.parse((review as { say: string }).say)).toMatchObject({ outcome: "allow" });
+		const title = admissionScript(viewOf("responses", schema(["title"])));
+		expect(JSON.parse((title as { say: string }).say)).toEqual({ title: "Admission probe" });
+	});
+
+	it("streams a text answer and a function call as Responses events, and a whole body when not streaming", async () => {
+		server = await startFakeModelServer({
+			script: (req) =>
+				req.lastText === "call"
+					? { tool: { name: "exec_command", input: { cmd: "ls" } } }
+					: { say: "hello" },
+		});
+		const input = (text: string) => [
+			{ type: "message", role: "user", content: [{ type: "input_text", text }] },
+		];
+		const text = await (await post(server.url, { stream: true, input: input("hi") })).text();
+		expect(text).toMatch(/event: response\.created/);
+		expect(text).toMatch(/"type":"response\.output_text\.delta".*"delta":"hello"/);
+		expect(text.trimEnd().endsWith("}")).toBe(true);
+		expect(text).toMatch(/event: response\.completed\ndata: .*"usage":\{"input_tokens":1/);
+		const call = await (await post(server.url, { stream: true, input: input("call") })).text();
+		expect(call).toMatch(/"type":"function_call".*"name":"exec_command".*"arguments":"\{\\"cmd\\":\\"ls\\"\}"/);
+		const whole = await (await post(server.url, { input: input("hi") })).json();
+		expect(whole).toMatchObject({ object: "response", status: "completed" });
+		expect(whole.output[0].content[0].text).toBe("hello");
+		expect(server.requests().map((r) => r.wire)).toEqual(["responses", "responses", "responses"]);
+	});
+});
