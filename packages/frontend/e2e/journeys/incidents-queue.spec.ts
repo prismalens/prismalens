@@ -81,16 +81,17 @@ test.describe("#523 S2/final — the incidents queue and sidebar tree", () => {
 		await page.keyboard.press("Escape");
 		await expect(page.getByTestId("shortcut-sheet")).toHaveCount(0);
 
-		// `[` folds the sidebar to its 56-px icon rail and back (study-v3 §2).
+		// `[` hides the sidebar, leaving a show button, and brings it back (#848).
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar).toBeVisible();
 		const width = async () => (await sidebar.boundingBox())?.width;
 		expect(await width()).toBe(240);
 		await page.keyboard.press("[");
-		await expect.poll(width).toBe(56);
-		await expect(sidebar.getByTestId("nav-alerts")).toBeVisible();
+		await expect(sidebar).toHaveCount(0);
+		await expect(page.getByTestId("sidebar-show")).toBeVisible();
 		await page.keyboard.press("[");
 		await expect.poll(width).toBe(240);
+		await expect(sidebar.getByTestId("nav-alerts")).toBeVisible();
 
 		// `g` then `a` goes to the alerts front door.
 		await page.keyboard.press("g");
