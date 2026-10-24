@@ -307,6 +307,133 @@ export const RunWorkspaceSchema = z.object({
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
+export const TelemetrySourceSchema = z.object({
+	kind: z.enum(["prometheus", "alertmanager", "loki"]),
+	label: z.string(),
+	url: z.string(),
+	/** Needs a credential PrismaLens holds: PrismaLens reads it before the run, and the prompt gives no curl for it. */
+	authenticated: z.boolean().optional(),
+});
+export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
+
+/** Why a telemetry unit was picked (#848); `selectionText` words it. */
+export const PreRunSelectionSchema = z.object({
+	rule: z.enum(["tag-match", "untagged", "other-tag", "only-unmapped", "env"]),
+	service: z.string(),
+	priority: z.number().optional(),
+	/** The deployment the incident names. */
+	deployment: z.string().optional(),
+	tagFrom: z.enum(["alert", "deploy-event"]).optional(),
+	/** Env was used because every mapped connection is turned off. */
+	mappedOff: z.boolean().optional(),
+});
+export type PreRunSelection = z.infer<typeof PreRunSelectionSchema>;
+
+/** One telemetry source PrismaLens read before the run, or skipped (#848 ruling 2026-10-24). */
+export const PreRunSourceSchema = z.object({
+	kind: TelemetrySourceSchema.shape.kind,
+	label: z.string(),
+	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
+	from: z.enum(["env", "set"]),
+	connectionId: z.string().optional(),
+	envVar: z.string().optional(),
+	credentialFrom: z.enum(["stored", "env", "none"]).optional(),
+	/** The env token this stored credential overrides on the same origin. */
+	overridesEnv: z.string().optional(),
+	services: z.array(z.string()).optional(),
+	/** The connection's deployment tag. */
+	deployment: z.string().optional(),
+	selector: z.string().optional(),
+	selection: PreRunSelectionSchema.optional(),
+	selectedBy: z.string().optional(),
+	/** `found`: it answered with data for the window; `empty`: with none; `not-read`: over the limit. */
+	status: z.enum(["found", "empty", "skipped", "not-read"]),
+	/** Read: what it held, one line. Skipped: why, in PrismaLens's own words. */
+	detail: z.string(),
+	/** The file under `dir` holding what was fetched. */
+	file: z.string().optional(),
+	/** The start of that file, for the prompt. */
+	excerpt: z.string().optional(),
+	/** What the byte bound dropped (#848). */
+	truncated: z.object({ dropped: z.number(), reason: z.string() }).optional(),
+});
+export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
+
+/** A repository the run did not check out, and why (#848). */
+export const CheckoutSkippedSchema = z.object({
+	repo: z.string(),
+	reason: z.string(),
+	code: z.enum(["failed", "budget", "guard"]),
+});
+export type CheckoutSkipped = z.infer<typeof CheckoutSkippedSchema>;
+
+/** What PrismaLens read before the run (#848): stored with the run, the source of truth a follow-up reads again. */
+export const PreRunSnapshotSchema = z.object({
+	fetchedAt: z.string(),
+	window: z.object({
+		start: z.string(),
+		end: z.string(),
+		service: z.string().optional(),
+	}),
+	sources: z.array(PreRunSourceSchema),
+	/** Kinds no connection or env serves for the incident's services. */
+	notConfigured: z.array(
+		z.object({ kind: z.string(), services: z.array(z.string()) }),
+	),
+	runbooks: z.array(
+		z.object({
+			title: z.string(),
+			service: z.string(),
+			path: z.string(),
+			origin: z.enum(["repo"]),
+			link: z.string().optional(),
+		}),
+	),
+	/** Why the runbook scan did not run, when it did not. */
+	runbooksSkipped: z.string().optional(),
+	checkoutsSkipped: z.array(CheckoutSkippedSchema),
+	/** The read copies' contents, scrubbed. */
+	files: z.array(
+		z.object({ name: z.string(), about: z.string(), text: z.string() }),
+	),
+});
+export type PreRunSnapshot = z.infer<typeof PreRunSnapshotSchema>;
+
+/** The snapshot without the files' text. */
+export const PreRunSummarySchema = PreRunSnapshotSchema.omit({
+	files: true,
+}).extend({
+	files: z.array(z.object({ name: z.string(), about: z.string() })),
+});
+export type PreRunSummary = z.infer<typeof PreRunSummarySchema>;
+
+/** The read copies under the session cwd; `dir` is relative to it. */
+export const PreRunCopySchema = z.object({
+	state: z.enum(["written", "failed"]),
+	dir: z.string().optional(),
+	reason: z.string().optional(),
+});
+export type PreRunCopy = z.infer<typeof PreRunCopySchema>;
+
+/** The run's pre-run context: stored and copied, copied only, or not there on a follow-up (#848). */
+export const PreRunContextSchema = z.discriminatedUnion("state", [
+	PreRunSummarySchema.extend({
+		state: z.literal("ready"),
+		copy: PreRunCopySchema,
+	}),
+	PreRunSummarySchema.extend({
+		state: z.literal("not-saved"),
+		saveError: z.string(),
+		copy: PreRunCopySchema,
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.string(),
+		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	}),
+]);
+export type PreRunContext = z.infer<typeof PreRunContextSchema>;
+
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
 export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
@@ -402,6 +529,8 @@ const RecommendationRefSchema = z.object({
 
 export const InvestigationWithRelationsSchema = InvestigationSchema.extend({
 	recommendations: z.array(RecommendationRefSchema).optional(),
+	/** What PrismaLens read before the run, without excerpts; null on a run from before #848. */
+	preRun: PreRunSummarySchema.nullable().optional(),
 });
 
 // =============================================================================
@@ -907,133 +1036,6 @@ export const FiringAlertSchema = z.object({
 	startsAt: z.string().nullable(),
 });
 export type FiringAlert = z.infer<typeof FiringAlertSchema>;
-
-export const TelemetrySourceSchema = z.object({
-	kind: z.enum(["prometheus", "alertmanager", "loki"]),
-	label: z.string(),
-	url: z.string(),
-	/** Needs a credential PrismaLens holds: PrismaLens reads it before the run, and the prompt gives no curl for it. */
-	authenticated: z.boolean().optional(),
-});
-export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
-
-/** Why a telemetry unit was picked (#848); `selectionText` words it. */
-export const PreRunSelectionSchema = z.object({
-	rule: z.enum(["tag-match", "untagged", "other-tag", "only-unmapped", "env"]),
-	service: z.string(),
-	priority: z.number().optional(),
-	/** The deployment the incident names. */
-	deployment: z.string().optional(),
-	tagFrom: z.enum(["alert", "deploy-event"]).optional(),
-	/** Env was used because every mapped connection is turned off. */
-	mappedOff: z.boolean().optional(),
-});
-export type PreRunSelection = z.infer<typeof PreRunSelectionSchema>;
-
-/** One telemetry source PrismaLens read before the run, or skipped (#848 ruling 2026-10-24). */
-export const PreRunSourceSchema = z.object({
-	kind: TelemetrySourceSchema.shape.kind,
-	label: z.string(),
-	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
-	from: z.enum(["env", "set"]),
-	connectionId: z.string().optional(),
-	envVar: z.string().optional(),
-	credentialFrom: z.enum(["stored", "env", "none"]).optional(),
-	/** The env token this stored credential overrides on the same origin. */
-	overridesEnv: z.string().optional(),
-	services: z.array(z.string()).optional(),
-	/** The connection's deployment tag. */
-	deployment: z.string().optional(),
-	selector: z.string().optional(),
-	selection: PreRunSelectionSchema.optional(),
-	selectedBy: z.string().optional(),
-	/** `found`: it answered with data for the window; `empty`: with none; `not-read`: over the limit. */
-	status: z.enum(["found", "empty", "skipped", "not-read"]),
-	/** Read: what it held, one line. Skipped: why, in PrismaLens's own words. */
-	detail: z.string(),
-	/** The file under `dir` holding what was fetched. */
-	file: z.string().optional(),
-	/** The start of that file, for the prompt. */
-	excerpt: z.string().optional(),
-	/** What the byte bound dropped (#848). */
-	truncated: z.object({ dropped: z.number(), reason: z.string() }).optional(),
-});
-export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
-
-/** A repository the run did not check out, and why (#848). */
-export const CheckoutSkippedSchema = z.object({
-	repo: z.string(),
-	reason: z.string(),
-	code: z.enum(["failed", "budget", "guard"]),
-});
-export type CheckoutSkipped = z.infer<typeof CheckoutSkippedSchema>;
-
-/** What PrismaLens read before the run (#848): stored with the run, the source of truth a follow-up reads again. */
-export const PreRunSnapshotSchema = z.object({
-	fetchedAt: z.string(),
-	window: z.object({
-		start: z.string(),
-		end: z.string(),
-		service: z.string().optional(),
-	}),
-	sources: z.array(PreRunSourceSchema),
-	/** Kinds no connection or env serves for the incident's services. */
-	notConfigured: z.array(
-		z.object({ kind: z.string(), services: z.array(z.string()) }),
-	),
-	runbooks: z.array(
-		z.object({
-			title: z.string(),
-			service: z.string(),
-			path: z.string(),
-			origin: z.enum(["repo"]),
-			link: z.string().optional(),
-		}),
-	),
-	/** Why the runbook scan did not run, when it did not. */
-	runbooksSkipped: z.string().optional(),
-	checkoutsSkipped: z.array(CheckoutSkippedSchema),
-	/** The read copies' contents, scrubbed. */
-	files: z.array(
-		z.object({ name: z.string(), about: z.string(), text: z.string() }),
-	),
-});
-export type PreRunSnapshot = z.infer<typeof PreRunSnapshotSchema>;
-
-/** The snapshot without the files' text. */
-export const PreRunSummarySchema = PreRunSnapshotSchema.omit({
-	files: true,
-}).extend({
-	files: z.array(z.object({ name: z.string(), about: z.string() })),
-});
-export type PreRunSummary = z.infer<typeof PreRunSummarySchema>;
-
-/** The read copies under the session cwd; `dir` is relative to it. */
-export const PreRunCopySchema = z.object({
-	state: z.enum(["written", "failed"]),
-	dir: z.string().optional(),
-	reason: z.string().optional(),
-});
-export type PreRunCopy = z.infer<typeof PreRunCopySchema>;
-
-/** The run's pre-run context: stored and copied, copied only, or not there on a follow-up (#848). */
-export const PreRunContextSchema = z.discriminatedUnion("state", [
-	PreRunSummarySchema.extend({
-		state: z.literal("ready"),
-		copy: PreRunCopySchema,
-	}),
-	PreRunSummarySchema.extend({
-		state: z.literal("not-saved"),
-		saveError: z.string(),
-		copy: PreRunCopySchema,
-	}),
-	z.object({
-		state: z.literal("unavailable"),
-		reason: z.string(),
-		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
-	}),
-]);
-export type PreRunContext = z.infer<typeof PreRunContextSchema>;
 
 /** Read-only telemetry + app endpoints the harness may query. */
 export const TelemetryEndpointsSchema = z.object({

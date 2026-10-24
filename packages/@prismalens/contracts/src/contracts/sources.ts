@@ -13,6 +13,8 @@ import {
 	RunbooksToggleSchema,
 	SourceDraftSchema,
 	SourcesOverviewSchema,
+	SourcesPreRunInputSchema,
+	SourcesPreRunSchema,
 } from "../schemas/index.js";
 
 export const sourcesContract = {
@@ -65,4 +67,15 @@ export const sourcesContract = {
 		})
 		.input(RunbooksToggleSchema)
 		.output(RunbooksToggleSchema),
+
+	preRun: oc
+		.route({
+			method: "GET",
+			path: "/sources/pre-run",
+			summary:
+				"What a service's runs would read before they start, for a deployment",
+			tags: ["sources"],
+		})
+		.input(SourcesPreRunInputSchema)
+		.output(SourcesPreRunSchema),
 };

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Controller, Logger } from "@nestjs/common";
+import { Controller, Logger, Optional } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
 import { Implement, implement, ORPCError } from "@orpc/nest";
-import { integrationsContract } from "@prismalens/contracts";
+import { integrationsContract, sourcesContract } from "@prismalens/contracts";
 import type {
 	AuthTemplateResponse,
 	Connection as ConnectionResponse,
@@ -26,6 +26,7 @@ import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
 @Controller()
 export class IntegrationsController {
@@ -35,7 +36,19 @@ export class IntegrationsController {
 		private readonly integrationsService: IntegrationsService,
 		private readonly gitCredentials: GitCredentialService,
 		private readonly moduleRef: ModuleRef,
+		@Optional() private readonly telemetrySnapshot?: TelemetrySnapshotService,
 	) {}
+
+	@Implement(sourcesContract.preRun)
+	sourcesPreRun() {
+		return implement(sourcesContract.preRun).handler(({ input }) => {
+			if (!this.telemetrySnapshot)
+				throw new ORPCError("SERVICE_UNAVAILABLE", {
+					message: "The pre-run preview is not available here",
+				});
+			return this.telemetrySnapshot.preview(input.serviceId, input.deployment);
+		});
+	}
 
 	@Implement(integrationsContract)
 	integrations() {

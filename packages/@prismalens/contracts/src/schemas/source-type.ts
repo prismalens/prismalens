@@ -6,6 +6,7 @@
  * probes the api runs (#848, uniform connect UX). Probes are reads only.
  */
 import { z } from "zod";
+import { PreRunSourceSchema } from "./investigation.js";
 import type { SourceCredentialKind } from "./source-credential.js";
 
 export const SOURCE_CATEGORIES = [
@@ -531,3 +532,41 @@ export const ConnectSourceResponseSchema = z.object({
 	connectionId: z.string(),
 	report: ProbeReportSchema,
 });
+
+export const SourcesPreRunInputSchema = z.object({
+	serviceId: z.string(),
+	/** The deployment to preview; the untagged and other-tag rules apply without one. */
+	deployment: z.string().trim().max(64).optional(),
+});
+
+/** A unit a service's runs would read: the snapshot's source fields, before anything is read. */
+export const PreRunUnitSchema = PreRunSourceSchema.omit({
+	status: true,
+	detail: true,
+	file: true,
+	excerpt: true,
+	truncated: true,
+});
+
+/** `GET /sources/pre-run`: the run's own resolver for one service and deployment (#848). */
+export const SourcesPreRunSchema = z.object({
+	kinds: z.array(
+		z.object({
+			kind: PreRunSourceSchema.shape.kind,
+			units: z.array(PreRunUnitSchema),
+			notConfigured: z.boolean(),
+			/** Why nothing is read for this kind, e.g. several connections and none mapped. */
+			skipped: z.string().nullable(),
+			/** The env pseudo-connection: its variable, its URL's origin, and whether its token is set. */
+			envFallback: z
+				.object({
+					variable: z.string(),
+					origin: z.string(),
+					tokenSet: z.boolean(),
+				})
+				.nullable(),
+		}),
+	),
+	deploymentsSeen: z.array(z.string()),
+});
+export type SourcesPreRun = z.infer<typeof SourcesPreRunSchema>;

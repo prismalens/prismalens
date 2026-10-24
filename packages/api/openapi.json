@@ -10673,6 +10673,9 @@
                                   "services"
                                 ]
                               }
+                            },
+                            "toolsServer": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -11869,6 +11872,9 @@
                                         "services"
                                       ]
                                     }
+                                  },
+                                  "toolsServer": {
+                                    "type": "string"
                                   }
                                 },
                                 "required": [
@@ -11968,6 +11974,285 @@
                                 "status"
                               ]
                             }
+                          },
+                          "preRun": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "fetchedAt": {
+                                    "type": "string"
+                                  },
+                                  "window": {
+                                    "type": "object",
+                                    "properties": {
+                                      "start": {
+                                        "type": "string"
+                                      },
+                                      "end": {
+                                        "type": "string"
+                                      },
+                                      "service": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "start",
+                                      "end"
+                                    ]
+                                  },
+                                  "sources": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "enum": [
+                                            "prometheus",
+                                            "alertmanager",
+                                            "loki"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "from": {
+                                          "enum": [
+                                            "env",
+                                            "set"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "connectionId": {
+                                          "type": "string"
+                                        },
+                                        "envVar": {
+                                          "type": "string"
+                                        },
+                                        "credentialFrom": {
+                                          "enum": [
+                                            "stored",
+                                            "env",
+                                            "none"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "overridesEnv": {
+                                          "type": "string"
+                                        },
+                                        "services": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "deployment": {
+                                          "type": "string"
+                                        },
+                                        "selector": {
+                                          "type": "string"
+                                        },
+                                        "selection": {
+                                          "type": "object",
+                                          "properties": {
+                                            "rule": {
+                                              "enum": [
+                                                "tag-match",
+                                                "untagged",
+                                                "other-tag",
+                                                "only-unmapped",
+                                                "env"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "service": {
+                                              "type": "string"
+                                            },
+                                            "priority": {
+                                              "type": "number"
+                                            },
+                                            "deployment": {
+                                              "type": "string"
+                                            },
+                                            "tagFrom": {
+                                              "enum": [
+                                                "alert",
+                                                "deploy-event"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "mappedOff": {
+                                              "type": "boolean"
+                                            }
+                                          },
+                                          "required": [
+                                            "rule",
+                                            "service"
+                                          ]
+                                        },
+                                        "selectedBy": {
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "enum": [
+                                            "found",
+                                            "empty",
+                                            "skipped",
+                                            "not-read"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "detail": {
+                                          "type": "string"
+                                        },
+                                        "file": {
+                                          "type": "string"
+                                        },
+                                        "excerpt": {
+                                          "type": "string"
+                                        },
+                                        "truncated": {
+                                          "type": "object",
+                                          "properties": {
+                                            "dropped": {
+                                              "type": "number"
+                                            },
+                                            "reason": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "dropped",
+                                            "reason"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "label",
+                                        "from",
+                                        "status",
+                                        "detail"
+                                      ]
+                                    }
+                                  },
+                                  "notConfigured": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string"
+                                        },
+                                        "services": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "services"
+                                      ]
+                                    }
+                                  },
+                                  "runbooks": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "service": {
+                                          "type": "string"
+                                        },
+                                        "path": {
+                                          "type": "string"
+                                        },
+                                        "origin": {
+                                          "enum": [
+                                            "repo"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "link": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "title",
+                                        "service",
+                                        "path",
+                                        "origin"
+                                      ]
+                                    }
+                                  },
+                                  "runbooksSkipped": {
+                                    "type": "string"
+                                  },
+                                  "checkoutsSkipped": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "repo": {
+                                          "type": "string"
+                                        },
+                                        "reason": {
+                                          "type": "string"
+                                        },
+                                        "code": {
+                                          "enum": [
+                                            "failed",
+                                            "budget",
+                                            "guard"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "repo",
+                                        "reason",
+                                        "code"
+                                      ]
+                                    }
+                                  },
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "about": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "about"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "fetchedAt",
+                                  "window",
+                                  "sources",
+                                  "notConfigured",
+                                  "runbooks",
+                                  "checkoutsSkipped",
+                                  "files"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -13084,6 +13369,9 @@
                                   "services"
                                 ]
                               }
+                            },
+                            "toolsServer": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -13183,6 +13471,285 @@
                           "status"
                         ]
                       }
+                    },
+                    "preRun": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fetchedAt": {
+                              "type": "string"
+                            },
+                            "window": {
+                              "type": "object",
+                              "properties": {
+                                "start": {
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "type": "string"
+                                },
+                                "service": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end"
+                              ]
+                            },
+                            "sources": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "prometheus",
+                                      "alertmanager",
+                                      "loki"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "from": {
+                                    "enum": [
+                                      "env",
+                                      "set"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "envVar": {
+                                    "type": "string"
+                                  },
+                                  "credentialFrom": {
+                                    "enum": [
+                                      "stored",
+                                      "env",
+                                      "none"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "overridesEnv": {
+                                    "type": "string"
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "deployment": {
+                                    "type": "string"
+                                  },
+                                  "selector": {
+                                    "type": "string"
+                                  },
+                                  "selection": {
+                                    "type": "object",
+                                    "properties": {
+                                      "rule": {
+                                        "enum": [
+                                          "tag-match",
+                                          "untagged",
+                                          "other-tag",
+                                          "only-unmapped",
+                                          "env"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "service": {
+                                        "type": "string"
+                                      },
+                                      "priority": {
+                                        "type": "number"
+                                      },
+                                      "deployment": {
+                                        "type": "string"
+                                      },
+                                      "tagFrom": {
+                                        "enum": [
+                                          "alert",
+                                          "deploy-event"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "mappedOff": {
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "rule",
+                                      "service"
+                                    ]
+                                  },
+                                  "selectedBy": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "enum": [
+                                      "found",
+                                      "empty",
+                                      "skipped",
+                                      "not-read"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "excerpt": {
+                                    "type": "string"
+                                  },
+                                  "truncated": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dropped": {
+                                        "type": "number"
+                                      },
+                                      "reason": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "dropped",
+                                      "reason"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "label",
+                                  "from",
+                                  "status",
+                                  "detail"
+                                ]
+                              }
+                            },
+                            "notConfigured": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "services"
+                                ]
+                              }
+                            },
+                            "runbooks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "service": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "origin": {
+                                    "enum": [
+                                      "repo"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "link": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "service",
+                                  "path",
+                                  "origin"
+                                ]
+                              }
+                            },
+                            "runbooksSkipped": {
+                              "type": "string"
+                            },
+                            "checkoutsSkipped": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "enum": [
+                                      "failed",
+                                      "budget",
+                                      "guard"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "reason",
+                                  "code"
+                                ]
+                              }
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "about": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "about"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "fetchedAt",
+                            "window",
+                            "sources",
+                            "notConfigured",
+                            "runbooks",
+                            "checkoutsSkipped",
+                            "files"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -14266,6 +14833,9 @@
                                       "services"
                                     ]
                                   }
+                                },
+                                "toolsServer": {
+                                  "type": "string"
                                 }
                               },
                               "required": [
@@ -15514,6 +16084,9 @@
                                   "services"
                                 ]
                               }
+                            },
+                            "toolsServer": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -16332,8 +16905,7 @@
                               "option": {
                                 "enum": [
                                   "model",
-                                  "effort",
-                                  "tools"
+                                  "effort"
                                 ],
                                 "type": "string"
                               },
@@ -16354,6 +16926,165 @@
                               "option",
                               "value",
                               "accepted"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "harness_tool_call"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "server": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "turn": {
+                                "enum": [
+                                  "first",
+                                  "follow-up"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "server",
+                              "name",
+                              "at",
+                              "turn"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "const": "harness_tools"
+                              },
+                              "runId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "branchId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "seq": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "label": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "ts": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "server": {
+                                "type": "string"
+                              },
+                              "turn": {
+                                "enum": [
+                                  "first",
+                                  "follow-up"
+                                ],
+                                "type": "string"
+                              },
+                              "connected": {
+                                "type": "boolean"
+                              },
+                              "calls": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "firstCalledAt": {
+                                      "type": "string"
+                                    },
+                                    "count": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "firstCalledAt",
+                                    "count"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "runId",
+                              "branchId",
+                              "path",
+                              "seq",
+                              "ts",
+                              "server",
+                              "turn",
+                              "connected",
+                              "calls"
                             ]
                           },
                           {
@@ -18089,6 +18820,9 @@
                                   "services"
                                 ]
                               }
+                            },
+                            "toolsServer": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -20293,6 +21027,9 @@
                                   "services"
                                 ]
                               }
+                            },
+                            "toolsServer": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -20392,6 +21129,285 @@
                           "status"
                         ]
                       }
+                    },
+                    "preRun": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "fetchedAt": {
+                              "type": "string"
+                            },
+                            "window": {
+                              "type": "object",
+                              "properties": {
+                                "start": {
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "type": "string"
+                                },
+                                "service": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "start",
+                                "end"
+                              ]
+                            },
+                            "sources": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "prometheus",
+                                      "alertmanager",
+                                      "loki"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "from": {
+                                    "enum": [
+                                      "env",
+                                      "set"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "connectionId": {
+                                    "type": "string"
+                                  },
+                                  "envVar": {
+                                    "type": "string"
+                                  },
+                                  "credentialFrom": {
+                                    "enum": [
+                                      "stored",
+                                      "env",
+                                      "none"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "overridesEnv": {
+                                    "type": "string"
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "deployment": {
+                                    "type": "string"
+                                  },
+                                  "selector": {
+                                    "type": "string"
+                                  },
+                                  "selection": {
+                                    "type": "object",
+                                    "properties": {
+                                      "rule": {
+                                        "enum": [
+                                          "tag-match",
+                                          "untagged",
+                                          "other-tag",
+                                          "only-unmapped",
+                                          "env"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "service": {
+                                        "type": "string"
+                                      },
+                                      "priority": {
+                                        "type": "number"
+                                      },
+                                      "deployment": {
+                                        "type": "string"
+                                      },
+                                      "tagFrom": {
+                                        "enum": [
+                                          "alert",
+                                          "deploy-event"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "mappedOff": {
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "rule",
+                                      "service"
+                                    ]
+                                  },
+                                  "selectedBy": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "enum": [
+                                      "found",
+                                      "empty",
+                                      "skipped",
+                                      "not-read"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "excerpt": {
+                                    "type": "string"
+                                  },
+                                  "truncated": {
+                                    "type": "object",
+                                    "properties": {
+                                      "dropped": {
+                                        "type": "number"
+                                      },
+                                      "reason": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "dropped",
+                                      "reason"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "label",
+                                  "from",
+                                  "status",
+                                  "detail"
+                                ]
+                              }
+                            },
+                            "notConfigured": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "services": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "services"
+                                ]
+                              }
+                            },
+                            "runbooks": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "service": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "origin": {
+                                    "enum": [
+                                      "repo"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "link": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "title",
+                                  "service",
+                                  "path",
+                                  "origin"
+                                ]
+                              }
+                            },
+                            "runbooksSkipped": {
+                              "type": "string"
+                            },
+                            "checkoutsSkipped": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repo": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "enum": [
+                                      "failed",
+                                      "budget",
+                                      "guard"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "repo",
+                                  "reason",
+                                  "code"
+                                ]
+                              }
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "about": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "about"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "fetchedAt",
+                            "window",
+                            "sources",
+                            "notConfigured",
+                            "runbooks",
+                            "checkoutsSkipped",
+                            "files"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -33071,6 +34087,225 @@
                   },
                   "required": [
                     "enabled"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/pre-run": {
+      "get": {
+        "operationId": "sources.preRun",
+        "summary": "What a service's runs would read before they start, for a deployment",
+        "tags": [
+          "sources"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "deployment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "prometheus",
+                              "alertmanager",
+                              "loki"
+                            ],
+                            "type": "string"
+                          },
+                          "units": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "prometheus",
+                                    "alertmanager",
+                                    "loki"
+                                  ],
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "from": {
+                                  "enum": [
+                                    "env",
+                                    "set"
+                                  ],
+                                  "type": "string"
+                                },
+                                "connectionId": {
+                                  "type": "string"
+                                },
+                                "envVar": {
+                                  "type": "string"
+                                },
+                                "credentialFrom": {
+                                  "enum": [
+                                    "stored",
+                                    "env",
+                                    "none"
+                                  ],
+                                  "type": "string"
+                                },
+                                "overridesEnv": {
+                                  "type": "string"
+                                },
+                                "services": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "deployment": {
+                                  "type": "string"
+                                },
+                                "selector": {
+                                  "type": "string"
+                                },
+                                "selection": {
+                                  "type": "object",
+                                  "properties": {
+                                    "rule": {
+                                      "enum": [
+                                        "tag-match",
+                                        "untagged",
+                                        "other-tag",
+                                        "only-unmapped",
+                                        "env"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "service": {
+                                      "type": "string"
+                                    },
+                                    "priority": {
+                                      "type": "number"
+                                    },
+                                    "deployment": {
+                                      "type": "string"
+                                    },
+                                    "tagFrom": {
+                                      "enum": [
+                                        "alert",
+                                        "deploy-event"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "mappedOff": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "rule",
+                                    "service"
+                                  ]
+                                },
+                                "selectedBy": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "label",
+                                "from"
+                              ]
+                            }
+                          },
+                          "notConfigured": {
+                            "type": "boolean"
+                          },
+                          "skipped": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "envFallback": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "variable": {
+                                    "type": "string"
+                                  },
+                                  "origin": {
+                                    "type": "string"
+                                  },
+                                  "tokenSet": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "variable",
+                                  "origin",
+                                  "tokenSet"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "units",
+                          "notConfigured",
+                          "skipped",
+                          "envFallback"
+                        ]
+                      }
+                    },
+                    "deploymentsSeen": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kinds",
+                    "deploymentsSeen"
                   ]
                 }
               }

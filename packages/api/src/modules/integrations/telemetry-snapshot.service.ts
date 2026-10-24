@@ -230,7 +230,9 @@ export function selectionText(
 	const services = unit.services?.join(", ") || sel.service;
 	switch (sel.rule) {
 		case "tag-match":
-			return `${mapped}, deployment ${sel.deployment} named by the ${sel.tagFrom === "deploy-event" ? "latest deploy event" : "alert"}`;
+			return sel.tagFrom
+				? `${mapped}, deployment ${sel.deployment} named by the ${sel.tagFrom === "deploy-event" ? "latest deploy event" : "alert"}`
+				: `${mapped}, deployment ${sel.deployment}`;
 		case "untagged":
 			return sel.deployment
 				? `${mapped}; no connection is tagged ${sel.deployment}, so the untagged one is used`
@@ -246,6 +248,27 @@ export function selectionText(
 				? `env ${unit.envVar}; every connection mapped to ${services} is turned off`
 				: `env ${unit.envVar}; no connection is mapped to ${services}`;
 	}
+}
+
+interface Selected {
+	units: SnapshotSource[];
+	notRead: SnapshotSource[];
+	skipped: SourceOutcome[];
+	notConfigured: TelemetrySnapshot["notConfigured"];
+}
+
+/** One kind of `GET /sources/pre-run`: what a service's runs would read, from the same resolver (#848). */
+export interface PreRunKindPreview {
+	kind: QueryKind;
+	units: (UnitFacts & {
+		kind: QueryKind;
+		label: string;
+		from: "env" | "set";
+	})[];
+	notConfigured: boolean;
+	/** Why nothing is read for this kind, e.g. several connections and none mapped. */
+	skipped: string | null;
+	envFallback: { variable: string; origin: string; tokenSet: boolean } | null;
 }
 
 interface IncidentScope {
@@ -328,16 +351,11 @@ export class TelemetrySnapshotService {
 	}
 
 	/** Every unit to read, the kinds nothing serves, and the units over the limit. */
-	async select(
-		incidentId?: string,
-		env: Env = process.env,
-	): Promise<{
-		units: SnapshotSource[];
-		notRead: SnapshotSource[];
-		skipped: SourceOutcome[];
-		notConfigured: TelemetrySnapshot["notConfigured"];
-	}> {
-		const scope = await this.scope(incidentId);
+	async select(incidentId?: string, env: Env = process.env): Promise<Selected> {
+		return this.selectIn(await this.scope(incidentId), env);
+	}
+
+	private async selectIn(scope: IncidentScope, env: Env): Promise<Selected> {
 		const serviceIds = scope.services.map((x) => x.id);
 		const nameOf = new Map(scope.services.map((x) => [x.id, x.name]));
 		const mappings = serviceIds.length
@@ -568,32 +586,9 @@ export class TelemetrySnapshotService {
 			secrets: [],
 			unusable: why,
 		});
-		if (!this.integrations)
-			return unusable("PrismaLens cannot open this source here");
-		const url = await this.integrations.connectionBaseUrl(id);
-		if (!url) return unusable("the connection has no URL");
-		const read: SourceCredentialRead =
-			await this.integrations.sourceCredential(id);
-		const vars = envVars(kind);
-		const envToken = env[vars.token]?.trim();
-		const sameOrigin =
-			!!envToken && originOf(env[vars.url]?.trim()) === originOf(url);
-		let credential: SourceCredential;
-		if (read.state === "invalid" || !read.ok)
-			return unusable(
-				read.ok ? "the saved credential cannot be read" : read.message,
-			);
-		if (read.state === "set") {
-			credential = read.credential;
-			if (sameOrigin) unit.overridesEnv = vars.token;
-		} else if (sameOrigin && envToken) {
-			credential = { kind: "bearer", token: envToken };
-			unit.credentialFrom = "env";
-			unit.envVar = vars.token;
-		} else {
-			credential = { kind: "none" };
-			unit.credentialFrom = "none";
-		}
+		const got = await this.credentialFor(kind, id, env, unit);
+		if ("unusable" in got) return unusable(got.unusable);
+		const { url, credential } = got;
 		return {
 			...base,
 			secrets: credentialSecrets(credential),
@@ -606,6 +601,136 @@ export class TelemetrySnapshotService {
 				},
 			),
 		};
+	}
+
+	/** The URL and the credential a stored unit sends; fills the unit's credential facts. */
+	private async credentialFor(
+		kind: QueryKind,
+		id: string,
+		env: Env,
+		unit: UnitFacts,
+	): Promise<
+		{ url: string; credential: SourceCredential } | { unusable: string }
+	> {
+		if (!this.integrations)
+			return { unusable: "PrismaLens cannot open this source here" };
+		const url = await this.integrations.connectionBaseUrl(id);
+		if (!url) return { unusable: "the connection has no URL" };
+		const read: SourceCredentialRead =
+			await this.integrations.sourceCredential(id);
+		const vars = envVars(kind);
+		const envToken = env[vars.token]?.trim();
+		const sameOrigin =
+			!!envToken && originOf(env[vars.url]?.trim()) === originOf(url);
+		if (read.state === "invalid" || !read.ok)
+			return {
+				unusable: read.ok
+					? "the saved credential cannot be read"
+					: read.message,
+			};
+		if (read.state === "set") {
+			if (sameOrigin) unit.overridesEnv = vars.token;
+			return { url, credential: read.credential };
+		}
+		if (sameOrigin && envToken) {
+			unit.credentialFrom = "env";
+			unit.envVar = vars.token;
+			return { url, credential: { kind: "bearer", token: envToken } };
+		}
+		unit.credentialFrom = "none";
+		return { url, credential: { kind: "none" } };
+	}
+
+	/** What a service's runs would read per kind, for a deployment, through the run's own resolver. */
+	async preview(
+		serviceId: string,
+		deployment?: string,
+		env: Env = process.env,
+	): Promise<{ kinds: PreRunKindPreview[]; deploymentsSeen: string[] }> {
+		const svc = await this.prisma.service.findUnique({
+			where: { id: serviceId },
+			select: { id: true, name: true },
+		});
+		const tag = deployment?.trim();
+		const picked = await this.selectIn(
+			{ services: svc ? [svc] : [], ...(tag ? { deployment: tag } : {}) },
+			env,
+		);
+		const all = [...picked.units, ...picked.notRead];
+		for (const u of all)
+			if (u.facts?.connectionId)
+				await this.credentialFor(u.kind, u.facts.connectionId, env, u.facts);
+		const kinds = QUERY_KINDS.map((kind): PreRunKindPreview => {
+			const vars = envVars(kind);
+			const origin = originOf(env[vars.url]?.trim());
+			const skip = picked.skipped.find((x) => x.kind === kind);
+			return {
+				kind,
+				units: all
+					.filter((u) => u.kind === kind && u.facts)
+					.map((u) => ({
+						kind,
+						label: u.label,
+						from: u.from,
+						...(u.facts as UnitFacts),
+					})),
+				notConfigured: picked.notConfigured.some((n) => n.kind === kind),
+				skipped: skip && "reason" in skip ? skip.reason : null,
+				envFallback: origin
+					? {
+							variable: vars.url,
+							origin,
+							tokenSet: !!env[vars.token]?.trim(),
+						}
+					: null,
+			};
+		});
+		return {
+			kinds,
+			deploymentsSeen: svc ? await this.deploymentsSeen(svc.id) : [],
+		};
+	}
+
+	/** Every deployment tag the service's mappings, alerts and deploy events name, first spelling kept. */
+	private async deploymentsSeen(serviceId: string): Promise<string[]> {
+		const [mappings, alerts, deploys] = await Promise.all([
+			this.prisma.serviceIntegration.findMany({
+				where: { serviceId },
+				select: { config: true },
+			}),
+			this.prisma.alert.findMany({
+				where: { serviceId },
+				orderBy: { createdAt: "desc" },
+				take: 200,
+				select: { labels: true },
+			}),
+			this.prisma.changeEvent.findMany({
+				where: { serviceId, type: { in: ["deploy", "deployment"] } },
+				orderBy: { timestamp: "desc" },
+				take: 50,
+				select: { metadata: true },
+			}),
+		]);
+		const seen = new Map<string, string>();
+		const add = (v: unknown) => {
+			if (typeof v !== "string" || !v.trim()) return;
+			const key = norm(v) as string;
+			if (!seen.has(key)) seen.set(key, v.trim());
+		};
+		for (const m of mappings) add(mappingConfig(m.config).deployment);
+		for (const a of alerts) {
+			const labels = safeParseJsonObject(a.labels) ?? {};
+			add(
+				DEPLOYMENT_LABELS.map((k) => labels[k]).find(
+					(v) => typeof v === "string" && v.trim(),
+				),
+			);
+		}
+		for (const d of deploys) {
+			const meta = safeParseJsonObject(d.metadata) ?? {};
+			add(meta.environment ?? meta.env);
+		}
+		return [...seen.values()];
 	}
 
 	private async endpointOf(u: SnapshotSource): Promise<ResolvedConnector> {
