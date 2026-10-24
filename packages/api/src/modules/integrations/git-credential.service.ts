@@ -208,7 +208,14 @@ export class GitCredentialService {
 			this.logger.log(
 				`${host ?? ref.url} answered ${err.code} to ${cred.display.label}; retrying ${ref.url} with ${fallback.display.label}`,
 			);
-			return { result: await fn(fallback), credential: fallback.display };
+			try {
+				return { result: await fn(fallback), credential: fallback.display };
+			} catch (retryErr) {
+				if (!(retryErr instanceof GitFailure)) throw retryErr;
+				await this.recordFailure(fallback, retryErr);
+				// The token's own refusal names what to fix; the retry's error would not (#848).
+				throw err;
+			}
 		}
 	}
 
