@@ -1182,11 +1182,12 @@ describe("follow-up on a finished run (#747)", () => {
 
 	it("follow-up when load returns null gives unavailable and fetches no telemetry (#848)", async () => {
 		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
+		const save = vi.fn(async () => {});
 		const ports = followUpPorts({
 			preRun: {
 				telemetry,
 				runbooks: vi.fn(async () => ({ entries: [] })),
-				save: vi.fn(async () => {}),
+				save,
 				load: vi.fn(async () => null),
 			},
 		});
@@ -1202,6 +1203,84 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.context.preRun).toEqual({ state: "unavailable", reason: "no stored snapshot for this run" });
 		const { PreRunContextSchema } = await import("@prismalens/contracts/schemas");
 		expect(PreRunContextSchema.safeParse(opts.context.preRun).success).toBe(true);
+		await vi.waitFor(() => {
+			expect(save).toHaveBeenCalledWith(
+				"inv-1",
+				JSON.stringify({ state: "unavailable", reason: "no stored snapshot for this run" }),
+			);
+		});
+	});
+
+	it("follow-up when load returns a not-saved marker gives unavailable reason and does not save (#848)", async () => {
+		const { buildPreRunSnapshot, notSavedMarker } = await import("./pre-run-context.js");
+		const saved = buildPreRunSnapshot({
+			window: { start: new Date("2026-10-24T09:00:00Z"), end: new Date("2026-10-24T10:00:00Z") },
+			telemetry: [],
+			pastIncidents: [],
+			runbooks: [],
+			now: new Date("2026-10-24T10:00:00Z"),
+		});
+		const save = vi.fn(async () => {});
+		const notSaved = notSavedMarker(saved, "write failed");
+		const ports = followUpPorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => notSaved),
+			},
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob({ id: "job-not-saved-load", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { state: string; reason: string } } }];
+		expect(opts.context.preRun).toEqual({
+			state: "unavailable",
+			reason: "the run's snapshot was not saved",
+		});
+		expect(save).not.toHaveBeenCalled();
+	});
+
+	it("follow-up when load times out or returns unparsable text does not save (#848)", async () => {
+		const save = vi.fn(async () => {});
+		const portsBadJson = followUpPorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => "{ not json"),
+			},
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob({ id: "job-bad-json", investigationId: "inv-1", attempts: 1 }, data, io(), portsBadJson);
+		expect(save).not.toHaveBeenCalled();
+
+		vi.useFakeTimers();
+		try {
+			const saveTimeout = vi.fn(async () => {});
+			const portsTimeout = followUpPorts({
+				preRun: {
+					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: saveTimeout,
+					load: vi.fn(() => new Promise<string | null>(() => {})),
+				},
+			});
+			const jobPromise = runInvestigationJob({ id: "job-load-timeout-nosave", investigationId: "inv-1", attempts: 1 }, data, io(), portsTimeout);
+			await vi.advanceTimersByTimeAsync(5_100);
+			await jobPromise;
+			expect(saveTimeout).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("save on first run, then follow-up loads and rewrites the read copies (#848)", async () => {
@@ -1875,15 +1954,45 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		expect(prompt).toContain("LOKI_URL (loki): 3 error log lines");
 	});
 
+	it("a save that rejects with a message containing a secret calls save twice without the secret (#848)", async () => {
+		const secret = "s3cr3t-xyz";
+		const save = vi.fn()
+			.mockRejectedValueOnce(new Error(`database write failed: ${secret}`))
+			.mockResolvedValueOnce(undefined);
+		const ports = fakePorts({
+			preRun: {
+				telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => null),
+			},
+		});
+
+		const result = await runInvestigationJob(...job("inv-save-secret"), io(), ports);
+		expect(result.success).toBe(true);
+
+		await vi.waitFor(() => {
+			expect(save).toHaveBeenCalledTimes(2);
+		});
+		const [, secondRaw] = save.mock.calls[1] as [string, string];
+		const secondPayload = JSON.parse(secondRaw);
+		expect(secondPayload.state).toBe("not-saved");
+		expect(secondPayload.saveError).toBe("the database write failed");
+		expect(secondRaw).not.toContain(secret);
+	});
+
 	it("a save that never settles still lets conductRun start within 5 s (#848)", async () => {
 		vi.useFakeTimers();
 		try {
 			const neverSettlingSave = new Promise<void>(() => {});
+			const save = vi.fn()
+				.mockImplementationOnce(() => neverSettlingSave)
+				.mockResolvedValueOnce(undefined);
 			const ports = fakePorts({
 				preRun: {
 					telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })),
 					runbooks: vi.fn(async () => ({ entries: [] })),
-					save: vi.fn(() => neverSettlingSave),
+					save,
 					load: vi.fn(async () => null),
 				},
 			});
@@ -1898,6 +2007,10 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 			];
 			expect(opts.context.preRun?.state).toBe("not-saved");
 			expect(opts.context.preRun?.saveError).toBe("the save did not finish in 5 s");
+			expect(save).toHaveBeenCalledTimes(2);
+			const [, secondRaw] = save.mock.calls[1] as [string, string];
+			const secondPayload = JSON.parse(secondRaw);
+			expect(secondPayload.saveError).toBe("the save did not finish in 5 s");
 		} finally {
 			vi.useRealTimers();
 		}

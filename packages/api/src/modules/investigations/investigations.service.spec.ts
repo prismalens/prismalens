@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
-import { PreRunSummarySchema } from "@prismalens/contracts/schemas";
+import { PreRunDetailSchema, PreRunSummarySchema } from "@prismalens/contracts/schemas";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { SettingsService } from "../../core/settings/settings.service.js";
 import type { OverlayService } from "../overlay/overlay.service.js";
@@ -207,6 +207,7 @@ describe("preRunDetailOf (#848 C16a)", () => {
 		expect(detail?.state).toBe("ready");
 		const summary = detail?.state === "ready" ? detail : null;
 		expect(PreRunSummarySchema.safeParse(summary).success).toBe(true);
+		expect(PreRunDetailSchema.safeParse(detail).success).toBe(true);
 		expect(summary?.sources[0]).toEqual({
 			kind: "prometheus",
 			label: "prom",
@@ -223,5 +224,53 @@ describe("preRunDetailOf (#848 C16a)", () => {
 			},
 		]);
 		expect((summary?.files[0] as Record<string, unknown>).text).toBeUndefined();
+	});
+
+	it("returns a not-saved marker itself with saveError and valid schema", () => {
+		const marker = {
+			state: "not-saved" as const,
+			fetchedAt: "2026-10-24T10:00:00.000Z",
+			window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+			sources: [
+				{
+					kind: "prometheus" as const,
+					label: "prom",
+					from: "set" as const,
+					status: "found" as const,
+					detail: "2 alerts",
+					file: "telemetry-prometheus-1.json",
+				},
+			],
+			notConfigured: [],
+			runbooks: [],
+			checkoutsSkipped: [],
+			files: [{ name: "telemetry-prometheus-1.json", about: "prom: 2 alerts" }],
+			saveError: "the database write failed",
+		};
+		const detail = preRunDetailOf(JSON.stringify(marker));
+		expect(detail).toEqual(marker);
+		expect(detail?.state).toBe("not-saved");
+		if (detail?.state === "not-saved") {
+			expect(detail.saveError).toBe("the database write failed");
+		}
+		expect(PreRunDetailSchema.safeParse(detail).success).toBe(true);
+	});
+
+	it("returns an unavailable marker with state unavailable and reason", () => {
+		const marker = {
+			state: "unavailable" as const,
+			reason: "no stored snapshot for this run",
+		};
+		const detail = preRunDetailOf(JSON.stringify(marker));
+		expect(detail).toEqual({
+			state: "unavailable",
+			reason: "no stored snapshot for this run",
+		});
+		expect(PreRunDetailSchema.safeParse(detail).success).toBe(true);
+	});
+
+	it("returns null for state ready or bogus markers", () => {
+		expect(preRunDetailOf(JSON.stringify({ state: "ready", files: [], sources: [] }))).toBeNull();
+		expect(preRunDetailOf(JSON.stringify({ state: "bogus" }))).toBeNull();
 	});
 });

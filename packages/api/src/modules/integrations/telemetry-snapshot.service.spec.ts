@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationsController } from "./integrations.controller.js";
+import { IntegrationsService } from "./integrations.service.js";
 import type { OpenedSource } from "./open-source.js";
 import { boundSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
 import {
@@ -811,6 +812,46 @@ describe("connection selection and credential matrix (#848 C5)", () => {
 		]);
 		const [out] = await fetchSnapshot(await svc.sources({}), WINDOW);
 		expect(out?.status).toBe("found");
+	});
+
+	it("after priorities put B above A in the same deployment group, the snapshot selects B", async () => {
+		const connA = { id: "c-a", label: "Prom A", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const connB = { id: "c-b", label: "Prom B", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const mappings = [
+			{ id: "map-a", serviceId: "svc-1", connectionId: "c-a", priority: 0, config: { deployment: "prod" }, isEnabled: true, connection: connA },
+			{ id: "map-b", serviceId: "svc-1", connectionId: "c-b", priority: 0, config: { deployment: "prod" }, isEnabled: true, connection: connB },
+		];
+
+		const prisma = {
+			...mockPrisma({
+				incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+				alerts: [{ labels: { env: "prod" } }],
+				mappings,
+			}),
+			serviceIntegration: {
+				findMany: async () => mappings,
+				count: async ({ where }: { where: { id: { in: string[] }; serviceId: string } }) =>
+					mappings.filter((m) => where.id.in.includes(m.id) && m.serviceId === where.serviceId).length,
+				update: vi.fn(async ({ where, data }: { where: { id: string }; data: { priority: number } }) => {
+					const m = mappings.find((item) => item.id === where.id);
+					if (m) m.priority = data.priority;
+					return m;
+				}),
+			},
+			$transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+		};
+
+		const integrationsSvc = new IntegrationsService(prisma as never, {} as never, {} as never);
+		const snapshotSvc = new TelemetrySnapshotService(prisma as never);
+
+		const before = await snapshotSvc.select("inc-1");
+		expect(before.units[0]?.facts?.connectionId).toBe("c-a");
+
+		await integrationsSvc.setServiceIntegrationOrder("svc-1", ["map-b", "map-a"]);
+
+		const after = await snapshotSvc.select("inc-1");
+		expect(after.units[0]?.facts?.connectionId).toBe("c-b");
+		expect(after.units[0]?.facts?.selection.priority).toBe(2);
 	});
 });
 

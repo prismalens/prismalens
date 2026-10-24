@@ -668,4 +668,99 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			);
 		});
 	});
+
+	describe("service integration priority and ordering (#848)", () => {
+		it("getServiceIntegrationsWithStatus returns priority on mapped rows, undefined on unmapped ones", async () => {
+			const conn1 = {
+				id: "conn-1",
+				label: "Prometheus 1",
+				status: "ACTIVE",
+				integration: { templateId: "prometheus", label: "Prometheus" },
+				connectionConfigEnc: null,
+			};
+			const conn2 = {
+				id: "conn-2",
+				label: "Prometheus 2",
+				status: "ACTIVE",
+				integration: { templateId: "prometheus", label: "Prometheus" },
+				connectionConfigEnc: null,
+			};
+			mockPrisma.connection.findMany = vi.fn().mockResolvedValue([conn1, conn2]);
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: "override-1",
+						connectionId: "conn-1",
+						serviceId: "svc-1",
+						priority: 5,
+						config: null,
+						connection: conn1,
+					},
+				]),
+			};
+
+			const rows = await service.getServiceIntegrationsWithStatus("svc-1");
+			const mapped = rows.find((r) => r.connectionId === "conn-1");
+			const unmapped = rows.find((r) => r.connectionId === "conn-2");
+
+			expect(mapped?.priority).toBe(5);
+			expect(unmapped?.priority).toBeUndefined();
+		});
+
+		it("setServiceIntegrationOrder(svc, [a, b, c]) sets priorities 3, 2, 1 in one $transaction", async () => {
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				count: vi.fn().mockResolvedValue(3),
+				update: vi.fn(({ where, data }: { where: { id: string }; data: { priority: number } }) => ({
+					id: where.id,
+					priority: data.priority,
+				})),
+			};
+			mockPrisma.$transaction = vi.fn(async (ops: unknown[]) => ops);
+
+			const res = await service.setServiceIntegrationOrder("svc-1", ["a", "b", "c"]);
+
+			expect(mockPrisma.serviceIntegration.count).toHaveBeenCalledWith({
+				where: { id: { in: ["a", "b", "c"] }, serviceId: "svc-1" },
+			});
+			expect(mockPrisma.$transaction).toHaveBeenCalledWith([
+				expect.anything(),
+				expect.anything(),
+				expect.anything(),
+			]);
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(1, {
+				where: { id: "a" },
+				data: { priority: 3 },
+			});
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(2, {
+				where: { id: "b" },
+				data: { priority: 2 },
+			});
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(3, {
+				where: { id: "c" },
+				data: { priority: 1 },
+			});
+			expect(res).toEqual([
+				{ id: "a", priority: 3 },
+				{ id: "b", priority: 2 },
+				{ id: "c", priority: 1 },
+			]);
+		});
+
+		it("returns null with no update when an id belongs to another service or doesn't exist", async () => {
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				count: vi.fn().mockResolvedValue(2),
+				update: vi.fn(),
+			};
+			mockPrisma.$transaction = vi.fn();
+
+			const res = await service.setServiceIntegrationOrder("svc-1", ["a", "b", "foreign-or-missing"]);
+
+			expect(res).toBeNull();
+			expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+			expect(mockPrisma.serviceIntegration.update).not.toHaveBeenCalled();
+		});
+	});
 });
