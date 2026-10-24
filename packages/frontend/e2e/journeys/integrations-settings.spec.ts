@@ -16,23 +16,17 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 			timeout: 15_000,
 		});
 
-		// Sources holds git hosts; the webhook lives in Alert intake.
+		// Sources holds git hosts; a token is added in three steps (#848).
 		await page.getByTestId("settings-nav-sources").click();
-		await expect(
-			page.getByRole("heading", { name: "Git hosts", level: 3 }),
-		).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByTestId("add-integration")).toHaveText("Add a token");
-		// Each field's control is described by its hint, then by its error.
-		await page.getByTestId("add-integration").click();
-		const dialog = page.getByRole("dialog", { name: "Add a git host token" });
-		const host = dialog.locator("#cred-host");
-		await expect(host).toHaveValue("github.com");
-		await expect(host).toHaveAccessibleDescription(
-			"github.com, gitlab.com, bitbucket.org, or your own git host, with :port if it has one",
+		await page.getByTestId("sources-add").click();
+		const dialog = page.getByRole("dialog", { name: "Add a source" });
+		await dialog.getByTestId("source-kind-github").click();
+		await dialog.getByRole("button", { name: "Next" }).click();
+		await expect(dialog.getByTestId("source-credential-kind")).toHaveCount(0);
+		await dialog.getByTestId("source-test").click();
+		await expect(dialog.getByTestId("source-url")).toHaveAccessibleDescription(
+			"Enter an address that starts with http:// or https://",
 		);
-		const token = dialog.locator("#cred-token");
-		await dialog.getByRole("button", { name: "Save" }).click();
-		await expect(token).toHaveAccessibleDescription("Token is required");
 		await page.keyboard.press("Escape");
 		await expect(dialog).toHaveCount(0);
 		await page.getByTestId("settings-nav-alert-intake").click();

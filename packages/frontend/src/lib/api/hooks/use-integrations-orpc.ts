@@ -214,6 +214,7 @@ export function useUpdateConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.detail(variables.id),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -230,6 +231,7 @@ export function useDeleteConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.all(),
 			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }
@@ -247,6 +249,8 @@ export function useTestConnection() {
 			queryClient.invalidateQueries({
 				queryKey: integrationsKeys.connections.all(),
 			});
+			// Sources reads the same status and the last passing Test (#848).
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
 		},
 	});
 }

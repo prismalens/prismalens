@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import {
 	AboutSettings,
 	HarnessSettings,
-	IntegrationsTab,
 	TelemetrySettings,
 } from "@/components/settings";
 import { AlertSources } from "@/components/settings/AlertSources";
@@ -19,9 +18,15 @@ import {
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
 import { SlackDeliverySettings } from "@/components/settings/SlackDeliverySettings";
+import {
+	AddSourceButton,
+	MANY_SOURCES,
+	SourcesSettings,
+} from "@/components/settings/SourcesSettings";
 import { Pool, Row } from "@/components/shared/Row";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
+import { useSourcesOverview } from "@/lib/api/hooks/use-sources-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/settings/")({
@@ -55,6 +60,10 @@ function SettingsPage() {
 	const tab = picked ?? FIRST_SETTINGS_TAB;
 	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
+	const sources = useSourcesOverview(tab === "sources");
+	const manySources =
+		(sources.data?.sources.length ?? 0) + (sources.data?.gitHosts.length ?? 0) >
+		MANY_SOURCES;
 
 	// Actions on other screens change what these sections show; refetch on entry.
 	useEffect(() => {
@@ -67,12 +76,18 @@ function SettingsPage() {
 
 	const section = SECTIONS[tab];
 	return (
-		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
+		<SettingsFrame
+			section={tab}
+			title={section.title}
+			intro={section.intro}
+			actions={tab === "sources" ? <AddSourceButton /> : undefined}
+			wide={tab === "sources" && manySources}
+		>
 			{tab === "general" && <GeneralSettings />}
 			{tab === "appearance" && <AppearanceSettings />}
 			{tab === "agent" && <HarnessSettings />}
 			{tab === "alert-intake" && <AlertSources />}
-			{tab === "sources" && <IntegrationsTab />}
+			{tab === "sources" && <SourcesSettings />}
 			{tab === "notifications" && <SlackDeliverySettings />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
