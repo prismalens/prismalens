@@ -12,7 +12,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
-import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
+import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData } from "@prismalens/contracts";
 import type { conductRun } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
@@ -1796,5 +1796,63 @@ describe("toolsServer per run and follow-up (#848)", () => {
 		expect(followUpCall).toBeDefined();
 		const parsed = JSON.parse(followUpCall![1].workspace ?? "{}");
 		expect(parsed.toolsServer).toBe(leasedName);
+	});
+
+	it("persisted and reread harness_tool_call and harness_tools parse with CanonicalEventSchema (#848)", async () => {
+		const saved: CanonicalEvent[] = [];
+		const ports = fakePorts({
+			appendEvents: vi.fn(async (_id: string, events: CanonicalEvent[]) => {
+				saved.push(...events);
+			}),
+		});
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockImplementation(
+			async (_o, ioRun: { store: { create(): Promise<void>; append(e: CanonicalEvent): Promise<void> } }) => {
+				await ioRun.store.create();
+				await ioRun.store.append({
+					kind: "harness_tool_call",
+					runId: "11111111-1111-4111-8111-111111111111",
+					branchId: "b",
+					path: [],
+					ts: "2026-10-24T10:00:00.000Z",
+					seq: 1,
+					server: "prismalens-abcdefgh23",
+					name: "incident_get",
+					at: "2026-10-24T10:00:00.000Z",
+					turn: "first",
+				});
+				await ioRun.store.append({
+					kind: "harness_tools",
+					runId: "11111111-1111-4111-8111-111111111111",
+					branchId: "b",
+					path: [],
+					ts: "2026-10-24T10:00:05.000Z",
+					seq: 2,
+					server: "prismalens-abcdefgh23",
+					turn: "first",
+					connected: true,
+					calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+				});
+				await (ioRun.store as unknown as { finish(r: unknown): Promise<void> }).finish(null);
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			},
+		);
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-events-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			await runInvestigationJob(
+				{ id: "job-events", investigationId: "inv-1", attempts: 1 },
+				{ investigationId: "inv-1", incidentId: "inc-1" },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+			expect(saved).toHaveLength(2);
+			const reread = JSON.parse(JSON.stringify(saved));
+			expect(CanonicalEventSchema.parse(reread[0])).toEqual(saved[0]);
+			expect(CanonicalEventSchema.parse(reread[1])).toEqual(saved[1]);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 });

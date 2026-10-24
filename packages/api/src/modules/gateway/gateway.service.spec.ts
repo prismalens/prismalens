@@ -258,6 +258,40 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		expect(entry?.promptLine).toContain("MCP server `prismalens-customname12`");
 	});
 
+	it("initialize then tools/list gives no calls, two tools/call fire onCall twice and calls() returns count: 2 (#848)", async () => {
+		const g = gateway({
+			investigation: {
+				findUnique: vi.fn(async () => ({
+					incident: { number: 1, service: { name: "checkout" }, alerts: [] },
+				})),
+			},
+			incident: { findUnique: vi.fn(async () => null) },
+			setting: { findUnique: async () => null },
+		});
+		const entry = await g.lease(RUN_A, NAME);
+		const callsFired: { name: string; at: string }[] = [];
+		entry?.onCall((c) => callsFired.push(c));
+
+		await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize, entry?.token));
+		await g.serve(RUN_A, rpc(RUN_A, "tools/list", {}, entry?.token));
+		expect(callsFired).toHaveLength(0);
+		expect(entry?.calls()).toEqual([]);
+
+		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
+		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
+
+		expect(callsFired).toHaveLength(2);
+		expect(callsFired[0]?.name).toBe("incident_get");
+		expect(callsFired[1]?.name).toBe("incident_get");
+		const recorded = entry?.calls();
+		expect(recorded).toHaveLength(1);
+		expect(recorded?.[0]).toEqual({
+			name: "incident_get",
+			firstCalledAt: callsFired[0]?.at,
+			count: 2,
+		});
+	});
+
 	for (const name of ["prometheus_query", "loki_query_range", "alertmanager_alerts", "sources_list", "vendor__tool"])
 		it(`${name} is not a tool any more`, async () => {
 			const out = await call("tools/call", { name, arguments: {} });
