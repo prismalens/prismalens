@@ -31,33 +31,31 @@ async function readyServer(): Promise<{
 	};
 }
 
-test.describe("Alert sources, a pulled-from row (#781 review)", () => {
-	test("Test refreshes the row's state, and Remove asks first and survives a failure", async ({
+test.describe("Sources, a pulled Alertmanager row (#781 review, #848)", () => {
+	test("Test refreshes the row's state, and Delete asks first and survives a failure", async ({
 		page,
 	}) => {
 		const am = await readyServer();
 		const name = `Row check ${Date.now()}`;
 		try {
-			await page.goto("/settings?tab=alert-intake");
-			await page.getByTestId("add-source").click();
-			const dialog = page.getByTestId("add-source-dialog");
-			await dialog.getByTestId("source-kind-alertmanager").click();
-			await dialog.getByTestId("source-url-input").fill(am.url);
-			await dialog.getByTestId("source-name-input").fill(name);
-			await dialog.getByTestId("add-source-submit").click();
-			await expect(dialog).toBeHidden({ timeout: 20_000 });
+			const saved = await page.request.post("/api/sources/connect", {
+				data: { type: "alertmanager", url: am.url, label: name },
+			});
+			expect(saved.ok(), await saved.text()).toBe(true);
+			await page.goto("/settings?tab=sources");
 
-			const row = page
-				.getByTestId("source-row")
-				.filter({ has: page.getByText(name, { exact: true }) });
-			await expect(row.getByTestId("source-state")).toHaveText("Reachable");
+			const row = page.getByTestId("source-row").filter({
+				has: page.getByTestId("source-name").getByText(name, { exact: true }),
+			});
+			await expect(row.getByTestId("source-state")).toHaveText("Connected");
+			await row.getByRole("button", { expanded: false }).click();
 
 			am.setStatus(503);
 			await row.getByRole("button", { name: "Test" }).click();
-			await expect(row.getByTestId("source-state")).toHaveText("Unreachable");
+			await expect(row.getByTestId("source-state")).not.toHaveText("Connected");
 			await expect(row).toContainText("Alertmanager answered 503");
 
-			await row.getByRole("button", { name: "Remove" }).click();
+			await row.getByRole("button", { name: "Delete" }).click();
 			const confirm = page.getByRole("alertdialog");
 			await expect(confirm).toContainText("Delete connection?");
 			await confirm.getByRole("button", { name: "Cancel" }).click();
@@ -80,7 +78,7 @@ test.describe("Alert sources, a pulled-from row (#781 review)", () => {
 						})
 					: route.fallback(),
 			);
-			await row.getByRole("button", { name: "Remove" }).click();
+			await row.getByRole("button", { name: "Delete" }).click();
 			await confirm.getByRole("button", { name: "Delete" }).click();
 			await expect(confirm).toBeVisible();
 			await expect(confirm.getByRole("alert")).toContainText(

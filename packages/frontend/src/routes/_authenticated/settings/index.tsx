@@ -4,10 +4,11 @@ import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import {
 	AboutSettings,
+	AlertIntakeSettings,
 	HarnessSettings,
+	NotificationsSettings,
 	TelemetrySettings,
 } from "@/components/settings";
-import { AlertSources } from "@/components/settings/AlertSources";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
@@ -17,7 +18,6 @@ import {
 	SettingsFrame,
 	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
-import { SlackDeliverySettings } from "@/components/settings/SlackDeliverySettings";
 import {
 	AddSourceButton,
 	MANY_SOURCES,
@@ -86,9 +86,9 @@ function SettingsPage() {
 			{tab === "general" && <GeneralSettings />}
 			{tab === "appearance" && <AppearanceSettings />}
 			{tab === "agent" && <HarnessSettings />}
-			{tab === "alert-intake" && <AlertSources />}
+			{tab === "alert-intake" && <AlertIntakeSettings />}
 			{tab === "sources" && <SourcesSettings />}
-			{tab === "notifications" && <SlackDeliverySettings />}
+			{tab === "notifications" && <NotificationsSettings />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "about" && <AboutSettings />}

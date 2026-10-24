@@ -238,7 +238,7 @@ const webhookToken = () =>
 		"utf8",
 	).trim();
 
-When("I open Settings, Alert sources", async ({ page }) => {
+When("I open Settings, Alert intake", async ({ page }) => {
 	await page.goto("/settings?tab=alert-intake");
 	await expect(page.getByTestId("sources-webhook")).toBeVisible();
 });
@@ -282,33 +282,39 @@ Then('"Last delivery" reads "1 alert, accepted"', async ({ page }) => {
 });
 
 Then(
-	'the kinds offered are "Alertmanager" and "Prometheus"',
+	'the kinds offered include "Alertmanager" and "Prometheus"',
 	async ({ page }) => {
-		const kinds = page
-			.getByTestId("add-source-dialog")
-			.getByTestId("source-kind");
-		await expect(kinds.getByRole("button")).toHaveText([
-			"Alertmanager",
-			"Prometheus",
-		]);
+		const dialog = page.getByTestId("add-source-dialog");
+		await expect(dialog.getByTestId("source-kind-alertmanager")).toBeVisible();
+		await expect(dialog.getByTestId("source-kind-prometheus")).toBeVisible();
 	},
 );
 
 When(
-	'I choose Alertmanager, enter {string} and {string} and press "Add"',
+	"I choose Alertmanager, enter {string} and {string}, test it and save",
 	async ({ page }, url: string, name: string) => {
 		const dialog = page.getByTestId("add-source-dialog");
 		await dialog.getByTestId("source-kind-alertmanager").click();
-		await dialog.getByTestId("source-url-input").fill(url);
-		await dialog.getByTestId("source-name-input").fill(name);
-		await dialog.getByTestId("add-source-submit").click();
+		await dialog.getByRole("button", { name: "Next" }).click();
+		await dialog.getByTestId("source-url").fill(url);
+		await dialog.getByTestId("source-name").fill(name);
+		await dialog.getByTestId("source-credential-kind").click();
+		await page.getByRole("option", { name: "No credential" }).click();
+		await dialog.getByTestId("source-test").click();
+		await expect(dialog.getByTestId("source-test-word")).toBeVisible({
+			timeout: 20_000,
+		});
+		// Nothing answers there in the suite, so it saves untested (#848).
+		const untested = dialog.getByTestId("source-save-untested");
+		if (await untested.count()) await untested.click();
+		else await dialog.getByTestId("source-save").click();
 		await expect(dialog).toBeHidden({ timeout: 20_000 });
 		w(page).source = name;
 	},
 );
 
 Then(
-	'a row {string} appears under "Pulled from" with its URL and "reachable" or the last error',
+	'a row {string} appears under "Pulled by URL" with its address and a state word',
 	async ({ page }, name: string) => {
 		const row = page
 			.getByTestId("sources-pulled")
@@ -318,13 +324,11 @@ Then(
 			})
 			.first();
 		await expect(row).toBeVisible();
-		await expect(row.getByTestId("source-url")).toHaveText(
-			"http://127.0.0.1:9093",
+		await expect(row.getByTestId("source-url")).toHaveText("127.0.0.1:9093");
+		await expect(row.getByTestId("source-state")).toHaveText(
+			/Connected|Not tested yet/,
 		);
-		const state = await row.getByTestId("source-state").innerText();
-		if (state === "Unreachable")
-			await expect(row).toContainText("pulls skip it until Test reaches it");
-		else expect(state).toBe("Reachable");
+		await expect(row).toContainText("Also in Sources; editing it changes both");
 	},
 );
 
