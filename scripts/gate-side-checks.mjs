@@ -828,7 +828,15 @@ async function checkHosts() {
 	return `Host gate-unlisted.invalid → 403 naming PRISMALENS_ALLOWED_HOSTS; ${cli}; IP literal ${bindHost} paired (redeem 200)`;
 }
 
-/** `prefix` is an npm global prefix; the installed package sits under it differently per OS. */
+/** npm's verbose log without its per-package cache and fetch lines, tail only. */
+const quiet = (text, n) =>
+	text
+		.split("\n")
+		.filter((l) => !/ http (cache|fetch) /.test(l))
+		.join("\n")
+		.slice(-n);
+
+/** `prefix` is an npm global prefix; the package sits under it differently per OS. */
 const globalPackageDir = (prefix) =>
 	WIN
 		? join(prefix, "node_modules", "prismalens")
@@ -936,7 +944,7 @@ async function checkUpgrade() {
 		const logs = join(env.LOCALAPPDATA ?? env.HOME, "npm-cache", "_logs");
 		const latest = existsSync(logs) ? readdirSync(logs).sort().at(-1) : null;
 		const debugLog = latest
-			? readFileSync(join(logs, latest), "utf8").slice(-2500)
+			? quiet(readFileSync(join(logs, latest), "utf8"), 3500)
 			: "(no npm log)";
 		// What `pl upgrade` runs, run by hand in the same env, says why npm said nothing.
 		const probe = WIN
@@ -955,7 +963,7 @@ async function checkUpgrade() {
 			: { out: "" };
 		assert(
 			false,
-			`pl upgrade --version ${next} exited ${upgrade.code}: ${upgrade.out.slice(-2500)} | npm log: ${debugLog} | by hand: ${probe.code} ${probe.out.slice(-300)}`,
+			`pl upgrade --version ${next} exited ${upgrade.code}: ${quiet(upgrade.out, 2500)} | npm log: ${debugLog} | by hand: ${probe.code} ${quiet(probe.out, 2000)}`,
 		);
 	}
 	const after = await runPl(["--version"], env, cli);
