@@ -421,3 +421,333 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		expect(data.data.alerts.map((a) => a.alertname)).toEqual(["ActiveInWindow", "Overlapping"]);
 	});
 });
+
+describe("connection selection and credential matrix (#848 C5)", () => {
+	function mockPrisma(opts: {
+		incident?: { id: string; service: { id: string; name: string } } | null;
+		alerts?: { labels: string | object; service?: { id: string; name: string } }[];
+		deployEvents?: { metadata: string | object }[];
+		mappings?: {
+			serviceId: string;
+			connectionId: string;
+			priority: number;
+			config: unknown;
+			isEnabled: boolean;
+			connection: { id: string; label: string; status: string; integration: { templateId: string; label: string } };
+		}[];
+		activeConnections?: { id: string; label: string; integration: { templateId: string; label: string } }[];
+		savedConnections?: { id: string; integration: { templateId: string } }[];
+	}) {
+		return {
+			incident: {
+				findUnique: async () => opts.incident ?? null,
+			},
+			alert: {
+				findMany: async () =>
+					(opts.alerts ?? []).map((a) => ({
+						labels: typeof a.labels === "string" ? a.labels : JSON.stringify(a.labels),
+						service: a.service ?? null,
+					})),
+			},
+			changeEvent: {
+				findFirst: async () => {
+					const ev = (opts.deployEvents ?? [])[0];
+					if (!ev) return null;
+					return { metadata: typeof ev.metadata === "string" ? ev.metadata : JSON.stringify(ev.metadata) };
+				},
+			},
+			serviceIntegration: {
+				findMany: async () => opts.mappings ?? [],
+			},
+			connection: {
+				findMany: async (args: { where: { status?: unknown } }) => {
+					if (args.where?.status === "ACTIVE") {
+						return opts.activeConnections ?? [];
+					}
+					return opts.savedConnections ?? opts.activeConnections ?? [];
+				},
+			},
+		};
+	}
+
+	function mockIntegrations(conns: Record<string, {
+		url?: string;
+		state?: "set" | "absent" | "invalid";
+		credential?: unknown;
+	}>) {
+		return {
+			connectionBaseUrl: async (id: string) => conns[id]?.url ?? null,
+			sourceCredential: async (id: string) => {
+				const c = conns[id];
+				if (!c) return { ok: false, state: "invalid" as const, reason: "invalid" as const, message: "not found" };
+				const state = c.state ?? "set";
+				if (state === "invalid") return { ok: false, state: "invalid" as const, reason: "invalid" as const, message: "invalid" };
+				return {
+					ok: true,
+					state,
+					credential: (c.credential ?? { kind: "bearer", token: "stored-token" }) as never,
+				};
+			},
+		};
+	}
+
+	it("prod or staging is picked by an alert label, and by a deploy event", async () => {
+		const connProd = { id: "c-prod", label: "Prod Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const connStaging = { id: "c-staging", label: "Staging Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const mappings = [
+			{ serviceId: "svc-1", connectionId: "c-prod", priority: 10, config: { deployment: "prod" }, isEnabled: true, connection: connProd },
+			{ serviceId: "svc-1", connectionId: "c-staging", priority: 10, config: { deployment: "staging" }, isEnabled: true, connection: connStaging },
+		];
+
+		// Alert label picks staging
+		const prismaAlert = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "api" } },
+			alerts: [{ labels: { env: "staging" } }],
+			mappings,
+		});
+		const svcAlert = new TelemetrySnapshotService(prismaAlert as never);
+		const outAlert = await svcAlert.select("inc-1");
+		expect(outAlert.units[0]?.facts?.connectionId).toBe("c-staging");
+		expect(outAlert.units[0]?.facts?.selection).toMatchObject({ rule: "tag-match", deployment: "staging", tagFrom: "alert" });
+
+		// Deploy event picks prod
+		const prismaDeploy = mockPrisma({
+			incident: { id: "inc-2", service: { id: "svc-1", name: "api" } },
+			deployEvents: [{ metadata: { environment: "prod" } }],
+			mappings,
+		});
+		const svcDeploy = new TelemetrySnapshotService(prismaDeploy as never);
+		const outDeploy = await svcDeploy.select("inc-2");
+		expect(outDeploy.units[0]?.facts?.connectionId).toBe("c-prod");
+		expect(outDeploy.units[0]?.facts?.selection).toMatchObject({ rule: "tag-match", deployment: "prod", tagFrom: "deploy-event" });
+
+		// Alert label wins over deploy event
+		const prismaBoth = mockPrisma({
+			incident: { id: "inc-3", service: { id: "svc-1", name: "api" } },
+			alerts: [{ labels: { env: "staging" } }],
+			deployEvents: [{ metadata: { environment: "prod" } }],
+			mappings,
+		});
+		const svcBoth = new TelemetrySnapshotService(prismaBoth as never);
+		const outBoth = await svcBoth.select("inc-3");
+		expect(outBoth.units[0]?.facts?.connectionId).toBe("c-staging");
+		expect(outBoth.units[0]?.facts?.selection.tagFrom).toBe("alert");
+	});
+
+	it("a stored tag 'prod-eu ' matches the alert prod-eu", async () => {
+		const conn = { id: "c-eu", label: "EU Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "api" } },
+			alerts: [{ labels: { environment: "prod-eu" } }],
+			mappings: [
+				{ serviceId: "svc-1", connectionId: "c-eu", priority: 1, config: { deployment: "prod-eu " }, isEnabled: true, connection: conn },
+			],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1");
+		expect(out.units[0]?.facts?.connectionId).toBe("c-eu");
+		expect(out.units[0]?.facts?.selection.rule).toBe("tag-match");
+	});
+
+	it("env is ignored when a connection is mapped", async () => {
+		const conn = { id: "c-mapped", label: "Mapped Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "api" } },
+			mappings: [
+				{ serviceId: "svc-1", connectionId: "c-mapped", priority: 1, config: {}, isEnabled: true, connection: conn },
+			],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1", {
+			PROMETHEUS_URL: "http://env-prom:9090",
+			PROMETHEUS_TOKEN: "env-tok",
+		});
+		expect(out.units[0]?.label).toBe("Mapped Prom");
+		expect(out.units[0]?.from).toBe("set");
+	});
+
+	it("two unmapped connections give 'map one'", async () => {
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+			activeConnections: [
+				{ id: "c1", label: "Prom 1", integration: { templateId: "prometheus", label: "Prometheus" } },
+				{ id: "c2", label: "Prom 2", integration: { templateId: "prometheus", label: "Prometheus" } },
+			],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1");
+		expect(out.units).toEqual([]);
+		expect(out.skipped).toEqual([
+			expect.objectContaining({
+				kind: "prometheus",
+				status: "skipped",
+				reason: "2 prometheus connections, none mapped to checkout: map one on the service",
+			}),
+		]);
+	});
+
+	it("a REVOKED sole connection does not fall back", async () => {
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+			activeConnections: [],
+			savedConnections: [],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1", {});
+		expect(out.units).toEqual([]);
+		expect(out.notConfigured).toEqual(expect.arrayContaining([{ kind: "prometheus", services: ["checkout"] }]));
+	});
+
+	it("config.enabled: false excludes the connection, and env then carries mappedOff", async () => {
+		const conn = { id: "c-off", label: "Off Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+			mappings: [
+				{ serviceId: "svc-1", connectionId: "c-off", priority: 1, config: { enabled: false }, isEnabled: true, connection: conn },
+			],
+			activeConnections: [conn],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1", {
+			PROMETHEUS_URL: "http://env-prom:9090",
+			PROMETHEUS_TOKEN: "env-tok",
+		});
+		expect(out.units[0]?.from).toBe("env");
+		expect(out.units[0]?.facts?.selection).toMatchObject({ rule: "env", mappedOff: true });
+		expect(out.units[0]?.facts?.selectedBy).toContain("every connection mapped to checkout is turned off");
+	});
+
+	it("credential matrix: set beats same-origin env token, explicit none, absent same-origin, cross-origin/port, and invalid", async () => {
+		const origin = "http://127.0.0.1:9090";
+		const conn = { id: "c1", label: "Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const prisma = mockPrisma({
+			activeConnections: [conn],
+		});
+
+		// 1. set beats same-origin env token, with overridesEnv
+		const intSet = mockIntegrations({
+			c1: { url: origin, state: "set", credential: { kind: "bearer", token: "stored-token" } },
+		});
+		const svcSet = new TelemetrySnapshotService(prisma as never, intSet as never);
+		const [unitSet] = (await svcSet.select(undefined, { PROMETHEUS_URL: origin, PROMETHEUS_TOKEN: "env-token" })).units;
+		const openedSet = await unitSet!.open(1000);
+		expect(openedSet.secrets).toContain("stored-token");
+		expect(unitSet?.facts?.overridesEnv).toBe("PROMETHEUS_TOKEN");
+		expect(unitSet?.facts?.credentialFrom).toBe("stored");
+
+		// 2. explicit none
+		const intNone = mockIntegrations({
+			c1: { url: origin, state: "set", credential: { kind: "none" } },
+		});
+		const svcNone = new TelemetrySnapshotService(prisma as never, intNone as never);
+		const [unitNone] = (await svcNone.select(undefined, { PROMETHEUS_URL: origin, PROMETHEUS_TOKEN: "env-token" })).units;
+		const openedNone = await unitNone!.open(1000);
+		expect(openedNone.secrets).toEqual([]);
+		expect(unitNone?.facts?.credentialFrom).toBe("stored");
+		expect(unitNone?.facts?.overridesEnv).toBe("PROMETHEUS_TOKEN");
+
+		// 3. absent with a same-origin token
+		const intAbsent = mockIntegrations({
+			c1: { url: origin, state: "absent" },
+		});
+		const svcAbsent = new TelemetrySnapshotService(prisma as never, intAbsent as never);
+		const [unitAbsent] = (await svcAbsent.select(undefined, { PROMETHEUS_URL: origin, PROMETHEUS_TOKEN: "env-token" })).units;
+		const openedAbsent = await unitAbsent!.open(1000);
+		expect(openedAbsent.secrets).toContain("env-token");
+		expect(unitAbsent?.facts?.credentialFrom).toBe("env");
+		expect(unitAbsent?.facts?.envVar).toBe("PROMETHEUS_TOKEN");
+
+		// 4. absent with an http-versus-https token on the same host and port (sends nothing)
+		const [unitHttps] = (await svcAbsent.select(undefined, { PROMETHEUS_URL: "https://127.0.0.1:9090", PROMETHEUS_TOKEN: "env-token" })).units;
+		const openedHttps = await unitHttps!.open(1000);
+		expect(openedHttps.secrets).toEqual([]);
+		expect(unitHttps?.facts?.credentialFrom).toBe("none");
+
+		// 5. absent with an other-port token (sends nothing)
+		const [unitOtherPort] = (await svcAbsent.select(undefined, { PROMETHEUS_URL: "http://127.0.0.1:9091", PROMETHEUS_TOKEN: "env-token" })).units;
+		const openedOtherPort = await unitOtherPort!.open(1000);
+		expect(openedOtherPort.secrets).toEqual([]);
+		expect(unitOtherPort?.facts?.credentialFrom).toBe("none");
+
+		// 6. invalid
+		const intInvalid = mockIntegrations({
+			c1: { url: origin, state: "invalid" },
+		});
+		const svcInvalid = new TelemetrySnapshotService(prisma as never, intInvalid as never);
+		const [unitInvalid] = (await svcInvalid.select(undefined, {})).units;
+		const openedInvalid = await unitInvalid!.open(1000);
+		expect(openedInvalid.unusable).toBeDefined();
+	});
+
+	it("a shared Loki connection with two selectors gives two units", async () => {
+		const connLoki = { id: "c-loki", label: "Loki", status: "ACTIVE", integration: { templateId: "loki", label: "Loki" } };
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "s1", name: "checkout" } },
+			alerts: [{ labels: {}, service: { id: "s2", name: "billing" } }],
+			mappings: [
+				{ serviceId: "s1", connectionId: "c-loki", priority: 1, config: { selector: '{app="checkout"}' }, isEnabled: true, connection: connLoki },
+				{ serviceId: "s2", connectionId: "c-loki", priority: 1, config: { selector: '{app="billing"}' }, isEnabled: true, connection: connLoki },
+			],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1");
+		expect(out.units.map((u) => [u.kind, u.facts?.selector])).toEqual([
+			["loki", '{app="checkout"}'],
+			["loki", '{app="billing"}'],
+		]);
+	});
+
+	it("8 units give 6 attempted and 2 not-read", async () => {
+		const conns = Array.from({ length: 8 }, (_, i) => ({
+			id: `c${i}`,
+			label: `Prom ${i}`,
+			status: "ACTIVE",
+			integration: { templateId: "prometheus", label: "Prometheus" },
+		}));
+		const mappings = conns.map((c, i) => ({
+			serviceId: `svc-${i}`,
+			connectionId: c.id,
+			priority: 1,
+			config: {},
+			isEnabled: true,
+			connection: c,
+		}));
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-0", name: "svc-0" } },
+			alerts: conns.slice(1).map((_, i) => ({ labels: {}, service: { id: `svc-${i + 1}`, name: `svc-${i + 1}` } })),
+			mappings,
+		});
+		const intMock = mockIntegrations(
+			Object.fromEntries(conns.map((c) => [c.id, { url: "http://127.0.0.1:1" }])),
+		);
+		const svc = new TelemetrySnapshotService(prisma as never, intMock as never);
+		const out = await svc.fetch("inc-1", WINDOW);
+		const attempted = out.sources.filter((s) => s.status === "skipped" || s.status === "found" || s.status === "empty");
+		const notRead = out.sources.filter((s) => s.status === "not-read");
+		expect(attempted.length).toBe(6);
+		expect(notRead.length).toBe(2);
+		expect(notRead[0]?.reason).toBe("over the 6-source limit");
+	});
+
+	it("a single unmapped connection carries selection.rule and credentialFrom", async () => {
+		const conn = { id: "c-sole", label: "Sole Prom", status: "ACTIVE", integration: { templateId: "prometheus", label: "Prometheus" } };
+		const prisma = mockPrisma({
+			incident: { id: "inc-1", service: { id: "svc-1", name: "checkout" } },
+			activeConnections: [conn],
+		});
+		const svc = new TelemetrySnapshotService(prisma as never);
+		const out = await svc.select("inc-1");
+		expect(out.units[0]?.facts?.selection.rule).toBe("only-unmapped");
+		expect(out.units[0]?.facts?.credentialFrom).toBe("stored");
+		expect(out.units[0]?.facts?.selectedBy).toBe("the only prometheus connection; not mapped to a service");
+	});
+
+	it("preservation: a single unmapped connection with no env is read", async () => {
+		const url = await upstream(prometheus);
+		const svc = service([
+			{ id: "saved", templateId: "prometheus", baseUrl: url, credentials: {} },
+		]);
+		const [out] = await fetchSnapshot(await svc.sources({}), WINDOW);
+		expect(out?.status).toBe("found");
+	});
+});

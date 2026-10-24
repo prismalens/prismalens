@@ -84,4 +84,18 @@ describe("stored-credential (#848)", () => {
 		if (!res.credential.ok) throw new Error("Expected ok credential");
 		expect(res.credential.credential.kind).toBe("none");
 	});
+
+	it("reads absent when no kind and no token is present, and set for explicit none", () => {
+		const absent = readStored("prometheus", {});
+		expect(absent.state).toBe("absent");
+		expect(absent.credential).toEqual({ ok: true, credential: { kind: "none" } });
+
+		const explicitNone = readStored("prometheus", { kind: "none" });
+		expect(explicitNone.state).toBe("set");
+		expect(explicitNone.credential).toEqual({ ok: true, credential: { kind: "none" } });
+
+		const invalid = readStored("prometheus", { kind: "oauth" });
+		expect(invalid.state).toBe("invalid");
+		expect(invalid.credential.ok).toBe(false);
+	});
 });

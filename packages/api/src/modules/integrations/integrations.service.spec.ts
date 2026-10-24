@@ -469,4 +469,42 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			]);
 		});
 	});
+
+	describe("sourceCredential state (#848 C5)", () => {
+		it("sourceCredential returns state set, absent, or invalid", async () => {
+			const setConn = {
+				id: "conn-set",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({ kind: "bearer", token: "tok-123" }),
+			};
+			const noneConn = {
+				id: "conn-none",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({ kind: "none" }),
+			};
+			const absentConn = {
+				id: "conn-absent",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({}),
+			};
+			mockPrisma.connection.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
+				if (where.id === "conn-set") return setConn;
+				if (where.id === "conn-none") return noneConn;
+				if (where.id === "conn-absent") return absentConn;
+				return null;
+			});
+
+			const resSet = await service.sourceCredential("conn-set");
+			expect(resSet).toMatchObject({ ok: true, state: "set", credential: { kind: "bearer", token: "tok-123" } });
+
+			const resNone = await service.sourceCredential("conn-none");
+			expect(resNone).toMatchObject({ ok: true, state: "set", credential: { kind: "none" } });
+
+			const resAbsent = await service.sourceCredential("conn-absent");
+			expect(resAbsent).toMatchObject({ ok: true, state: "absent", credential: { kind: "none" } });
+
+			const resMissing = await service.sourceCredential("conn-missing");
+			expect(resMissing).toMatchObject({ ok: false, state: "invalid", reason: "invalid" });
+		});
+	});
 });
