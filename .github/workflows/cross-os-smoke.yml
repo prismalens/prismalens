@@ -281,13 +281,16 @@ jobs:
 
           node "$GITHUB_WORKSPACE/scripts/lib/npm-install-retry.mjs" npm install --engine-strict --no-audit --no-fund --loglevel=error
 
+      - name: Make a clean dir for the registry install (registry mode)
+        if: env.MODE == 'registry'
+        run: mkdir -p scratch && cd scratch && npm init -y >/dev/null
+
       - name: Cold-install from the npm registry into a clean dir (registry mode)
         if: env.MODE == 'registry'
-        run: |
-          mkdir -p scratch
-          cd scratch
-          npm init -y >/dev/null
-          node "$GITHUB_WORKSPACE/scripts/lib/npm-install-retry.mjs" npm install --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        with:
+          working-directory: scratch
+          command: npm install --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
 
       - name: Run the cross-OS smoke assertions
         run: bash scripts/cross-os-smoke.sh scratch
@@ -377,7 +380,9 @@ jobs:
 
       - name: Install from the npm registry GLOBALLY (registry mode)
         if: env.MODE == 'registry'
-        run: node "$GITHUB_WORKSPACE/scripts/lib/npm-install-retry.mjs" npm install -g --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
+        uses: prismalens/gh-workflows/actions/npm-install-retry@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+        with:
+          command: npm install -g --engine-strict --no-audit --no-fund --loglevel=error "prismalens@${VERSION}"
 
       - name: Boot the app and assert it serves a working dashboard and API
         run: node scripts/cross-os-app-boot.mjs
