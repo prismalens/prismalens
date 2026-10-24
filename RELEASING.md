@@ -18,6 +18,18 @@ This file says what the release gate is and what a patch and a minor release do 
 - Failures are noted as the walk goes and filed together at the end. A failed step is rechecked once its fix merges.
 - The transcript of the passing walk is pasted on the release PR.
 
+```mermaid
+flowchart TD
+    merge["A PR merges to main"] --> base["The release PR's base SHA moves"]
+    base --> before["Before the walk, on the base SHA: release PR checks green,<br/>Standalone CLI and Desktop run, docs merged in prismalens.io"]
+    before --> walk["The walk installs Pack npm tarball's npm-tarballs artifact<br/>and runs pnpm gate:side-checks"]
+    walk -- "a step fails" --> fix["Findings filed at the end, the fix merges"]
+    fix --> merge
+    walk -- "every step passes" --> paste["Transcript pasted on the release PR"]
+    paste --> release["The release PR merges: draft release, npm, published release"]
+    release --> after["On the released version: registry-mode cross-os-smoke,<br/>the docs site goes live, the docs sweep"]
+```
+
 ## Before the walk
 - [ ] The release PR's checks are green on its head, `Packed intake` included.
 - [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run standalone.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow standalone.yml --json headSha`).

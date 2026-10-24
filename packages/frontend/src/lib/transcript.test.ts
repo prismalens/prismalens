@@ -111,20 +111,20 @@ const ended = { status: "completed", live: false };
 
 describe("deriveTranscript", () => {
 	it("says so when a run kept no events", () => {
-		expect(deriveTranscript([], T0, { run: ended })).toEqual([
+		expect(deriveTranscript([], { run: ended })).toEqual([
 			{ kind: "empty", key: "empty", text: "This investigation kept no events." },
 		]);
 	});
 
 	it("still ends a failed run that kept no events with its error", () => {
-		const items = deriveTranscript([], T0, {
+		const items = deriveTranscript([], {
 			run: { status: "failed", live: false, error: "not logged in" },
 		});
 		expect(kinds(items)).toEqual(["end"]);
 	});
 
 	it("renders the agent's text as prose", () => {
-		const items = deriveTranscript([step(1, "The p99 rise starts at 14:02.")], T0, {
+		const items = deriveTranscript([step(1, "The p99 rise starts at 14:02.")], {
 			run: ended,
 		});
 		expect(items).toEqual([
@@ -150,7 +150,6 @@ describe("deriveTranscript", () => {
 				result(7, "d", null, false),
 				step(8, "The TTL changed."),
 			],
-			T0,
 			{ run: ended },
 		);
 		expect(kinds(items)).toEqual(["tools", "prose"]);
@@ -171,7 +170,6 @@ describe("deriveTranscript", () => {
 				result(2, "a", "file"),
 				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
 			],
-			T0,
 			{ run: ended },
 		);
 		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
@@ -189,7 +187,6 @@ describe("deriveTranscript", () => {
 				result(2, "a", "file"),
 				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
 			],
-			T0,
 			{ run: live },
 		);
 		expect(kinds(items)).toEqual(["tools", "prose", "tools"]);
@@ -212,7 +209,6 @@ describe("deriveTranscript", () => {
 				step(3, "Now the deploy.", [{ id: "b", name: "Read deploy.md" }]),
 				resumedEvent,
 			],
-			T0,
 			{ run: live },
 		);
 		const tools = items.filter((i) => i.kind === "tools") as Extract<
@@ -228,7 +224,6 @@ describe("deriveTranscript", () => {
 	it("adds Thought for Ns before a step that followed a gap of 20s or more", () => {
 		const items = deriveTranscript(
 			[step(0, "First."), step(10, "Soon after."), step(48, "After a pause.")],
-			T0,
 			{ run: ended },
 		);
 		expect(kinds(items)).toEqual(["prose", "prose", "thought", "prose"]);
@@ -246,7 +241,6 @@ describe("deriveTranscript", () => {
 					},
 				]),
 			],
-			T0,
 			{ run: ended },
 		);
 		expect(items[0]).toMatchObject({
@@ -263,7 +257,6 @@ describe("deriveTranscript", () => {
 				operator(20, "Check the deploy at 13:58 first."),
 				step(30, "Deploy 3b7e0d carries the TTL change."),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator");
@@ -274,7 +267,7 @@ describe("deriveTranscript", () => {
 	});
 
 	it("sets operator message states: started for initial message, resumed when resumed set, delivered then answered for queued messages (#673)", () => {
-		const chatItems = deriveTranscript([operator(0, "What failed?")], T0, {
+		const chatItems = deriveTranscript([operator(0, "What failed?")], {
 			run: ended,
 		});
 		const chatOps = chatItems.filter((i) => i.kind === "operator");
@@ -285,7 +278,7 @@ describe("deriveTranscript", () => {
 			...operator(0, "Continue investigation"),
 			resumed: [{ name: "repo", head: "3b7e0d" }],
 		} as CanonicalEvent;
-		const resumedItems = deriveTranscript([resumedEvent], T0, { run: ended });
+		const resumedItems = deriveTranscript([resumedEvent], { run: ended });
 		const resumedOps = resumedItems.filter((i) => i.kind === "operator");
 		expect(resumedOps).toHaveLength(1);
 		expect(resumedOps[0]).toMatchObject({ state: "resumed" });
@@ -296,7 +289,6 @@ describe("deriveTranscript", () => {
 				step(1, "First step"),
 				operator(2, "Now check logs", "queue", true),
 			],
-			T0,
 			{ run: ended },
 		);
 		const deliveredOps = deliveredItems.filter((i) => i.kind === "operator");
@@ -309,7 +301,6 @@ describe("deriveTranscript", () => {
 				operator(2, "Now check logs", "queue", true),
 				step(3, "Looking at logs"),
 			],
-			T0,
 			{ run: ended },
 		);
 		const answeredOps = answeredItems.filter((i) => i.kind === "operator");
@@ -324,7 +315,6 @@ describe("deriveTranscript", () => {
 				operator(5, "Stop reading logs.", "now"),
 				operator(9, "Too late.", "queue", false),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator");
@@ -339,7 +329,7 @@ describe("deriveTranscript", () => {
 			{ id: "p1", text: "Check the deploy.", mode: "queue" as const, at: at(9) },
 		];
 		const live = { status: "running", live: true };
-		const before = deriveTranscript([step(0, "Working.")], T0 + 10_000, {
+		const before = deriveTranscript([step(0, "Working.")], {
 			run: live,
 			pending,
 		});
@@ -348,30 +338,23 @@ describe("deriveTranscript", () => {
 		});
 		const after = deriveTranscript(
 			[step(0, "Working."), operator(12, "Check the deploy.")],
-			T0 + 13_000,
 			{ run: live, pending },
 		);
 		expect(after.filter((i) => i.kind === "operator")).toHaveLength(1);
 	});
 
-	it("counts a trailing Thinking line while live, stale past 90s", () => {
+	it("ends a live run with a Thinking line counting from the last event, not from now (#874)", () => {
 		const live = { status: "running", live: true };
-		const fresh = deriveTranscript([step(0, "Working.")], T0 + 38_000, {
-			run: live,
-		});
-		expect(fresh.at(-1)).toMatchObject({
+		const items = deriveTranscript([step(0, "Working.")], { run: live });
+		expect(items.at(-1)).toEqual({
 			kind: "thinking",
-			seconds: 38,
-			stale: false,
+			key: "thinking",
+			since: step(0, "Working.").ts,
 		});
-		const stale = deriveTranscript([step(0, "Working.")], T0 + 130_000, {
-			run: live,
-		});
-		expect(stale.at(-1)).toMatchObject({ kind: "thinking", stale: true });
 	});
 
 	it("ends a stopped run with who stopped it and how long it ran", () => {
-		const items = deriveTranscript([step(0, "Working.")], T0, {
+		const items = deriveTranscript([step(0, "Working.")], {
 			run: {
 				status: "cancelled",
 				live: false,
@@ -395,7 +378,7 @@ describe("deriveTranscript", () => {
 			...base(40),
 			message: "investigation cancelled",
 		} as CanonicalEvent;
-		const items = deriveTranscript([step(0, "Working."), cancelled], T0, {
+		const items = deriveTranscript([step(0, "Working."), cancelled], {
 			run: { status: "cancelled", live: false, completedAt: at(49) },
 		});
 		const ends = items.filter((i) => i.kind === "end");
@@ -405,7 +388,7 @@ describe("deriveTranscript", () => {
 	});
 
 	it("ends a failed run with its error and the transcript path", () => {
-		const items = deriveTranscript([step(0, "Working.")], T0, {
+		const items = deriveTranscript([step(0, "Working.")], {
 			run: { status: "failed", live: false, error: "not logged in", id: "r1" },
 		});
 		expect(items.at(-1)).toMatchObject({
@@ -417,7 +400,7 @@ describe("deriveTranscript", () => {
 	});
 
 	it("keeps the ask's place and no thinking line while it waits (#820)", () => {
-		const items = deriveTranscript([step(0, "Working."), ask(10)], T0 + 15_000, {
+		const items = deriveTranscript([step(0, "Working."), ask(10)], {
 			run: { status: "running", live: true },
 		});
 		expect(items.filter((i) => i.kind === "ask")).toEqual([
@@ -438,7 +421,7 @@ describe("deriveTranscript", () => {
 			step(602, "The query was denied.", [{ id: "toolu_2", name: "Terminal" }]),
 			result(603, "toolu_2", null),
 		];
-		const items = deriveTranscript(events, T0 + 700_000, { run: ended });
+		const items = deriveTranscript(events, { run: ended });
 		const calls = items.flatMap((i) => (i.kind === "tools" ? i.callIds : []));
 		expect(calls).toEqual(["toolu_1", "toolu_2"]);
 	});
@@ -451,7 +434,7 @@ describe("deriveTranscript", () => {
 			messageId: id,
 			text: "check the pool",
 		} as CanonicalEvent;
-		const waiting = deriveTranscript([step(0, "Working."), queued], T0 + 6000, {
+		const waiting = deriveTranscript([step(0, "Working."), queued], {
 			run: { status: "running", live: true },
 		});
 		expect(waiting.find((i) => i.kind === "operator")).toMatchObject({
@@ -464,7 +447,6 @@ describe("deriveTranscript", () => {
 				queued,
 				{ ...operator(9, "check the pool"), messageId: id } as CanonicalEvent,
 			],
-			T0 + 10_000,
 			{ run: { status: "running", live: true } },
 		);
 		expect(
@@ -479,7 +461,7 @@ describe("deriveTranscript", () => {
 			messageId: "0d4f6f0e-3c1e-4f7e-9a51-2b1f6d1e9c12",
 			text: "still there?",
 		} as CanonicalEvent;
-		const items = deriveTranscript([step(0, "Working."), queued], T0 + 6000, {
+		const items = deriveTranscript([step(0, "Working."), queued], {
 			run: ended,
 		});
 		expect(items.find((i) => i.kind === "operator")).toMatchObject({
@@ -493,7 +475,6 @@ describe("deriveTranscript", () => {
 				step(0, "", [{ id: "t1", name: "Task" }]),
 				step(1, "", [{ id: "t1", name: "Check the pool", args: { description: "Check the pool" } }]),
 			],
-			T0 + 2000,
 			{ run: ended },
 		);
 		expect(kinds(items)).toEqual(["line"]);
@@ -507,7 +488,7 @@ describe("deriveTranscript", () => {
 			value: "haiku",
 			accepted: true,
 		} as CanonicalEvent;
-		const items = deriveTranscript([config], T0, {
+		const items = deriveTranscript([config], {
 			run: ended,
 			modelName: (id) => (id === "haiku" ? "Haiku 5.5" : id),
 		});
@@ -659,7 +640,6 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 	it("shows the Ask's own error under it, after the original Stop where it happened", () => {
 		const items = deriveTranscript(
 			[step(0, "Working."), stop(28), operator(600, "What did you find?"), failure(610, "the agent crashed")],
-			T0,
 			{ run: stopped },
 		);
 		const texts = endTexts(items);
@@ -678,7 +658,6 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 	it("with the Ask's terminal event dropped, still says the last message ended in an error", () => {
 		const items = deriveTranscript(
 			[step(0, "Working."), stop(28), operator(600, "What did you find?")],
-			T0,
 			{ run: stopped },
 		);
 		const texts = endTexts(items);
@@ -694,7 +673,7 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 		["present", [failure(610, "the agent crashed")], "The agent stopped: the agent crashed"],
 		["dropped", [], "The agent stopped on your last message"],
 	] as const)("with the Stop's own event dropped and the Ask's error %s, the standing precedes the Ask and its end follows it", (_case, tail, last) => {
-		const items = deriveTranscript([step(0, "Working."), ask(600), ...tail], T0, { run: stopped });
+		const items = deriveTranscript([step(0, "Working."), ask(600), ...tail], { run: stopped });
 		const order = items.map((i) => (i.kind === "end" ? i.text : i.kind));
 		const standing = order.findIndex((t) => /^Stopped by you at /.test(t));
 		expect(standing).toBeGreaterThan(-1);
@@ -706,7 +685,6 @@ describe("an Ask on a stopped reportless investigation (#804 OBJ-028)", () => {
 	it("an answered Ask adds no end line", () => {
 		const items = deriveTranscript(
 			[step(0, "Working."), stop(28), operator(600, "What did you find?"), step(610, "The pool.")],
-			T0,
 			{ run: { ...stopped, lastTurnOutcome: "answered" } },
 		);
 		expect(endTexts(items)).toHaveLength(1);
@@ -724,7 +702,6 @@ describe("Send now carries the queued message (#673 walk 4)", () => {
 				operator(2, "Message B", "now", true),
 				step(3, "Answering both messages."),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator") as Extract<
@@ -754,7 +731,6 @@ describe("Send now carries the queued message (#673 walk 4)", () => {
 				step(3, "Intermediate prose."),
 				operator(4, "Message B", "now", true),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator") as Extract<
@@ -781,7 +757,6 @@ describe("Send now carries the queued message (#673 walk 4)", () => {
 				operator(0, "Initial brief", "queue", true),
 				operator(1, "Message B", "now", true),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator") as Extract<
@@ -810,7 +785,6 @@ describe("Send now carries the queued message (#673 walk 4)", () => {
 				operator(2, "Message A", "queue", false),
 				operator(3, "Message B", "now", true),
 			],
-			T0,
 			{ run: ended },
 		);
 		const ops = items.filter((i) => i.kind === "operator") as Extract<

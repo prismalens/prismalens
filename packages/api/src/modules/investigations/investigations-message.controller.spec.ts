@@ -36,6 +36,9 @@ const mockInvestigationsService = {
 const mockDispatchService = {
 	sendMessage: vi.fn(),
 	resumeInvestigation: vi.fn(),
+	planFollowUp: vi.fn(),
+	followUpLevel: vi.fn(),
+	afterRestart: vi.fn(),
 };
 
 function investigation(id: string, status: string) {
@@ -78,7 +81,7 @@ describe("InvestigationsController.message (#743)", () => {
 		controller = module.get(InvestigationsController);
 	});
 
-	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue" };
+	type Input = { id: string; text: string; mode: "queue" | "now"; kind?: "chat" | "continue"; harness?: string; model?: string };
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	function messageHandler(): (args: { input: Input }) => Promise<any> {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
@@ -153,7 +156,7 @@ describe("InvestigationsController.message (#743)", () => {
 			const result = await messageHandler()({ input: { id: "inv-1", text: "why the pool?", mode: "queue" } });
 
 			expect(result).toEqual({ state: "resumed" });
-			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue", "chat", []);
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenCalledWith("inv-1", "why the pool?", "queue", "chat", [], {});
 			expect(mockDispatchService.sendMessage).not.toHaveBeenCalled();
 		});
 
@@ -169,6 +172,7 @@ describe("InvestigationsController.message (#743)", () => {
 				"queue",
 				"continue",
 				[],
+				{},
 			);
 		});
 
@@ -183,14 +187,26 @@ describe("InvestigationsController.message (#743)", () => {
 			).rejects.toMatchObject({ code: "CONFLICT", message: "Only a stopped run can be continued." });
 		});
 
-		it("refuses a harness that cannot reopen a session with the registry's words", async () => {
+		it("takes a follow-up on a harness that cannot reopen a session, and passes the chips' agent on", async () => {
 			mockInvestigationsService.findById.mockResolvedValue(finished("deepagents"));
+			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
+
+			await messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue", harness: "codex", model: "gpt-x" } });
+
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "hi", "queue", "chat", [], {
+				harness: "codex",
+				model: "gpt-x",
+			});
+		});
+
+		it("refuses only a run that kept no workspace", async () => {
+			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), workspace: null });
 
 			await expect(
 				messageHandler()({ input: { id: "inv-1", text: "hi", mode: "queue" } }),
 			).rejects.toMatchObject({
 				code: "CONFLICT",
-				message: "deepagents can't reopen a finished session, so a new run starts from the report.",
+				message: "This run recorded no workspace, so there is nothing to continue from.",
 			});
 			expect(mockDispatchService.resumeInvestigation).not.toHaveBeenCalled();
 		});
@@ -201,7 +217,7 @@ describe("InvestigationsController.message (#743)", () => {
 			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
 
 			await messageHandler()({ input: { id: "inv-1", text: "and then?", mode: "queue" } });
-			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "and then?", "queue", "chat", []);
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "and then?", "queue", "chat", [], {});
 
 			mockDispatchService.resumeInvestigation.mockRejectedValue(
 				new FollowUpRefused("A chat has no report to continue to. Ask, or start a new run to investigate."),
@@ -215,11 +231,11 @@ describe("InvestigationsController.message (#743)", () => {
 			mockDispatchService.resumeInvestigation.mockResolvedValue(true);
 			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), status: "failed", error: "boom" });
 			await messageHandler()({ input: { id: "inv-1", text: "try again", mode: "queue" } });
-			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "try again", "queue", "continue", []);
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "try again", "queue", "continue", [], {});
 
 			mockInvestigationsService.findById.mockResolvedValue({ ...finished("opencode"), report: "{}" });
 			await messageHandler()({ input: { id: "inv-1", text: "why?", mode: "queue" } });
-			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "why?", "queue", "chat", []);
+			expect(mockDispatchService.resumeInvestigation).toHaveBeenLastCalledWith("inv-1", "why?", "queue", "chat", [], {});
 		});
 
 		it("refuses a second follow-up while the first holds the run", async () => {
@@ -296,6 +312,86 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 		mockInvestigationsService.findById.mockResolvedValue(live(null));
 		await expect(send({ id: "inv-1", text: "also the TTL", mode: "queue" })).resolves.toEqual({ state: "queued", messageId: expect.any(String) });
 		expect(mockDispatchService.sendMessage).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("InvestigationsController.handoff (#849)", () => {
+	let controller: InvestigationsController;
+
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		const module: TestingModule = await Test.createTestingModule({
+			controllers: [InvestigationsController],
+			providers: [
+				{ provide: InvestigationsService, useValue: mockInvestigationsService },
+				{ provide: DispatchService, useValue: mockDispatchService },
+				{ provide: TelemetryService, useValue: telemetryStub() },
+				{ provide: AttachmentsService, useValue: { forJob: vi.fn(async () => []) } },
+				{ provide: HarnessService, useValue: {} },
+			],
+		})
+			.overrideGuard(MutationThrottleGuard)
+			.useValue({ canActivate: () => true })
+			.compile();
+		controller = module.get(InvestigationsController);
+	});
+
+	function handoffHandler(): (a: { input: { id: string; harness?: string } }) => Promise<unknown> {
+		return (
+			controller.investigations() as unknown as Record<
+				string,
+				{ "~orpc": { handler: (a: { input: { id: string; harness?: string } }) => Promise<unknown> } }
+			>
+		).handoff["~orpc"].handler;
+	}
+
+	it("handoff-L11: load route reports preflight, access level and note", async () => {
+		const finished = {
+			...investigation("inv-1", "completed"),
+			harness: "opencode",
+			workspace: "{}",
+			endReason: null,
+		};
+		mockInvestigationsService.findById.mockResolvedValue(finished);
+		mockDispatchService.planFollowUp.mockResolvedValue({
+			route: "load",
+			harness: "opencode",
+			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
+		});
+		mockDispatchService.followUpLevel.mockResolvedValue("auto-edits");
+		mockDispatchService.afterRestart.mockResolvedValue(false);
+
+		const result = await handoffHandler()({ input: { id: "inv-1", harness: "opencode" } });
+
+		expect(result).toEqual({
+			route: "load",
+			harness: "opencode",
+			carried: "the agent's own session",
+			omitted: null,
+			accessLevel: "auto-edits",
+			preflight: { problem: "OpenCode is not signed in.", fix: "Sign in: opencode auth login." },
+			note: null,
+		});
+	});
+
+	it("handoff-L11: refuses a running run with CONFLICT", async () => {
+		mockInvestigationsService.findById.mockResolvedValue(investigation("inv-1", "running"));
+
+		await expect(handoffHandler()({ input: { id: "inv-1" } })).rejects.toMatchObject({
+			code: "CONFLICT",
+		});
+	});
+
+	it("handoff-L11: a completed run whose workspace is null rejects with exact message", async () => {
+		mockInvestigationsService.findById.mockResolvedValue({
+			...investigation("inv-1", "completed"),
+			workspace: null,
+		});
+
+		await expect(handoffHandler()({ input: { id: "inv-1" } })).rejects.toMatchObject({
+			code: "CONFLICT",
+			message: "This run recorded no workspace, so there is nothing to continue from.",
+		});
 	});
 });
 

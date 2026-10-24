@@ -22,6 +22,7 @@ import {
 	incidentByTitle,
 	LIVE,
 	type Made,
+	openWork,
 	QUIET,
 	sidewaysOverflow,
 	visit,
@@ -507,12 +508,9 @@ Given(
 );
 
 Then(
-	'the box reads "Say what to change, or just continue" and no note explains it',
+	'the box reads "Message, then the agent name" and no note explains it',
 	async ({ page }) => {
-		await expect(box(page)).toHaveAttribute(
-			"placeholder",
-			"Say what to change, or just continue",
-		);
+		await expect(box(page)).toHaveAttribute("placeholder", /^Message /);
 		// The placeholder names what the box does; explaining copy is gone (look ruling L43).
 		await expect(page.getByTestId("composer-note")).toHaveCount(0);
 	},
@@ -521,11 +519,21 @@ Then(
 Then(
 	"the run is working again and the agent's next message answers with what it had already found",
 	async ({ page }) => {
-		await expect(
-			page
-				.getByTestId("transcript-prose")
-				.filter({ hasText: "the index drop is still the only change" }),
-		).toBeVisible();
+		const said = page
+			.getByTestId("transcript-prose")
+			.filter({ hasText: "the index drop is still the only change" });
+		// If the run already reported, its work sits behind the fold.
+		await expect
+			.poll(async () => {
+				const fold = page.getByTestId("worked-toggle");
+				if (
+					(await fold.getAttribute("aria-expanded").catch(() => null)) ===
+					"false"
+				)
+					await fold.click();
+				return said.isVisible();
+			})
+			.toBe(true);
 		// The continued run is the run again, so it went live before its report.
 		const run = (await detail(page, inc(page).id)).investigations?.[0];
 		expect(["running", "completed"]).toContain(run?.status);
@@ -566,7 +574,11 @@ Given("INC-1's run finished with a report", async ({ page, release }) => {
 When(
 	"I send {string} from the box reading {string}",
 	async ({ page }, text: string, placeholder: string) => {
-		await expect(box(page)).toHaveAttribute("placeholder", placeholder);
+		// The placeholder names the run's agent: "Message <agent>".
+		await expect(box(page)).toHaveAttribute(
+			"placeholder",
+			new RegExp(`^${placeholder}`),
+		);
 		await box(page).fill(text);
 		await box(page).press("Enter");
 	},
@@ -616,13 +628,13 @@ Given(
 );
 
 Then(
-	/^(?:the box reads "(?:This run kept no agent session, so it can't continue\. Start a new run\.|This run can't continue\. Start a new run\.)" with "New run", and no field to type into)$/,
+	"the box offers to continue in a fresh deepagents session, saying what it carries",
 	async ({ page }) => {
-		await expect(page.getByTestId("composer-no-session")).toContainText(
-			"This run kept no agent session, so it can't continue. Start a new run.",
-		);
-		await expect(page.getByTestId("composer-new-run")).toHaveText("New run");
-		await expect(box(page)).toHaveCount(0);
+		const hint = page.getByTestId("composer-hint");
+		await expect(hint).toContainText("Continues in a fresh deepagents session");
+		await expect(hint).toContainText("deepagents gets the alert");
+		await expect(box(page)).toBeVisible();
+		await expect(page.getByTestId("composer-no-session")).toHaveCount(0);
 	},
 );
 
@@ -664,6 +676,7 @@ Then(
 		await expect(header).not.toContainText(model);
 		await expect(header).not.toContainText("Ran on");
 		await visit(page, `/incidents/${inc(page).id}/conversation`);
+		await openWork(page);
 		const took = page.getByTestId("transcript-line").filter({
 			hasText: `The agent took model ${model.toLowerCase()} before the first prompt`,
 		});
@@ -828,6 +841,7 @@ Then(
 			"the run with the log",
 		);
 		await visit(page, `/incidents/${inc(page).id}/conversation`);
+		await openWork(page);
 		// The agent saw the file as fenced data in its prompt, by name.
 		await expect(
 			page
@@ -900,7 +914,7 @@ When("I press Stop on the laptop", async ({ page }) => {
 });
 
 Then(
-	'the phone\'s status line reads "Stopped by you" and its box reads "Say what to change, or just continue"',
+	'the phone\'s status line reads "Stopped by you" and its box reads "Message, then the agent name"',
 	async ({ page }) => {
 		const phone = phoneOf(page);
 		await expect(phone.getByTestId("run-strip-detail")).toHaveText(
@@ -908,7 +922,7 @@ Then(
 		);
 		await expect(phone.getByTestId("composer-input")).toHaveAttribute(
 			"placeholder",
-			"Say what to change, or just continue",
+			/^Message /,
 		);
 		await phone.context().close();
 	},
@@ -982,9 +996,8 @@ When(
 		});
 		await expect(page.getByTestId("composer-file")).toContainText(file);
 		if (link === "Investigate again") {
-			await page.getByTestId("action-chip").click();
-			await page.getByTestId("action-recheck").click();
-			await page.getByTestId("composer-send").click();
+			await page.getByTestId("header-more").click();
+			await page.getByTestId("header-investigate-again").click();
 		} else {
 			await page
 				.getByTestId("run-strip")
@@ -1026,19 +1039,15 @@ Then("the report is unchanged", async ({ page }) => {
 });
 
 Then(
-	'the status line reads "Stopped by you" and the verb chip offers {string} and {string}',
-	async ({ page }, _first: string, second: string) => {
+	'the status line reads "Stopped by you" and the box continues it to a report, with no verb chip',
+	async ({ page }) => {
 		await expect(strip(page)).toHaveText(/^Stopped by you/);
-		const chip = page.getByTestId("action-chip");
-		await expect(chip).toHaveAttribute("data-action", "continue");
-		await chip.click();
-		const menu = page.getByTestId("action-menu");
-		await expect(menu).toContainText("Continue");
-		await expect(menu).toContainText(second);
-		await expect(menu).toContainText(
-			"Resumes the agent's session and takes the run on to a report.",
+		// No continue control (rulings 2, 3): typing and sending continues it.
+		await expect(page.getByTestId("action-chip")).toHaveCount(0);
+		await expect(box(page)).toHaveAttribute("placeholder", /^Message /);
+		await expect(page.getByTestId("composer-hint")).toContainText(
+			"own session and ends in a report on the overview.",
 		);
-		await page.getByTestId("action-follow-up").click();
 		await expect(page.getByTestId("composer-send")).toBeVisible();
 	},
 );
@@ -1280,6 +1289,7 @@ Given(
 Then(
 	"no card waits and the transcript says nobody was there",
 	async ({ page }) => {
+		await openWork(page);
 		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
 		await expect(page.getByTestId("transcript-ask")).toHaveCount(0);
 		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
@@ -1292,6 +1302,7 @@ Then(
 Then(
 	"no card waits and the conversation shows {string}",
 	async ({ page }, text: string) => {
+		await openWork(page);
 		await expect(page.getByTestId("dock-ask")).toHaveCount(0);
 		await expect(page.getByTestId("band-awaiting-approval")).toHaveCount(0);
 		const allowed = page.getByTestId("transcript-allowed");
@@ -1353,6 +1364,7 @@ Given(
 );
 
 Then("the conversation shows {string}", async ({ page }, text: string) => {
+	await openWork(page);
 	const kept = page.getByTestId("transcript-mode-kept");
 	if ((await kept.count()) > 0) {
 		await expect(kept).toBeVisible();
