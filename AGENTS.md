@@ -18,7 +18,7 @@ pnpm db:init && pnpm dev         # local API + UI
 ## Invariants
 These are easy for an agent to break and expensive to undo.
 
-- **Migrations are append-only.** 0.5.0 shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
+- **Migrations are append-only.** A release has shipped, so installed databases exist. Never delete, edit, rename or squash a migration under `packages/@prismalens/database/prisma/{sqlite,pg}/schema/`. A schema change is a new migration (`pnpm db:migrate`). The runner refuses an edited history by design. `CONTRIBUTING.md` → *Database migrations*.
 - **No non-free capability lands here**, not even disabled behind a flag. Paid capabilities load as separate modules through the capability-flag seam (#264); the flags and UI shells in this repo stay inert without one.
 - **One report shape.** What an agent returns and what the UI renders is `ModelReportSchema` in `packages/@prismalens/contracts/src/schemas/investigation.ts`. Change it there, not in a local copy.
 - **Tests ship with code.** New modules get tests at their public seams and a coverage threshold entry (see `packages/cli/vitest.config.ts`). Fix the implementation, not the test, unless the test is wrong.

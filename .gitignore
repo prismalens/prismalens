@@ -108,5 +108,4 @@ packages/desktop/release/
 .turbo-cache/
 
 # Per-machine agent instructions (maintainer workflow, local paths)
-CLAUDE.local.md
 AGENTS.local.md
