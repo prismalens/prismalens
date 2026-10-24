@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAnyHarnessOnPath,
 	checkAutoSelection,
+	checkEnvFallbacks,
 	checkGit,
 	checkHarnessesOnPath,
 	checkHarnessHandshake,
@@ -459,4 +460,76 @@ describe("doctor — checkGit (#673, T19, T19b, T19c)", () => {
 		);
 	});
 });
+
+describe("doctor — checkEnvFallbacks (#848 C13)", () => {
+	it("with only GITHUB_ENTERPRISE_TOKEN and GH_HOST set, names both and prints no value", () => {
+		const env = {
+			GH_HOST: "ghe.example.com",
+			GITHUB_ENTERPRISE_TOKEN: "s3cr3t-enterprise-token",
+		};
+
+		const checks = checkEnvFallbacks(env);
+		expect(checks).toHaveLength(2);
+
+		const [telemetry, git] = checks;
+		expect(telemetry.name).toBe("Environment fallbacks");
+		expect(telemetry.detail).toContain("telemetry, this shell only: none.");
+
+		expect(git.name).toBe("Environment fallbacks");
+		expect(git.detail).toContain("git, this shell only:");
+		expect(git.detail).toContain("GH_HOST set, with GH_ENTERPRISE_TOKEN not set and GITHUB_ENTERPRISE_TOKEN set");
+		expect(git.detail).not.toContain("s3cr3t");
+		expect(git.detail).not.toContain("ghe.example.com");
+	});
+
+	it("handles telemetry environment fallbacks by origin and token presence, and hides secrets", () => {
+		const env = {
+			PROMETHEUS_URL: "https://prom.example:9090/sub/path",
+			PROMETHEUS_TOKEN: "ptok-secret",
+			ALERTMANAGER_URL: "invalid-url",
+			LOKI_URL: "http://loki:3100",
+		};
+
+		const [telemetry] = checkEnvFallbacks(env);
+		expect(telemetry.detail).toContain("PROMETHEUS_URL https://prom.example:9090 (PROMETHEUS_TOKEN set)");
+		expect(telemetry.detail).toContain("ALERTMANAGER_URL is not a URL");
+		expect(telemetry.detail).toContain("LOKI_URL http://loki:3100 (LOKI_TOKEN not set)");
+		expect(telemetry.detail).toContain("Used when no connection is mapped, or inside a mapped connection of the same origin that stores no credential");
+		expect(telemetry.detail).not.toContain("ptok-secret");
+		expect(telemetry.detail).not.toContain("/sub/path");
+	});
+
+	it("handles git token combinations including un-hosted enterprise tokens and gitlab", () => {
+		// Without GH_HOST, enterprise tokens report no host takes it
+		const unhosted = checkEnvFallbacks({
+			GH_ENTERPRISE_TOKEN: "e-tok",
+		});
+		expect(unhosted[1].detail).toContain("GH_ENTERPRISE_TOKEN set, but GH_HOST is not, so no host takes it");
+
+		// GH_TOKEN, GITHUB_TOKEN
+		const github = checkEnvFallbacks({
+			GH_TOKEN: "t1",
+			GITHUB_TOKEN: "t2",
+		});
+		expect(github[1].detail).toContain("GH_TOKEN set, for github.com; GITHUB_TOKEN set, for github.com");
+
+		// GITLAB_TOKEN with and without GITLAB_HOST
+		const gitlabWithHost = checkEnvFallbacks({
+			GITLAB_TOKEN: "gl1",
+			GITLAB_HOST: "gl.corp",
+		});
+		expect(gitlabWithHost[1].detail).toContain("GITLAB_TOKEN set, for gitlab.com and GITLAB_HOST");
+
+		// GITLAB_HOST without GITLAB_TOKEN
+		const gitlabOnlyHost = checkEnvFallbacks({
+			GITLAB_HOST: "gl.corp",
+		});
+		expect(gitlabOnlyHost[1].detail).toContain("GITLAB_HOST set, with GITLAB_TOKEN not set");
+
+		// None set
+		const none = checkEnvFallbacks({});
+		expect(none[1].detail).toContain("git, this shell only: none.");
+	});
+});
+
 
