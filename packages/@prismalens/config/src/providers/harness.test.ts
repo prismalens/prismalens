@@ -87,19 +87,16 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 	});
 });
 
-describe("harness isolation (ADR 0004 §1, #637)", () => {
+describe("harness config (#817: the repo's own agent config loads)", () => {
 	const runEnv = {
 		configDir: "/c",
 		dataDir: "/d",
 		cwd: "/w",
 	};
 
-	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
+	it("opencode loads the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
-		expect(row.acpEnv(runEnv)).toMatchObject({
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
-		});
+		expect(Object.keys(row.acpEnv(runEnv))).toEqual(["OPENCODE_CONFIG_DIR"]);
 		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
 		expect(config.permission).toBeUndefined();
 		expect(config.share).toBe("disabled");
@@ -109,8 +106,6 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
 		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
 			OPENCODE_CONFIG_DIR: "/c",
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		});
 	});
 
@@ -154,21 +149,19 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		).toBeUndefined();
 	});
 
-	it("claude-code loads the user's settings, never the snapshot's, and has no plan-mode tools (#673 w7-4)", () => {
+	it("claude-code loads the user's, the repo's and the local settings, and has no plan-mode tools (#673 w7-4, #817)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
-					settingSources: ["user"],
+					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
 				},
 			},
 		});
 	});
 
-	it("gemini marks workspace untrusted to keep repo config inert (#634)", () => {
-		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
-		});
+	it("gemini sets no trust env; folder trust stays the user's own setting (#817)", () => {
+		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toEqual({});
 	});
 });
 

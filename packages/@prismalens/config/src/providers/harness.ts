@@ -278,12 +278,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		binary: "opencode",
 		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
 		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
-		// The boundary is the untrusted repo (ADR 0004), and every run works in a throwaway clone. #791
+		// The repo's own opencode config loads too and is its owner's responsibility (#817). #791
+		// OPENCODE_CONFIG_DIR holds this run's own opencode.json (configFiles below).
 		acpEnv: ({ configDir }) => ({
 			OPENCODE_CONFIG_DIR: configDir,
-			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		}),
 		configFiles: () => ({
 			"opencode.json": JSON.stringify(
@@ -365,13 +363,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 		}),
-		// The user's own settings (allow/deny rules, sandbox, availableModels), never the
-		// snapshot's: `project` and `local` would read the repo's CLAUDE.md (ADR 0004 §1; #673 w21).
+		// The user's settings plus the repo's own: nothing of the user's setup is overridden (#817).
 		// Without the plan-mode tools the agent cannot leave the run's mode at all (#673 w7-4).
 		sessionMeta: () => ({
 			claudeCode: {
 				options: {
-					settingSources: ["user"],
+					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
 				},
 			},
@@ -510,11 +507,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		// Untrusted workspace gates .gemini/settings.json, commands, extensions,
-		// MCP servers, and GEMINI.md while keeping ACP mode functional (#634).
-		acpEnv: () => ({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
-		}),
+		// Trust is the user's own folderTrust setting; this row forces neither way (#817).
+		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
