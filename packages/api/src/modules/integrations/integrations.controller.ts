@@ -39,6 +39,13 @@ export class IntegrationsController {
 		@Optional() private readonly telemetrySnapshot?: TelemetrySnapshotService,
 	) {}
 
+	@Implement(sourcesContract.gitHosts)
+	sourcesGitHosts() {
+		return implement(sourcesContract.gitHosts).handler(() =>
+			this.gitCredentials.hosts(),
+		);
+	}
+
 	@Implement(sourcesContract.preRun)
 	sourcesPreRun() {
 		return implement(sourcesContract.preRun).handler(({ input }) => {

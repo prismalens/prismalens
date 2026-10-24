@@ -8,6 +8,7 @@
  */
 import { tmpdir } from "node:os";
 import { Injectable, Logger } from "@nestjs/common";
+import type { GitHostView } from "@prismalens/contracts/schemas";
 import { isLegacyTemplateId } from "@prismalens/integrations";
 import {
 	type EnvGitToken,
@@ -16,6 +17,7 @@ import {
 	type GitCredentialDisplay,
 	helperName,
 	isSshUrl,
+	normalizeGitHost,
 	urlHost,
 } from "../../core/harness/git-credential.js";
 import { gitEnv } from "../../core/harness/git-env.js";
@@ -208,6 +210,100 @@ export class GitCredentialService {
 			);
 			return { result: await fn(fallback), credential: fallback.display };
 		}
+	}
+
+	/** Every git host a token, a repository or an env token names, with what each step holds (#848). */
+	async hosts(env: NodeJS.ProcessEnv = process.env): Promise<GitHostView[]> {
+		const [tokens, rows] = await Promise.all([
+			this.tokens(),
+			this.prisma.repository.findMany({
+				where: { sourceKind: "url" },
+				select: { id: true, url: true, metadata: true },
+				orderBy: { createdAt: "asc" },
+			}),
+		]);
+		const repos: {
+			host: string;
+			repositoryId: string;
+			url: string;
+			pick: string | null;
+		}[] = [];
+		for (const row of rows) {
+			const effective = await this.effectiveUrl(row.url);
+			const host = urlHost(effective);
+			if (host && /^https:\/\//i.test(effective))
+				repos.push({
+					host,
+					repositoryId: row.id,
+					url: row.url,
+					pick: pickOf(row.metadata),
+				});
+		}
+		const envHosts = [
+			"github.com",
+			"gitlab.com",
+			...[env.GH_HOST, env.GITLAB_HOST].map((h) =>
+				h ? normalizeGitHost(h) : null,
+			),
+		].filter((h): h is string => !!h && !!envTokenFor(h, env));
+		const hosts = [
+			...new Set([
+				...tokens.map((t) => t.host),
+				...repos.map((r) => r.host),
+				...envHosts,
+			]),
+		].sort();
+		const now = new Date();
+		return Promise.all(
+			hosts.map(async (host): Promise<GitHostView> => {
+				const stored = hostTokens(tokens, host);
+				const ids = new Set(stored.map((t) => t.connectionId));
+				const onHost = repos.filter((r) => r.host === host);
+				const ref = ({ repositoryId, url }: (typeof repos)[number]) => ({
+					repositoryId,
+					url,
+				});
+				const unpinnedRepos = onHost
+					.filter((r) => !r.pick || !ids.has(r.pick))
+					.map(ref);
+				const envToken = envTokenFor(host, env);
+				const helper = await this.urlConfig(
+					"credential.helper",
+					`https://${host}/`,
+				);
+				const order: GitHostView["order"] = [];
+				if (onHost.some((r) => r.pick && ids.has(r.pick))) order.push("pin");
+				if (stored.length) order.push("stored");
+				if (envToken) order.push("env");
+				if (helper) order.push("machine");
+				return {
+					host,
+					order,
+					stored: stored.map((t) => ({
+						connectionId: t.connectionId,
+						label: t.label,
+						fingerprint: t.fingerprint,
+						status:
+							t.status === "ACTIVE" && expired(t, now)
+								? "TOKEN_EXPIRED"
+								: t.status,
+						testedAt: t.testedAt?.toISOString() ?? null,
+						pinnedRepos: onHost
+							.filter((r) => r.pick === t.connectionId)
+							.map(ref),
+					})),
+					env: envToken
+						? {
+								variable: envToken.variable,
+								fingerprint: this.fingerprint(host, envToken.token),
+							}
+						: null,
+					machine: helper ? { helper: helperName(helper) ?? helper } : null,
+					ambiguous: stored.length > 1 && unpinnedRepos.length > 0,
+					unpinnedRepos,
+				};
+			}),
+		);
 	}
 
 	/** Saved tokens whose host matches, for the picker. */

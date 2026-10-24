@@ -9,6 +9,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
 	ConnectSourceResponseSchema,
+	GitHostViewSchema,
 	ProbeReportSchema,
 	RunbooksToggleSchema,
 	SourceDraftSchema,
@@ -67,6 +68,17 @@ export const sourcesContract = {
 		})
 		.input(RunbooksToggleSchema)
 		.output(RunbooksToggleSchema),
+
+	gitHosts: oc
+		.route({
+			method: "GET",
+			path: "/sources/git-hosts",
+			summary:
+				"Each git host's credentials, in the order a repository tries them",
+			tags: ["sources"],
+		})
+		.input(z.object({}))
+		.output(z.array(GitHostViewSchema)),
 
 	preRun: oc
 		.route({

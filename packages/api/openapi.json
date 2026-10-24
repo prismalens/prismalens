@@ -34530,6 +34530,174 @@
         }
       }
     },
+    "/sources/git-hosts": {
+      "get": {
+        "operationId": "sources.gitHosts",
+        "summary": "Each git host's credentials, in the order a repository tries them",
+        "tags": [
+          "sources"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "host": {
+                        "type": "string"
+                      },
+                      "order": {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "pin",
+                            "stored",
+                            "env",
+                            "machine"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "stored": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "connectionId": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "testedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pinnedRepos": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "repositoryId": {
+                                    "type": "string"
+                                  },
+                                  "url": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "repositoryId",
+                                  "url"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "connectionId",
+                            "label",
+                            "fingerprint",
+                            "status",
+                            "testedAt",
+                            "pinnedRepos"
+                          ]
+                        }
+                      },
+                      "env": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "variable": {
+                                "type": "string"
+                              },
+                              "fingerprint": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "variable",
+                              "fingerprint"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "machine": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "helper": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "helper"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ambiguous": {
+                        "type": "boolean"
+                      },
+                      "unpinnedRepos": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "repositoryId": {
+                              "type": "string"
+                            },
+                            "url": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "repositoryId",
+                            "url"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "host",
+                      "order",
+                      "stored",
+                      "env",
+                      "machine",
+                      "ambiguous",
+                      "unpinnedRepos"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/sources/pre-run": {
       "get": {
         "operationId": "sources.preRun",

@@ -533,6 +533,35 @@ export const ConnectSourceResponseSchema = z.object({
 	report: ProbeReportSchema,
 });
 
+const GitHostRepoSchema = z.object({
+	repositoryId: z.string(),
+	url: z.string(),
+});
+
+/** `GET /sources/git-hosts`: one git host's credentials, in the order a repository tries them (#848, ADR 0007 §6). */
+export const GitHostViewSchema = z.object({
+	host: z.string(),
+	/** The steps that apply on this host, in the order they are tried. */
+	order: z.array(z.enum(["pin", "stored", "env", "machine"])),
+	stored: z.array(
+		z.object({
+			connectionId: z.string(),
+			label: z.string(),
+			fingerprint: z.string(),
+			status: z.string(),
+			testedAt: z.string().nullable(),
+			pinnedRepos: z.array(GitHostRepoSchema),
+		}),
+	),
+	env: z.object({ variable: z.string(), fingerprint: z.string() }).nullable(),
+	machine: z.object({ helper: z.string() }).nullable(),
+	/** Two or more stored tokens and at least one repository that pins none. */
+	ambiguous: z.boolean(),
+	/** The repositories on this host that pin no token; the "Pick a token" remedy pins them. */
+	unpinnedRepos: z.array(GitHostRepoSchema),
+});
+export type GitHostView = z.infer<typeof GitHostViewSchema>;
+
 export const SourcesPreRunInputSchema = z.object({
 	serviceId: z.string(),
 	/** The deployment to preview; the untagged and other-tag rules apply without one. */
