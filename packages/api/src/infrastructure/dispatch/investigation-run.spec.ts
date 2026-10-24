@@ -152,7 +152,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					defaultBranch: "main",
 				},
 				join(tmp, "runs", "inv-1", "repo"),
-				undefined,
+				expect.any(AbortSignal),
 			);
 			expect(ws.layout).toBe("single");
 			expect(ws.cwd).toBe(join("/app-data/repos/github.com/acme/api-gateway", "services/api"));
@@ -221,7 +221,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			expect(snapshot).toHaveBeenCalledWith(
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
 				join(tmp, "runs", "inv-1", "repo"),
-				undefined,
+				expect.any(AbortSignal),
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -540,7 +540,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				defaultBranch: null,
 			},
 			expect.any(String),
-			undefined,
+			expect.any(AbortSignal),
 		);
 		expect(ws.note).toContain("folder");
 	});
