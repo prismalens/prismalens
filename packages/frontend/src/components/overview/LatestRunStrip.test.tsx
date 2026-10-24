@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { LatestRunStrip } from "./LatestRunStrip";
 import type { Overview } from "./use-overview";
+import { WhyCard } from "./WhyCard";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: React.ReactNode }) => children,
@@ -52,5 +53,45 @@ describe("LatestRunStrip (#673 w9-2)", () => {
 		);
 		expect(html).toContain("Checking booklogr-api with docker inspect");
 		expect(html).not.toContain("`");
+	});
+});
+
+describe("WhyCard preRun coverage (#848 case 14)", () => {
+	it("renders why-coverage when preRun is non-null, and omits it when null", () => {
+		const withPreRun = {
+			...overview("test"),
+			report: null,
+			latest,
+			latestRun: {
+				...overview("test").latestRun,
+				investigation: { preRun: { sources: [], checkoutsSkipped: [] } },
+			},
+		} as unknown as Overview;
+
+		const htmlWith = renderToStaticMarkup(
+			createElement(WhyCard, {
+				o: withPreRun,
+				onInvestigate: vi.fn(),
+			}),
+		);
+		expect(htmlWith).toContain('data-testid="why-coverage"');
+
+		const withoutPreRun = {
+			...overview("test"),
+			report: null,
+			latest,
+			latestRun: {
+				...overview("test").latestRun,
+				investigation: null,
+			},
+		} as unknown as Overview;
+
+		const htmlWithout = renderToStaticMarkup(
+			createElement(WhyCard, {
+				o: withoutPreRun,
+				onInvestigate: vi.fn(),
+			}),
+		);
+		expect(htmlWithout).not.toContain('data-testid="why-coverage"');
 	});
 });
