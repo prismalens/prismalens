@@ -469,4 +469,116 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			]);
 		});
 	});
+
+	describe("C12 git host token test: unpinned no-access & untested tokens (#848)", () => {
+		it("test stays ACTIVE on an unpinned no-access", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-git-unpinned-test",
+				label: "Git Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// Two repos: repo1 unpinned fails with no-access, repo2 unpinned succeeds
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{ url: "https://github.com/org/repo1.git", metadata: null },
+				{ url: "https://github.com/org/repo2.git", metadata: null },
+			]);
+
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			const spawnGitMock = vi.mocked(gitSpawnMod.spawnGit);
+
+			spawnGitMock.mockImplementation(async (args: any) => {
+				const url = args[args.length - 1];
+				if (url.includes("repo1")) {
+					return {
+						stdout: "",
+						stderr: "remote: Repository not found.\nfatal: Authentication failed for 'https://github.com/org/repo1.git'",
+					};
+				}
+				return { stdout: "ok https://github.com/org/repo2.git", stderr: "" };
+			});
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-git-unpinned-test");
+				expect(result.success).toBe(true);
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-git-unpinned-test" },
+					data: expect.objectContaining({
+						status: "ACTIVE",
+						testedAt: expect.any(Date),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+
+		it("a token saved untested keeps testedAt null until a test passes", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-untested",
+				label: "Untested Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// No repos on host
+			mockPrisma.repository.findMany.mockResolvedValue([]);
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-untested");
+				expect(result.success).toBe(false);
+				expect((result as any).untested).toBe(true);
+
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-untested" },
+					data: expect.not.objectContaining({
+						testedAt: expect.anything(),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+	});
 });
