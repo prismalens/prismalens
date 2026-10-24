@@ -102,7 +102,7 @@ export function agentNote(h: HarnessStatus): string | null {
 		case "opencode":
 			return "Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.";
 		case "gemini":
-			return "Gemini CLI runs the copy untrusted, so every level runs as Ask always here.";
+			return "Gemini CLI's own folder trust and settings apply, as in your terminal.";
 		default:
 			return null;
 	}

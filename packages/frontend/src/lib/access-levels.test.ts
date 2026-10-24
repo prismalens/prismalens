@@ -134,12 +134,12 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 					level: null,
 					file: "~/.gemini/settings.json",
 					value: "auto_edit",
-					reason: "Gemini CLI runs the copy untrusted here",
+					reason: "Gemini CLI does not offer it here",
 				},
 			},
 		});
 		expect(permissionLine(h, undefined)).toBe(
-			`Ask always, PrismaLens's pick. Gemini CLI runs the copy untrusted here, so "auto_edit" cannot apply.`,
+			`Ask always, PrismaLens's pick. Gemini CLI does not offer it here, so "auto_edit" cannot apply.`,
 		);
 	});
 
@@ -211,7 +211,7 @@ describe("agentNote variants (the four agent notes)", () => {
 
 	it("Gemini CLI agent note", () => {
 		expect(agentNote(mockHarness("gemini"))).toBe(
-			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
+			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		);
 	});
 

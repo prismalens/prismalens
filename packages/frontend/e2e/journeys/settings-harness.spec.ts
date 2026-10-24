@@ -1159,7 +1159,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				sandbox: null,
 			},
 		};
-		const GEMINI_UNTRUSTED: HarnessFixture = {
+		const GEMINI_AUTO_EDIT: HarnessFixture = {
 			id: "gemini",
 			label: "Gemini CLI",
 			binary: "gemini",
@@ -1171,10 +1171,9 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			loginHint: "`gemini login`",
 			localDefault: {
 				permission: {
-					level: null,
+					level: "auto-edits",
 					file: "~/.gemini/settings.json",
 					value: "auto_edit",
-					reason: "Gemini CLI runs the copy untrusted here",
 				},
 			},
 			models: NO_MODELS,
@@ -1190,7 +1189,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 						OPENCODE_INSTALLED,
 						CLAUDE_INSTALLED,
 						CODEX_UNCHECKED,
-						GEMINI_UNTRUSTED,
+						GEMINI_AUTO_EDIT,
 						DEEPAGENTS_MISSING,
 					],
 					selection: {
@@ -1230,14 +1229,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			"This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask.",
 		);
 
-		// 3. Gemini with untrusted reason
+		// 3. Gemini: its own auto_edit maps to Auto-accept edits (#907)
 		currentHarness = "gemini";
 		await page.reload();
 		await expect(page.getByTestId("harness-access")).toContainText(
-			`Ask always, PrismaLens's pick. Gemini CLI runs the copy untrusted here, so "auto_edit" cannot apply.`,
+			'Auto-accept edits, from ~/.gemini/settings.json ("auto_edit").',
 		);
 		await expect(page.getByTestId("harness-agent-note")).toContainText(
-			"Gemini CLI runs the copy untrusted, so every level runs as Ask always here.",
+			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		);
 
 		// 4. deepagents

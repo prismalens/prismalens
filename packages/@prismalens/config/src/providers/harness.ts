@@ -260,12 +260,9 @@ function opencodePermission(
 	};
 }
 
-function geminiDefault(line: HarnessAccess["line"]): HarnessAccess {
-	return { mode: "default", mechanism: "acp-mode", line };
+function geminiMode(mode: string, line: HarnessAccess["line"]): HarnessAccess {
+	return { mode, mechanism: "acp-mode", line };
 }
-
-const geminiUntrusted: HarnessAccess["line"] = (c) =>
-	`Gemini CLI runs the copy untrusted, so this level runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`;
 
 function noMode(label: string): HarnessAccess {
 	return {
@@ -521,15 +518,26 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
-		// gemini-cli config.ts setApprovalMode: an untrusted folder takes `default` and `plan` alone,
-		// so the three upper levels run `default` (#673 w21).
+		// Mode ids from gemini-cli 0.64.0 buildAvailableModes: default, autoEdit, yolo (and plan).
+		// Folder trust is the user's (#817); Gemini has no reviewer, so Auto runs `default` (#907).
 		access: {
-			supervised: geminiDefault(
+			supervised: geminiMode(
+				"default",
 				(c) => `Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
 			),
-			"auto-edits": geminiDefault(geminiUntrusted),
-			auto: geminiDefault(geminiUntrusted),
-			"full-access": geminiDefault(geminiUntrusted),
+			"auto-edits": geminiMode(
+				"autoEdit",
+				(c) => `Gemini CLI runs in ${modeNamed(c, "autoEdit", "Auto Edit")}.`,
+			),
+			auto: geminiMode(
+				"default",
+				(c) =>
+					`Gemini CLI has no reviewer of its own; it runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`,
+			),
+			"full-access": geminiMode(
+				"yolo",
+				(c) => `Gemini CLI runs in ${modeNamed(c, "yolo", "YOLO")}.`,
+			),
 		},
 		modeMechanism: "acp",
 		modelVia: "unsupported",

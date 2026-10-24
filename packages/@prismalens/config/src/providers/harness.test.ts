@@ -299,9 +299,13 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
 		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
-		for (const level of ACCESS_LEVELS) {
-			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
-		}
+		// gemini-cli 0.64.0's own mode ids; Auto has no reviewer to hand to (#907).
+		expect(Object.fromEntries(ACCESS_LEVELS.map((l) => [l, HARNESS_REGISTRY.gemini.access[l].mode]))).toEqual({
+			supervised: "default",
+			"auto-edits": "autoEdit",
+			auto: "default",
+			"full-access": "yolo",
+		});
 	});
 
 	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
