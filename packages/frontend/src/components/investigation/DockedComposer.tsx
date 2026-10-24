@@ -199,7 +199,16 @@ export function useRecheck():
 	const live = !!record.run.state && isRunStateLive(record.run.state);
 	const harness = choice.harnesses.find((h) => h.id === inv?.harness);
 	const report = inv?.report;
-	if (!inv || !report || live || inv.kind === "chat") return null;
+	// startOrGet hands back the live run and drops the recheck text, so offer none while any run is live.
+	if (
+		!inv ||
+		!report ||
+		live ||
+		record.liveRun ||
+		choice.isLoading ||
+		inv.kind === "chat"
+	)
+		return null;
 	const level = runFollowUpLevel(
 		inv,
 		defaultAccessOf(harness, choice.axes).level.level,

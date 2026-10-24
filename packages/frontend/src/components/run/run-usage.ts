@@ -15,6 +15,9 @@ export interface UsageView {
 
 const n = (x: number) => x.toLocaleString("en-US");
 
+const money = (amount: number) =>
+	amount > 0 && amount < 0.01 ? "<0.01" : amount.toFixed(2);
+
 /**
  * What the agent last reported in `usage_update`, worded for the model chip's
  * hint and Summary. It names no model (ruling 13), and a reading larger than
@@ -51,7 +54,7 @@ export function usageView(
 		row: { text: `${n(usage.used)} tokens`, sub },
 		cost: usage.cost
 			? {
-					text: `${usage.cost.amount.toFixed(2)} ${usage.cost.currency}`,
+					text: `${money(usage.cost.amount)} ${usage.cost.currency}`,
 					sub: "As reported with the usage. PrismaLens does not price runs.",
 				}
 			: null,
