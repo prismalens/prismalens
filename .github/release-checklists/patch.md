@@ -8,6 +8,7 @@ Patch release {{VERSION}}: the per-release checklist. The walk is scoped to what
   - `pl doctor`, and a private-repo clone through the real credential helper;
   - the desktop window, tray and notification;
   - Ctrl+C in a real terminal on Windows and macOS;
+  - `pl upgrade` through npm on Windows (the scripted check is N/A there, #921);
   - WSL2, Tailscale and the phone, when their files changed.
 - [ ] **`cross-os-smoke` in registry mode** (`.github/workflows/cross-os-smoke.yml`) on the released {{VERSION}} artifact, which proves the published package installs and runs on Linux, macOS and Windows. Link the green 3-OS run here.
 - [ ] **The release run's `Install from the real …` jobs green** (Homebrew tap, Scoop bucket), and a real `irm | iex` install of {{VERSION}} on Windows.

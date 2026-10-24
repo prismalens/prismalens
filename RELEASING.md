@@ -40,7 +40,7 @@ flowchart TD
 | `Packed intake` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
 | `Packed service` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
 | `Packed upgrade smoke` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |
-| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset, Host allowlist and a `pl upgrade` through npm; on Linux also the trial upgrade and its rollback |
+| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset and Host allowlist; `pl upgrade` through npm on Linux and macOS; on Linux also the trial upgrade and its rollback |
 | `Harness admission` for opencode, claude-code and codex | each agent's real binary and adapter against the scripted model |
 | `E2E` | the browser suite |
 
@@ -54,6 +54,7 @@ What stays manual, because a runner cannot do it:
 - `pl doctor`, and a private-repo clone through the real credential helper;
 - the desktop window, tray and notification;
 - Ctrl+C in a real terminal on Windows and macOS (the scripted checks end the process by signal or by kill);
+- `pl upgrade` through npm on Windows, until the failure on the CI runner is fixed (#921);
 - WSL2, Tailscale and the phone, when their files changed;
 - a real `irm | iex` install after publish.
 
