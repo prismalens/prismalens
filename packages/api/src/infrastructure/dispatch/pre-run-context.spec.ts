@@ -79,4 +79,44 @@ describe("the run's pre-run snapshot (#848)", () => {
 		expect(snapshotWindow([alert("2026-10-20T00:00:00Z")], NOW).start).toEqual(new Date("2026-10-24T04:00:00Z"));
 		expect(snapshotWindow([alert(null)], NOW).start).toEqual(new Date("2026-10-24T09:00:00Z"));
 	});
+
+	it("200 log lines of 1,000 three-byte characters stay under 262,144 bytes, with truncated recorded", () => {
+		const euro = "\u20AC";
+		const line = euro.repeat(1000);
+		const ctx = writePreRunContext(runDir, {
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "loki",
+					label: "loki-prod",
+					from: "set",
+					status: "found",
+					part: {
+						summary: "200 lines",
+						data: {
+							result: [
+								{
+									stream: { service: "checkout" },
+									values: Array.from({ length: 200 }, (_, i) => [String(i), line]),
+								},
+							],
+						},
+						count: 200,
+					},
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+		const file = join(runDir, CONTEXT_DIR, "telemetry-loki-1.json");
+		const content = readFileSync(file);
+		expect(content.byteLength).toBeLessThanOrEqual(262_144);
+		expect(ctx.sources[0]?.truncated).toEqual({
+			dropped: expect.any(Number),
+			reason: "the 256 KiB snapshot limit",
+		});
+		expect(ctx.sources[0]?.truncated?.dropped).toBeGreaterThan(0);
+	});
 });
