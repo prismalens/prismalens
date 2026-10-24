@@ -521,10 +521,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--acp"],
-		// trusted so PrismaLens's MCP servers load alongside the user's own (#848)
-		acpEnv: () => ({
-			GEMINI_CLI_TRUST_WORKSPACE: "true",
-		}),
+		// No forced folder trust: the user's own trust settings decide what loads (#848).
+		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",

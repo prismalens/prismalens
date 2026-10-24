@@ -176,10 +176,8 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		});
 	});
 
-	it("gemini trusts the throwaway copy so MCP servers load, and starts with --acp alone (#848)", () => {
-		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
-			GEMINI_CLI_TRUST_WORKSPACE: "true",
-		});
+	it("gemini forces no folder trust, and starts with --acp alone (#848)", () => {
+		expect(Object.keys(HARNESS_REGISTRY.gemini.acpEnv(runEnv))).toEqual([]);
 		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toEqual(["--acp"]);
 	});
 });
