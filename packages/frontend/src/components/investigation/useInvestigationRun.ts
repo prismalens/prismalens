@@ -61,11 +61,15 @@ export function mergeRunEvents(
 }
 
 /** `next`, keeping each part of the previous value it deep-equals, so unchanged steps keep identity (#874). */
-function useShared<T>(next: T): T {
-	const prev = useRef(next);
-	const shared = replaceEqualDeep(prev.current, next);
+export function useShared<T>(next: T): T {
+	// Written after commit, never in render: a discarded render must not leave its input behind.
+	const last = useRef({ next, shared: next });
+	const shared =
+		last.current.next === next
+			? last.current.shared
+			: replaceEqualDeep(last.current.shared, next);
 	useEffect(() => {
-		prev.current = shared;
+		last.current = { next, shared };
 	});
 	return shared;
 }
@@ -144,6 +148,22 @@ export function useInvestigationRun(investigationId: string | null) {
 		refetchInterval: streamFailed ? 3000 : false,
 	});
 
+	const wasActive = useRef(isActive);
+	const endCatchUpPending = useRef(false);
+	useEffect(() => {
+		// The run just ended, possibly with its stream down: read what was recorded after the last catch-up (#874).
+		if (wasActive.current && !isActive) {
+			endCatchUpPending.current = historyEvents === undefined;
+			if (historyEvents !== undefined) catchUp().catch(() => {});
+		}
+		wasActive.current = isActive;
+	}, [isActive, historyEvents, catchUp]);
+	useEffect(() => {
+		if (isActive || !endCatchUpPending.current || historyEvents === undefined)
+			return;
+		endCatchUpPending.current = false;
+		catchUp().catch(() => {});
+	}, [isActive, historyEvents, catchUp]);
 	useEffect(() => {
 		// The stream's first events: what was recorded between the history read and its replay.
 		if (stream.status === "streaming") catchUp().catch(() => {});

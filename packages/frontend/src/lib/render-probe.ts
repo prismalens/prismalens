@@ -51,17 +51,12 @@ export function renderReason(
 	return changed.length ? changed.join(",") : "parent or state";
 }
 
-/**
- * Dev only: records each commit of the calling component in
- * `window.__renderProbe`, with why it rendered (#874). A no-op in builds.
- */
-export function useRenderProbe(
+function useRenderProbeDev(
 	name: string,
 	watched: Record<string, unknown> = {},
 ): void {
 	const prev = useRef<Record<string, unknown> | null>(null);
 	useEffect(() => {
-		if (!import.meta.env.DEV) return;
 		probe().log.push({
 			name,
 			reason: renderReason(prev.current, watched),
@@ -70,3 +65,17 @@ export function useRenderProbe(
 		prev.current = watched;
 	});
 }
+
+function useRenderProbeOff(
+	_name: string,
+	_watched?: Record<string, unknown>,
+): void {}
+
+/**
+ * Dev only: records each commit of the calling component in
+ * `window.__renderProbe`, with why it rendered (#874). Chosen once at module
+ * load, so a build runs no hook at all.
+ */
+export const useRenderProbe = import.meta.env.DEV
+	? useRenderProbeDev
+	: useRenderProbeOff;
