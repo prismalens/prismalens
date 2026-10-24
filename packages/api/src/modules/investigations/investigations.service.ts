@@ -21,8 +21,9 @@ import {
 	LIVE_WORKFLOW_STATUSES,
 } from "@prismalens/contracts";
 import {
+	type PreRunDetail,
+	PreRunDetailSchema,
 	PreRunSnapshotSchema,
-	type PreRunSummary,
 } from "@prismalens/contracts/schemas";
 import {
 	type Investigation,
@@ -45,16 +46,27 @@ import {
 
 export type { Investigation };
 
-/** The run's stored pre-run snapshot without the files' text or the excerpts; null on a run from before #848. */
-export function preRunSummaryOf(
+/**
+ * The run's stored pre-run context without the files' text or the excerpts: a
+ * snapshot reads as `ready`, a state marker as itself; null on a run from before #848.
+ */
+export function preRunDetailOf(
 	raw: string | null | undefined,
-): PreRunSummary | null {
+): PreRunDetail | null {
 	if (!raw) return null;
 	try {
-		const parsed = PreRunSnapshotSchema.safeParse(JSON.parse(raw));
+		const json: unknown = JSON.parse(raw);
+		if (typeof json === "object" && json !== null && "state" in json) {
+			const marker = PreRunDetailSchema.safeParse(json);
+			return marker.success && marker.data.state !== "ready"
+				? marker.data
+				: null;
+		}
+		const parsed = PreRunSnapshotSchema.safeParse(json);
 		if (!parsed.success) return null;
 		const snap = parsed.data;
 		return {
+			state: "ready",
 			...snap,
 			sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
 			files: snap.files.map(({ name, about }) => ({ name, about })),

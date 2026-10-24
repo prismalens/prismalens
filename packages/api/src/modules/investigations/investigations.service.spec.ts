@@ -8,7 +8,7 @@ import type { SettingsService } from "../../core/settings/settings.service.js";
 import type { OverlayService } from "../overlay/overlay.service.js";
 import type { TimelineService } from "../timeline/timeline.service.js";
 import type { InternalInvestigationResultDto } from "./dto/index.js";
-import { InvestigationsService, preRunSummaryOf } from "./investigations.service.js";
+import { InvestigationsService, preRunDetailOf } from "./investigations.service.js";
 
 function serviceWith(kind = "investigation", stopRequestedAt: Date | null = null) {
 	// The guarded write honours the WHERE the way SQLite would (#673 w59).
@@ -160,13 +160,13 @@ describe("runs as threads (#673)", () => {
 	});
 });
 
-describe("preRunSummaryOf (#848 C16a)", () => {
+describe("preRunDetailOf (#848 C16a)", () => {
 	it("returns null for null, undefined or unparsable JSON", () => {
-		expect(preRunSummaryOf(null)).toBeNull();
-		expect(preRunSummaryOf(undefined)).toBeNull();
-		expect(preRunSummaryOf("")).toBeNull();
-		expect(preRunSummaryOf("invalid json")).toBeNull();
-		expect(preRunSummaryOf(JSON.stringify({ notASnapshot: true }))).toBeNull();
+		expect(preRunDetailOf(null)).toBeNull();
+		expect(preRunDetailOf(undefined)).toBeNull();
+		expect(preRunDetailOf("")).toBeNull();
+		expect(preRunDetailOf("invalid json")).toBeNull();
+		expect(preRunDetailOf(JSON.stringify({ notASnapshot: true }))).toBeNull();
 	});
 
 	it("returns the snapshot without excerpts or file contents", () => {
@@ -203,8 +203,9 @@ describe("preRunSummaryOf (#848 C16a)", () => {
 			],
 		});
 
-		const summary = preRunSummaryOf(rawSnapshot);
-		expect(summary).not.toBeNull();
+		const detail = preRunDetailOf(rawSnapshot);
+		expect(detail?.state).toBe("ready");
+		const summary = detail?.state === "ready" ? detail : null;
 		expect(PreRunSummarySchema.safeParse(summary).success).toBe(true);
 		expect(summary?.sources[0]).toEqual({
 			kind: "prometheus",
