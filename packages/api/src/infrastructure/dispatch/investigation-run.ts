@@ -591,8 +591,11 @@ async function runFollowUp(
 			: null;
 		if (seed) {
 			const file = join(workspace.cwd, HANDOFF_TRANSCRIPT_PATH);
-			mkdirSync(dirname(file), { recursive: true });
-			writeFileSync(file, seed.transcript);
+			const dir = dirname(file);
+			// The clone is untrusted: a committed symlink here must not redirect the write.
+			rmSync(dir, { recursive: true, force: true });
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(file, seed.transcript, { flag: "wx" });
 		}
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();

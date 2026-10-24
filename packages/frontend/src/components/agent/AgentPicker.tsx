@@ -862,7 +862,7 @@ export function AccessChip({
 						disabled
 						className={cn(CHIP, "max-w-48")}
 						data-testid={testId}
-						aria-label={`Permission: ${text}`}
+						aria-label={`Permission: ${text}. ${lockedHint}`}
 					>
 						{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
 						<span className="truncate">{text}</span>

@@ -8,7 +8,7 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
@@ -1085,9 +1085,23 @@ describe("follow-up on a finished run (#747)", () => {
 			})),
 			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
 			resolveHarness: vi.fn(async () => ({ selection: { runnable: true, harness: "codex", auto: false }, model: "gpt-x" })) as never,
+			// The clone is untrusted: it commits .prismalens-handoff as a link out of the workspace.
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => {
+				mkdirSync(dest, { recursive: true });
+				symlinkSync(join(tmp, "outside"), join(dest, ".prismalens-handoff"), "junction");
+				return { path: dest, head: HEAD, branch: null };
+			}),
 		});
+		const repo = join(tmp, "runs", "inv-1", "repo");
+		const outside = join(tmp, "outside");
+		mkdirSync(outside, { recursive: true });
+		let written: { linked: boolean; text: string } | undefined;
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
 			await run.store.create();
+			written = {
+				linked: lstatSync(join(repo, ".prismalens-handoff")).isSymbolicLink(),
+				text: readFileSync(join(repo, ".prismalens-handoff", "transcript.md"), "utf8"),
+			};
 			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
 		});
 
@@ -1097,6 +1111,9 @@ describe("follow-up on a finished run (#747)", () => {
 			io(),
 			ports,
 		);
+		expect(written?.linked).toBe(false);
+		expect(written?.text).toContain("not the cache");
+		expect(existsSync(join(outside, "transcript.md"))).toBe(false);
 
 		const [opts] = mocks.conductRun.mock.calls[0] as [
 			{ harness: string; model: string; accessLevel: string; resume: { sessionId?: string; handoff: string; via: { harness: string; handoff: { carried: string } } } },

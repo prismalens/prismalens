@@ -6,7 +6,7 @@ import type {
 	CanonicalEvent,
 	InvestigationReport,
 } from "@prismalens/contracts/schemas";
-import { fenceUntrusted } from "./fence.js";
+import { fenceUntrusted, sanitizeUntrustedBlock } from "./fence.js";
 
 /** About 16k tokens: the budgeted part of a handoff, after what is always carried. */
 export const HANDOFF_BUDGET_CHARS = 64_000;
@@ -236,7 +236,7 @@ export function buildHandoff(input: HandoffInput): Handoff {
 						fenceUntrusted(
 							"PREVIOUS SESSION",
 							"What the previous session ran and said.",
-							budgeted.join("\n\n"),
+							sanitizeUntrustedBlock(budgeted.join("\n\n")),
 						),
 					]
 				: []),
@@ -251,15 +251,23 @@ export function buildHandoff(input: HandoffInput): Handoff {
 export function renderTranscript(events: readonly CanonicalEvent[]): string {
 	const calls = new Map(callsOf(events).map((c) => [c.id, c]));
 	const out: string[] = ["# Previous session transcript"];
+	const shown = new Set<string>();
 	for (const e of events) {
 		if (e.kind === "operator_message") out.push(`## User\n${e.text}`);
 		else if (e.kind === "agent_step") {
 			if (e.text.trim()) out.push(`## Agent\n${e.text}`);
 			for (const c of e.toolCalls) {
+				// An adapter re-announces a call once its command is known; write it once.
+				if (shown.has(c.toolCallId)) continue;
+				shown.add(c.toolCallId);
 				const call = calls.get(c.toolCallId);
 				if (call) out.push(renderCall(call));
 			}
 		} else if (e.kind === "error") out.push(`## Error\n${e.message}`);
 	}
-	return `${out.join("\n\n")}\n`;
+	return `${fenceUntrusted(
+		"PREVIOUS SESSION TRANSCRIPT",
+		"What the previous session ran and said, in order.",
+		sanitizeUntrustedBlock(out.join("\n\n")),
+	)}\n`;
 }
