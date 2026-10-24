@@ -35,6 +35,9 @@ import {
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
 
 const RUNBOOKS_SETTING = "sources.runbooks.enabled";
+/** How far before the incident `incident_get` reads change events, and how many (#848). */
+const CHANGES_BEFORE_MS = 24 * 3_600_000;
+const CHANGES_TAKE = 20;
 /** What the pre-run index reads: the first repos, one at a time, and the first entries (#848). */
 const INDEX_REPOS = 5;
 const INDEX_ENTRIES = 50;
@@ -257,6 +260,7 @@ export class GatewayService {
 			severity: true,
 			description: true,
 			triggeredAt: true,
+			serviceId: true,
 			service: { select: { name: true } },
 			alerts: {
 				select: {
@@ -264,6 +268,7 @@ export class GatewayService {
 					severity: true,
 					labels: true,
 					triggeredAt: true,
+					serviceId: true,
 				},
 				orderBy: { triggeredAt: "asc" as const },
 				take: 50,
@@ -281,6 +286,34 @@ export class GatewayService {
 					})
 				)?.incident;
 		if (!row) return null;
+		const serviceIds = [
+			...new Set(
+				[row.serviceId, ...row.alerts.map((a) => a.serviceId)].filter(
+					(id): id is string => !!id,
+				),
+			),
+		];
+		const changes = serviceIds.length
+			? await this.prisma.changeEvent.findMany({
+					where: {
+						serviceId: { in: serviceIds },
+						timestamp: {
+							gte: new Date(row.triggeredAt.getTime() - CHANGES_BEFORE_MS),
+							lte: new Date(),
+						},
+					},
+					orderBy: { timestamp: "desc" },
+					take: CHANGES_TAKE,
+					select: {
+						type: true,
+						source: true,
+						timestamp: true,
+						description: true,
+						metadata: true,
+						service: { select: { name: true } },
+					},
+				})
+			: [];
 		return {
 			number: row.number,
 			title: row.title,
@@ -295,6 +328,19 @@ export class GatewayService {
 				labels: safeParseJsonObject(a.labels) ?? null,
 				triggeredAt: a.triggeredAt.toISOString(),
 			})),
+			changes: changes.map((c) => {
+				const meta = safeParseJsonObject(c.metadata) ?? {};
+				const env = meta.environment ?? meta.env;
+				return {
+					type: c.type,
+					source: c.source,
+					timestamp: c.timestamp.toISOString(),
+					service: c.service?.name ?? null,
+					description: c.description,
+					environment: typeof env === "string" ? env : null,
+					version: typeof meta.version === "string" ? meta.version : null,
+				};
+			}),
 		};
 	}
 

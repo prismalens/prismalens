@@ -213,6 +213,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const g = gateway({
 			investigation,
 			incident,
+			changeEvent: { findMany: async () => [] },
 			setting: { findUnique: async () => null },
 		});
 		const entry = await g.lease(RUN_A, NAME);

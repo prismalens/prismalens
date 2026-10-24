@@ -33,6 +33,16 @@ export interface IncidentView {
 		labels: Record<string, unknown> | null;
 		triggeredAt: string;
 	}[];
+	/** Deploy and change events PrismaLens recorded for its services, newest first (#848). */
+	changes: {
+		type: string;
+		source: string;
+		timestamp: string;
+		service: string | null;
+		description: string | null;
+		environment: string | null;
+		version: string | null;
+	}[];
 }
 
 /** By number, or the run's own incident when none is given; null when there is no such incident. */
@@ -57,7 +67,7 @@ export function knowledgeTools(
 			name: "incident_get",
 			title: "Look up an incident",
 			description:
-				"An incident PrismaLens recorded: title, status, severity, service and its alerts. Without `number`, the incident this run investigates.",
+				"An incident PrismaLens recorded: title, status, severity and service, with the alerts, deploy and change events PrismaLens recorded for its services from a day before it started. Without `number`, the incident this run investigates.",
 			input: z.object({
 				number: z.number().int().min(1).optional(),
 			}),
