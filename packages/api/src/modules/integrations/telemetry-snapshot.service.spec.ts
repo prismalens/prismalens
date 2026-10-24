@@ -3,8 +3,9 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { parseSourceCredential } from "@prismalens/contracts/schemas";
-import { afterEach, describe, expect, it } from "vitest";
+import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contracts/schemas";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { IntegrationsController } from "./integrations.controller.js";
 import type { OpenedSource } from "./open-source.js";
 import { mappingConfig, selectorMatchers } from "./source-query.js";
 import {
@@ -753,5 +754,110 @@ describe("connection selection and credential matrix (#848 C5)", () => {
 		]);
 		const [out] = await fetchSnapshot(await svc.sources({}), WINDOW);
 		expect(out?.status).toBe("found");
+	});
+});
+
+describe("GET /sources/pre-run and preview (#848 C16a)", () => {
+	it("preview agrees with the snapshot selection for the service and deployment", async () => {
+		const prisma = {
+			service: {
+				findUnique: vi.fn(async () => ({ id: "svc-1", name: "checkout" })),
+			},
+			serviceIntegration: {
+				findMany: vi.fn(async (args: { where: { serviceId: unknown } }) => {
+					if (typeof args.where.serviceId === "object" && args.where.serviceId !== null && "in" in args.where.serviceId) {
+						return [
+							{
+								serviceId: "svc-1",
+								connectionId: "conn-prom",
+								priority: 10,
+								isEnabled: true,
+								config: { deployment: "prod", selector: 'job="checkout"' },
+								connection: {
+									id: "conn-prom",
+									label: "Prod Prometheus",
+									status: "ACTIVE",
+									integration: { templateId: "prometheus", label: "Prometheus" },
+								},
+							},
+						];
+					}
+					return [{ config: { deployment: "prod" } }];
+				}),
+			},
+			connection: {
+				findMany: vi.fn(async (args: { where: { status: unknown } }) => {
+					if (args.where.status === "ACTIVE") {
+						return [
+							{
+								id: "conn-prom",
+								label: "Prod Prometheus",
+								integration: { templateId: "prometheus", label: "Prometheus" },
+							},
+						];
+					}
+					return [{ id: "conn-prom", integration: { templateId: "prometheus" } }];
+				}),
+			},
+			alert: {
+				findMany: vi.fn(async () => [{ labels: JSON.stringify({ environment: "staging" }) }]),
+			},
+			changeEvent: {
+				findMany: vi.fn(async () => [{ metadata: JSON.stringify({ env: "canary" }) }]),
+			},
+		};
+
+		const integrations = {
+			connectionBaseUrl: vi.fn(async () => "http://prom:9090"),
+			sourceCredential: vi.fn(async () => ({ ok: true, credential: { kind: "none" }, state: "set" as const })),
+		};
+
+		const svc = new TelemetrySnapshotService(prisma as never, integrations as never);
+		const env = { PROMETHEUS_URL: "http://prom:9090", PROMETHEUS_TOKEN: "tok" };
+
+		const res = await svc.preview("svc-1", "prod", env);
+
+		expect(SourcesPreRunSchema.safeParse(res).success).toBe(true);
+		expect(res.deploymentsSeen).toEqual(["prod", "staging", "canary"]);
+
+		const promKind = res.kinds.find((k) => k.kind === "prometheus");
+		expect(promKind?.notConfigured).toBe(false);
+		expect(promKind?.skipped).toBeNull();
+		expect(promKind?.envFallback).toEqual({
+			variable: "PROMETHEUS_URL",
+			origin: "http://prom:9090",
+			tokenSet: true,
+		});
+		expect(promKind?.units).toEqual([
+			expect.objectContaining({
+				kind: "prometheus",
+				label: "Prod Prometheus",
+				from: "set",
+				connectionId: "conn-prom",
+				credentialFrom: "stored",
+				overridesEnv: "PROMETHEUS_TOKEN",
+				services: ["checkout"],
+				deployment: "prod",
+				selector: 'job="checkout"',
+				selection: expect.objectContaining({ rule: "tag-match", service: "checkout", priority: 10, deployment: "prod" }),
+			}),
+		]);
+
+		const lokiKind = res.kinds.find((k) => k.kind === "loki");
+		expect(lokiKind?.notConfigured).toBe(true);
+		expect(lokiKind?.units).toEqual([]);
+
+		const controller = new IntegrationsController({} as never, {} as never, {} as never, svc);
+		const previewSpy = vi.spyOn(svc, "preview").mockResolvedValueOnce(res as never);
+		const handler = (controller.sourcesPreRun() as any)["~orpc"].handler;
+		const routeRes = await handler({ input: { serviceId: "svc-1", deployment: "prod" } });
+		expect(previewSpy).toHaveBeenCalledWith("svc-1", "prod");
+		expect(routeRes).toBe(res);
+
+		const noSnapshotController = new IntegrationsController({} as never, {} as never, {} as never, undefined);
+		const noHandler = (noSnapshotController.sourcesPreRun() as any)["~orpc"].handler;
+		expect(() => noHandler({ input: { serviceId: "svc-1" } })).toThrow(
+			"The pre-run preview is not available here",
+		);
 	});
 });
