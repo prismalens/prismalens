@@ -21,6 +21,8 @@ export function StepCard({
 	flagged,
 	onSeeFlag,
 	ask,
+	fileSha,
+	onOpenFile,
 }: {
 	step: RunStep;
 	open: boolean;
@@ -30,6 +32,9 @@ export function StepCard({
 	onSeeFlag?: () => void;
 	/** The agent asked before this call; the ask itself waits in the dock (#820). */
 	ask?: AskRecord;
+	/** The commit a read step's file is shown at; absent when it is outside the run's code. */
+	fileSha?: string;
+	onOpenFile?: () => void;
 }) {
 	const Icon = step.kind === "file" ? FileText : Terminal;
 	const waiting = ask?.state === "waiting";
@@ -94,6 +99,17 @@ export function StepCard({
 						<pre className="m-0 px-3 pt-2 pb-1 font-mono text-mono whitespace-pre-wrap text-text-1 [overflow-wrap:anywhere]">
 							$ {step.command}
 						</pre>
+						{fileSha && onOpenFile && (
+							<button
+								type="button"
+								id={`open-step-${step.n}`}
+								onClick={onOpenFile}
+								className="mx-3 self-start text-meta text-accent underline underline-offset-[3px] decoration-[oklch(from_var(--accent)_l_c_h/0.4)] hover:decoration-current"
+								data-testid="step-open-file"
+							>
+								Open the file at {fileSha.slice(0, 7)}
+							</button>
+						)}
 						{step.input && (
 							<pre
 								className="m-0 max-h-60 overflow-auto px-3 pb-1 font-mono text-mono whitespace-pre-wrap text-text-2 [overflow-wrap:anywhere]"

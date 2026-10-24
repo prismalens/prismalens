@@ -27,7 +27,11 @@ export function useRunAgentModel(
 ): { agent: string; model: string; id: string | null } {
 	const { harnesses, effective, model } = useAgentChoice();
 	const fidelity = investigation?.report?.fidelity;
-	if (fidelity) {
+	// After a handoff the report may be the earlier agent's; the row names who has the run now.
+	if (
+		fidelity &&
+		(!investigation?.harness || fidelity.harness === investigation.harness)
+	) {
 		const harness = harnesses.find((h) => h.id === fidelity.harness);
 		const id = fidelity.servedModel ?? fidelity.model;
 		return {
