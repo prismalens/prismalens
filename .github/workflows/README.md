@@ -33,20 +33,28 @@ with no workflow, token or status in the path.
 ## `ci.yml` jobs: model kind, cadence, required
 
 A red `CI gate` should mean the code is wrong, never that a free model was slow,
-renamed or refused (#884). Live-model jobs are advisory and leave the gate.
+renamed or refused (#884). No job here spends money on a model call (#914), and
+live-model jobs are advisory and leave the gate. `CI gate` waits on every job marked
+yes (#920, the operator's ruling of 2026-10-24).
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
 | `build`, `lint`, `pack`, `packed-smoke` | none | every PR | yes |
 | `test` | scripted fake agent | every PR on ubuntu, with the coverage floors (#58); macOS also on `merge_group` and pushes to `main` | yes |
-| `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | no, until three recorded greens |
-| `packed-service` | none | every PR | no |
-| `packed-upgrade-smoke`, `gate-side-checks` | scripted fake ACP agent, on the packed tarball | every PR | no, until three recorded greens |
-| `harness-admission` (OpenCode and Claude Code legs) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | yes |
+| `packed-intake` | scripted fake ACP agent (`PACKED_INTAKE_AGENT=fake`) | every PR | yes |
+| `packed-service` | none | every PR | yes |
+| `packed-upgrade-smoke` | scripted fake ACP agent, on the packed tarball; then every release npm lists upgraded to the tarball with `pl upgrade` (`scripts/packed-upgrade-chain.mjs`) | every PR | yes |
+| `gate-side-checks` (Linux, macOS, Windows) | scripted fake ACP agent, on the packed tarball; `--no-skip` | every PR | yes |
+| `harness-admission` (opencode, claude-code, codex) | scripted model server on loopback (`scripts/fakes/fake-model-server.mjs`), the real pinned agent; R1-R7, 3 runs that must agree | every PR | yes |
+| `agent-replay` | recorded sessions replayed through the real engine, strictly (`scripts/fakes/transcripts/`) | every PR | no, until recordings exist for every tier-1 row and it has three greens |
+| `e2e` (calls `e2e.yml`) | none | every PR, push and merge-queue build | yes |
+
+The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
+`@prismalens/agent-adapters` (the adapter); `agent-releases.yml` moves them.
 
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
 `turbo-<os>-<sha>`; `test` (ubuntu) and `pack` need it and restore it, so their `pnpm build` replays.
-`e2e.yml` starts beside `ci.yml`, so it restores the newest cache saved before it gets there.
+`e2e` needs `build`, so it restores this commit's own cache.
 `cross-os-smoke.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
 packing itself only if that job is missing or red.
 
@@ -55,8 +63,8 @@ flowchart LR
     build["ci.yml build"] -- "saves turbo-OS-SHA" --> cache[(".turbo-cache")]
     cache -- "restores" --> test["test (ubuntu)"]
     cache -- "restores" --> pack["Pack npm tarball"]
-    cache -. "newest turbo-OS-* saved before it starts" .-> e2e["e2e.yml"]
-    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks"]
+    cache -- "restores" --> e2e["e2e (e2e.yml)"]
+    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks x3"]
     pack -. "polled, then downloaded" .-> xos["cross-os-smoke.yml"]
     xos -. "pack missing or red: packs itself" .-> xos
 ```
@@ -71,8 +79,8 @@ A test tagged `@quarantine` leaves the `chromium` and `journeys` projects and ru
 quarantined test has an open `bug` issue named in a comment beside the tag, and the issue closes
 when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
 
-- **Not in `ci-gate` yet.** Adding `e2e` to `ci-gate`'s `needs`, and to `merge_group`, comes after the
-  quarantine has held for a while; that is #885's remaining step and needs the operator's go.
+- **In `ci-gate`.** `ci.yml` calls this workflow as its `e2e` job (`workflow_call`), which `CI gate`
+  waits on, so it also runs on `merge_group` (#920).
 - **`strict_required_status_checks_policy` is undecided.** The live ruleset still sets it to `true`
   next to the merge queue. Whether to drop it is unconfirmed and recorded here as open; this file does
   not decide it, and no workflow depends on either answer.
@@ -82,33 +90,45 @@ script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls 
 
 ## `ci.yml` live jobs: the live tier
 
-The live tier checks that the pinned agent and a real free model still complete
-an investigation. It runs nightly on `main` and on demand, and nothing requires
-it. The agent is pinned to the version `harness-admission` pins; it is not a run
-against agents' latest releases (#639, #712).
+The live tier checks that the pinned OpenCode and its own free model still complete
+an investigation. It runs on dispatch only, and nothing requires it: that model
+stalled in 2 of 2 rounds (#914), so a nightly would be red most nights. The agent is
+the version in `scripts/agent-pins.json`; it is not a run against agents' latest
+releases (#639, #712).
 
-The live jobs run only on `schedule` and `workflow_dispatch`, and the PR jobs and
-`CI gate` run on every event except those two, so one run is either the PR tier or
+The live jobs run only on `workflow_dispatch`, and the PR jobs and
+`CI gate` run on every event except that one, so one run is either the PR tier or
 the live tier, never both. A live run has its own concurrency group
 (`live-agent-<ref>`) and is never cancelled, so it and a push run on `main` cannot
 cancel each other.
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
-| `live-pack` | none; packs the tarball the live intake installs | nightly on `main`; dispatch | no |
-| `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly on `main`; dispatch | no |
-| `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly on `main`; dispatch | no |
-| `report-failure` | none | after a failed nightly | no |
+| `live-pack` | none; packs the tarball the live intake installs | dispatch | no |
+| `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | dispatch | no |
+| `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | dispatch | no |
 
 - **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
   (`gh workflow run ci.yml --ref main -f ref=<sha>`) and link the run from the PR.
-  Only the nightly schedule files the failure issue. Dispatch on `main`, not on a
-  PR branch: a dispatched run on a branch adds a skipped `CI gate` to its head commit.
-- **On a failed night:** `report-failure` comments on the open issue titled
-  "Live agent check failing on main", or opens it, with the run link.
+  Dispatch on `main`, not on a PR branch: a dispatched run on a branch adds a skipped
+  `CI gate` to its head commit.
 - **Event streams:** each packed-intake attempt uploads its paged
   `/api/investigations/:id/events` as `intake-events-attempt-<n>`, kept 30 days.
   That is the recording source for #533.
+
+## `agent-releases.yml`: what the agents released
+
+Two jobs, neither required, neither spending a model call (#914):
+
+| Job | What it does | Cadence |
+| --- | --- | --- |
+| `probe` | installs each agent row at its latest release and sends `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested` | nightly, and dispatch |
+| `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, one pull request per package moves its pin and carries the probe's result | nightly, and dispatch |
+
+The bump PR runs ordinary CI: scripted-model admission and the replay. It stays red on
+`harness-pins.test.ts` until the operator adds a recording (`pnpm record:agent`, CONTRIBUTING.md)
+and moves the row's `tested`, which is how `tested` comes only from a merged bump PR.
+The `RELEASE_PAT` secret opens the PR so that CI starts on it; with only `GITHUB_TOKEN` the PR gets no checks.
 
 ## Review is advisory; unresolved threads are what block
 
@@ -179,12 +199,13 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push`, `merge_group`, schedule, dispatch | build, test, lint, pack; aggregates to `CI gate`. Nightly and on dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
-| `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
+| `ci.yml` | `pull_request`, `push`, `merge_group`, dispatch | build, test, lint, pack, the packed-tarball checks, harness admission and e2e; aggregates to `CI gate`. On dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
+| `agent-releases.yml` | schedule, dispatch | the protocol probe of every agent row's latest release, and the pin-bump pull requests |
+| `e2e.yml` | called by `ci.yml`, dispatch | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
-| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket |
+| `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket, then an install from each of them on macOS and Windows |
 | `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
 | `desktop.yml` | `pull_request`, `push`, called by `release.yml`, dispatch | unpacked Electron app per OS, launched and checked; attaches the zips to the draft release when called |
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// A scripted model on loopback: OpenAI chat completions and Anthropic Messages, both as SSE.
+// A scripted model on loopback: OpenAI chat completions, the OpenAI Responses API and Anthropic Messages, all as SSE.
 // The reply is a pure function of the request, so a rerun gives the same stream (#884).
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -51,24 +51,38 @@ function textOf(content) {
 }
 
 /**
- * One request in the shape both wires share.
- * @param {"openai" | "anthropic"} wire
+ * One request in the shape the three wires share.
+ * @param {"openai" | "anthropic" | "responses"} wire
  * @param {any} body
  * @returns {import("./fake-model-server.d.mts").ModelRequest}
  */
 export function viewOf(wire, body) {
-	const messages = (Array.isArray(body?.messages) ? body.messages : []).filter(
-		(/** @type {any} */ m) => m?.role !== "system",
+	// The Responses API sends `input` items: messages, and `function_call_output` for a tool's result.
+	const items =
+		wire === "responses"
+			? Array.isArray(body?.input)
+				? body.input
+				: [{ role: "user", content: String(body?.input ?? "") }]
+			: Array.isArray(body?.messages)
+				? body.messages
+				: [];
+	const messages = items.filter(
+		(/** @type {any} */ m) => m?.role !== "system" && m?.role !== "developer",
 	);
 	const last = messages.at(-1);
 	const toolNames = (Array.isArray(body?.tools) ? body.tools : []).map(
-		(/** @type {any} */ t) => String(t?.function?.name ?? t?.name ?? ""),
+		(/** @type {any} */ t) =>
+			String(t?.function?.name ?? t?.name ?? t?.type ?? ""),
 	);
 	const toolResult =
 		wire === "openai"
 			? last?.role === "tool"
-			: Array.isArray(last?.content) &&
-				last.content.some((/** @type {any} */ b) => b?.type === "tool_result");
+			: wire === "responses"
+				? typeof last?.type === "string" && /_output$/.test(last.type)
+				: Array.isArray(last?.content) &&
+					last.content.some(
+						(/** @type {any} */ b) => b?.type === "tool_result",
+					);
 	return {
 		wire,
 		model: String(body?.model ?? ""),
@@ -76,25 +90,51 @@ export function viewOf(wire, body) {
 		toolNames,
 		lastText: textOf(last?.content),
 		lastIsToolResult: toolResult,
+		structured: Object.keys(body?.text?.format?.schema?.properties ?? {}),
 		n: 0,
 	};
 }
+
+/** The shell tool each agent offers, and the arguments it takes for a command. */
+const SHELL_TOOLS = {
+	bash: (/** @type {string} */ c) => ({
+		command: c,
+		description: "Admission step",
+	}),
+	shell_command: (/** @type {string} */ c) => ({ command: c }),
+	exec_command: (/** @type {string} */ c) => ({ cmd: c }),
+	shell: (/** @type {string} */ c) => ({ command: ["bash", "-lc", c] }),
+};
 
 /**
  * What the scripted model does with a request: say a text, or call the shell tool.
  * @type {import("./fake-model-server.d.mts").Script}
  */
 export function admissionScript(req) {
+	// Codex's Approve-for-me mode asks the model to review each action, and it titles the chat: both want JSON.
+	if (req.structured.includes("outcome"))
+		return {
+			say: JSON.stringify({
+				outcome: "allow",
+				risk_level: "low",
+				user_authorization: "high",
+				rationale: "scripted",
+			}),
+		};
+	if (req.structured.includes("title"))
+		return { say: JSON.stringify({ title: "Admission probe" }) };
 	if (req.toolNames.length === 0) return { say: "Admission probe" };
 	if (FOLLOW_UP.test(req.lastText)) return { say: "AdmissionProbe" };
 	if (req.lastIsToolResult) return { say: REPORT_TEXT };
 	const step = ADMISSION_STEP.exec(req.lastText);
-	const shell = req.toolNames.find((n) => n.toLowerCase() === "bash");
+	const shell = req.toolNames.find((n) => n.toLowerCase() in SHELL_TOOLS);
 	if (step && shell)
 		return {
 			tool: {
 				name: shell,
-				input: { command: step[1], description: "Admission step" },
+				input: SHELL_TOOLS[
+					/** @type {keyof typeof SHELL_TOOLS} */ (shell.toLowerCase())
+				](step[1] ?? ""),
 			},
 		};
 	return { say: REPORT_TEXT };
@@ -166,6 +206,113 @@ function openaiStream(req, reply) {
 }
 
 /**
+ * The Responses API: one output item, a message or a function call, between created and completed.
+ * @param {import("./fake-model-server.d.mts").ModelRequest} req
+ * @param {import("./fake-model-server.d.mts").Reply} reply
+ */
+function responsesStream(req, reply) {
+	const response = (
+		/** @type {string} */ status,
+		/** @type {unknown[]} */ output,
+	) => ({
+		id: `resp_${req.n}`,
+		object: "response",
+		created_at: 0,
+		status,
+		model: req.model,
+		output,
+		parallel_tool_calls: false,
+		usage:
+			status === "completed"
+				? {
+						input_tokens: 1,
+						input_tokens_details: { cached_tokens: 0 },
+						output_tokens: 1,
+						output_tokens_details: { reasoning_tokens: 0 },
+						total_tokens: 2,
+					}
+				: null,
+	});
+	const created = sse("response.created", {
+		type: "response.created",
+		response: response("in_progress", []),
+	});
+	if ("tool" in reply) {
+		const item = {
+			type: "function_call",
+			id: `fc_${req.n}`,
+			call_id: `call_${req.n}`,
+			name: reply.tool.name,
+			arguments: JSON.stringify(reply.tool.input),
+			status: "completed",
+		};
+		return (
+			created +
+			sse("response.output_item.added", {
+				type: "response.output_item.added",
+				output_index: 0,
+				item: { ...item, arguments: "", status: "in_progress" },
+			}) +
+			sse("response.output_item.done", {
+				type: "response.output_item.done",
+				output_index: 0,
+				item,
+			}) +
+			sse("response.completed", {
+				type: "response.completed",
+				response: response("completed", [item]),
+			})
+		);
+	}
+	const id = `msg_${req.n}`;
+	const item = {
+		type: "message",
+		id,
+		role: "assistant",
+		status: "completed",
+		content: [{ type: "output_text", text: reply.say, annotations: [] }],
+	};
+	return (
+		created +
+		sse("response.output_item.added", {
+			type: "response.output_item.added",
+			output_index: 0,
+			item: { ...item, status: "in_progress", content: [] },
+		}) +
+		sse("response.content_part.added", {
+			type: "response.content_part.added",
+			item_id: id,
+			output_index: 0,
+			content_index: 0,
+			part: { type: "output_text", text: "", annotations: [] },
+		}) +
+		sse("response.output_text.delta", {
+			type: "response.output_text.delta",
+			item_id: id,
+			output_index: 0,
+			content_index: 0,
+			delta: reply.say,
+		}) +
+		sse("response.output_text.done", {
+			type: "response.output_text.done",
+			item_id: id,
+			output_index: 0,
+			content_index: 0,
+			text: reply.say,
+		}) +
+		sse("response.output_item.done", {
+			type: "response.output_item.done",
+			output_index: 0,
+			item,
+		}) +
+		sse("response.completed", {
+			type: "response.completed",
+			response: response("completed", [item]),
+		})
+	);
+}
+
+/**
  * @param {import("./fake-model-server.d.mts").ModelRequest} req
  * @param {import("./fake-model-server.d.mts").Reply} reply
  */
@@ -228,6 +375,11 @@ function anthropicStream(req, reply) {
  * @param {import("./fake-model-server.d.mts").Reply} reply
  */
 function wholeBody(req, reply) {
+	if (req.wire === "responses") {
+		const stream = responsesStream(req, reply);
+		const done = stream.match(/event: response\.completed\ndata: (.*)\n/);
+		return JSON.parse(done?.[1] ?? "{}").response;
+	}
 	if (req.wire === "openai")
 		return {
 			id: `chatcmpl-${req.n}`,
@@ -319,7 +471,9 @@ export async function startFakeModelServer(options = {}) {
 			? "openai"
 			: /\/v1\/messages$/.test(path ?? "")
 				? "anthropic"
-				: null;
+				: /\/responses$/.test(path ?? "")
+					? "responses"
+					: null;
 		if (httpReq.method !== "POST" || !wire)
 			return json(404, {
 				error: `fake-model-server: no route ${httpReq.method} ${path}`,
@@ -344,7 +498,9 @@ export async function startFakeModelServer(options = {}) {
 		res.end(
 			wire === "openai"
 				? openaiStream(req, reply)
-				: anthropicStream(req, reply),
+				: wire === "responses"
+					? responsesStream(req, reply)
+					: anthropicStream(req, reply),
 		);
 	}
 

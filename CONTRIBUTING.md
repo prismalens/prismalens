@@ -119,17 +119,22 @@ empty workspace; the e2e stack's demo seed is there only for screens that read. 
 fixed together with the journey or scenario that would have caught it. How to write one:
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
 
-### Agent-loop checks: scripted on PRs, live nightly
+### Agent-loop checks: scripted on PRs, recorded sessions replayed, live on dispatch
 
-A PR never waits on a live model (#884). The agent loop is checked two ways:
+A PR never waits on a live model, and nothing here spends money on one (#884, #914). The agent loop is checked these ways:
 
 | Check | Model | Runs | Where |
 | --- | --- | --- | --- |
 | `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
-| `harness-admission` (R1-R7) | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`) | every PR | `ci.yml` |
-| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `ci.yml` (schedule and dispatch only) |
+| `harness-admission` (R1-R7) for opencode, claude-code and codex | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`, which speaks chat completions, Messages and Responses) | every PR | `ci.yml` |
+| `agent-replay` | recorded sessions of each agent row, replayed through the real engine (`scripts/fakes/transcripts/<agent>/<scenario>.ndjson`) | every PR | `ci.yml` |
+| protocol probe | none: `initialize` and `session/new` against each row's latest release | nightly | `agent-releases.yml` |
+| pin bump | none: a pull request once a release has soaked 3 days | daily | `agent-releases.yml` |
+| `harness-admission-live`, `packed-intake-live` | the real pinned OpenCode on its own free model | on dispatch, and before a release | `ci.yml` (dispatch only: that model stalls, so a nightly would be red most nights) |
 
-Run the PR admission yourself, with the agent on PATH (`opencode@1.18.30` or `claude@2.1.296`):
+Tier 1 is opencode, claude-code and codex; gemini and deepagents are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR.
+
+Run the PR admission yourself, with the agent on PATH (the pins in `scripts/agent-pins.json`):
 
 ```bash
 pnpm --filter "@prismalens/contracts..." build
@@ -144,11 +149,45 @@ fake model served 12 requests
 ```
 
 The driver starts the server on `127.0.0.1`, points the agent at it (a provider block in a throwaway
-`XDG_CONFIG_HOME` for OpenCode, `ANTHROPIC_BASE_URL` for Claude Code), runs
+`XDG_CONFIG_HOME` for OpenCode, `ANTHROPIC_BASE_URL` for Claude Code, a `CODEX_HOME` provider with
+`wire_api = "responses"` for Codex), runs
 `packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
 R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
 function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
 A change that needs a live model to show up goes to the live jobs in `ci.yml`, not into a PR check.
+
+#### Recording an agent session
+
+When a pin moves, the bump PR waits for a recording made on your machine, with the agent's own login:
+
+```bash
+git switch pin-bump/opencode-ai-1.19.4
+pnpm record:agent opencode all --clone ~/src/some-small-repo
+```
+
+```text
+report: wrote .../scripts/fakes/transcripts/opencode/report.ndjson
+tool-call: wrote .../scripts/fakes/transcripts/opencode/tool-call.ndjson
+permission-declined: wrote .../scripts/fakes/transcripts/opencode/permission-declined.ndjson
+cancel: wrote .../scripts/fakes/transcripts/opencode/cancel.ndjson
+error: wrote .../scripts/fakes/transcripts/opencode/error.ndjson
+not-signed-in: wrote .../scripts/fakes/transcripts/opencode/not-signed-in.ndjson
+Commit the transcripts with the bump PR. `tested` stays as the bump PR sets it; this recorder never changes it.
+```
+
+The recorder runs the engine through one scenario (`packages/@prismalens/engine/scripts/acp-scenarios.ts`),
+copies the engine's wire log into the format of `prismalens/gh-workflows` `docs/acp-recording.md` (a header line, then one
+`{dir, at, frame}` line per JSON-RPC message, plus a `scenario` field), redacts secrets by field name and by shape and
+rewrites your home and the clone's path, and refuses to write a file whose frames fail the
+`@agentclientprotocol/sdk` schema or that still holds a credential-shaped string. `not-signed-in` starts the agent with
+an empty home and no key. Then commit the transcripts, edit the row's `tested` in
+`packages/@prismalens/config/src/providers/harness.ts` to the new pin, and push.
+
+CI replays them with `scripts/fakes/acp-replay.mjs` in strict mode: the real engine runs the same scenario against the
+recording, and a client frame the recording does not have next ends the run with `acp replay: frame N ...`. A value the
+SDK does not know is logged and passed through (#639), so a recording with an unknown enum still replays. A row or scenario
+with no recording is skipped with the command above; run the replay on its own with
+`pnpm --filter @prismalens/engine test:replay`.
 
 ## Database migrations
 
@@ -410,7 +449,9 @@ Versioning and publishing run through
    4. The draft is published (`gh release edit --draft=false`), which makes
       it immutable.
    5. The Homebrew tap and Scoop bucket are updated from the published
-      `SHA256SUMS`.
+      `SHA256SUMS`; the job fails when `PACKAGE_MANAGERS_TOKEN` is unset.
+   6. `brew install prismalens/tap/prismalens` and `scoop install prismalens` run from
+      the real tap and bucket on macOS and Windows runners.
 
    What a failure leaves, and what finishes it, for a `v0.5.3` release whose
    previous version is `0.5.2`:
@@ -422,6 +463,7 @@ Versioning and publishing run through
    | `Publish to npm` | draft, every asset | `0.5.2`, or `0.5.3` if the publish went through | **Re-run failed jobs**. npm is skipped when the version is already on it. |
    | `Publish the release` | draft, every asset | `0.5.3` | **Re-run failed jobs**. |
    | `Update the Homebrew tap and Scoop bucket` | published, immutable | `0.5.3` | **Re-run failed jobs**. It reads the published `SHA256SUMS`. |
+   | `Install from the real Homebrew tap`, `Install from the real Scoop bucket` | published, immutable | `0.5.3` | **Re-run failed jobs**, once the tap or bucket has the new version. |
 
    The hand-run **Release** refuses a release that is not a draft. A version
    older than the current latest release is published to npm under the
@@ -460,21 +502,36 @@ licence texts of the adapters and the agent libraries they load under
 
 ### Release-gate side checks
 
-Before a release PR merges, a packed-tarball walk passes on its base SHA
-([`RELEASING.md`](RELEASING.md)).
-`pnpm gate:side-checks [--tarball <path>] [--only <checks>]` scripts the walk's
+Before a release PR merges, `CI gate` is green on its base SHA ([`RELEASING.md`](RELEASING.md)), and the manual
+walk covers what a runner cannot.
+`pnpm gate:side-checks [--tarball <path>] [--only <checks>] [--no-skip]` scripts the walk's
 side checks against that tarball, or packs the built CLI when no tarball is given:
 the telemetry notice and its four off switches, the update notice, the workspace
-lock, reset racing an investigation, and the Host allowlist when pairing. It also
-covers the `pl upgrade` trial rollback through Verdaccio. Each check runs in its own
+lock, reset racing an investigation, the Host allowlist when pairing, and `pl upgrade`
+through a local registry. On Linux it also covers the `pl upgrade` trial rollback under
+`pl service`. Each check runs in its own
 throwaway HOME, workspace and port, with an agent-free PATH and the repository's
 fake ACP agent, so no real agent login is used. PostHog and GitHub requests go to
-a local stub. The script prints one PASS, FAIL or SKIP line per check and exits
-non-zero on any FAIL. The upgrade check is skipped when there is no systemd user
-manager or when a `prismalens.service` already exists. The checks are POSIX-only: on
-native Windows every one prints SKIP and the run exits 0 (#902), so run them in WSL or
-Linux. CI's `Gate side checks (packed tarball)` job runs them on every PR and every
-push to `main`, and its run on the release PR's base SHA is the gate's record.
+a local stub. A terminal is a pseudo-terminal from `@lydell/node-pty` on every OS, and `pl`
+runs as `node <bin>`, so no shell shim or `script(1)` is involved. The script prints one
+PASS, FAIL, SKIP or N/A line per check and exits non-zero on any FAIL, and on a SKIP
+under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs under
+systemd), `upgrade` is N/A on Windows (the runner's `pl upgrade` dies when npm moves the running `pl`'s own directory; see #921), and `rollback` is skipped on Linux when there is no systemd user manager or a
+`prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
+outright and expects the next boot to take the stale lock. CI's `Gate side checks`
+job runs them on Linux, macOS and Windows on every PR and every push to `main`, and its run on the release PR's base
+SHA is the gate's record.
+
+`pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Packed upgrade smoke`: it reads the stable
+releases from `npm view prismalens versions`, starts a local registry that proxies npm and carries the tarball
+(re-versioned to the next patch when its own version is already published), installs the oldest release from 0.5.0 on, and
+upgrades it release by release to the tarball with each release's own `pl upgrade`, booting after every hop and
+checking an incident written by the oldest release is still in the database. The oldest release also upgrades
+straight to the tarball. A release whose `pl` has no `upgrade` command is moved with `npm install -g`, and the hop says so.
+`Standalone CLI` runs the installer channel over every release npm lists. On Linux and macOS each old install
+runs its own `pl upgrade --version <build under test>`, with `prismalens.io/install.sh` served from this checkout and the
+release check answered for the staged archive; a release whose `pl` has no `upgrade` is moved by re-running the installer. On
+Windows the installer script is re-run, because `pl upgrade` there fetches the script with `irm`.
 
 ## Documentation and milestone exit gates
 

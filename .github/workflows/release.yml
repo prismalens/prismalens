@@ -164,8 +164,8 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: |
           if [ -z "$PM_TOKEN" ]; then
-            echo "::notice::PACKAGE_MANAGERS_TOKEN not set; skipping the Homebrew tap and Scoop bucket"
-            exit 0
+            echo "::error::PACKAGE_MANAGERS_TOKEN is not set, so the Homebrew tap and Scoop bucket stay on the old version. Set it and re-run this job (RELEASING.md)."
+            exit 1
           fi
           version="${TAG#v}"
           gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP" --repo "$GITHUB_REPOSITORY"
@@ -184,3 +184,51 @@ jobs:
           }
           publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
           publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
+
+  # The real tap and bucket, as a user meets them (#920). The standalone workflow smokes a
+  # formula and manifest built beside the archives; only this installs what was pushed.
+  verify-install:
+    name: Install from the real ${{ matrix.manager }}
+    needs: [draft, package-managers]
+    if: needs.draft.outputs.latest == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            manager: Homebrew tap
+          - os: windows-latest
+            manager: Scoop bucket
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.draft.outputs.version }}
+    steps:
+      - name: brew install prismalens/tap/prismalens
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -eu
+          brew install prismalens/tap/prismalens
+          out=$("$(brew --prefix)/bin/pl" --version)
+          [ "$out" = "$VERSION" ] || { echo "::error::pl --version printed $out, expected $VERSION"; exit 1; }
+          brew test prismalens/tap/prismalens
+          brew uninstall prismalens
+
+      - name: scoop install prismalens
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-RestMethod get.scoop.sh -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
+          scoop install prismalens
+          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+          $out = (pl --version).Trim()
+          if ($out -ne $env:VERSION) { Write-Error "pl --version printed $out, expected $env:VERSION"; exit 1 }
+          scoop uninstall prismalens

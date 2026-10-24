@@ -44,6 +44,7 @@
 		"typecheck": "tsc -p tsconfig.typecheck.json",
 		"test": "vitest run && node --test scripts/refusal-gate-check.test.mjs",
 		"test:watch": "vitest",
+		"test:replay": "vitest run --config vitest.replay.config.ts",
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
@@ -56,6 +57,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"ajv": "^8.20.0",
 		"cross-spawn": "^7.0.6",
 		"tsx": "catalog:",
 		"typescript": "catalog:",

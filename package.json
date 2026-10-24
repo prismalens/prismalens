@@ -29,12 +29,17 @@
 		"publint": "pnpm --filter prismalens exec publint --strict",
 		"pack": "node scripts/pack-cli.mjs",
 		"gate:side-checks": "node scripts/gate-side-checks.mjs",
-		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs"
+		"gate:packed-upgrade": "node scripts/packed-upgrade-smoke.mjs",
+		"gate:upgrade-chain": "node scripts/packed-upgrade-chain.mjs",
+		"record:agent": "pnpm --filter @prismalens/engine exec tsx scripts/acp-record.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
+		"@lydell/node-pty": "1.1.0",
 		"@types/node": "catalog:",
+		"cross-spawn": "^7.0.6",
 		"publint": "^0.3.25",
+		"semver": "^7.8.5",
 		"tsx": "catalog:",
 		"turbo": "^2.11.9",
 		"typescript": "catalog:",

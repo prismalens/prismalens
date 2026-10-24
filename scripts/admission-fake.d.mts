@@ -12,7 +12,7 @@ export interface AdmissionVerdict {
 }
 
 export function agentEnv(
-	harness: "opencode" | "claude-code",
+	harness: "opencode" | "claude-code" | "codex",
 	fake: { url: string; openaiBaseUrl: string },
 	home: string,
 ): Record<string, string>;

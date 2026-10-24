@@ -2,12 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 export interface ModelRequest {
-	wire: "openai" | "anthropic";
+	wire: "openai" | "anthropic" | "responses";
 	model: string;
 	stream: boolean;
 	toolNames: string[];
 	lastText: string;
 	lastIsToolResult: boolean;
+	/** Property names of the JSON schema the request demands its answer fit; empty for free text. */
+	structured: string[];
 	/** 1-based position of the request in the server's run; ids derive from it. */
 	n: number;
 }
@@ -29,7 +31,7 @@ export interface FakeModelServer {
 export const SCRIPTED_REPORT: Record<string, unknown>;
 
 export function viewOf(
-	wire: "openai" | "anthropic",
+	wire: "openai" | "anthropic" | "responses",
 	body: unknown,
 ): ModelRequest;
 

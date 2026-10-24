@@ -4,7 +4,7 @@
 
 // Runs the harness admission (R1-R7) against the scripted model of
 // scripts/fakes/fake-model-server.mjs, so a PR's verdict never depends on a live model (#884).
-//   node scripts/admission-fake.mjs <opencode|claude-code> <cloneDir> [--repeat N]
+//   node scripts/admission-fake.mjs <opencode|claude-code|codex> <cloneDir> [--repeat N]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +18,7 @@ export const FAKE_MODEL = "fake/scripted";
 /**
  * The env that points one agent at the fake and nowhere else; a throwaway home keeps
  * the runner's own sign-in out of the verdict.
- * @param {"opencode" | "claude-code"} harness
+ * @param {"opencode" | "claude-code" | "codex"} harness
  * @param {{ url: string, openaiBaseUrl: string }} fake
  * @param {string} home
  * @returns {Record<string, string>}
@@ -30,6 +30,25 @@ export function agentEnv(harness, fake, home) {
 			ANTHROPIC_API_KEY: "scripted",
 			CLAUDE_CONFIG_DIR: join(home, "claude"),
 		};
+	if (harness === "codex") {
+		const codexHome = join(home, "codex");
+		mkdirSync(codexHome, { recursive: true });
+		writeFileSync(
+			join(codexHome, "config.toml"),
+			[
+				'model = "scripted"',
+				'model_provider = "fake"',
+				"",
+				"[model_providers.fake]",
+				'name = "Scripted"',
+				`base_url = "${fake.openaiBaseUrl}"`,
+				'wire_api = "responses"',
+				'env_key = "OPENAI_API_KEY"',
+				"",
+			].join("\n"),
+		);
+		return { CODEX_HOME: codexHome, OPENAI_API_KEY: "scripted" };
+	}
 	const config = join(home, "config");
 	mkdirSync(join(config, "opencode"), { recursive: true });
 	writeFileSync(
@@ -135,13 +154,13 @@ async function main() {
 	const repeatAt = process.argv.indexOf("--repeat");
 	const repeat = repeatAt > -1 ? Number(process.argv[repeatAt + 1]) : 1;
 	if (
-		(harness !== "opencode" && harness !== "claude-code") ||
+		!["opencode", "claude-code", "codex"].includes(harness ?? "") ||
 		!cloneArg ||
 		!Number.isInteger(repeat) ||
 		repeat < 1
 	) {
 		console.error(
-			"usage: admission-fake.mjs <opencode|claude-code> <cloneDir> [--repeat N]",
+			"usage: admission-fake.mjs <opencode|claude-code|codex> <cloneDir> [--repeat N]",
 		);
 		process.exit(2);
 	}

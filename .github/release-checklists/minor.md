@@ -2,7 +2,15 @@
 
 Minor release {{VERSION}}: the per-release checklist. The walk is the full walk; what a minor release does is in [RELEASING.md](https://github.com/prismalens/prismalens/blob/main/RELEASING.md).
 
-- [ ] **Full release walk**, every step of the walkthrough, including step 1 (install), the step 5 to 6 run and `pnpm gate:side-checks`.
+- [ ] **`CI gate` green on the release PR's base SHA.** It already proves the install, a run from an alert in to an investigation out, the side checks on Linux, macOS and Windows, the upgrade chain from every published release, and the browser suite.
+- [ ] **Full manual walk**, every step CI cannot prove, none carried forward:
+  - one real, signed-in agent run per agent and per OS;
+  - `pl doctor`, and a private-repo clone through the real credential helper;
+  - the desktop window, tray and notification;
+  - Ctrl+C in a real terminal on Windows and macOS;
+  - `pl upgrade` through npm on Windows (the scripted check is N/A there, #921);
+  - WSL2, Tailscale and the phone.
+- [ ] **The release run's `Install from the real …` jobs green** (Homebrew tap, Scoop bucket), and a real `irm | iex` install of {{VERSION}} on Windows.
 - [ ] **`cross-os-smoke` in registry mode** (`.github/workflows/cross-os-smoke.yml`) on the released {{VERSION}} artifact, which proves the published package installs and runs on Linux, macOS and Windows. Link the green 3-OS run here.
 - [ ] **Docs sweep** for every identifier this release renamed or retired (env vars, config keys, flags, model ids, package names).
 - [ ] **Walk findings** recorded in this issue, or in one linked `{{VERSION}} walk findings` issue.
