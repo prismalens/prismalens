@@ -16,19 +16,35 @@ import type { BackendSpawn, Target } from "./supervisor.js";
 export interface WslSettings {
 	enabled: boolean;
 	distro: string | null;
+	/** Distros that failed the last check, with the reason the tray shows (#908). */
+	unusable: Readonly<Record<string, string>>;
 }
 
-export const WSL_OFF: WslSettings = { enabled: false, distro: null };
+export const WSL_OFF: WslSettings = {
+	enabled: false,
+	distro: null,
+	unusable: {},
+};
 
 /** Stored settings, defaulting to off for anything missing or malformed. */
 export function parseWslSettings(raw: string | null): WslSettings {
 	if (!raw) return WSL_OFF;
 	try {
-		const value = JSON.parse(raw) as Partial<WslSettings> | null;
+		const value = JSON.parse(raw) as Record<string, unknown> | null;
+		const unusable =
+			value?.unusable && typeof value.unusable === "object"
+				? Object.fromEntries(
+						Object.entries(value.unusable).filter(
+							(entry): entry is [string, string] =>
+								typeof entry[1] === "string",
+						),
+					)
+				: {};
 		return {
 			enabled: value?.enabled === true,
 			distro:
 				typeof value?.distro === "string" && value.distro ? value.distro : null,
+			unusable,
 		};
 	} catch {
 		return WSL_OFF;
@@ -205,6 +221,14 @@ const RUN_ON_WINDOWS = "Run on Windows instead";
 
 export const MISSING_PL_BUTTONS = [RUN_ON_WINDOWS, "Retry", "Quit"] as const;
 
+function where(distro: string | null, defaultName: string | null): string {
+	return distro
+		? `the ${distro} WSL distro`
+		: defaultName
+			? `the default WSL distro (${defaultName})`
+			: "the default WSL distro";
+}
+
 /** No `pl` in the distro (#673 w49); `defaultName` names WSL's default distro when known. */
 export function wslMissingPl(
 	distro: string | null,
@@ -214,16 +238,45 @@ export function wslMissingPl(
 	detail: string;
 	buttons: string[];
 } {
-	const where = distro
-		? `the ${distro} WSL distro`
-		: defaultName
-			? `the default WSL distro (${defaultName})`
-			: "the default WSL distro";
 	return {
-		message: `PrismaLens is not installed in ${where}`,
+		message: `PrismaLens is not installed in ${where(distro, defaultName)}`,
 		detail:
 			"Install it there (npm install -g prismalens) so `pl` is on the login shell's PATH, or run PrismaLens on Windows instead.",
 		buttons: [...MISSING_PL_BUTTONS],
+	};
+}
+
+/**
+ * Why `wsl.exe` could not run the probe's shell in a distro, short enough for
+ * a menu label. Container engines' own distros have no bash (#908).
+ */
+export function wslFailureReason(output: string): string {
+	const text = output.replace(/\0/g, "");
+	if (
+		/WSL_E_DISTRO_NOT_FOUND|no distribution with the supplied name/i.test(text)
+	)
+		return "not installed";
+	if (/bash: not found|execvpe\(bash\)|bash: No such file/i.test(text))
+		return "no bash";
+	if (/wsl\.exe ENOENT/.test(text)) return "WSL is not installed";
+	return "WSL could not start it";
+}
+
+/** A distro that failed the check: at boot with a way back to Windows, from the tray with OK. */
+export function wslUnusable(input: {
+	distro: string | null;
+	defaultName: string | null;
+	reason: string;
+	atBoot: boolean;
+}): { message: string; detail: string; buttons: string[] } {
+	const needs =
+		"PrismaLens needs a Linux distro with bash, and PrismaLens installed in it.";
+	return {
+		message: `PrismaLens can't run in ${where(input.distro, input.defaultName)}: ${input.reason}`,
+		detail: input.atBoot
+			? `${needs} Run it on Windows instead, then pick another distro from the tray's WSL distro menu.`
+			: `${needs} Your choice was not saved; pick another distro.`,
+		buttons: input.atBoot ? [...MISSING_PL_BUTTONS] : ["OK"],
 	};
 }
 
@@ -273,7 +326,7 @@ export function nothingRunningChoice(
 	return wslDialogChoice(settings, NOTHING_RUNNING_BUTTONS[response]);
 }
 
-/** The same for the missing-`pl` dialog, whose buttons come in another order. */
+/** The same for the missing-`pl` and unusable-distro dialogs, whose buttons come in another order. */
 export function missingPlChoice(
 	settings: WslSettings,
 	response: number,
@@ -304,6 +357,17 @@ export function portTakenByWslDialog(input: {
 	};
 }
 
+/** Settings after a check of `name`: its reason recorded, or cleared when it passed. */
+export function withCheck(
+	settings: WslSettings,
+	name: string | null,
+	reason: string | null,
+): WslSettings {
+	if (!name) return settings;
+	const { [name]: _cleared, ...rest } = settings.unusable;
+	return { ...settings, unusable: reason ? { ...rest, [name]: reason } : rest };
+}
+
 export const WSL_TOGGLE_LABEL = "Use PrismaLens in WSL";
 
 export interface WslMenuItem {
@@ -313,12 +377,20 @@ export interface WslMenuItem {
 	distro?: string | null;
 }
 
-/** The tray's WSL items: a switch, then one radio per distro (first = WSL's default, named when known). */
+/**
+ * The tray's WSL items: a switch, then one radio per distro (first = WSL's
+ * default, named when known). A distro that failed its check carries the
+ * reason and stays clickable, since a click checks it again (#908).
+ */
 export function wslMenuItems(
 	settings: WslSettings,
 	distros: string[],
 	defaultDistro: string | null = null,
 ): { toggle: WslMenuItem; distros: WslMenuItem[] } {
+	const why = (name: string | null) => {
+		const reason = name ? settings.unusable[name] : undefined;
+		return reason ? ` (${reason})` : "";
+	};
 	return {
 		toggle: {
 			label: WSL_TOGGLE_LABEL,
@@ -328,14 +400,14 @@ export function wslMenuItems(
 		distros: [
 			{
 				label: defaultDistro
-					? `Default distro (${defaultDistro})`
+					? `Default distro (${defaultDistro})${why(defaultDistro)}`
 					: "Default distro",
 				type: "radio",
 				checked: settings.distro === null,
 				distro: null,
 			},
 			...distros.map((name) => ({
-				label: name,
+				label: `${name}${why(name)}`,
 				type: "radio" as const,
 				checked: settings.distro === name,
 				distro: name,
