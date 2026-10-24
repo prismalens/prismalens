@@ -18550,7 +18550,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   },
@@ -18703,7 +18704,8 @@
                 "claude-code",
                 "codex",
                 "gemini",
-                "deepagents"
+                "deepagents",
+                "local"
               ],
               "type": "string"
             },
@@ -18743,7 +18745,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
