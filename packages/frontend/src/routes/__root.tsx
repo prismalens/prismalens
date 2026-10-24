@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
+import { FONT_COOKIE, SYSTEM_FONT_STACK } from "@/lib/appearance";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
@@ -45,6 +46,7 @@ var c=g(${JSON.stringify(THEME_COOKIE)});var t=c==='light'?'light':c==='system'?
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
 try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');}catch(_){}
+if(g(${JSON.stringify(FONT_COOKIE)})==='system'){e.style.setProperty('--font-sans',${JSON.stringify(SYSTEM_FONT_STACK)});e.setAttribute('data-font','system');}
 if(location.pathname.indexOf('/settings')===0)e.setAttribute('data-settings','');
 }catch(_){}})();`;
 
