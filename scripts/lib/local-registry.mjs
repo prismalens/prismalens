@@ -4,7 +4,7 @@
 // A Verdaccio registry on loopback for the release gate's upgrade checks (#920): the candidate
 // tarball is published to it, and with `proxy` every other version of `prismalens` still comes
 // from npmjs, so a real older release can be upgraded to a build that is not on npm yet.
-import { writeFileSync } from "node:fs";
+import { openSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
 import crossSpawn from "cross-spawn";
@@ -48,13 +48,15 @@ packages:
 log: { type: stdout, format: pretty, level: warn }
 `,
 	);
+	const logFile = join(dir, "verdaccio.out.log");
+	const out = openSync(logFile, "w");
 	const child = crossSpawn(
 		"npx",
 		["-y", "verdaccio@6", "--config", config, "--listen", `127.0.0.1:${port}`],
-		{ detached: !WIN, stdio: "ignore", env, windowsHide: true },
+		{ detached: !WIN, stdio: ["ignore", out, out], env, windowsHide: true },
 	);
 	let up = false;
-	for (let i = 0; i < 120 && !up; i++) {
+	for (let i = 0; i < 480 && !up; i++) {
 		up = await fetch(`${registry}-/ping`)
 			.then((r) => r.ok)
 			.catch(() => false);
@@ -62,7 +64,9 @@ log: { type: stdout, format: pretty, level: warn }
 	}
 	if (!up) {
 		killTree(child.pid, "SIGKILL");
-		throw new Error("verdaccio did not answer /-/ping");
+		throw new Error(
+			`verdaccio did not answer /-/ping in 240s: ${readFileSync(logFile, "utf8").slice(-800)}`,
+		);
 	}
 	const npmrc = join(dir, "npmrc");
 	writeFileSync(

@@ -295,6 +295,8 @@ async function main() {
 	console.log(table);
 	if (process.env.GITHUB_STEP_SUMMARY)
 		appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${table}\n`);
+	// An agent's grandchildren can outlive the kill and hold the event loop open.
+	process.exit(0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
