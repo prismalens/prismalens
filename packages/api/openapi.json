@@ -9920,6 +9920,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -10467,6 +10477,53 @@
                         }
                       ]
                     },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "used": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cost": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "used",
+                            "size",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -10509,6 +10566,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
@@ -11088,6 +11159,16 @@
                                               "status"
                                             ]
                                           }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        },
+                                        "parentId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
                                         }
                                       },
                                       "required": [
@@ -11635,6 +11716,53 @@
                               }
                             ]
                           },
+                          "usage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "used": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "size": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "cost": {
+                                    "type": "object",
+                                    "properties": {
+                                      "amount": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "currency": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "amount",
+                                      "currency"
+                                    ]
+                                  },
+                                  "at": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "used",
+                                  "size",
+                                  "at"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "stopRequestedAt": {
                             "anyOf": [
                               {
@@ -11677,6 +11805,20 @@
                                   "answered",
                                   "stopped",
                                   "error"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "endReason": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "interrupted",
+                                  "limited"
                                 ],
                                 "type": "string"
                               },
@@ -12275,6 +12417,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -12822,6 +12974,53 @@
                         }
                       ]
                     },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "used": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cost": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "used",
+                            "size",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -12864,6 +13063,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
@@ -13429,6 +13642,16 @@
                                             "status"
                                           ]
                                         }
+                                      },
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
+                                      },
+                                      "parentId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 64
                                       }
                                     },
                                     "required": [
@@ -13976,6 +14199,53 @@
                             }
                           ]
                         },
+                        "usage": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "used": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cost": {
+                                  "type": "object",
+                                  "properties": {
+                                    "amount": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    "currency": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "required": [
+                                    "amount",
+                                    "currency"
+                                  ]
+                                },
+                                "at": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "used",
+                                "size",
+                                "at"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "stopRequestedAt": {
                           "anyOf": [
                             {
@@ -14018,6 +14288,20 @@
                                 "answered",
                                 "stopped",
                                 "error"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "endReason": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "interrupted",
+                                "limited"
                               ],
                               "type": "string"
                             },
@@ -14649,6 +14933,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -15196,6 +15490,53 @@
                         }
                       ]
                     },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "used": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cost": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "used",
+                            "size",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -15238,6 +15579,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
@@ -16494,6 +16849,16 @@
                                               "status"
                                             ]
                                           }
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        },
+                                        "parentId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
                                         }
                                       },
                                       "required": [
@@ -17157,6 +17522,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -17704,6 +18079,53 @@
                         }
                       ]
                     },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "used": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cost": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "used",
+                            "size",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -17746,6 +18168,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
@@ -18464,6 +18900,16 @@
                                   "status"
                                 ]
                               }
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "parentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
                             }
                           },
                           "required": [
@@ -19124,6 +19570,16 @@
                                         "status"
                                       ]
                                     }
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "parentId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
                                   }
                                 },
                                 "required": [
@@ -19671,6 +20127,53 @@
                         }
                       ]
                     },
+                    "usage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "used": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cost": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "currency": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "used",
+                            "size",
+                            "at"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "stopRequestedAt": {
                       "anyOf": [
                         {
@@ -19713,6 +20216,20 @@
                             "answered",
                             "stopped",
                             "error"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "interrupted",
+                            "limited"
                           ],
                           "type": "string"
                         },
@@ -20010,6 +20527,158 @@
                   "required": [
                     "filename",
                     "markdown"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/investigations/{id}/blob": {
+      "get": {
+        "operationId": "investigations.getBlob",
+        "summary": "Read a file at the commit the run recorded",
+        "tags": [
+          "investigations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sha",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "ok"
+                        },
+                        "repo": {
+                          "type": "string"
+                        },
+                        "sha": {
+                          "type": "string",
+                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "file",
+                            "symlink"
+                          ],
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "content": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "omitted": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "binary",
+                                "too-large"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "repo",
+                        "sha",
+                        "path",
+                        "kind",
+                        "size",
+                        "content",
+                        "omitted"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "const": "unavailable"
+                        },
+                        "repo": {
+                          "type": "string"
+                        },
+                        "sha": {
+                          "type": "string",
+                          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "enum": [
+                            "source-removed",
+                            "commit-gone",
+                            "not-retained",
+                            "not-a-file"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "repo",
+                        "sha",
+                        "path",
+                        "reason"
+                      ]
+                    }
                   ]
                 }
               }

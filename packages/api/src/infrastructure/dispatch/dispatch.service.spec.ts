@@ -842,7 +842,7 @@ describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 wind
 
 		await boot();
 
-		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON });
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON, endReason: "interrupted" });
 	});
 
 	it("a follow-up cut off by a restart puts the finished run back with an error turn, and says so in the conversation", async () => {

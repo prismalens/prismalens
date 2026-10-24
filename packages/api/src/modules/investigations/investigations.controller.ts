@@ -18,6 +18,8 @@ import {
 	InvestigationReportSchema,
 	investigationsContract,
 	OverlaySchema,
+	RunEndReasonSchema,
+	RunUsageSchema,
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
@@ -36,6 +38,7 @@ import type {
 	InternalInvestigationResultDto,
 	RecommendationDto,
 } from "./dto/index.js";
+import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
 import {
 	followUpBlockedReason,
 	InvestigationsService,
@@ -472,6 +475,31 @@ export class InvestigationsController {
 				},
 			),
 
+			// GET /investigations/:id/blob - A file the run read, at its recorded commit
+			getBlob: implement(investigationsContract.getBlob).handler(
+				async ({ input }) => {
+					const investigation = await this.investigationsService.findById(
+						input.id,
+					);
+					if (!investigation) {
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					}
+					try {
+						return await readEvidenceBlob(
+							this.parseWorkspace(investigation.workspace),
+							input.sha,
+							input.path,
+						);
+					} catch (error) {
+						if (error instanceof EvidenceRequestRefused)
+							throw new ORPCError("BAD_REQUEST", { message: error.message });
+						throw error;
+					}
+				},
+			),
+
 			// POST /investigations/:id/result - Write result (Worker)
 			writeResult: implement(investigationsContract.writeResult).handler(
 				async ({ input }) => {
@@ -539,6 +567,11 @@ export class InvestigationsController {
 			similarIncidents: [],
 		});
 		return withoutSimilar.success ? withoutSimilar.data : null;
+	}
+
+	private parseUsage(raw: Investigation["usage"]) {
+		const parsed = RunUsageSchema.safeParse(safeParseJsonObject(raw));
+		return parsed.success ? parsed.data : null;
 	}
 
 	private parseWorkspace(raw: Investigation["workspace"]) {
@@ -616,6 +649,7 @@ export class InvestigationsController {
 			harness: investigation.harness ?? null,
 			model: investigation.model ?? null,
 			effort: investigation.effort ?? null,
+			usage: this.parseUsage(investigation.usage),
 			stopRequestedAt: investigation.stopRequestedAt?.toISOString() ?? null,
 			awaitingApprovalAt:
 				investigation.awaitingApprovalAt?.toISOString() ?? null,
@@ -623,6 +657,10 @@ export class InvestigationsController {
 			liveTurn: (investigation.liveTurn as LiveTurn | null) ?? null,
 			lastTurnOutcome:
 				(investigation.lastTurnOutcome as TurnOutcome | null) ?? null,
+			endReason:
+				investigation.status === "failed"
+					? (RunEndReasonSchema.safeParse(investigation.endReason).data ?? null)
+					: null,
 			acpSessionId: investigation.acpSessionId ?? null,
 			workspace: this.parseWorkspace(investigation.workspace),
 			...this.resumeState(investigation),

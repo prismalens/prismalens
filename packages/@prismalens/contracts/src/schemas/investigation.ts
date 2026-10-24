@@ -24,6 +24,7 @@ import { LEGACY_ACCESS_LEVEL } from "./state-labels.js";
 import {
 	INVESTIGATION_KINDS,
 	LIVE_TURNS,
+	RUN_END_REASONS,
 	TURN_OUTCOMES,
 } from "./state-semantics.js";
 
@@ -71,6 +72,10 @@ export const HypothesisSchema = z.object({
 	statement: z.string().min(1),
 	status: HypothesisStatusSchema,
 	evidence: z.array(EvidenceSchema),
+	/** Short id ("h1") a later hypothesis names as its parent. Optional: older reports have none and render flat. */
+	id: z.string().min(1).max(64).optional(),
+	/** The `id` of the hypothesis this one refines; absent on a top-level idea. */
+	parentId: z.string().min(1).max(64).optional(),
 });
 
 export const RuledOutSchema = z.object({
@@ -109,6 +114,21 @@ export const NextStepSchema = z.object({
 	/** Host-stamped: the Recommendation row this option is (#811). Absent on reports written before it, which are read-only. */
 	id: z.string().uuid().optional(),
 });
+
+/**
+ * The harness's last ACP `usage_update`: context in use, the window, and the
+ * cumulative cost when it sends one. A run whose harness sends none has no
+ * usage at all, which is not zero.
+ */
+export const RunUsageSchema = z.object({
+	used: z.number().int().nonnegative(),
+	size: z.number().int().nonnegative(),
+	cost: z
+		.object({ amount: z.number().nonnegative(), currency: z.string().min(1) })
+		.optional(),
+	at: z.string(),
+});
+export type RunUsage = z.infer<typeof RunUsageSchema>;
 
 /**
  * Run-metadata: the enforcement the harness actually applied (ADR-0017 honest
@@ -296,6 +316,7 @@ export const RunWorkspaceSchema = z.object({
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
+export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
 
 export const InvestigationSchema = z.object({
 	id: z.string().uuid(),
@@ -330,6 +351,8 @@ export const InvestigationSchema = z.object({
 	model: z.string().nullable().optional(),
 	/** The effort the run asked for (#673 w52); null asked for the agent's own. */
 	effort: z.string().nullable().optional(),
+	/** The harness's last `usage_update`; null when it has sent none (shown "not reported", never zero). */
+	usage: RunUsageSchema.nullable().optional(),
 	/** Set when the operator asked the run to stop, so Stopping survives a reload. */
 	stopRequestedAt: DateStringSchema.nullable().optional(),
 	/** Who started the thread: `manual`, an alert trigger, or `re_trigger` on a refire (#673 w59). */
@@ -338,6 +361,8 @@ export const InvestigationSchema = z.object({
 	liveTurn: z.enum(LIVE_TURNS).nullable().optional(),
 	/** How the last follow-up ended; null until one has (#673 w59). */
 	lastTurnOutcome: z.enum(TURN_OUTCOMES).nullable().optional(),
+	/** A failed run a restart cut off, or one its agent's usage limit ended; null otherwise. */
+	endReason: RunEndReasonSchema.nullable().optional(),
 	/** The harness's own session id, kept only when it can be loaded again (#747). */
 	acpSessionId: z.string().nullable().optional(),
 	workspace: RunWorkspaceSchema.nullable().optional(),
