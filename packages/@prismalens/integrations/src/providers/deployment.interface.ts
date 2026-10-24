@@ -31,3 +31,30 @@ export interface DeploymentProvider {
 	/** Test the connection */
 	testConnection(request: AuthenticatedRequestFn): Promise<boolean>;
 }
+
+/** One deploy as a platform reports it, in the shape the push endpoint records (#854). */
+export interface DeploymentEvent {
+	version: string;
+	environment: string;
+	status: "succeeded" | "failed" | "started";
+	/** The commit deployed. */
+	sha: string;
+	actor: string | null;
+	url: string | null;
+	at: string;
+}
+
+/** The span a read must cover, normally an incident's what-changed window. */
+export interface DeploymentWindow {
+	since: Date;
+	until: Date;
+}
+
+/** A platform that can list the deploys of one repository in a window, read-only. */
+export interface DeploymentEventSource {
+	listDeploymentEvents(
+		request: AuthenticatedRequestFn,
+		repository: string,
+		window: DeploymentWindow,
+	): Promise<DeploymentEvent[]>;
+}

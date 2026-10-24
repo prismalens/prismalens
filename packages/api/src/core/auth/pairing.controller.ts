@@ -21,8 +21,13 @@ import {
 	prismaPairingStore,
 	redeemPairingLink,
 } from "@prismalens/auth";
-import { pairingContract, webhooksContract } from "@prismalens/contracts";
+import {
+	type PushHealth,
+	pairingContract,
+	webhooksContract,
+} from "@prismalens/contracts";
 import type { Request } from "express";
+import { pushHealth } from "../../modules/push/push.service.js";
 import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
@@ -65,7 +70,11 @@ export class PairingController {
 					operatorOnly(request);
 					const devices = await this.store.listDevices();
 					const self = request.operator?.device.id;
-					return { devices: devices.map((d) => deviceOut(d, self)) };
+					const subs = await this.prisma.pushSubscription.findMany();
+					const push = new Map(subs.map((s) => [s.deviceId, pushHealth(s)]));
+					return {
+						devices: devices.map((d) => deviceOut(d, self, push.get(d.id))),
+					};
 				},
 			),
 
@@ -79,7 +88,14 @@ export class PairingController {
 							message: "No such device, or it is revoked.",
 						});
 					}
-					return deviceOut(device, request.operator?.device.id);
+					const sub = await this.prisma.pushSubscription.findUnique({
+						where: { deviceId: device.id },
+					});
+					return deviceOut(
+						device,
+						request.operator?.device.id,
+						sub ? pushHealth(sub) : undefined,
+					);
 				},
 			),
 
@@ -133,7 +149,11 @@ export class PairingController {
 	}
 }
 
-function deviceOut(d: DeviceRecord, self: string | undefined) {
+function deviceOut(
+	d: DeviceRecord,
+	self: string | undefined,
+	push: PushHealth | undefined,
+) {
 	return {
 		id: d.id,
 		name: d.name,
@@ -141,6 +161,7 @@ function deviceOut(d: DeviceRecord, self: string | undefined) {
 		current: d.id === self,
 		createdAt: d.createdAt.toISOString(),
 		lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
+		push: push ?? null,
 	};
 }
 
@@ -204,7 +225,7 @@ export class PairingRedeemController {
  * holds `admin:access`, manages who else can. A link minted here delegates a
  * device's scopes, never the access scope.
  */
-function operatorOnly(request: Request): void {
+export function operatorOnly(request: Request): void {
 	if (!request.operator?.device.scopes.includes(ACCESS_SCOPE)) {
 		throw new ORPCError("FORBIDDEN", {
 			message: "Pairing is managed from the host, not from a paired device.",

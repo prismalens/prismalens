@@ -14,6 +14,7 @@ import type {
 	IncidentChanges,
 	RunCredential,
 } from "@prismalens/contracts/schemas";
+import { GitHubDeploymentsSegment } from "@prismalens/integrations";
 import { urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
@@ -26,6 +27,8 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../integrations/git-credential.service.js";
+import { IntegrationsService } from "../integrations/integrations.service.js";
+import { type DeployRecord, deployRow } from "./deploy-events.service.js";
 import {
 	commitUrl,
 	describeChange,
@@ -105,6 +108,7 @@ export class ChangeEventsService {
 		private readonly prisma: PrismaService,
 		private readonly repoSource: RepoSourceService,
 		private readonly gitCredentials: GitCredentialService,
+		private readonly integrations: IntegrationsService,
 	) {}
 
 	/** Null when the incident does not exist. Never throws for a git failure: it lands in `sources`. */
@@ -162,7 +166,12 @@ export class ChangeEventsService {
 			return current;
 		const sync: Sync = { at: now, done: false, run: Promise.resolve() };
 		sync.run = Promise.all(
-			scope.links.map((l) => this.syncLink(l, scope.window)),
+			scope.links.map((l) =>
+				Promise.all([
+					this.syncLink(l, scope.window),
+					this.pullDeploys(l, scope.window),
+				]),
+			),
 		).then(
 			() => {
 				sync.done = true;
@@ -285,6 +294,46 @@ export class ChangeEventsService {
 				problem: problemOf(err),
 				checkedAt: new Date().toISOString(),
 			});
+		}
+	}
+
+	/** GitHub Deployments of a repository read with a saved token, kept in the push endpoint's row shape (#854). A failure is logged: commits still show. A subPath service is skipped: a deployment names no folder. */
+	private async pullDeploys(
+		link: Link,
+		window: { start: Date; end: Date },
+	): Promise<void> {
+		const repo = link.repository;
+		if (
+			link.subPath ||
+			repo.sourceKind === "folder" ||
+			!repo.connectionId ||
+			urlHost(repo.url) !== "github.com"
+		)
+			return;
+		try {
+			const events = await new GitHubDeploymentsSegment().listDeploymentEvents(
+				this.integrations.createRequestFn(repo.connectionId),
+				repo.fullName,
+				{ since: window.start, until: window.end },
+			);
+			const writes = events.map((e) => {
+				const record: DeployRecord = {
+					service: { id: link.serviceId, name: link.serviceName },
+					...e,
+					source: "github",
+					repo: repo.fullName,
+					at: new Date(e.at),
+				};
+				const row = deployRow(record);
+				return this.prisma.changeEvent.upsert({
+					where: { dedupeKey: row.dedupeKey },
+					create: row,
+					update: {},
+				});
+			});
+			if (writes.length) await this.prisma.$transaction(writes);
+		} catch (err) {
+			this.logger.warn(`Deployments: ${repo.fullName}: ${message(err)}`);
 		}
 	}
 
@@ -452,7 +501,7 @@ function toChange(
 		sha: str(meta.sha) ?? str(meta.commit),
 		tag: str(meta.tag) ?? str(meta.version),
 		pr: typeof meta.pr === "number" ? meta.pr : null,
-		author: str(meta.author),
+		author: str(meta.author) ?? str(meta.actor),
 		files:
 			files && typeof meta.fileCount === "number"
 				? { count: meta.fileCount, paths: files }
