@@ -10,6 +10,7 @@ import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -77,10 +78,13 @@ import { inheritedLevel } from "../../modules/investigations/follow-up-route.js"
 import {
 	buildPreRunSnapshot,
 	type CopyTarget,
+	markerReason,
+	notSavedMarker,
 	parseStoredSnapshot,
 	preRunContext,
 	SNAPSHOT_IO_MS,
 	snapshotWindow,
+	unavailableMarker,
 	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
@@ -217,8 +221,15 @@ async function runJobInternal(
 		});
 
 		try {
-			const current = await ports.findInvestigation(data.investigationId);
-			if (current?.status === "cancelled") {
+			const current = await within(
+				ASSEMBLY_MS,
+				ports.findInvestigation(data.investigationId),
+			);
+			if (current === LATE)
+				logger.warn(
+					`Investigation status did not load in ${ASSEMBLY_MS / 1000} s; cancellation will not be honoured`,
+				);
+			else if (current?.status === "cancelled") {
 				logger.info(
 					`Job ${job.id} skipped — investigation ${data.investigationId} already cancelled`,
 				);
@@ -288,7 +299,7 @@ async function runJobInternal(
 						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
 							data.incidentId,
 							window,
-							io.signal,
+							AbortSignal.any([io.signal, AbortSignal.timeout(TELEMETRY_MS)]),
 						),
 					null,
 					TELEMETRY_MS,
@@ -509,10 +520,25 @@ async function gatherPreRun(
 			pastIncidents: input.pastIncidents,
 			runbooks: runbooks.entries,
 			...(runbooks.skipped ? { runbooksSkipped: runbooks.skipped } : {}),
+			...(telemetry
+				? {}
+				: {
+						telemetrySkipped: `it did not finish in ${TELEMETRY_MS / 1000} s, or failed`,
+					}),
 			checkoutsSkipped: input.checkoutsSkipped,
 			now: new Date(),
 		});
 		const saved = await saveSnapshot(port, runId, JSON.stringify(snap));
+		// The row keeps our own words, never the driver's message: it is served to the UI (#848).
+		if (!saved.ok)
+			void saveMarker(
+				port,
+				runId,
+				notSavedMarker(
+					snap,
+					saved.late ? saved.error : "the database write failed",
+				),
+			);
 		return preRunContext(snap, saved, await copiesOf(workspace, runId, snap));
 	} catch (e) {
 		logger.warn(
@@ -527,17 +553,32 @@ async function saveSnapshot(
 	port: NonNullable<RunPorts["preRun"]>,
 	runId: string,
 	text: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; late: boolean }> {
 	try {
 		const got = await within(SNAPSHOT_IO_MS, port.save(runId, text));
 		return got === LATE
 			? {
 					ok: false,
 					error: `the save did not finish in ${SNAPSHOT_IO_MS / 1000} s`,
+					late: true,
 				}
 			: { ok: true };
 	} catch (e) {
-		return { ok: false, error: messageOf(e) };
+		return { ok: false, error: messageOf(e), late: false };
+	}
+}
+
+/** A state marker in the run's `preRun` column, so its detail can say why no snapshot is there; never throws, never awaited. */
+async function saveMarker(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	text: string,
+): Promise<void> {
+	try {
+		if ((await within(SNAPSHOT_IO_MS, port.save(runId, text))) === LATE)
+			logger.warn("pre-run: the state marker did not save in time");
+	} catch (e) {
+		logger.warn("pre-run: could not save the state marker", e);
 	}
 }
 
@@ -564,7 +605,10 @@ async function reloadPreRun(
 		const got = await within(SNAPSHOT_IO_MS, port.load(runId));
 		if (got === LATE)
 			reason = `the stored snapshot did not load in ${SNAPSHOT_IO_MS / 1000} s`;
-		else if (got !== null) {
+		else if (got === null)
+			// Only an empty column is marked: a value that did not load or parse is kept.
+			void saveMarker(port, runId, unavailableMarker(reason));
+		else {
 			const snap = parseStoredSnapshot(got);
 			if (snap)
 				return preRunContext(
@@ -572,7 +616,7 @@ async function reloadPreRun(
 					{ ok: true },
 					await copiesOf(workspace, runId, snap),
 				);
-			reason = "the stored snapshot could not be read";
+			reason = markerReason(got) ?? "the stored snapshot could not be read";
 		}
 	} catch (e) {
 		logger.warn("Could not load the stored pre-run snapshot", e);
@@ -1333,6 +1377,12 @@ function inside(root: string, sub: string | null): string {
 	// Across Windows drives `relative` stays absolute, so `..` alone is not the test.
 	if (rel.startsWith("..") || isAbsolute(rel) || resolve(root, rel) !== dir)
 		throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
+	// A sub-path the repo turned into a link must not move the cwd outside the snapshot.
+	if (sub && existsSync(dir)) {
+		const real = relative(realpathSync(root), realpathSync(dir));
+		if (real.startsWith("..") || isAbsolute(real))
+			throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
+	}
 	return dir;
 }
 
@@ -1346,11 +1396,8 @@ function whereFrom(repo: {
 }
 
 /**
- * The harness runs in fresh snapshots of every repo the incident touches, under
- * the run's own dir (ADR 0004 §2). One repo keeps `repo/`; several go under
- * `repos/<name>/` with the cwd at `repos/` (#747). A repo that cannot be checked
- * out in the budget is skipped and named; with none, the run goes on without code
- * in an empty scratch dir that says so (#848).
+ * Fresh snapshots of the incident's repos under the run dir (ADR 0004 §2, #747). A repo
+ * not checked out in the budget is skipped and named; with none, the run goes on (#848).
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
@@ -1605,19 +1652,24 @@ export async function rebuildWorkspace(
 	// Paths come back from the row; nothing outside this run's dir is ever replaced.
 	inside(runDir, relative(runDir, ws.cwd));
 	const repos: RunWorkspaceRepo[] = [];
+	const budget = AbortSignal.timeout(CHECKOUT_BUDGET_MS);
+	const bounded = signal ? AbortSignal.any([signal, budget]) : budget;
 	for (const repo of ws.repos) {
 		inside(runDir, relative(runDir, repo.dir));
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
-		const { credential } = await ports.snapshotWith(
-			{
-				sourceKind: repo.sourceKind,
-				url: repo.url,
-				connectionId: repo.connectionId,
-			},
-			repo.dir,
-			signal,
-			repo.head,
+		const { credential } = await untilAborted(
+			ports.snapshotWith(
+				{
+					sourceKind: repo.sourceKind,
+					url: repo.url,
+					connectionId: repo.connectionId,
+				},
+				repo.dir,
+				bounded,
+				repo.head,
+			),
+			bounded,
 		);
 		repos.push({ ...repo, credential });
 	}

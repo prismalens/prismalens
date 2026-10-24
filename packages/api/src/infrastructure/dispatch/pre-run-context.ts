@@ -14,7 +14,7 @@ import {
 	realpathSync,
 	writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import {
 	type CheckoutSkipped,
@@ -22,6 +22,8 @@ import {
 	type FiringAlert,
 	type PreRunContext,
 	type PreRunCopy,
+	type PreRunDetail,
+	PreRunDetailSchema,
 	type PreRunSnapshot,
 	PreRunSnapshotSchema,
 	type PreRunSource,
@@ -114,12 +116,11 @@ export function buildPreRunSnapshot(input: {
 	pastIncidents: ContextPack["priorIncidents"];
 	runbooks: readonly RunbookEntry[];
 	runbooksSkipped?: string;
+	telemetrySkipped?: string;
 	checkoutsSkipped?: readonly CheckoutSkipped[];
 	now: Date;
 }): PreRunSnapshot {
-	const secrets = input.telemetry.flatMap((t) =>
-		"secrets" in t ? t.secrets : [],
-	);
+	const secrets = input.telemetry.flatMap((t) => t.secrets ?? []);
 	const clean = (text: string) => scrubSecrets(text, secrets);
 	const files: PreRunSnapshot["files"] = [];
 	const sources: PreRunSource[] = [];
@@ -162,7 +163,7 @@ export function buildPreRunSnapshot(input: {
 				),
 		);
 		const detail = clean(t.part.summary);
-		logger.info(`pre-run: read ${t.label} (${t.kind})${clean(why)}: ${detail}`);
+		logger.info(clean(`pre-run: read ${t.label} (${t.kind})${why}: ${detail}`));
 		files.push({ name, about: `${t.label} (${t.kind}): ${detail}`, text });
 		sources.push({
 			...who,
@@ -188,25 +189,36 @@ export function buildPreRunSnapshot(input: {
 			text: clean(runbooksMarkdown(input.runbooks)),
 		});
 	if (input.runbooksSkipped)
-		logger.warn(`pre-run: runbooks skipped: ${input.runbooksSkipped}`);
-	return {
-		fetchedAt: input.now.toISOString(),
-		window,
-		sources,
-		notConfigured: [...(input.notConfigured ?? [])],
-		runbooks: input.runbooks.map((r) => ({
-			title: r.title,
-			service: r.service,
-			path: r.path,
-			origin: r.origin,
-			...(r.link ? { link: r.link } : {}),
-		})),
-		...(input.runbooksSkipped
-			? { runbooksSkipped: input.runbooksSkipped }
-			: {}),
-		checkoutsSkipped: [...(input.checkoutsSkipped ?? [])],
-		files,
-	};
+		logger.warn(clean(`pre-run: runbooks skipped: ${input.runbooksSkipped}`));
+	if (input.telemetrySkipped)
+		logger.warn(`pre-run: telemetry skipped: ${input.telemetrySkipped}`);
+	// Labels, selectors, titles and the window carry user text too, so the whole snapshot is scrubbed (#848).
+	return PreRunSnapshotSchema.parse(
+		scrubDeep(
+			{
+				fetchedAt: input.now.toISOString(),
+				window,
+				sources,
+				notConfigured: [...(input.notConfigured ?? [])],
+				runbooks: input.runbooks.map((r) => ({
+					title: r.title,
+					service: r.service,
+					path: r.path,
+					origin: r.origin,
+					...(r.link ? { link: r.link } : {}),
+				})),
+				...(input.runbooksSkipped
+					? { runbooksSkipped: input.runbooksSkipped }
+					: {}),
+				...(input.telemetrySkipped
+					? { telemetrySkipped: input.telemetrySkipped }
+					: {}),
+				checkoutsSkipped: [...(input.checkoutsSkipped ?? [])],
+				files,
+			} satisfies PreRunSnapshot,
+			secrets,
+		),
+	);
 }
 
 /** The snapshot without the files' text: what the prompt, the report and the API read. */
@@ -217,11 +229,56 @@ export function summaryOf(snap: PreRunSnapshot): PreRunSummary {
 	};
 }
 
-/** The stored text a follow-up reads again; null when it does not parse. */
+/** The stored text a follow-up reads again; null when it does not parse or is a state marker. */
 export function parseStoredSnapshot(text: string): PreRunSnapshot | null {
 	try {
-		const parsed = PreRunSnapshotSchema.safeParse(JSON.parse(text));
+		const json: unknown = JSON.parse(text);
+		if (isMarker(json)) return null;
+		const parsed = PreRunSnapshotSchema.safeParse(json);
 		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
+}
+
+/** A stored snapshot never has `state`; a stored marker always does. */
+export function isMarker(json: unknown): boolean {
+	return typeof json === "object" && json !== null && "state" in json;
+}
+
+/**
+ * What the run's row keeps in place of a snapshot that did not save: the
+ * summary without excerpts, so the run's detail still says what it read (#848).
+ */
+export function notSavedMarker(
+	snap: PreRunSnapshot,
+	saveError: string,
+): string {
+	const marker: PreRunDetail = {
+		state: "not-saved",
+		...snap,
+		sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
+		files: snap.files.map(({ name, about }) => ({ name, about })),
+		saveError,
+	};
+	return JSON.stringify(marker);
+}
+
+/** What a follow-up's row keeps when it found no stored snapshot (#848). */
+export function unavailableMarker(reason: string): string {
+	const marker: PreRunDetail = { state: "unavailable", reason };
+	return JSON.stringify(marker);
+}
+
+/** Why a stored marker holds no snapshot to read again; null when the text is no marker. */
+export function markerReason(text: string): string | null {
+	try {
+		const json: unknown = JSON.parse(text);
+		if (!isMarker(json)) return null;
+		const m = PreRunDetailSchema.safeParse(json);
+		if (!m.success) return null;
+		if (m.data.state === "not-saved") return "the run's snapshot was not saved";
+		return m.data.state === "unavailable" ? m.data.reason : null;
 	} catch {
 		return null;
 	}
@@ -296,6 +353,11 @@ async function writeOne(
 		Cr = realpathSync(C);
 	} catch {
 		return refuse("the working directory is not there");
+	}
+	if (target.checkout) {
+		const fromCheckout = relative(realpathSync(target.checkout), Cr);
+		if (fromCheckout.startsWith("..") || isAbsolute(fromCheckout))
+			return refuse("the working directory resolves outside the checkout");
 	}
 	const root = ".prismalens";
 	const runs = join(root, "runs");

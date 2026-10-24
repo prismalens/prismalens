@@ -333,6 +333,20 @@ export class IntegrationsController {
 				);
 			}),
 
+			setServiceIntegrationOrder: implement(
+				integrationsContract.setServiceIntegrationOrder,
+			).handler(async ({ input }) => {
+				const rows = await this.integrationsService.setServiceIntegrationOrder(
+					input.serviceId,
+					input.overrideIds,
+				);
+				if (!rows)
+					throw new ORPCError("BAD_REQUEST", {
+						message: "Every id must be a mapping of this service, listed once",
+					});
+				return rows.map((si) => this.serializeServiceIntegration(si));
+			}),
+
 			createServiceIntegration: implement(
 				integrationsContract.createServiceIntegration,
 			).handler(async ({ input }) => {

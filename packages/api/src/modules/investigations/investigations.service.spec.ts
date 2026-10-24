@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it, vi } from "vitest";
+import { PreRunSummarySchema } from "@prismalens/contracts/schemas";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { SettingsService } from "../../core/settings/settings.service.js";
 import type { OverlayService } from "../overlay/overlay.service.js";
 import type { TimelineService } from "../timeline/timeline.service.js";
 import type { InternalInvestigationResultDto } from "./dto/index.js";
-import { InvestigationsService } from "./investigations.service.js";
+import { InvestigationsService, preRunDetailOf } from "./investigations.service.js";
 
 function serviceWith(kind = "investigation", stopRequestedAt: Date | null = null) {
 	// The guarded write honours the WHERE the way SQLite would (#673 w59).
@@ -156,5 +157,71 @@ describe("runs as threads (#673)", () => {
 		expect(prisma.investigation.count).toHaveBeenCalledWith({
 			where: { incidentId: "inc-9" },
 		});
+	});
+});
+
+describe("preRunDetailOf (#848 C16a)", () => {
+	it("returns null for null, undefined or unparsable JSON", () => {
+		expect(preRunDetailOf(null)).toBeNull();
+		expect(preRunDetailOf(undefined)).toBeNull();
+		expect(preRunDetailOf("")).toBeNull();
+		expect(preRunDetailOf("invalid json")).toBeNull();
+		expect(preRunDetailOf(JSON.stringify({ notASnapshot: true }))).toBeNull();
+	});
+
+	it("returns the snapshot without excerpts or file contents", () => {
+		const rawSnapshot = JSON.stringify({
+			fetchedAt: "2026-10-24T10:00:00.000Z",
+			window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+			sources: [
+				{
+					kind: "prometheus",
+					label: "prom",
+					from: "set",
+					status: "found",
+					detail: "2 alerts",
+					file: "telemetry-prometheus-1.json",
+					excerpt: "secret data excerpt that should be dropped",
+				},
+			],
+			notConfigured: [],
+			runbooks: [
+				{
+					title: "rb",
+					service: "checkout",
+					path: "runbooks/checkout.md",
+					origin: "repo",
+				},
+			],
+			checkoutsSkipped: [],
+			files: [
+				{
+					name: "telemetry-prometheus-1.json",
+					about: "prom: 2 alerts",
+					text: "full file content that should be dropped",
+				},
+			],
+		});
+
+		const detail = preRunDetailOf(rawSnapshot);
+		expect(detail?.state).toBe("ready");
+		const summary = detail?.state === "ready" ? detail : null;
+		expect(PreRunSummarySchema.safeParse(summary).success).toBe(true);
+		expect(summary?.sources[0]).toEqual({
+			kind: "prometheus",
+			label: "prom",
+			from: "set",
+			status: "found",
+			detail: "2 alerts",
+			file: "telemetry-prometheus-1.json",
+		});
+		expect((summary?.sources[0] as Record<string, unknown>).excerpt).toBeUndefined();
+		expect(summary?.files).toEqual([
+			{
+				name: "telemetry-prometheus-1.json",
+				about: "prom: 2 alerts",
+			},
+		]);
+		expect((summary?.files[0] as Record<string, unknown>).text).toBeUndefined();
 	});
 });

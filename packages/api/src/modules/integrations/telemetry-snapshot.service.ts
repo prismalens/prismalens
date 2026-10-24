@@ -70,7 +70,12 @@ export type SourceOutcome =
 			part: SnapshotPart;
 			secrets: string[];
 	  })
-	| (OutcomeBase & { status: "skipped" | "not-read"; reason: string });
+	| (OutcomeBase & {
+			status: "skipped" | "not-read";
+			reason: string;
+			/** A source opened before it failed: its credential is still scrubbed from the rest (#848). */
+			secrets?: string[];
+	  });
 
 /** The pre-run telemetry: every unit's outcome, the kinds nothing serves, and what the prompt may name. */
 export interface TelemetrySnapshot {
@@ -148,8 +153,10 @@ export async function fetchSnapshot(
 			const signal = opts.signal
 				? AbortSignal.any([timeout, opts.signal])
 				: timeout;
+			let secrets: string[] = [];
 			try {
 				const opened = await within(ms, s.open(ms));
+				secrets = opened.secrets.filter((x) => x.length >= 4);
 				if (!opened.request)
 					return {
 						...who,
@@ -179,6 +186,7 @@ export async function fetchSnapshot(
 					...who,
 					status: "skipped",
 					reason: e instanceof QueryFailed ? e.message : failureReason(e),
+					...(secrets.length ? { secrets } : {}),
 				};
 			}
 		}),

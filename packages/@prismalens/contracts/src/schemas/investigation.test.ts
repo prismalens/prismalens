@@ -606,5 +606,35 @@ describe("permission_ask and permission_answer events (#673 w21)", () => {
 		const input = { askId, decision: "approve" as const };
 		expect(AnswerAskSchema.parse(input)).toEqual(input);
 	});
+
+	it("parses harness_tool_call and harness_tools (#848)", () => {
+		const call = {
+			...base,
+			kind: "harness_tool_call" as const,
+			server: "prismalens-abcdefgh23",
+			name: "incident_get",
+			at: "2026-10-24T10:00:00.000Z",
+			turn: "first" as const,
+		};
+		expect(CanonicalEventSchema.parse(call)).toEqual(call);
+
+		const summary = {
+			...base,
+			kind: "harness_tools" as const,
+			server: "prismalens-abcdefgh23",
+			turn: "first" as const,
+			connected: true,
+			calls: [{ name: "incident_get", firstCalledAt: "2026-10-24T10:00:00.000Z", count: 1 }],
+		};
+		expect(CanonicalEventSchema.parse(summary)).toEqual(summary);
+	});
+
+	it("session_config.option admits only model and effort, tools option no longer parses (#848)", () => {
+		const modelConfig = { ...base, kind: "session_config" as const, option: "model" as const, value: "gpt-4", accepted: true };
+		expect(CanonicalEventSchema.parse(modelConfig)).toEqual(modelConfig);
+		const effortConfig = { ...base, kind: "session_config" as const, option: "effort" as const, value: "high", accepted: true };
+		expect(CanonicalEventSchema.parse(effortConfig)).toEqual(effortConfig);
+		expect(() => CanonicalEventSchema.parse({ ...base, kind: "session_config", option: "tools", value: "p", accepted: true })).toThrow();
+	});
 });
 

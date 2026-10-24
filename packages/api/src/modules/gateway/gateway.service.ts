@@ -254,6 +254,7 @@ export class GatewayService {
 		number?: number;
 	}): Promise<IncidentView | null> {
 		const select = {
+			id: true,
 			number: true,
 			title: true,
 			status: true,
@@ -286,9 +287,15 @@ export class GatewayService {
 					})
 				)?.incident;
 		if (!row) return null;
+		// Every alert's service, not just the 50 shown, so a late one still brings its changes (#848).
+		const alertServices = await this.prisma.alert.findMany({
+			where: { incidentId: row.id, serviceId: { not: null } },
+			select: { serviceId: true },
+			distinct: ["serviceId"],
+		});
 		const serviceIds = [
 			...new Set(
-				[row.serviceId, ...row.alerts.map((a) => a.serviceId)].filter(
+				[row.serviceId, ...alertServices.map((a) => a.serviceId)].filter(
 					(id): id is string => !!id,
 				),
 			),

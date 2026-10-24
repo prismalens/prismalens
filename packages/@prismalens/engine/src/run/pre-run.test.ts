@@ -84,3 +84,161 @@ describe("the pre-run context in the prompt (#848 ruling 2026-10-24)", () => {
 		expect(withPreRunCoverage(report, {})).toBe(report);
 	});
 });
+
+describe("withPreRunCoverage report coverage (#848 C6)", () => {
+	it("adds every coverage line from the table to queried or notQueried", () => {
+		const fullContext: Pick<InvestigationContext, "preRun"> = {
+			preRun: {
+				state: "not-saved",
+				copy: { state: "failed", reason: "no working directory took it" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				runbooksSkipped: "git timeout",
+				checkoutsSkipped: [
+					{ repo: "https://github.com/acme/api", reason: "clone timed out", code: "budget" },
+				],
+				files: [],
+				sources: [
+					{
+						kind: "prometheus",
+						label: "prom-1",
+						from: "set",
+						status: "found",
+						detail: "2 alerts firing",
+					},
+					{
+						kind: "prometheus",
+						label: "prom-2",
+						from: "set",
+						overridesEnv: "PROMETHEUS_TOKEN",
+						status: "found",
+						detail: "1 series",
+					},
+					{
+						kind: "loki",
+						label: "loki-env",
+						from: "env",
+						status: "empty",
+						detail: "nothing",
+					},
+					{
+						kind: "alertmanager",
+						label: "am-skip",
+						from: "set",
+						status: "skipped",
+						detail: "bad selector",
+					},
+					{
+						kind: "loki",
+						label: "loki-limit",
+						from: "set",
+						status: "not-read",
+						detail: "over the 6-source limit",
+					},
+				],
+			},
+		};
+
+		const report = { coverage: { queried: [], notQueried: [] } };
+		const out = withPreRunCoverage(report, fullContext);
+
+		expect(out.coverage.queried).toEqual([
+			"prom-1 (prometheus, saved in PrismaLens): 2 alerts firing",
+			"prom-2 (prometheus, saved in PrismaLens, overrides PROMETHEUS_TOKEN): 1 series",
+			"loki-env (loki, from the environment): queried, nothing for the window",
+		]);
+
+		expect(out.coverage.notQueried).toEqual([
+			"am-skip (alertmanager, saved in PrismaLens): skipped before the run, bad selector",
+			"loki-limit (loki, saved in PrismaLens): not read, over the 6-source limit",
+			"Runbooks: skipped before the run, git timeout",
+			"Repository https://github.com/acme/api: not checked out before the run, clone timed out",
+			"Pre-run snapshot: not saved; a follow-up will not have it",
+			"Pre-run read copy: not written, no working directory took it",
+		]);
+	});
+
+	it("state unavailable adds pre-run snapshot unavailable line", () => {
+		const unavailContext: Pick<InvestigationContext, "preRun"> = {
+			preRun: {
+				state: "unavailable",
+				reason: "no stored snapshot for this run",
+				checkoutsSkipped: [
+					{ repo: "https://github.com/acme/worker", reason: "over the 32-repository guard", code: "guard" },
+				],
+			},
+		};
+
+		const report = { coverage: { queried: [], notQueried: [] } };
+		const out = withPreRunCoverage(report, unavailContext);
+
+		expect(out.coverage.queried).toEqual([]);
+		expect(out.coverage.notQueried).toEqual([
+			"Repository https://github.com/acme/worker: not checked out before the run, over the 32-repository guard",
+			"Pre-run snapshot: not available, no stored snapshot for this run",
+		]);
+	});
+
+	it("an all-skipped snapshot yields zero read in queried and lists every skipped source in notQueried", () => {
+		const allSkipped: Pick<InvestigationContext, "preRun"> = {
+			preRun: {
+				state: "ready",
+				copy: { state: "written", dir: ".prismalens/runs/r1" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				checkoutsSkipped: [],
+				files: [],
+				sources: [
+					{
+						kind: "prometheus",
+						label: "prom-a",
+						from: "set",
+						status: "skipped",
+						detail: "bad selector",
+					},
+					{
+						kind: "loki",
+						label: "loki-b",
+						from: "env",
+						status: "skipped",
+						detail: "timed out",
+					},
+				],
+			},
+		};
+
+		const report = { coverage: { queried: [], notQueried: [] } };
+		const out = withPreRunCoverage(report, allSkipped);
+
+		expect(out.coverage.queried).toEqual([]);
+		expect(out.coverage.notQueried).toEqual([
+			"prom-a (prometheus, saved in PrismaLens): skipped before the run, bad selector",
+			"loki-b (loki, from the environment): skipped before the run, timed out",
+		]);
+	});
+
+	it("each line is added once", () => {
+		const existing = "Runbooks: skipped before the run, git timeout";
+		const report = { coverage: { queried: [], notQueried: [existing] } };
+		const ctx: Pick<InvestigationContext, "preRun"> = {
+			preRun: {
+				state: "ready",
+				copy: { state: "written" },
+				fetchedAt: "2026-10-24T10:00:00.000Z",
+				window: { start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" },
+				notConfigured: [],
+				runbooks: [],
+				runbooksSkipped: "git timeout",
+				checkoutsSkipped: [],
+				files: [],
+				sources: [],
+			},
+		};
+		const out = withPreRunCoverage(report, ctx);
+		expect(out.coverage.notQueried).toEqual([existing]);
+	});
+});

@@ -175,12 +175,14 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 				status: "investigating",
 				severity: "high",
 				description: null,
+				serviceId: "svc-1",
 				triggeredAt: new Date("2026-10-24T09:00:00Z"),
 				service: { name: "checkout" },
 				alerts: [
 					{
 						title: "HighErrorRate",
 						severity: "high",
+						serviceId: "svc-1",
 						labels: '{"alertname":"HighErrorRate"}',
 						triggeredAt: new Date("2026-10-24T09:00:00Z"),
 					},
@@ -205,6 +207,8 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		]),
 	};
 	const incident = { findUnique: vi.fn(async () => null) };
+	const changeEvent = { findMany: vi.fn(async () => []) };
+	const alert = { findMany: vi.fn(async () => [{ serviceId: "svc-1" }]) };
 
 	async function call(
 		method: string,
@@ -213,7 +217,8 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const g = gateway({
 			investigation,
 			incident,
-			changeEvent: { findMany: async () => [] },
+			changeEvent,
+			alert,
 			setting: { findUnique: async () => null },
 		});
 		const entry = await g.lease(RUN_A, NAME);
@@ -250,6 +255,46 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		]);
 		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
 		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
+	});
+
+	it("toolsServer: lease carries the given serverName in the prompt line and entry", async () => {
+		const entry = await gateway().lease(RUN_A, "prismalens-customname12");
+		expect(entry?.serverName).toBe("prismalens-customname12");
+		expect(entry?.promptLine).toContain("MCP server `prismalens-customname12`");
+	});
+
+	it("initialize then tools/list gives no calls, two tools/call fire onCall twice and calls() returns count: 2 (#848)", async () => {
+		const g = gateway({
+			investigation: {
+				findUnique: vi.fn(async () => ({
+					incident: { number: 1, service: { name: "checkout" }, alerts: [] },
+				})),
+			},
+			incident: { findUnique: vi.fn(async () => null) },
+			setting: { findUnique: async () => null },
+		});
+		const entry = await g.lease(RUN_A, NAME);
+		const callsFired: { name: string; at: string }[] = [];
+		entry?.onCall((c) => callsFired.push(c));
+
+		await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize, entry?.token));
+		await g.serve(RUN_A, rpc(RUN_A, "tools/list", {}, entry?.token));
+		expect(callsFired).toHaveLength(0);
+		expect(entry?.calls()).toEqual([]);
+
+		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
+		await g.serve(RUN_A, rpc(RUN_A, "tools/call", { name: "incident_get", arguments: {} }, entry?.token));
+
+		expect(callsFired).toHaveLength(2);
+		expect(callsFired[0]?.name).toBe("incident_get");
+		expect(callsFired[1]?.name).toBe("incident_get");
+		const recorded = entry?.calls();
+		expect(recorded).toHaveLength(1);
+		expect(recorded?.[0]).toEqual({
+			name: "incident_get",
+			firstCalledAt: callsFired[0]?.at,
+			count: 2,
+		});
 	});
 
 	for (const name of ["prometheus_query", "loki_query_range", "alertmanager_alerts", "sources_list", "vendor__tool"])
@@ -312,5 +357,78 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			out.error !== undefined ||
 			(out.result as { isError?: boolean } | undefined)?.isError === true;
 		expect(failed).toBe(true);
+	});
+
+	it("incident_get changes: serves alerts and deploy and change events from the database (#848 C8)", async () => {
+		const changeEvents = [
+			{
+				type: "deploy",
+				source: "argocd",
+				timestamp: new Date("2026-10-24T08:30:00Z"),
+				description: "deployed checkout v2.1.0",
+				metadata: JSON.stringify({ environment: "production", version: "v2.1.0" }),
+				service: { name: "checkout" },
+			},
+			{
+				type: "feature_flag",
+				source: "launchdarkly",
+				timestamp: new Date("2026-10-24T08:00:00Z"),
+				description: "enabled new_cart",
+				metadata: JSON.stringify({ env: "prod" }),
+				service: { name: "checkout" },
+			},
+		];
+		changeEvent.findMany.mockResolvedValueOnce(changeEvents as never);
+
+		const res = await call("tools/call", { name: "incident_get", arguments: {} });
+		const got = JSON.parse(text(res));
+
+		expect(got.changes).toEqual([
+			{
+				type: "deploy",
+				source: "argocd",
+				timestamp: "2026-10-24T08:30:00.000Z",
+				service: "checkout",
+				description: "deployed checkout v2.1.0",
+				environment: "production",
+				version: "v2.1.0",
+			},
+			{
+				type: "feature_flag",
+				source: "launchdarkly",
+				timestamp: "2026-10-24T08:00:00.000Z",
+				service: "checkout",
+				description: "enabled new_cart",
+				environment: "prod",
+				version: null,
+			},
+		]);
+
+		const [callArg] = (changeEvent.findMany.mock.calls.at(-1) as unknown as [
+			{ where: { serviceId: { in: string[] }; timestamp: { gte: Date; lte: Date } }; orderBy: { timestamp: string }; take: number },
+		]);
+		expect(callArg.where.serviceId).toEqual({ in: ["svc-1"] });
+		expect(callArg.where.timestamp.gte).toEqual(new Date("2026-10-23T09:00:00.000Z"));
+		expect(callArg.orderBy).toEqual({ timestamp: "desc" });
+		expect(callArg.take).toBe(20);
+
+		const listOut = await call("tools/list");
+		const incidentGet = (listOut.result as { tools: { name: string; description: string }[] }).tools.find(
+			(t) => t.name === "incident_get",
+		);
+		expect(incidentGet?.description).toContain("alerts, deploy and change events PrismaLens recorded");
+	});
+
+	it("alert.findMany returning a second service id makes changeEvent.findMany get both ids (#848)", async () => {
+		alert.findMany.mockResolvedValueOnce([{ serviceId: "svc-1" }, { serviceId: "svc-2" }]);
+		changeEvent.findMany.mockResolvedValueOnce([]);
+
+		await call("tools/call", { name: "incident_get", arguments: {} });
+
+		const [callArg] = (changeEvent.findMany.mock.calls.at(-1) as unknown as [
+			{ where: { serviceId: { in: string[] } } },
+		]);
+		expect(callArg.where.serviceId.in).toEqual(expect.arrayContaining(["svc-1", "svc-2"]));
+		expect(callArg.where.serviceId.in).toHaveLength(2);
 	});
 });

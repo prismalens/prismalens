@@ -94,6 +94,49 @@ describe("listRunbooks", () => {
 			{ title: "Checkout runbook", url: "https://wiki.example.com/checkout-runbook" },
 		]);
 	});
+
+	it("500 runbook files list 50 entries with 0 git show calls (#848)", async () => {
+		const manyDir = mkdtempSync(join(tmpdir(), "runbooks-500-"));
+		try {
+			execFileSync("git", ["init", "-q", manyDir]);
+			execFileSync("git", ["-C", manyDir, "config", "user.email", "t@example.com"]);
+			execFileSync("git", ["-C", manyDir, "config", "user.name", "t"]);
+			mkdirSync(join(manyDir, "runbooks"), { recursive: true });
+			for (let i = 0; i < 500; i++) {
+				writeFileSync(join(manyDir, "runbooks", `rb-${String(i).padStart(3, "0")}.md`), `# Runbook ${i}`);
+			}
+			writeFileSync(join(manyDir, "catalog-info.yaml"), CATALOG);
+			execFileSync("git", ["-C", manyDir, "add", "-A"]);
+			execFileSync("git", ["-C", manyDir, "commit", "-qm", "500 runbooks"]);
+			const head = execFileSync("git", ["-C", manyDir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+
+			const manyRepo: RunbookRepo = {
+				name: "service-repo",
+				dir: manyDir,
+				head,
+				subPath: null,
+				services: ["checkout"],
+			};
+
+			const found = await listRunbooks([manyRepo], { limit: 50 });
+			expect(found).toHaveLength(50);
+			expect(found.every((e) => e.origin === "repo")).toBe(true);
+			// catalog-info.yaml requires git show; because limit stopped early, no catalog entries exist
+			expect(found.some((e) => e.matchedBy === "catalog-info.yaml")).toBe(false);
+		} finally {
+			rmSync(manyDir, { recursive: true, force: true });
+		}
+	});
+
+	it("a git runner that settles only on abort rejects within 1 s (#848)", async () => {
+		const ac = new AbortController();
+		ac.abort(new Error("scan aborted"));
+		const startedAt = Date.now();
+		await expect(
+			listRunbooks([repo], { signal: ac.signal }),
+		).rejects.toThrow("scan aborted");
+		expect(Date.now() - startedAt).toBeLessThan(1000);
+	});
 });
 
 describe("readRunbook", () => {

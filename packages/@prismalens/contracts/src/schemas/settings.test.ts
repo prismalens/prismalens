@@ -182,4 +182,37 @@ describe("HarnessStatusSchema", () => {
 		});
 		expect(parsed.envModel).toBeNull();
 	});
+
+	it("parses a status with and without toolsHint (#848 C17)", () => {
+		const withHint = HarnessStatusSchema.parse({
+			id: "gemini",
+			label: "Gemini CLI",
+			binary: "gemini",
+			installed: true,
+			tested: null,
+			install: "npm i -g @google/gemini-cli",
+			defaultModel: null,
+			modelVia: "unsupported",
+			loginHint: "gemini sign-in",
+			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
+			toolsHint: {
+				text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
+			},
+		});
+		expect(withHint.toolsHint?.text).toContain("Gemini's folder trust");
+
+		const withoutHint = HarnessStatusSchema.parse({
+			id: "claude-code",
+			label: "Claude Code",
+			binary: "claude",
+			installed: true,
+			tested: null,
+			install: "npm i -g @anthropic-ai/claude-code",
+			defaultModel: null,
+			modelVia: "acp",
+			loginHint: "claude login",
+			models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
+		});
+		expect(withoutHint.toolsHint).toBeUndefined();
+	});
 });

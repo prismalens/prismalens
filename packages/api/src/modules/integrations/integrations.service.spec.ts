@@ -469,4 +469,203 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			]);
 		});
 	});
+
+	describe("C12 git host token test: unpinned no-access & untested tokens (#848)", () => {
+		it("test stays ACTIVE on an unpinned no-access", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-git-unpinned-test",
+				label: "Git Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// Two repos: repo1 unpinned fails with no-access, repo2 unpinned succeeds
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{ url: "https://github.com/org/repo1.git", metadata: null },
+				{ url: "https://github.com/org/repo2.git", metadata: null },
+			]);
+
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			const spawnGitMock = vi.mocked(gitSpawnMod.spawnGit);
+
+			spawnGitMock.mockImplementation(async (args: any) => {
+				const url = args[args.length - 1];
+				if (url.includes("repo1")) {
+					return {
+						stdout: "",
+						stderr: "remote: Repository not found.\nfatal: Authentication failed for 'https://github.com/org/repo1.git'",
+					};
+				}
+				return { stdout: "ok https://github.com/org/repo2.git", stderr: "" };
+			});
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-git-unpinned-test");
+				expect(result.success).toBe(true);
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-git-unpinned-test" },
+					data: expect.objectContaining({
+						status: "ACTIVE",
+						testedAt: expect.any(Date),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+
+		it("a token saved untested keeps testedAt null until a test passes", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-untested",
+				label: "Untested Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// No repos on host
+			mockPrisma.repository.findMany.mockResolvedValue([]);
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-untested");
+				expect(result.success).toBe(false);
+				expect((result as any).untested).toBe(true);
+
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-untested" },
+					data: expect.not.objectContaining({
+						testedAt: expect.anything(),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+	});
+
+	describe("sourceCredential state (#848 C5)", () => {
+		it("sourceCredential returns state set, absent, or invalid", async () => {
+			const setConn = {
+				id: "conn-set",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({ kind: "bearer", token: "tok-123" }),
+			};
+			const noneConn = {
+				id: "conn-none",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({ kind: "none" }),
+			};
+			const absentConn = {
+				id: "conn-absent",
+				integration: { templateId: "prometheus" },
+				credentialsEnc: credentialsService.encrypt({}),
+			};
+			mockPrisma.connection.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
+				if (where.id === "conn-set") return setConn;
+				if (where.id === "conn-none") return noneConn;
+				if (where.id === "conn-absent") return absentConn;
+				return null;
+			});
+
+			const resSet = await service.sourceCredential("conn-set");
+			expect(resSet).toMatchObject({ ok: true, state: "set", credential: { kind: "bearer", token: "tok-123" } });
+
+			const resNone = await service.sourceCredential("conn-none");
+			expect(resNone).toMatchObject({ ok: true, state: "set", credential: { kind: "none" } });
+
+			const resAbsent = await service.sourceCredential("conn-absent");
+			expect(resAbsent).toMatchObject({ ok: true, state: "absent", credential: { kind: "none" } });
+
+			const resMissing = await service.sourceCredential("conn-missing");
+			expect(resMissing).toMatchObject({ ok: false, state: "invalid", reason: "invalid" });
+		});
+	});
+
+	describe("testedAt tracking on testConnection and updateConnection (#848)", () => {
+		it("testedAt is set by a passing Test and cleared by an address edit", async () => {
+			const connEnc = credentialsService.encrypt({ kind: "none" });
+			const configEnc = credentialsService.encrypt({ baseUrl: "http://prom:9090" });
+			const conn = {
+				id: "conn-tested-1",
+				label: "Prometheus",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "prometheus",
+					label: "Prometheus",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			globalThis.fetch = vi.fn(async () => new Response("ready", { status: 200 })) as any;
+
+			await service.testConnection("conn-tested-1");
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "conn-tested-1" },
+					data: expect.objectContaining({
+						testedAt: expect.any(Date),
+					}),
+				}),
+			);
+
+			mockPrisma.connection.update.mockClear();
+			await service.updateConnection("conn-tested-1", {
+				connectionConfig: { baseUrl: "http://new-prom:9090" },
+			});
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { id: "conn-tested-1" },
+					data: expect.objectContaining({
+						testedAt: null,
+					}),
+				}),
+			);
+		});
+	});
 });

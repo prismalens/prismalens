@@ -100,6 +100,25 @@ describe("admission-fake verdictOf and signature", () => {
 		expect(signature({ ...base, r6: "fail" })).not.toBe(sigBase);
 		expect(signature({ ...base, r7: "fail" })).not.toBe(sigBase);
 	});
+
+	it("parses R8 and R9 in verdictOf and includes them in signature (#848 C14)", () => {
+		const stdout = [
+			JSON.stringify({ pass: true, checks: {} }),
+			"R5 resume: pass",
+			"R6 user model: pass",
+			"R7 resume after a failed report: pass",
+			"R8 tool call, first turn: pass",
+			"R9 tool call, follow-up: pass",
+		].join("\n");
+
+		const v = verdictOf(stdout);
+		expect(v.r8).toBe("pass");
+		expect(v.r9).toBe("pass");
+
+		const sig = signature(v);
+		expect(sig).toContain("R8=pass");
+		expect(sig).toContain("R9=pass");
+	});
 });
 
 describe("admission-fake agentEnv", () => {

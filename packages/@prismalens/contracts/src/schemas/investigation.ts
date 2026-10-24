@@ -391,6 +391,8 @@ export const PreRunSnapshotSchema = z.object({
 	),
 	/** Why the runbook scan did not run, when it did not. */
 	runbooksSkipped: z.string().optional(),
+	/** Why no telemetry was read, when the whole read did not finish. */
+	telemetrySkipped: z.string().optional(),
 	checkoutsSkipped: z.array(CheckoutSkippedSchema),
 	/** The read copies' contents, scrubbed. */
 	files: z.array(
@@ -433,6 +435,25 @@ export const PreRunContextSchema = z.discriminatedUnion("state", [
 	}),
 ]);
 export type PreRunContext = z.infer<typeof PreRunContextSchema>;
+
+const PreRunDetailSummarySchema = PreRunSummarySchema.extend({
+	sources: z.array(PreRunSourceSchema.omit({ excerpt: true })),
+});
+
+/** A run detail's pre-run context: PreRunContext without the copy or the excerpts (#848 C16a). */
+export const PreRunDetailSchema = z.discriminatedUnion("state", [
+	PreRunDetailSummarySchema.extend({ state: z.literal("ready") }),
+	PreRunDetailSummarySchema.extend({
+		state: z.literal("not-saved"),
+		saveError: z.string(),
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.string(),
+		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	}),
+]);
+export type PreRunDetail = z.infer<typeof PreRunDetailSchema>;
 
 export const InvestigationKindSchema = z.enum(INVESTIGATION_KINDS);
 export const RunEndReasonSchema = z.enum(RUN_END_REASONS);
@@ -530,7 +551,7 @@ const RecommendationRefSchema = z.object({
 export const InvestigationWithRelationsSchema = InvestigationSchema.extend({
 	recommendations: z.array(RecommendationRefSchema).optional(),
 	/** What PrismaLens read before the run, without excerpts; null on a run from before #848. */
-	preRun: PreRunSummarySchema.nullable().optional(),
+	preRun: PreRunDetailSchema.nullable().optional(),
 });
 
 // =============================================================================
