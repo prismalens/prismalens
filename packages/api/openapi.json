@@ -12193,6 +12193,9 @@
                                   "runbooksSkipped": {
                                     "type": "string"
                                   },
+                                  "telemetrySkipped": {
+                                    "type": "string"
+                                  },
                                   "checkoutsSkipped": {
                                     "type": "array",
                                     "items": {
@@ -13688,6 +13691,9 @@
                               }
                             },
                             "runbooksSkipped": {
+                              "type": "string"
+                            },
+                            "telemetrySkipped": {
                               "type": "string"
                             },
                             "checkoutsSkipped": {
@@ -21346,6 +21352,9 @@
                               }
                             },
                             "runbooksSkipped": {
+                              "type": "string"
+                            },
+                            "telemetrySkipped": {
                               "type": "string"
                             },
                             "checkoutsSkipped": {
