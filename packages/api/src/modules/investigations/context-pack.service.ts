@@ -328,15 +328,11 @@ export class ContextPackService {
 
 		const cap = (text: string | null | undefined) =>
 			text ? text.slice(0, 500) : null;
-		const causes = (c: (typeof candidates)[number]) => {
-			const recordedCause = cap(c.actualCause);
-			return {
-				rootCause: recordedCause,
-				recordedCause,
-				agentRootCause: cap(c.investigations[0]?.rootCause),
-				agentSummary: cap(c.investigations[0]?.summary),
-			};
-		};
+		const causes = (c: (typeof candidates)[number]) => ({
+			recordedCause: cap(c.actualCause),
+			agentRootCause: cap(c.investigations[0]?.rootCause),
+			agentSummary: cap(c.investigations[0]?.summary),
+		});
 		return [
 			...merged.map((c) => ({
 				reference: `INC-${c.number}`,
