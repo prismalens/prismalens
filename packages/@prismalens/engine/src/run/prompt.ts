@@ -116,7 +116,7 @@ export function renderPreRun(context: InvestigationContext): string {
 				.join("; ")}.`,
 		);
 	const excerpts = p.sources
-		.filter((s) => s.status === "fetched" && s.excerpt)
+		.filter((s) => s.status !== "skipped" && s.excerpt)
 		.map((s) => `--- ${s.file} (start)\n${s.excerpt}`);
 	if (excerpts.length)
 		lines.push(

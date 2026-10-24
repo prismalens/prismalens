@@ -26,6 +26,8 @@ export interface SnapshotSource {
 	label: string;
 	/** The user's env, or the entry saved in PrismaLens (#907's states). */
 	from: "env" | "set";
+	/** The mapping's label-matcher list; the kind's default when absent. */
+	selector?: string;
 	open(timeoutMs: number): Promise<OpenedSource>;
 }
 
@@ -34,7 +36,7 @@ export type SourceOutcome = {
 	label: string;
 	from: "env" | "set";
 } & (
-	| { status: "fetched"; part: SnapshotPart; secrets: string[] }
+	| { status: "found" | "empty"; part: SnapshotPart; secrets: string[] }
 	| { status: "skipped"; reason: string }
 );
 
@@ -109,8 +111,16 @@ export async function fetchSnapshot(
 						status: "skipped",
 						reason: opened.unusable ?? "it cannot be opened here",
 					};
-				const part = await within(ms, queries[s.kind](opened, window, signal));
-				return { ...who, status: "fetched", part, secrets: opened.secrets };
+				const part = await within(
+					ms,
+					queries[s.kind](opened, window, signal, s.selector),
+				);
+				return {
+					...who,
+					status: part.count > 0 ? "found" : "empty",
+					part,
+					secrets: opened.secrets,
+				};
 			} catch (e) {
 				return {
 					...who,

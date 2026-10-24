@@ -105,10 +105,10 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 			]).sources({}),
 			WINDOW,
 		);
-		expect(out.map((o) => [o.kind, o.status, o.status === "fetched" ? o.part.summary : o.reason])).toEqual([
-			["prometheus", "fetched", "1 rule alerts pending or firing, 1 scrape targets down"],
-			["alertmanager", "fetched", "2 active alerts"],
-			["loki", "fetched", "1 error log lines from 1 streams"],
+		expect(out.map((o) => [o.kind, o.status, o.status === "skipped" ? o.reason : o.part.summary])).toEqual([
+			["prometheus", "found", "1 alerts firing in the window, 1 scrape targets down in the window"],
+			["alertmanager", "found", "2 active alerts in the window"],
+			["loki", "found", '1 error log lines from 1 streams for {service_name="checkout"} (the default selector)'],
 		]);
 		const loki = new URL(seen.find((u) => u.startsWith("/loki/")) as string, url);
 		expect(loki.searchParams.get("query")).toBe(
@@ -132,7 +132,7 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		expect(Date.now() - started).toBeLessThan(5_000);
 		expect(out.map((o) => [o.label, o.status])).toEqual([
 			["slow", "skipped"],
-			["fast", "fetched"],
+			["fast", "found"],
 		]);
 		expect(out[0]).toMatchObject({ reason: "the source did not answer in time" });
 	});
@@ -192,7 +192,7 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 			["alertmanager", "am", "set"],
 		]);
 		const [prom] = await fetchSnapshot(sources.slice(0, 1), WINDOW);
-		expect(prom).toMatchObject({ status: "fetched", secrets: ["env-token"] });
+		expect(prom).toMatchObject({ status: "found", secrets: ["env-token"] });
 		expect(auth[0]).toBe("Bearer env-token");
 	});
 

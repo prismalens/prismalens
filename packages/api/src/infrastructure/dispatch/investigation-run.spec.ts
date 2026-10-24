@@ -1515,7 +1515,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 			preRun: {
 				telemetry: vi.fn(async () => [
 					{ kind: "prometheus" as const, label: "prod prom", from: "set" as const, status: "skipped" as const, reason: "the source did not answer in time" },
-					{ kind: "loki" as const, label: "LOKI_URL", from: "env" as const, status: "fetched" as const, part: { summary: "3 error log lines from 1 streams", data: { result: [] } }, secrets: [] },
+					{ kind: "loki" as const, label: "LOKI_URL", from: "env" as const, status: "found" as const, part: { summary: "3 error log lines from 1 streams", data: { result: [] }, count: 3 }, secrets: [] },
 				]),
 				runbooks: vi.fn(async () => ({ entries: [] })),
 			},
@@ -1529,7 +1529,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 		expect(pre?.dir).toBe(join(runDirFor("inv-pre"), "context"));
 		expect(pre?.sources).toEqual([
 			{ kind: "prometheus", label: "prod prom", from: "set", status: "skipped", detail: "the source did not answer in time" },
-			expect.objectContaining({ label: "LOKI_URL", status: "fetched", file: "telemetry-loki-1.json" }),
+			expect.objectContaining({ label: "LOKI_URL", status: "found", file: "telemetry-loki-1.json" }),
 		]);
 		expect(pre?.files.map((f) => f.name)).toEqual(["telemetry-loki-1.json"]);
 		expect(existsSync(join(runDirFor("inv-pre"), "context", "index.json"))).toBe(true);

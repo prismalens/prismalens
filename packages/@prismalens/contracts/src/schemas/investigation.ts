@@ -923,13 +923,16 @@ export const PreRunSourceSchema = z.object({
 	label: z.string(),
 	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
 	from: z.enum(["env", "set"]),
-	status: z.enum(["fetched", "skipped"]),
-	/** Fetched: what it held, one line. Skipped: why, in PrismaLens's own words. */
+	/** `found`: it answered with data for the window; `empty`: it answered with none. */
+	status: z.enum(["found", "empty", "skipped"]),
+	/** Read: what it held, one line. Skipped: why, in PrismaLens's own words. */
 	detail: z.string(),
 	/** The file under `dir` holding what was fetched. */
 	file: z.string().optional(),
 	/** The start of that file, for the prompt. */
 	excerpt: z.string().optional(),
+	/** What the byte bound dropped (#848). */
+	truncated: z.object({ dropped: z.number(), reason: z.string() }).optional(),
 });
 export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
 

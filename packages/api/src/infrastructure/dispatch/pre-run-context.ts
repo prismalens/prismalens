@@ -24,7 +24,10 @@ import {
 } from "@prismalens/contracts/schemas";
 import { Logger } from "@prismalens/logger";
 import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
-import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import {
+	boundSnapshot,
+	type SnapshotWindow,
+} from "../../modules/integrations/source-query.js";
 import { scrubSecrets } from "../../modules/integrations/source-request.js";
 import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
 
@@ -108,32 +111,31 @@ export function writePreRunContext(
 		const n = (counts.get(t.kind) ?? 0) + 1;
 		counts.set(t.kind, n);
 		const name = `telemetry-${t.kind}-${n}.json`;
-		const text = scrubSecrets(
-			JSON.stringify(
-				{
-					source: who,
-					fetchedAt: input.now.toISOString(),
-					window: {
-						start: input.window.start.toISOString(),
-						end: input.window.end.toISOString(),
-						...(input.window.service ? { service: input.window.service } : {}),
-					},
-					...(t.part.data as object),
-				},
-				null,
-				1,
+		const head = {
+			source: who,
+			fetchedAt: input.now.toISOString(),
+			window: {
+				start: input.window.start.toISOString(),
+				end: input.window.end.toISOString(),
+				...(input.window.service ? { service: input.window.service } : {}),
+			},
+		};
+		const { text, truncated } = boundSnapshot(t.part.data, (data) =>
+			scrubSecrets(
+				JSON.stringify({ ...head, ...(data as object) }, null, 1),
+				t.secrets,
 			),
-			t.secrets,
 		);
 		writeFileSync(join(dir, name), text);
 		logger.info(`pre-run: read ${t.label} (${t.kind}): ${t.part.summary}`);
 		files.push({ name, about: `${t.label} (${t.kind}): ${t.part.summary}` });
 		sources.push({
 			...who,
-			status: "fetched",
+			status: t.status,
 			detail: t.part.summary,
 			file: name,
 			excerpt: text.slice(0, EXCERPT_CHARS),
+			...(truncated ? { truncated } : {}),
 		});
 	}
 	if (input.pastIncidents.length) {

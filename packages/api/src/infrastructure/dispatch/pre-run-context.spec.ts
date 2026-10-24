@@ -30,8 +30,8 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 					kind: "prometheus",
 					label: "prod prom",
 					from: "set",
-					status: "fetched",
-					part: { summary: "2 rule alerts", data: { alerts: [{ token: "tok-123456" }] } },
+					status: "found",
+					part: { summary: "2 rule alerts", data: { alerts: [{ token: "tok-123456" }] }, count: 1 },
 					secrets: ["tok-123456"],
 				},
 				{ kind: "loki", label: "LOKI_URL", from: "env", status: "skipped", reason: "the source did not answer in time" },
@@ -61,7 +61,7 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 		expect(JSON.parse(snap).window).toEqual({ start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" });
 		expect(readFileSync(join(dir, "runbooks.md"), "utf8")).toContain("Path: repo/runbooks/checkout.md");
 		expect(ctx.sources).toEqual([
-			expect.objectContaining({ label: "prod prom", status: "fetched", file: "telemetry-prometheus-1.json" }),
+			expect.objectContaining({ label: "prod prom", status: "found", file: "telemetry-prometheus-1.json" }),
 			{ kind: "loki", label: "LOKI_URL", from: "env", status: "skipped", detail: "the source did not answer in time" },
 		]);
 		expect(readPreRunContext(runDir)).toEqual(ctx);
@@ -83,7 +83,7 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 	it("a rewrite replaces the folder, so a retried run never keeps an older fetch", () => {
 		writePreRunContext(runDir, {
 			window: WINDOW,
-			telemetry: [{ kind: "loki", label: "l", from: "set", status: "fetched", part: { summary: "x", data: {} }, secrets: [] }],
+			telemetry: [{ kind: "loki", label: "l", from: "set", status: "found", part: { summary: "x", data: {}, count: 1 }, secrets: [] }],
 			pastIncidents: [],
 			runbooks: [],
 			now: NOW,
