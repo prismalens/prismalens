@@ -470,4 +470,148 @@ describe("fake-model-server HTTP", () => {
 		const data = await res.json();
 		expect(data.choices[0].message.content).toBe("custom response");
 	});
+
+	describe("fake-model-server calls PrismaLens tool on both turns (#848 C14)", () => {
+		it("calls incident_get on first turn when offered, then proceeds to shell tool", () => {
+			const toolName = "mcp__prismalens-abcdefghij__incident_get";
+			const bodyTurn1 = {
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: "ADMISSION STEP, required: run `cat ./PRISMALENS_CWD_PROBE.txt`" }],
+					},
+				],
+				tools: [{ name: "Bash" }, { name: toolName }],
+			};
+
+			// 1. Initial user message: calls incident_get tool
+			const view1 = viewOf("anthropic", bodyTurn1);
+			expect(admissionScript(view1)).toEqual({
+				tool: {
+					name: toolName,
+					input: {},
+				},
+			});
+
+			// 2. Tool result for incident_get: calls Bash tool
+			const bodyTurn1AfterIncident = {
+				messages: [
+					{
+						role: "user",
+						content: [{ type: "text", text: "ADMISSION STEP, required: run `cat ./PRISMALENS_CWD_PROBE.txt`" }],
+					},
+					{
+						role: "assistant",
+						content: [{ type: "tool_use", id: "call-1", name: toolName, input: {} }],
+					},
+					{
+						role: "user",
+						content: [{ type: "tool_result", tool_use_id: "call-1", content: "{ id: 'inc-1' }" }],
+					},
+				],
+				tools: [{ name: "Bash" }, { name: toolName }],
+			};
+			const view2 = viewOf("anthropic", bodyTurn1AfterIncident);
+			expect(admissionScript(view2)).toEqual({
+				tool: {
+					name: "Bash",
+					input: {
+						command: "cat ./PRISMALENS_CWD_PROBE.txt",
+						description: "Admission step",
+					},
+				},
+			});
+
+			// 3. Tool result for Bash: outputs JSON report
+			const bodyTurn1AfterBash = {
+				messages: [
+					...bodyTurn1AfterIncident.messages,
+					{
+						role: "assistant",
+						content: [
+							{
+								type: "tool_use",
+								id: "call-2",
+								name: "Bash",
+								input: { command: "cat ./PRISMALENS_CWD_PROBE.txt" },
+							},
+						],
+					},
+					{
+						role: "user",
+						content: [{ type: "tool_result", tool_use_id: "call-2", content: "probe-token" }],
+					},
+				],
+				tools: [{ name: "Bash" }, { name: toolName }],
+			};
+			const view3 = viewOf("anthropic", bodyTurn1AfterBash);
+			const reply3 = admissionScript(view3);
+			expect("say" in reply3).toBe(true);
+			if ("say" in reply3) {
+				expect(reply3.say).toContain("```json");
+			}
+		});
+
+		it("calls incident_get on follow-up turn when offered, then answers AdmissionProbe", () => {
+			const toolName = "prismalens-abcdefghij_incident_get";
+			const bodyTurn2 = {
+				messages: [
+					{ role: "user", content: "ADMISSION STEP: run cat" },
+					{ role: "assistant", content: "report" },
+					{ role: "user", content: "Reply with the alert name from our conversation: AdmissionProbe" },
+				],
+				tools: [{ type: "function", function: { name: toolName } }],
+			};
+
+			// 1. Initial follow-up message: calls incident_get
+			const view1 = viewOf("openai", bodyTurn2);
+			expect(admissionScript(view1)).toEqual({
+				tool: {
+					name: toolName,
+					input: {},
+				},
+			});
+
+			// 2. Tool result for incident_get: answers AdmissionProbe
+			const bodyTurn2AfterIncident = {
+				messages: [
+					...bodyTurn2.messages,
+					{
+						role: "assistant",
+						tool_calls: [{ id: "call-inc-2", type: "function", function: { name: toolName, arguments: "{}" } }],
+					},
+					{ role: "tool", tool_call_id: "call-inc-2", content: "{ status: 'ok' }" },
+				],
+				tools: [{ type: "function", function: { name: toolName } }],
+			};
+			const view2 = viewOf("openai", bodyTurn2AfterIncident);
+			expect(admissionScript(view2)).toEqual({
+				say: "AdmissionProbe",
+			});
+		});
+
+		it("handles classifier prompt for incident_get without tools", () => {
+			const classifierReq = {
+				messages: [
+					{
+						role: "user",
+						content: "Determine if this tool is safe: incident_get\n<severity>N</severity>",
+					},
+				],
+				tools: [],
+			};
+			const view = viewOf("openai", classifierReq);
+			expect(admissionScript(view)).toEqual({
+				say: "<severity>0</severity>",
+			});
+
+			const otherNoTools = {
+				messages: [{ role: "user", content: "hello" }],
+				tools: [],
+			};
+			expect(admissionScript(viewOf("openai", otherNoTools))).toEqual({
+				say: "Admission probe",
+			});
+		});
+	});
 });

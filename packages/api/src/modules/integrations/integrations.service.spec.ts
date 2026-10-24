@@ -470,6 +470,118 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 		});
 	});
 
+	describe("C12 git host token test: unpinned no-access & untested tokens (#848)", () => {
+		it("test stays ACTIVE on an unpinned no-access", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-git-unpinned-test",
+				label: "Git Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// Two repos: repo1 unpinned fails with no-access, repo2 unpinned succeeds
+			mockPrisma.repository.findMany.mockResolvedValue([
+				{ url: "https://github.com/org/repo1.git", metadata: null },
+				{ url: "https://github.com/org/repo2.git", metadata: null },
+			]);
+
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			const spawnGitMock = vi.mocked(gitSpawnMod.spawnGit);
+
+			spawnGitMock.mockImplementation(async (args: any) => {
+				const url = args[args.length - 1];
+				if (url.includes("repo1")) {
+					return {
+						stdout: "",
+						stderr: "remote: Repository not found.\nfatal: Authentication failed for 'https://github.com/org/repo1.git'",
+					};
+				}
+				return { stdout: "ok https://github.com/org/repo2.git", stderr: "" };
+			});
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-git-unpinned-test");
+				expect(result.success).toBe(true);
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-git-unpinned-test" },
+					data: expect.objectContaining({
+						status: "ACTIVE",
+						testedAt: expect.any(Date),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+
+		it("a token saved untested keeps testedAt null until a test passes", async () => {
+			const connEnc = credentialsService.encrypt({ token: "ghp_tok" });
+			const configEnc = credentialsService.encrypt({ host: "github.com" });
+			const conn = {
+				id: "conn-untested",
+				label: "Untested Token",
+				status: "ACTIVE",
+				consecutiveErrors: 0,
+				testedAt: null,
+				integration: {
+					templateId: "git-host-token",
+					label: "Git host token",
+				},
+				credentialsEnc: connEnc,
+				connectionConfigEnc: configEnc,
+			};
+
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+
+			// No repos on host
+			mockPrisma.repository.findMany.mockResolvedValue([]);
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				headers: new Headers(),
+				json: async () => ({ login: "octocat" }),
+			} as any);
+
+			try {
+				const result = await service.testConnection("conn-untested");
+				expect(result.success).toBe(false);
+				expect((result as any).untested).toBe(true);
+
+				expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+					where: { id: "conn-untested" },
+					data: expect.not.objectContaining({
+						testedAt: expect.anything(),
+					}),
+				});
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+	});
+
 	describe("sourceCredential state (#848 C5)", () => {
 		it("sourceCredential returns state set, absent, or invalid", async () => {
 			const setConn = {
@@ -554,6 +666,101 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 					}),
 				}),
 			);
+		});
+	});
+
+	describe("service integration priority and ordering (#848)", () => {
+		it("getServiceIntegrationsWithStatus returns priority on mapped rows, undefined on unmapped ones", async () => {
+			const conn1 = {
+				id: "conn-1",
+				label: "Prometheus 1",
+				status: "ACTIVE",
+				integration: { templateId: "prometheus", label: "Prometheus" },
+				connectionConfigEnc: null,
+			};
+			const conn2 = {
+				id: "conn-2",
+				label: "Prometheus 2",
+				status: "ACTIVE",
+				integration: { templateId: "prometheus", label: "Prometheus" },
+				connectionConfigEnc: null,
+			};
+			mockPrisma.connection.findMany = vi.fn().mockResolvedValue([conn1, conn2]);
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: "override-1",
+						connectionId: "conn-1",
+						serviceId: "svc-1",
+						priority: 5,
+						config: null,
+						connection: conn1,
+					},
+				]),
+			};
+
+			const rows = await service.getServiceIntegrationsWithStatus("svc-1");
+			const mapped = rows.find((r) => r.connectionId === "conn-1");
+			const unmapped = rows.find((r) => r.connectionId === "conn-2");
+
+			expect(mapped?.priority).toBe(5);
+			expect(unmapped?.priority).toBeUndefined();
+		});
+
+		it("setServiceIntegrationOrder(svc, [a, b, c]) sets priorities 3, 2, 1 in one $transaction", async () => {
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				count: vi.fn().mockResolvedValue(3),
+				update: vi.fn(({ where, data }: { where: { id: string }; data: { priority: number } }) => ({
+					id: where.id,
+					priority: data.priority,
+				})),
+			};
+			mockPrisma.$transaction = vi.fn(async (ops: unknown[]) => ops);
+
+			const res = await service.setServiceIntegrationOrder("svc-1", ["a", "b", "c"]);
+
+			expect(mockPrisma.serviceIntegration.count).toHaveBeenCalledWith({
+				where: { id: { in: ["a", "b", "c"] }, serviceId: "svc-1" },
+			});
+			expect(mockPrisma.$transaction).toHaveBeenCalledWith([
+				expect.anything(),
+				expect.anything(),
+				expect.anything(),
+			]);
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(1, {
+				where: { id: "a" },
+				data: { priority: 3 },
+			});
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(2, {
+				where: { id: "b" },
+				data: { priority: 2 },
+			});
+			expect(mockPrisma.serviceIntegration.update).toHaveBeenNthCalledWith(3, {
+				where: { id: "c" },
+				data: { priority: 1 },
+			});
+			expect(res).toEqual([
+				{ id: "a", priority: 3 },
+				{ id: "b", priority: 2 },
+				{ id: "c", priority: 1 },
+			]);
+		});
+
+		it("returns null with no update when an id belongs to another service or doesn't exist", async () => {
+			mockPrisma.serviceIntegration = {
+				...mockPrisma.serviceIntegration,
+				count: vi.fn().mockResolvedValue(2),
+				update: vi.fn(),
+			};
+			mockPrisma.$transaction = vi.fn();
+
+			const res = await service.setServiceIntegrationOrder("svc-1", ["a", "b", "foreign-or-missing"]);
+
+			expect(res).toBeNull();
+			expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+			expect(mockPrisma.serviceIntegration.update).not.toHaveBeenCalled();
 		});
 	});
 });

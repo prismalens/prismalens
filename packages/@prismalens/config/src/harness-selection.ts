@@ -192,6 +192,8 @@ export interface HarnessStatus {
 	envModel: { key: string; model: string } | null;
 	/** Under WSL, a Windows install on PATH that cannot run here; null otherwise. */
 	windowsOnlyPath: string | null;
+	/** What the run view says when PrismaLens's tools did not reach this agent. */
+	toolsHint?: { text: string };
 }
 
 function probeOf(input: HarnessSelectionInput): LaunchProbe {
@@ -225,6 +227,7 @@ export function listHarnessStatus(
 			modelVia: d.modelVia,
 			loginHint: d.loginHint,
 			envModel: harnessEnvModel(id, input.env ?? process.env),
+			...(d.toolsHint ? { toolsHint: d.toolsHint } : {}),
 		};
 	});
 }

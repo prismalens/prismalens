@@ -22,6 +22,8 @@ import {
 	type FiringAlert,
 	type PreRunContext,
 	type PreRunCopy,
+	type PreRunDetail,
+	PreRunDetailSchema,
 	type PreRunSnapshot,
 	PreRunSnapshotSchema,
 	type PreRunSource,
@@ -263,11 +265,56 @@ export function summaryOf(snap: PreRunSnapshot): PreRunSummary {
 	};
 }
 
-/** The stored text a follow-up reads again; null when it does not parse. */
+/** The stored text a follow-up reads again; null when it does not parse or is a state marker. */
 export function parseStoredSnapshot(text: string): PreRunSnapshot | null {
 	try {
-		const parsed = PreRunSnapshotSchema.safeParse(JSON.parse(text));
+		const json: unknown = JSON.parse(text);
+		if (isMarker(json)) return null;
+		const parsed = PreRunSnapshotSchema.safeParse(json);
 		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
+}
+
+/** A stored snapshot never has `state`; a stored marker always does. */
+export function isMarker(json: unknown): boolean {
+	return typeof json === "object" && json !== null && "state" in json;
+}
+
+/**
+ * What the run's row keeps in place of a snapshot that did not save: the
+ * summary without excerpts, so the run's detail still says what it read (#848).
+ */
+export function notSavedMarker(
+	snap: PreRunSnapshot,
+	saveError: string,
+): string {
+	const marker: PreRunDetail = {
+		state: "not-saved",
+		...snap,
+		sources: snap.sources.map(({ excerpt: _excerpt, ...s }) => s),
+		files: snap.files.map(({ name, about }) => ({ name, about })),
+		saveError,
+	};
+	return JSON.stringify(marker);
+}
+
+/** What a follow-up's row keeps when it found no stored snapshot (#848). */
+export function unavailableMarker(reason: string): string {
+	const marker: PreRunDetail = { state: "unavailable", reason };
+	return JSON.stringify(marker);
+}
+
+/** Why a stored marker holds no snapshot to read again; null when the text is no marker. */
+export function markerReason(text: string): string | null {
+	try {
+		const json: unknown = JSON.parse(text);
+		if (!isMarker(json)) return null;
+		const m = PreRunDetailSchema.safeParse(json);
+		if (!m.success) return null;
+		if (m.data.state === "not-saved") return "the run's snapshot was not saved";
+		return m.data.state === "unavailable" ? m.data.reason : null;
 	} catch {
 		return null;
 	}

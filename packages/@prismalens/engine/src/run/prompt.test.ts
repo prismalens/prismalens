@@ -6,6 +6,7 @@ import {
 	buildChatPrompt,
 	buildInvestigationPrompt,
 	FLAGGED_WHERE,
+	investigationPromptParts,
 	newerRunNote,
 } from "./prompt.js";
 import { UNTRUSTED_DATA_METHOD_GUARD } from "./fence.js";
@@ -386,6 +387,59 @@ describe("flaggedContent where values (#902)", () => {
 		expect(FLAGGED_WHERE).toContain('"tool-output"');
 		expect(FLAGGED_WHERE).toContain("ALERT_PAYLOAD");
 		expect(FLAGGED_WHERE).toContain("never which where value fits");
+	});
+});
+
+describe("investigationPromptParts (#817)", () => {
+	const baseContext: InvestigationContext = {
+		alerts: [
+			{
+				alertname: "HighErrorRate",
+				severity: "critical",
+				labels: { service: "checkout" },
+				annotations: { summary: "5xx rate > 5%" },
+				startsAt: new Date().toISOString(),
+			},
+		],
+		service: {
+			name: "checkout",
+		},
+	};
+
+	it("splits brief and turn cleanly; brief has method, schema, no alert; turn has alert, permission", () => {
+		const parts = investigationPromptParts(baseContext, {
+			level: "full-access",
+			noNetwork: true,
+		});
+
+		expect(parts.brief).toContain("You are an on-call Site Reliability Engineer");
+		expect(parts.brief).toContain("METHOD (work iteratively");
+		expect(parts.brief).toContain("WHAT COUNTS AS A ROOT CAUSE");
+		expect(parts.brief).toContain("OUTPUT");
+		expect(parts.brief).toContain("json-schema.org");
+		expect(parts.brief).not.toContain("FIRING ALERT");
+		expect(parts.brief).not.toContain("THIS RUN:");
+		expect(parts.brief).not.toContain("no network calls");
+		expect(parts.brief).not.toContain("Do not ask for user confirmation");
+
+		expect(parts.turn).toContain("FIRING ALERT");
+		expect(parts.turn).toContain("HighErrorRate");
+		expect(parts.turn).toContain("checkout");
+		expect(parts.turn).toContain("THIS RUN");
+		expect(parts.turn).toContain("Network: none");
+		expect(parts.turn).toContain("Permission: Full access");
+		expect(parts.turn).not.toContain("METHOD (work iteratively");
+	});
+
+	it("buildInvestigationPrompt produces byte-identical output to combined parts", () => {
+		const combined = buildInvestigationPrompt(baseContext, {
+			level: "full-access",
+			noNetwork: true,
+		});
+		expect(combined).toContain("You are an on-call Site Reliability Engineer");
+		expect(combined).toContain("FIRING ALERT");
+		expect(combined).toContain("HighErrorRate");
+		expect(combined).toContain("METHOD (work iteratively");
 	});
 });
 

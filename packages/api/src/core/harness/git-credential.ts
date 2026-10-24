@@ -95,6 +95,44 @@ export function tokenFrom(creds: Record<string, unknown>): string | null {
 	return null;
 }
 
+/** An environment token for a git host, read the way gh and glab read it. */
+export interface EnvGitToken {
+	variable: string;
+	token: string;
+}
+
+/**
+ * The env token for `host` (#848): github.com takes GH_TOKEN then GITHUB_TOKEN, the host
+ * named by GH_HOST the enterprise pair, gitlab.com or GITLAB_HOST GITLAB_TOKEN; Bitbucket none.
+ */
+export function envTokenFor(
+	host: string,
+	env: NodeJS.ProcessEnv = process.env,
+): EnvGitToken | null {
+	const first = (...names: string[]): EnvGitToken | null => {
+		for (const variable of names) {
+			const token = env[variable]?.trim();
+			if (token) return { variable, token };
+		}
+		return null;
+	};
+	const h = host.toLowerCase();
+	if (h === "github.com") return first("GH_TOKEN", "GITHUB_TOKEN");
+	if (env.GH_HOST && normalizeGitHost(env.GH_HOST) === h)
+		return first("GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN");
+	if (
+		h === "gitlab.com" ||
+		(env.GITLAB_HOST && normalizeGitHost(env.GITLAB_HOST) === h)
+	)
+		return first("GITLAB_TOKEN");
+	return null;
+}
+
+/** A token-bearing source: a saved connection or an env token. */
+export function isTokenSource(source: GitCredentialSource): boolean {
+	return source === "connection" || source === "env";
+}
+
 /** The short helper name for a label, or null when the first word is quoted or escaped. */
 export function helperName(value: string): string | null {
 	const m = /^!?([A-Za-z0-9_./-]+)(\s|$)/.exec(value.trim());
@@ -126,7 +164,7 @@ export class GitCredential {
 
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */
 	authHeader(effectiveUrl: string): string | undefined {
-		if (this.display.source !== "connection" || !this.#token) return undefined;
+		if (!isTokenSource(this.display.source) || !this.#token) return undefined;
 		if (!/^https:\/\//i.test(effectiveUrl)) return undefined;
 		const url = new URL(effectiveUrl);
 		if (this.#host && url.host.toLowerCase() !== this.#host) return undefined;
@@ -138,7 +176,7 @@ export class GitCredential {
 	envInput(url: string): Pick<GitEnvInput, "source" | "authHeader" | "scope"> {
 		const target = this.effectiveUrl ?? url;
 		const authHeader = this.authHeader(target);
-		if (this.display.source === "connection" && authHeader) {
+		if (isTokenSource(this.display.source) && authHeader) {
 			const u = new URL(target);
 			return {
 				source: "connection",
@@ -147,8 +185,7 @@ export class GitCredential {
 			};
 		}
 		return {
-			source:
-				this.display.source === "connection" ? "none" : this.display.source,
+			source: this.display.source === "machine" ? "machine" : "none",
 		};
 	}
 

@@ -8,6 +8,10 @@ export interface ModelRequest {
 	toolNames: string[];
 	lastText: string;
 	lastIsToolResult: boolean;
+	/** The tool a trailing tool result answers; "" when the last message is not one. */
+	lastToolName: string;
+	/** The text of the turn's last user message that is not a tool result. */
+	turnText: string;
 	/** 1-based position of the request in the server's run; ids derive from it. */
 	n: number;
 }

@@ -62,7 +62,7 @@ const UNREACHABLE =
 	/Could not resolve host|Failed to connect|Connection (refused|timed out)|Operation timed out|ssh: connect to host/i;
 
 function tokenName(label: string): string {
-	return label.replace(/^token /, "");
+	return label.replace(/^(token|env) /, "");
 }
 
 /** `(gh, sumit)` from `machine git (gh, sumit)`, or "" when the label has none. */
@@ -91,7 +91,8 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 		message: string,
 		action?: GitFailureAction,
 	) => new GitFailure(code, message, action, stderr);
-	const source = credential.source;
+	// An env token is diagnosed like a saved one (#848).
+	const source = credential.source === "env" ? "connection" : credential.source;
 	const now = input.now ?? new Date();
 
 	if (
