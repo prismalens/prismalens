@@ -283,7 +283,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
+		acpArgs: ({ cwd }) => ["acp", "--cwd", cwd],
 		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
 		// The boundary is the untrusted repo (ADR 0004), and every run works in a throwaway clone. #791
 		acpEnv: ({ configDir }) => ({
