@@ -156,6 +156,14 @@ export async function fetchSnapshot(
 						status: "skipped",
 						reason: opened.unusable ?? "it cannot be opened here",
 					};
+				// Shorter than 4 characters, a secret cannot be scrubbed from the snapshot (#848).
+				if (opened.secrets.some((x) => x.length < 4))
+					return {
+						...who,
+						status: "skipped",
+						reason:
+							"its credential has a secret shorter than 4 characters, which PrismaLens will not send",
+					};
 				const part = await within(
 					ms,
 					queries[s.kind](opened, window, signal, s.selector),

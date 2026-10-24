@@ -968,20 +968,71 @@ export const CheckoutSkippedSchema = z.object({
 });
 export type CheckoutSkipped = z.infer<typeof CheckoutSkippedSchema>;
 
-/** What PrismaLens fetched before the run, written under `dir`, outside the repo checkout. */
-export const PreRunContextSchema = z.object({
-	dir: z.string(),
+/** What PrismaLens read before the run (#848): stored with the run, the source of truth a follow-up reads again. */
+export const PreRunSnapshotSchema = z.object({
 	fetchedAt: z.string(),
+	window: z.object({
+		start: z.string(),
+		end: z.string(),
+		service: z.string().optional(),
+	}),
 	sources: z.array(PreRunSourceSchema),
-	files: z.array(z.object({ name: z.string(), about: z.string() })),
 	/** Kinds no connection or env serves for the incident's services. */
-	notConfigured: z
-		.array(z.object({ kind: z.string(), services: z.array(z.string()) }))
-		.optional(),
+	notConfigured: z.array(
+		z.object({ kind: z.string(), services: z.array(z.string()) }),
+	),
+	runbooks: z.array(
+		z.object({
+			title: z.string(),
+			service: z.string(),
+			path: z.string(),
+			origin: z.enum(["repo"]),
+			link: z.string().optional(),
+		}),
+	),
 	/** Why the runbook scan did not run, when it did not. */
 	runbooksSkipped: z.string().optional(),
-	checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	checkoutsSkipped: z.array(CheckoutSkippedSchema),
+	/** The read copies' contents, scrubbed. */
+	files: z.array(
+		z.object({ name: z.string(), about: z.string(), text: z.string() }),
+	),
 });
+export type PreRunSnapshot = z.infer<typeof PreRunSnapshotSchema>;
+
+/** The snapshot without the files' text. */
+export const PreRunSummarySchema = PreRunSnapshotSchema.omit({
+	files: true,
+}).extend({
+	files: z.array(z.object({ name: z.string(), about: z.string() })),
+});
+export type PreRunSummary = z.infer<typeof PreRunSummarySchema>;
+
+/** The read copies under the session cwd; `dir` is relative to it. */
+export const PreRunCopySchema = z.object({
+	state: z.enum(["written", "failed"]),
+	dir: z.string().optional(),
+	reason: z.string().optional(),
+});
+export type PreRunCopy = z.infer<typeof PreRunCopySchema>;
+
+/** The run's pre-run context: stored and copied, copied only, or not there on a follow-up (#848). */
+export const PreRunContextSchema = z.discriminatedUnion("state", [
+	PreRunSummarySchema.extend({
+		state: z.literal("ready"),
+		copy: PreRunCopySchema,
+	}),
+	PreRunSummarySchema.extend({
+		state: z.literal("not-saved"),
+		saveError: z.string(),
+		copy: PreRunCopySchema,
+	}),
+	z.object({
+		state: z.literal("unavailable"),
+		reason: z.string(),
+		checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
+	}),
+]);
 export type PreRunContext = z.infer<typeof PreRunContextSchema>;
 
 /** Read-only telemetry + app endpoints the harness may query. */

@@ -1,29 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	CONTEXT_DIR,
-	readPreRunContext,
-	snapshotWindow,
-	writePreRunContext,
-} from "./pre-run-context.js";
+import { describe, expect, it } from "vitest";
+import { buildPreRunSnapshot, parseStoredSnapshot, snapshotWindow } from "./pre-run-context.js";
 
 const NOW = new Date("2026-10-24T10:00:00Z");
 const WINDOW = { start: new Date("2026-10-24T09:00:00Z"), end: NOW };
 
-let runDir: string;
-beforeEach(() => {
-	runDir = mkdtempSync(join(os.tmpdir(), "pl-prerun-"));
-});
-afterEach(() => rmSync(runDir, { recursive: true, force: true }));
-
-describe("the run's context folder (#848 ruling 2026-10-24)", () => {
-	it("writes the snapshot, past incidents and runbooks beside the checkout, and an index the prompt names", () => {
-		const ctx = writePreRunContext(runDir, {
+describe("the run's pre-run snapshot (#848)", () => {
+	it("holds the snapshot, past incidents and runbooks as scrubbed files, and reads back as stored", () => {
+		const ctx = buildPreRunSnapshot({
 			window: WINDOW,
 			telemetry: [
 				{
@@ -48,27 +34,26 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 			],
 			now: NOW,
 		});
-		const dir = join(runDir, CONTEXT_DIR);
-		expect(ctx.dir).toBe(dir);
 		expect(ctx.files.map((f) => f.name)).toEqual([
 			"telemetry-prometheus-1.json",
 			"past-incidents.json",
 			"runbooks.md",
 		]);
-		const snap = readFileSync(join(dir, "telemetry-prometheus-1.json"), "utf8");
+		const text = (name: string) => ctx.files.find((f) => f.name === name)?.text ?? "";
+		const snap = text("telemetry-prometheus-1.json");
 		expect(snap).toContain("[redacted]");
 		expect(snap).not.toContain("tok-123456");
 		expect(JSON.parse(snap).window).toEqual({ start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" });
-		expect(readFileSync(join(dir, "runbooks.md"), "utf8")).toContain("Path: repo/runbooks/checkout.md");
+		expect(text("runbooks.md")).toContain("Path: repo/runbooks/checkout.md");
 		expect(ctx.sources).toEqual([
 			expect.objectContaining({ label: "prod prom", status: "found", file: "telemetry-prometheus-1.json" }),
 			{ kind: "loki", label: "LOKI_URL", from: "env", status: "skipped", detail: "the source did not answer in time" },
 		]);
-		expect(readPreRunContext(runDir)).toEqual(ctx);
+		expect(parseStoredSnapshot(JSON.stringify(ctx))).toEqual(ctx);
 	});
 
-	it("with every source skipped it still writes an index naming them, and no telemetry file", () => {
-		const ctx = writePreRunContext(runDir, {
+	it("with every source skipped it still names them, and holds no telemetry file", () => {
+		const ctx = buildPreRunSnapshot({
 			window: WINDOW,
 			telemetry: [{ kind: "prometheus", label: "p", from: "set", status: "skipped", reason: "credential missing" }],
 			pastIncidents: [],
@@ -76,29 +61,12 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 			now: NOW,
 		});
 		expect(ctx.files).toEqual([]);
-		expect(existsSync(join(runDir, CONTEXT_DIR, "index.json"))).toBe(true);
 		expect(ctx.sources[0]).toMatchObject({ status: "skipped", detail: "credential missing" });
 	});
 
-	it("a rewrite replaces the folder, so a retried run never keeps an older fetch", () => {
-		writePreRunContext(runDir, {
-			window: WINDOW,
-			telemetry: [{ kind: "loki", label: "l", from: "set", status: "found", part: { summary: "x", data: {}, count: 1 }, secrets: [] }],
-			pastIncidents: [],
-			runbooks: [],
-			now: NOW,
-		});
-		writePreRunContext(runDir, { window: WINDOW, telemetry: [], pastIncidents: [], runbooks: [], now: NOW });
-		expect(existsSync(join(runDir, CONTEXT_DIR, "telemetry-loki-1.json"))).toBe(false);
-	});
-
-	it("reading back keeps the folder this run's dir names, whatever the file claims", () => {
-		writePreRunContext(runDir, { window: WINDOW, telemetry: [], pastIncidents: [], runbooks: [], now: NOW });
-		const index = join(runDir, CONTEXT_DIR, "index.json");
-		writeFileSync(index, JSON.stringify({ ...JSON.parse(readFileSync(index, "utf8")), dir: "/etc" }));
-		expect(readPreRunContext(runDir)?.dir).toBe(join(runDir, CONTEXT_DIR));
-		writeFileSync(index, "{not json");
-		expect(readPreRunContext(runDir)).toBeNull();
+	it("a stored text that does not parse reads as none", () => {
+		expect(parseStoredSnapshot("{not json")).toBeNull();
+		expect(parseStoredSnapshot(JSON.stringify({ fetchedAt: "x" }))).toBeNull();
 	});
 
 	it("the window starts half an hour before the first alert, at most six hours back", () => {

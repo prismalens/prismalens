@@ -1030,14 +1030,15 @@ export function withSkippedSources<
 	R extends { coverage: { notQueried: string[] } },
 >(report: R, context: Pick<InvestigationContext, "preRun">): R {
 	const pre = context.preRun;
+	const ran = pre && pre.state !== "unavailable" ? pre : undefined;
 	const gaps = [
-		...(pre?.sources ?? [])
+		...(ran?.sources ?? [])
 			.filter((s) => s.status === "skipped")
 			.map(
 				(s) => `${s.label} (${s.kind}): skipped before the run, ${s.detail}`,
 			),
-		...(pre?.runbooksSkipped
-			? [`Runbooks: skipped before the run, ${pre.runbooksSkipped}`]
+		...(ran?.runbooksSkipped
+			? [`Runbooks: skipped before the run, ${ran.runbooksSkipped}`]
 			: []),
 		...(pre?.checkoutsSkipped ?? []).map(
 			(c) =>

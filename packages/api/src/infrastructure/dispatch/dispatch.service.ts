@@ -436,6 +436,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 							runbooks: (runId, signal) =>
 								this.gateway?.runbookIndex(runId, signal) ??
 								Promise.resolve({ entries: [] }),
+							save: async (runId, snapshot) => {
+								await this.prisma.investigation.update({
+									where: { id: runId },
+									data: { preRun: snapshot },
+								});
+							},
+							load: async (runId) =>
+								(
+									await this.prisma.investigation.findUnique({
+										where: { id: runId },
+										select: { preRun: true },
+									})
+								)?.preRun ?? null,
 						},
 					}
 				: {}),

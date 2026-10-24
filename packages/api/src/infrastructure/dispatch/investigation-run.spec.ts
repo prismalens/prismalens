@@ -1077,9 +1077,9 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
 	});
 
-	it("reuses its run's saved pre-run files and fetches nothing (#848 ruling 2026-10-24)", async () => {
-		const { writePreRunContext } = await import("./pre-run-context.js");
-		const saved = writePreRunContext(join(tmp, "runs", "inv-1"), {
+	it("reuses its run's stored pre-run snapshot and fetches nothing (#848)", async () => {
+		const { buildPreRunSnapshot } = await import("./pre-run-context.js");
+		const saved = buildPreRunSnapshot({
 			window: { start: new Date("2026-10-24T09:00:00Z"), end: new Date("2026-10-24T10:00:00Z") },
 			telemetry: [{ kind: "loki", label: "logs", from: "set", status: "skipped", reason: "the source did not answer in time" }],
 			pastIncidents: [],
@@ -1087,7 +1087,14 @@ describe("follow-up on a finished run (#747)", () => {
 			now: new Date("2026-10-24T10:00:00Z"),
 		});
 		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
-		const ports = followUpPorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
+		const ports = followUpPorts({
+			preRun: {
+				telemetry,
+				runbooks: vi.fn(async () => ({ entries: [] })),
+				save: vi.fn(async () => {}),
+				load: vi.fn(async () => JSON.stringify(saved)),
+			},
+		});
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
 			await run.store.create();
 			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
@@ -1096,8 +1103,8 @@ describe("follow-up on a finished run (#747)", () => {
 		await runInvestigationJob({ id: "job-pre", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
 
 		expect(telemetry).not.toHaveBeenCalled();
-		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: unknown } }];
-		expect(opts.context.preRun).toEqual(saved);
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { state: string; sources: unknown } } }];
+		expect(opts.context.preRun).toMatchObject({ state: "ready", sources: saved.sources });
 	});
 
 	it("hands off to a fresh session of another agent, carrying every message and refuted hypothesis, at the run's own level or narrower", async () => {
@@ -1510,7 +1517,9 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
 	const job = (id: string) => [{ id: `job-${id}`, investigationId: id, attempts: 1 }, { investigationId: id, incidentId: "inc-1" }] as const;
 
-	it("starts the run with a skipped source named in its context, writes the files, and keeps them after the run", async () => {
+	it("starts the run with a skipped source named in its context, stores the snapshot, and copies it into the cwd", async () => {
+		const save = vi.fn(async (_id: string, _text: string) => {});
+		let copied = false;
 		const ports = fakePorts({
 			preRun: {
 				telemetry: vi.fn(async () => ({
@@ -1522,22 +1531,31 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 					endpoints: [],
 				})),
 				runbooks: vi.fn(async () => ({ entries: [] })),
+				save,
+				load: vi.fn(async () => null),
 			},
+		});
+		mocks.conductRun.mockImplementation(async (o: { cwd: string }) => {
+			copied = existsSync(join(o.cwd, ".prismalens", "runs", "inv-pre", "telemetry-loki-1.json"));
+			return { failureKind: null, report: { summary: "done", rootCause: null, nextSteps: [] } };
 		});
 
 		const result = await runInvestigationJob(...job("inv-pre"), io(), ports);
 
 		expect(result.success).toBe(true);
-		const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { preRun?: { dir: string; sources: unknown[]; files: { name: string }[] } } }];
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ context: { preRun?: { state: string; copy: { state: string }; sources: unknown[]; files: { name: string }[] } } },
+		];
 		const pre = opts.context.preRun;
-		expect(pre?.dir).toBe(join(runDirFor("inv-pre"), "context"));
+		expect(pre?.state).toBe("ready");
+		expect(pre?.copy.state).toBe("written");
+		expect(copied).toBe(true);
 		expect(pre?.sources).toEqual([
 			{ kind: "prometheus", label: "prod prom", from: "set", status: "skipped", detail: "the source did not answer in time" },
 			expect.objectContaining({ label: "LOKI_URL", status: "found", file: "telemetry-loki-1.json" }),
 		]);
 		expect(pre?.files.map((f) => f.name)).toEqual(["telemetry-loki-1.json"]);
-		expect(existsSync(join(runDirFor("inv-pre"), "context", "index.json"))).toBe(true);
-		expect(existsSync(join(runDirFor("inv-pre"), "context", "telemetry-loki-1.json"))).toBe(true);
+		expect(JSON.parse(save.mock.calls[0]?.[1] ?? "{}").files[0].name).toBe("telemetry-loki-1.json");
 	});
 
 	it("a telemetry port that throws still starts the run, with nothing fetched", async () => {
@@ -1549,6 +1567,8 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 				runbooks: vi.fn(async () => {
 					throw new Error("git missing");
 				}),
+				save: vi.fn(async () => {}),
+				load: vi.fn(async () => null),
 			},
 		});
 
@@ -1561,7 +1581,9 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 
 	it("each new investigation fetches afresh", async () => {
 		const telemetry = vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] }));
-		const ports = fakePorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
+		const ports = fakePorts({
+			preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })), save: vi.fn(async () => {}), load: vi.fn(async () => null) },
+		});
 		await runInvestigationJob(...job("inv-a"), io(), ports);
 		await runInvestigationJob(...job("inv-b"), io(), ports);
 		expect(telemetry).toHaveBeenCalledTimes(2);

@@ -68,10 +68,14 @@ export function credentialSecrets(c: SourceCredential): string[] {
 	}
 }
 
+/** Each secret, and its JSON-escaped form, so a secret with a quote or newline is caught in JSON too (#848). */
 export function scrubSecrets(text: string, secrets: string[]): string {
 	let out = text;
-	for (const s of secrets)
-		if (s.length >= 4) out = out.split(s).join("[redacted]");
+	for (const s of secrets) {
+		if (s.length < 4) continue;
+		for (const form of new Set([s, JSON.stringify(s).slice(1, -1)]))
+			out = out.split(form).join("[redacted]");
+	}
 	return out;
 }
 

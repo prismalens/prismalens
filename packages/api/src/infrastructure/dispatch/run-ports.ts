@@ -194,6 +194,10 @@ export interface RunPorts {
 		): Promise<TelemetrySnapshot>;
 		/** Read from the workspace the run recorded, so after `recordWorkspace`; titles and paths only. */
 		runbooks(runId: string, signal?: AbortSignal): Promise<RunbookIndex>;
+		/** Stores the run's snapshot, the source of truth its follow-ups read. */
+		save(runId: string, snapshot: string): Promise<void>;
+		/** The stored snapshot, or null when the run has none. */
+		load(runId: string): Promise<string | null>;
 	};
 	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
 	gateway?: {

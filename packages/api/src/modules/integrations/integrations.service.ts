@@ -472,6 +472,8 @@ export class IntegrationsService implements OnModuleInit {
 				),
 			);
 		}
+		// A new address or credential has not passed a Test yet (#848).
+		if (dto.credentials || dto.connectionConfig) updateData.testedAt = null;
 
 		return this.prisma.connection.update({
 			where: { id },
@@ -655,6 +657,7 @@ export class IntegrationsService implements OnModuleInit {
 					consecutiveErrors: testResult.success
 						? 0
 						: connection.consecutiveErrors + 1,
+					...(testResult.success ? { testedAt: new Date() } : {}),
 				},
 			});
 

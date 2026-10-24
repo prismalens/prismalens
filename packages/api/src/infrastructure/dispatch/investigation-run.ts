@@ -75,9 +75,13 @@ import type { SnapshotWindow } from "../../modules/integrations/source-query.js"
 import type { TelemetrySnapshot } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import {
-	readPreRunContext,
+	buildPreRunSnapshot,
+	type CopyTarget,
+	parseStoredSnapshot,
+	preRunContext,
+	SNAPSHOT_IO_MS,
 	snapshotWindow,
-	writePreRunContext,
+	writeReadCopies,
 } from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
@@ -302,7 +306,7 @@ async function runJobInternal(
 		const runDir = runDirFor(runId);
 		mkdirSync(runDir, { recursive: true });
 		if (ports.preRun && telemetry) {
-			const preRun = await gatherPreRun(ports.preRun, runId, runDir, {
+			const preRun = await gatherPreRun(ports.preRun, runId, workspace, {
 				window,
 				telemetry,
 				pastIncidents: contextPack?.priorIncidents ?? [],
@@ -480,11 +484,11 @@ async function runJobInternal(
 	}
 }
 
-/** The context folder for the prompt, or undefined when even writing it failed; never throws. */
+/** The run's pre-run context: built, saved, then copied whatever the save did; never throws. */
 async function gatherPreRun(
 	port: NonNullable<RunPorts["preRun"]>,
 	runId: string,
-	runDir: string,
+	workspace: Workspace,
 	input: {
 		window: SnapshotWindow;
 		telemetry: Promise<TelemetrySnapshot | null>;
@@ -498,7 +502,7 @@ async function gatherPreRun(
 			input.telemetry,
 			runbookScan(port, runId, input.signal),
 		]);
-		return writePreRunContext(runDir, {
+		const snap = buildPreRunSnapshot({
 			window: input.window,
 			telemetry: telemetry?.sources ?? [],
 			notConfigured: telemetry?.notConfigured ?? [],
@@ -508,13 +512,92 @@ async function gatherPreRun(
 			checkoutsSkipped: input.checkoutsSkipped,
 			now: new Date(),
 		});
+		const saved = await saveSnapshot(port, runId, JSON.stringify(snap));
+		return preRunContext(snap, saved, await copiesOf(workspace, runId, snap));
 	} catch (e) {
 		logger.warn(
-			"Could not write the pre-run context; the run starts without it",
+			"Could not build the pre-run context; the run starts without it",
 			e,
 		);
 		return undefined;
 	}
+}
+
+async function saveSnapshot(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	text: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+	try {
+		const got = await within(SNAPSHOT_IO_MS, port.save(runId, text));
+		return got === LATE
+			? {
+					ok: false,
+					error: `the save did not finish in ${SNAPSHOT_IO_MS / 1000} s`,
+				}
+			: { ok: true };
+	} catch (e) {
+		return { ok: false, error: messageOf(e) };
+	}
+}
+
+async function copiesOf(
+	workspace: Workspace,
+	runId: string,
+	snap: Parameters<typeof writeReadCopies>[2],
+): Promise<Awaited<ReturnType<typeof writeReadCopies>>> {
+	try {
+		return await writeReadCopies(copyTargets(workspace), runId, snap);
+	} catch (e) {
+		return { state: "failed", reason: messageOf(e) };
+	}
+}
+
+/** A follow-up's context: the stored snapshot with fresh copies, or why there is none. */
+async function reloadPreRun(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	workspace: Workspace,
+): Promise<NonNullable<InvestigationContext["preRun"]>> {
+	let reason = "no stored snapshot for this run";
+	try {
+		const got = await within(SNAPSHOT_IO_MS, port.load(runId));
+		if (got === LATE)
+			reason = `the stored snapshot did not load in ${SNAPSHOT_IO_MS / 1000} s`;
+		else if (got !== null) {
+			const snap = parseStoredSnapshot(got);
+			if (snap)
+				return preRunContext(
+					snap,
+					{ ok: true },
+					await copiesOf(workspace, runId, snap),
+				);
+			reason = "the stored snapshot could not be read";
+		}
+	} catch (e) {
+		logger.warn("Could not load the stored pre-run snapshot", e);
+		reason = "the stored snapshot could not be read";
+	}
+	logger.warn(`pre-run: not available on this follow-up: ${reason}`);
+	return { state: "unavailable", reason };
+}
+
+/** The cwds an agent session sees: the run's cwd, and the primary checkout when several repos sit under it (#922). */
+export function sessionCwds(ws: RunWorkspace): string[] {
+	const first = ws.repos[0];
+	return ws.layout === "multi" && first
+		? [ws.cwd, inside(first.dir, first.subPath)]
+		: [ws.cwd];
+}
+
+function copyTargets(ws: RunWorkspace): CopyTarget[] {
+	return sessionCwds(ws).map((dir) => {
+		const repo = ws.repos.find((r) => {
+			const rel = relative(r.dir, dir);
+			return !rel.startsWith("..") && !isAbsolute(rel);
+		});
+		return repo ? { dir, checkout: repo.dir } : { dir };
+	});
 }
 
 /** The runbook index, aborted at its deadline so its git children die; never throws. */
@@ -695,9 +778,9 @@ async function runFollowUp(
 		);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
-		// The run's own pre-run files, never a new fetch (#848 ruling 2026-10-24).
-		const preRun = readPreRunContext(runDir);
-		if (preRun) context.preRun = preRun;
+		// The run's stored snapshot, never a new fetch (#848).
+		if (ports.preRun)
+			context.preRun = await reloadPreRun(ports.preRun, id, workspace);
 
 		mkdirSync(runDir, { recursive: true });
 		const base = createPrismaInvestigationStore(ports, {

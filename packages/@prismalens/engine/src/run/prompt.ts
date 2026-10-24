@@ -89,34 +89,56 @@ function renderSurfaces(
 }
 
 /**
- * What PrismaLens fetched before the run (#848 ruling 2026-10-24): the folder, its files,
- * what was skipped, then the start of each telemetry file fenced as data.
+ * What PrismaLens read before the run (#848): the read-copy folder when it was written,
+ * each source's result, the runbooks, then the start of each telemetry file fenced as data.
  */
 export function renderPreRun(context: InvestigationContext): string {
 	const p = context.preRun;
 	if (!p) return "";
+	if (p.state === "unavailable")
+		return `\n\nPRE-RUN CONTEXT\n  Not available: ${sanitizeUntrustedLine(p.reason)}.`;
 	const lines = [
 		"PRE-RUN CONTEXT",
-		`  PrismaLens fetched this before the run, at ${sanitizeUntrustedLine(p.fetchedAt)}, into ${p.dir}`,
-		"  (outside your working directory; read these files by their full path, read-only):",
-		...p.files.map(
-			(f) =>
-				`  - ${sanitizeUntrustedLine(f.name)}  ${sanitizeUntrustedLine(f.about)}`,
-		),
+		`  PrismaLens read this before the run, at ${sanitizeUntrustedLine(p.fetchedAt)}.`,
 	];
-	if (!p.files.length) lines.push("  - nothing was fetched");
-	const skipped = p.sources.filter((s) => s.status === "skipped");
-	if (skipped.length)
+	if (p.copy.state === "written" && p.copy.dir) {
 		lines.push(
-			`  Skipped before the run: ${skipped
-				.map(
-					(s) =>
-						`${sanitizeUntrustedLine(s.label)} (${s.kind}): ${sanitizeUntrustedLine(s.detail)}`,
-				)
-				.join("; ")}.`,
+			`  Read copies are in ${p.copy.dir}/ in your working directory (read-only):`,
+			...p.files.map(
+				(f) =>
+					`  - ${sanitizeUntrustedLine(f.name)}  ${sanitizeUntrustedLine(f.about)}`,
+			),
+		);
+		if (!p.files.length) lines.push("  - nothing was read");
+	}
+	const line = (s: (typeof p.sources)[number]) =>
+		`${sanitizeUntrustedLine(s.label)} (${s.kind}): ${sanitizeUntrustedLine(s.detail)}`;
+	const group = (status: string, title: string) => {
+		const of = p.sources.filter((s) => s.status === status);
+		if (of.length) lines.push(`  ${title}: ${of.map(line).join("; ")}.`);
+	};
+	group("found", "Read");
+	group("empty", "Queried, nothing for the window");
+	group("skipped", "Skipped before the run");
+	group("not-read", "Not read");
+	if (p.runbooks.length)
+		lines.push(
+			"  Runbooks found (read one with runbooks_read):",
+			...p.runbooks.map(
+				(r) =>
+					`  - ${sanitizeUntrustedLine(r.title)} (service ${sanitizeUntrustedLine(r.service)}): ${sanitizeUntrustedLine(r.path)}`,
+			),
+		);
+	if (p.runbooksSkipped)
+		lines.push(
+			`  Runbooks: skipped before the run, ${sanitizeUntrustedLine(p.runbooksSkipped)}.`,
+		);
+	if (p.state === "not-saved")
+		lines.push(
+			"  This snapshot was not saved, so a follow-up on this run will not have it.",
 		);
 	const excerpts = p.sources
-		.filter((s) => s.status !== "skipped" && s.excerpt)
+		.filter((s) => (s.status === "found" || s.status === "empty") && s.excerpt)
 		.map((s) => `--- ${s.file} (start)\n${s.excerpt}`);
 	if (excerpts.length)
 		lines.push(
@@ -218,9 +240,7 @@ export function buildInvestigationPrompt(
 	// A phase order the agent works through, the same for every agent and model (#673 w21 prompting).
 	const methodSteps = [
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
-		context.preRun
-			? "File reads, greps, and globs stay INSIDE your current working directory — use relative paths only — except the PRE-RUN CONTEXT folder, which you read by its full path."
-			: `File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
+		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
 		...(notes
 			? [
