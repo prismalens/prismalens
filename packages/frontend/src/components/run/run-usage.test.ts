@@ -87,6 +87,17 @@ describe("usageView", () => {
 		});
 	});
 
+	it("keeps a small positive cost from reading as zero", () => {
+		const usage: RunUsage = {
+			used: 10000,
+			size: 100000,
+			at: "2026-10-10T12:00:00Z",
+			cost: { amount: 0.004, currency: "USD" },
+		};
+
+		expect(usageView(usage, { live: false }).cost?.text).toBe("<0.01 USD");
+	});
+
 	it("names no model or agent in the hint", () => {
 		const usage: RunUsage = {
 			used: 15000,
