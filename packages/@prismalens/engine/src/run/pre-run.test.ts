@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { InvestigationContext } from "@prismalens/contracts/schemas";
-import { withSkippedSources } from "./investigate.js";
+import { withPreRunCoverage } from "./investigate.js";
 import { buildChatPrompt, buildInvestigationPrompt } from "./prompt.js";
 
 const context: InvestigationContext = {
@@ -74,13 +74,13 @@ describe("the pre-run context in the prompt (#848 ruling 2026-10-24)", () => {
 	});
 
 	it("the report names every skipped source under what could not be checked, once", () => {
-		const report = { coverage: { notQueried: ["prod db"] } };
-		const out = withSkippedSources(report, context);
+		const report = { coverage: { queried: [], notQueried: ["prod db"] } };
+		const out = withPreRunCoverage(report, context);
 		expect(out.coverage.notQueried).toEqual([
 			"prod db",
-			"LOKI_URL (loki): skipped before the run, the source did not answer in time",
+			"LOKI_URL (loki, from the environment): skipped before the run, the source did not answer in time",
 		]);
-		expect(withSkippedSources(out, context)).toBe(out);
-		expect(withSkippedSources(report, {})).toBe(report);
+		expect(withPreRunCoverage(out, context)).toBe(out);
+		expect(withPreRunCoverage(report, {})).toBe(report);
 	});
 });

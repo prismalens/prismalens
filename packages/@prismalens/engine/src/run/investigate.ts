@@ -979,7 +979,7 @@ export async function* runInvestigation(
 			? withSandboxGap(parsed.report, label)
 			: parsed.report;
 		yield adapter.report(
-			stampReport(withSkippedSources(gapped, opts.context), fidelity),
+			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),
 		);
 	} catch (err) {
 		yield* leftovers();
@@ -1025,32 +1025,63 @@ function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 	};
 }
 
-/** A source the pre-run fetch skipped is named under What we could not check, whatever the agent wrote (#848 ruling 2026-10-24). */
-export function withSkippedSources<
-	R extends { coverage: { notQueried: string[] } },
+const FROM_WORDS = {
+	set: "saved in PrismaLens",
+	env: "from the environment",
+} as const;
+
+/**
+ * What PrismaLens read before the run, in the report's coverage whatever the agent wrote (#848):
+ * found and empty sources under queried; skipped and not-read sources, skipped runbooks and
+ * checkouts, and a snapshot that was not saved, copied or there, under what we could not check.
+ */
+export function withPreRunCoverage<
+	R extends { coverage: { queried: string[]; notQueried: string[] } },
 >(report: R, context: Pick<InvestigationContext, "preRun">): R {
 	const pre = context.preRun;
-	const ran = pre && pre.state !== "unavailable" ? pre : undefined;
-	const gaps = [
-		...(ran?.sources ?? [])
-			.filter((s) => s.status === "skipped")
-			.map(
-				(s) => `${s.label} (${s.kind}): skipped before the run, ${s.detail}`,
-			),
-		...(ran?.runbooksSkipped
-			? [`Runbooks: skipped before the run, ${ran.runbooksSkipped}`]
-			: []),
-		...(pre?.checkoutsSkipped ?? []).map(
-			(c) =>
-				`Repository ${c.repo}: not checked out before the run, ${c.reason}`,
-		),
-	].filter((g) => !report.coverage.notQueried.includes(g));
-	if (!gaps.length) return report;
+	if (!pre) return report;
+	const queried: string[] = [];
+	const notQueried: string[] = [];
+	if (pre.state !== "unavailable") {
+		for (const s of pre.sources) {
+			const who = `${s.label} (${s.kind}, ${FROM_WORDS[s.from]}${s.overridesEnv ? `, overrides ${s.overridesEnv}` : ""})`;
+			if (s.status === "found") queried.push(`${who}: ${s.detail}`);
+			else if (s.status === "empty")
+				queried.push(`${who}: queried, nothing for the window`);
+			else if (s.status === "skipped")
+				notQueried.push(`${who}: skipped before the run, ${s.detail}`);
+			else notQueried.push(`${who}: not read, ${s.detail}`);
+		}
+		if (pre.runbooksSkipped)
+			notQueried.push(
+				`Runbooks: skipped before the run, ${pre.runbooksSkipped}`,
+			);
+	}
+	for (const c of pre.checkoutsSkipped ?? [])
+		notQueried.push(
+			`Repository ${c.repo}: not checked out before the run, ${c.reason}`,
+		);
+	if (pre.state === "not-saved")
+		notQueried.push(
+			"Pre-run snapshot: not saved; a follow-up will not have it",
+		);
+	if (pre.state !== "unavailable" && pre.copy.state === "failed")
+		notQueried.push(
+			`Pre-run read copy: not written, ${pre.copy.reason ?? "no working directory took it"}`,
+		);
+	if (pre.state === "unavailable")
+		notQueried.push(`Pre-run snapshot: not available, ${pre.reason}`);
+	const add = (have: string[], lines: string[]) =>
+		lines.filter((l) => !have.includes(l));
+	const q = add(report.coverage.queried, queried);
+	const n = add(report.coverage.notQueried, notQueried);
+	if (!q.length && !n.length) return report;
 	return {
 		...report,
 		coverage: {
 			...report.coverage,
-			notQueried: [...report.coverage.notQueried, ...gaps],
+			queried: [...report.coverage.queried, ...q],
+			notQueried: [...report.coverage.notQueried, ...n],
 		},
 	};
 }
