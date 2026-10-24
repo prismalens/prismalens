@@ -8,11 +8,12 @@ import * as React from "react";
 import { useHeightLock } from "@/hooks/use-height-lock";
 import { cn } from "@/lib/utils";
 
-/** Three fixed widths (look ruling §2); a dialog never resizes to its content's width. */
+/** Fixed widths (look ruling §2); a dialog never resizes to its content's width. `xl` is the larger preview's only (ruling 18). */
 export const DIALOG_WIDTH = {
 	sm: "w-[min(400px,calc(100%-2rem))]",
 	md: "w-[min(480px,calc(100%-2rem))]",
 	lg: "w-[min(640px,calc(100%-2rem))]",
+	xl: "w-[min(1040px,calc(100%-64px))]",
 } as const;
 export const DIALOG_PANEL =
 	"floating fixed top-[50%] left-[50%] z-50 grid max-h-[80dvh] translate-x-[-50%] translate-y-[-50%] content-start gap-4 overflow-y-auto rounded-dialog p-5 outline-none";

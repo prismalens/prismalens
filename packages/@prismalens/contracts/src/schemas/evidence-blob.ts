@@ -50,6 +50,11 @@ export type EvidenceUnavailable = (typeof EVIDENCE_UNAVAILABLE)[number];
 /** Above this a blob is named, not sent. */
 export const EVIDENCE_BLOB_MAX_BYTES = 1024 * 1024;
 
+/** A git blob id: never changes for the same bytes, so it keys the viewer's cache. */
+export const BlobOidSchema = z
+	.string()
+	.regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, "A full lowercase blob id");
+
 export const EvidenceBlobSchema = z.discriminatedUnion("state", [
 	z.object({
 		state: z.literal("ok"),
@@ -59,7 +64,8 @@ export const EvidenceBlobSchema = z.discriminatedUnion("state", [
 		/** A symlink's content is its target, shown as text and never followed. */
 		kind: z.enum(["file", "symlink"]),
 		size: z.number().int().nonnegative(),
-		/** Null when `omitted` says why. */
+		oid: BlobOidSchema,
+		/** Null when `omitted` says why; text that is not UTF-8 is `binary` (never decoded). */
 		content: z.string().nullable(),
 		omitted: z.enum(["binary", "too-large"]).nullable(),
 	}),

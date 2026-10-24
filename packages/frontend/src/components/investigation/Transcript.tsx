@@ -2,8 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
-import { FileText } from "lucide-react";
-import { Fragment, useState } from "react";
+import { ChevronRight, FileText } from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
 	Conversation,
 	ConversationContent,
@@ -59,6 +60,17 @@ export interface TranscriptSteps {
 	onSeeFlag?: () => void;
 	/** The run's asks, each on its step (#820). */
 	asks?: readonly AskRecord[];
+	/** A read step's file at the run's commit, and opening it. */
+	fileOf?: (s: RunStep) => { sha: string } | null;
+	onOpenFile?: (s: RunStep) => void;
+}
+
+/** Once a report exists, the work between the brief and the report folds behind one row. */
+export interface WorkedFold {
+	seconds: number;
+	steps: number;
+	open: boolean;
+	onToggle: () => void;
 }
 
 /**
@@ -76,6 +88,8 @@ export function Transcript({
 	briefBy = "You",
 	report,
 	empty,
+	worked,
+	afterReport,
 }: {
 	items: TranscriptItem[];
 	incidentId: string;
@@ -91,7 +105,15 @@ export function Transcript({
 	report?: { title: string; summary: string } | null;
 	/** What shows before anything is sent: the new conversation's box. */
 	empty?: boolean;
+	worked?: WorkedFold | null;
+	/** Drawn right under the report card, outside the fold: the hypotheses card. */
+	afterReport?: ReactNode;
 }) {
+	const brief = items.findIndex(
+		(i) => i.kind === "operator" && i.state === "started",
+	);
+	const end = items.findIndex((i) => i.kind === "end" && i.report);
+	const folds = !!worked && end > brief + 1;
 	return (
 		<Conversation className="h-full" data-testid="transcript-scroller">
 			<ConversationContent className="px-4 pt-5 pb-2">
@@ -100,23 +122,66 @@ export function Transcript({
 					data-testid="transcript"
 					data-empty={empty ? "" : undefined}
 				>
-					{items.map((item) => (
-						<TranscriptRow
-							key={item.key}
-							item={item}
-							incidentId={incidentId}
-							cwd={cwd}
-							agent={agent}
-							steps={steps}
-							runName={runName}
-							briefBy={briefBy}
-							report={report}
-						/>
+					{folds && worked && brief === -1 && <WorkedToggle worked={worked} />}
+					{items.map((item, i) => (
+						<Fragment key={item.key}>
+							{(!folds || worked?.open || i <= brief || i >= end) && (
+								<TranscriptRow
+									item={item}
+									incidentId={incidentId}
+									cwd={cwd}
+									agent={agent}
+									steps={steps}
+									runName={runName}
+									briefBy={briefBy}
+									report={report}
+								/>
+							)}
+							{folds && worked && i === brief && (
+								<WorkedToggle worked={worked} />
+							)}
+							{i === end && report && afterReport}
+						</Fragment>
 					))}
 				</ol>
 			</ConversationContent>
 			<ConversationScrollButton />
+			<ReleaseOnUnfold open={!!worked?.open} />
 		</Conversation>
+	);
+}
+
+/** Unfolding grows the log; without this the follow-the-tail lock pulls a jump back to the bottom. */
+function ReleaseOnUnfold({ open }: { open: boolean }) {
+	const { stopScroll } = useStickToBottomContext();
+	useEffect(() => {
+		if (open) stopScroll();
+	}, [open, stopScroll]);
+	return null;
+}
+
+/** `Worked for 4m 12s, 23 steps`: the steps-unfold row with the sidebar tree's disclosure chevron. */
+function WorkedToggle({ worked }: { worked: WorkedFold }) {
+	return (
+		<li>
+			<button
+				type="button"
+				onClick={worked.onToggle}
+				aria-expanded={worked.open}
+				className="flex w-full items-center gap-1.5 rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
+				data-testid="worked-toggle"
+			>
+				<ChevronRight
+					aria-hidden
+					className={cn(
+						"size-3 shrink-0 text-text-3 transition-transform duration-(--dur-fast) motion-reduce:transition-none",
+						worked.open && "rotate-90",
+					)}
+				/>
+				Worked for {formatElapsed(worked.seconds)}, {worked.steps}{" "}
+				{worked.steps === 1 ? "step" : "steps"}
+			</button>
+		</li>
 	);
 }
 
@@ -418,6 +483,10 @@ function StepGroup({
 						flagged={steps.flagged.has(s.n)}
 						onSeeFlag={steps.onSeeFlag}
 						ask={steps.asks?.findLast((a) => a.step === s.n)}
+						fileSha={steps.fileOf?.(s)?.sha}
+						onOpenFile={
+							steps.onOpenFile ? () => steps.onOpenFile?.(s) : undefined
+						}
 					/>
 				</Fragment>
 			))}

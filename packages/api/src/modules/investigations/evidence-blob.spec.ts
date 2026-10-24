@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunWorkspace } from "@prismalens/contracts";
+import { EVIDENCE_BLOB_MAX_BYTES, type RunWorkspace } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mirrorPathFor } from "../../core/harness/repo-source.service.js";
 import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
@@ -99,6 +99,7 @@ describe("readEvidenceBlob: a folder source", () => {
 			path: "src/db/pool.ts",
 			kind: "file",
 			size: 16,
+			oid: git(["rev-parse", `${head}:src/db/pool.ts`], src),
 			content: "const max = 10;\n",
 			omitted: null,
 		});
@@ -118,6 +119,56 @@ describe("readEvidenceBlob: a folder source", () => {
 	it("a binary blob is named, not sent", async () => {
 		const blob = await readEvidenceBlob(ws, head, "logo.png");
 		expect(blob).toMatchObject({ state: "ok", content: null, omitted: "binary", size: 6 });
+	});
+
+	it("a committed file of Latin-1 bytes with no NUL reads as binary", async () => {
+		writeFileSync(join(src, "latin1.txt"), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+		const nextHead = commitAll(src, "add latin1");
+		const nextWs = workspace(nextHead, { url: src });
+		const blob = await readEvidenceBlob(nextWs, nextHead, "latin1.txt");
+		expect(blob).toMatchObject({
+			state: "ok",
+			content: null,
+			omitted: "binary",
+		});
+	});
+
+	it("a committed UTF-8 file with multibyte text reads back exactly that string with omitted null", async () => {
+		const text = "caf\u00e9 \u2713\n";
+		writeFileSync(join(src, "utf8.txt"), text);
+		const nextHead = commitAll(src, "add utf8");
+		const nextWs = workspace(nextHead, { url: src });
+		const blob = await readEvidenceBlob(nextWs, nextHead, "utf8.txt");
+		expect(blob).toMatchObject({
+			state: "ok",
+			content: text,
+			omitted: null,
+		});
+	});
+
+	it("the oid of an ok blob equals git rev-parse in the source repo for text and binary", async () => {
+		const textBlob = await readEvidenceBlob(ws, head, "src/db/pool.ts");
+		const logoBlob = await readEvidenceBlob(ws, head, "logo.png");
+		expect(textBlob.state).toBe("ok");
+		expect(logoBlob.state).toBe("ok");
+		if (textBlob.state === "ok" && logoBlob.state === "ok") {
+			expect(textBlob.oid).toBe(git(["rev-parse", `${head}:src/db/pool.ts`], src));
+			expect(logoBlob.oid).toBe(git(["rev-parse", `${head}:logo.png`], src));
+		}
+	});
+
+	it("a file larger than EVIDENCE_BLOB_MAX_BYTES reads omitted too-large, content null, and carries oid", async () => {
+		const largeBuffer = Buffer.alloc(EVIDENCE_BLOB_MAX_BYTES + 1, 0x61);
+		writeFileSync(join(src, "large.txt"), largeBuffer);
+		const nextHead = commitAll(src, "add large");
+		const nextWs = workspace(nextHead, { url: src });
+		const blob = await readEvidenceBlob(nextWs, nextHead, "large.txt");
+		expect(blob).toMatchObject({
+			state: "ok",
+			content: null,
+			omitted: "too-large",
+			oid: git(["rev-parse", `${nextHead}:large.txt`], src),
+		});
 	});
 
 	it("a folder that is gone, or no longer a repository, reads as source removed", async () => {

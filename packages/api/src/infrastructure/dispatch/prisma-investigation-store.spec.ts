@@ -60,6 +60,8 @@ function makePorts(
 		initLiveTurn: vi.fn(async () => {}),
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
+		events: vi.fn(async () => []),
+		recordHandoff: vi.fn(async () => {}),
 		recordSession: vi.fn(async () => {}),
 		recordUsage: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
