@@ -148,7 +148,7 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 		if (server.caFile) {
 			writeFileSync(
 				join(env.home, ".gitconfig"),
-				`[http]\n\tsslCAInfo = ${server.caFile}\n`,
+				`[http]\n\tsslCAInfo = ${server.caFile.replaceAll("\\", "/")}\n`,
 			);
 		}
 
@@ -382,17 +382,22 @@ describe("Git Credential Integration Scenarios (S1-S8, S8b, S11, S13)", () => {
 	});
 
 	it("S8: Fake credential helper in .gitconfig -> the saved tokens still come first, so two of them read ambiguous (#848)", async () => {
-		const helperScript = join(env.home, "fake-helper.sh");
+		const isWin = process.platform === "win32";
+		const helperScript = isWin
+			? join(env.home, "fake-helper.cmd")
+			: join(env.home, "fake-helper.sh");
 		writeFileSync(
 			helperScript,
-			`#!/bin/sh\necho "username=machineuser"\necho "password=machinepass"\n`,
+			isWin
+				? `@echo off\necho username=machineuser\necho password=machinepass\n`
+				: `#!/bin/sh\necho "username=machineuser"\necho "password=machinepass"\n`,
 			{ mode: 0o755 },
 		);
 
 		// Add helper to .gitconfig
 		writeFileSync(
 			join(env.home, ".gitconfig"),
-			`[http]\n\tsslCAInfo = ${server.caFile}\n[credential]\n\thelper = ${helperScript}\n`,
+			`[http]\n\tsslCAInfo = ${server.caFile?.replaceAll("\\", "/")}\n[credential]\n\thelper = ${helperScript.replaceAll("\\", "/")}\n`,
 		);
 
 		const repoUrl = server.addRepo("helper-repo", {
