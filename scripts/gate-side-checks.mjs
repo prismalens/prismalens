@@ -927,8 +927,17 @@ async function checkUpgrade() {
 		older.code !== 0 && /older than/.test(older.out),
 		`0.0.1 should be refused as older: ${older.code} ${older.out.slice(-300)}`,
 	);
-	const upgrade = await runPl(["upgrade", "--version", next], env, cli);
+	const upgrade = await runPl(
+		["upgrade", "--version", next],
+		{ ...env, NPM_CONFIG_LOGLEVEL: "verbose" },
+		cli,
+	);
 	if (upgrade.code !== 0) {
+		const logs = join(env.LOCALAPPDATA ?? env.HOME, "npm-cache", "_logs");
+		const latest = existsSync(logs) ? readdirSync(logs).sort().at(-1) : null;
+		const debugLog = latest
+			? readFileSync(join(logs, latest), "utf8").slice(-2500)
+			: "(no npm log)";
 		// What `pl upgrade` runs, run by hand in the same env, says why npm said nothing.
 		const probe = WIN
 			? await run(
@@ -946,7 +955,7 @@ async function checkUpgrade() {
 			: { out: "" };
 		assert(
 			false,
-			`pl upgrade --version ${next} exited ${upgrade.code}: ${upgrade.out.slice(-1200)} | by hand: ${probe.code} ${probe.out.slice(-1800)}`,
+			`pl upgrade --version ${next} exited ${upgrade.code}: ${upgrade.out.slice(-2500)} | npm log: ${debugLog} | by hand: ${probe.code} ${probe.out.slice(-300)}`,
 		);
 	}
 	const after = await runPl(["--version"], env, cli);
