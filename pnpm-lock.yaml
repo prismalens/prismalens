@@ -226,6 +226,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       cross-spawn:
         specifier: ^7.0.6
         version: 7.0.6

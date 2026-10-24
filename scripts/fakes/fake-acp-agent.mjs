@@ -5,6 +5,7 @@
 // Speaks ACP v1 on stdio and replays a scripted session (scripts/fakes/sessions/*.json).
 // The harness env is allowlisted, so the script is picked by --session or by
 // `fake-session:<name>` in the first prompt; a file under TMPDIR carries it to session/load.
+// `--replay <transcript> [--lenient]` plays a recording instead (acp-replay.mjs).
 import {
 	chmodSync,
 	existsSync,
@@ -17,6 +18,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runReplay } from "./acp-replay.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SESSIONS_DIR = join(HERE, "sessions");
@@ -78,12 +80,14 @@ function releasedFor(prompt) {
 /**
  * Puts the fake on PATH under the harness binaries the registry looks for.
  * @param {string} binDir
- * @param {{ session?: string, binaries?: string[], stateDir?: string }} [opts]
+ * @param {{ session?: string, binaries?: string[], stateDir?: string, replay?: string, lenient?: boolean }} [opts]
  */
 export function installFakeAgent(binDir, opts = {}) {
 	const session = opts.session ?? "success";
 	const binaries = opts.binaries ?? ["opencode", "claude-agent-acp"];
-	const args = `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}`;
+	const args = opts.replay
+		? `--replay "${opts.replay}"${opts.lenient ? " --lenient" : ""}`
+		: `--session "${session}"${opts.stateDir ? ` --state-dir "${opts.stateDir}"` : ""}`;
 	for (const bin of binaries) {
 		const target = join(binDir, bin);
 		writeFileSync(
@@ -100,6 +104,11 @@ export function installFakeAgent(binDir, opts = {}) {
 }
 
 function run() {
+	const replayArg = process.argv.indexOf("--replay");
+	if (replayArg > -1)
+		return runReplay(process.argv[replayArg + 1], {
+			strict: !process.argv.includes("--lenient"),
+		});
 	const sessionArg = process.argv.indexOf("--session");
 	const defaultName =
 		process.env.FAKE_ACP_MODE === "switch-mode"
