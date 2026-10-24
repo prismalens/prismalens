@@ -32437,6 +32437,11 @@
                         "type": "string",
                         "format": "uuid"
                       },
+                      "priority": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
                       "globalConfig": {
                         "anyOf": [
                           {
@@ -32492,6 +32497,120 @@
                       "globalConfig",
                       "serviceConfig",
                       "effectiveConfig"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/service/{serviceId}/order": {
+      "put": {
+        "operationId": "integrations.setServiceIntegrationOrder",
+        "summary": "Order a service's mappings: the first gets the highest priority",
+        "tags": [
+          "integrations",
+          "services"
+        ],
+        "parameters": [
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "overrideIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                },
+                "required": [
+                  "overrideIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "serviceId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "priority": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991,
+                        "default": 0
+                      },
+                      "config": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "isEnabled": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "serviceId",
+                      "connectionId",
+                      "config",
+                      "createdAt",
+                      "updatedAt"
                     ]
                   }
                 }

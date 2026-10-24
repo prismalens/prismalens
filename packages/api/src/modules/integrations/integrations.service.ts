@@ -932,6 +932,29 @@ export class IntegrationsService implements OnModuleInit {
 		});
 	}
 
+	/**
+	 * Gives the service's mappings priorities by their place, first highest, in one
+	 * transaction; null when an id is not one of its mappings or repeats. Selection
+	 * reads the same `priority` (#848 C5).
+	 */
+	async setServiceIntegrationOrder(
+		serviceId: string,
+		overrideIds: string[],
+	): Promise<ServiceIntegration[] | null> {
+		const found = await this.prisma.serviceIntegration.count({
+			where: { id: { in: overrideIds }, serviceId },
+		});
+		if (found !== overrideIds.length) return null;
+		return this.prisma.$transaction(
+			overrideIds.map((id, i) =>
+				this.prisma.serviceIntegration.update({
+					where: { id },
+					data: { priority: overrideIds.length - i },
+				}),
+			),
+		);
+	}
+
 	async deleteServiceIntegrationById(id: string): Promise<boolean> {
 		try {
 			await this.prisma.serviceIntegration.delete({ where: { id } });
@@ -1004,6 +1027,7 @@ export class IntegrationsService implements OnModuleInit {
 				isGlobal: true,
 				hasOverride: !!override,
 				overrideId: override?.id,
+				priority: override?.priority,
 				globalConfig: connectionConfig,
 				serviceConfig,
 				effectiveConfig: serviceConfig ?? connectionConfig,
