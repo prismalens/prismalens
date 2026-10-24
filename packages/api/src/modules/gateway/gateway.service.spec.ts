@@ -175,12 +175,14 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 				status: "investigating",
 				severity: "high",
 				description: null,
+				serviceId: "svc-1",
 				triggeredAt: new Date("2026-10-24T09:00:00Z"),
 				service: { name: "checkout" },
 				alerts: [
 					{
 						title: "HighErrorRate",
 						severity: "high",
+						serviceId: "svc-1",
 						labels: '{"alertname":"HighErrorRate"}',
 						triggeredAt: new Date("2026-10-24T09:00:00Z"),
 					},
@@ -205,6 +207,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		]),
 	};
 	const incident = { findUnique: vi.fn(async () => null) };
+	const changeEvent = { findMany: vi.fn(async () => []) };
 
 	async function call(
 		method: string,
@@ -213,7 +216,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		const g = gateway({
 			investigation,
 			incident,
-			changeEvent: { findMany: async () => [] },
+			changeEvent,
 			setting: { findUnique: async () => null },
 		});
 		const entry = await g.lease(RUN_A, NAME);
@@ -352,5 +355,65 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			out.error !== undefined ||
 			(out.result as { isError?: boolean } | undefined)?.isError === true;
 		expect(failed).toBe(true);
+	});
+
+	it("incident_get changes: serves alerts and deploy and change events from the database (#848 C8)", async () => {
+		const changeEvents = [
+			{
+				type: "deploy",
+				source: "argocd",
+				timestamp: new Date("2026-10-24T08:30:00Z"),
+				description: "deployed checkout v2.1.0",
+				metadata: JSON.stringify({ environment: "production", version: "v2.1.0" }),
+				service: { name: "checkout" },
+			},
+			{
+				type: "feature_flag",
+				source: "launchdarkly",
+				timestamp: new Date("2026-10-24T08:00:00Z"),
+				description: "enabled new_cart",
+				metadata: JSON.stringify({ env: "prod" }),
+				service: { name: "checkout" },
+			},
+		];
+		changeEvent.findMany.mockResolvedValueOnce(changeEvents as never);
+
+		const res = await call("tools/call", { name: "incident_get", arguments: {} });
+		const got = JSON.parse(text(res));
+
+		expect(got.changes).toEqual([
+			{
+				type: "deploy",
+				source: "argocd",
+				timestamp: "2026-10-24T08:30:00.000Z",
+				service: "checkout",
+				description: "deployed checkout v2.1.0",
+				environment: "production",
+				version: "v2.1.0",
+			},
+			{
+				type: "feature_flag",
+				source: "launchdarkly",
+				timestamp: "2026-10-24T08:00:00.000Z",
+				service: "checkout",
+				description: "enabled new_cart",
+				environment: "prod",
+				version: null,
+			},
+		]);
+
+		const [callArg] = (changeEvent.findMany.mock.calls.at(-1) as unknown as [
+			{ where: { serviceId: { in: string[] }; timestamp: { gte: Date; lte: Date } }; orderBy: { timestamp: string }; take: number },
+		]);
+		expect(callArg.where.serviceId).toEqual({ in: ["svc-1"] });
+		expect(callArg.where.timestamp.gte).toEqual(new Date("2026-10-23T09:00:00.000Z"));
+		expect(callArg.orderBy).toEqual({ timestamp: "desc" });
+		expect(callArg.take).toBe(20);
+
+		const listOut = await call("tools/list");
+		const incidentGet = (listOut.result as { tools: { name: string; description: string }[] }).tools.find(
+			(t) => t.name === "incident_get",
+		);
+		expect(incidentGet?.description).toContain("alerts, deploy and change events PrismaLens recorded");
 	});
 });
