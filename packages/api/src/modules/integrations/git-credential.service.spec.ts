@@ -592,7 +592,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 	});
 
 	describe("fallback and withCredential", () => {
-		it("retries with single matching token when machine git is refused", async () => {
+		it("an unpinned token refused with no-access falls through to the machine's git (#848)", async () => {
 			const connEnc = credentialsService.encrypt({ token: "ghp_retry" });
 			const configEnc = credentialsService.encrypt({ host: "github.com" });
 			const conn = {
@@ -631,22 +631,25 @@ describe("GitCredentialService & host-token (#810)", () => {
 			const fn = async (c: GitCredential) => {
 				attempts++;
 				if (attempts === 1) {
-					expect(c.display.source).toBe("machine");
-					throw new GitFailure("machine-rejected", "Authentication failed for https://github.com/org/repo.git");
+					expect(c.display.source).toBe("connection");
+					throw new GitFailure("no-access", "Token \"Single Token\" can't see org/repo");
 				}
-				expect(c.display.source).toBe("connection");
-				expect(c.display.fallback).toBe(true);
+				expect(c.display.source).toBe("machine");
 				return "success";
 			};
 
 			const res = await service.withCredential(ref, fn);
 			expect(res.result).toBe("success");
-			expect(res.credential.source).toBe("connection");
-			expect(res.credential.fallback).toBe(true);
+			expect(res.credential.source).toBe("machine");
+			expect(res.credential.fallbackFrom).toEqual({
+				source: "connection",
+				label: "token Single Token",
+				code: "no-access",
+			});
 			expect(attempts).toBe(2);
 		});
 
-		it("withCredential throws pick-credential error if more than one saved token matches on failure", async () => {
+		it("withCredential refuses as ambiguous before git runs when two saved tokens match (#848)", async () => {
 			const conn1Enc = credentialsService.encrypt({ token: "tok1" });
 			const conn2Enc = credentialsService.encrypt({ token: "tok2" });
 			const configEnc = credentialsService.encrypt({ host: "github.com" });
@@ -693,14 +696,12 @@ describe("GitCredentialService & host-token (#810)", () => {
 				pick: null,
 			};
 
-			await expect(
-				service.withCredential(ref, async () => {
-					throw new GitFailure("machine-rejected", "Authentication failed");
-				}),
-			).rejects.toMatchObject({
-				code: "machine-rejected",
+			const fn = vi.fn(async () => "never");
+			await expect(service.withCredential(ref, fn)).rejects.toMatchObject({
+				code: "ambiguous",
 				action: "pick-credential",
 			});
+			expect(fn).not.toHaveBeenCalled();
 		});
 
 		it("does not retry fallback on SSH machine failures", async () => {
@@ -760,7 +761,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 			);
 		});
 
-		it("records failure when retry fallback attempt fails with token-rejected", async () => {
+		it("records the token's rejection when the fall-through attempt fails too (#848)", async () => {
 			const connEnc = credentialsService.encrypt({ token: "ghp_retry_fail" });
 			const configEnc = credentialsService.encrypt({ host: "github.com" });
 			mockPrisma.connection.findMany.mockResolvedValue([
@@ -801,9 +802,9 @@ describe("GitCredentialService & host-token (#810)", () => {
 				service.withCredential(ref, async () => {
 					attempts++;
 					if (attempts === 1) {
-						throw new GitFailure("machine-rejected", "Authentication failed");
+						throw new GitFailure("token-rejected", "Token rejected");
 					}
-					throw new GitFailure("token-rejected", "Token also rejected");
+					throw new GitFailure("machine-rejected", "Machine also refused");
 				}),
 			).rejects.toThrowError(GitFailure);
 

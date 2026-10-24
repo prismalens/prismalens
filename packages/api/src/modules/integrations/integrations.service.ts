@@ -683,6 +683,7 @@ export class IntegrationsService implements OnModuleInit {
 	 * A git host token's Test: `git ls-remote` against each saved repository on its host,
 	 * three at a time, and for github.com its expiry and a 401 check. With no repository
 	 * to try it says so and leaves the status alone, rather than showing a mistyped token green.
+	 * A repository that does not pin this token and that it cannot see does not fail it (#848).
 	 */
 	private async testGitHostToken(
 		connection: ConnectionWithIntegration,
@@ -690,7 +691,7 @@ export class IntegrationsService implements OnModuleInit {
 		const token = readHostToken(connection, this.credentialsService);
 		if (!token)
 			return { success: false, error: "This connection has no host or token." };
-		const { details, rejected } = await this.lsRemoteMatching(token);
+		const { details, rejected, failures } = await this.lsRemoteMatching(token);
 		const api =
 			token.host === "github.com" ? await this.githubUser(token) : null;
 		if (api?.expiresAt !== undefined)
@@ -719,26 +720,31 @@ export class IntegrationsService implements OnModuleInit {
 			};
 		if (rejected)
 			return { success: false, rejected: true, error: rejected, details };
-		const failed = details.find((d) => !d.startsWith("ok "));
+		const [failed] = failures;
 		return failed
 			? { success: false, error: failed, details }
 			: { success: true, details };
 	}
 
-	private async lsRemoteMatching(
-		token: HostToken,
-	): Promise<{ details: string[]; rejected: string | null }> {
+	private async lsRemoteMatching(token: HostToken): Promise<{
+		details: string[];
+		rejected: string | null;
+		failures: string[];
+	}> {
 		const rows = await this.prisma.repository.findMany({
 			where: { sourceKind: "url" },
-			select: { url: true },
+			select: { url: true, metadata: true },
 			orderBy: { updatedAt: "desc" },
 		});
 		const targets: string[] = [];
-		for (const { url } of rows) {
+		const pinned = new Set<string>();
+		for (const { url, metadata } of rows) {
 			if (targets.length >= TEST_REPO_LIMIT) break;
 			const effective = await effectiveGitUrl(url);
-			if (/^https:\/\//i.test(effective) && urlHost(effective) === token.host)
+			if (/^https:\/\//i.test(effective) && urlHost(effective) === token.host) {
 				targets.push(effective);
+				if (pickOf(metadata) === token.connectionId) pinned.add(effective);
+			}
 		}
 		const display = {
 			source: "connection" as const,
@@ -748,6 +754,7 @@ export class IntegrationsService implements OnModuleInit {
 		};
 		const cred = new GitCredential(display, token.token, { host: token.host });
 		const details: string[] = [];
+		const failures: string[] = [];
 		let rejected: string | null = null;
 		for (let i = 0; i < targets.length; i += TEST_CONCURRENCY) {
 			const batch = targets.slice(i, i + TEST_CONCURRENCY);
@@ -785,13 +792,15 @@ export class IntegrationsService implements OnModuleInit {
 							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
 							if (failure.code === "token-rejected")
 								rejected ??= failure.message;
+							if (failure.code !== "no-access" || pinned.has(url))
+								failures.push(failure.message);
 							return failure.message;
 						}
 					}),
 				)),
 			);
 		}
-		return { details, rejected };
+		return { details, rejected, failures };
 	}
 
 	/** github.com's view of the token: refused, or when it expires (undefined when the call failed). */

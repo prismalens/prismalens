@@ -3265,6 +3265,7 @@
                                   "source": {
                                     "enum": [
                                       "connection",
+                                      "env",
                                       "machine",
                                       "none"
                                     ],
@@ -3282,8 +3283,36 @@
                                   "fingerprint": {
                                     "type": "string"
                                   },
+                                  "envVar": {
+                                    "type": "string"
+                                  },
                                   "fallback": {
                                     "const": true
+                                  },
+                                  "fallbackFrom": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "env",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "code": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "code"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -10633,6 +10662,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -10650,8 +10680,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -11832,6 +11890,7 @@
                                             "source": {
                                               "enum": [
                                                 "connection",
+                                                "env",
                                                 "machine",
                                                 "none"
                                               ],
@@ -11849,8 +11908,36 @@
                                             "fingerprint": {
                                               "type": "string"
                                             },
+                                            "envVar": {
+                                              "type": "string"
+                                            },
                                             "fallback": {
                                               "const": true
+                                            },
+                                            "fallbackFrom": {
+                                              "type": "object",
+                                              "properties": {
+                                                "source": {
+                                                  "enum": [
+                                                    "connection",
+                                                    "env",
+                                                    "machine",
+                                                    "none"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "label": {
+                                                  "type": "string"
+                                                },
+                                                "code": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "required": [
+                                                "source",
+                                                "label",
+                                                "code"
+                                              ]
                                             }
                                           },
                                           "required": [
@@ -13329,6 +13416,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -13346,8 +13434,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -14793,6 +14909,7 @@
                                           "source": {
                                             "enum": [
                                               "connection",
+                                              "env",
                                               "machine",
                                               "none"
                                             ],
@@ -14810,8 +14927,36 @@
                                           "fingerprint": {
                                             "type": "string"
                                           },
+                                          "envVar": {
+                                            "type": "string"
+                                          },
                                           "fallback": {
                                             "const": true
+                                          },
+                                          "fallbackFrom": {
+                                            "type": "object",
+                                            "properties": {
+                                              "source": {
+                                                "enum": [
+                                                  "connection",
+                                                  "env",
+                                                  "machine",
+                                                  "none"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "label": {
+                                                "type": "string"
+                                              },
+                                              "code": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "source",
+                                              "label",
+                                              "code"
+                                            ]
                                           }
                                         },
                                         "required": [
@@ -16044,6 +16189,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -16061,8 +16207,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -18780,6 +18954,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -18797,8 +18972,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -20987,6 +21190,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -21004,8 +21208,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       }
                                     },
                                     "required": [
@@ -22952,6 +23184,7 @@
                         "source": {
                           "enum": [
                             "connection",
+                            "env",
                             "machine",
                             "none"
                           ],
@@ -22969,8 +23202,36 @@
                         "fingerprint": {
                           "type": "string"
                         },
+                        "envVar": {
+                          "type": "string"
+                        },
                         "fallback": {
                           "const": true
+                        },
+                        "fallbackFrom": {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "connection",
+                                "env",
+                                "machine",
+                                "none"
+                              ],
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "label",
+                            "code"
+                          ]
                         },
                         "problem": {
                           "type": "object",
@@ -23223,6 +23484,7 @@
                         "source": {
                           "enum": [
                             "connection",
+                            "env",
                             "machine",
                             "none"
                           ],
@@ -23240,8 +23502,36 @@
                         "fingerprint": {
                           "type": "string"
                         },
+                        "envVar": {
+                          "type": "string"
+                        },
                         "fallback": {
                           "const": true
+                        },
+                        "fallbackFrom": {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "connection",
+                                "env",
+                                "machine",
+                                "none"
+                              ],
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "label",
+                            "code"
+                          ]
                         },
                         "problem": {
                           "type": "object",
@@ -23507,6 +23797,7 @@
                               "source": {
                                 "enum": [
                                   "connection",
+                                  "env",
                                   "machine",
                                   "none"
                                 ],
@@ -23524,8 +23815,36 @@
                               "fingerprint": {
                                 "type": "string"
                               },
+                              "envVar": {
+                                "type": "string"
+                              },
                               "fallback": {
                                 "const": true
+                              },
+                              "fallbackFrom": {
+                                "type": "object",
+                                "properties": {
+                                  "source": {
+                                    "enum": [
+                                      "connection",
+                                      "env",
+                                      "machine",
+                                      "none"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "code": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "source",
+                                  "label",
+                                  "code"
+                                ]
                               },
                               "problem": {
                                 "type": "object",
@@ -23841,6 +24160,7 @@
                         "source": {
                           "enum": [
                             "connection",
+                            "env",
                             "machine",
                             "none"
                           ],
@@ -23858,8 +24178,36 @@
                         "fingerprint": {
                           "type": "string"
                         },
+                        "envVar": {
+                          "type": "string"
+                        },
                         "fallback": {
                           "const": true
+                        },
+                        "fallbackFrom": {
+                          "type": "object",
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "connection",
+                                "env",
+                                "machine",
+                                "none"
+                              ],
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source",
+                            "label",
+                            "code"
+                          ]
                         },
                         "problem": {
                           "type": "object",
@@ -24825,6 +25173,7 @@
                                         "source": {
                                           "enum": [
                                             "connection",
+                                            "env",
                                             "machine",
                                             "none"
                                           ],
@@ -24842,8 +25191,36 @@
                                         "fingerprint": {
                                           "type": "string"
                                         },
+                                        "envVar": {
+                                          "type": "string"
+                                        },
                                         "fallback": {
                                           "const": true
+                                        },
+                                        "fallbackFrom": {
+                                          "type": "object",
+                                          "properties": {
+                                            "source": {
+                                              "enum": [
+                                                "connection",
+                                                "env",
+                                                "machine",
+                                                "none"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            },
+                                            "code": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "source",
+                                            "label",
+                                            "code"
+                                          ]
                                         },
                                         "problem": {
                                           "type": "object",
@@ -25390,6 +25767,7 @@
                                   "source": {
                                     "enum": [
                                       "connection",
+                                      "env",
                                       "machine",
                                       "none"
                                     ],
@@ -25407,8 +25785,36 @@
                                   "fingerprint": {
                                     "type": "string"
                                   },
+                                  "envVar": {
+                                    "type": "string"
+                                  },
                                   "fallback": {
                                     "const": true
+                                  },
+                                  "fallbackFrom": {
+                                    "type": "object",
+                                    "properties": {
+                                      "source": {
+                                        "enum": [
+                                          "connection",
+                                          "env",
+                                          "machine",
+                                          "none"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "code": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "source",
+                                      "label",
+                                      "code"
+                                    ]
                                   },
                                   "problem": {
                                     "type": "object",
@@ -26428,6 +26834,7 @@
                                       "source": {
                                         "enum": [
                                           "connection",
+                                          "env",
                                           "machine",
                                           "none"
                                         ],
@@ -26445,8 +26852,36 @@
                                       "fingerprint": {
                                         "type": "string"
                                       },
+                                      "envVar": {
+                                        "type": "string"
+                                      },
                                       "fallback": {
                                         "const": true
+                                      },
+                                      "fallbackFrom": {
+                                        "type": "object",
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "connection",
+                                              "env",
+                                              "machine",
+                                              "none"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "code": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "source",
+                                          "label",
+                                          "code"
+                                        ]
                                       },
                                       "problem": {
                                         "type": "object",
