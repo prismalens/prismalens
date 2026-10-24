@@ -86,7 +86,10 @@ export function RunDetailsPanel({
 	onJump,
 	files,
 	summaryTop,
+	contextTop,
 }: {
+	/** Above the Context sections: the runbooks the run found (#848). */
+	contextTop?: ReactNode;
 	/** Above the Summary sections: the run's five steps and its tools (#848). */
 	summaryTop?: ReactNode;
 	title: string;
@@ -217,6 +220,7 @@ export function RunDetailsPanel({
 							data-testid={`run-details-${id}`}
 						>
 							{id === "summary" && summaryTop}
+							{id === "context" && contextTop}
 							<Sections
 								sections={
 									id === "summary"

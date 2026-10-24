@@ -70,6 +70,7 @@ import {
 	RunDetailsPanel,
 	RunOverview,
 } from "./RunDetailsPanel";
+import { RunRunbooks } from "./RunRunbooks";
 import { RunStrip, type StripChip } from "./RunStrip";
 import { codeLine, runsFolder, toolsStatus, toolTurns } from "./RunTools";
 import {
@@ -545,6 +546,9 @@ export function RunPage() {
 					onClose={closePanel}
 					incidentId={incident.id}
 					summaryTop={overview}
+					contextTop={
+						!chat && <RunRunbooks preRun={preRun} loadError={!!run.error} />
+					}
 					summary={summarySections(
 						inv,
 						summaryFacts(inv, run, {
