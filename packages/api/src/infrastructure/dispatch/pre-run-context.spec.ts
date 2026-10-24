@@ -146,6 +146,108 @@ describe("the run's pre-run snapshot (#848)", () => {
 			rmSync(runDir, { recursive: true, force: true });
 		}
 	});
+
+	it("buildPreRunSnapshot over skipped basic credential outcomes plus found source scrubs base64 secret (OBJ-002)", () => {
+		const b64 = "YWxpY2U6YWJj";
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "prom-skipped-req",
+					from: "set",
+					status: "skipped",
+					reason: "credential has a secret shorter than 4 characters",
+					secrets: [b64],
+				},
+				{
+					kind: "alertmanager",
+					label: "am-skipped-noreq",
+					from: "set",
+					status: "skipped",
+					reason: "it cannot be opened here",
+					secrets: [b64],
+				},
+				{
+					kind: "loki",
+					label: "loki-found",
+					from: "set",
+					status: "found",
+					part: {
+						summary: "1 line",
+						data: { result: [{ stream: { app: "api" }, values: [["1", `auth: ${b64}`]] }] },
+						count: 1,
+					},
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+		expect(JSON.stringify(snap)).not.toContain(b64);
+	});
+
+	it("a found source labelled 300,000 characters produces a file within 262,144 bytes (OBJ-006)", () => {
+		const ctx = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "L".repeat(300_000),
+					from: "set",
+					status: "found",
+					part: { summary: "1 alert", data: { alerts: [] }, count: 0 },
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+		expect(ctx.files[0]).toBeDefined();
+		expect(Buffer.byteLength(ctx.files[0]!.text)).toBeLessThanOrEqual(262_144);
+	});
+
+	it("buildPreRunSnapshot preserves schema enum/origin fields while scrubbing secrets from user fields (OBJ-015)", () => {
+		expect(() => {
+			const snap = buildPreRunSnapshot({
+				window: WINDOW,
+				telemetry: [
+					{
+						kind: "loki",
+						label: "checkout repo logs",
+						from: "set",
+						status: "found",
+						part: { summary: "1 line", data: { result: [] }, count: 0 },
+						secrets: ["sources", "kind", "found", "repo"],
+					},
+				],
+				pastIncidents: [],
+				runbooks: [
+					{
+						title: "deploy runbook",
+						path: "repo/runbooks/deploy.md",
+						service: "checkout",
+						matchedBy: "runbooks/",
+						origin: "repo",
+					},
+				],
+				checkoutsSkipped: [
+					{
+						repo: "https://github.com/acme/repo",
+						code: "failed",
+						reason: "repo clone error",
+					},
+				],
+				now: NOW,
+			});
+			expect(snap.sources[0]?.status).toBe("found");
+			expect(snap.sources[0]?.kind).toBe("loki");
+			expect(snap.runbooks[0]?.origin).toBe("repo");
+			expect(snap.sources[0]?.label).toBe("checkout [redacted] logs");
+		}).not.toThrow();
+	});
 });
 
 describe("safe writing of read copies and scrubbing (#848)", () => {

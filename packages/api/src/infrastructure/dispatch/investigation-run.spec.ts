@@ -12,7 +12,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
-import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData } from "@prismalens/contracts";
+import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData, type RunWorkspace } from "@prismalens/contracts";
 import { type conductRun, withPreRunCoverage } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
@@ -55,6 +55,7 @@ function cloneAs(
 
 const {
 	resolveWorkspace,
+	rebuildWorkspace,
 	runDirFor,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
@@ -239,6 +240,137 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			]);
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("rebuildWorkspace rejects when snapshot restores a link making cwd escape, and leaves missing dir uncreated (OBJ-001)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-esc-"));
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-esc-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const repoDir = join(runDir, "repo");
+			const linked = join(repoDir, "linked");
+			const cwd = join(linked, "missing");
+			const ws: RunWorkspace = {
+				layout: "single",
+				cwd,
+				repos: [
+					{
+						name: "repo",
+						dir: repoDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/repo",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["api"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async () => {
+					mkdirSync(repoDir, { recursive: true });
+					symlinkSync(outside, linked, "junction");
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			await expect(
+				rebuildWorkspace(ws, "inv-1", "OpenCode", ports),
+			).rejects.toThrow(/escapes the snapshot/);
+
+			expect(existsSync(join(outside, "missing"))).toBe(false);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("rebuildWorkspace succeeds and cwd exists when linked is a real directory (OBJ-001 control)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-rebuild-ctrl-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const runDir = join(tmp, "runs", "inv-1");
+			const repoDir = join(runDir, "repo");
+			const linked = join(repoDir, "linked");
+			const cwd = join(linked, "missing");
+			const ws: RunWorkspace = {
+				layout: "single",
+				cwd,
+				repos: [
+					{
+						name: "repo",
+						dir: repoDir,
+						head: "abc123def456789",
+						sourceKind: "url",
+						url: "https://github.com/acme/repo",
+						connectionId: null,
+						branch: "main",
+						subPath: null,
+						services: ["api"],
+					},
+				],
+			};
+			const ports = fakePorts({
+				snapshotWith: vi.fn(async () => {
+					mkdirSync(linked, { recursive: true });
+					return { snap: {} as never, credential: PUBLIC_CREDENTIAL };
+				}),
+			});
+
+			const result = await rebuildWorkspace(ws, "inv-1", "OpenCode", ports);
+			expect(result.cwd).toBe(cwd);
+			expect(existsSync(cwd)).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	it("resolveWorkspace with subPath 'linked/missing' over a junction link skips the repo with code failed (OBJ-001)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-resolve-junction-"));
+		const outside = mkdtempSync(join(os.tmpdir(), "pl-outside-res-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		try {
+			const repoDir = join(tmp, "runs", "inv-1", "repo");
+			const linked = join(repoDir, "linked");
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					{
+						sourceKind: "url" as const,
+						url: "https://github.com/acme/api",
+						defaultBranch: "main",
+						subPath: "linked/missing",
+						connectionId: null,
+						serviceName: "checkout",
+					},
+				]),
+				snapshotWith: cloneAs(async () => {
+					mkdirSync(repoDir, { recursive: true });
+					symlinkSync(outside, linked, "junction");
+					return {
+						path: repoDir,
+						head: "abc123def456789",
+						branch: "main" as const,
+					};
+				}),
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+			expect(ws.checkoutsSkipped).toEqual([
+				{
+					repo: "https://github.com/acme/api",
+					code: "failed",
+					reason: expect.stringMatching(/escapes the snapshot/),
+				},
+			]);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmp, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
 		}
 	});
 

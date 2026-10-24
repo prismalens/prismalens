@@ -205,6 +205,50 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		});
 	});
 
+	it("a basic credential {username:'alice', password:'abc'} where open returns a request is skipped with secrets ['YWxpY2U6YWJj'] (OBJ-002)", async () => {
+		const b64 = Buffer.from("alice:abc").toString("base64");
+		const source: SnapshotSource = {
+			kind: "prometheus",
+			label: "prom-basic",
+			from: "set",
+			open: async () =>
+				({
+					request: vi.fn(),
+					baseUrl: "http://127.0.0.1:9999",
+					headers: {},
+					secrets: ["abc", b64],
+				}) as never,
+		};
+
+		const [out] = await fetchSnapshot([source], WINDOW);
+		expect(out).toMatchObject({
+			status: "skipped",
+			secrets: ["YWxpY2U6YWJj"],
+		});
+		expect(out?.secrets).toEqual(["YWxpY2U6YWJj"]);
+	});
+
+	it("a basic credential {username:'alice', password:'abc'} with no request is skipped with secrets ['YWxpY2U6YWJj'] (OBJ-002)", async () => {
+		const b64 = Buffer.from("alice:abc").toString("base64");
+		const source: SnapshotSource = {
+			kind: "prometheus",
+			label: "prom-basic-noreq",
+			from: "set",
+			open: async () =>
+				({
+					unusable: "cannot be opened here",
+					secrets: ["abc", b64],
+				}) as never,
+		};
+
+		const [out] = await fetchSnapshot([source], WINDOW);
+		expect(out).toMatchObject({
+			status: "skipped",
+			secrets: ["YWxpY2U6YWJj"],
+		});
+		expect(out?.secrets).toEqual(["YWxpY2U6YWJj"]);
+	});
+
 	it("with nothing mapped, the only saved connection comes before the env, and the env serves a kind with none (#848)", async () => {
 		const auth: (string | undefined)[] = [];
 		const url = await upstream((req) => {
@@ -454,6 +498,88 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 		const res = boundSnapshot(hugeData, (d) => JSON.stringify(d), 262_144);
 		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
 		expect(res.text).toContain("the 256 KiB snapshot limit");
+	});
+
+	it("boundSnapshot gives text of at most 262,144 bytes and truncated.reason when rendered header alone is over the limit (OBJ-006)", () => {
+		const res = boundSnapshot(
+			{ result: [] },
+			(d) => JSON.stringify({ h: "H".repeat(300_000), ...(d as object) }),
+		);
+		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
+		expect(res.truncated?.reason).toBe("the 256 KiB snapshot limit");
+	});
+
+	it("boundSnapshot bounds non-object data over the limit (OBJ-006)", () => {
+		const res = boundSnapshot("X".repeat(300_000), (d) => JSON.stringify(d));
+		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
+		expect(res.truncated?.reason).toBe("the 256 KiB snapshot limit");
+	});
+
+	it("a mapping config selector over 500 characters is kept, skipped by fetchSnapshot without request calls (OBJ-016)", async () => {
+		const longSelector = '{app="' + "a".repeat(520) + '"}';
+		const config = { selector: longSelector };
+		expect(mappingConfig(config).selector).toBe(longSelector);
+
+		const prisma = {
+			incident: {
+				findUnique: vi.fn(async () => ({ service: { id: "svc-1", name: "checkout" } })),
+			},
+			alert: { findMany: vi.fn(async () => []) },
+			changeEvent: { findFirst: vi.fn(async () => null) },
+			serviceIntegration: {
+				findMany: vi.fn(async () => [
+					{
+						serviceId: "svc-1",
+						connectionId: "conn-prom",
+						priority: 10,
+						isEnabled: true,
+						config,
+						connection: {
+							id: "conn-prom",
+							label: "Prod Prometheus",
+							status: "ACTIVE",
+							integration: { templateId: "prometheus", label: "Prometheus" },
+						},
+					},
+				]),
+			},
+			connection: {
+				findMany: vi.fn(async (args: { where: { status: unknown } }) => {
+					if (args.where.status === "ACTIVE") {
+						return [
+							{
+								id: "conn-prom",
+								label: "Prod Prometheus",
+								integration: { templateId: "prometheus", label: "Prometheus" },
+							},
+						];
+					}
+					return [{ id: "conn-prom", integration: { templateId: "prometheus" } }];
+				}),
+			},
+		};
+
+		const spyRequest = vi.fn();
+		const integrations = {
+			connectionBaseUrl: vi.fn(async () => "http://127.0.0.1:9090"),
+			sourceCredential: vi.fn(async () => ({ ok: true, credential: { kind: "none" }, state: "set" as const })),
+		};
+
+		const svc = new TelemetrySnapshotService(prisma as never, integrations as never);
+		const selected = await svc.select("inc-1");
+		const unit = selected.units[0]!;
+		const origOpen = unit.open;
+		unit.open = async (ms) => {
+			const opened = await origOpen(ms);
+			return { ...opened, request: spyRequest };
+		};
+
+		const [outcome] = await fetchSnapshot([unit], WINDOW);
+		expect(outcome?.status).toBe("skipped");
+		if (outcome?.status === "skipped") {
+			expect(outcome.reason).toMatch(/longer than 500 characters/);
+		}
+		expect(spyRequest).toHaveBeenCalledTimes(0);
 	});
 
 	it("query: alerts outside the window are dropped", async () => {
