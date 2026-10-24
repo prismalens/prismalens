@@ -227,8 +227,6 @@ export function canonicalEventToRow(event: CanonicalEvent): EventRow | null {
 				detail: event.text,
 			};
 		case "session_config":
-			// the PrismaLens-tools line waits for the #848 UX pass
-			if (event.option === "tools") return null;
 			return {
 				key: `${event.branchId}-${event.seq}`,
 				icon: event.accepted ? "check" : "warning",
@@ -373,7 +371,7 @@ export const OPERATOR_STATE_LABEL: Record<OperatorState, string> = {
 
 /** What the harness answered when the run set its model or effort (R4.2). */
 export function sessionConfigLine(e: {
-	option: "model" | "effort" | "tools";
+	option: "model" | "effort";
 	value: string;
 	accepted: boolean;
 }): string {
@@ -916,7 +914,6 @@ export function deriveTranscript(
 				closeGroup();
 				break;
 			case "session_config":
-				if (event.option === "tools") break;
 				closeGroup();
 				items.push({
 					kind: "line",

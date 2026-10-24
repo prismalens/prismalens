@@ -14,8 +14,10 @@ const gateway = {
 	serverName: "prismalens-abcdefgh23",
 	promptLine: "",
 	tools: [],
-	confirmed: () => false,
-	waitConfirmed: async () => false,
+	connected: () => false,
+	waitConnected: async () => false,
+	onCall: () => () => {},
+	calls: () => [],
 };
 
 function deepagentsRun() {

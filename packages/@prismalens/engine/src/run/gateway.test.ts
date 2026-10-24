@@ -15,8 +15,10 @@ function entry(confirmed = false): GatewayEntry {
 		serverName: "prismalens-abcdefgh23",
 		promptLine: "",
 		tools: ["sources_list"],
-		confirmed: () => confirmed,
-		waitConfirmed: async () => confirmed,
+		connected: () => confirmed,
+		waitConnected: async () => confirmed,
+		onCall: () => () => {},
+		calls: () => [],
 	};
 }
 
@@ -90,7 +92,7 @@ describe("the gateway in session/new mcpServers (#848)", () => {
 		expect((await openWith({ http: true }, entry(true))).taken).toBe(true);
 	});
 
-	it("Given a run-file delivery, Then mcpServers stays empty and taken still means confirmed", async () => {
+	it("Given a run-file delivery, Then mcpServers stays empty and taken still means connected", async () => {
 		const { mcpServers, taken } = await openWith({ http: true }, entry(true), "mcp-config-file");
 		expect(mcpServers).toEqual([]);
 		expect(taken).toBe(true);

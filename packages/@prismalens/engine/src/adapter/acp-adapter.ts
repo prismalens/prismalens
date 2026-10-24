@@ -105,6 +105,8 @@ interface ToolMeta {
 	output?: string;
 }
 
+export type HarnessToolsTurn = "first" | "follow-up";
+
 export class AcpAdapter {
 	private seqCounter = 0;
 	private readonly now: () => Date;
@@ -214,11 +216,45 @@ export class AcpAdapter {
 
 	/** The harness's answer to `session/set_config_option` before the first prompt (R4.2). */
 	sessionConfig(
-		option: "model" | "effort" | "tools",
+		option: "model" | "effort",
 		value: string,
 		accepted: boolean,
 	): CanonicalEvent {
 		return { kind: "session_config", ...this.base(), option, value, accepted };
+	}
+
+	/** One call to PrismaLens's own tools, as the gateway saw it (#848). */
+	harnessToolCall(
+		server: string,
+		name: string,
+		at: string,
+		turn: HarnessToolsTurn,
+	): CanonicalEvent {
+		return {
+			kind: "harness_tool_call",
+			...this.base(),
+			server,
+			name,
+			at,
+			turn,
+		};
+	}
+
+	/** The turn's summary of PrismaLens's own tools: connected, and each tool called (#848). */
+	harnessTools(
+		server: string,
+		turn: HarnessToolsTurn,
+		connected: boolean,
+		calls: { name: string; firstCalledAt: string; count: number }[],
+	): CanonicalEvent {
+		return {
+			kind: "harness_tools",
+			...this.base(),
+			server,
+			turn,
+			connected,
+			calls,
+		};
 	}
 
 	/** The agent asked before a tool call (#673 w21); the call's own update fills in what the ask omits. */

@@ -755,12 +755,36 @@ export const CanonicalEventSchema = z.discriminatedUnion("kind", [
 		attachments: z.array(AttachmentRefSchema).optional(),
 	}),
 	z.object({
-		/** The harness answered `session/set_config_option` before the first prompt (R4.2); `tools`: it took PrismaLens's MCP gateway (#848). */
+		/** The harness answered `session/set_config_option` before the first prompt (R4.2). */
 		kind: z.literal("session_config"),
 		...StreamBaseShape,
-		option: z.enum(["model", "effort", "tools"]),
+		option: z.enum(["model", "effort"]),
 		value: z.string(),
 		accepted: z.boolean(),
+	}),
+	z.object({
+		/** The agent called one of PrismaLens's own tools, recorded as it happened (#848). */
+		kind: z.literal("harness_tool_call"),
+		...StreamBaseShape,
+		server: z.string(),
+		name: z.string(),
+		at: z.string(),
+		turn: z.enum(["first", "follow-up"]),
+	}),
+	z.object({
+		/** Once at the turn's end: whether the agent connected to PrismaLens's tools, and what it called (#848). */
+		kind: z.literal("harness_tools"),
+		...StreamBaseShape,
+		server: z.string(),
+		turn: z.enum(["first", "follow-up"]),
+		connected: z.boolean(),
+		calls: z.array(
+			z.object({
+				name: z.string(),
+				firstCalledAt: z.string(),
+				count: z.number().int().min(1),
+			}),
+		),
 	}),
 	z.object({
 		/** The agent asked before a tool call; the run waits on the operator (#673 w21). */

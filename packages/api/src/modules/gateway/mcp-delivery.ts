@@ -35,6 +35,7 @@ export function mcpText(
 export function gatewayMcpServer(
 	registry: SourceRegistry,
 	runId: string,
+	onCall?: (name: string) => void,
 ): Server {
 	const server = new Server(
 		{ name: "prismalens", version: "0.3.0" },
@@ -53,6 +54,7 @@ export function gatewayMcpServer(
 	}));
 	server.setRequestHandler("tools/call", async (req, ctx) => {
 		const { name, arguments: args } = req.params;
+		if (registry.list().some((t) => t.name === name)) onCall?.(name);
 		const r = await registry.call(name, args ?? {}, {
 			runId,
 			signal: ctx.mcpReq.signal,

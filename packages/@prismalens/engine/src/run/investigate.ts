@@ -46,7 +46,11 @@ import {
 	type RunFidelity,
 	type RunUsage,
 } from "@prismalens/contracts/schemas";
-import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
+import {
+	AcpAdapter,
+	type HarnessToolsTurn,
+	mapStopReason,
+} from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
@@ -60,7 +64,6 @@ import { opencodeUserConfig } from "./local-default.js";
 import {
 	askWindow,
 	denyAllPolicy,
-	type GatewayAsks,
 	levelPolicy,
 	newAskId,
 	type PermissionPolicy,
@@ -440,14 +443,6 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	};
 }
 
-function gatewayAsks(entry: GatewayEntry): GatewayAsks {
-	return {
-		connected: () => entry.confirmed(),
-		serverName: entry.serverName,
-		tools: entry.tools,
-	};
-}
-
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
 
@@ -506,7 +501,7 @@ export async function* runInvestigation(
 			{ policy: opts.permission ?? denyAllPolicy },
 			{
 				unattended: !!opts.unattended,
-				...(opts.gateway ? { gateway: gatewayAsks(opts.gateway) } : {}),
+				...(opts.gateway ? { gateway: opts.gateway } : {}),
 			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
@@ -628,6 +623,14 @@ export async function* runInvestigation(
 				);
 			} else if (item.kind === "nudge") {
 				yield* recordQueued();
+			} else if (item.kind === "harness_tool_call") {
+				if (opts.gateway)
+					yield adapter.harnessToolCall(
+						opts.gateway.serverName,
+						item.name,
+						item.at,
+						toolsTurn,
+					);
 			} else if (item.kind === "done") {
 				const flushed = adapter.flushText();
 				if (flushed) yield flushed;
@@ -662,6 +665,16 @@ export async function* runInvestigation(
 		openAsks.clear();
 		unsubscribe?.();
 		unQueued?.();
+		unCalled?.();
+		if (offer && opts.gateway && !summarized) {
+			summarized = true;
+			yield adapter.harnessTools(
+				opts.gateway.serverName,
+				toolsTurn,
+				opts.gateway.connected(),
+				opts.gateway.calls(),
+			);
+		}
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
 				line.text,
@@ -678,6 +691,11 @@ export async function* runInvestigation(
 		session.cancel();
 	});
 	const unQueued = opts.steer?.onQueued?.(() => session.nudge());
+	const toolsTurn: HarnessToolsTurn = opts.resume ? "follow-up" : "first";
+	let summarized = false;
+	const unCalled = opts.gateway?.onCall((c) =>
+		session.inject({ kind: "harness_tool_call", ...c }),
+	);
 	const onAbort = (): void => session.cancel();
 	opts.signal?.addEventListener("abort", onAbort, { once: true });
 	const label = HARNESS_REGISTRY[opts.harness]?.label ?? descriptor.binary;
@@ -696,14 +714,12 @@ export async function* runInvestigation(
 		if (opts.resume?.sessionId)
 			wire("in", JSON.stringify({ replayed: session.replayed }));
 		// Only a request with the run's token proves the agent loaded our server (OBJ-011).
-		const confirmed =
+		const connected =
 			opts.gateway && offer?.offered()
-				? await opts.gateway.waitConfirmed(GATEWAY_CONFIRM_MS)
+				? await opts.gateway.waitConnected(GATEWAY_CONFIRM_MS)
 				: false;
-		if (offer && opts.gateway)
-			yield adapter.sessionConfig("tools", opts.gateway.serverName, confirmed);
 		const toolsLine =
-			confirmed && opts.gateway ? `\n\n${opts.gateway.promptLine}` : "";
+			connected && opts.gateway ? `\n\n${opts.gateway.promptLine}` : "";
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
 		if (
 			!keepMode &&

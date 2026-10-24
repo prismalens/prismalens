@@ -61,7 +61,9 @@ export type AcpStreamItem =
 	| { kind: "done"; stopReason: string }
 	| { kind: "error"; message: string }
 	/** Something outside the agent changed (a message was queued): the turn's reader looks (#820). */
-	| { kind: "nudge" };
+	| { kind: "nudge" }
+	/** The run's gateway saw the agent call one of PrismaLens's tools (#848). */
+	| { kind: "harness_tool_call"; name: string; at: string };
 
 /**
  * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
@@ -804,6 +806,11 @@ export class AcpSession {
 		this.pending.clear();
 		if (this.child && !this.child.killed) this.child.kill();
 		if (this.ownsLauncher) await this.launcher.destroy();
+	}
+
+	/** Queue an item from outside the agent into the turn's stream, in arrival order (#848). */
+	inject(item: Extract<AcpStreamItem, { kind: "harness_tool_call" }>): void {
+		this.push(item);
 	}
 
 	/** Wake the turn's reader with a `nudge`, e.g. while the agent waits on an ask (#820). */

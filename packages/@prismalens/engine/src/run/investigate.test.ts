@@ -92,8 +92,10 @@ describe("runInvestigation over a fake ACP harness", () => {
 				serverName: "prismalens-abcdefgh23",
 				promptLine: "",
 				tools: [],
-				confirmed: () => false,
-				waitConfirmed: async () => false,
+				connected: () => false,
+				waitConnected: async () => false,
+				onCall: () => () => {},
+				calls: () => [],
 			},
 		});
 		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");

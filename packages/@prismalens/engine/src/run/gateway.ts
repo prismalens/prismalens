@@ -20,8 +20,23 @@ export interface GatewayEntry {
 	/** PrismaLens's own harness tool names, the only ones the gateway serves. */
 	tools: readonly string[];
 	/** True once a request carrying the run's token reached the gateway. */
-	confirmed(): boolean;
-	waitConfirmed(ms: number): Promise<boolean>;
+	connected(): boolean;
+	waitConnected(ms: number): Promise<boolean>;
+	/** Hears every `tools/call` of a tool the gateway serves; returns the unsubscribe. */
+	onCall(listener: (c: GatewayCall) => void): () => void;
+	/** Per tool called during this lease: the first time and how often. */
+	calls(): GatewayCallCount[];
+}
+
+export interface GatewayCall {
+	name: string;
+	at: string;
+}
+
+export interface GatewayCallCount {
+	name: string;
+	firstCalledAt: string;
+	count: number;
 }
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -41,7 +56,7 @@ export function gatewayServer(entry: GatewayEntry): McpServer {
 }
 
 /**
- * Picks `mcpServers` from `initialize`'s capabilities. "Taken" means confirmed: only an
+ * Picks `mcpServers` from `initialize`'s capabilities. "Taken" means connected: only an
  * authenticated request proves the agent loaded our server (OBJ-011).
  */
 export function gatewayOffer(
@@ -62,6 +77,6 @@ export function gatewayOffer(
 			return [gatewayServer(entry)];
 		},
 		offered: () => offered,
-		taken: () => entry.confirmed(),
+		taken: () => entry.connected(),
 	};
 }

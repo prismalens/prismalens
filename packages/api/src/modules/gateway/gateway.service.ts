@@ -6,7 +6,11 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Injectable, Optional } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import { RunWorkspaceSchema } from "@prismalens/contracts/schemas";
-import type { GatewayEntry } from "@prismalens/engine";
+import type {
+	GatewayCall,
+	GatewayCallCount,
+	GatewayEntry,
+} from "@prismalens/engine";
 import type { SourceRegistry } from "@prismalens/integrations";
 import { Logger } from "@prismalens/logger";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -36,8 +40,10 @@ const RUNBOOKS_SETTING = "sources.runbooks.enabled";
 const logger = new Logger({ context: "Gateway" });
 
 interface RunState {
-	confirmed: boolean;
+	connected: boolean;
 	waiters: Set<(ok: boolean) => void>;
+	calls: Map<string, GatewayCallCount>;
+	listeners: Set<(c: GatewayCall) => void>;
 }
 
 /**
@@ -50,7 +56,10 @@ export class GatewayService {
 	private readonly runs = new Map<string, RunState>();
 	readonly registry: SourceRegistry;
 	private readonly handler = createMcpHandler(
-		({ authInfo }) => gatewayMcpServer(this.registry, authInfo?.clientId ?? ""),
+		({ authInfo }) =>
+			gatewayMcpServer(this.registry, authInfo?.clientId ?? "", (name) =>
+				this.called(authInfo?.clientId ?? "", name),
+			),
 		{
 			responseMode: "json",
 			onerror: (e) => logger.warn(`gateway: ${e.message}`),
@@ -69,7 +78,12 @@ export class GatewayService {
 		const base = this.baseUrl();
 		if (!base) return null;
 		const token = this.tokens.mint(runId);
-		const state: RunState = { confirmed: false, waiters: new Set() };
+		const state: RunState = {
+			connected: false,
+			waiters: new Set(),
+			calls: new Map(),
+			listeners: new Set(),
+		};
 		this.runs.set(runId, state);
 		const tools = this.registry.list().map((t) => t.name);
 		return {
@@ -78,9 +92,14 @@ export class GatewayService {
 			serverName,
 			promptLine: gatewayPromptLine(tools, serverName),
 			tools,
-			confirmed: () => state.confirmed,
-			waitConfirmed: (ms) =>
-				state.confirmed
+			connected: () => state.connected,
+			onCall: (listener) => {
+				state.listeners.add(listener);
+				return () => state.listeners.delete(listener);
+			},
+			calls: () => [...state.calls.values()].map((c) => ({ ...c })),
+			waitConnected: (ms) =>
+				state.connected
 					? Promise.resolve(true)
 					: new Promise<boolean>((resolve) => {
 							const done = (ok: boolean) => {
@@ -99,6 +118,21 @@ export class GatewayService {
 		const state = this.runs.get(runId);
 		this.runs.delete(runId);
 		for (const done of state?.waiters ?? []) done(false);
+		state?.listeners.clear();
+	}
+
+	private called(runId: string, name: string): void {
+		const state = this.runs.get(runId);
+		if (!state) return;
+		const at = new Date().toISOString();
+		const seen = state.calls.get(name);
+		state.calls.set(
+			name,
+			seen
+				? { ...seen, count: seen.count + 1 }
+				: { name, firstCalledAt: at, count: 1 },
+		);
+		for (const listener of [...state.listeners]) listener({ name, at });
 	}
 
 	async serve(runId: string, request: Request): Promise<Response> {
@@ -111,8 +145,8 @@ export class GatewayService {
 			);
 		}
 		const state = this.runs.get(runId);
-		if (state && !state.confirmed) {
-			state.confirmed = true;
+		if (state && !state.connected) {
+			state.connected = true;
 			for (const done of state.waiters) done(true);
 		}
 		return this.handler.fetch(request, {
