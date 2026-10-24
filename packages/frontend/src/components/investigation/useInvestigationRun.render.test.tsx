@@ -95,4 +95,26 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 		expect(h.catchUp).toHaveBeenCalledTimes(1);
 		await act(async () => root.unmount());
 	});
+
+	it("reads again after a failed read until one succeeds", async () => {
+		vi.useFakeTimers();
+		const root = createRoot(document.createElement("div"));
+		h.status = "running";
+		h.history = [];
+		await act(async () => root.render(<Probe />));
+		h.catchUp.mockReset();
+		h.catchUp.mockRejectedValueOnce(new Error("offline")).mockResolvedValue();
+
+		h.status = "completed";
+		await act(async () => root.render(<Probe />));
+		expect(h.catchUp).toHaveBeenCalledTimes(1);
+
+		await act(async () => vi.advanceTimersByTime(3000));
+		expect(h.catchUp).toHaveBeenCalledTimes(2);
+
+		await act(async () => vi.advanceTimersByTime(10000));
+		expect(h.catchUp).toHaveBeenCalledTimes(2);
+		await act(async () => root.unmount());
+		vi.useRealTimers();
+	});
 });

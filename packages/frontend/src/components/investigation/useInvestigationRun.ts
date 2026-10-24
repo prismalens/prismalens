@@ -103,6 +103,8 @@ export function followUpState(
  * the messages the operator sent that have not come back as events, and the
  * polling fallback when SSE is down (ADR-0008 §4, #743).
  */
+const END_CATCH_UP_RETRY_MS = 3000;
+
 export function useInvestigationRun(investigationId: string | null) {
 	const queryClient = useQueryClient();
 	const enabled = !!investigationId;
@@ -150,21 +152,36 @@ export function useInvestigationRun(investigationId: string | null) {
 	});
 
 	const wasActive = useRef(isActive);
-	const endCatchUpPending = useRef(false);
+	const endCatchUp = useRef<"idle" | "pending" | "running">("idle");
+	const [endCatchUpRetry, setEndCatchUpRetry] = useState(0);
 	useEffect(() => {
 		// The run just ended, possibly with its stream down: read what was recorded after the last catch-up (#874).
-		if (wasActive.current && !isActive) {
-			endCatchUpPending.current = historyEvents === undefined;
-			if (historyEvents !== undefined) catchUp().catch(() => {});
-		}
+		if (wasActive.current && !isActive) endCatchUp.current = "pending";
 		wasActive.current = isActive;
-	}, [isActive, historyEvents, catchUp]);
+	}, [isActive]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: endCatchUpRetry re-runs the read after a failure.
 	useEffect(() => {
-		if (isActive || !endCatchUpPending.current || historyEvents === undefined)
+		// Held until history loads; a failed read retries, since nothing refetches an ended run's history.
+		if (
+			isActive ||
+			endCatchUp.current !== "pending" ||
+			historyEvents === undefined
+		)
 			return;
-		endCatchUpPending.current = false;
-		catchUp().catch(() => {});
-	}, [isActive, historyEvents, catchUp]);
+		endCatchUp.current = "running";
+		catchUp().then(
+			() => {
+				endCatchUp.current = "idle";
+			},
+			() => {
+				endCatchUp.current = "pending";
+				setTimeout(
+					() => setEndCatchUpRetry((n) => n + 1),
+					END_CATCH_UP_RETRY_MS,
+				);
+			},
+		);
+	}, [isActive, historyEvents, catchUp, endCatchUpRetry]);
 	useEffect(() => {
 		// The stream's first events: what was recorded between the history read and its replay.
 		if (stream.status === "streaming") catchUp().catch(() => {});
