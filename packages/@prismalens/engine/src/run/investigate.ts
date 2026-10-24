@@ -44,6 +44,7 @@ import {
 	type JobAttachment,
 	type OperatorMessageMode,
 	type RunFidelity,
+	type RunUsage,
 } from "@prismalens/contracts/schemas";
 import { AcpAdapter, mapStopReason } from "../adapter/acp-adapter.js";
 import type { RunLimits } from "../launch/types.js";
@@ -79,6 +80,7 @@ import {
 	stampReport,
 } from "./report.js";
 import { checkSandbox } from "./sandbox-check.js";
+import { parseUsageUpdate } from "./usage.js";
 
 export interface RunInvestigationOptions {
 	runId: string;
@@ -144,6 +146,8 @@ export interface RunInvestigationOptions {
 	onPolicyWarning?: (message: string) => void;
 	/** A value the ACP SDK does not know, passed through; the host logs it at warn (#639). */
 	onHarnessDrift?: (message: string) => void;
+	/** Each ACP `usage_update` the harness sends; never called for a harness that sends none. */
+	onUsage?: (usage: RunUsage) => void;
 	/**
 	 * A follow-up on a finished run: reopen its session and send `text` (#747).
 	 * `heads` are the commits the workspace was rebuilt at.
@@ -542,6 +546,10 @@ export async function* runInvestigation(
 						typeof chunk === "string"
 							? chunk
 							: ((chunk as { text?: string } | undefined)?.text ?? "");
+				}
+				if (u.sessionUpdate === "usage_update") {
+					const usage = parseUsageUpdate(u);
+					if (usage) opts.onUsage?.(usage);
 				}
 				if (u.sessionUpdate === "tool_call")
 					lastCall = { title: u.title, toolCallId: u.toolCallId };

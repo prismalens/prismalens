@@ -211,6 +211,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						agentMode: dto.agentMode,
 						accessLevel: dto.accessLevel,
 						lastTurnOutcome: dto.lastTurnOutcome,
+						endReason: dto.endReason,
 					},
 				);
 				// A refused write delivers nothing and counts nothing (#673 w59).
@@ -242,6 +243,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				await this.prisma.investigation.update({
 					where: { id },
 					data: { acpSessionId },
+				});
+			},
+			recordUsage: async (id, usage) => {
+				await this.prisma.investigation.updateMany({
+					where: { id },
+					data: { usage: JSON.stringify(usage) },
 				});
 			},
 			markAwaitingApproval: async (id, since) => {
@@ -799,6 +806,8 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				stopped ? "cancelled" : "failed",
 				undefined,
 				stopped ? (chat ? "Chat stopped" : "Investigation cancelled") : reason,
+				undefined,
+				stopped || !job ? undefined : { endReason: "interrupted" },
 			);
 		}
 		// The job follows the row: a stop is a cancelled job, not the restart's failure (#804 OBJ-027).

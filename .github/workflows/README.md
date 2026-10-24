@@ -1,7 +1,7 @@
 # Workflows
 
-Ten workflow files is more surface than one operator can hold in their head, and
-the dangerous subset is small. This file names that subset. Tracked in #301
+The workflow files here are more surface than one operator can hold in their head,
+and the dangerous subset is small. This file names that subset. Tracked in #301
 (review-lane rollout); the ruling that asked for it is
 `fable-ruling-4-ci-surface.md`.
 
@@ -50,6 +50,17 @@ One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turb
 `cross-os-smoke.yml` waits for `Pack npm tarball` on the same commit and installs that artifact,
 packing itself only if that job is missing or red.
 
+```mermaid
+flowchart LR
+    build["ci.yml build"] -- "saves turbo-OS-SHA" --> cache[(".turbo-cache")]
+    cache -- "restores" --> test["test (ubuntu)"]
+    cache -- "restores" --> pack["Pack npm tarball"]
+    cache -. "newest turbo-OS-* saved before it starts" .-> e2e["e2e.yml"]
+    pack -- "npm-tarballs artifact" --> packed["packed-smoke, packed-intake, packed-service,<br/>packed-upgrade-smoke, gate-side-checks"]
+    pack -. "polled, then downloaded" .-> xos["cross-os-smoke.yml"]
+    xos -. "pack missing or red: packs itself" .-> xos
+```
+
 ## `e2e.yml`: sharded, with a quarantine
 
 The suite runs as 2 shards (`--shard=n/2`), each on its own runner with its own stacks; the `pair`
@@ -67,24 +78,32 @@ when the tag comes off (CONTRIBUTING.md, "Browser e2e tier").
   not decide it, and no workflow depends on either answer.
 
 `PACKED_INTAKE_AGENT=live node scripts/packed-intake.mjs` runs the packed-intake
-script against the real harness on PATH; `live-agent.yml` calls it that way.
+script against the real harness on PATH; `packed-intake-live` in `ci.yml` calls it that way.
 
-## `live-agent.yml` jobs: the live tier
+## `ci.yml` live jobs: the live tier
 
 The live tier checks that the pinned agent and a real free model still complete
 an investigation. It runs nightly on `main` and on demand, and nothing requires
-it. The agent is pinned to the version `ci.yml` pins; it is not a run against
-agents' latest releases (#639, #712).
+it. The agent is pinned to the version `harness-admission` pins; it is not a run
+against agents' latest releases (#639, #712).
+
+The live jobs run only on `schedule` and `workflow_dispatch`, and the PR jobs and
+`CI gate` run on every event except those two, so one run is either the PR tier or
+the live tier, never both. A live run has its own concurrency group
+(`live-agent-<ref>`) and is never cancelled, so it and a push run on `main` cannot
+cancel each other.
 
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
+| `live-pack` | none; packs the tarball the live intake installs | nightly on `main`; dispatch | no |
 | `packed-intake-live` | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly on `main`; dispatch | no |
 | `harness-admission-live` | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly on `main`; dispatch | no |
 | `report-failure` | none | after a failed nightly | no |
 
-- **Release gate:** dispatch it with `ref` set to the release PR's base SHA
-  (`gh workflow run live-agent.yml -f ref=<sha>`) and link the run from the PR.
-  Only the nightly schedule files the failure issue.
+- **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA
+  (`gh workflow run ci.yml --ref main -f ref=<sha>`) and link the run from the PR.
+  Only the nightly schedule files the failure issue. Dispatch on `main`, not on a
+  PR branch: a dispatched run on a branch adds a skipped `CI gate` to its head commit.
 - **On a failed night:** `report-failure` comments on the open issue titled
   "Live agent check failing on main", or opens it, with the run link.
 - **Event streams:** each packed-intake attempt uploads its paged
@@ -110,7 +129,6 @@ What replaced it:
 | Mechanism | What it does |
 | --- | --- |
 | `claude-code-review.yml` | reviews every same-repo PR and posts **inline findings** (`--comment` in its `prompt:` is what makes it post at all) |
-| `claude-fix.yml` | fixer lane: org members summon with `@claude fix` on a PR; applies fixes on the PR branch and pushes; holds the repo's only model-adjacent `contents: write`; cannot submit reviews, resolve threads, or merge — the reviewer or operator does those |
 | `required_review_thread_resolution` | any unresolved thread — from that reviewer or a human — blocks merge |
 | `coderabbit_review` label | **manual** admission of an online CodeRabbit review via `.coderabbit.yaml`'s `auto_review.labels` valve, for sensitive paths or a second opinion |
 
@@ -161,11 +179,10 @@ rest are advisory or out-of-band and cannot affect a merge.
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | `pull_request`, `push` | build, test, lint, pack; aggregates to `CI gate` |
+| `ci.yml` | `pull_request`, `push`, `merge_group`, schedule, dispatch | build, test, lint, pack; aggregates to `CI gate`. Nightly and on dispatch, only the live agent check instead: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `e2e.yml` | `pull_request`, `push` | Playwright end-to-end suite (specs and Gherkin journeys, Desktop Chrome) |
 | `e2e-responsive.yml` | schedule, dispatch | the `@responsive` journeys at Pixel 7 and iPad sizes |
 | `cross-os-smoke.yml` | `pull_request`, `push`, `release`, dispatch | CLI smoke across operating systems |
-| `live-agent.yml` | schedule, dispatch | nightly and release-dispatch live agent check: packed intake (2 of 3 attempts) and harness admission on the pinned agent and the free model; advisory |
 | `audit.yml` | schedule, dispatch | dependency/security audit |
 | `release.yml` | `push`, dispatch (resume a draft) | release-please release PR on push; on merging it, a draft release filled by `standalone.yml` and `desktop.yml`, then npm, then publishing the release, then the Homebrew tap and Scoop bucket |
 | `standalone.yml` | `pull_request`, called by `release.yml`, dispatch | per-OS standalone archives and installers, smoked without Node; attaches them to the draft release when called |
@@ -173,6 +190,9 @@ rest are advisory or out-of-band and cannot affect a merge.
 | `dependabot-auto-merge.yml` | Dependabot PRs | auto-merges machine dependency bumps |
 | `phase-gate.yml` | `milestone` | milestone bookkeeping |
 | `claude-code-review.yml` | `pull_request` | advisory review of every **same-repository** PR; posts inline findings, gates nothing; skips forks, which get no secrets |
-| `claude-fix.yml` | `issue_comment`, `pull_request_review_comment` | org-summoned online fixer (`@claude fix`); holds `contents: write`, cannot review/resolve/merge |
 | `claude.yml` | `@claude` mentions | labour tool; cannot submit or resolve reviews |
 | `pr-title.yml` | `pull_request_target` | conventional-commit title check |
+| `publish-agent-adapters.yml` | dispatch only | publishes `@prismalens/agent-adapters` to npm with provenance (CONTRIBUTING.md, "Publishing `@prismalens/agent-adapters`") |
+| `pr-state.yml` | `pull_request_target` | caller stub for `prismalens/gh-workflows`: reports the PR's state to the review telemetry; checks nothing out |
+| `review-findings-sweep.yml` | `pull_request` closed, `pull_request_review`, weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: sweeps review findings into the review telemetry |
+| `telemetry-health.yml` | weekly schedule, dispatch | caller stub for `prismalens/gh-workflows`: weekly health report on the review telemetry |

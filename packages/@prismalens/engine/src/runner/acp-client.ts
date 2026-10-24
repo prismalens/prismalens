@@ -35,6 +35,7 @@ import {
 	type PermissionPolicy,
 	type PermissionRequest,
 } from "../run/permission.js";
+import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
 	| { kind: "update"; update: AcpUpdate }
@@ -759,9 +760,13 @@ export class AcpSession {
 				this.push({ kind: "done", stopReason: stopReason ?? "end_turn" });
 			})
 			.catch((err: unknown) => {
+				const message = err instanceof Error ? err.message : String(err);
 				this.push({
 					kind: "error",
-					message: err instanceof Error ? err.message : String(err),
+					message:
+						(err instanceof AcpRpcError
+							? usageLimitText(message, err.data)
+							: null) ?? message,
 				});
 			})
 			.finally(() => this.toolCalls.clear());

@@ -70,6 +70,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
 		recordSession: vi.fn(async () => {}),
+		recordUsage: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
@@ -382,6 +383,38 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			}
 			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
 			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+		});
+
+		it("keeps the harness's last usage_update on the row, and writes nothing for a harness that sends none", async () => {
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", mkdtempSync(join(os.tmpdir(), "pl-appdata-")));
+			const usage = (used: number) => ({ used, size: 400_000, at: "2026-10-20T09:00:00.000Z" });
+			const recordUsage = vi.fn(async () => {});
+			const ports = fakePorts({ recordUsage, snapshotWith: cloneAs(async (_src: unknown, dest: string) => at(dest)) });
+			const run = () =>
+				runInvestigationJob(
+					{ id: "job-1", investigationId: "inv-1", attempts: 1 },
+					minimalData(),
+					{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+					ports,
+				);
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (o: { onUsage: (u: unknown) => void }, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				o.onUsage(usage(1_000));
+				o.onUsage(usage(182_000));
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+			await run();
+			expect(recordUsage).toHaveBeenCalledTimes(2);
+			expect(recordUsage).toHaveBeenLastCalledWith("inv-1", usage(182_000));
+
+			recordUsage.mockClear();
+			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+			await run();
+			expect(recordUsage).not.toHaveBeenCalled();
 		});
 
 		it("T17b: a follow-up re-records the workspace with the credential the rebuild resolved", async () => {

@@ -15,6 +15,7 @@ import type {
 	FollowUpKind,
 	InvestigationKind,
 	LiveTurn,
+	RunEndReason,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -378,6 +379,7 @@ export class InvestigationsService {
 			accessLevel?: AccessLevel;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
+			endReason?: RunEndReason;
 		},
 	): Promise<Investigation | null> {
 		try {
@@ -412,6 +414,8 @@ export class InvestigationsService {
 			if (facts?.accessLevel) updateData.accessLevel = facts.accessLevel;
 			if (facts?.lastTurnOutcome)
 				updateData.lastTurnOutcome = facts.lastTurnOutcome;
+			updateData.endReason =
+				status === "failed" ? (facts?.endReason ?? null) : null;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
