@@ -318,6 +318,10 @@ const NO_SANDBOX: Partial<Record<HarnessId, SandboxCheck>> = {
 		state: "unknown",
 		reason: "PrismaLens does not check Gemini CLI's sandbox yet",
 	},
+	local: {
+		state: "unknown",
+		reason: "PrismaLens does not know whether a local agent has a sandbox",
+	},
 };
 
 /** One check per mode id; Codex's probe runs once and covers every mode its sandbox holds. */

@@ -59,6 +59,12 @@ if (!HARNESS_IDS.includes(harnessArg as HarnessId)) {
 	process.exit(2);
 }
 const harness = harnessArg as HarnessId;
+if (harness === "local") {
+	console.error(
+		"the local agent is the operator's own command; admission runs registry rows only",
+	);
+	process.exit(2);
+}
 
 /**
  * Working-directory proof. A random nonce planted in the clone cannot be

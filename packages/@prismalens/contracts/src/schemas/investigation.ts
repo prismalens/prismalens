@@ -157,8 +157,18 @@ export const RunFidelitySchema = z.object({
 	servedModel: z.string().optional(),
 	/** The effort the harness accepted over `session/set_config_option` (R4.2); absent when none was set. */
 	effort: z.string().optional(),
+	/** What Settings → Agent set for the run (ADR 0006 §6, #907): names only, never env values; absent when nothing was set. */
+	runtime: z
+		.object({
+			binaryPath: z.string().nullable(),
+			configDir: z.string().nullable(),
+			envNames: z.array(z.string()),
+			args: z.array(z.string()),
+		})
+		.optional(),
 });
 export type RunFidelity = z.infer<typeof RunFidelitySchema>;
+export type RunRuntimeNote = NonNullable<RunFidelity["runtime"]>;
 
 /**
  * The level a run ran at: the recorded one, else the asked one, else a #778

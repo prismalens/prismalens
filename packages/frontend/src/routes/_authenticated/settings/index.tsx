@@ -9,6 +9,7 @@ import {
 	IntegrationsSettings,
 	TelemetrySettings,
 } from "@/components/settings";
+import { AgentDetail } from "@/components/settings/AgentDetail";
 import { AlertSources } from "@/components/settings/AlertSources";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import {
@@ -28,7 +29,7 @@ const SECTIONS = {
 	harness: {
 		title: "Agent",
 		intro:
-			"The coding agent a run rents to read the code and the telemetry. It signs in on its own; PrismaLens never holds its login.",
+			"The coding agent a run uses to read the code and the telemetry. It signs in on its own. Variables you add under an agent are stored encrypted and passed only to that agent.",
 	},
 	sources: {
 		title: "Alert sources",
@@ -60,7 +61,9 @@ const SECTIONS = {
 } as const;
 
 function SettingsPage() {
-	const { tab: picked } = useSearch({ from: "/_authenticated/settings" });
+	const { tab: picked, agent } = useSearch({
+		from: "/_authenticated/settings",
+	});
 	const tab = picked ?? "harness";
 	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
@@ -77,7 +80,8 @@ function SettingsPage() {
 	const section = SECTIONS[tab];
 	return (
 		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
-			{tab === "harness" && <HarnessSettings />}
+			{tab === "harness" &&
+				(agent ? <AgentDetail id={agent} /> : <HarnessSettings />)}
 			{tab === "integrations" && <IntegrationsSettings />}
 			{tab === "sources" && <AlertSources />}
 			{tab === "devices" && <DevicesTab />}

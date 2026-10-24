@@ -11,6 +11,7 @@ export const HARNESS_IDS = [
 	"codex",
 	"gemini",
 	"deepagents",
+	"local",
 ] as const;
 export type HarnessId = (typeof HARNESS_IDS)[number];
 
@@ -163,6 +164,8 @@ export interface HarnessDescriptor {
 	providerKeys?: readonly string[];
 	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
 	resume: boolean;
+	/** The env var naming the agent's own config folder, set from Settings → Agent → Config directory (#907). */
+	configDir?: { envKey: string; shownDefault: string };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -257,33 +260,32 @@ function opencodePermission(
 	};
 }
 
-function geminiDefault(line: HarnessAccess["line"]): HarnessAccess {
-	return { mode: "default", mechanism: "acp-mode", line };
+function geminiMode(mode: string, line: HarnessAccess["line"]): HarnessAccess {
+	return { mode, mechanism: "acp-mode", line };
 }
 
-const geminiUntrusted: HarnessAccess["line"] = (c) =>
-	`Gemini CLI runs the copy untrusted, so this level runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`;
-
-const NO_MODE: HarnessAccess = {
-	mode: null,
-	mechanism: "none",
-	line: () =>
-		"deepagents has no modes; PrismaLens answers its asks by this level.",
-};
+function noMode(label: string): HarnessAccess {
+	return {
+		mode: null,
+		mechanism: "none",
+		line: () =>
+			`${label} has no modes; PrismaLens answers its asks by this level.`,
+	};
+}
+const NO_MODE = noMode("deepagents");
+const LOCAL_NO_MODE = noMode("Local agent");
 
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 	opencode: {
 		id: "opencode",
 		label: "OpenCode",
 		binary: "opencode",
-		acpArgs: ({ cwd }) => ["acp", "--pure", "--cwd", cwd],
+		acpArgs: ({ cwd }) => ["acp", "--cwd", cwd],
 		// XDG_CONFIG_HOME stays the user's: a run takes their model, providers, MCP servers and agents.
-		// The boundary is the untrusted repo (ADR 0004), and every run works in a throwaway clone. #791
+		// The repo's own opencode config loads too and is its owner's responsibility (#817). #791
+		// OPENCODE_CONFIG_DIR holds this run's own opencode.json (configFiles below).
 		acpEnv: ({ configDir }) => ({
 			OPENCODE_CONFIG_DIR: configDir,
-			// The repo's own opencode.json, plugins and CLAUDE.md-style files stay inert (ADR 0004 §1; #639 R4).
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		}),
 		configFiles: () => ({
 			"opencode.json": JSON.stringify(
@@ -365,13 +367,12 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
 		}),
-		// The user's own settings (allow/deny rules, sandbox, availableModels), never the
-		// snapshot's: `project` and `local` would read the repo's CLAUDE.md (ADR 0004 §1; #673 w21).
+		// The user's settings plus the repo's own: nothing of the user's setup is overridden (#817).
 		// Without the plan-mode tools the agent cannot leave the run's mode at all (#673 w7-4).
 		sessionMeta: () => ({
 			claudeCode: {
 				options: {
-					settingSources: ["user"],
+					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
 				},
 			},
@@ -442,6 +443,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		loginHint: "`claude /login`, or `ANTHROPIC_API_KEY` in env",
 		signInAtFirstTurn: true,
 		resume: true,
+		configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
 	},
 	codex: {
 		id: "codex",
@@ -462,7 +464,8 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
 		// codex-acp src/AgentMode.ts: read-only, workspace-write and agent run in Codex's sandbox with no network; agent-full-access in none.
-		// Set through its `mode` config option, the reply verified; 1.13.1 has no workspace-write (#673 w21).
+		// Set through its `mode` config option, the reply verified. Before 2.0 read-only let workspace edits through
+		// and there was no workspace-write (codex-acp#480); the fallback keeps an older PATH install working.
 		access: {
 			supervised: {
 				mode: "read-only",
@@ -498,40 +501,53 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		},
 		modeMechanism: "acp",
 		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		// 3 of 3 with a scratch HOME's ~/.codex on Ollama gemma4:31b-cloud (#634). Must equal @prismalens/agent-adapters' pin.
-		tested: { version: "1.13.1", date: "2026-09-24" },
+		// scripts/acp-admission.ts 3 of 3 through the shipped adapter on codex 0.163.0, gpt-6-luna (#846). Must equal @prismalens/agent-adapters' pin.
+		tested: { version: "2.2.2", date: "2026-10-23" },
 		// codex-acp offers model and reasoning effort as config options; a run verifies the answer.
 		modelVia: "acp",
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		resume: true,
+		configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
 	},
 	gemini: {
 		id: "gemini",
 		label: "Gemini CLI",
 		binary: "gemini",
 		acpArgs: () => ["--experimental-acp"],
-		// Untrusted workspace gates .gemini/settings.json, commands, extensions,
-		// MCP servers, and GEMINI.md while keeping ACP mode functional (#634).
-		acpEnv: () => ({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
-		}),
+		// Trust is the user's own folderTrust setting; this row forces neither way (#817).
+		acpEnv: () => ({}),
 		// Gemini CLI's documented API-key env var.
 		providerKeys: ["GEMINI_API_KEY"],
 		install: "npm i -g @google/gemini-cli",
-		// gemini-cli config.ts setApprovalMode: an untrusted folder takes `default` and `plan` alone,
-		// so the three upper levels run `default` (#673 w21).
+		// Mode ids from gemini-cli 0.64.0 buildAvailableModes: default, autoEdit, yolo (and plan).
+		// Folder trust is the user's (#817); Gemini has no reviewer, so Auto runs `default` (#907).
 		access: {
-			supervised: geminiDefault(
+			supervised: geminiMode(
+				"default",
 				(c) => `Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
 			),
-			"auto-edits": geminiDefault(geminiUntrusted),
-			auto: geminiDefault(geminiUntrusted),
-			"full-access": geminiDefault(geminiUntrusted),
+			"auto-edits": geminiMode(
+				"autoEdit",
+				(c) => `Gemini CLI runs in ${modeNamed(c, "autoEdit", "Auto Edit")}.`,
+			),
+			auto: geminiMode(
+				"default",
+				(c) =>
+					`Gemini CLI has no reviewer of its own; it runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`,
+			),
+			"full-access": geminiMode(
+				"yolo",
+				(c) => `Gemini CLI runs in ${modeNamed(c, "yolo", "YOLO")}.`,
+			),
 		},
 		modeMechanism: "acp",
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		resume: true,
+		configDir: {
+			envKey: "GEMINI_CLI_HOME",
+			shownDefault: "your home folder (holds .gemini)",
+		},
 	},
 	deepagents: {
 		id: "deepagents",
@@ -558,6 +574,25 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		tested: { version: "0.1.75", date: "2026-09-23" },
 		modelVia: "unsupported",
 		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
+		resume: false,
+	},
+	// One operator-set ACP command (#907): it reports no modes, so PrismaLens's ask policy decides each ask.
+	local: {
+		id: "local",
+		label: "Local agent",
+		binary: "",
+		acpArgs: () => [],
+		acpEnv: () => ({}),
+		install: "Add it under Settings → Agent → Add agent → Local ACP command.",
+		access: {
+			supervised: LOCAL_NO_MODE,
+			"auto-edits": LOCAL_NO_MODE,
+			auto: LOCAL_NO_MODE,
+			"full-access": LOCAL_NO_MODE,
+		},
+		modeMechanism: "none",
+		modelVia: "acp",
+		loginHint: "It signs in on its own.",
 		resume: false,
 	},
 };
@@ -589,7 +624,7 @@ export function getHarnessProviderKeys(
 }
 
 /** A gateway receives the auth token, so plain http is allowed only on loopback. */
-function isSafeGatewayUrl(raw: string): boolean {
+export function isSafeGatewayUrl(raw: string): boolean {
 	let url: URL;
 	try {
 		url = new URL(raw);
@@ -651,7 +686,27 @@ export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
 	"codex",
 	"gemini",
 	"deepagents",
+	"local",
 ];
+
+/** Env names PrismaLens sets itself on this agent's child; Settings refuses them (#907). */
+export function reservedEnvNames(id: HarnessId): string[] {
+	const d = HARNESS_REGISTRY[id];
+	const names = new Set(
+		Object.keys(
+			d.acpEnv({
+				configDir: "x",
+				dataDir: "x",
+				cwd: "x",
+				companionPath: "x",
+				shipped: true,
+			}),
+		),
+	);
+	if (d.configDir) names.add(d.configDir.envKey);
+	if (d.customModelEnvKey) names.add(d.customModelEnvKey);
+	return [...names];
+}
 
 export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
@@ -716,7 +771,7 @@ export function refuseModel(
 ): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
 	if (row.modelVia !== "unsupported" || !model?.trim()) return null;
-	return `${row.label} picks its own model. Clear ${model.trim()} in the picker above.`;
+	return `${row.label} picks its own model. Unstar ${model.trim()} in the picker above.`;
 }
 
 /** Why a finished run on `harnessId` cannot be continued, or null when it can (#747). */

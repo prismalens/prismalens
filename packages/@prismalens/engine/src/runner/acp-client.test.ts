@@ -295,6 +295,26 @@ describe("offeredModels (#639)", () => {
 		expect(offeredModels(undefined)).toEqual([]);
 		expect(offeredModels({ not: "an array" })).toEqual([]);
 	});
+
+	it("keeps a `default` entry's description, which names the model it runs (#907)", () => {
+		expect(
+			offeredModels([
+				{
+					id: "model",
+					type: "select",
+					category: "model",
+					currentValue: "default",
+					options: [
+						{ value: "default", name: "Default (recommended)", description: "Opus 5.5" },
+						{ value: "claude-opus-5-5", name: "Opus 5.5", description: "" },
+					],
+				},
+			]),
+		).toEqual([
+			{ id: "default", name: "Default (recommended)", description: "Opus 5.5" },
+			{ id: "claude-opus-5-5", name: "Opus 5.5" },
+		]);
+	});
 });
 
 describe("offeredEffort (R4.2)", () => {

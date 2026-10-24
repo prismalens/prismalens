@@ -95,6 +95,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		agentRuntime: vi.fn(async () => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),

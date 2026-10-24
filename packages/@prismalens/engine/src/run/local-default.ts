@@ -165,7 +165,12 @@ function codex(
 	return { permission };
 }
 
-const GEMINI_UNTRUSTED = "Gemini CLI runs the copy untrusted here";
+/** `general.defaultApprovalMode` values; `plan` has no level (#907). */
+const GEMINI_LEVEL: Record<string, AccessLevel> = {
+	default: "supervised",
+	auto_edit: "auto-edits",
+	yolo: "full-access",
+};
 
 function gemini(
 	env: NodeJS.ProcessEnv,
@@ -192,12 +197,11 @@ function gemini(
 	if (!found) return NONE;
 	const { value } = found;
 	const file = shown(found.file, home);
-	const permission: Permission =
-		value === "default"
-			? { level: "supervised", file, value }
-			: value === "auto_edit"
-				? { level: null, file, value, reason: GEMINI_UNTRUSTED }
-				: { level: null, file, value };
+	const permission: Permission = {
+		level: GEMINI_LEVEL[value] ?? null,
+		file,
+		value,
+	};
 	return { permission };
 }
 

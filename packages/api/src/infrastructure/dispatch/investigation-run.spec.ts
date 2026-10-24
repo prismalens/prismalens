@@ -11,7 +11,7 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import type { AccessLevel } from "@prismalens/config/harness";
+import { type AccessLevel, getHarnessProviderKeys, type HarnessId } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
 import type { conductRun } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,6 +78,7 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		agentRuntime: vi.fn(async (id: HarnessId) => ({ env: getHarnessProviderKeys(id, process.env), note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
@@ -765,6 +766,30 @@ describe("harness child env (trust floor, #628)", () => {
 		expect(opts.env.PRISMALENS_WEBHOOK_SECRET).toBeUndefined();
 		expect(opts.env.SOME_UNRELATED_HOST_VAR).toBeUndefined();
 	});
+
+	it("spawns with the agent's Settings runtime: env, command and arguments (#907)", async () => {
+		mocks.conductRun.mockReset();
+		mocks.conductRun.mockResolvedValue({ report: { summary: "done", rootCause: null, nextSteps: [] } });
+		const note = { binaryPath: "/usr/bin/node", configDir: null, envNames: ["MY_KEY"], args: ["agent.mjs"] };
+		const ports = fakePorts({
+			agentRuntime: vi.fn(async () => ({
+				env: { MY_KEY: "v" },
+				binaryPath: "/usr/bin/node",
+				launchArgs: ["agent.mjs"],
+				note,
+			})),
+		});
+		await runInvestigationJob(
+			{ id: "job-rt", investigationId: "inv-rt", attempts: 1 },
+			{ investigationId: "inv-rt", incidentId: "inc-rt" },
+			{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+			ports,
+		);
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ env: Record<string, string>; binaryPath?: string; launchArgs?: string[]; runtimeNote?: unknown },
+		];
+		expect(opts).toMatchObject({ env: { MY_KEY: "v" }, binaryPath: "/usr/bin/node", launchArgs: ["agent.mjs"], runtimeNote: note });
+	});
 });
 
 describe("run snapshot reaping (#637 N3)", () => {
@@ -1014,6 +1039,24 @@ describe("follow-up on a finished run (#747)", () => {
 		});
 	}
 	const io = () => ({ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal });
+
+	it("spawns the follow-up with the agent's Settings env and binary path (#907)", async () => {
+		const binaryPath = join(tmp, "bin", "opencode");
+		const note = { binaryPath, configDir: null, envNames: ["OPENROUTER_API_KEY"], args: [] };
+		const ports = followUpPorts({
+			agentRuntime: vi.fn(async () => ({ env: { OPENROUTER_API_KEY: "or-1" }, binaryPath, note })),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+		await runInvestigationJob({ id: "job-rt", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+		expect(ports.agentRuntime).toHaveBeenCalledWith("opencode");
+		const [opts] = mocks.conductRun.mock.calls[0] as [{ env: Record<string, string>; binaryPath?: string; runtimeNote?: unknown }];
+		expect(opts.env).toEqual({ OPENROUTER_API_KEY: "or-1" });
+		expect(opts.binaryPath).toBe(binaryPath);
+		expect(opts.runtimeNote).toEqual(note);
+	});
 
 	it("rebuilds at the recorded commit and path, loads the same session after the stored events, and puts the row back untouched", async () => {
 		const ports = followUpPorts();

@@ -244,6 +244,8 @@ export interface AcpAuthMethod {
 export interface AcpOfferedModel {
 	id: string;
 	name: string;
+	/** A `default` entry's description names the model it runs now (#907). */
+	description?: string;
 }
 
 /**
@@ -268,6 +270,9 @@ export function offeredModels(
 				out.push({
 					id: o.value,
 					name: typeof o.name === "string" ? o.name : o.value,
+					...(typeof o.description === "string" && o.description
+						? { description: o.description }
+						: {}),
 				});
 			}
 		}

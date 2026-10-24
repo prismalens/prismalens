@@ -7923,7 +7923,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   },
@@ -8048,7 +8049,8 @@
                                 "claude-code",
                                 "codex",
                                 "gemini",
-                                "deepagents"
+                                "deepagents",
+                                "local"
                               ],
                               "type": "string"
                             }
@@ -8144,7 +8146,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   },
@@ -8344,7 +8347,8 @@
                                 "claude-code",
                                 "codex",
                                 "gemini",
-                                "deepagents"
+                                "deepagents",
+                                "local"
                               ],
                               "type": "string"
                             }
@@ -10155,6 +10159,49 @@
                                     },
                                     "effort": {
                                       "type": "string"
+                                    },
+                                    "runtime": {
+                                      "type": "object",
+                                      "properties": {
+                                        "binaryPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "configDir": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "envNames": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "args": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "binaryPath",
+                                        "configDir",
+                                        "envNames",
+                                        "args"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -11351,6 +11398,49 @@
                                           },
                                           "effort": {
                                             "type": "string"
+                                          },
+                                          "runtime": {
+                                            "type": "object",
+                                            "properties": {
+                                              "binaryPath": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "configDir": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "envNames": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "args": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": [
+                                              "binaryPath",
+                                              "configDir",
+                                              "envNames",
+                                              "args"
+                                            ]
                                           }
                                         },
                                         "required": [
@@ -12566,6 +12656,49 @@
                                     },
                                     "effort": {
                                       "type": "string"
+                                    },
+                                    "runtime": {
+                                      "type": "object",
+                                      "properties": {
+                                        "binaryPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "configDir": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "envNames": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "args": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "binaryPath",
+                                        "configDir",
+                                        "envNames",
+                                        "args"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -13748,6 +13881,49 @@
                                         },
                                         "effort": {
                                           "type": "string"
+                                        },
+                                        "runtime": {
+                                          "type": "object",
+                                          "properties": {
+                                            "binaryPath": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "configDir": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "envNames": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "args": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "required": [
+                                            "binaryPath",
+                                            "configDir",
+                                            "envNames",
+                                            "args"
+                                          ]
                                         }
                                       },
                                       "required": [
@@ -14996,6 +15172,49 @@
                                     },
                                     "effort": {
                                       "type": "string"
+                                    },
+                                    "runtime": {
+                                      "type": "object",
+                                      "properties": {
+                                        "binaryPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "configDir": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "envNames": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "args": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "binaryPath",
+                                        "configDir",
+                                        "envNames",
+                                        "args"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -16940,6 +17159,49 @@
                                           },
                                           "effort": {
                                             "type": "string"
+                                          },
+                                          "runtime": {
+                                            "type": "object",
+                                            "properties": {
+                                              "binaryPath": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "configDir": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "envNames": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              },
+                                              "args": {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            },
+                                            "required": [
+                                              "binaryPath",
+                                              "configDir",
+                                              "envNames",
+                                              "args"
+                                            ]
                                           }
                                         },
                                         "required": [
@@ -17570,6 +17832,49 @@
                                     },
                                     "effort": {
                                       "type": "string"
+                                    },
+                                    "runtime": {
+                                      "type": "object",
+                                      "properties": {
+                                        "binaryPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "configDir": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "envNames": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "args": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "binaryPath",
+                                        "configDir",
+                                        "envNames",
+                                        "args"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -18245,7 +18550,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   },
@@ -18398,7 +18704,8 @@
                 "claude-code",
                 "codex",
                 "gemini",
-                "deepagents"
+                "deepagents",
+                "local"
               ],
               "type": "string"
             },
@@ -18438,7 +18745,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -19147,6 +19455,49 @@
                               },
                               "effort": {
                                 "type": "string"
+                              },
+                              "runtime": {
+                                "type": "object",
+                                "properties": {
+                                  "binaryPath": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "configDir": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "envNames": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "args": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "binaryPath",
+                                  "configDir",
+                                  "envNames",
+                                  "args"
+                                ]
                               }
                             },
                             "required": [
@@ -19774,6 +20125,49 @@
                                     },
                                     "effort": {
                                       "type": "string"
+                                    },
+                                    "runtime": {
+                                      "type": "object",
+                                      "properties": {
+                                        "binaryPath": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "configDir": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "envNames": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "args": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "binaryPath",
+                                        "configDir",
+                                        "envNames",
+                                        "args"
+                                      ]
                                     }
                                   },
                                   "required": [
@@ -31364,6 +31758,69 @@
                             ],
                             "default": null
                           },
+                          "runnable": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "cliBinary": {
+                            "type": "string",
+                            "default": ""
+                          },
+                          "providerKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
+                          },
+                          "envVars": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "unset",
+                                    "set",
+                                    "env"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "state"
+                              ]
+                            },
+                            "default": []
+                          },
+                          "configDir": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "envKey": {
+                                    "type": "string"
+                                  },
+                                  "shownDefault": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "envKey",
+                                  "shownDefault"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -31397,6 +31854,9 @@
                                           "type": "null"
                                         }
                                       ]
+                                    },
+                                    "description": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -31714,7 +32174,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -31726,7 +32187,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -31747,7 +32209,8 @@
                               "claude-code",
                               "codex",
                               "gemini",
-                              "deepagents"
+                              "deepagents",
+                              "local"
                             ],
                             "type": "string"
                           },
@@ -31771,7 +32234,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -31789,7 +32253,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -31811,7 +32276,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -31824,6 +32290,136 @@
                           "maxLength": 200
                         }
                       }
+                    },
+                    "hiddenModels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "modelOrder": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "binaryPaths": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    },
+                    "configDirs": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    },
+                    "localAgent": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        "args": {
+                          "type": "array",
+                          "maxItems": 32,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1024
+                          }
+                        }
+                      },
+                      "required": [
+                        "command",
+                        "args"
+                      ]
+                    },
+                    "envNames": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                        }
+                      }
+                    },
+                    "canEditRuntime": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -31855,7 +32451,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   },
@@ -31867,7 +32464,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -31896,7 +32494,8 @@
                             "claude-code",
                             "codex",
                             "gemini",
-                            "deepagents"
+                            "deepagents",
+                            "local"
                           ],
                           "type": "string"
                         },
@@ -31920,7 +32519,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -31945,7 +32545,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -31974,7 +32575,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -31994,6 +32596,179 @@
                         }
                       ]
                     }
+                  },
+                  "hiddenModels": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "maxItems": 500,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "modelOrder": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "maxItems": 500,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "binaryPaths": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "configDirs": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "opencode",
+                        "claude-code",
+                        "codex",
+                        "gemini",
+                        "deepagents",
+                        "local"
+                      ],
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 8192
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "localAgent": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "command": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1024
+                          },
+                          "args": {
+                            "type": "array",
+                            "maxItems": 32,
+                            "items": {
+                              "type": "string",
+                              "maxLength": 1024
+                            }
+                          }
+                        },
+                        "required": [
+                          "command",
+                          "args"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -32016,7 +32791,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -32028,7 +32804,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -32049,7 +32826,8 @@
                               "claude-code",
                               "codex",
                               "gemini",
-                              "deepagents"
+                              "deepagents",
+                              "local"
                             ],
                             "type": "string"
                           },
@@ -32073,7 +32851,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -32091,7 +32870,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -32113,7 +32893,8 @@
                           "claude-code",
                           "codex",
                           "gemini",
-                          "deepagents"
+                          "deepagents",
+                          "local"
                         ],
                         "type": "string"
                       },
@@ -32126,6 +32907,136 @@
                           "maxLength": 200
                         }
                       }
+                    },
+                    "hiddenModels": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "modelOrder": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        }
+                      }
+                    },
+                    "binaryPaths": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    },
+                    "configDirs": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    },
+                    "localAgent": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        "args": {
+                          "type": "array",
+                          "maxItems": 32,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1024
+                          }
+                        }
+                      },
+                      "required": [
+                        "command",
+                        "args"
+                      ]
+                    },
+                    "envNames": {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "opencode",
+                          "claude-code",
+                          "codex",
+                          "gemini",
+                          "deepagents",
+                          "local"
+                        ],
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                        }
+                      }
+                    },
+                    "canEditRuntime": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -32158,7 +33069,8 @@
                       "claude-code",
                       "codex",
                       "gemini",
-                      "deepagents"
+                      "deepagents",
+                      "local"
                     ],
                     "type": "string"
                   }
@@ -32184,7 +33096,8 @@
                         "claude-code",
                         "codex",
                         "gemini",
-                        "deepagents"
+                        "deepagents",
+                        "local"
                       ],
                       "type": "string"
                     },
@@ -32232,6 +33145,9 @@
                             "type": "string"
                           },
                           "name": {
+                            "type": "string"
+                          },
+                          "description": {
                             "type": "string"
                           }
                         },

@@ -72,7 +72,7 @@ describe("resolveHarnessSelection", () => {
 
 	it("lists every registry row with installed and tested data", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
-		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
+		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents", "local"]);
 		expect(rows[0]).toMatchObject({
 			installed: true,
 			tested: { version: "1.18.30", date: "2026-09-20" },
@@ -83,7 +83,7 @@ describe("resolveHarnessSelection", () => {
 			tested: { version: "0.81.1", date: "2026-10-11", companion: "2.1.296" },
 			defaultModel: null,
 		});
-		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", "1.13.1", null, "0.1.75"]);
+		expect(rows.map((r) => r.tested?.version ?? null)).toEqual(["1.18.30", "0.81.1", "2.2.2", null, "0.1.75", null]);
 	});
 });
 
@@ -190,3 +190,94 @@ describe("harnessLaunch", () => {
 	});
 });
 
+
+describe("binary paths and the local agent (#907)", () => {
+	const canRun = (ok: string[]) => (p: string) => ok.includes(p);
+	const opencode = HARNESS_REGISTRY.opencode;
+	const claude = HARNESS_REGISTRY["claude-code"];
+	const local = HARNESS_REGISTRY.local;
+
+	it("runs a non-companion row's binary path as its command", () => {
+		const launch = harnessLaunch(opencode, {
+			isOnPath: onPath([]),
+			binaryPath: "/opt/oc/opencode",
+			isExecutable: canRun(["/opt/oc/opencode"]),
+		});
+		expect(launch).toEqual({ command: "/opt/oc/opencode", args: [], env: {}, shipped: false });
+	});
+
+	it("gives a companion row's binary path to the shipped adapter, else the adapter on PATH", () => {
+		const probe = {
+			isOnPath: onPath(["claude-agent-acp"]),
+			binaryPath: "/opt/claude/bin/claude",
+			isExecutable: canRun(["/opt/claude/bin/claude"]),
+		};
+		expect(harnessLaunch(claude, { ...probe, shippedAdapter: () => "/s/acp.js" })).toMatchObject({
+			args: ["/s/acp.js"],
+			shipped: true,
+		});
+		expect(harnessLaunch(claude, probe)).toMatchObject({ command: "claude-agent-acp", shipped: false });
+		expect(harnessLaunch(claude, { ...probe, isOnPath: onPath([]) })).toBeNull();
+	});
+
+	it("reads a binary path that can't run as not installed, even with the agent on PATH", () => {
+		expect(
+			harnessLaunch(opencode, {
+				isOnPath: onPath(["opencode"]),
+				binaryPath: "/gone/opencode",
+				isExecutable: canRun([]),
+			}),
+		).toBeNull();
+	});
+
+	it("starts the local agent as its command plus arguments, and not at all without one", () => {
+		expect(
+			harnessLaunch(local, {
+				isOnPath: onPath([]),
+				binaryPath: "/usr/bin/node",
+				launchArgs: ["agent.mjs", "--acp"],
+				isExecutable: canRun(["/usr/bin/node"]),
+			}),
+		).toEqual({ command: "/usr/bin/node", args: ["agent.mjs", "--acp"], env: {}, shipped: false });
+		expect(harnessLaunch(local, { isOnPath: () => true })).toBeNull();
+	});
+
+	it("lists a binary path's row and the local agent as installed, with cliBinary and configDir", () => {
+		const rows = listHarnessStatus({
+			isOnPath: onPath([]),
+			binaryPaths: { opencode: "/opt/oc/opencode" },
+			localAgent: { command: "/usr/bin/node", args: [] },
+			isExecutable: canRun(["/opt/oc/opencode", "/usr/bin/node"]),
+		});
+		const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+		expect(by.opencode?.installed).toBe(true);
+		expect(by.local?.installed).toBe(true);
+		expect(by.gemini?.installed).toBe(false);
+		expect(by["claude-code"]).toMatchObject({
+			cliBinary: "claude",
+			configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
+		});
+		expect(by.opencode?.configDir).toBeNull();
+	});
+
+	it("auto skips an agent whose check failed, and a pin still holds", () => {
+		const input = {
+			isOnPath: onPath(["opencode", "gemini"]),
+			isRunnable: (id: string) => id !== "opencode",
+		};
+		expect(resolveHarnessSelection(input)).toMatchObject({ runnable: true, harness: "gemini", auto: true });
+		expect(resolveHarnessSelection({ ...input, envHarness: "opencode" })).toMatchObject({
+			runnable: true,
+			harness: "opencode",
+		});
+	});
+
+	it("comes last in auto order", () => {
+		const s = resolveHarnessSelection({
+			isOnPath: onPath(["dcode"]),
+			localAgent: { command: "/usr/bin/node", args: [] },
+			isExecutable: () => true,
+		});
+		expect(s).toMatchObject({ harness: "deepagents" });
+	});
+});
