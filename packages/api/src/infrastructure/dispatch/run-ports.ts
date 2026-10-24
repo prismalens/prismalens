@@ -29,8 +29,11 @@ import type {
 	RepoSource,
 	Snapshot,
 } from "../../core/harness/repo-source.service.js";
+import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import type { RunbookDoc } from "./pre-run-context.js";
 
 export interface IncidentRepo {
 	/** "folder" or "url"; `url` holds the folder path for a folder. */
@@ -181,6 +184,15 @@ export interface RunPorts {
 	): Promise<ResolvedConnector[]>;
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
+	/** The pre-run fetch (#848 ruling 2026-10-24); each part is best effort and never fails the run. */
+	preRun?: {
+		telemetry(
+			window: SnapshotWindow,
+			signal?: AbortSignal,
+		): Promise<SourceOutcome[]>;
+		/** Read from the workspace the run recorded, so after `recordWorkspace`. */
+		runbooks(runId: string): Promise<RunbookDoc[]>;
+	};
 	/** The run's MCP gateway bearer (#848): leased before the agent starts, revoked however the run ends. */
 	gateway?: {
 		lease(runId: string): Promise<GatewayEntry | null>;

@@ -948,11 +948,11 @@ export async function* runInvestigation(
 			return;
 		}
 		yield adapter.branchDone(mapStopReason(outcome.stop));
+		const gapped = noNetwork
+			? withSandboxGap(parsed.report, label)
+			: parsed.report;
 		yield adapter.report(
-			stampReport(
-				noNetwork ? withSandboxGap(parsed.report, label) : parsed.report,
-				fidelity,
-			),
+			stampReport(withSkippedSources(gapped, opts.context), fidelity),
 		);
 	} catch (err) {
 		yield* leftovers();
@@ -994,6 +994,24 @@ function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 		coverage: {
 			...report.coverage,
 			notQueried: [...report.coverage.notQueried, gap],
+		},
+	};
+}
+
+/** A source the pre-run fetch skipped is named under What we could not check, whatever the agent wrote (#848 ruling 2026-10-24). */
+export function withSkippedSources<
+	R extends { coverage: { notQueried: string[] } },
+>(report: R, context: Pick<InvestigationContext, "preRun">): R {
+	const gaps = (context.preRun?.sources ?? [])
+		.filter((s) => s.status === "skipped")
+		.map((s) => `${s.label} (${s.kind}): skipped before the run, ${s.detail}`)
+		.filter((g) => !report.coverage.notQueried.includes(g));
+	if (!gaps.length) return report;
+	return {
+		...report,
+		coverage: {
+			...report.coverage,
+			notQueried: [...report.coverage.notQueried, ...gaps],
 		},
 	};
 }

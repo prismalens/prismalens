@@ -60,7 +60,7 @@ describe("buildInvestigationPrompt (#633)", () => {
 		expect(prompt).toContain("curl -sG 'http://prom:9090/api/v1/query'");
 		expect(prompt).toContain("curl -sG 'http://loki:3100/loki/api/v1/query_range'");
 		expect(prompt).toContain(
-			"- Prometheus (mimir)  needs a credential PrismaLens holds: read it with the PrismaLens prometheus_ tools, not curl",
+			"- Prometheus (mimir)  needs a credential PrismaLens holds: PrismaLens read it before the run (PRE-RUN CONTEXT); query it further only with your own tools",
 		);
 		expect(prompt).not.toContain("curl -sG 'https://mimir.example");
 		expect(prompt.match(/- Prometheus {4}http:\/\/prom:9090/g)).toHaveLength(1);

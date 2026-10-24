@@ -3,36 +3,37 @@
 
 import { SourceRegistry } from "@prismalens/integrations";
 import type { RunbooksData } from "../runbooks.js";
-import { failureReason, type QuerySources } from "../source-tools.js";
-import { alertmanagerTools } from "./alertmanager.js";
 import {
+	type IncidentLookup,
 	type InvestigationsQuery,
 	knowledgeTools,
 	type PastInvestigation,
 } from "./knowledge.js";
-import { lokiTools } from "./loki.js";
-import { prometheusTools } from "./prometheus.js";
 import { runbookTools } from "./runbooks.js";
 
-export type { InvestigationsQuery, PastInvestigation } from "./knowledge.js";
+export type {
+	IncidentLookup,
+	IncidentView,
+	InvestigationsQuery,
+	PastInvestigation,
+} from "./knowledge.js";
 
 /** What the tools read; the api answers from its own database. */
 export interface GatewayToolData {
 	searchInvestigations(q: InvestigationsQuery): Promise<PastInvestigation[]>;
+	incident: IncidentLookup;
 	runbooks: RunbooksData;
-	querySources: QuerySources;
-	now?: () => Date;
 }
 
-/** Every PrismaLens tool, registered through the read-only gate (#848). */
+/**
+ * PrismaLens's harness tools, registered through the read-only gate. Data-access tools
+ * come from the user's own agent setup, never from here (#848 ruling 2026-10-24).
+ */
 export function gatewayRegistry(data: GatewayToolData): SourceRegistry {
-	const registry = new SourceRegistry(failureReason);
+	const registry = new SourceRegistry(() => "the tool failed");
 	for (const tool of [
-		...knowledgeTools((q) => data.searchInvestigations(q)),
+		...knowledgeTools((q) => data.searchInvestigations(q), data.incident),
 		...runbookTools(data.runbooks),
-		...prometheusTools(data.querySources, data.now),
-		...alertmanagerTools(data.querySources),
-		...lokiTools(data.querySources, data.now),
 	])
 		registry.register(tool);
 	return registry;

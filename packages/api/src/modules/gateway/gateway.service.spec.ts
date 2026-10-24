@@ -164,27 +164,28 @@ describe("gateway bearer (#848)", () => {
 	});
 });
 
-describe("gateway tools (#848)", () => {
-	const connection = {
-		findMany: vi.fn(async () => [
-			{
-				id: "c1",
-				label: "prod prom",
-				status: "ACTIVE",
-				lastErrorAt: null,
-				integration: { templateId: "prometheus", label: "Prometheus" },
-			},
-			{
-				id: "c2",
-				label: "",
-				status: "CREDENTIALS_INVALID",
-				lastErrorAt: new Date("2026-10-19T10:00:00Z"),
-				integration: { templateId: "github-token", label: "GitHub" },
-			},
-		]),
-	};
+describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	const investigation = {
-		findUnique: vi.fn(async () => null),
+		findUnique: vi.fn(async () => ({
+			workspace: null,
+			incident: {
+				number: 12,
+				title: "checkout errors",
+				status: "investigating",
+				severity: "high",
+				description: null,
+				triggeredAt: new Date("2026-10-24T09:00:00Z"),
+				service: { name: "checkout" },
+				alerts: [
+					{
+						title: "HighErrorRate",
+						severity: "high",
+						labels: '{"alertname":"HighErrorRate"}',
+						triggeredAt: new Date("2026-10-24T09:00:00Z"),
+					},
+				],
+			},
+		})),
 		findMany: vi.fn(async () => [
 			{
 				id: RUN_B,
@@ -202,24 +203,26 @@ describe("gateway tools (#848)", () => {
 			},
 		]),
 	};
+	const incident = { findUnique: vi.fn(async () => null) };
 
 	async function call(
 		method: string,
 		params: Record<string, unknown> = {},
 	): Promise<Record<string, unknown>> {
 		const g = gateway({
-			connection,
 			investigation,
+			incident,
 			setting: { findUnique: async () => null },
-			serviceRepository: { count: async () => 0 },
 		});
 		const entry = await g.lease(RUN_A);
 		const res = await g.serve(RUN_A, rpc(RUN_A, method, params, entry?.token));
 		expect(res.status).toBe(200);
 		return body(res);
 	}
+	const text = (out: Record<string, unknown>) =>
+		(out.result as { content: { text: string }[] }).content[0]?.text as string;
 
-	it("tools/list returns only read-only tools: Phase 0's two plus Phase 1's source tools", async () => {
+	it("carries only PrismaLens's harness tools, all read-only: no data-access tool, no vendor proxy", async () => {
 		const out = await call("tools/list");
 		const tools = (
 			out.result as {
@@ -227,78 +230,55 @@ describe("gateway tools (#848)", () => {
 			}
 		).tools;
 		expect(tools.map((t) => t.name).sort()).toEqual([
-			"alertmanager_alerts",
+			"incident_get",
 			"investigations_search",
-			"loki_query_range",
-			"prometheus_alerts",
-			"prometheus_query",
-			"prometheus_query_range",
 			"runbooks_list",
 			"runbooks_read",
-			"sources_list",
 		]);
 		expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
 	});
 
-	it("an unknown tool is an error", async () => {
-		const out = await call("tools/call", { name: "github_create_issue", arguments: {} });
-		const failed =
-			out.error !== undefined ||
-			(out.result as { isError?: boolean } | undefined)?.isError === true;
-		expect(failed).toBe(true);
-	});
-
-	it("sources_list names every category with its status", async () => {
-		const out = await call("tools/call", { name: "sources_list", arguments: {} });
-		const text = (out.result as { content: { text: string }[] }).content[0]
-			?.text as string;
-		const view = JSON.parse(text) as { category: string; status: string }[];
-		expect(view.map((v) => [v.category, v.status])).toEqual([
-			["metrics", "connected"],
-			["logs", "not-configured"],
-			["scm", "unreachable"],
-			["knowledge", "connected"],
-			["deploys", "not-configured"],
-			["mcp", "not-configured"],
-		]);
-	});
-
-	it("sources_list reports runbooks not-configured and names Confluence and Notion as not supported yet", async () => {
-		const out = await call("tools/call", { name: "sources_list" });
-		const text = (out.result as { content: { text: string }[] }).content[0]
-			?.text as string;
-		const knowledge = JSON.parse(text).find(
-			(c: { category: string }) => c.category === "knowledge",
-		);
-		expect(knowledge.tools).toEqual(
-			expect.arrayContaining(["runbooks_list", "runbooks_read"]),
-		);
-		expect(
-			knowledge.sources.map((s: { id: string; status: string }) => [
-				s.id,
-				s.status,
-			]),
-		).toEqual([
-			["prismalens-investigations", "connected"],
-			["runbooks", "not-configured"],
-			["confluence", "not-configured"],
-			["notion", "not-configured"],
-		]);
-		expect(knowledge.sources[2].reason).toBe("Confluence is not supported yet.");
-	});
-
-	it("lists the runbook tools as read-only", async () => {
-		const out = await call("tools/list");
-		const tools = (
-			out.result as {
-				tools: { name: string; annotations?: { readOnlyHint?: boolean } }[];
-			}
-		).tools.filter((t) => t.name.startsWith("runbooks_"));
-		expect(tools.map((t) => t.name).sort()).toEqual([
+	it("the lease names the same tools, and the prompt line sends data access to the agent's own tools", async () => {
+		const entry = await gateway().lease(RUN_A);
+		expect([...(entry?.tools ?? [])].sort()).toEqual([
+			"incident_get",
+			"investigations_search",
 			"runbooks_list",
 			"runbooks_read",
 		]);
-		expect(tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
+		expect(entry?.promptLine).toContain("use the tools your own setup gives you");
+		expect(entry?.promptLine).not.toMatch(/prometheus|loki|alertmanager|sources_list/);
+	});
+
+	for (const name of ["prometheus_query", "loki_query_range", "alertmanager_alerts", "sources_list", "vendor__tool"])
+		it(`${name} is not a tool any more`, async () => {
+			const out = await call("tools/call", { name, arguments: {} });
+			const failed =
+				out.error !== undefined ||
+				(out.result as { isError?: boolean } | undefined)?.isError === true;
+			expect(failed).toBe(true);
+		});
+
+	it("incident_get without a number returns the run's own incident with its alerts", async () => {
+		const got = JSON.parse(
+			text(await call("tools/call", { name: "incident_get", arguments: {} })),
+		);
+		expect(got).toMatchObject({
+			number: 12,
+			service: "checkout",
+			alerts: [{ title: "HighErrorRate", labels: { alertname: "HighErrorRate" } }],
+		});
+		expect(investigation.findUnique).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { id: RUN_A } }),
+		);
+	});
+
+	it("incident_get by a number that does not exist is an error", async () => {
+		const out = await call("tools/call", { name: "incident_get", arguments: { number: 99 } });
+		expect((out.result as { isError?: boolean }).isError).toBe(true);
+		expect(incident.findUnique).toHaveBeenCalledWith(
+			expect.objectContaining({ where: { number: 99 } }),
+		);
 	});
 
 	it("investigations_search keeps the operator's recorded cause apart and never returns this run", async () => {
@@ -306,9 +286,7 @@ describe("gateway tools (#848)", () => {
 			name: "investigations_search",
 			arguments: { query: "checkout", limit: 3 },
 		});
-		const text = (out.result as { content: { text: string }[] }).content[0]
-			?.text as string;
-		const [hit] = JSON.parse(text);
+		const [hit] = JSON.parse(text(out));
 		expect(hit.agentFinding.rootCause).toBe("pool exhausted");
 		expect(hit.operatorRecordedCause).toEqual({
 			cause: "bad deploy",

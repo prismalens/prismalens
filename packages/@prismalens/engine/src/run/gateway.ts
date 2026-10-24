@@ -14,7 +14,7 @@ export interface GatewayEntry {
 	token: string;
 	/** The prompt's tools paragraph, built at lease without probes. */
 	promptLine: string;
-	/** PrismaLens's own tool names; proxied `<server>__<tool>` names are never here. */
+	/** PrismaLens's own harness tool names, the only ones the gateway serves. */
 	tools: readonly string[];
 	/** True once a request carrying the run's token reached the gateway. */
 	confirmed(): boolean;

@@ -886,10 +886,35 @@ export const TelemetrySourceSchema = z.object({
 	kind: z.enum(["prometheus", "alertmanager", "loki"]),
 	label: z.string(),
 	url: z.string(),
-	/** Needs a credential PrismaLens holds: the agent reads it through the gateway's tools, not curl. */
+	/** Needs a credential PrismaLens holds: PrismaLens reads it before the run, and the prompt gives no curl for it. */
 	authenticated: z.boolean().optional(),
 });
 export type TelemetrySource = z.infer<typeof TelemetrySourceSchema>;
+
+/** One telemetry source PrismaLens read before the run, or skipped (#848 ruling 2026-10-24). */
+export const PreRunSourceSchema = z.object({
+	kind: TelemetrySourceSchema.shape.kind,
+	label: z.string(),
+	/** Where its address and credential came from: the user's env, or the entry saved in PrismaLens (#907). */
+	from: z.enum(["env", "set"]),
+	status: z.enum(["fetched", "skipped"]),
+	/** Fetched: what it held, one line. Skipped: why, in PrismaLens's own words. */
+	detail: z.string(),
+	/** The file under `dir` holding what was fetched. */
+	file: z.string().optional(),
+	/** The start of that file, for the prompt. */
+	excerpt: z.string().optional(),
+});
+export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
+
+/** What PrismaLens fetched before the run, written under `dir`, outside the repo checkout. */
+export const PreRunContextSchema = z.object({
+	dir: z.string(),
+	fetchedAt: z.string(),
+	sources: z.array(PreRunSourceSchema),
+	files: z.array(z.object({ name: z.string(), about: z.string() })),
+});
+export type PreRunContext = z.infer<typeof PreRunContextSchema>;
 
 /** Read-only telemetry + app endpoints the harness may query. */
 export const TelemetryEndpointsSchema = z.object({
@@ -992,6 +1017,8 @@ export const InvestigationContextSchema = z.object({
 	 * one — the engine renders nothing and behaves exactly as before.
 	 */
 	contextPack: ContextPackSchema.optional(),
+	/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
+	preRun: PreRunContextSchema.optional(),
 	/** Several repos under the cwd; `path` is relative to it, e.g. `api/` (#747). */
 	workspace: z
 		.object({

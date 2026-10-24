@@ -2,13 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The source port: one read the gateway serves to agents as a PrismaLens tool (#848).
- * Proxied vendor MCP tools are not SourceTools; they go through `ProxyPort`.
+ * The tool port: one PrismaLens harness capability the gateway serves to agents (#848).
+ * Data-access tools are the user's own, never PrismaLens's (#848 ruling 2026-10-24).
  */
 import type { SourceCategory } from "@prismalens/contracts/schemas";
 import type { z } from "zod";
 
-/** At most 46 characters and never `__`, which marks a proxied tool. */
+/** At most 46 characters and never `__`, which agents use to join server and tool names. */
 export const SOURCE_TOOL_NAME = /^[a-z][a-z0-9_]{2,45}$/;
 
 export interface SourceToolContext {

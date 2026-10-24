@@ -33,7 +33,7 @@ export {
 	TokenVault,
 	urlOnlyRequestFn,
 } from "./engine/index.js";
-// Ports: source, credential and proxy (#848)
+// Ports: tool and credential (#848)
 export * from "./port/index.js";
 // Providers — deployment
 export type { DeploymentProvider } from "./providers/deployment.interface.js";

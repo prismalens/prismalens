@@ -49,6 +49,7 @@ import {
 import type {
 	ContextPack,
 	EffortEstimate,
+	PreRunContext,
 	RecommendationCategory,
 	RecommendationPriority,
 	RunUsage,
@@ -67,7 +68,14 @@ import {
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
+import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
+import {
+	readPreRunContext,
+	snapshotWindow,
+	writePreRunContext,
+} from "./pre-run-context.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
@@ -214,6 +222,18 @@ async function runJobInternal(
 			connectors,
 			contextPack,
 		);
+		// Telemetry is read while the repos clone (#848 ruling 2026-10-24).
+		const window = snapshotWindow(
+			context.alerts,
+			new Date(),
+			context.service?.name,
+		);
+		const telemetry = ports.preRun
+			? ports.preRun.telemetry(window, io.signal).catch((e) => {
+					logger.warn("Could not read telemetry before the run", e);
+					return [];
+				})
+			: null;
 		const workspace = await resolveWorkspace(data, ports, io.signal);
 		await recordWorkspace(data, workspace, ports, context);
 		const multi = workspaceContext(workspace);
@@ -222,6 +242,14 @@ async function runJobInternal(
 		const runId = data.investigationId;
 		const runDir = runDirFor(runId);
 		mkdirSync(runDir, { recursive: true });
+		if (ports.preRun && telemetry) {
+			const preRun = await gatherPreRun(ports.preRun, runId, runDir, {
+				window,
+				telemetry,
+				pastIncidents: contextPack?.priorIncidents ?? [],
+			});
+			if (preRun) context.preRun = preRun;
+		}
 		const sink: InvestigationSink = async (event) => {
 			await io.emit(event);
 		};
@@ -383,6 +411,41 @@ async function runJobInternal(
 	}
 }
 
+/** The context folder for the prompt, or undefined when even writing it failed; never throws. */
+async function gatherPreRun(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	runDir: string,
+	input: {
+		window: SnapshotWindow;
+		telemetry: Promise<SourceOutcome[]>;
+		pastIncidents: ContextPack["priorIncidents"];
+	},
+): Promise<PreRunContext | undefined> {
+	try {
+		const [telemetry, runbooks] = await Promise.all([
+			input.telemetry,
+			port.runbooks(runId).catch((e) => {
+				logger.warn("Could not read runbooks before the run", e);
+				return [];
+			}),
+		]);
+		return writePreRunContext(runDir, {
+			window: input.window,
+			telemetry,
+			pastIncidents: input.pastIncidents,
+			runbooks,
+			now: new Date(),
+		});
+	} catch (e) {
+		logger.warn(
+			"Could not write the pre-run context; the run starts without it",
+			e,
+		);
+		return undefined;
+	}
+}
+
 const USAGE_WRITE_EVERY_MS = 5_000;
 
 /**
@@ -534,6 +597,9 @@ async function runFollowUp(
 		);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
+		// The run's own pre-run files, never a new fetch (#848 ruling 2026-10-24).
+		const preRun = readPreRunContext(runDir);
+		if (preRun) context.preRun = preRun;
 
 		mkdirSync(runDir, { recursive: true });
 		const base = createPrismaInvestigationStore(ports, {

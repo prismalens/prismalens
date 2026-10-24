@@ -61,6 +61,7 @@ import {
 	GitCredentialService,
 	pickOf,
 } from "../../modules/integrations/git-credential.service.js";
+import { TelemetrySnapshotService } from "../../modules/integrations/telemetry-snapshot.js";
 import { ContextPackService } from "../../modules/investigations/context-pack.service.js";
 import type { InternalInvestigationResultDto } from "../../modules/investigations/dto/index.js";
 import {
@@ -177,6 +178,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		private readonly telemetry: TelemetryService,
 		private readonly reportDelivery: ReportDeliveryService,
 		@Optional() private readonly gateway?: GatewayService,
+		@Optional() telemetrySnapshot?: TelemetrySnapshotService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -424,6 +426,16 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				this.connectorResolver.resolve({ serviceId }),
 			contextPack: (incidentId) => this.contextPackService.assemble(incidentId),
 			...(this.gateway ? { gateway: this.gateway } : {}),
+			...(telemetrySnapshot
+				? {
+						preRun: {
+							telemetry: (window, signal) =>
+								telemetrySnapshot.fetch(window, signal),
+							runbooks: (runId) =>
+								this.gateway?.runbookDocs(runId) ?? Promise.resolve([]),
+						},
+					}
+				: {}),
 		};
 
 		this.dispatcher = new Dispatcher(

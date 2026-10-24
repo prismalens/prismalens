@@ -6,13 +6,6 @@ export type {
 	CredentialContext,
 	CredentialKind,
 } from "./credential-kind.js";
-export {
-	type DroppedWhy,
-	noProxy,
-	type ProxyCallResult,
-	type ProxyPort,
-	type ProxySnapshot,
-} from "./proxy-port.js";
 export { SourceRegistry } from "./registry.js";
 export {
 	defineSourceTool,

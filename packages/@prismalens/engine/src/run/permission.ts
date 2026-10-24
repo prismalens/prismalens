@@ -168,7 +168,7 @@ function namedTool(
 
 /**
  * True only for a call to one of PrismaLens's own read-only tools on our confirmed
- * server; a proxied `<name>__<tool>` is never in `tools` (#848, OBJ-011).
+ * server; another server's tool of the same name never matches (#848, OBJ-011).
  */
 export function isGatewayToolCall(
 	req: PermissionRequest,

@@ -14,9 +14,11 @@ import {
 import {
 	fenceClose,
 	fenceOpen,
+	fenceUntrusted,
 	renderAlertPayload,
 	renderContextPack,
 	sanitizeUntrustedBlock,
+	sanitizeUntrustedLine,
 	UNTRUSTED_DATA_METHOD_GUARD,
 } from "./fence.js";
 import { CONTEXT_PACK_SOURCE, reportJsonSchema } from "./report.js";
@@ -53,7 +55,7 @@ function renderSurfaces(
 		}[src.kind];
 		surfaces.push(
 			src.authenticated
-				? `  - ${name} (${src.label})  needs a credential PrismaLens holds: read it with the PrismaLens ${src.kind}_ tools, not curl`
+				? `  - ${name} (${src.label})  needs a credential PrismaLens holds: PrismaLens read it before the run (PRE-RUN CONTEXT); query it further only with your own tools`
 				: `  - ${name}  ${src.url}${
 						online && src.kind === "loki"
 							? `\n      curl -sG '${src.url}/loki/api/v1/query_range' --data-urlencode 'query=<logql>' --data-urlencode 'limit=100'`
@@ -87,6 +89,47 @@ function renderSurfaces(
 }
 
 /**
+ * What PrismaLens fetched before the run (#848 ruling 2026-10-24): the folder, its files,
+ * what was skipped, then the start of each telemetry file fenced as data.
+ */
+export function renderPreRun(context: InvestigationContext): string {
+	const p = context.preRun;
+	if (!p) return "";
+	const lines = [
+		"PRE-RUN CONTEXT",
+		`  PrismaLens fetched this before the run, at ${sanitizeUntrustedLine(p.fetchedAt)}, into ${p.dir}`,
+		"  (outside your working directory; read these files by their full path, read-only):",
+		...p.files.map(
+			(f) =>
+				`  - ${sanitizeUntrustedLine(f.name)}  ${sanitizeUntrustedLine(f.about)}`,
+		),
+	];
+	if (!p.files.length) lines.push("  - nothing was fetched");
+	const skipped = p.sources.filter((s) => s.status === "skipped");
+	if (skipped.length)
+		lines.push(
+			`  Skipped before the run: ${skipped
+				.map(
+					(s) =>
+						`${sanitizeUntrustedLine(s.label)} (${s.kind}): ${sanitizeUntrustedLine(s.detail)}`,
+				)
+				.join("; ")}.`,
+		);
+	const excerpts = p.sources
+		.filter((s) => s.status === "fetched" && s.excerpt)
+		.map((s) => `--- ${s.file} (start)\n${s.excerpt}`);
+	if (excerpts.length)
+		lines.push(
+			fenceUntrusted(
+				"PRE_RUN_TELEMETRY",
+				"Read by PrismaLens from the user's telemetry sources before the run.",
+				sanitizeUntrustedBlock(excerpts.join("\n")),
+			),
+		);
+	return `\n\n${lines.join("\n")}`;
+}
+
+/**
  * A chat run's first turn (#673): the surfaces and the untrusted-data guard,
  * then the person's message. No alert block, no method, no report ask.
  */
@@ -98,7 +141,7 @@ export function buildChatPrompt(
 	return `You are helping an on-call engineer with a live incident. Answer their message below; this is a conversation, not a report. Your job here is to answer, not to change the system.
 
 SURFACES
-${renderSurfaces(context, !options.noNetwork).join("\n")}
+${renderSurfaces(context, !options.noNetwork).join("\n")}${renderPreRun(context)}
 
 ${UNTRUSTED_DATA_METHOD_GUARD}
 
@@ -175,7 +218,9 @@ export function buildInvestigationPrompt(
 	// A phase order the agent works through, the same for every agent and model (#673 w21 prompting).
 	const methodSteps = [
 		`Shell tool calls take the full command as ONE string in the tool's \`command\` field — never an argv array.`,
-		`File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
+		context.preRun
+			? "File reads, greps, and globs stay INSIDE your current working directory — use relative paths only — except the PRE-RUN CONTEXT folder, which you read by its full path."
+			: `File reads, greps, and globs stay INSIDE your current working directory — use relative paths only.`,
 		UNTRUSTED_DATA_METHOD_GUARD,
 		...(notes
 			? [
@@ -212,7 +257,7 @@ FIRING ALERT
 ${renderAlertPayload(primary, rest)}${serviceBlock}
 
 SURFACES
-${surfaces.join("\n")}${packBlock}
+${surfaces.join("\n")}${renderPreRun(context)}${packBlock}
 
 METHOD (work iteratively — think → run a command → observe → decide)
 ${methodBlock}

@@ -77,12 +77,16 @@ export interface SourceTypeDescriptor {
 	probes: readonly SourceProbe[];
 	/** The label that names a service; `ask` puts the choice in front of the user. */
 	serviceLabel?: { preferred: readonly string[]; ask: boolean };
-	/** Gateway tools the agent can call once connected; all read-only. */
+	/** PrismaLens tools that read it during a run; none for a telemetry source (#848 ruling 2026-10-24). */
 	tools: readonly string[];
 	/** What the agent does with it when it has no gateway tool. */
 	uses?: string;
 	docsUrl: string;
 }
+
+/** The agent queries a source with its own tools; PrismaLens reads a snapshot before the run (#848 ruling 2026-10-24). */
+const PRE_RUN_USE =
+	"PrismaLens reads a snapshot of it before each run and hands it to the agent.";
 
 const httpQueryKinds = [
 	"none",
@@ -104,7 +108,7 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			placeholder: "http://prometheus.internal:9090",
 			in: "config",
 		},
-		detect: { urlEnv: ["PROMETHEUS_URL"] },
+		detect: { urlEnv: ["PROMETHEUS_URL"], tokenEnv: ["PROMETHEUS_TOKEN"] },
 		probes: [
 			{
 				id: "query",
@@ -132,7 +136,8 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			},
 		],
 		serviceLabel: { preferred: ["service", "app", "job"], ask: false },
-		tools: ["prometheus_query", "prometheus_query_range", "prometheus_alerts"],
+		tools: [],
+		uses: PRE_RUN_USE,
 		docsUrl: "https://docs.prismalens.io/integrations/prometheus/",
 	},
 	{
@@ -146,7 +151,7 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			placeholder: "http://alertmanager.internal:9093",
 			in: "config",
 		},
-		detect: { urlEnv: ["ALERTMANAGER_URL"] },
+		detect: { urlEnv: ["ALERTMANAGER_URL"], tokenEnv: ["ALERTMANAGER_TOKEN"] },
 		probes: [
 			{
 				id: "status",
@@ -165,7 +170,8 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 				read: "count",
 			},
 		],
-		tools: ["alertmanager_alerts"],
+		tools: [],
+		uses: PRE_RUN_USE,
 		docsUrl: "https://docs.prismalens.io/integrations/alertmanager/",
 	},
 	{
@@ -179,7 +185,7 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			placeholder: "http://loki.internal:3100",
 			in: "config",
 		},
-		detect: { urlEnv: ["LOKI_URL"] },
+		detect: { urlEnv: ["LOKI_URL"], tokenEnv: ["LOKI_TOKEN"] },
 		probes: [
 			{
 				id: "labels",
@@ -202,7 +208,8 @@ export const SOURCE_TYPES: readonly SourceTypeDescriptor[] = [
 			preferred: ["service_name", "service", "app", "job"],
 			ask: true,
 		},
-		tools: ["loki_query_range"],
+		tools: [],
+		uses: PRE_RUN_USE,
 		docsUrl: "https://docs.prismalens.io/integrations/loki/",
 	},
 	{
