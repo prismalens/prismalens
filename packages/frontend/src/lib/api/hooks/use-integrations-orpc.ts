@@ -319,6 +319,23 @@ export function useCreateServiceIntegration() {
 }
 
 /**
+ * Order a service's mappings of one kind, highest priority first (#848)
+ */
+export function useSetServiceIntegrationOrder() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.integrations.setServiceIntegrationOrder.mutationOptions(),
+		onSuccess: (_data, variables) => {
+			queryClient.invalidateQueries({
+				queryKey: serviceIntegrationsKeys.forService(variables.serviceId),
+			});
+			queryClient.invalidateQueries({ queryKey: orpc.sources.key() });
+		},
+	});
+}
+
+/**
  * Update a service integration override
  */
 export function useUpdateServiceIntegration() {

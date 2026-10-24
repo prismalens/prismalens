@@ -6,7 +6,7 @@ import {
 	type ServiceIntegrationWithStatus,
 	type SourcesPreRun,
 } from "@prismalens/contracts";
-import { Boxes, ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowUp, Boxes, ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { Field } from "@/components/settings/Field";
 import {
@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import {
 	useCreateServiceIntegration,
 	useDeleteServiceIntegration,
+	useSetServiceIntegrationOrder,
 	useUpdateServiceIntegration,
 } from "@/lib/api/hooks";
 import { useSourcesPreRun } from "@/lib/api/hooks/use-sources-orpc";
@@ -55,12 +56,42 @@ const isOn = (i: ServiceIntegrationWithStatus) =>
 const addressOf = (i: ServiceIntegrationWithStatus) =>
 	str(i.globalConfig?.baseUrl);
 
+/** A kind's mapped rows, highest priority first, then its unmapped ones as listed. */
+export function orderRows(
+	rows: ServiceIntegrationWithStatus[],
+): ServiceIntegrationWithStatus[] {
+	const mapped = rows
+		.filter((r) => r.hasOverride)
+		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+	return [...mapped, ...rows.filter((r) => !r.hasOverride)];
+}
+
+/** The kind's mapping ids, highest first, with `id` moved one place; null at an end. */
+export function movedOrder(
+	mapped: ServiceIntegrationWithStatus[],
+	id: string,
+	by: -1 | 1,
+): string[] | null {
+	const ids = mapped.flatMap((r) => (r.overrideId ? [r.overrideId] : []));
+	const from = ids.indexOf(id);
+	const to = from + by;
+	if (from < 0 || to < 0 || to >= ids.length) return null;
+	[ids[from], ids[to]] = [ids[to], ids[from]];
+	return ids;
+}
+
+interface RowOrder {
+	index: number;
+	count: number;
+	pending: boolean;
+	onMove: (by: -1 | 1) => void;
+}
+
 /**
  * Connections (#848): what a run on this service reads before it starts, per
  * kind. A mapped row has its switch (`config.enabled`) and its deployment
- * and selector edited in place; with several deployments the matrix shows
- * the server's own answer for each. Row order and priority are not shown
- * yet: the service list carries no priority (stopped, see the PR).
+ * and selector edited in place, and its place in the kind: higher rows win.
+ * With several deployments the matrix shows the server's own answer for each.
  */
 export function ServiceTelemetrySection({
 	serviceId,
@@ -70,10 +101,28 @@ export function ServiceTelemetrySection({
 	integrations: ServiceIntegrationWithStatus[];
 }) {
 	const preview = useSourcesPreRun(serviceId);
-	const byKind = KINDS.map((k) => ({
-		kind: k,
-		rows: integrations.filter((i) => i.templateId === k),
-	})).filter((g) => g.rows.length > 0);
+	const reorder = useSetServiceIntegrationOrder();
+	const [moved, setMoved] = useState("");
+	const byKind = KINDS.map((k) => {
+		const rows = orderRows(integrations.filter((i) => i.templateId === k));
+		return { kind: k, rows, mapped: rows.filter((r) => r.hasOverride) };
+	}).filter((g) => g.rows.length > 0);
+	const move = (
+		mapped: ServiceIntegrationWithStatus[],
+		item: ServiceIntegrationWithStatus,
+		by: -1 | 1,
+	) => {
+		const overrideIds =
+			item.overrideId && movedOrder(mapped, item.overrideId, by);
+		if (!overrideIds) return;
+		reorder.mutate(
+			{ serviceId, overrideIds },
+			{
+				onSuccess: () =>
+					setMoved(`${item.connectionName} moved ${by < 0 ? "up" : "down"}`),
+			},
+		);
+	};
 	const deployments = preview.data?.deploymentsSeen ?? [];
 	return (
 		<RecordSection id="telemetry" title="Connections">
@@ -95,9 +144,17 @@ export function ServiceTelemetrySection({
 							<h3 className="mb-2 flex items-baseline gap-2 text-heading">
 								{kindLabel(g.kind)}
 								<span className="font-normal text-text-3 tabular-nums">
-									{g.rows.filter((r) => r.hasOverride).length || ""}
+									{g.mapped.length || ""}
 								</span>
 							</h3>
+							{g.mapped.length > 1 && (
+								<p
+									className="-mt-1 mb-2 text-meta text-text-2"
+									data-testid="mapping-order-hint"
+								>
+									Higher rows win.
+								</p>
+							)}
 							<ul className="raised flex flex-col divide-y divide-hairline rounded-pool px-4">
 								{g.rows.map((i) => (
 									<ConnectionRow
@@ -106,11 +163,24 @@ export function ServiceTelemetrySection({
 										item={i}
 										preview={preview.data}
 										deployments={deployments}
+										order={
+											g.mapped.length > 1 && i.hasOverride
+												? {
+														index: g.mapped.indexOf(i),
+														count: g.mapped.length,
+														pending: reorder.isPending,
+														onMove: (by) => move(g.mapped, i, by),
+													}
+												: undefined
+										}
 									/>
 								))}
 							</ul>
 						</div>
 					))}
+					<p className="sr-only" aria-live="polite">
+						{moved}
+					</p>
 				</div>
 			)}
 		</RecordSection>
@@ -133,11 +203,14 @@ function ConnectionRow({
 	item,
 	preview,
 	deployments,
+	order,
 }: {
 	serviceId: string;
 	item: ServiceIntegrationWithStatus;
 	preview: SourcesPreRun | undefined;
 	deployments: string[];
+	/** The row's place among its kind's mappings, when there are several. */
+	order?: RowOrder;
 }) {
 	const create = useCreateServiceIntegration();
 	const update = useUpdateServiceIntegration();
@@ -234,7 +307,8 @@ function ConnectionRow({
 				)}
 			</div>
 			{open && item.overrideId && (
-				<div id={moreId} className="mt-3 pl-11">
+				<div id={moreId} className="mt-3 flex flex-col gap-3 pl-11">
+					{order && <OrderControls name={item.connectionName} order={order} />}
 					<MappingEditor
 						item={item}
 						deployments={deployments}
@@ -253,6 +327,41 @@ function ConnectionRow({
 				</div>
 			)}
 		</li>
+	);
+}
+
+/** Move a mapping a place within its kind; each move saves the kind's order. */
+function OrderControls({ name, order }: { name: string; order: RowOrder }) {
+	const { index, count, pending, onMove } = order;
+	return (
+		<fieldset
+			className="flex flex-wrap items-center gap-2"
+			data-testid="mapping-order"
+		>
+			<legend className="sr-only">Order of {name}</legend>
+			<Button
+				type="button"
+				variant="secondary"
+				size="sm"
+				disabled={pending || index === 0}
+				onClick={() => onMove(-1)}
+				data-testid="mapping-move-up"
+			>
+				<ArrowUp aria-hidden />
+				Move up
+			</Button>
+			<Button
+				type="button"
+				variant="secondary"
+				size="sm"
+				disabled={pending || index === count - 1}
+				onClick={() => onMove(1)}
+				data-testid="mapping-move-down"
+			>
+				<ArrowDown aria-hidden />
+				Move down
+			</Button>
+		</fieldset>
 	);
 }
 
