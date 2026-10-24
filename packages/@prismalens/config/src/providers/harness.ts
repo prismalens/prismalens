@@ -174,6 +174,8 @@ export interface HarnessDescriptor {
 	providerKeys?: readonly string[];
 	/** The row passed the resume probe (scripts/acp-admission.ts R5), so a finished run can be continued with session/load (#747). */
 	resume: boolean;
+	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
+	toolsHint?: { text: string };
 }
 
 type JsonObject = Record<string, unknown>;
@@ -540,6 +542,10 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 		modelVia: "unsupported",
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		resume: true,
+		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
+		toolsHint: {
+			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
+		},
 	},
 	deepagents: {
 		id: "deepagents",

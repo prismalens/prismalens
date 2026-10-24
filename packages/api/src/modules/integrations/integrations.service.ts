@@ -691,12 +691,20 @@ export class IntegrationsService implements OnModuleInit {
 		const token = readHostToken(connection, this.credentialsService);
 		if (!token)
 			return { success: false, error: "This connection has no host or token." };
+		return this.probeHostToken(token, connection.id);
+	}
+
+	/** A git host token's Test, saved or a draft; only a saved one records its expiry. */
+	async probeHostToken(
+		token: HostToken,
+		connectionId?: string,
+	): Promise<TestConnectionResult> {
 		const { details, rejected, failures } = await this.lsRemoteMatching(token);
 		const api =
 			token.host === "github.com" ? await this.githubUser(token) : null;
-		if (api?.expiresAt !== undefined)
+		if (connectionId && api?.expiresAt !== undefined)
 			await this.prisma.connection.update({
-				where: { id: connection.id },
+				where: { id: connectionId },
 				data: { tokenExpiresAt: api.expiresAt },
 			});
 		if (api?.rejected) {

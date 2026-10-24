@@ -9,6 +9,7 @@ import { CredentialsService } from "./crypto/credentials.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
@@ -22,6 +23,7 @@ import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 		ConnectorResolverService,
 		GitCredentialService,
 		TelemetrySnapshotService,
+		SourcesService,
 	],
 	exports: [
 		IntegrationsService,

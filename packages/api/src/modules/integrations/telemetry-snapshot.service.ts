@@ -203,11 +203,11 @@ const KIND_LABEL: Record<QueryKind, string> = {
 	alertmanager: "Alertmanager",
 	loki: "Loki",
 };
-const envVars = (kind: QueryKind) => ({
+export const envVars = (kind: QueryKind) => ({
 	url: `${kind.toUpperCase()}_URL`,
 	token: `${kind.toUpperCase()}_TOKEN`,
 });
-const originOf = (url: string | undefined): string | null => {
+export const originOf = (url: string | undefined): string | null => {
 	if (!url) return null;
 	try {
 		return new URL(url).origin;

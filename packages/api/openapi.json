@@ -32840,6 +32840,17 @@
                             ],
                             "default": null
                           },
+                          "toolsHint": {
+                            "type": "object",
+                            "properties": {
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text"
+                            ]
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -33873,7 +33884,7 @@
     "/sources": {
       "get": {
         "operationId": "sources.overview",
-        "summary": "Every source category with its status, and what was detected",
+        "summary": "Every telemetry connection with its state, and the git hosts",
         "tags": [
           "sources"
         ],
@@ -33886,154 +33897,279 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "categories": {
+                    "sources": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "category": {
-                            "enum": [
-                              "metrics",
-                              "logs",
-                              "scm",
-                              "knowledge",
-                              "deploys"
-                            ],
+                          "connectionId": {
                             "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "address": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "status": {
+                            "type": "string"
+                          },
+                          "testedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "credential": {
                             "enum": [
-                              "connected",
-                              "unreachable",
-                              "not-configured",
-                              "removed"
+                              "stored",
+                              "env",
+                              "none"
                             ],
                             "type": "string"
                           },
-                          "sources": {
+                          "credentialKind": {
+                            "enum": [
+                              "none",
+                              "bearer",
+                              "basic",
+                              "header",
+                              "mtls"
+                            ],
+                            "type": "string"
+                          },
+                          "overridesEnv": {
+                            "type": "string"
+                          },
+                          "problem": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "credential-refused",
+                                  "cant-reach",
+                                  "needs-credential"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastErrorMessage": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "usedBy": {
                             "type": "array",
                             "items": {
                               "type": "object",
                               "properties": {
-                                "id": {
+                                "serviceId": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "serviceId",
+                                "name"
+                              ]
+                            }
+                          },
+                          "alsoInAlertIntake": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "connectionId",
+                          "label",
+                          "kind",
+                          "address",
+                          "status",
+                          "testedAt",
+                          "credential",
+                          "problem",
+                          "lastErrorMessage",
+                          "usedBy",
+                          "alsoInAlertIntake"
+                        ]
+                      }
+                    },
+                    "gitHosts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "host": {
+                            "type": "string"
+                          },
+                          "order": {
+                            "type": "array",
+                            "items": {
+                              "enum": [
+                                "pin",
+                                "stored",
+                                "env",
+                                "machine"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "stored": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "connectionId": {
                                   "type": "string"
                                 },
                                 "label": {
                                   "type": "string"
                                 },
-                                "kind": {
+                                "fingerprint": {
                                   "type": "string"
                                 },
                                 "status": {
-                                  "enum": [
-                                    "connected",
-                                    "unreachable",
-                                    "not-configured",
-                                    "removed"
-                                  ],
                                   "type": "string"
                                 },
-                                "count": {
-                                  "type": "integer",
-                                  "minimum": -9007199254740991,
-                                  "maximum": 9007199254740991
+                                "testedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 },
-                                "lastErrorAt": {
-                                  "type": "string"
-                                },
-                                "reason": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "description": {
-                                  "type": "string"
-                                },
-                                "toolCount": {
-                                  "type": "integer",
-                                  "minimum": -9007199254740991,
-                                  "maximum": 9007199254740991
-                                },
-                                "dropped": {
+                                "pinnedRepos": {
                                   "type": "array",
                                   "items": {
                                     "type": "object",
                                     "properties": {
-                                      "count": {
-                                        "type": "integer",
-                                        "minimum": -9007199254740991,
-                                        "maximum": 9007199254740991
+                                      "repositoryId": {
+                                        "type": "string"
                                       },
-                                      "why": {
-                                        "enum": [
-                                          "tool-count",
-                                          "schema-bytes",
-                                          "total-tools",
-                                          "total-bytes",
-                                          "received-bytes"
-                                        ],
+                                      "url": {
                                         "type": "string"
                                       }
                                     },
                                     "required": [
-                                      "count",
-                                      "why"
+                                      "repositoryId",
+                                      "url"
                                     ]
                                   }
                                 }
                               },
                               "required": [
-                                "id",
+                                "connectionId",
                                 "label",
-                                "kind",
-                                "status"
+                                "fingerprint",
+                                "status",
+                                "testedAt",
+                                "pinnedRepos"
                               ]
                             }
                           },
-                          "tools": {
+                          "env": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "variable": {
+                                    "type": "string"
+                                  },
+                                  "fingerprint": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "variable",
+                                  "fingerprint"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "machine": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "helper": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "helper"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ambiguous": {
+                            "type": "boolean"
+                          },
+                          "unpinnedRepos": {
                             "type": "array",
                             "items": {
-                              "type": "string"
+                              "type": "object",
+                              "properties": {
+                                "repositoryId": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "repositoryId",
+                                "url"
+                              ]
                             }
-                          },
-                          "howToConnect": {
-                            "type": "string"
                           }
                         },
                         "required": [
-                          "category",
-                          "status",
-                          "sources",
-                          "tools"
-                        ]
-                      }
-                    },
-                    "detected": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string"
-                          },
-                          "env": {
-                            "type": "string"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "type",
-                          "env"
+                          "host",
+                          "order",
+                          "stored",
+                          "env",
+                          "machine",
+                          "ambiguous",
+                          "unpinnedRepos"
                         ]
                       }
                     }
                   },
                   "required": [
-                    "categories",
-                    "detected"
+                    "sources",
+                    "gitHosts"
                   ]
                 }
               }
@@ -34045,7 +34181,7 @@
     "/sources/test": {
       "post": {
         "operationId": "sources.test",
-        "summary": "Run a source type's read-only probes against a draft",
+        "summary": "Probe a draft's address and credential without saving it",
         "tags": [
           "sources"
         ],
@@ -34097,6 +34233,9 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "saveUntested": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -34185,6 +34324,9 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "untested": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -34204,7 +34346,7 @@
     "/sources/connect": {
       "post": {
         "operationId": "sources.connect",
-        "summary": "Probe a draft and save it when every required probe passes",
+        "summary": "Save a draft: probed first unless saveUntested, and not saved when a required probe fails",
         "tags": [
           "sources"
         ],
@@ -34256,6 +34398,9 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "saveUntested": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -34275,7 +34420,14 @@
                   "type": "object",
                   "properties": {
                     "connectionId": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "report": {
                       "type": "object",
@@ -34350,6 +34502,9 @@
                               "type": "string"
                             }
                           }
+                        },
+                        "untested": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -34467,6 +34622,9 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "untested": {
+                      "type": "boolean"
                     }
                   },
                   "required": [

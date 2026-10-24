@@ -155,6 +155,8 @@ export const HarnessStatusSchema = z.object({
 		.default(null),
 	/** Under WSL, a Windows install on PATH that cannot run here (#673 w8). Absent from older APIs. */
 	windowsOnlyPath: z.string().nullable().default(null),
+	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
+	toolsHint: z.object({ text: z.string() }).optional(),
 	/**
 	 * Models to suggest (#639). `harness`: the list the harness itself offered at
 	 * its last readiness check, which wins. `catalogue`: prismalens's model
