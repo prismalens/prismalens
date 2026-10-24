@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: "23 3 * * *" # 03:23 UTC daily, on the default branch
   workflow_dispatch:
+  # A change to the probe or to this file runs the probe, so it is seen working before it merges.
+  pull_request:
+    paths:
+      - ".github/workflows/agent-releases.yml"
+      - "scripts/agent-probe.mjs"
+      - "scripts/agent-pins.json"
 
 permissions:
   contents: read
@@ -44,7 +50,7 @@ jobs:
 
   bump:
     name: Pin bump (${{ matrix.package }})
-    if: github.repository == 'prismalens/prismalens'
+    if: github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
