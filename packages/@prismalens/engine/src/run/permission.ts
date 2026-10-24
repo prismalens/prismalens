@@ -133,13 +133,12 @@ function allowed(
 	return { allow: true, optionId: allow.optionId, outcome: "allowed" };
 }
 
-/** The run's gateway as the policy sees it: confirmed loaded, and PrismaLens's own tool names. */
+/** The run's gateway as the policy sees it: connected, its server name, and PrismaLens's own tool names. */
 export interface GatewayAsks {
-	confirmed(): boolean;
+	connected(): boolean;
+	serverName: string;
 	tools: readonly string[];
 }
-
-const GATEWAY = "prismalens";
 
 /** The server and tool an ask names, from its title, `_meta` or `rawInput`; null when it names none. */
 function namedTool(
@@ -174,11 +173,11 @@ export function isGatewayToolCall(
 	req: PermissionRequest,
 	gateway: GatewayAsks | undefined,
 ): boolean {
-	if (!gateway?.confirmed() || !req.toolCall) return false;
+	if (!gateway?.connected() || !req.toolCall) return false;
 	const named = namedTool(req.toolCall);
 	return (
 		!!named &&
-		named.servers.every((s) => s === GATEWAY) &&
+		named.servers.every((s) => s === gateway.serverName) &&
 		gateway.tools.includes(named.tool)
 	);
 }

@@ -302,6 +302,8 @@ export const RunWorkspaceSchema = z.object({
 	layout: z.enum(["unmapped", "single", "multi"]),
 	cwd: z.string(),
 	repos: z.array(RunWorkspaceRepoSchema),
+	/** The run's MCP server name, reused by its follow-ups; absent on a run from before (#848). */
+	toolsServer: z.string().optional(),
 });
 export type RunWorkspace = z.infer<typeof RunWorkspaceSchema>;
 

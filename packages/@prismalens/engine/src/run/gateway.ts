@@ -6,12 +6,15 @@
  * entry in ACP `mcpServers`, or a run file for an agent that ignores that field.
  * Only HTTP is offered, since every agent that honours the field takes it.
  */
+import { randomBytes } from "node:crypto";
 import type { McpCapabilities, McpServer } from "@agentclientprotocol/sdk";
 
 /** Where the run's gateway answers, the bearer valid for this run only, and what it offers. */
 export interface GatewayEntry {
 	url: string;
 	token: string;
+	/** The run's random server name; agents name its tools `mcp__<serverName>__<tool>`. */
+	serverName: string;
 	/** The prompt's tools paragraph, built at lease without probes. */
 	promptLine: string;
 	/** PrismaLens's own harness tool names, the only ones the gateway serves. */
@@ -21,16 +24,17 @@ export interface GatewayEntry {
 	waitConfirmed(ms: number): Promise<boolean>;
 }
 
-/** Agents name a tool `mcp__<server>__<tool>`; the run's events show this name. */
-export const GATEWAY_SERVER_NAME = "prismalens";
+const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
-export const GATEWAY_NOT_LOADED =
-	"The agent did not load PrismaLens tools; a server named `prismalens` in your agent config can hide them.";
+/** Random per run and kept on it, so a server of the user's own never shares the name (#848). */
+export function newGatewayServerName(): string {
+	return `prismalens-${[...randomBytes(10)].map((b) => BASE32[b & 31]).join("")}`;
+}
 
 export function gatewayServer(entry: GatewayEntry): McpServer {
 	return {
 		type: "http",
-		name: GATEWAY_SERVER_NAME,
+		name: entry.serverName,
 		url: entry.url,
 		headers: [{ name: "Authorization", value: `Bearer ${entry.token}` }],
 	};

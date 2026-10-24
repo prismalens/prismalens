@@ -60,6 +60,7 @@ import {
 	conductRun,
 	HANDOFF_TRANSCRIPT_PATH,
 	type InvestigationSink,
+	newGatewayServerName,
 	type PermissionPolicy,
 	type ResolvedConnector,
 	type SteerPort,
@@ -234,7 +235,10 @@ async function runJobInternal(
 					return [];
 				})
 			: null;
-		const workspace = await resolveWorkspace(data, ports, io.signal);
+		const workspace = {
+			...(await resolveWorkspace(data, ports, io.signal)),
+			toolsServer: newGatewayServerName(),
+		};
 		await recordWorkspace(data, workspace, ports, context);
 		const multi = workspaceContext(workspace);
 		if (multi) context.workspace = multi;
@@ -271,13 +275,15 @@ async function runJobInternal(
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
-		const gateway = await ports.gateway?.lease(runId).catch((e) => {
-			logger.warn(
-				"Could not lease the MCP gateway; the run has no PrismaLens tools",
-				e,
-			);
-			return null;
-		});
+		const gateway = await ports.gateway
+			?.lease(runId, workspace.toolsServer)
+			.catch((e) => {
+				logger.warn(
+					"Could not lease the MCP gateway; the run has no PrismaLens tools",
+					e,
+				);
+				return null;
+			});
 		const usage = usageWriter(ports, runId);
 		const outcome = await conductRun(
 			{
@@ -565,14 +571,17 @@ async function runFollowUp(
 		)
 			? newer
 			: null;
-		const workspace = await rebuildWorkspace(
-			recorded,
-			id,
-			row.label,
-			ports,
-			io.signal,
-			handoff,
-		);
+		const workspace = {
+			...(await rebuildWorkspace(
+				recorded,
+				id,
+				row.label,
+				ports,
+				io.signal,
+				handoff,
+			)),
+			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
+		};
 
 		let incident: Record<string, unknown> | null = null;
 		try {
@@ -646,13 +655,15 @@ async function runFollowUp(
 			? pick.modelSource
 			: followUpModelSource(harness, model);
 		// A reloaded session takes an added model the same way the run did (#673 w57).
-		const gateway = await ports.gateway?.lease(id).catch((e) => {
-			logger.warn(
-				"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
-				e,
-			);
-			return null;
-		});
+		const gateway = await ports.gateway
+			?.lease(id, workspace.toolsServer)
+			.catch((e) => {
+				logger.warn(
+					"Could not lease the MCP gateway; the follow-up has no PrismaLens tools",
+					e,
+				);
+				return null;
+			});
 		const customModel = pick
 			? !!pick.customModel
 			: modelSource === "operator" &&

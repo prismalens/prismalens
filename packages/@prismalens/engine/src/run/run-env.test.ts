@@ -11,6 +11,7 @@ import { prepareRunEnv } from "./investigate.js";
 const gateway = {
 	url: "http://127.0.0.1:3001/api/mcp/runs/r1",
 	token: "run-bearer",
+	serverName: "prismalens-abcdefgh23",
 	promptLine: "",
 	tools: [],
 	confirmed: () => false,
@@ -24,8 +25,10 @@ function deepagentsRun() {
 }
 
 describe("the deepagents gateway run file (#848, OBJ-029)", () => {
-	it("holds the run's bearer", () => {
-		expect(readFileSync(deepagentsRun(), "utf8")).toContain("Bearer run-bearer");
+	it("holds the run's bearer under the run's own server name", () => {
+		const file = JSON.parse(readFileSync(deepagentsRun(), "utf8"));
+		expect(Object.keys(file.mcpServers)).toEqual(["prismalens-abcdefgh23"]);
+		expect(JSON.stringify(file)).toContain("Bearer run-bearer");
 	});
 
 	// Windows keeps no POSIX mode bits; Linux CI is where this check bites.

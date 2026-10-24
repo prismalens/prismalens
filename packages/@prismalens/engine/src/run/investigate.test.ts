@@ -89,6 +89,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 			gateway: {
 				url: "http://127.0.0.1:1/mcp",
 				token,
+				serverName: "prismalens-abcdefgh23",
 				promptLine: "",
 				tools: [],
 				confirmed: () => false,

@@ -65,7 +65,7 @@ export class GatewayService {
 	}
 
 	/** The run's gateway entry, or null when the api is not listening on a reachable address. */
-	async lease(runId: string): Promise<GatewayEntry | null> {
+	async lease(runId: string, serverName: string): Promise<GatewayEntry | null> {
 		const base = this.baseUrl();
 		if (!base) return null;
 		const token = this.tokens.mint(runId);
@@ -75,7 +75,8 @@ export class GatewayService {
 		return {
 			url: `${base}/api/mcp/runs/${runId}`,
 			token,
-			promptLine: gatewayPromptLine(tools),
+			serverName,
+			promptLine: gatewayPromptLine(tools, serverName),
 			tools,
 			confirmed: () => state.confirmed,
 			waitConfirmed: (ms) =>
@@ -323,9 +324,12 @@ export class GatewayService {
 }
 
 /** The prompt's tools paragraph (#848): PrismaLens's own tools, and that data access is the agent's own. */
-export function gatewayPromptLine(tools: readonly string[]): string {
+export function gatewayPromptLine(
+	tools: readonly string[],
+	serverName: string,
+): string {
 	return [
-		`PrismaLens tools (MCP server \`prismalens\`, read-only): ${tools.map((t) => `\`${t}\``).join(", ")}.`,
+		`PrismaLens tools (MCP server \`${serverName}\`, read-only): ${tools.map((t) => `\`${t}\``).join(", ")}.`,
 		"For metrics, logs and other live data, use the tools your own setup gives you.",
 	].join("\n");
 }

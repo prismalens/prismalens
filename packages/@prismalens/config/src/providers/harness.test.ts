@@ -132,14 +132,14 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(d.gatewayDelivery).toBe("mcp-config-file");
 		expect(d.acpArgs(runEnv)).toEqual(["--acp"]);
 		expect(d.configFiles?.(runEnv)).toEqual({});
-		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok" };
+		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok", name: "prismalens-abcdefgh23" };
 		const args = d.acpArgs({ ...runEnv, gateway });
 		expect(args.slice(0, 2)).toEqual(["--acp", "--mcp-config"]);
 		expect(args[2]).toContain(GATEWAY_RUN_FILE);
 		expect(args).not.toContain("--trust-project-mcp");
 		expect(JSON.parse(d.configFiles?.({ ...runEnv, gateway })[GATEWAY_RUN_FILE] ?? "{}")).toEqual({
 			mcpServers: {
-				prismalens: { type: "http", url: gateway.url, headers: { Authorization: "Bearer tok" } },
+				"prismalens-abcdefgh23": { type: "http", url: gateway.url, headers: { Authorization: "Bearer tok" } },
 			},
 		});
 	});

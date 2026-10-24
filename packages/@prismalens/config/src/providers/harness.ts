@@ -99,8 +99,8 @@ export interface HarnessRunEnv {
 	companionPath?: string;
 	/** The run starts the adapter PrismaLens ships, not one on PATH (#818). */
 	shipped?: boolean;
-	/** PrismaLens's MCP gateway, set for a row with `gatewayDelivery` (#848). */
-	gateway?: { url: string; token: string };
+	/** PrismaLens's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
+	gateway?: { url: string; token: string; name: string };
 }
 
 /** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
@@ -559,7 +559,7 @@ export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> = {
 				? {
 						[GATEWAY_RUN_FILE]: JSON.stringify({
 							mcpServers: {
-								prismalens: {
+								[env.gateway.name]: {
 									type: "http",
 									url: env.gateway.url,
 									headers: { Authorization: `Bearer ${env.gateway.token}` },

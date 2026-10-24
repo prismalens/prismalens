@@ -570,18 +570,20 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		why: "card",
 		outcome: "denied" as const,
 	}));
-	const gateway = (confirmed: boolean) => ({
-		confirmed: () => confirmed,
-		tools: ["sources_list", "prometheus_query"],
+	const NAME = "prismalens-abcdefgh23";
+	const gateway = (connected: boolean) => ({
+		connected: () => connected,
+		serverName: NAME,
+		tools: ["sources_list", "prometheus_query", "incident_get"],
 	});
 	/** Claude Code's ask names the server in `_meta` and qualifies the title. */
-	const claudeAsk = (tool: string): PermissionRequest => ({
+	const claudeAsk = (tool: string, server = NAME): PermissionRequest => ({
 		options,
 		toolCall: {
 			toolCallId: "t1",
-			title: `mcp__prismalens__${tool}`,
+			title: `mcp__${server}__${tool}`,
 			kind: "other",
-			_meta: { claudeCode: { mcpServer: { name: "prismalens" }, toolName: `mcp__prismalens__${tool}` } },
+			_meta: { claudeCode: { mcpServer: { name: server }, toolName: `mcp__${server}__${tool}` } },
 		},
 	});
 
@@ -598,12 +600,12 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 	});
 
 	it("checks confirmation at ask time, not later", async () => {
-		let confirmed = false;
+		let connected = false;
 		const policy = levelPolicy("supervised", { policy: card }, {
-			gateway: { confirmed: () => confirmed, tools: ["sources_list"] },
+			gateway: { connected: () => connected, serverName: NAME, tools: ["sources_list"] },
 		});
 		const verdict = await policy(claudeAsk("sources_list"), ctx);
-		confirmed = true;
+		connected = true;
 		expect(verdict).toMatchObject({ allow: false });
 	});
 
@@ -626,7 +628,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		const lying: PermissionRequest = {
 			options,
 			toolCall: {
-				title: "mcp__prismalens__sources_list",
+				title: `mcp__${NAME}__sources_list`,
 				kind: "other",
 				_meta: { claudeCode: { mcpServer: { name: "evil" } } },
 			},
@@ -639,7 +641,7 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		const policy = levelPolicy("supervised", { policy: card }, { gateway: gateway(true), unattended: true });
 		const codex: PermissionRequest = {
 			options,
-			toolCall: { toolCallId: "c1", title: "mcp.prismalens.sources_list", kind: "execute" },
+			toolCall: { toolCallId: "c1", title: `mcp.${NAME}.sources_list`, kind: "execute" },
 		};
 		expect(await policy(codex, ctx)).toMatchObject({ allow: true });
 	});

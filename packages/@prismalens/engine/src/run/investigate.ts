@@ -54,16 +54,13 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
-import {
-	GATEWAY_SERVER_NAME,
-	type GatewayEntry,
-	gatewayOffer,
-} from "./gateway.js";
+import { type GatewayEntry, gatewayOffer } from "./gateway.js";
 import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	askWindow,
 	denyAllPolicy,
+	type GatewayAsks,
 	levelPolicy,
 	newAskId,
 	type PermissionPolicy,
@@ -405,7 +402,13 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		...(companionPath ? { companionPath } : {}),
 		...(launch.shipped ? { shipped: true } : {}),
 		...(opts.gateway && descriptor.gatewayDelivery
-			? { gateway: { url: opts.gateway.url, token: opts.gateway.token } }
+			? {
+					gateway: {
+						url: opts.gateway.url,
+						token: opts.gateway.token,
+						name: opts.gateway.serverName,
+					},
+				}
 			: {}),
 	};
 	const overlay = opts.accessLevel
@@ -434,6 +437,14 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		},
 		runEnv,
 		launch,
+	};
+}
+
+function gatewayAsks(entry: GatewayEntry): GatewayAsks {
+	return {
+		connected: () => entry.confirmed(),
+		serverName: entry.serverName,
+		tools: entry.tools,
 	};
 }
 
@@ -495,7 +506,7 @@ export async function* runInvestigation(
 			{ policy: opts.permission ?? denyAllPolicy },
 			{
 				unattended: !!opts.unattended,
-				...(opts.gateway ? { gateway: opts.gateway } : {}),
+				...(opts.gateway ? { gateway: gatewayAsks(opts.gateway) } : {}),
 			},
 		),
 		// An ask never outlives the launcher's kill: its window ends a minute before (#673 w21).
@@ -689,8 +700,8 @@ export async function* runInvestigation(
 			opts.gateway && offer?.offered()
 				? await opts.gateway.waitConfirmed(GATEWAY_CONFIRM_MS)
 				: false;
-		if (offer)
-			yield adapter.sessionConfig("tools", GATEWAY_SERVER_NAME, confirmed);
+		if (offer && opts.gateway)
+			yield adapter.sessionConfig("tools", opts.gateway.serverName, confirmed);
 		const toolsLine =
 			confirmed && opts.gateway ? `\n\n${opts.gateway.promptLine}` : "";
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).

@@ -12,6 +12,7 @@ function entry(confirmed = false): GatewayEntry {
 	return {
 		url: "http://127.0.0.1:3001/api/mcp/runs/r1",
 		token: "t0k",
+		serverName: "prismalens-abcdefgh23",
 		promptLine: "",
 		tools: ["sources_list"],
 		confirmed: () => confirmed,
@@ -79,7 +80,7 @@ describe("the gateway in session/new mcpServers (#848)", () => {
 		expect(mcpServers).toEqual([
 			{
 				type: "http",
-				name: "prismalens",
+				name: "prismalens-abcdefgh23",
 				url: "http://127.0.0.1:3001/api/mcp/runs/r1",
 				headers: [{ name: "Authorization", value: "Bearer t0k" }],
 			},

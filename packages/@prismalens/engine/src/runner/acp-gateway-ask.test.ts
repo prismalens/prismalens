@@ -15,7 +15,7 @@ const OPTIONS = [
 
 /**
  * Replays codex-acp's shapes (1.13.1, 2.2.2): during the turn it announces the call as
- * `tool_call` with title `mcp.prismalens.<tool>`, then asks with the id alone.
+ * `tool_call` with title `mcp.<server>.<tool>`, then asks with the id alone.
  */
 function codex(announce: string | null) {
 	const answers: unknown[] = [];
@@ -93,19 +93,20 @@ async function ask(announce: string | null, policy: PermissionPolicy) {
 	return answers[0];
 }
 
+const NAME = "prismalens-abcdefgh23";
 const unattended = levelPolicy(
 	"full-access",
 	{ policy: async () => ({ allow: false, why: "card", outcome: "denied" }) },
 	{
 		unattended: true,
-		gateway: { confirmed: () => true, tools: ["sources_list"] },
+		gateway: { connected: () => true, serverName: NAME, tools: ["sources_list"] },
 	},
 );
 const selected = (optionId: string) => ({ outcome: { outcome: "selected", optionId } });
 
 describe("an ID-only ask matched to the agent's own tool_call (#848, OBJ-011)", () => {
 	it("allows a PrismaLens read announced earlier under the same id, unattended", async () => {
-		expect(await ask("mcp.prismalens.sources_list", unattended)).toEqual(selected("allow"));
+		expect(await ask(`mcp.${NAME}.sources_list`, unattended)).toEqual(selected("allow"));
 	});
 
 	it("denies the same ask with no earlier announcement", async () => {
@@ -113,7 +114,7 @@ describe("an ID-only ask matched to the agent's own tool_call (#848, OBJ-011)", 
 	});
 
 	it("denies a proxied tool announced on our server", async () => {
-		expect(await ask("mcp.prismalens.n8n_prod__list_workflows", unattended)).toEqual(
+		expect(await ask(`mcp.${NAME}.n8n_prod__list_workflows`, unattended)).toEqual(
 			selected("reject"),
 		);
 	});

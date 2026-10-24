@@ -8,6 +8,7 @@ import { GatewayService } from "./gateway.service.js";
 
 const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";
+const NAME = "prismalens-abcdefgh23";
 
 const EMPTY = {
 	connection: { findMany: async () => [] },
@@ -65,26 +66,26 @@ async function body(res: Response): Promise<Record<string, unknown>> {
 
 describe("gateway bearer (#848)", () => {
 	it("leases a loopback URL on the run's own path", async () => {
-		const entry = await gateway().lease(RUN_A);
+		const entry = await gateway().lease(RUN_A, NAME);
 		expect(entry?.url).toBe(`http://127.0.0.1:3001/api/mcp/runs/${RUN_A}`);
 		expect(entry?.token.length).toBeGreaterThan(30);
 	});
 
 	it("keeps an IPv6 loopback listener reachable at [::1]", async () => {
-		const entry = await gateway(EMPTY, "::1").lease(RUN_A);
+		const entry = await gateway(EMPTY, "::1").lease(RUN_A, NAME);
 		expect(entry?.url).toBe(`http://[::1]:3001/api/mcp/runs/${RUN_A}`);
 	});
 
 	it("401 with no bearer", async () => {
 		const g = gateway();
-		await g.lease(RUN_A);
+		await g.lease(RUN_A, NAME);
 		const res = await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize));
 		expect(res.status).toBe(401);
 	});
 
 	it("401 with a wrong bearer", async () => {
 		const g = gateway();
-		await g.lease(RUN_A);
+		await g.lease(RUN_A, NAME);
 		const res = await g.serve(
 			RUN_A,
 			rpc(RUN_A, "initialize", initialize, "not-the-token"),
@@ -94,8 +95,8 @@ describe("gateway bearer (#848)", () => {
 
 	it("401 for run A's token on run B's path", async () => {
 		const g = gateway();
-		const a = await g.lease(RUN_A);
-		await g.lease(RUN_B);
+		const a = await g.lease(RUN_A, NAME);
+		await g.lease(RUN_B, NAME);
 		const res = await g.serve(
 			RUN_B,
 			rpc(RUN_B, "initialize", initialize, a?.token),
@@ -105,7 +106,7 @@ describe("gateway bearer (#848)", () => {
 
 	it("401 for a token after its run ended", async () => {
 		const g = gateway();
-		const a = await g.lease(RUN_A);
+		const a = await g.lease(RUN_A, NAME);
 		const ok = await g.serve(
 			RUN_A,
 			rpc(RUN_A, "initialize", initialize, a?.token),
@@ -121,8 +122,8 @@ describe("gateway bearer (#848)", () => {
 
 	it("a new lease (a follow-up's session/load) retires the old token", async () => {
 		const g = gateway();
-		const first = await g.lease(RUN_A);
-		const second = await g.lease(RUN_A);
+		const first = await g.lease(RUN_A, NAME);
+		const second = await g.lease(RUN_A, NAME);
 		expect(
 			(await g.serve(RUN_A, rpc(RUN_A, "initialize", initialize, first?.token)))
 				.status,
@@ -214,7 +215,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			incident,
 			setting: { findUnique: async () => null },
 		});
-		const entry = await g.lease(RUN_A);
+		const entry = await g.lease(RUN_A, NAME);
 		const res = await g.serve(RUN_A, rpc(RUN_A, method, params, entry?.token));
 		expect(res.status).toBe(200);
 		return body(res);
@@ -239,7 +240,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	});
 
 	it("the lease names the same tools, and the prompt line sends data access to the agent's own tools", async () => {
-		const entry = await gateway().lease(RUN_A);
+		const entry = await gateway().lease(RUN_A, NAME);
 		expect([...(entry?.tools ?? [])].sort()).toEqual([
 			"incident_get",
 			"investigations_search",
