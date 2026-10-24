@@ -62,6 +62,31 @@ describe("GitHubDeploymentsSegment (#854)", () => {
 		]);
 	});
 
+	it("skips a deploy deleted since the list and keeps the rest; any other status failure throws", async () => {
+		const list = [3, 1].map((id) => ({
+			id,
+			sha: SHA,
+			ref: "v1.4.0",
+			environment: "production",
+			created_at: "2026-10-01T09:59:00Z",
+			creator: null,
+		}));
+		const answering =
+			(failed: number): AuthenticatedRequestFn =>
+			async (_m, path) => {
+				if (!path.includes("/statuses")) return Response.json(list);
+				if (path.includes("/3/")) return new Response(null, { status: failed });
+				return Response.json([{ state: "success", created_at: "2026-10-01T10:00:00Z" }]);
+			};
+		const segment = new GitHubDeploymentsSegment();
+		const events = await segment.listDeploymentEvents(answering(404), "acme/web", WINDOW);
+		expect(events).toHaveLength(1);
+		for (const status of [401, 403, 429, 500])
+			await expect(
+				segment.listDeploymentEvents(answering(status), "acme/web", WINDOW),
+			).rejects.toThrow(`HTTP ${status}`);
+	});
+
 	it("keeps a superseded deploy by its earlier successful status", async () => {
 		const request: AuthenticatedRequestFn = async (_m, path) =>
 			path.includes("/statuses")

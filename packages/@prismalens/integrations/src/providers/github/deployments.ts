@@ -40,11 +40,25 @@ const STATUS: Record<string, DeploymentEvent["status"] | undefined> = {
 const SHA = /^[0-9a-f]{40}$/i;
 const VERSIONISH = /^v?\d/;
 
+/** Deleted since it was listed; any other failure (auth, rate limit, 5xx) still throws. */
+const GONE = new Set([404, 410]);
+
 async function get<T>(
 	request: AuthenticatedRequestFn,
 	path: string,
-): Promise<T> {
+): Promise<T>;
+async function get<T>(
+	request: AuthenticatedRequestFn,
+	path: string,
+	goneIsNull: true,
+): Promise<T | null>;
+async function get<T>(
+	request: AuthenticatedRequestFn,
+	path: string,
+	goneIsNull = false,
+): Promise<T | null> {
 	const response = await request("GET", path);
+	if (goneIsNull && GONE.has(response.status)) return null;
 	if (!response.ok)
 		throw providerHttpError({
 			operation: "GitHub Deployments request",
@@ -89,7 +103,9 @@ export class GitHubDeploymentsSegment implements DeploymentEventSource {
 			const statuses = await get<GitHubDeploymentStatus[]>(
 				request,
 				`${base}/${d.id}/statuses?per_page=10`,
+				true,
 			);
+			if (!statuses) continue;
 			const latest = statuses.find((s) => s.state !== "inactive");
 			const status = latest ? STATUS[latest.state] : undefined;
 			if (!latest || !status) continue;
