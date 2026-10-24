@@ -38,7 +38,7 @@ test.describe("Alert sources, a pulled-from row (#781 review)", () => {
 		const am = await readyServer();
 		const name = `Row check ${Date.now()}`;
 		try {
-			await page.goto("/settings?tab=sources");
+			await page.goto("/settings?tab=alert-intake");
 			await page.getByTestId("add-source").click();
 			const dialog = page.getByTestId("add-source-dialog");
 			await dialog.getByTestId("source-kind-alertmanager").click();

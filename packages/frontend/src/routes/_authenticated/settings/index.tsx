@@ -4,17 +4,21 @@ import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import {
 	AboutSettings,
-	DangerZoneSettings,
 	HarnessSettings,
-	IntegrationsSettings,
+	IntegrationsTab,
 	TelemetrySettings,
 } from "@/components/settings";
 import { AlertSources } from "@/components/settings/AlertSources";
+import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DevicesTab } from "@/components/settings/DevicesTab";
+import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import {
+	FIRST_SETTINGS_TAB,
+	SETTINGS_SECTIONS,
 	SettingsFrame,
-	useSettingsSections,
+	type SettingsTab,
 } from "@/components/settings/SettingsFrame";
+import { SlackDeliverySettings } from "@/components/settings/SlackDeliverySettings";
 import { Pool, Row } from "@/components/shared/Row";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
@@ -24,21 +28,16 @@ export const Route = createFileRoute("/_authenticated/settings/")({
 	component: SettingsPage,
 });
 
-const SECTIONS = {
-	harness: {
-		title: "Agent",
-		intro:
-			"The coding agent a run rents to read the code and the telemetry. It signs in on its own; PrismaLens never holds its login.",
+const SECTIONS: Record<SettingsTab, { title: string; intro?: string }> = {
+	general: { title: "General" },
+	appearance: { title: "Appearance" },
+	agent: { title: "Agent" },
+	"alert-intake": {
+		title: "Alert intake",
+		intro: "What starts an investigation.",
 	},
-	sources: {
-		title: "Alert sources",
-		intro:
-			"Where alerts come from. Alertmanager can push to the webhook, or PrismaLens pulls from a URL.",
-	},
-	integrations: {
-		title: "Integrations",
-		intro: "Where the report goes, and which git host holds the code.",
-	},
+	sources: { title: "Sources", intro: "What a run reads before it starts." },
+	notifications: { title: "Notifications", intro: "Where findings go." },
 	devices: {
 		title: "Devices",
 		intro: "Phones and computers paired with this instance.",
@@ -48,20 +47,12 @@ const SECTIONS = {
 		intro:
 			"Counts that show which features get used. On unless you turn it off.",
 	},
-	about: {
-		title: "About",
-		intro:
-			"Which version this is, how it was installed, and whether a newer release is out.",
-	},
-	danger: {
-		title: "Danger zone",
-		intro: "Reset the records, or everything.",
-	},
-} as const;
+	about: { title: "About" },
+};
 
 function SettingsPage() {
 	const { tab: picked } = useSearch({ from: "/_authenticated/settings" });
-	const tab = picked ?? "harness";
+	const tab = picked ?? FIRST_SETTINGS_TAB;
 	const phone = useMediaQuery(PHONE);
 	const queryClient = useQueryClient();
 
@@ -77,23 +68,24 @@ function SettingsPage() {
 	const section = SECTIONS[tab];
 	return (
 		<SettingsFrame section={tab} title={section.title} intro={section.intro}>
-			{tab === "harness" && <HarnessSettings />}
-			{tab === "integrations" && <IntegrationsSettings />}
-			{tab === "sources" && <AlertSources />}
+			{tab === "general" && <GeneralSettings />}
+			{tab === "appearance" && <AppearanceSettings />}
+			{tab === "agent" && <HarnessSettings />}
+			{tab === "alert-intake" && <AlertSources />}
+			{tab === "sources" && <IntegrationsTab />}
+			{tab === "notifications" && <SlackDeliverySettings />}
 			{tab === "devices" && <DevicesTab />}
 			{tab === "usage" && <TelemetrySettings />}
 			{tab === "about" && <AboutSettings />}
-			{tab === "danger" && <DangerZoneSettings />}
 		</SettingsFrame>
 	);
 }
 
 /**
- * The phone's landing: each section with its line, in one pool. The strip's
- * Settings door (Sidebar.tsx) returns a section here.
+ * The phone's landing: each page in one pool, flat (#848). The strip's
+ * Settings door (Sidebar.tsx) returns a page here.
  */
 function SectionList() {
-	const sections = useSettingsSections();
 	return (
 		<div
 			className="fixed inset-x-0 bottom-0 top-(--frame-top) flex flex-col bg-canvas"
@@ -106,10 +98,10 @@ function SectionList() {
 				data-testid="settings-section-list"
 			>
 				<Pool>
-					{sections.map((s) => (
+					{SETTINGS_SECTIONS.map((s) => (
 						<Row
 							key={s.tab}
-							className="relative"
+							className="relative min-h-14"
 							label={
 								<Link
 									to="/settings"
@@ -120,7 +112,6 @@ function SectionList() {
 									{s.label}
 								</Link>
 							}
-							meta={s.line || "\u00a0"}
 							trailing={<ChevronRight className="size-4 text-text-3" />}
 						/>
 					))}

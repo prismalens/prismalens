@@ -20,7 +20,7 @@ export type DetailLink =
 	/** In-page: opens the hypotheses card's larger preview. */
 	| { kind: "hypotheses" }
 	| { kind: "run"; id: string }
-	| { kind: "settings"; section: "agent" | "integrations" };
+	| { kind: "settings"; section: "agent" | "sources" };
 
 export interface DetailRow {
 	label?: string;
@@ -303,7 +303,7 @@ function reportSections(
 				...report.coverage.notQueried.map((text) => ({ text })),
 				{
 					text: "A source the agent could not reach can be connected in Settings.",
-					link: { kind: "settings", section: "integrations" },
+					link: { kind: "settings", section: "sources" },
 					action: "Connect a source",
 				},
 			],

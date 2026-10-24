@@ -35,7 +35,7 @@ export function DangerZoneSettings() {
 
 	return (
 		<>
-			<SettingGroup title="Records" testId="danger-zone">
+			<SettingGroup title="Danger zone" testId="danger-zone">
 				<Pool>
 					<SettingRow
 						label="Reset all data"

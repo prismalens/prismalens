@@ -707,7 +707,7 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 		await visit(page, `/incidents/${inc.id}`);
 		await expect(page.getByTestId("impact-no-source")).toBeVisible();
 		await expect(page.getByTestId("impact-connect")).toBeVisible();
-		// Prometheus is added under Alert sources; Integrations filters it out.
+		// Prometheus is added under Sources (#848).
 		await expect(page.getByTestId("impact-connect")).toHaveAttribute(
 			"href",
 			"/settings?tab=sources",

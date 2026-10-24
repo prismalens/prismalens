@@ -487,7 +487,7 @@ function LeaveLink({
 	return (
 		<Link
 			to="/settings"
-			search={{ tab: link.section === "agent" ? "harness" : "integrations" }}
+			search={{ tab: link.section }}
 			className={cls}
 			data-testid="detail-link"
 		>

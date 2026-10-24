@@ -429,7 +429,7 @@ export class GitCredentialService {
 			if (mode === "use" && expired(only))
 				throw new GitFailure(
 					"token-expired",
-					`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Integrations.`,
+					`Token "${only.label}" expired on ${formatDay(only.tokenExpiresAt as Date)}. Replace it in Settings → Sources.`,
 					"replace-token",
 				);
 			return withLegacy({

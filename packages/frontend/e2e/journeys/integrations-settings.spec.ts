@@ -7,17 +7,17 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 	test("navigates settings tabs and integration configuration form", async ({
 		page,
 	}) => {
-		// 1. Navigate to /settings and assert Integrations tab button is visible
+		// 1. Navigate to /settings; git hosts live in Sources (#848)
 		await page.goto("/settings");
 		await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({
 			timeout: 15_000,
 		});
-		await expect(page.getByTestId("settings-nav-integrations")).toBeVisible({
+		await expect(page.getByTestId("settings-nav-sources")).toBeVisible({
 			timeout: 15_000,
 		});
 
-		// Integrations holds git hosts and delivery; the webhook moved to Alert sources.
-		await page.getByTestId("settings-nav-integrations").click();
+		// Sources holds git hosts; the webhook lives in Alert intake.
+		await page.getByTestId("settings-nav-sources").click();
 		await expect(
 			page.getByRole("heading", { name: "Git hosts", level: 3 }),
 		).toBeVisible({ timeout: 15_000 });
@@ -35,7 +35,7 @@ test.describe("C2 — Integrations, connections & system settings journey", () =
 		await expect(token).toHaveAccessibleDescription("Token is required");
 		await page.keyboard.press("Escape");
 		await expect(dialog).toHaveCount(0);
-		await page.getByTestId("settings-nav-sources").click();
+		await page.getByTestId("settings-nav-alert-intake").click();
 		await expect(
 			page.getByRole("heading", { name: "Webhook", level: 3 }),
 		).toBeVisible({ timeout: 15_000 });

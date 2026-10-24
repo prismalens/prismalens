@@ -24,7 +24,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
-import { DEFAULT_THEME, THEME_COOKIE } from "@/lib/theme";
+import { DEFAULT_THEME, SYSTEM_DARK, THEME_COOKIE } from "@/lib/theme";
 import { queryClient, type RouterContext } from "@/router";
 import appCss from "../app.css?url";
 
@@ -41,10 +41,10 @@ import appCss from "../app.css?url";
 const PRE_PAINT = `(function(){try{
 var g=function(n){var m=document.cookie.match(new RegExp('(^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[2]):null;};
 var e=document.documentElement;
-var t=g(${JSON.stringify(THEME_COOKIE)})==='light'?'light':${JSON.stringify(DEFAULT_THEME)};
+var c=g(${JSON.stringify(THEME_COOKIE)});var t=c==='light'?'light':c==='system'?(window.matchMedia(${JSON.stringify(SYSTEM_DARK)}).matches?'dark':'light'):${JSON.stringify(DEFAULT_THEME)};
 e.classList.remove('light','dark');e.classList.add(t);
 var d=window.prismalensDesktop;if(d)e.setAttribute('data-desktop',d.platform);
-try{if(JSON.parse(localStorage.getItem('pl.layout')||'{}').sidebarFolded){e.setAttribute('data-sidebar-folded','');}}catch(_){}
+try{var l=JSON.parse(localStorage.getItem('pl.layout')||'{}');var b=l.sidebar||(l.sidebarFolded?'folded':'full');if(b==='folded')e.setAttribute('data-sidebar-folded','');if(b==='hidden')e.setAttribute('data-sidebar-hidden','');}catch(_){}
 if(location.pathname.indexOf('/settings')===0)e.setAttribute('data-settings','');
 }catch(_){}})();`;
 

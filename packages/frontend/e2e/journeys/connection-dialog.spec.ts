@@ -15,7 +15,7 @@ test.describe("Add connection dialog (walk f13, #776 review)", () => {
 		const { id } = (await created.json()) as { id: string };
 
 		try {
-			await page.goto("/settings?tab=integrations");
+			await page.goto("/settings?tab=sources");
 			await expect(
 				page.getByTestId("integration-row").filter({ hasText: "Dialog check" }),
 			).toHaveCount(0);

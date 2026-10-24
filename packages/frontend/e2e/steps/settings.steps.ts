@@ -164,13 +164,15 @@ Then(
 );
 
 const SECTIONS = [
-	"harness",
+	"general",
+	"appearance",
+	"agent",
+	"alert-intake",
 	"sources",
-	"integrations",
+	"notifications",
 	"devices",
 	"usage",
 	"about",
-	"danger",
 ];
 
 When("I open each Settings section in turn", async () => {
@@ -237,7 +239,7 @@ const webhookToken = () =>
 	).trim();
 
 When("I open Settings, Alert sources", async ({ page }) => {
-	await page.goto("/settings?tab=sources");
+	await page.goto("/settings?tab=alert-intake");
 	await expect(page.getByTestId("sources-webhook")).toBeVisible();
 });
 
@@ -454,7 +456,7 @@ async function check(page: Page, id: string) {
 }
 
 async function openPicker(page: Page) {
-	await page.goto("/settings?tab=harness");
+	await page.goto("/settings?tab=agent");
 	await page.getByTestId("harness-run-row").getByTestId("agent-picker").click();
 	await expect(page.getByTestId("agent-picker-list")).toBeVisible();
 }

@@ -65,9 +65,25 @@
 	}
 }
 
-/* `[` folds the bar to its icon rail at any width. */
+/* General can fold the bar to its icon rail at any width. */
 :root[data-sidebar-folded] {
 	--sidebar-w: var(--rail-w);
+}
+
+/* `[` hides it completely; each page bar makes room for Show (#848). */
+@media (min-width: 768px) {
+	:root[data-sidebar-hidden] {
+		--sidebar-w: 0px;
+	}
+	:root[data-sidebar-hidden]:not([data-settings])
+		:is(
+			[data-testid="page-header"],
+			[data-testid="incident-header"],
+			[data-testid="alert-band"],
+			[data-testid="service-band"]
+		) {
+		padding-left: calc(var(--header-h) + 0.5rem);
+	}
 }
 
 /* Settings' bar keeps its labels at every width beside the page (the mock's `.side.full`). */
