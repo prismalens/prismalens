@@ -57,6 +57,10 @@ jobs:
             pin-path: scripts/agent-pins.json
             pin-key: '["pins","@anthropic-ai/claude-code"]'
             probe: node scripts/agent-probe.mjs --agent claude-code --version "$(node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['@agentclientprotocol/claude-agent-acp']")" --companion "$PIN_VERSION"
+          - package: "@openai/codex"
+            pin-path: scripts/agent-pins.json
+            pin-key: '["pins","@openai/codex"]'
+            probe: node scripts/agent-probe.mjs --agent codex --version "$(node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['@agentclientprotocol/codex-acp']")" --companion "$PIN_VERSION"
           - package: "@agentclientprotocol/claude-agent-acp"
             pin-path: packages/@prismalens/agent-adapters/package.json
             pin-key: ""

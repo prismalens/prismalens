@@ -338,10 +338,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: pnpm
+
+      # The chain script needs only the root package's own dependencies (cross-spawn, semver).
+      - name: Install the script's dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
 
       - uses: actions/download-artifact@v8
         with:
@@ -431,10 +439,10 @@ jobs:
           - harness: claude-code
             pin: "@anthropic-ai/claude-code"
             binary: claude
-          # codex-acp ships with its own codex; the adapter pin is in agent-adapters.
+          # The adapter is the shipped one (its pin is in agent-adapters); it runs the codex on PATH.
           - harness: codex
-            pin: ""
-            binary: ""
+            pin: "@openai/codex"
+            binary: codex
     steps:
       - uses: actions/checkout@v7
         with:

@@ -123,7 +123,7 @@ Two jobs, neither required, neither spending a model call (#914):
 | Job | What it does | Cadence |
 | --- | --- | --- |
 | `probe` | installs each agent row at its latest release and sends `initialize` and `session/new` unauthenticated; the job summary tables the answer next to the row's `tested` | nightly, and dispatch |
-| `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code` and the two adapters: once a release has been public 3 days, one pull request per package moves its pin and carries the probe's result | nightly, and dispatch |
+| `bump` | calls `prismalens/gh-workflows` `pin-bump.yml` for `opencode-ai`, `@anthropic-ai/claude-code`, `@openai/codex` and the two adapters: once a release has been public 3 days, one pull request per package moves its pin and carries the probe's result | nightly, and dispatch |
 
 The bump PR runs ordinary CI: scripted-model admission and the replay. It stays red on
 `harness-pins.test.ts` until the operator adds a recording (`pnpm record:agent`, CONTRIBUTING.md)

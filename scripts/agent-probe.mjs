@@ -49,6 +49,16 @@ export const ROWS = [
 	},
 ];
 
+/** The CLI an adapter drives, and the env var that names it. */
+const COMPANIONS = {
+	"claude-code": {
+		npm: "@anthropic-ai/claude-code",
+		bin: "claude",
+		env: "CLAUDE_CODE_EXECUTABLE",
+	},
+	codex: { npm: "@openai/codex", bin: "codex", env: "CODEX_PATH" },
+};
+
 const run = (file, args, options = {}) =>
 	execFileSync(file, args, {
 		encoding: "utf8",
@@ -66,8 +76,8 @@ export function latestOf(pkg) {
 function install(row, version, dir, companion) {
 	if (row.npm) {
 		const specs = [`${row.npm}@${version}`];
-		if (row.id === "claude-code" && companion)
-			specs.push(`@anthropic-ai/claude-code@${companion}`);
+		if (companion && COMPANIONS[row.id])
+			specs.push(`${COMPANIONS[row.id].npm}@${companion}`);
 		run("npm", [
 			"install",
 			"--prefix",
@@ -82,8 +92,8 @@ function install(row, version, dir, companion) {
 			command: join(bin, row.bin),
 			env: {
 				PATH: `${bin}${delimiter}${process.env.PATH}`,
-				...(row.id === "claude-code" && companion
-					? { CLAUDE_CODE_EXECUTABLE: join(bin, "claude") }
+				...(companion && COMPANIONS[row.id]
+					? { [COMPANIONS[row.id].env]: join(bin, COMPANIONS[row.id].bin) }
 					: {}),
 			},
 		};

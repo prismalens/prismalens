@@ -134,7 +134,7 @@ A PR never waits on a live model, and nothing here spends money on one (#884, #9
 
 Tier 1 is opencode, claude-code and codex; gemini and deepagents are tier 2. A row's `tested` comes from CI only: it equals the pin CI installs (`scripts/agent-pins.json` for the agent, `@prismalens/agent-adapters` for the adapter, checked by `harness-pins.test.ts`) and moves only in a merged bump PR.
 
-Run the PR admission yourself, with the agent on PATH (the pins in `scripts/agent-pins.json`; codex needs nothing, its adapter carries it):
+Run the PR admission yourself, with the agent on PATH (the pins in `scripts/agent-pins.json`):
 
 ```bash
 pnpm --filter "@prismalens/contracts..." build
