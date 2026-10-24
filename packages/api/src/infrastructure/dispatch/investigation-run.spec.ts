@@ -200,6 +200,48 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		]);
 	});
 
+	it("a repo whose subPath is a junction to an outside dir throws escapes the snapshot and is skipped (#848)", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-junction-"));
+		try {
+			const repoDir = join(tmp, "repo");
+			const outsideDir = join(tmp, "outside");
+			mkdirSync(repoDir, { recursive: true });
+			mkdirSync(outsideDir, { recursive: true });
+			const symlinkType = process.platform === "win32" ? "junction" : "dir";
+			symlinkSync(outsideDir, join(repoDir, "linked-sub"), symlinkType);
+
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					{
+						sourceKind: "url" as const,
+						url: "https://github.com/acme/api-gateway",
+						defaultBranch: "main",
+						subPath: "linked-sub",
+						connectionId: null,
+						serviceName: "checkout",
+					},
+				]),
+				snapshotWith: cloneAs(async () => ({
+					path: repoDir,
+					head: "abc123def456789",
+					branch: "main" as const,
+				})),
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+			expect(ws.layout).toBe("unmapped");
+			expect(ws.checkoutsSkipped).toEqual([
+				{
+					repo: "https://github.com/acme/api-gateway",
+					code: "failed",
+					reason: expect.stringMatching(/escapes the snapshot/),
+				},
+			]);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	it("a linked repo with no connectionId: snapshotWith gets a null connectionId", async () => {
 		const tmp = mkdtempSync(join(os.tmpdir(), "pl-appdata-"));
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
@@ -1827,6 +1869,66 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 			];
 			expect(opts.context.preRun?.state).toBe("not-saved");
 			expect(opts.context.preRun?.saveError).toBe("the save did not finish in 5 s");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("a telemetry port that never settles gives a snapshot with telemetrySkipped set and an aborted signal (#848)", async () => {
+		vi.useFakeTimers();
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+			const ctrl = new AbortController();
+			setTimeout(() => ctrl.abort(), ms);
+			return ctrl.signal;
+		});
+		try {
+			let passedSignal: AbortSignal | undefined;
+			let savedText: string | undefined;
+			const neverSettlingTelemetry = new Promise(() => {});
+			const ports = fakePorts({
+				preRun: {
+					telemetry: vi.fn((_id, _w, sig) => {
+						passedSignal = sig;
+						return neverSettlingTelemetry as never;
+					}),
+					runbooks: vi.fn(async () => ({ entries: [] })),
+					save: vi.fn(async (_id, text) => {
+						savedText = text;
+					}),
+					load: vi.fn(async () => null),
+				},
+			});
+
+			const jobPromise = runInvestigationJob(...job("inv-telemetry-timeout"), io(), ports);
+			await vi.advanceTimersByTimeAsync(15_100);
+			const result = await jobPromise;
+
+			expect(result.success).toBe(true);
+			expect(passedSignal?.aborted).toBe(true);
+			const savedSnapshot = JSON.parse(savedText ?? "{}") as { telemetrySkipped?: string };
+			expect(savedSnapshot.telemetrySkipped).toBe(
+				"it did not finish in 15 s, or failed",
+			);
+		} finally {
+			timeoutSpy.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it("a findInvestigation that never settles does not block the run past ASSEMBLY_MS (#848)", async () => {
+		vi.useFakeTimers();
+		try {
+			const neverSettlingFind = new Promise<{ status: string }>(() => {});
+			const ports = fakePorts({
+				findInvestigation: vi.fn(() => neverSettlingFind as never),
+			});
+
+			const jobPromise = runInvestigationJob(...job("inv-find-timeout"), io(), ports);
+			await vi.advanceTimersByTimeAsync(10_100);
+			const result = await jobPromise;
+
+			expect(result.success).toBe(true);
+			expect(mocks.conductRun).toHaveBeenCalled();
 		} finally {
 			vi.useRealTimers();
 		}

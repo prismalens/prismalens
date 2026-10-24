@@ -6,6 +6,7 @@ import {
 	askWindow,
 	createAskChannel,
 	denyAllPolicy,
+	isGatewayToolCall,
 	levelPolicy,
 	type PermissionRequest,
 } from "./permission.js";
@@ -686,5 +687,20 @@ describe("gateway-read exemption bound to our server (#848, OBJ-011)", () => {
 		};
 		expect(await policy(claude, ctx)).toMatchObject({ allow: true });
 		expect(await policy(codex, ctx)).toMatchObject({ allow: true });
+	});
+
+	it("an ask titled with the gateway-qualified incident_get and rawInput: { server: 'evil' } is not a gateway call (#848)", async () => {
+		const gw = gateway(true);
+		const ask: PermissionRequest = {
+			options,
+			toolCall: {
+				title: `mcp__${NAME}__incident_get`,
+				kind: "other",
+				rawInput: { server: "evil" },
+			},
+		};
+		expect(isGatewayToolCall(ask, gw)).toBe(false);
+		const policy = levelPolicy("supervised", { policy: card }, { gateway: gw });
+		expect(await policy(ask, ctx)).toMatchObject({ why: "card" });
 	});
 });

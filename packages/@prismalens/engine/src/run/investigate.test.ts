@@ -1470,5 +1470,51 @@ describe("harness tool call live events and summary (#848)", () => {
 			turn: "follow-up",
 		});
 	});
+
+	it("a gateway tool call fired during the report-repair turn (after an invalid first report) is counted in the final harness-tools summary event, which is emitted once (#848)", async () => {
+		let onCallCb: ((c: { name: string; at: string }) => void) | undefined;
+		const call1At = "2026-10-24T10:00:00.000Z";
+		const call2At = "2026-10-24T10:00:05.000Z";
+		const callList = [{ name: "incident_get", firstCalledAt: call1At, count: 1 }];
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get", "incident_notes"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: (cb: (c: { name: string; at: string }) => void) => {
+				onCallCb = cb;
+				return () => {
+					onCallCb = undefined;
+				};
+			},
+			calls: () => [...callList],
+		};
+		let usageCount = 0;
+		const { events } = await collect("retry", {
+			env: { ...process.env, FAKE_ACP_MODE: "retry", FAKE_MCP_HTTP: "1", FAKE_USAGE: "1" },
+			gateway,
+			onUsage: () => {
+				usageCount++;
+				if (usageCount === 2) {
+					callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
+					onCallCb?.({ name: "incident_notes", at: call2At });
+				}
+			},
+		});
+
+		const toolSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolSummaries).toHaveLength(1);
+		const summary = toolSummaries[0];
+		expect(summary?.kind).toBe("harness_tools");
+		if (summary?.kind === "harness_tools") {
+			expect(summary.calls).toEqual([
+				{ name: "incident_get", firstCalledAt: call1At, count: 1 },
+				{ name: "incident_notes", firstCalledAt: call2At, count: 1 },
+			]);
+		}
+	});
 });
 

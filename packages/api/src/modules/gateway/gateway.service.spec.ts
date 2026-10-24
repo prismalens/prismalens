@@ -418,4 +418,17 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 		);
 		expect(incidentGet?.description).toContain("alerts, deploy and change events PrismaLens recorded");
 	});
+
+	it("alert.findMany returning a second service id makes changeEvent.findMany get both ids (#848)", async () => {
+		alert.findMany.mockResolvedValueOnce([{ serviceId: "svc-1" }, { serviceId: "svc-2" }]);
+		changeEvent.findMany.mockResolvedValueOnce([]);
+
+		await call("tools/call", { name: "incident_get", arguments: {} });
+
+		const [callArg] = (changeEvent.findMany.mock.calls.at(-1) as unknown as [
+			{ where: { serviceId: { in: string[] } } },
+		]);
+		expect(callArg.where.serviceId.in).toEqual(expect.arrayContaining(["svc-1", "svc-2"]));
+		expect(callArg.where.serviceId.in).toHaveLength(2);
+	});
 });

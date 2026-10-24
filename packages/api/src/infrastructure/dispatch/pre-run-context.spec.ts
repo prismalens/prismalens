@@ -379,9 +379,33 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
+	it("refuses a target whose dir is a symlink/junction outside target.checkout and leaves outside untouched", async () => {
+		const tmp = mkdtempSync(join(os.tmpdir(), "pl-copy-out-"));
+		try {
+			const checkout = join(tmp, "checkout");
+			const outside = join(tmp, "outside");
+			const dir = join(checkout, "linked-dir");
+			mkdirSync(checkout);
+			mkdirSync(outside);
+			initGitRepo(checkout);
+			const symlinkType = process.platform === "win32" ? "junction" : "dir";
+			symlinkSync(outside, dir, symlinkType);
+
+			const beforeOutside = fingerprint(outside);
+			const res = await writeReadCopies([{ dir, checkout }], "run-outside", sampleSnapshot);
+			expect(res.state).toBe("failed");
+			expect(res.reason).toContain("resolves outside the checkout");
+			expect(fingerprint(outside)).toEqual(beforeOutside);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	it("scrubbing: a quoted bearer, a multi-line key, and a 3-character token (skipped)", () => {
 		const quotedBearer = '"Bearer secret-token-xyz"';
+		const escapedBearer = JSON.stringify(quotedBearer).slice(1, -1);
 		const multiLineKey = "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgk\n-----END PRIVATE KEY-----";
+		const escapedKey = JSON.stringify(multiLineKey).slice(1, -1);
 		const shortToken = "abc";
 
 		const snap = buildPreRunSnapshot({
@@ -409,22 +433,117 @@ describe("safe writing of read copies and scrubbing (#848)", () => {
 			now: NOW,
 		});
 
-		const storedText = JSON.stringify(snap);
-		expect(storedText).not.toContain(quotedBearer);
-		expect(storedText).not.toContain(multiLineKey);
-		expect(storedText).toContain(shortToken);
+		const telemetryFile = snap.files.find((f) => f.name.startsWith("telemetry"))?.text ?? "";
+		const parsedFile = JSON.parse(telemetryFile) as { auth: string; key: string; short: string };
 
-		const parsedStored = JSON.parse(storedText);
-		const jsonDump = JSON.stringify(parsedStored);
-		expect(jsonDump).not.toContain(quotedBearer);
-		expect(jsonDump).not.toContain(multiLineKey);
+		expect(parsedFile.auth).not.toContain(quotedBearer);
+		expect(parsedFile.auth).not.toContain(escapedBearer);
+		expect(parsedFile.auth).not.toContain("secret-token-xyz");
+		expect(parsedFile.key).not.toContain(multiLineKey);
+		expect(parsedFile.key).not.toContain(escapedKey);
+		expect(parsedFile.key).not.toContain("PRIVATE KEY");
+		expect(parsedFile.short).toBe(shortToken);
+
+		expect(snap.sources[0]?.detail).not.toContain(quotedBearer);
+		expect(snap.sources[0]?.detail).not.toContain(escapedBearer);
+		expect(snap.sources[0]?.detail).not.toContain("secret-token-xyz");
 
 		const excerpt = snap.sources[0]?.excerpt ?? "";
 		expect(excerpt).not.toContain(quotedBearer);
-		expect(excerpt).not.toContain(multiLineKey);
+		expect(excerpt).not.toContain(escapedBearer);
+		expect(excerpt).not.toContain("secret-token-xyz");
 
-		const indexDump = JSON.stringify(summaryOf(snap));
-		expect(indexDump).not.toContain(quotedBearer);
-		expect(indexDump).not.toContain(multiLineKey);
+		expect(telemetryFile).not.toContain(quotedBearer);
+		expect(telemetryFile).not.toContain(escapedBearer);
+		expect(telemetryFile).not.toContain(multiLineKey);
+		expect(telemetryFile).not.toContain(escapedKey);
+		expect(telemetryFile).toContain(shortToken);
+	});
+
+	it("a skipped outcome carrying secrets plus a found outcome whose data contains it: no file text, excerpt or detail contains it", () => {
+		const secret = "s3cr3t-token";
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "prom",
+					from: "set",
+					status: "skipped",
+					reason: `prometheus skipped: ${secret}`,
+					secrets: [secret],
+				},
+				{
+					kind: "loki",
+					label: "loki-skipped",
+					from: "set",
+					status: "skipped",
+					reason: "not configured",
+					secrets: undefined,
+				},
+				{
+					kind: "loki",
+					label: "loki",
+					from: "set",
+					status: "found",
+					part: {
+						summary: `found logs with ${secret}`,
+						data: {
+							result: [
+								{
+									stream: { service: "checkout" },
+									values: [["1", `log entry with ${secret}`]],
+								},
+							],
+						},
+						count: 1,
+					},
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+
+		for (const f of snap.files) {
+			expect(f.text).not.toContain(secret);
+		}
+		for (const s of snap.sources) {
+			if ("excerpt" in s && s.excerpt) expect(s.excerpt).not.toContain(secret);
+			if ("detail" in s && s.detail) expect(s.detail).not.toContain(secret);
+		}
+	});
+
+	it("a secret inside a source label, facts.selector, a runbook title and window.service is absent from the whole returned snapshot", () => {
+		const secret = "s3cr3t-leaked";
+		const snap = buildPreRunSnapshot({
+			window: { start: WINDOW.start, end: WINDOW.end, service: `checkout-${secret}` },
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: `prom-${secret}`,
+					from: "set",
+					status: "skipped",
+					reason: "unavailable",
+					facts: { selector: `{app="${secret}"}` } as never,
+					secrets: [secret],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [
+				{
+					title: `runbook-${secret}`,
+					path: "repo/runbooks/checkout.md",
+					service: "checkout",
+					matchedBy: "runbooks/",
+					origin: "repo",
+				},
+			],
+			now: NOW,
+		});
+
+		const dumped = JSON.stringify(snap);
+		expect(dumped).not.toContain(secret);
 	});
 });

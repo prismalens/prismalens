@@ -7,7 +7,7 @@ import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contract
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationsController } from "./integrations.controller.js";
 import type { OpenedSource } from "./open-source.js";
-import { mappingConfig, selectorMatchers } from "./source-query.js";
+import { boundSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
 import {
 	envSource,
 	fetchSnapshot,
@@ -179,6 +179,30 @@ describe("the pre-run telemetry fetch (#848 ruling 2026-10-24)", () => {
 		);
 		expect(out).toMatchObject({ status: "skipped", reason: "the source answered HTTP 401" });
 		expect(JSON.stringify(out)).not.toContain("s3cret");
+	});
+
+	it("a source that opens with secrets and whose query throws returns status: 'skipped' with those secrets (#848)", async () => {
+		const source: SnapshotSource = {
+			kind: "prometheus",
+			label: "prom-fail",
+			from: "set",
+			open: async () =>
+				({
+					request: vi.fn(async () => {
+						throw new Error("connection reset");
+					}),
+					baseUrl: "http://127.0.0.1:9999",
+					headers: {},
+					secrets: ["s3cr3t-token"],
+				}) as never,
+		};
+
+		const [out] = await fetchSnapshot([source], WINDOW);
+		expect(out).toMatchObject({
+			status: "skipped",
+			reason: "could not connect to the source",
+			secrets: ["s3cr3t-token"],
+		});
 	});
 
 	it("with nothing mapped, the only saved connection comes before the env, and the env serves a kind with none (#848)", async () => {
@@ -397,6 +421,39 @@ describe("window-scoped telemetry queries and selectors (#848 C4)", () => {
 
 		const [valid] = await fetchSnapshot([{ ...src, selector: '{a="b", c=~"x.*"}' }], WINDOW);
 		expect(valid?.status).toBe("found");
+	});
+
+	it("a 501-character selector makes the prometheus and loki query throw QueryFailed 'longer than 500 characters' (no request sent) (#848)", async () => {
+		let hits = 0;
+		const url = await upstream(() => {
+			hits++;
+			return { body: {} };
+		});
+		const opened: OpenedSource = {
+			baseUrl: url,
+			headers: {},
+			secrets: [],
+			request: vi.fn(),
+		} as never;
+		const longSelector = `{app="${"a".repeat(493)}"}`;
+		expect(longSelector.length).toBe(501);
+
+		await expect(
+			SNAPSHOT_QUERIES.prometheus(opened, WINDOW, new AbortController().signal, longSelector),
+		).rejects.toThrow(new QueryFailed("the selector is longer than 500 characters"));
+
+		await expect(
+			SNAPSHOT_QUERIES.loki(opened, WINDOW, new AbortController().signal, longSelector),
+		).rejects.toThrow(new QueryFailed("the selector is longer than 500 characters"));
+
+		expect(hits).toBe(0);
+	});
+
+	it("boundSnapshot with data whose non-droppable metadata exceeds the limit returns text within the limit (#848)", () => {
+		const hugeData = { nonDroppableMetadata: "x".repeat(300_000) };
+		const res = boundSnapshot(hugeData, (d) => JSON.stringify(d), 262_144);
+		expect(Buffer.byteLength(res.text)).toBeLessThanOrEqual(262_144);
+		expect(res.text).toContain("the 256 KiB snapshot limit");
 	});
 
 	it("query: alerts outside the window are dropped", async () => {
