@@ -47,6 +47,8 @@ describe("admission-fake verdictOf and signature", () => {
 			r5: "pass",
 			r6: "pass",
 			r7: "skipped",
+			r8: "missing",
+			r9: "missing",
 		});
 	});
 

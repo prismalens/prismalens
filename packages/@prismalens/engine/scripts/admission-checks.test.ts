@@ -3,6 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	type AdmissionVerdictWords,
+	admissionExit,
+	firstWord,
+	toolCallLine,
 	readsAllowed,
 	parseTranscript,
 	permissionDecisions,
@@ -212,5 +216,70 @@ describe("initializeVersion", () => {
 			{ t: 2, d: "in", m: "plain text" },
 		];
 		expect(initializeVersion(lines)).toBeNull();
+	});
+});
+
+describe("admissionExit (#848): the gate's truth table", () => {
+	const passing: AdmissionVerdictWords = {
+		pass: true,
+		r6: "pass",
+		r7: "pass",
+		r8: "pass",
+		r9: "pass",
+		resumable: true,
+	};
+
+	it.each<[string, AdmissionVerdictWords]>([
+		["every line passing", passing],
+		["R6 skipped (not OpenCode)", { ...passing, r6: "skipped" }],
+		["R7 skipped (no proxy for this agent)", { ...passing, r7: "skipped" }],
+		["R9 n/a on an agent that cannot resume", { ...passing, r9: "n/a", resumable: false }],
+		["R9 passing on an agent that cannot resume", { ...passing, resumable: false }],
+	])("returns 0 with %s", (_, v) => {
+		expect(admissionExit(v)).toBe(0);
+	});
+
+	it.each<[string, Partial<AdmissionVerdictWords>]>([
+		["pass = false", { pass: false }],
+		["r6 = fail", { r6: "fail" }],
+		["r6 = missing", { r6: "missing" }],
+		["r7 = fail", { r7: "fail" }],
+		["r7 = inconclusive", { r7: "inconclusive" }],
+		["r7 = missing", { r7: "missing" }],
+		["r8 = fail", { r8: "fail" }],
+		["r8 = missing", { r8: "missing" }],
+		["r9 = fail", { r9: "fail" }],
+		["r9 = missing", { r9: "missing" }],
+		["r9 = n/a with resumable", { r9: "n/a" }],
+		["r9 = fail on an agent that cannot resume", { r9: "fail", resumable: false }],
+	])("returns 1 with only %s", (_, change) => {
+		expect(admissionExit({ ...passing, ...change })).toBe(1);
+	});
+
+	it("reads the words the R-lines print", () => {
+		const r8 = toolCallLine({ gateway: true, ran: true, calls: 1, connected: true });
+		expect(firstWord(r8)).toBe("pass");
+		expect(firstWord("n/a (this agent cannot reopen a session)")).toBe("n/a");
+		expect(firstWord("")).toBe("missing");
+		expect(
+			admissionExit({
+				...passing,
+				r8: firstWord(toolCallLine({ gateway: false, ran: true, calls: 0, connected: false })),
+			}),
+		).toBe(1);
+	});
+
+	it("passes R8 only on a real call through the gateway", () => {
+		expect(toolCallLine({ gateway: true, ran: true, calls: 2, connected: true })).toBe(
+			"pass (2 PrismaLens tool calls)",
+		);
+		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: true })).toMatch(/^fail \(the agent reached the gateway/);
+		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: false })).toMatch(/^fail \(the agent never reached/);
+		expect(toolCallLine({ gateway: true, ran: false, calls: 0, connected: true }, "no follow-up ran")).toBe(
+			"fail (no follow-up ran)",
+		);
+		expect(toolCallLine({ gateway: false, ran: true, calls: 3, connected: true })).toBe(
+			"fail (no PrismaLens gateway was offered)",
+		);
 	});
 });
