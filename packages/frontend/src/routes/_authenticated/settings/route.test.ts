@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { legacySettingsTarget, validateSettingsSearch } from "./route";
+import { Route, legacySettingsTarget, validateSettingsSearch } from "./route";
 
 // The router merges `{ ...raw, ...validated }`; the merge is what Settings reads.
 const merged = (raw: Record<string, unknown>) => ({
@@ -18,15 +18,40 @@ describe("Settings tab search (w8-2)", () => {
 
 	it("keeps a known tab", () => {
 		expect(merged({ tab: "notifications" }).tab).toBe("notifications");
+		expect(merged({ tab: "general" }).tab).toBe("general");
+		expect(merged({ tab: "appearance" }).tab).toBe("appearance");
+		expect(merged({ tab: "agent" }).tab).toBe("agent");
+		expect(merged({ tab: "alert-intake" }).tab).toBe("alert-intake");
 	});
 
 	it("sends a tab from before #848 to its new page", () => {
 		expect(legacySettingsTarget("?tab=integrations")).toEqual({
 			tab: "notifications",
 		});
+		expect(legacySettingsTarget("?tab=harness")).toEqual({
+			tab: "agent",
+		});
 		expect(legacySettingsTarget("?tab=danger")).toEqual({
 			tab: "about",
 			hash: "danger-zone",
 		});
+	});
+
+	it("redirects legacy tabs in beforeLoad", () => {
+		const beforeLoad = Route.options.beforeLoad as (ctx: {
+			location: { searchStr: string };
+		}) => void;
+		expect(() =>
+			beforeLoad({ location: { searchStr: "?tab=integrations" } }),
+		).toThrow();
+		expect(() =>
+			beforeLoad({ location: { searchStr: "?tab=harness" } }),
+		).toThrow();
+		expect(() =>
+			beforeLoad({ location: { searchStr: "?tab=danger" } }),
+		).toThrow();
+		expect(() =>
+			beforeLoad({ location: { searchStr: "?tab=general" } }),
+		).not.toThrow();
 	});
 });
