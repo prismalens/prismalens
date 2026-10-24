@@ -174,7 +174,7 @@ async function main(): Promise<void> {
 		);
 		process.exit(2);
 	}
-	const clone = resolve(values.clone ?? process.cwd());
+	const clone = resolve(values.clone ?? process.env.INIT_CWD ?? process.cwd());
 	if (!existsSync(clone)) {
 		console.error(`no such clone: ${clone}`);
 		process.exit(2);

@@ -1,9 +1,10 @@
 name: Playwright E2E
 
+# Called by ci.yml's `e2e` job, which `CI gate` waits on (#920), so it runs on every PR,
+# push and merge-queue build there. Dispatch is for running it alone on a branch.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41,8 +42,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ci.yml's `build` job saves this cache. This workflow starts beside it, so it
-      # takes the newest one saved before it gets here: a replay for every unchanged package.
+      # ci.yml's `build` job saves this cache and `e2e` needs it, so the key is this commit's own:
+      # a replay for every unchanged package. A dispatch on its own takes the newest earlier one.
       - name: Restore the turbo cache
         uses: actions/cache/restore@v6
         with:

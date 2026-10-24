@@ -1,0 +1,80 @@
+# What the agents we support have released (#914): a zero-token protocol probe of each row's
+# latest version, and a pull request that moves a pin once its release has soaked 3 days.
+# Neither spends a model call, and neither is required by `CI gate`.
+name: Agent releases
+
+on:
+  schedule:
+    - cron: "23 3 * * *" # 03:23 UTC daily, on the default branch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-releases
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Protocol probe (latest release of every row)
+    if: github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the registry the table reads `tested` from
+        run: pnpm --filter @prismalens/config... build
+
+      # initialize and session/new only: the agents run unauthenticated and see no model.
+      - name: Probe every row at its latest release
+        run: node scripts/agent-probe.mjs --all --registry "$GITHUB_WORKSPACE/packages/@prismalens/config/dist/providers/harness.js"
+
+  bump:
+    name: Pin bump (${{ matrix.package }})
+    if: github.repository == 'prismalens/prismalens'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: opencode-ai
+            pin-path: scripts/agent-pins.json
+            pin-key: '["pins","opencode-ai"]'
+            probe: node scripts/agent-probe.mjs --agent opencode --version "$PIN_VERSION"
+          - package: "@anthropic-ai/claude-code"
+            pin-path: scripts/agent-pins.json
+            pin-key: '["pins","@anthropic-ai/claude-code"]'
+            probe: node scripts/agent-probe.mjs --agent claude-code --version "$(node -p "require('./packages/@prismalens/agent-adapters/package.json').dependencies['@agentclientprotocol/claude-agent-acp']")" --companion "$PIN_VERSION"
+          - package: "@agentclientprotocol/claude-agent-acp"
+            pin-path: packages/@prismalens/agent-adapters/package.json
+            pin-key: ""
+            probe: node scripts/agent-probe.mjs --agent claude-code --version "$PIN_VERSION"
+          - package: "@agentclientprotocol/codex-acp"
+            pin-path: packages/@prismalens/agent-adapters/package.json
+            pin-key: ""
+            probe: node scripts/agent-probe.mjs --agent codex --version "$PIN_VERSION"
+    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@6e7fad0d8fde93657d2d79b9e3e9dd16d2afa784
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      package: ${{ matrix.package }}
+      pin-path: ${{ matrix.pin-path }}
+      pin-key: ${{ matrix.pin-key }}
+      soak-days: 3
+      probe: ${{ matrix.probe }}
+    secrets:
+      # A PR opened with GITHUB_TOKEN starts no checks, and the bump PR exists to run them.
+      token: ${{ secrets.RELEASE_PAT }}

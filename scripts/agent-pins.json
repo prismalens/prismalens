@@ -1,0 +1,6 @@
+{
+	"pins": {
+		"opencode-ai": "1.18.30",
+		"@anthropic-ai/claude-code": "2.1.296"
+	}
+}
