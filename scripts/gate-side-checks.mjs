@@ -411,11 +411,12 @@ function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 	return handle;
 }
 
-function run(file, args, env) {
+/** A kill at `timeoutMs` reports as `code: "timeout"`, not exit 1 (#927). */
+function run(file, args, env, timeoutMs = 120_000) {
 	return new Promise((r) =>
-		execFile(file, args, { env, timeout: 120_000 }, (error, stdout, stderr) =>
+		execFile(file, args, { env, timeout: timeoutMs }, (error, stdout, stderr) =>
 			r({
-				code: error ? (error.code ?? 1) : 0,
+				code: error ? (error.killed ? "timeout" : (error.code ?? 1)) : 0,
 				out: stripVTControlCharacters(`${stdout}${stderr}`),
 			}),
 		),
@@ -423,9 +424,12 @@ function run(file, args, env) {
 }
 
 /** The installed `pl` (or `cli`, another install's) as `node <bin> ...args`. */
-function runPl(args, env, cli = ctx.cli) {
-	return run(cli[0], [...cli.slice(1), ...args], env);
+function runPl(args, env, cli = ctx.cli, timeoutMs) {
+	return run(cli[0], [...cli.slice(1), ...args], env, timeoutMs);
 }
+
+/** A global install of the packed tree on a hosted Windows runner can pass 2 minutes (#927). */
+const NPM_INSTALL_MS = 600_000;
 
 /** `pl pair --operator`, then POST /api/pairing/redeem: the cookie a browser would get. */
 async function pairOperator(sb, base, address) {
@@ -939,6 +943,11 @@ async function checkUpgrade() {
 		["upgrade", "--version", next],
 		{ ...env, NPM_CONFIG_LOGLEVEL: "verbose" },
 		cli,
+		NPM_INSTALL_MS,
+	);
+	assert(
+		upgrade.code !== "timeout",
+		`pl upgrade --version ${next} timed out after ${NPM_INSTALL_MS / 1000}s: ${quiet(upgrade.out, 2500)}`,
 	);
 	if (upgrade.code !== 0) {
 		const logs = join(env.LOCALAPPDATA ?? env.HOME, "npm-cache", "_logs");
@@ -959,6 +968,7 @@ async function checkUpgrade() {
 						"--loglevel=verbose",
 					],
 					env,
+					NPM_INSTALL_MS,
 				)
 			: { out: "" };
 		assert(
