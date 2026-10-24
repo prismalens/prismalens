@@ -157,9 +157,13 @@ export class GitCredentialService {
 	}
 
 	/** For a git call. Writes Connection.lastUsedAt for a token; throws GitCredentialAmbiguousError or a GitFailure for an unusable pinned token. */
-	async resolveForUse(ref: GitRepoRef): Promise<GitCredential> {
+	async resolveForUse(
+		ref: GitRepoRef,
+		signal?: AbortSignal,
+	): Promise<GitCredential> {
 		if (ref.sourceKind === "folder") return new GitCredential(FOLDER);
-		const r = await this.resolve(ref, "use");
+		const r = await this.resolve(ref, "use", signal);
+		signal?.throwIfAborted();
 		if (r.token) await this.markUsed(r.token.connectionId);
 		return this.credentialFor(r);
 	}
@@ -168,8 +172,9 @@ export class GitCredentialService {
 	async withCredential<T>(
 		ref: GitRepoRef,
 		fn: (cred: GitCredential) => Promise<T>,
+		signal?: AbortSignal,
 	): Promise<{ result: T; credential: GitCredentialDisplay }> {
-		const cred = await this.resolveForUse(ref);
+		const cred = await this.resolveForUse(ref, signal);
 		try {
 			return { result: await fn(cred), credential: cred.display };
 		} catch (err) {
@@ -183,6 +188,7 @@ export class GitCredentialService {
 				throw err;
 			const effectiveUrl = cred.effectiveUrl ?? ref.url;
 			const host = urlHost(effectiveUrl);
+			signal?.throwIfAborted();
 			const matches = host
 				? (await this.tokens()).filter((t) => t.host === host && usable(t))
 				: [];
@@ -242,11 +248,13 @@ export class GitCredentialService {
 	private async resolve(
 		ref: GitRepoRef,
 		mode: "preview" | "use",
+		signal?: AbortSignal,
 	): Promise<Resolution> {
 		const effectiveUrl = await this.effectiveUrl(ref.url);
 		if (isSshUrl(effectiveUrl)) return { display: SSH, effectiveUrl };
 		const host = urlHost(effectiveUrl);
 		const https = /^https:\/\//i.test(effectiveUrl);
+		signal?.throwIfAborted();
 		const tokens = await this.tokens();
 		const legacy =
 			mode === "preview" && ref.connectionId
@@ -280,6 +288,7 @@ export class GitCredentialService {
 					effectiveUrl,
 				};
 			}
+			signal?.throwIfAborted();
 			const exists = await this.prisma.connection.findUnique({
 				where: { id: ref.pick },
 				select: { id: true },
@@ -289,7 +298,7 @@ export class GitCredentialService {
 
 		let probeTimedOut = false;
 		if (host) {
-			const probe = await this.probe(effectiveUrl, host);
+			const probe = await this.probe(effectiveUrl, host, signal);
 			if (probe.kind === "machine")
 				return withLegacy({ display: probe.display, effectiveUrl });
 			if (probe.kind === "timeout") {
@@ -360,6 +369,7 @@ export class GitCredentialService {
 	private async probe(
 		effectiveUrl: string,
 		host: string,
+		signal?: AbortSignal,
 	): Promise<ProbeResult> {
 		const helper = await this.urlConfig("credential.helper", effectiveUrl);
 		if (!helper) return { kind: "none" };
@@ -375,6 +385,7 @@ export class GitCredentialService {
 				cwd: tmpdir(),
 				env: gitEnv({ source: "machine", coreSshCommand: null }),
 				timeoutMs: GIT_PROBE_TIMEOUT_MS,
+				...(signal ? { signal } : {}),
 				input,
 				onStdoutLine: (line) => {
 					if (line.startsWith("username=")) username = line.slice(9);
@@ -382,6 +393,7 @@ export class GitCredentialService {
 				},
 			});
 		} catch (err) {
+			signal?.throwIfAborted();
 			if (err instanceof GitSpawnError && err.timedOut)
 				return { kind: "timeout" };
 			return { kind: "none" };

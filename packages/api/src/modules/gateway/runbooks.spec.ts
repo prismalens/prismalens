@@ -67,7 +67,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("listRunbooks", () => {
 	it("finds markdown by the three conventions and catalog links, at the recorded commit", async () => {
-		const found = await listRunbooks([repo], "checkout");
+		const found = await listRunbooks([repo], { service: "checkout" });
 		expect(found.map((e) => [e.path, e.matchedBy]).sort()).toEqual(
 			[
 				["api/RUNBOOK-oncall.md", "RUNBOOK*.md"],
@@ -86,7 +86,7 @@ describe("listRunbooks", () => {
 		expect(new Set(all.map((e) => e.service))).toEqual(
 			new Set(["checkout", "cart"]),
 		);
-		expect(await listRunbooks([repo], "billing")).toEqual([]);
+		expect(await listRunbooks([repo], { service: "billing" })).toEqual([]);
 	});
 
 	it("reads links from catalog-info metadata.links only, and only http(s)", () => {

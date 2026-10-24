@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
+	type CheckoutSkipped,
 	type ContextPack,
 	type FiringAlert,
 	type PreRunContext,
@@ -22,10 +23,7 @@ import {
 	type PreRunSource,
 } from "@prismalens/contracts/schemas";
 import { Logger } from "@prismalens/logger";
-import type {
-	RunbookEntry,
-	RunbookResult,
-} from "../../modules/gateway/runbooks.js";
+import type { RunbookEntry } from "../../modules/gateway/runbooks.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import { scrubSecrets } from "../../modules/integrations/source-request.js";
 import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
@@ -36,9 +34,6 @@ const logger = new Logger({ context: "PreRunContext" });
 export const CONTEXT_DIR = "context";
 const INDEX = "index.json";
 const EXCERPT_CHARS = 3_000;
-const RUNBOOK_FILES = 10;
-
-export type RunbookDoc = RunbookEntry & { read: RunbookResult };
 
 /** From half an hour before the first alert, at most six hours back, to now. */
 export function snapshotWindow(
@@ -63,9 +58,14 @@ export function snapshotWindow(
 	};
 }
 
-function runbooksMarkdown(docs: readonly RunbookDoc[]): string {
-	const lines = ["# Runbooks in the bound repos", ""];
-	for (const [i, d] of docs.entries()) {
+function runbooksMarkdown(entries: readonly RunbookEntry[]): string {
+	const lines = [
+		"# Runbooks in the bound repos",
+		"",
+		"Read one with runbooks_read, or in the checkout.",
+		"",
+	];
+	for (const d of entries) {
 		lines.push(
 			`## ${d.title} (service ${d.service})`,
 			"",
@@ -73,10 +73,6 @@ function runbooksMarkdown(docs: readonly RunbookDoc[]): string {
 			"",
 		);
 		if (d.link) lines.push(`Link (not fetched): ${d.link}`, "");
-		else if (i >= RUNBOOK_FILES)
-			lines.push("Not copied here; read it in the checkout.", "");
-		else if (d.read.ok && "markdown" in d.read) lines.push(d.read.markdown, "");
-		else if (!d.read.ok) lines.push(`Not read: ${d.read.error}`, "");
 	}
 	return lines.join("\n");
 }
@@ -88,7 +84,9 @@ export function writePreRunContext(
 		window: SnapshotWindow;
 		telemetry: readonly SourceOutcome[];
 		pastIncidents: ContextPack["priorIncidents"];
-		runbooks: readonly RunbookDoc[];
+		runbooks: readonly RunbookEntry[];
+		runbooksSkipped?: string;
+		checkoutsSkipped?: readonly CheckoutSkipped[];
 		now: Date;
 	},
 ): PreRunContext {
@@ -155,11 +153,19 @@ export function writePreRunContext(
 			about: `${input.runbooks.length} runbooks from the bound repos`,
 		});
 	}
+	if (input.runbooksSkipped)
+		logger.warn(`pre-run: runbooks skipped: ${input.runbooksSkipped}`);
 	const ctx: PreRunContext = {
 		dir,
 		fetchedAt: input.now.toISOString(),
 		sources,
 		files,
+		...(input.runbooksSkipped
+			? { runbooksSkipped: input.runbooksSkipped }
+			: {}),
+		...(input.checkoutsSkipped?.length
+			? { checkoutsSkipped: [...input.checkoutsSkipped] }
+			: {}),
 	};
 	writeFileSync(join(dir, INDEX), JSON.stringify(ctx, null, 1));
 	return ctx;

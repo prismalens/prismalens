@@ -47,6 +47,7 @@ import {
 	type WorkflowStatus,
 } from "@prismalens/contracts";
 import type {
+	CheckoutSkipped,
 	ContextPack,
 	EffortEstimate,
 	PreRunContext,
@@ -69,6 +70,7 @@ import {
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import type { RunbookIndex } from "../../modules/gateway/gateway.service.js";
 import type { SnapshotWindow } from "../../modules/integrations/source-query.js";
 import type { SourceOutcome } from "../../modules/integrations/telemetry-snapshot.service.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
@@ -81,6 +83,61 @@ import { createPrismaInvestigationStore } from "./prisma-investigation-store.js"
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
 
 const logger = new Logger({ context: "InvestigationProcessor" });
+
+/** Each pre-run database read races this; a late answer is dropped, the work itself is not cancelled (#848). */
+export const ASSEMBLY_MS = 10_000;
+/** Every checkout shares this budget; what is unfinished then is skipped and its git killed (#848). */
+export const CHECKOUT_BUDGET_MS = 600_000;
+const CHECKOUT_CONCURRENCY = 3;
+/** Stops only pathological data: every repo below it is attempted (#848). */
+export const WORKSPACE_REPOS_GUARD = 32;
+const TELEMETRY_MS = 15_000;
+const RUNBOOKS_MS = 10_000;
+
+const LATE = Symbol("late");
+
+/** `work`, or `LATE` once `ms` pass first. */
+async function within<T>(
+	ms: number,
+	work: Promise<T>,
+): Promise<T | typeof LATE> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<typeof LATE>((r) => {
+		timer = setTimeout(() => r(LATE), ms);
+	});
+	try {
+		return await Promise.race([work, late]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** A pre-run read that never fails the run: `fallback` when it throws or is late. */
+async function assembled<T>(
+	what: string,
+	work: () => Promise<T>,
+	fallback: T,
+	ms = ASSEMBLY_MS,
+): Promise<T> {
+	try {
+		const got = await within(ms, Promise.resolve().then(work));
+		if (got !== LATE) return got;
+		logger.warn(
+			`${what} did not load in ${ms / 1000} s; the run goes on without it`,
+		);
+	} catch (e) {
+		logger.warn(`Could not load ${what}; the run goes on without it`, e);
+	}
+	return fallback;
+}
+
+function serviceIdOf(
+	incident: Record<string, unknown> | null,
+): string | undefined {
+	return typeof incident?.serviceId === "string"
+		? incident.serviceId
+		: undefined;
+}
 
 export interface InvestigationResult {
 	success: boolean;
@@ -193,30 +250,21 @@ async function runJobInternal(
 			`harness: ${selection.harness} (${selection.auto ? "auto" : `pinned by ${selection.pinnedBy ?? "env"}`}), model: ${model ?? "harness default"} (${modelSource ?? "unknown"})`,
 		);
 
-		let incident: Record<string, unknown> | null = null;
-		try {
-			incident = await ports.getIncident(data.incidentId);
-		} catch {
-			incident = null;
-		}
-		let connectors: ResolvedConnector[] = [];
-		try {
-			const serviceId =
-				typeof incident?.serviceId === "string"
-					? incident.serviceId
-					: undefined;
-			connectors = await ports.resolveConnectors(serviceId);
-		} catch (e) {
-			logger.warn("Could not resolve connectors for investigation", e);
-			connectors = [];
-		}
-		let contextPack: ContextPack | null = null;
-		try {
-			contextPack = await ports.contextPack(data.incidentId);
-		} catch (e) {
-			logger.warn("Could not assemble the context pack for investigation", e);
-			contextPack = null;
-		}
+		const incident = await assembled(
+			"the incident",
+			() => ports.getIncident(data.incidentId),
+			null,
+		);
+		const connectors = await assembled(
+			"the connectors",
+			() => ports.resolveConnectors(serviceIdOf(incident)),
+			[],
+		);
+		const contextPack = await assembled(
+			"the context pack",
+			() => ports.contextPack(data.incidentId),
+			null,
+		);
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
@@ -230,10 +278,16 @@ async function runJobInternal(
 			context.service?.name,
 		);
 		const telemetry = ports.preRun
-			? ports.preRun.telemetry(window, io.signal).catch((e) => {
-					logger.warn("Could not read telemetry before the run", e);
-					return [];
-				})
+			? assembled(
+					"telemetry",
+					() =>
+						(ports.preRun as NonNullable<RunPorts["preRun"]>).telemetry(
+							window,
+							io.signal,
+						),
+					[],
+					TELEMETRY_MS,
+				)
 			: null;
 		const workspace = {
 			...(await resolveWorkspace(data, ports, io.signal)),
@@ -251,6 +305,8 @@ async function runJobInternal(
 				window,
 				telemetry,
 				pastIncidents: contextPack?.priorIncidents ?? [],
+				checkoutsSkipped: workspace.checkoutsSkipped,
+				signal: io.signal,
 			});
 			if (preRun) context.preRun = preRun;
 		}
@@ -426,21 +482,22 @@ async function gatherPreRun(
 		window: SnapshotWindow;
 		telemetry: Promise<SourceOutcome[]>;
 		pastIncidents: ContextPack["priorIncidents"];
+		checkoutsSkipped: CheckoutSkipped[];
+		signal: AbortSignal;
 	},
 ): Promise<PreRunContext | undefined> {
 	try {
 		const [telemetry, runbooks] = await Promise.all([
 			input.telemetry,
-			port.runbooks(runId).catch((e) => {
-				logger.warn("Could not read runbooks before the run", e);
-				return [];
-			}),
+			runbookScan(port, runId, input.signal),
 		]);
 		return writePreRunContext(runDir, {
 			window: input.window,
 			telemetry,
 			pastIncidents: input.pastIncidents,
-			runbooks,
+			runbooks: runbooks.entries,
+			...(runbooks.skipped ? { runbooksSkipped: runbooks.skipped } : {}),
+			checkoutsSkipped: input.checkoutsSkipped,
 			now: new Date(),
 		});
 	} catch (e) {
@@ -450,6 +507,36 @@ async function gatherPreRun(
 		);
 		return undefined;
 	}
+}
+
+/** The runbook index, aborted at its deadline so its git children die; never throws. */
+async function runbookScan(
+	port: NonNullable<RunPorts["preRun"]>,
+	runId: string,
+	signal: AbortSignal,
+): Promise<RunbookIndex> {
+	const deadline = new AbortController();
+	const timer = setTimeout(
+		() => deadline.abort(new Error("runbook scan deadline")),
+		RUNBOOKS_MS,
+	);
+	const both = AbortSignal.any([deadline.signal, signal]);
+	try {
+		const got = await within(RUNBOOKS_MS, port.runbooks(runId, both));
+		if (got !== LATE) return got;
+	} catch (e) {
+		if (!deadline.signal.aborted) {
+			logger.warn("Could not read runbooks before the run", e);
+			return { entries: [], skipped: "the runbook scan failed" };
+		}
+	} finally {
+		clearTimeout(timer);
+		deadline.abort();
+	}
+	return {
+		entries: [],
+		skipped: `the runbook scan did not finish in ${RUNBOOKS_MS / 1000} s`,
+	};
 }
 
 const USAGE_WRITE_EVERY_MS = 5_000;
@@ -583,22 +670,16 @@ async function runFollowUp(
 			toolsServer: recorded.toolsServer ?? newGatewayServerName(),
 		};
 
-		let incident: Record<string, unknown> | null = null;
-		try {
-			incident = await ports.getIncident(data.incidentId);
-		} catch {
-			incident = null;
-		}
-		let connectors: ResolvedConnector[] = [];
-		try {
-			const serviceId =
-				typeof incident?.serviceId === "string"
-					? incident.serviceId
-					: undefined;
-			connectors = await ports.resolveConnectors(serviceId);
-		} catch (e) {
-			logger.warn("Could not resolve connectors for the follow-up", e);
-		}
+		const incident = await assembled(
+			"the incident",
+			() => ports.getIncident(data.incidentId),
+			null,
+		);
+		const connectors = await assembled(
+			"the connectors",
+			() => ports.resolveConnectors(serviceIdOf(incident)),
+			[],
+		);
 		const context = await assembleInvestigationContext(
 			incident,
 			data,
@@ -1094,9 +1175,15 @@ export function runDirFor(investigationId: string): string {
 
 export interface Workspace extends RunWorkspace {
 	note: string;
+	/** What this run could not check out; empty on a follow-up. */
+	checkoutsSkipped: CheckoutSkipped[];
 }
 
-function toRunWorkspace({ note: _note, ...ws }: Workspace): RunWorkspace {
+function toRunWorkspace({
+	note: _note,
+	checkoutsSkipped: _skipped,
+	...ws
+}: Workspace): RunWorkspace {
 	return ws;
 }
 
@@ -1169,42 +1256,49 @@ function whereFrom(repo: {
 /**
  * The harness runs in fresh snapshots of every repo the incident touches, under
  * the run's own dir (ADR 0004 §2). One repo keeps `repo/`; several go under
- * `repos/<name>/` with the cwd at `repos/` (#747). No linked repo means an
- * UNMAPPED run in an empty scratch dir that says so; a run against the wrong
- * tree produces confident garbage.
+ * `repos/<name>/` with the cwd at `repos/` (#747). A repo that cannot be checked
+ * out in the budget is skipped and named; with none, the run goes on without code
+ * in an empty scratch dir that says so (#848).
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
 	ports: RunPorts,
 	signal?: AbortSignal,
 ): Promise<Workspace> {
+	const runDir = runDirFor(data.investigationId);
 	let listed: IncidentRepo[] = [];
+	let unlisted: string | null = null;
 	try {
-		listed = await ports.incidentRepos(data.incidentId);
+		const got = await within(ASSEMBLY_MS, ports.incidentRepos(data.incidentId));
+		if (got === LATE) {
+			unlisted = `the repository list did not load in ${ASSEMBLY_MS / 1000} s`;
+			logger.warn(`Ran without code: ${unlisted}`);
+		} else listed = got;
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
-	const runDir = runDirFor(data.investigationId);
-	const repos = dedupeRepos(listed);
-	if (repos.length === 0) {
-		const cwd = join(runDir, "unmapped");
-		mkdirSync(cwd, { recursive: true });
-		return {
-			layout: "unmapped",
-			cwd,
-			repos: [],
-			note: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
-		};
-	}
+	const all = dedupeRepos(listed);
+	const repos = all.slice(0, WORKSPACE_REPOS_GUARD);
+	const guarded: Skip[] = all.slice(WORKSPACE_REPOS_GUARD).map(({ repo }) => ({
+		repo,
+		reason: `over the ${WORKSPACE_REPOS_GUARD}-repository guard`,
+		code: "guard",
+	}));
+	if (repos.length === 0)
+		return unmappedWorkspace(
+			runDir,
+			unlisted
+				? `Ran without code: ${unlisted}.`
+				: "Ran UNMAPPED: this incident's service has no repository linked. Set the Repository field on the service to a folder path or git URL; findings below cannot describe the code that alerted.",
+		);
 	const multi = repos.length > 1;
 	const names = multi ? folderNames(repos.map((r) => r.repo)) : ["repo"];
-	const taken: RunWorkspaceRepo[] = [];
-	const skipped: string[] = [];
-	// One at a time: every clone lands on the same disk.
-	for (const [i, { repo, services }] of repos.entries()) {
-		const name = names[i] as string;
-		try {
-			const { snap, credential } = await ports.snapshotWith(
+	const outcomes = await checkoutAll(
+		repos.length,
+		(i, repoSignal) => {
+			const { repo } = repos[i] as (typeof repos)[number];
+			const name = names[i] as string;
+			return ports.snapshotWith(
 				{
 					sourceKind: repo.sourceKind,
 					url: repo.url,
@@ -1212,39 +1306,78 @@ export async function resolveWorkspace(
 					defaultBranch: repo.defaultBranch,
 				},
 				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
-				signal,
+				repoSignal,
 			);
-			inside(snap.path, repo.subPath);
-			taken.push({
-				name,
-				dir: snap.path,
-				sourceKind: repo.sourceKind,
-				url: repo.url,
-				subPath: repo.subPath,
-				connectionId: repo.connectionId,
-				head: snap.head,
-				branch: snap.branch,
-				services,
-				credential,
-			});
-		} catch (e) {
-			// The primary service's repo is the run; another alert's broken link is not.
-			if (i === 0 || signal?.aborted) throw e;
-			const why = e instanceof Error ? e.message : String(e);
-			logger.warn(`Skipped ${whereFrom(repo)}: ${why}`);
-			skipped.push(`${whereFrom(repo)} (${why})`);
+		},
+		signal,
+	);
+	const taken: RunWorkspaceRepo[] = [];
+	const skipped: Skip[] = [];
+	for (const [i, outcome] of outcomes.entries()) {
+		const { repo, services } = repos[i] as (typeof repos)[number];
+		if (!outcome.ok) {
+			skipped.push({ repo, reason: outcome.reason, code: outcome.code });
+			continue;
 		}
+		const { snap, credential } = outcome.value;
+		try {
+			inside(snap.path, repo.subPath);
+		} catch (e) {
+			skipped.push({ repo, reason: messageOf(e), code: "failed" });
+			continue;
+		}
+		taken.push({
+			name: names[i] as string,
+			dir: snap.path,
+			sourceKind: repo.sourceKind,
+			url: repo.url,
+			subPath: repo.subPath,
+			connectionId: repo.connectionId,
+			head: snap.head,
+			branch: snap.branch,
+			services,
+			credential,
+		});
 	}
+	skipped.push(...guarded);
+	for (const k of skipped)
+		logger.warn(`Skipped ${whereFrom(k.repo)}: ${k.reason}`);
+	const checkoutsSkipped = skipped.map((k) => ({
+		repo: k.repo.url,
+		reason: k.reason,
+		code: k.code,
+	}));
+	const listedSkips = skipped
+		.map((k) => `${whereFrom(k.repo)} (${k.reason})`)
+		.join("; ");
+	if (taken.length === 0)
+		return unmappedWorkspace(
+			runDir,
+			`Ran without code: no repository could be checked out: ${listedSkips}.`,
+			checkoutsSkipped,
+		);
 	const omitted = skipped.length
-		? ` Not included, because it could not be copied: ${skipped.join("; ")}.`
+		? `Not included, because it could not be copied: ${listedSkips}.`
 		: "";
+	// The primary's own failure leads, so the reader sees first that the run is not on its code.
+	const primaryFailed =
+		!outcomes[0]?.ok || taken[0]?.url !== repos[0]?.repo.url;
+	const noted = (body: string) =>
+		!omitted
+			? body
+			: primaryFailed
+				? `${omitted} ${body}`
+				: `${body} ${omitted}`;
 	if (taken.length === 1) {
 		const [only] = taken as [RunWorkspaceRepo];
 		return {
 			layout: "single",
 			cwd: inside(only.dir, only.subPath),
 			repos: taken,
-			note: `Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.${omitted}`,
+			checkoutsSkipped,
+			note: noted(
+				`Investigating a snapshot of ${whereFrom(only)} at ${only.branch ? `${only.branch} ` : ""}${only.head.slice(0, 12)}. Uncommitted changes are not included.`,
+			),
 		};
 	}
 	const listing = taken
@@ -1257,8 +1390,110 @@ export async function resolveWorkspace(
 		layout: "multi",
 		cwd: join(runDir, "repos"),
 		repos: taken,
-		note: `Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.${omitted}`,
+		checkoutsSkipped,
+		note: noted(
+			`Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.`,
+		),
 	};
+}
+
+interface Skip {
+	repo: IncidentRepo;
+	reason: string;
+	code: CheckoutSkipped["code"];
+}
+
+function unmappedWorkspace(
+	runDir: string,
+	note: string,
+	checkoutsSkipped: CheckoutSkipped[] = [],
+): Workspace {
+	const cwd = join(runDir, "unmapped");
+	mkdirSync(cwd, { recursive: true });
+	return { layout: "unmapped", cwd, repos: [], checkoutsSkipped, note };
+}
+
+type CheckoutOutcome<T> =
+	| { ok: true; value: T }
+	| { ok: false; code: "failed" | "budget"; reason: string };
+
+const OUT_OF_TIME = "the time for checkouts ran out";
+
+/**
+ * Runs `count` checkouts, three at a time, under one budget. Each has its own
+ * controller, aborted when the budget ends; a cancel of the run throws.
+ */
+async function checkoutAll<T>(
+	count: number,
+	run: (i: number, signal: AbortSignal) => Promise<T>,
+	cancel?: AbortSignal,
+): Promise<CheckoutOutcome<T>[]> {
+	const controllers = Array.from(
+		{ length: count },
+		() => new AbortController(),
+	);
+	const outcomes: CheckoutOutcome<T>[] = [];
+	let over = false;
+	const budget = setTimeout(() => {
+		over = true;
+		for (const c of controllers) c.abort(new Error(OUT_OF_TIME));
+	}, CHECKOUT_BUDGET_MS);
+	const onCancel = () => {
+		for (const c of controllers) c.abort(cancel?.reason);
+	};
+	cancel?.addEventListener("abort", onCancel, { once: true });
+	let next = 0;
+	const worker = async () => {
+		while (next < count) {
+			const i = next++;
+			const signal = (controllers[i] as AbortController).signal;
+			if (signal.aborted) {
+				outcomes[i] = { ok: false, code: "budget", reason: OUT_OF_TIME };
+				continue;
+			}
+			try {
+				outcomes[i] = {
+					ok: true,
+					value: await untilAborted(run(i, signal), signal),
+				};
+			} catch (e) {
+				outcomes[i] =
+					over && signal.aborted
+						? { ok: false, code: "budget", reason: OUT_OF_TIME }
+						: { ok: false, code: "failed", reason: messageOf(e) };
+			}
+		}
+	};
+	try {
+		await Promise.all(
+			Array.from({ length: Math.min(CHECKOUT_CONCURRENCY, count) }, worker),
+		);
+	} finally {
+		clearTimeout(budget);
+		cancel?.removeEventListener("abort", onCancel);
+	}
+	if (cancel?.aborted)
+		throw cancel.reason instanceof Error
+			? cancel.reason
+			: new Error("the run was stopped");
+	return outcomes;
+}
+
+/** `work`, rejected as soon as `signal` aborts: a port that never settles is dropped, not awaited. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+	let onAbort = () => {};
+	const aborted = new Promise<never>((_, reject) => {
+		onAbort = () => reject(signal.reason);
+		if (signal.aborted) onAbort();
+		else signal.addEventListener("abort", onAbort, { once: true });
+	});
+	return Promise.race([work, aborted]).finally(() =>
+		signal.removeEventListener("abort", onAbort),
+	);
+}
+
+function messageOf(e: unknown): string {
+	return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -1305,6 +1540,7 @@ export async function rebuildWorkspace(
 	return {
 		...ws,
 		repos,
+		checkoutsSkipped: [],
 		note: ws.repos.length
 			? `${how} in a fresh workspace pinned to ${pinned}.`
 			: `${how}; this run had no repository.`,

@@ -933,12 +933,23 @@ export const PreRunSourceSchema = z.object({
 });
 export type PreRunSource = z.infer<typeof PreRunSourceSchema>;
 
+/** A repository the run did not check out, and why (#848). */
+export const CheckoutSkippedSchema = z.object({
+	repo: z.string(),
+	reason: z.string(),
+	code: z.enum(["failed", "budget", "guard"]),
+});
+export type CheckoutSkipped = z.infer<typeof CheckoutSkippedSchema>;
+
 /** What PrismaLens fetched before the run, written under `dir`, outside the repo checkout. */
 export const PreRunContextSchema = z.object({
 	dir: z.string(),
 	fetchedAt: z.string(),
 	sources: z.array(PreRunSourceSchema),
 	files: z.array(z.object({ name: z.string(), about: z.string() })),
+	/** Why the runbook scan did not run, when it did not. */
+	runbooksSkipped: z.string().optional(),
+	checkoutsSkipped: z.array(CheckoutSkippedSchema).optional(),
 });
 export type PreRunContext = z.infer<typeof PreRunContextSchema>;
 

@@ -43,7 +43,7 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 					path: "repo/runbooks/checkout.md",
 					service: "checkout",
 					matchedBy: "runbooks/",
-					read: { ok: true, path: "repo/runbooks/checkout.md", markdown: "# Restart the pool" },
+					origin: "repo",
 				},
 			],
 			now: NOW,
@@ -59,7 +59,7 @@ describe("the run's context folder (#848 ruling 2026-10-24)", () => {
 		expect(snap).toContain("[redacted]");
 		expect(snap).not.toContain("tok-123456");
 		expect(JSON.parse(snap).window).toEqual({ start: "2026-10-24T09:00:00.000Z", end: "2026-10-24T10:00:00.000Z" });
-		expect(readFileSync(join(dir, "runbooks.md"), "utf8")).toContain("# Restart the pool");
+		expect(readFileSync(join(dir, "runbooks.md"), "utf8")).toContain("Path: repo/runbooks/checkout.md");
 		expect(ctx.sources).toEqual([
 			expect.objectContaining({ label: "prod prom", status: "fetched", file: "telemetry-prometheus-1.json" }),
 			{ kind: "loki", label: "LOKI_URL", from: "env", status: "skipped", detail: "the source did not answer in time" },

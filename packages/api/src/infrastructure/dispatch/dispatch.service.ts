@@ -387,6 +387,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				);
 			},
 			snapshotWith: async (ref, dest, signal, at) => {
+				signal?.throwIfAborted();
 				const row =
 					ref.sourceKind === "url"
 						? await this.prisma.repository.findFirst({
@@ -414,6 +415,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 								signal,
 								at,
 							),
+						signal,
 					);
 				const { problem: _problem, ...run } = credential;
 				return { snap, credential: run };
@@ -431,8 +433,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 						preRun: {
 							telemetry: (window, signal) =>
 								telemetrySnapshot.fetch(window, signal),
-							runbooks: (runId) =>
-								this.gateway?.runbookDocs(runId) ?? Promise.resolve([]),
+							runbooks: (runId, signal) =>
+								this.gateway?.runbookIndex(runId, signal) ??
+								Promise.resolve({ entries: [] }),
 						},
 					}
 				: {}),

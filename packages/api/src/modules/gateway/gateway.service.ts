@@ -21,7 +21,6 @@ import {
 	listRunbooks,
 	type RunbookEntry,
 	type RunbookRepo,
-	type RunbookResult,
 	readRunbook,
 } from "./runbooks.js";
 import {
@@ -36,6 +35,15 @@ import {
 export const GATEWAY_ROUTE = "mcp/runs/:runId";
 
 const RUNBOOKS_SETTING = "sources.runbooks.enabled";
+/** What the pre-run index reads: the first repos, one at a time, and the first entries (#848). */
+const INDEX_REPOS = 5;
+const INDEX_ENTRIES = 50;
+
+export interface RunbookIndex {
+	entries: RunbookEntry[];
+	/** Why the scan did not run, when it did not. */
+	skipped?: string;
+}
 
 const logger = new Logger({ context: "Gateway" });
 
@@ -172,7 +180,7 @@ export class GatewayService {
 		runbooks: {
 			list: async (runId, service) =>
 				(await this.runbooksEnabled())
-					? listRunbooks(await this.runbookRepos(runId), service)
+					? listRunbooks(await this.runbookRepos(runId), { service })
 					: [],
 			read: async (runId, path, service) =>
 				(await this.runbooksEnabled())
@@ -186,21 +194,22 @@ export class GatewayService {
 		incident: (q) => this.incident(q),
 	};
 
-	/** The runbooks the pre-run fetch writes into the run's context folder, each read in full. */
-	async runbookDocs(
+	/** The pre-run index of the run's runbooks: titles and paths only, never their text. */
+	async runbookIndex(
 		runId: string,
-	): Promise<(RunbookEntry & { read: RunbookResult })[]> {
-		if (!(await this.runbooksEnabled())) return [];
-		const repos = await this.runbookRepos(runId);
-		const entries = await listRunbooks(repos);
-		return Promise.all(
-			entries.map(async (e) => ({
-				...e,
-				read: await readRunbook(repos, e.path, e.service).catch(
-					(): RunbookResult => ({ ok: false, error: "could not be read" }),
-				),
-			})),
-		);
+		signal?: AbortSignal,
+	): Promise<RunbookIndex> {
+		signal?.throwIfAborted();
+		if (!(await this.runbooksEnabled()))
+			return { entries: [], skipped: "runbook discovery is turned off" };
+		signal?.throwIfAborted();
+		const repos = (await this.runbookRepos(runId)).slice(0, INDEX_REPOS);
+		return {
+			entries: await listRunbooks(repos, {
+				limit: INDEX_ENTRIES,
+				...(signal ? { signal } : {}),
+			}),
+		};
 	}
 
 	/** On unless the operator switched it off. */

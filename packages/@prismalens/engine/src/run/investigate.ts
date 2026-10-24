@@ -1029,10 +1029,21 @@ function withSandboxGap<R extends { coverage: { notQueried: string[] } }>(
 export function withSkippedSources<
 	R extends { coverage: { notQueried: string[] } },
 >(report: R, context: Pick<InvestigationContext, "preRun">): R {
-	const gaps = (context.preRun?.sources ?? [])
-		.filter((s) => s.status === "skipped")
-		.map((s) => `${s.label} (${s.kind}): skipped before the run, ${s.detail}`)
-		.filter((g) => !report.coverage.notQueried.includes(g));
+	const pre = context.preRun;
+	const gaps = [
+		...(pre?.sources ?? [])
+			.filter((s) => s.status === "skipped")
+			.map(
+				(s) => `${s.label} (${s.kind}): skipped before the run, ${s.detail}`,
+			),
+		...(pre?.runbooksSkipped
+			? [`Runbooks: skipped before the run, ${pre.runbooksSkipped}`]
+			: []),
+		...(pre?.checkoutsSkipped ?? []).map(
+			(c) =>
+				`Repository ${c.repo}: not checked out before the run, ${c.reason}`,
+		),
+	].filter((g) => !report.coverage.notQueried.includes(g));
 	if (!gaps.length) return report;
 	return {
 		...report,

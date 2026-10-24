@@ -181,7 +181,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 		expect(ws.cwd).toBe("/app-data/repos/github.com/acme/api-gateway");
 	});
 
-	it("a stored subPath that climbs out of the snapshot fails the run instead of widening the cwd", async () => {
+	it("a stored subPath that climbs out of the snapshot is skipped instead of widening the cwd (#848)", async () => {
 		const ports = fakePorts({
 			incidentRepos: vi.fn(async () => [
 				{ sourceKind: "url" as const, url: "https://github.com/acme/api-gateway", defaultBranch: "main", subPath: "../../outside", connectionId: null, serviceName: "checkout" },
@@ -193,9 +193,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			})),
 		});
 
-		await expect(resolveWorkspace(minimalData(), ports)).rejects.toThrow(
-			/escapes the snapshot/,
-		);
+		const ws = await resolveWorkspace(minimalData(), ports);
+		expect(ws.layout).toBe("unmapped");
+		expect(ws.checkoutsSkipped).toEqual([
+			{ repo: "https://github.com/acme/api-gateway", code: "failed", reason: expect.stringMatching(/escapes the snapshot/) },
+		]);
 	});
 
 	it("a linked repo with no connectionId: snapshotWith gets a null connectionId", async () => {
@@ -267,7 +269,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			);
 		});
 
-		it("a secondary repo that cannot be copied is skipped and named in the note; the primary's failure still fails", async () => {
+		it("a repo that cannot be copied is skipped and named in the note; a primary's failure leads the note (#848)", async () => {
 			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", "/ws");
 			const snapshot = cloneAs(async (_src: unknown, dest: string) => {
 				if (dest.endsWith("worker")) throw new Error("repository not found");
@@ -297,7 +299,10 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				]),
 				snapshotWith: snapshot,
 			});
-			await expect(resolveWorkspace(minimalData(), primaryDown)).rejects.toThrow("repository not found");
+			const down = await resolveWorkspace(minimalData(), primaryDown);
+			expect(down.layout).toBe("single");
+			expect(down.repos.map((r) => r.name)).toEqual(["api"]);
+			expect(down.note.startsWith("Not included, because it could not be copied: URL git@github.com:o/worker.git (repository not found).")).toBe(true);
 		});
 
 		it("one repository linked by two services is cloned once with both service names", async () => {
@@ -1082,7 +1087,7 @@ describe("follow-up on a finished run (#747)", () => {
 			now: new Date("2026-10-24T10:00:00Z"),
 		});
 		const telemetry = vi.fn(async () => []);
-		const ports = followUpPorts({ preRun: { telemetry, runbooks: vi.fn(async () => []) } });
+		const ports = followUpPorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
 		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
 			await run.store.create();
 			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
@@ -1512,7 +1517,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 					{ kind: "prometheus" as const, label: "prod prom", from: "set" as const, status: "skipped" as const, reason: "the source did not answer in time" },
 					{ kind: "loki" as const, label: "LOKI_URL", from: "env" as const, status: "fetched" as const, part: { summary: "3 error log lines from 1 streams", data: { result: [] } }, secrets: [] },
 				]),
-				runbooks: vi.fn(async () => []),
+				runbooks: vi.fn(async () => ({ entries: [] })),
 			},
 		});
 
@@ -1552,7 +1557,7 @@ describe("the pre-run fetch reaches the run (#848 ruling 2026-10-24)", () => {
 
 	it("each new investigation fetches afresh", async () => {
 		const telemetry = vi.fn(async () => []);
-		const ports = fakePorts({ preRun: { telemetry, runbooks: vi.fn(async () => []) } });
+		const ports = fakePorts({ preRun: { telemetry, runbooks: vi.fn(async () => ({ entries: [] })) } });
 		await runInvestigationJob(...job("inv-a"), io(), ports);
 		await runInvestigationJob(...job("inv-b"), io(), ports);
 		expect(telemetry).toHaveBeenCalledTimes(2);
