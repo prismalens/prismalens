@@ -71,7 +71,7 @@ export function useSettingsSections(): SettingsSectionItem[] {
 			label: "Agent",
 			line: effective
 				? [agent.agent, agent.model]
-						.filter((w) => w && w !== "agent default")
+						.filter((w) => w && w !== "its own model")
 						.join(", ")
 				: "None found",
 		},

@@ -32,6 +32,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -52,6 +53,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -72,6 +74,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -132,7 +135,7 @@ let mockChoice = {
 	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
 	hiddenModels: {} as Record<string, string[]>,
 	modelOrder: {} as Record<string, string[]>,
-	favourites: [] as { harness: string; model: string }[],
+	models: {} as Record<string, string>,
 	isLoading: false,
 	isError: false,
 };
@@ -140,6 +143,7 @@ let mockChoice = {
 vi.mock("@/components/agent/AgentPicker", () => ({
 	useAgentChoice: () => mockChoice,
 	modelName: (_h: unknown, id: string) => id,
+	agentCurrentModel: () => null,
 	AgentModelPicker: () => <div data-testid="stub-agent-model-picker" />,
 	EffortChip: () => <div data-testid="stub-effort-chip" />,
 	defaultAccessOf: () => ({
@@ -194,7 +198,7 @@ beforeEach(() => {
 		customModels: { "claude-code": ["gw-a"] },
 		hiddenModels: {},
 		modelOrder: {},
-		favourites: [],
+		models: {},
 		isLoading: false,
 		isError: false,
 	};
@@ -419,6 +423,18 @@ describe("AgentDetail models (#907)", () => {
 			expect(mutateSpy).toHaveBeenLastCalledWith({
 				hiddenModels: { "claude-code": ["gw-a", "opus", "sonnet"] },
 			});
+			// One star per agent: the model a run uses with none picked (#907).
+			expect(container.textContent).not.toContain("Default");
+			await act(async () => {
+				(
+					container.querySelector(
+						'[aria-label="Star sonnet"]',
+					) as HTMLButtonElement
+				).click();
+			});
+			expect(mutateSpy).toHaveBeenLastCalledWith({
+				models: { "claude-code": "sonnet" },
+			});
 		} finally {
 			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
 		}
@@ -426,18 +442,38 @@ describe("AgentDetail models (#907)", () => {
 });
 
 describe("AgentDetail runtime and environment (#907)", () => {
-	it("lists variable names, never values, and adds one as a password field", async () => {
-		mockSettings = {
-			harness: "claude-code",
-			envNames: { "claude-code": ["ANTHROPIC_BASE_URL"] },
-		};
+	it("names each variable Not set, Key set or From environment, never a value, and adds one as a password field", async () => {
+		mockHarnesses[0].envVars = [
+			{ name: "ANTHROPIC_API_KEY", state: "env" },
+			{ name: "ANTHROPIC_AUTH_TOKEN", state: "unset" },
+			{ name: "ANTHROPIC_BASE_URL", state: "set" },
+		];
 		await act(async () => {
 			root.render(<AgentDetail id="claude-code" />);
 		});
+		const word = (n: string) =>
+			container.querySelector(`[data-testid="env-state-${n}"]`)?.textContent;
+		expect(word("ANTHROPIC_API_KEY")).toBe("From environment");
+		expect(word("ANTHROPIC_AUTH_TOKEN")).toBe("Not set");
+		expect(word("ANTHROPIC_BASE_URL")).toBe("Key set");
+		// Only a stored value can be removed; the others offer Set.
 		expect(
-			container.querySelector('[data-testid="env-row-ANTHROPIC_BASE_URL"]')
-				?.textContent,
-		).toContain("••••••");
+			container.querySelector(
+				'[data-testid="env-row-ANTHROPIC_BASE_URL"] [data-testid="env-remove"]',
+			),
+		).not.toBeNull();
+		await act(async () => {
+			(
+				container.querySelector(
+					'[data-testid="env-row-ANTHROPIC_AUTH_TOKEN"] [data-testid="env-set"]',
+				) as HTMLButtonElement
+			).click();
+		});
+		expect(
+			(container.querySelector('[data-testid="env-name"]') as HTMLInputElement)
+				.value,
+		).toBe("ANTHROPIC_AUTH_TOKEN");
+		mockHarnesses[0].envVars = [];
 		const value = container.querySelector(
 			'[data-testid="env-value"]',
 		) as HTMLInputElement;

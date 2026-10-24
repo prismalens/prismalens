@@ -8,13 +8,21 @@
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { type HarnessStatus, RUNTIME_HOST_ONLY } from "@prismalens/contracts";
+import {
+	type AgentEnvVar,
+	type HarnessStatus,
+	RUNTIME_HOST_ONLY,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
 import { AgentMark } from "@/components/agent/AgentMark";
-import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
+import {
+	agentCurrentModel,
+	modelName,
+	useAgentChoice,
+} from "@/components/agent/AgentPicker";
 import { agentModels, move } from "@/components/agent/model-list";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
@@ -22,6 +30,7 @@ import { Mono } from "@/components/shared/Mono";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Loading } from "@/components/shared/State";
+import { type StateTone, StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -135,11 +144,23 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	);
 }
 
+/** The Models group's line: what a run with none picked uses, by its name (#907). */
+export function modelsLine(
+	agent: HarnessStatus,
+	starred: string | undefined,
+): string {
+	if (starred)
+		return `A run with no model picked uses the starred one, ${modelName(agent, starred) ?? starred}.`;
+	const current = agentCurrentModel(agent);
+	return current
+		? `Nothing starred: a run with no model picked uses ${current.name}, the model ${agent.label} reports.`
+		: "Star the model a run uses when none is picked.";
+}
+
 /** Show or hide, star, reorder and add models; one PATCH per change (#907 decision 2). */
 function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
-	const { customModels, hiddenModels, modelOrder, favourites } =
-		useAgentChoice();
+	const { customModels, hiddenModels, modelOrder, models } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	const custom = customModels[id] ?? [];
 	const hidden = hiddenModels[id] ?? [];
@@ -153,8 +174,8 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const [draft, setDraft] = useState("");
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
-	const starred = (m: string) =>
-		favourites.some((f) => f.harness === id && f.model === m);
+	// One star per agent: PrismaLens's model for it (#907).
+	const starred = (m: string) => models[id] === m;
 	const setHidden = (next: string[]) =>
 		update.mutate({ hiddenModels: { [id]: next.length ? next : null } });
 	const add = (e: FormEvent) => {
@@ -192,7 +213,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 					)}
 				</span>
 			}
-			description="The Default row is always in the picker."
+			description={modelsLine(agent, models[id])}
 		>
 			<Pool>
 				{list.map((m, i) => {
@@ -208,11 +229,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 									aria-pressed={starred(m.id)}
 									onClick={() =>
 										update.mutate({
-											favourites: starred(m.id)
-												? favourites.filter(
-														(f) => !(f.harness === id && f.model === m.id),
-													)
-												: [...favourites, { harness: id, model: m.id }],
+											models: { [id]: starred(m.id) ? null : m.id },
 										})
 									}
 									className="inline-flex size-6 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4"
@@ -537,18 +554,29 @@ export function RuntimeFields({ id }: { id: HarnessId }) {
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 
-/** Variables passed only to this agent: names listed, values never read back (#907 decision 9). */
+/** A variable's state in words; a value is never among them (#907). */
+export const ENV_STATE: Record<
+	AgentEnvVar["state"],
+	{ word: string; tone: StateTone }
+> = {
+	unset: { word: "Not set", tone: "quiet" },
+	set: { word: "Key set", tone: "ok" },
+	env: { word: "From environment", tone: "neutral" },
+};
+
+/** Variables the agent reads, each Not set, Key set or From environment; values never read back (#907 decision 9). */
 export function EnvironmentRows({ id }: { id: HarnessId }) {
 	const { data } = useHarnesses();
-	const settings = useHarnessSettings().data;
 	const update = useUpdateHarnessSettings();
 	const canEdit = useCanEditRuntime();
 	const [name, setName] = useState("");
 	const [value, setValue] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
-	const label = data?.harnesses.find((h) => h.id === id)?.label ?? id;
-	const names = settings?.envNames?.[id] ?? [];
+	const valueField = useRef<HTMLInputElement>(null);
+	const agent = data?.harnesses.find((h) => h.id === id);
+	const label = agent?.label ?? id;
+	const vars = agent?.envVars ?? [];
 	const add = (e: FormEvent) => {
 		e.preventDefault();
 		const key = name.trim();
@@ -572,27 +600,47 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 		<>
 			<p className="mb-3 text-meta text-text-3" data-testid="env-intro">
 				{canEdit
-					? `Passed only to ${label}. Values are stored encrypted and never shown again; your own environment still applies, and a name set here wins.`
+					? `Passed only to ${label}. A value set here is stored encrypted, never shown again, and wins over the one PrismaLens inherits from the environment it runs in.`
 					: RUNTIME_HOST_ONLY}
 			</p>
 			<Pool>
-				{names.map((n) => (
+				{vars.map((v) => (
 					<Row
-						key={n}
-						testId={`env-row-${n}`}
-						label={<Mono>{n}</Mono>}
-						meta="••••••"
+						key={v.name}
+						testId={`env-row-${v.name}`}
+						label={<Mono>{v.name}</Mono>}
+						meta={
+							<StateWord
+								tone={ENV_STATE[v.state].tone}
+								data-testid={`env-state-${v.name}`}
+							>
+								{ENV_STATE[v.state].word}
+							</StateWord>
+						}
 						trailing={
-							canEdit && (
+							canEdit &&
+							(v.state === "set" ? (
 								<Button
 									variant="secondary"
 									size="sm"
-									onClick={() => setRemoving(n)}
+									onClick={() => setRemoving(v.name)}
 									data-testid="env-remove"
 								>
 									Remove
 								</Button>
-							)
+							) : (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => {
+										setName(v.name);
+										valueField.current?.focus();
+									}}
+									data-testid="env-set"
+								>
+									Set
+								</Button>
+							))
 						}
 					/>
 				))}
@@ -614,6 +662,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 									data-testid="env-name"
 								/>
 								<Input
+									ref={valueField}
 									type="password"
 									autoComplete="off"
 									value={value}
@@ -648,7 +697,7 @@ export function EnvironmentRows({ id }: { id: HarnessId }) {
 				open={removing !== null}
 				onOpenChange={(open) => !open && setRemoving(null)}
 				title="Remove this variable?"
-				description={`${removing ?? ""} is no longer passed to ${label}. Your own environment still applies.`}
+				description={`${removing ?? ""} is no longer passed to ${label}. A value in the environment PrismaLens runs in applies again.`}
 				confirmLabel="Remove"
 				isPending={update.isPending}
 				error={update.error}

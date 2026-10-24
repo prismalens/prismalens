@@ -3,12 +3,13 @@
 
 /**
  * One model list for the picker and Settings → Agent (#907): the agent's own
- * default folds into PrismaLens's Default row (#902 f10), and the operator's
- * hidden models, order and stars apply.
+ * `default` pseudo-entry is left out, as every model shows by its real name,
+ * and the operator's hidden models, order and star apply.
  */
+import type { HarnessId } from "@prismalens/config/harness";
 import type { FavouriteModel, HarnessStatus } from "@prismalens/contracts";
 
-/** The agent's own "default" entry, which the Default row already stands for. */
+/** The agent's own "default" entry; it names no model of its own, so no row shows it. */
 export function isAgentDefault(e: {
 	id: string;
 	name?: string | null;
@@ -21,6 +22,19 @@ export function isFoldedId(h: HarnessStatus | undefined, id: string): boolean {
 	if (!id) return false;
 	const listed = h?.models.entries.find((e) => e.id === id);
 	return isAgentDefault(listed ?? { id });
+}
+
+/** Each agent's starred model: the one a run on it uses when none is picked (#907). */
+export function starredOf(
+	harnesses: HarnessStatus[],
+	models: Partial<Record<HarnessId, string>>,
+): FavouriteModel[] {
+	return harnesses.flatMap((h) => {
+		const model = models[h.id as HarnessId];
+		return model && !isFoldedId(h, model)
+			? [{ harness: h.id as HarnessId, model }]
+			: [];
+	});
 }
 
 const PROVIDERS: Record<string, string> = {

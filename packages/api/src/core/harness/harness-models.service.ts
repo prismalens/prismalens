@@ -24,13 +24,14 @@ import type { HarnessStatus } from "@prismalens/contracts/schemas";
 export const OPERATOR_CATALOGUE_FILE = "model-catalogue.json";
 
 type Check = NonNullable<HarnessStatus["checked"]>;
+type OfferedModel = { id: string; name: string; description?: string };
 
 @Injectable()
 export class HarnessModelsService {
 	private readonly logger = new Logger(HarnessModelsService.name);
 	private readonly offered = new Map<
 		HarnessId,
-		{ at: string; models: { id: string; name: string }[] }
+		{ at: string; models: OfferedModel[] }
 	>();
 	private lastWarning: string | undefined;
 
@@ -43,7 +44,7 @@ export class HarnessModelsService {
 	>();
 
 	/** Remember what a readiness check saw the harness offer. An empty list forgets. */
-	remember(id: HarnessId, models: { id: string; name: string }[] | undefined) {
+	remember(id: HarnessId, models: OfferedModel[] | undefined) {
 		if (models?.length)
 			this.offered.set(id, { at: new Date().toISOString(), models });
 		else this.offered.delete(id);

@@ -30,6 +30,7 @@ const status = (over: Partial<HarnessStatus>): HarnessStatus => ({
 	cliBinary: "codex",
 	configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
 	providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
+	envVars: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: null,
 	...over,

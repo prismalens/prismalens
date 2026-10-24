@@ -21,6 +21,7 @@ const base = {
 	windowsOnlyPath: null,
 	configDir: null,
 	providerKeys: [],
+	envVars: [],
 	models: { source: "catalogue", asOf: "2026-10-23T00:00:00Z", entries: [] },
 	checked: null,
 };

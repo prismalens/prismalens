@@ -30,6 +30,7 @@ const agent = (
 	cliBinary: "",
 	configDir: null,
 	providerKeys: [],
+	envVars: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: {
 		at: "",

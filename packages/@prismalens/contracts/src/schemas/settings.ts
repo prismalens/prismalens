@@ -124,6 +124,19 @@ export const HarnessProbeOutcomeSchema = z.enum([
 ]);
 export type HarnessProbeOutcome = z.infer<typeof HarnessProbeOutcomeSchema>;
 
+/** An env var name, POSIX-style (#907). */
+export const EnvNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/);
+/**
+ * `set`: stored in PrismaLens, wins over the host. `env`: inherited from the
+ * environment PrismaLens runs with. `unset`: neither (#907).
+ */
+export const ENV_VAR_STATES = ["unset", "set", "env"] as const;
+export const AgentEnvVarSchema = z.object({
+	name: EnvNameSchema,
+	state: z.enum(ENV_VAR_STATES),
+});
+export type AgentEnvVar = z.infer<typeof AgentEnvVarSchema>;
+
 export const HarnessStatusSchema = z.object({
 	id: z.string(),
 	label: z.string(),
@@ -161,6 +174,8 @@ export const HarnessStatusSchema = z.object({
 	cliBinary: z.string().default(""),
 	/** Provider key names the agent reads; Add agent's sign-in step offers them (#907). */
 	providerKeys: z.array(z.string()).default([]),
+	/** Its variables by name and state, never a value (#907). Absent from older APIs. */
+	envVars: z.array(AgentEnvVarSchema).default([]),
 	/** The env var Config directory sets, and what unset means; null when the agent has none. */
 	configDir: z
 		.object({ envKey: z.string(), shownDefault: z.string() })
@@ -179,6 +194,8 @@ export const HarnessStatusSchema = z.object({
 				id: z.string(),
 				name: z.string(),
 				status: z.string().nullable(),
+				/** The agent's own line for the entry; a `default` entry's names the model it runs (#907). */
+				description: z.string().optional(),
 			}),
 		),
 	}),
@@ -228,8 +245,6 @@ export type HarnessSelectionStatus = z.infer<
 const ModelIdSchema = z.string().min(1).max(200);
 const EffortValueSchema = z.string().min(1).max(64);
 const CustomModelsSchema = z.array(ModelIdSchema).max(50);
-/** An env var name, POSIX-style (#907). */
-export const EnvNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/);
 const PathSchema = z.string().trim().min(1).max(1024);
 const ModelListSchema = z.array(ModelIdSchema).max(500);
 /** The one local ACP agent: a command and its arguments, no shell (#907). */
@@ -351,7 +366,15 @@ export const HarnessProbeResultSchema = z.object({
 	version: z.string().nullable().optional(),
 	companionVersion: z.string().nullable().optional(),
 	/** The models the harness itself offers (ACP `configOptions`, category `model`); these win over the catalogue. */
-	models: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+	models: z
+		.array(
+			z.object({
+				id: z.string(),
+				name: z.string(),
+				description: z.string().optional(),
+			}),
+		)
+		.optional(),
 	servedModel: z.string().nullable().optional(),
 	effort: EffortOptionSchema.nullable().optional(),
 	modes: z.array(AgentModeOptionSchema).nullable().optional(),

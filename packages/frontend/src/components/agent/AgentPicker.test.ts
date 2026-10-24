@@ -6,8 +6,9 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+	agentCurrentModel,
 	chipModel,
-	defaultModelLine,
+	defaultModel,
 	ModelChip,
 	EffortChip,
 	effortLevels,
@@ -54,6 +55,7 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 	cliBinary: "",
 	configDir: null,
 	providerKeys: [],
+	envVars: [],
 	models: {
 		source: "harness",
 		asOf: "",
@@ -82,9 +84,13 @@ const claude = (over: Partial<HarnessStatus> = {}): HarnessStatus => ({
 });
 
 describe("the box's chips (#673)", () => {
-	it("names the resolved model on Agent default, never a bare Agent default", () => {
+	it("names a real model with none picked, never a bare default (#907)", () => {
 		expect(chipModel(claude(), "")).toBe("Sonnet 5.5");
-		expect(chipModel(claude({ checked: null }), "")).toBe("Claude Code default");
+		// Nothing reports a model: the list's first entry, by its name.
+		expect(chipModel(claude({ checked: null }), "")).toBe("Sonnet 5.5");
+		expect(chipModel(claude({ checked: null, models: { source: "harness", asOf: "", entries: [] } }), "")).toBe(
+			"Claude Code",
+		);
 	});
 
 	it("greys an installed agent whose check did not answer, with its reason", () => {
@@ -157,6 +163,11 @@ describe("the box's chips (#673)", () => {
 			"gemma4:31b-cloud has no effort levels; the context window is fixed by the model",
 		);
 		expect(off).toContain("disabled");
+		expect(off).toContain("Fixed");
+		expect(off).not.toContain("Default");
+		// The agent's own effort is tagged by its name, never "Default" (#907).
+		expect(on).toMatch(/Claude Code(&#x27;|')s pick/);
+		expect(on).not.toMatch(/>Default</);
 	});
 
 	it("lists the four levels, the default first and tagged, each with the agent's own mode name (#673 w21)", () => {
@@ -168,7 +179,8 @@ describe("the box's chips (#673)", () => {
 			}),
 		);
 		expect(html.indexOf("Ask always")).toBeLessThan(html.indexOf("Full access"));
-		expect(html).toContain("PrismaLens default");
+		expect(html).toMatch(/PrismaLens(&#x27;|')s pick/);
+		expect(html).not.toContain("Default");
 		expect(html).toContain("Claude Code runs in Manual.");
 		expect(html).not.toContain("answers yes");
 	});
@@ -186,7 +198,7 @@ describe("the box's chips (#673)", () => {
 		expect(html).toContain('data-testid="access-level-auto-edits"');
 		expect(html).toContain('data-testid="access-level-auto"');
 		expect(html).toContain('data-testid="access-level-full-access"');
-		expect(html).toContain("PrismaLens default");
+		expect(html).toMatch(/PrismaLens(&#x27;|')s pick/);
 		// One line per level (#831 w6-12); the agent's mode and sandbox sit in the row's hover title.
 		expect(html.match(/data-testid="access-line"/g)).toHaveLength(4);
 		expect(html).not.toContain('data-testid="access-row-line"');
@@ -222,25 +234,45 @@ describe("the box's chips (#673)", () => {
 	});
 });
 
-describe("defaultModelLine (#673 w57)", () => {
-	it("returns '<model>, from your environment' when envModel is set", () => {
-		expect(
-			defaultModelLine(
-				claude({
-					envModel: { key: "CLAUDE_MODEL", model: "claude-sonnet-5-5" },
-				}),
-			),
-		).toBe("Sonnet 5.5, from your environment");
+describe("the model a run uses with none picked, by its real name (#907)", () => {
+	const listed = {
+		source: "harness" as const,
+		asOf: "",
+		entries: [
+			{ id: "default", name: "Default (recommended)", status: null, description: "Opus 5.5" },
+			{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null },
+			{ id: "claude-opus-5-5", name: "Opus 5.5", status: null },
+		],
+	};
+	const served = (servedModel: string | null) =>
+		claude({ models: listed, checked: { ...(claude().checked as NonNullable<HarnessStatus["checked"]>), servedModel } });
+
+	it("takes the env model, then the model the check reports", () => {
+		expect(agentCurrentModel(claude({ envModel: { key: "ANTHROPIC_MODEL", model: "claude-sonnet-5-5" } }))).toEqual({
+			id: "claude-sonnet-5-5",
+			name: "Sonnet 5.5",
+		});
+		expect(agentCurrentModel(claude())).toEqual({ id: "claude-sonnet-5-5", name: "Sonnet 5.5" });
+		expect(agentCurrentModel(claude({ checked: null }))).toBeNull();
 	});
 
-	it("returns the servedModel name when only servedModel is set", () => {
-		expect(defaultModelLine(claude({ envModel: null }))).toBe("Sonnet 5.5");
+	it("resolves a `default` entry through the model its description names", () => {
+		expect(agentCurrentModel(served("default"))).toEqual({ id: "claude-opus-5-5", name: "Opus 5.5" });
+		const unlisted = claude({
+			models: { ...listed, entries: [{ id: "default", name: "Default (recommended)", status: null, description: "Nova 9" }] },
+			checked: { ...(claude().checked as NonNullable<HarnessStatus["checked"]>), servedModel: "default" },
+		});
+		expect(agentCurrentModel(unlisted)).toEqual({ id: null, name: "Nova 9" });
 	});
 
-	it("returns undefined when neither envModel nor servedModel is set", () => {
-		expect(
-			defaultModelLine(claude({ envModel: null, checked: null })),
-		).toBeUndefined();
+	it("prefers the starred model, then the agent's, then the list's first; never the word Default", () => {
+		expect(defaultModel(served("default"), "claude-sonnet-5-5")?.name).toBe("Sonnet 5.5");
+		expect(defaultModel(served("default"), "default")?.name).toBe("Opus 5.5");
+		const silent = claude({ models: { ...listed, entries: listed.entries.map(({ description: _, ...e }) => e) } });
+		expect(defaultModel({ ...silent, checked: { ...(silent.checked as NonNullable<HarnessStatus["checked"]>), servedModel: "default" } }, null)).toEqual({
+			id: "claude-sonnet-5-5",
+			name: "Sonnet 5.5",
+		});
 	});
 });
 
@@ -318,7 +350,7 @@ describe("modelName (#673)", () => {
 	});
 });
 
-describe("one Default row and only runnable agents (#902 f10, #907)", () => {
+describe("no Default row, real names and only runnable agents (#902 f10, #907)", () => {
 	const withDefault = claude({
 		models: {
 			source: "harness",
@@ -338,18 +370,26 @@ describe("one Default row and only runnable agents (#902 f10, #907)", () => {
 		);
 	};
 
-	it("lists one model-default row reading Default, and not the agent's own", () => {
+	it("lists the models by name, with no Default row and not the agent's own entry", () => {
 		const html = render("");
-		expect(html.match(/data-testid="model-default"/g)).toHaveLength(1);
-		expect(html).toContain(">Default<");
+		expect(html).not.toContain('data-testid="model-default"');
+		expect(html).not.toContain(">Default<");
 		expect(html).not.toContain("Default (recommended)");
 		expect(html.match(/data-testid="model-option"/g)).toHaveLength(1);
 	});
 
-	it("ticks Default when the stored model is the folded id", () => {
-		const html = render("default");
-		expect(html).toMatch(/data-testid="model-default"[^>]*data-checked=""/);
+	it("ticks the model the agent runs when none is picked, or the folded id is stored", () => {
+		for (const stored of ["", "default"]) {
+			const html = render(stored);
+			expect(html).toMatch(/data-model="Sonnet 5.5"[^>]*data-checked=""/);
+		}
 		expect(chipModel(withDefault, "default")).toBe("Sonnet 5.5");
+	});
+
+	it("stars the agent's model: the one a run uses with none picked", () => {
+		const html = render("claude-sonnet-5-5");
+		expect(html).toContain('aria-label="Unstar Sonnet 5.5"');
+		expect(html).toContain('aria-pressed="true"');
 	});
 
 	it("gives an agent that can't run no rail tile", () => {

@@ -31773,6 +31773,31 @@
                             },
                             "default": []
                           },
+                          "envVars": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                                },
+                                "state": {
+                                  "enum": [
+                                    "unset",
+                                    "set",
+                                    "env"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "state"
+                              ]
+                            },
+                            "default": []
+                          },
                           "configDir": {
                             "anyOf": [
                               {
@@ -31829,6 +31854,9 @@
                                           "type": "null"
                                         }
                                       ]
+                                    },
+                                    "description": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -33117,6 +33145,9 @@
                             "type": "string"
                           },
                           "name": {
+                            "type": "string"
+                          },
+                          "description": {
                             "type": "string"
                           }
                         },

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	AgentEnvVarSchema,
 	effectiveAccess,
 	HarnessSettingsSchema,
 	HarnessStatusSchema,
@@ -206,12 +207,26 @@ describe("agent runtime settings (#907)", () => {
 		expect(UpdateHarnessSettingsSchema.safeParse({ binaryPaths: { codex: "  " } }).success).toBe(false);
 	});
 
-	it("reads names, never values, and whether this caller may edit runtime", () => {
+	it("reads names and states, never values, and whether this caller may edit runtime", () => {
+		const envVars = {
+			"claude-code": [
+				{ name: "ANTHROPIC_API_KEY", state: "env" },
+				{ name: "ANTHROPIC_BASE_URL", state: "set" },
+				{ name: "OPENROUTER_API_KEY", state: "unset" },
+			],
+		} as const;
 		const parsed = HarnessSettingsSchema.parse({
 			harness: "auto",
 			envNames: { "claude-code": ["ANTHROPIC_BASE_URL"] },
 			canEditRuntime: false,
 		});
 		expect(parsed.envNames?.["claude-code"]).toEqual(["ANTHROPIC_BASE_URL"]);
+		const vars = envVars["claude-code"];
+		expect(vars.map((v) => AgentEnvVarSchema.parse(v))).toEqual(vars);
+		expect(AgentEnvVarSchema.safeParse({ name: "OPENAI_API_KEY", state: "shown" }).success).toBe(false);
+		// A value smuggled in is dropped, never passed on.
+		expect(JSON.stringify(AgentEnvVarSchema.parse({ name: "OPENAI_API_KEY", state: "set", value: "sk-1" }))).not.toContain(
+			"sk-1",
+		);
 	});
 });

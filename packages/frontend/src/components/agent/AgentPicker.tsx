@@ -11,7 +11,6 @@ import {
 	ACCESS_LEVEL_LINE,
 	type AxisSource,
 	effectiveAccess,
-	type FavouriteModel,
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
@@ -34,10 +33,10 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	defaultTag,
 	levelIcon,
 	levelRowLine,
 	levelSandbox,
+	levelTag,
 	sandboxLine,
 } from "@/lib/access-levels";
 import {
@@ -54,6 +53,7 @@ import {
 	isFoldedId,
 	pickerModels,
 	providerOf,
+	starredOf,
 } from "./model-list";
 import { focusChosen, roveKeys } from "./rove";
 
@@ -77,7 +77,6 @@ export function useAgentChoice() {
 			(effective && settingsQuery.data?.models?.[effective.id as HarnessId]) ??
 			"",
 		models: settingsQuery.data?.models ?? {},
-		favourites: settingsQuery.data?.favourites ?? [],
 		efforts: settingsQuery.data?.efforts ?? {},
 		axes: {
 			accessLevels: settingsQuery.data?.accessLevels ?? {},
@@ -129,8 +128,7 @@ export function modelName(
 	harness: HarnessStatus | undefined,
 	id: string | null | undefined,
 ): string | null {
-	if (!id) return null;
-	if (isFoldedId(harness, id)) return "Default";
+	if (!id || isFoldedId(harness, id)) return null;
 	const entries = (harness?.models.entries ?? []).filter(
 		(m) => !isAgentDefault(m),
 	);
@@ -146,18 +144,46 @@ export function modelName(
 	return alike.length === 1 && alike[0] ? named(alike[0]) : id;
 }
 
-/** The model the agent picks for itself, when its check or the env says; never its folded default entry. */
-function resolvedModel(h: HarnessStatus): string | null {
-	const id = h.envModel?.model || h.checked?.servedModel || null;
-	if (!id || isFoldedId(h, id)) return null;
-	return modelName(h, id);
+export interface NamedModel {
+	/** Null when the agent named a model its list doesn't hold. */
+	id: string | null;
+	name: string;
 }
 
-/** The default row's line: the model the agent picks, and where the env named it (#673 w57). */
-export function defaultModelLine(h: HarnessStatus): string | undefined {
-	const model = resolvedModel(h);
-	if (!model) return undefined;
-	return h.envModel ? `${model}, from your environment` : model;
+/**
+ * The model the agent runs when a run sends none: what the env or its check
+ * reports, a `default` entry resolved through its description, as Claude
+ * Code's "Default (recommended)" names the model behind it (#907).
+ */
+export function agentCurrentModel(h: HarnessStatus): NamedModel | null {
+	const raw = h.envModel?.model || h.checked?.servedModel || null;
+	if (!raw) return null;
+	if (!isFoldedId(h, raw)) return { id: raw, name: modelName(h, raw) ?? raw };
+	const said = h.models.entries.find((e) => e.id === raw)?.description;
+	const name = said ? modelName(h, said) : null;
+	if (!name) return null;
+	const listed = h.models.entries.find(
+		(e) => !isAgentDefault(e) && modelName(h, e.id) === name,
+	);
+	return { id: listed?.id ?? null, name };
+}
+
+/**
+ * PrismaLens's model for `h` by its real name, never the word Default: the
+ * starred one, else what the agent runs, else its list's first (#907).
+ */
+export function defaultModel(
+	h: HarnessStatus,
+	starred: string | null | undefined,
+): NamedModel | null {
+	if (starred && !isFoldedId(h, starred))
+		return { id: starred, name: modelName(h, starred) ?? starred };
+	const current = agentCurrentModel(h);
+	if (current) return current;
+	const first = h.models.entries.find((e) => !isAgentDefault(e));
+	return first
+		? { id: first.id, name: modelName(h, first.id) ?? first.id }
+		: null;
 }
 
 /** The agent and model the next run starts with, each named once. */
@@ -171,18 +197,15 @@ export function agentModelLabel(
 	}
 	return {
 		agent: effective.label,
-		model:
-			modelName(effective, model || resolvedModel(effective)) ??
-			"agent default",
+		model: defaultModel(effective, model)?.name ?? "its own model",
 	};
 }
 
-/** The chip's words for a model: never a bare default with no model named (#673 w7). */
+/** The chip's words for a model: always a model's real name (#673 w7, #907). */
 export function chipModel(h: HarnessStatus | undefined, model: string): string {
 	if (!h) return "No agent";
 	if (h.modelVia === "unsupported") return h.label;
-	const own = isFoldedId(h, model) ? "" : model;
-	return modelName(h, own || resolvedModel(h)) ?? `${h.label} default`;
+	return defaultModel(h, model)?.name ?? h.label;
 }
 
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
@@ -213,9 +236,6 @@ const PROVIDER_MARK: Record<string, string> = {
 	Google: "gemini",
 	"OpenCode Zen": "opencode",
 };
-
-const isStarred = (f: FavouriteModel[], harness: string, model: string) =>
-	f.some((x) => x.harness === harness && x.model === model);
 
 /** The chip every box control shares: ghost, h-8, 13/500, a 14 px caret. */
 export const CHIP =
@@ -256,7 +276,6 @@ export function ModelChip({
 }) {
 	const {
 		harnesses,
-		favourites,
 		models,
 		customModels,
 		hiddenModels,
@@ -287,34 +306,24 @@ export function ModelChip({
 			...(m?.status === "training" ? { warn: "trains on your prompts" } : {}),
 		};
 	};
+	// One star per agent: the model a run on it uses when none is picked (#907).
+	const favourites = starredOf(harnesses, models);
+	const isStarred = (h: HarnessStatus, id: string) =>
+		models[h.id as HarnessId] === id;
 	let rows: Row[] = [];
 	if (shown === "starred") {
 		rows = favourites.flatMap((f) => {
 			const h = harnesses.find((x) => x.id === f.harness);
-			return h &&
-				(h.runnable || h.id === harness?.id) &&
-				!isFoldedId(h, f.model)
+			return h && (h.runnable || h.id === harness?.id)
 				? [row(h, f.model, "star")]
 				: [];
 		});
-	} else if (agent && modelState(agent) === "list") {
+	} else if (agent) {
 		const id = agent.id as HarnessId;
 		const custom = customModels[id] ?? [];
 		const listedIds = new Set(agent.models.entries.map((m) => m.id));
 		const stored = models[id];
-		const ids = pickerModels(agent, {
-			custom,
-			order: modelOrder[id],
-			hidden: hiddenModels[id],
-			favourites,
-			chosen: harness?.id === agent.id ? model : (stored ?? ""),
-		});
-		// Ids the operator added in Settings, Agent; the agent's own list may not hold them (#673 w57).
-		const listed = ids.map((m) =>
-			listedIds.has(m)
-				? row(agent, m, "m")
-				: { ...row(agent, m, "c"), provider: "Added by you" },
-		);
+		// A starred id the agent doesn't list or can't take; unstarring it clears it (#907).
 		const unknown =
 			stored &&
 			!listedIds.has(stored) &&
@@ -323,27 +332,56 @@ export function ModelChip({
 				? [
 						{
 							...row(agent, stored, "u"),
-							warn: `Not confirmed for ${agent.label}`,
+							warn:
+								agent.modelVia === "unsupported"
+									? `${agent.label} picks its own model; unstar to clear`
+									: `Not confirmed for ${agent.label}`,
 						},
 					]
 				: [];
-		rows = [...unknown, ...listed];
+		rows = unknown;
+		if (modelState(agent) === "list") {
+			const ids = pickerModels(agent, {
+				custom,
+				order: modelOrder[id],
+				hidden: hiddenModels[id],
+				favourites,
+				chosen: harness?.id === agent.id ? model : (stored ?? ""),
+			});
+			// Ids the operator added in Settings, Agent; the agent's own list may not hold them (#673 w57).
+			const listed = ids.map((m) =>
+				listedIds.has(m)
+					? row(agent, m, "m")
+					: { ...row(agent, m, "c"), provider: "Added by you" },
+			);
+			// The model the agent runs now, when its list doesn't hold it (an env model, say).
+			const current = agentCurrentModel(agent);
+			const runsNow =
+				current?.id && !stored && !ids.includes(current.id)
+					? [
+							{
+								...row(agent, current.id, "now"),
+								provider: agent.envModel
+									? "From your environment"
+									: providerOf(agent.id, current.id),
+							},
+						]
+					: [];
+			rows = [...unknown, ...runsNow, ...listed];
+		}
 	}
 
-	// A stored id that is the agent's own default entry reads as the Default row (#902 f10).
+	// With none picked, the row ticked is the model the agent reports it runs (#907).
 	const chosen = (h: HarnessStatus, id: string) =>
 		harness?.id === h.id &&
-		(model === id || (id === "" && isFoldedId(h, model)));
+		(model === id ||
+			((!model || isFoldedId(h, model)) && agentCurrentModel(h)?.id === id));
 	const pick = (h: HarnessStatus, id: string) => {
 		setOpen(false);
 		if (!chosen(h, id)) onPick(h, id);
 	};
 	const star = (h: HarnessStatus, id: string) =>
-		update.mutate({
-			favourites: isStarred(favourites, h.id, id)
-				? favourites.filter((f) => !(f.harness === h.id && f.model === id))
-				: [...favourites, { harness: h.id as HarnessId, model: id }],
-		});
+		update.mutate({ models: { [h.id]: isStarred(h, id) ? null : id } });
 
 	// The rail is one tab stop: Up and Down move along it and show that agent, Right goes to the search.
 	const rail = useRef<HTMLDivElement>(null);
@@ -495,18 +533,6 @@ export function ModelChip({
 								: "No model matches."}
 						</ModelSelectorEmpty>
 						<ModelSelectorGroup>
-							{agent && shown !== "starred" && (
-								<ModelSelectorItem
-									value={`${agent.label} default`}
-									onSelect={() => pick(agent, "")}
-									data-testid="model-default"
-									data-checked={chosen(agent, "") ? "" : undefined}
-								>
-									<RowText name="Default" sub={defaultModelLine(agent)} />
-									{chosen(agent, "") && <Tick />}
-									<span className="w-6 shrink-0" />
-								</ModelSelectorItem>
-							)}
 							{rows.map((r) => (
 								<ModelSelectorItem
 									key={r.key}
@@ -514,6 +540,7 @@ export function ModelChip({
 									onSelect={() => pick(r.harness, r.model)}
 									data-testid="model-option"
 									data-model={r.name}
+									data-checked={chosen(r.harness, r.model) ? "" : undefined}
 								>
 									<RowText
 										name={r.name}
@@ -532,11 +559,11 @@ export function ModelChip({
 									<button
 										type="button"
 										aria-label={
-											isStarred(favourites, r.harness.id, r.model)
+											isStarred(r.harness, r.model)
 												? `Unstar ${r.name}`
 												: `Star ${r.name}`
 										}
-										aria-pressed={isStarred(favourites, r.harness.id, r.model)}
+										aria-pressed={isStarred(r.harness, r.model)}
 										onPointerDown={(e) => {
 											e.preventDefault();
 											e.stopPropagation();
@@ -560,8 +587,7 @@ export function ModelChip({
 										<Star
 											className={cn(
 												"size-3.5",
-												isStarred(favourites, r.harness.id, r.model) &&
-													"fill-warn text-warn",
+												isStarred(r.harness, r.model) && "fill-warn text-warn",
 											)}
 										/>
 									</button>
@@ -672,19 +698,26 @@ function RailTile({
 	);
 }
 
-/** An agent's effort levels by its own names, the model's default marked. */
+/**
+ * An agent's effort levels by its own names, its current one marked. A
+ * `default` pseudo-level names no level, so it reads "Set by <agent>" (#907).
+ */
 export function effortLevels(
 	h: HarnessStatus | undefined,
 ): { id: string; name: string; default: boolean }[] {
+	const named = (l: { id: string; name: string; default: boolean }) =>
+		h && isAgentDefault(l) ? { ...l, name: `Set by ${h.label}` } : l;
 	const listed = h?.checked?.efforts;
-	if (listed?.length) return listed;
+	if (listed?.length) return listed.map(named);
 	const offered = h?.checked?.effort;
 	if (!offered) return [];
-	return offered.values.map((v) => ({
-		id: v,
-		name: v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " "),
-		default: v === offered.default,
-	}));
+	return offered.values.map((v) =>
+		named({
+			id: v,
+			name: v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " "),
+			default: v === offered.default,
+		}),
+	);
 }
 
 /** Claude Code takes its 1M window as a model alias; no other agent offers a choice. */
@@ -733,7 +766,7 @@ export function EffortChip({
 						data-off=""
 					>
 						{/* A bare "Effort" read as an empty value (#673 w56). */}
-						Default
+						Fixed
 						<Caret />
 					</button>
 				</span>
@@ -752,7 +785,9 @@ export function EffortChip({
 	const item =
 		"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body font-medium transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3";
 	const tag = (
-		<span className="ml-auto text-[11px] leading-4 text-text-2">Default</span>
+		<span className="ml-auto text-[11px] leading-4 text-text-2">
+			{harness.label}'s pick
+		</span>
 	);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -793,7 +828,7 @@ export function EffortChip({
 						data-testid="effort-option"
 					>
 						{l.name}
-						{l.default && tag}
+						{l.default && !isAgentDefault({ id: l.id }) && tag}
 					</button>
 				))}
 				<div className="mx-1.5 my-1 h-px bg-hairline" />
@@ -942,7 +977,7 @@ export function AccessChip({
 										className="text-meta text-text-3"
 										data-testid="access-default-tag"
 									>
-										{defaultTag(fallback.from)}
+										{levelTag(fallback.from)}
 									</span>
 								) : (
 									<span />

@@ -239,7 +239,7 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 describe("refuseModel (#639 rec 4)", () => {
 	it("refuses a model on a harness that cannot take one, and nothing else", () => {
 		expect(refuseModel("gemini", "synthetic/model-a")).toBe(
-			"Gemini CLI picks its own model. Clear synthetic/model-a in the picker above.",
+			"Gemini CLI picks its own model. Unstar synthetic/model-a in the picker above.",
 		);
 		expect(refuseModel("gemini", undefined)).toBeNull();
 		expect(refuseModel("gemini", "  ")).toBeNull();

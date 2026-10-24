@@ -513,13 +513,16 @@ Then(
 );
 
 Then(
-	"the list shows the agent's own model first, then the models with their provider under each, no headings, each named once",
+	"the list shows the models by their own names with their provider under each, no Default row, no headings, each named once",
 	async ({ page }) => {
 		const list = picker(page).getByRole("listbox", { name: "Models" });
+		// Every model by its real name; the word Default names none (#907).
+		await expect(list.getByTestId("model-default")).toHaveCount(0);
 		await expect(list.getByRole("option").first()).toHaveAttribute(
 			"data-testid",
-			"model-default",
+			"model-option",
 		);
+		await expect(list.getByRole("option", { name: /^Default/ })).toHaveCount(0);
 		await expect(list.locator("[cmdk-group-heading], legend")).toHaveCount(0);
 		const rows = list.getByTestId("model-option");
 		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toContainText(
@@ -621,13 +624,14 @@ When(
 );
 
 Then(
-	/^the effort chip reads Codex's default "(.+)", and its menu tags it "Default"$/,
-	async ({ page }, level: string) => {
+	/^the effort chip reads Codex's default "(.+)", and its menu tags it "(.+)"$/,
+	async ({ page }, level: string, tag: string) => {
 		const effort = page.getByTestId("effort-chip");
 		await expect(effort).toContainText(level);
 		await effort.click();
 		const row = page.getByTestId("effort-option").filter({ hasText: level });
-		await expect(row).toContainText("Default");
+		await expect(row).toContainText(tag);
+		await expect(page.getByTestId("effort-menu")).not.toContainText("Default");
 		await page.keyboard.press("Escape");
 	},
 );
@@ -667,7 +671,7 @@ Then(
 );
 
 Then(
-	'every agent offers the same four permission levels, "Ask always" first, the default row tagged "Your default", "PrismaLens default" or "From Settings", and a lock only where a sandbox was proven',
+	'every agent offers the same four permission levels, "Ask always" first, the level a run takes tagged "From your settings file", "PrismaLens\'s pick" or "Set in Settings", and a lock only where a sandbox was proven',
 	async ({ page }) => {
 		for (const id of ["claude-code", "codex", "opencode"]) {
 			await pickAgent(page, id);
@@ -689,7 +693,7 @@ Then(
 			const tag = menu.getByTestId("access-default-tag");
 			await expect(tag).toBeVisible();
 			await expect(tag).toHaveText(
-				/^(Your default|PrismaLens default|From Settings)$/,
+				/^(From your settings file|PrismaLens's pick|Set in Settings)$/,
 			);
 
 			await page.keyboard.press("Escape");
@@ -876,7 +880,7 @@ Then(
 );
 
 Then(
-	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the agent's own model shows what OpenCode reports, not a PrismaLens choice$/,
+	/^"DeepSeek V4\.1 Flash \(free\)" carries the line "trains on your prompts" and the picker ticks one model by its name, with no Default row$/,
 	async ({ page }) => {
 		await openPicker(page);
 		await picker(page).getByTestId("rail-opencode").click();
@@ -886,13 +890,12 @@ Then(
 			)
 			.first();
 		await expect(muse).toContainText("trains on your prompts");
-		// The agent's own model row's sub-line is the model OpenCode reports it serves, nothing more.
-		await expect(picker(page).getByTestId("model-default")).toContainText(
-			"Default",
-		);
-		await expect(picker(page).getByTestId("model-default")).not.toContainText(
-			"PrismaLens",
-		);
+		// One row ticked, by its name; no Default row (#907).
+		await expect(picker(page).getByTestId("model-default")).toHaveCount(0);
+		await expect(
+			picker(page).locator("[data-testid=model-option][data-checked]"),
+		).toHaveCount(1);
+		await expect(picker(page)).not.toContainText("Default");
 	},
 );
 
@@ -951,12 +954,13 @@ When('I open the "Starred" tile', async ({ page, agents }) => {
 	// Starring is the picker's own write; two agents' stars set the scene here.
 	agents.install(["opencode"], "picker");
 	await check(page, "opencode");
+	// One star per agent: its model when a run picks none (#907).
 	const res = await page.request.patch("/api/settings/harness", {
 		data: {
-			favourites: [
-				{ harness: "opencode", model: "anthropic/claude-sonnet-5-5" },
-				{ harness: "claude-code", model: "claude-opus-5-5" },
-			],
+			models: {
+				opencode: "anthropic/claude-sonnet-5-5",
+				"claude-code": "claude-opus-5-5",
+			},
 		},
 	});
 	expect(res.ok()).toBe(true);

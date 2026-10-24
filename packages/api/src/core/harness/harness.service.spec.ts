@@ -13,7 +13,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaService } from "../prisma/prisma.service.js";
-import { HarnessService } from "./harness.service.js";
+import { envVarStates, HarnessService } from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 import type { HarnessProbeService } from "./harness-probe.service.js";
 
@@ -593,6 +593,25 @@ describe("HarnessService.ensureReady (#673 w9)", () => {
 	});
 });
 
+describe("envVarStates (#907)", () => {
+	it("lists the agent's keys, then stored extras; stored wins, then the host, else unset", () => {
+		const vars = envVarStates("codex", ["OPENAI_API_KEY", "ZED"], { CODEX_API_KEY: "a", OPENAI_API_KEY: "b" });
+		expect(vars).toEqual([
+			{ name: "CODEX_API_KEY", state: "env" },
+			{ name: "OPENAI_API_KEY", state: "set" },
+			{ name: "ZED", state: "set" },
+		]);
+		expect(envVarStates("codex", [], {})).toEqual([
+			{ name: "CODEX_API_KEY", state: "unset" },
+			{ name: "OPENAI_API_KEY", state: "unset" },
+		]);
+	});
+
+	it("never reads a host name the agent doesn't take as From environment", () => {
+		expect(envVarStates("codex", [], { ANTHROPIC_API_KEY: "x" }).map((v) => v.name)).not.toContain("ANTHROPIC_API_KEY");
+	});
+});
+
 describe("HarnessService agent runtime settings (#907)", () => {
 	const originalPath = process.env.PATH;
 	const originalBase = process.env.ANTHROPIC_BASE_URL;
@@ -722,6 +741,26 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(runtime.env).toMatchObject({ ANTHROPIC_BASE_URL: "https://b.example", CLAUDE_CONFIG_DIR: dir });
 		expect(runtime.note).toEqual({ binaryPath: null, configDir: dir, envNames: ["ANTHROPIC_BASE_URL"], args: [] });
 		expect((await svc.runtimeFor("codex")).env.ANTHROPIC_BASE_URL).toBeUndefined();
+	});
+
+	it("names each variable Not set, From environment or Key set; a saved value wins over the host's", async () => {
+		process.env.ANTHROPIC_BASE_URL = "https://host.example";
+		const { svc } = runtimeService();
+		const varsOf = async () => (await svc.getStatus()).harnesses.find((h) => h.id === "claude-code")?.envVars ?? [];
+		const before = await varsOf();
+		expect(before).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "env" });
+		expect(before).toContainEqual({ name: "ANTHROPIC_AUTH_TOKEN", state: "unset" });
+
+		await svc.updateSettings({
+			env: { "claude-code": { ANTHROPIC_BASE_URL: "https://mine.example", MY_EXTRA: "x" } },
+		});
+		const vars = await varsOf();
+		expect(vars).toContainEqual({ name: "ANTHROPIC_BASE_URL", state: "set" });
+		expect(vars).toContainEqual({ name: "MY_EXTRA", state: "set" });
+		const status = JSON.stringify(await svc.getStatus());
+		expect(status).not.toContain("mine.example");
+		expect(status).not.toContain("host.example");
+		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://mine.example");
 	});
 
 	it("forgets the agent's check after a runtime save, then checks it with the new runtime", async () => {

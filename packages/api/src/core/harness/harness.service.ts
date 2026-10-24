@@ -41,6 +41,7 @@ import {
 	resolveOnPath,
 } from "@prismalens/config/harness-selection";
 import {
+	type AgentEnvVar,
 	effectiveAccess,
 	type FavouriteModel,
 	type HarnessesResponse,
@@ -235,6 +236,27 @@ function cleanLocalAgent(raw: unknown): LocalAgent | undefined {
 }
 
 /** `{ [key]: value }` when it holds anything, else nothing. */
+/** The variables an agent reads and those stored for it, each by state; a stored value wins over the host's (#907). */
+export function envVarStates(
+	id: HarnessId,
+	stored: readonly string[],
+	host: NodeJS.ProcessEnv = process.env,
+): AgentEnvVar[] {
+	const keys = (HARNESS_REGISTRY[id].providerKeys ?? []).filter(
+		(k) => !k.startsWith("PRISMALENS_"),
+	);
+	const saved = new Set(stored);
+	const names = Array.from(new Set([...keys, ...[...stored].sort()]));
+	return names.map((name) => ({
+		name,
+		state: saved.has(name)
+			? "set"
+			: keys.includes(name) && host[name] !== undefined
+				? "env"
+				: "unset",
+	}));
+}
+
 function nonEmpty<K extends string, V extends object>(
 	key: K,
 	value: V,
@@ -819,6 +841,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				...h,
 				runnable: h.installed && this.checkPasses(h.id),
 				localDefault: this.localDefaultOf(h.id, runtimes.get(h.id)?.env),
+				envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
 				models: this.models.modelsFor(h.id, catalogue),
 				checked: this.models.checked(h.id),
 			})),

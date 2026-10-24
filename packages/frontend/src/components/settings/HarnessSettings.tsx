@@ -27,6 +27,7 @@ import { useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
+	defaultAccessOf,
 	EffortChip,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
@@ -193,29 +194,22 @@ function EffortRow() {
 	);
 }
 
-/** The value a Select stores for "no value here": the row's default. */
-const UNSET = "unset";
-
+/** Every option by its own name; the shown value is always a real level, never the word Default (#907). */
 function AxisSelect<V extends string>({
 	value,
 	options,
-	unsetLabel,
 	onChange,
 	label,
 	testId,
 }: {
-	value: V | undefined;
+	value: V;
 	options: readonly { value: V; label: string }[];
-	unsetLabel: string;
-	onChange: (value: V | null) => void;
+	onChange: (value: V) => void;
 	label: string;
 	testId: string;
 }) {
 	return (
-		<Select
-			value={value ?? UNSET}
-			onValueChange={(v) => onChange(v === UNSET ? null : (v as V))}
-		>
+		<Select value={value} onValueChange={(v) => onChange(v as V)}>
 			<SelectTrigger
 				className="w-44 bg-surface-2"
 				aria-label={label}
@@ -224,7 +218,6 @@ function AxisSelect<V extends string>({
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				<SelectItem value={UNSET}>{unsetLabel}</SelectItem>
 				{options.map((o) => (
 					<SelectItem key={o.value} value={o.value}>
 						{o.label}
@@ -240,7 +233,7 @@ const LEVEL_OPTIONS = ACCESS_LEVELS.map((l) => ({
 	label: ACCESS_LEVEL_LABEL[l],
 }));
 
-/** The next run's permission level on this agent, saved per agent; unset follows the agent's own default (#673 w21). */
+/** The next run's permission level on this agent, saved per agent; until one is saved it shows the level a run takes (#673 w21). */
 function AccessRows() {
 	const { effective, axes } = useAgentChoice();
 	const update = useUpdateHarnessSettings();
@@ -273,9 +266,10 @@ function AccessRows() {
 			testId="harness-access"
 		>
 			<AxisSelect
-				value={axes.accessLevels[id]}
+				value={
+					axes.accessLevels[id] ?? defaultAccessOf(effective, axes).level.level
+				}
 				options={LEVEL_OPTIONS}
-				unsetLabel="Default"
 				label={`Permission for ${effective.label}`}
 				testId="harness-access"
 				onChange={(v) => update.mutate({ accessLevels: { [id]: v } })}

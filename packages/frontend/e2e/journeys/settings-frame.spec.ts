@@ -55,18 +55,13 @@ test.describe("#523 — the settings frame", () => {
 
 		const pickerList = page.getByTestId("agent-picker-list");
 		await expect(pickerList).toBeVisible();
-		// The rail opens on the agent the next run uses; the Default row saves at
-		// once and closes the picker.
-		const def = pickerList.getByTestId("model-default");
-		if ((await def.count()) > 0) {
-			await def.click();
-			await expect(pickerList).toHaveCount(0);
-			await expect(page.getByTestId("model-pill")).toHaveText(/ default$/);
-		} else {
-			await page.keyboard.press("Escape");
-			await expect(pickerList).toHaveCount(0);
-		}
+		// The rail opens on the agent the next run uses; every row is a model by
+		// its own name, none reads "Default" (#907).
+		await expect(pickerList.getByTestId("model-default")).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await expect(pickerList).toHaveCount(0);
 		await expect(page.getByTestId("model-pill")).toBeVisible();
+		await expect(page.getByTestId("model-pill")).not.toHaveText(/default$/i);
 
 		// 3. Back leaves Settings; Services is a door of its own (decision 1)
 		await sidebar.getByTestId("settings-back").click();

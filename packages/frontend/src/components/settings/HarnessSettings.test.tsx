@@ -33,6 +33,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -53,6 +54,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -73,6 +75,7 @@ const mockHarnesses: HarnessStatus[] = [
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: null,
 	},
@@ -344,7 +347,7 @@ describe("HarnessSettings Permission rows (#673 w21)", () => {
 		const accessRow = container.querySelector('[data-testid="harness-access"]');
 		expect(accessRow).not.toBeNull();
 		expect(accessRow?.textContent).toContain("Permission");
-		expect(accessRow?.textContent).toContain("Ask always, PrismaLens default.");
+		expect(accessRow?.textContent).toContain("Ask always, PrismaLens's pick.");
 
 		// Verify Claude Code agent note is displayed
 		const note = container.querySelector('[data-testid="harness-agent-note"]');

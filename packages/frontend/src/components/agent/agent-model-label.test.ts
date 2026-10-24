@@ -22,6 +22,7 @@ const claudeCode: HarnessStatus = {
 	cliBinary: "",
 	configDir: null,
 	providerKeys: [],
+	envVars: [],
 	models: { source: "catalogue", asOf: "2026-10-01", entries: [] },
 };
 
@@ -34,7 +35,15 @@ describe("agentModelLabel", () => {
 		expect(agentModelLabel(effective, "").model).toBe("gemma4:31b-cloud");
 	});
 
-	it("falls back to the agent default when nothing names a model", () => {
-		expect(agentModelLabel(claudeCode, "").model).toBe("agent default");
+	it("names the list's first model when nothing reports one, never a default (#907)", () => {
+		const listed = {
+			...claudeCode,
+			models: {
+				...claudeCode.models,
+				entries: [{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null }],
+			},
+		};
+		expect(agentModelLabel(listed, "").model).toBe("Sonnet 5.5");
+		expect(agentModelLabel(claudeCode, "").model).toBe("its own model");
 	});
 });

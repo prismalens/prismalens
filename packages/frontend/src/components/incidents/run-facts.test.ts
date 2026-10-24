@@ -148,6 +148,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: {
 			at: "",
@@ -186,6 +187,7 @@ describe("runAccessLine (#673 w21 ruling 2026-10-10)", () => {
 		cliBinary: "",
 		configDir: null,
 		providerKeys: [],
+		envVars: [],
 		models: { source: "harness", asOf: "", entries: [] },
 		checked: {
 			at: "",
