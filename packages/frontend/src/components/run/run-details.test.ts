@@ -280,6 +280,76 @@ describe("summarySections (#811 data mapping)", () => {
 			sub: "Cloned with machine git (gh, s) from https://github.com/x/booklogr. Maps to booklogr-api.",
 		});
 	});
+
+	it("marks fallback credentials and checkoutsSkipped in code rows (#848)", () => {
+		const baseFacts = {
+			status: { text: "Concluded: likely cause", tone: "ok" as const },
+			started: { text: "Today 01:05 by PrismaLens" },
+			took: { label: "Took" as const, text: "2m 16s" },
+			agent: "Claude Code 2.3.1",
+			model: { text: "Opus", warn: false },
+			effort: "High",
+			access: { text: "Auto", sub: "No sandbox on this machine." },
+			chat: false,
+		};
+		const out = summarySections(
+			inv({
+				workspace: {
+					layout: "single",
+					cwd: "/w",
+					repos: [
+						{
+							name: "frontend",
+							dir: "/w/fe",
+							sourceKind: "url",
+							url: "https://github.com/x/frontend",
+							subPath: null,
+							connectionId: null,
+							head: "11223344",
+							branch: "main",
+							services: [],
+							credential: {
+								source: "connection",
+								label: "token-2",
+								via: "git-host-token",
+								fallbackFrom: "token-1",
+							},
+						},
+					],
+				},
+				preRun: {
+					checkoutsSkipped: [
+						{ repo: "backend", code: "budget" },
+						{ repo: "docs", code: "failed" },
+						{ repo: "extra", code: "guard" },
+					],
+				} as never,
+			}),
+			baseFacts,
+		);
+		const codeSection = out.find((s) => s.title === "Code");
+		expect(codeSection?.rows).toEqual([
+			expect.objectContaining({
+				label: "frontend",
+				flag: "Fell back",
+			}),
+			expect.objectContaining({
+				label: "backend",
+				text: "Skipped: the time for checkouts ran out",
+				tone: "warn",
+			}),
+			expect.objectContaining({
+				label: "docs",
+				text: "Not checked out",
+				tone: "warn",
+			}),
+			expect.objectContaining({
+				label: "extra",
+				text: "Skipped: over the 32-repository guard",
+				tone: "warn",
+			}),
+		]);
+	});
 });
 
 describe("filterSteps", () => {
