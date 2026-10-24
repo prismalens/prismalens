@@ -528,7 +528,10 @@ releases from `npm view prismalens versions`, starts a local registry that proxi
 upgrades it release by release to the tarball with each release's own `pl upgrade`, booting after every hop and
 checking an incident written by the oldest release is still in the database. The oldest release also upgrades
 straight to the tarball. A release whose `pl` has no `upgrade` command is moved with `npm install -g`, and the hop says so.
-`Standalone CLI` runs the installer channel the same way over every release npm lists.
+`Standalone CLI` runs the installer channel over every release npm lists. On Linux and macOS each old install
+runs its own `pl upgrade --version <build under test>`, with `prismalens.io/install.sh` served from this checkout and the
+release check answered for the staged archive; a release whose `pl` has no `upgrade` is moved by re-running the installer. On
+Windows the installer script is re-run, because `pl upgrade` there fetches the script with `irm`.
 
 ## Documentation and milestone exit gates
 
