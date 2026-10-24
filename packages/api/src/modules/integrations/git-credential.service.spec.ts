@@ -952,5 +952,19 @@ describe("GitCredentialService & host-token (#810)", () => {
 			expect(res?.host).toBe("ghe-config.corp");
 			expect(res?.label).toBe("Integration Label Fallback");
 		});
+
+		it("withCredential honours AbortSignal when aborted (#848)", async () => {
+			const ref: GitRepoRef = {
+				sourceKind: "url",
+				url: "https://github.com/org/repo.git",
+				connectionId: null,
+				pick: null,
+			};
+			const ac = new AbortController();
+			ac.abort(new Error("checkout budget ran out"));
+			await expect(
+				service.withCredential(ref, async () => "done", ac.signal),
+			).rejects.toThrow("checkout budget ran out");
+		});
 	});
 });

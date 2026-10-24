@@ -13,11 +13,11 @@ import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
 import { type CanonicalEvent, CanonicalEventSchema, type InvestigationJobData } from "@prismalens/contracts";
-import type { conductRun } from "@prismalens/engine";
+import { type conductRun, withSkippedSources } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
-import type { RepoRef, RunPorts } from "./run-ports.js";
+import type { IncidentRepo, RepoRef, RunPorts } from "./run-ports.js";
 
 const mocks = vi.hoisted(() => ({ conductRun: vi.fn() }));
 
@@ -1855,4 +1855,261 @@ describe("toolsServer per run and follow-up (#848)", () => {
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
 	});
+});
+
+describe("pre-run deadline and checkout resilience (C3/C3a, #848)", () => {
+	function minimalData(overrides: Partial<InvestigationJobData> = {}): InvestigationJobData {
+		return { investigationId: "inv-1", incidentId: "inc-1", ...overrides };
+	}
+
+	const makeRepo = (url: string, serviceName: string, subPath: string | null = null): IncidentRepo => ({
+		sourceKind: "url" as const,
+		url,
+		connectionId: null,
+		defaultBranch: "main" as const,
+		subPath,
+		serviceName,
+	});
+
+	it("checkout budget: 8 repos, one never finishes -> 7 checked out, 1 skipped as budget with signal aborted", async () => {
+		vi.useFakeTimers();
+		try {
+			const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-budget-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+			const repoUrls = Array.from({ length: 8 }, (_, i) => `https://github.com/acme/repo-${i}`);
+			let abortedSignal: AbortSignal | undefined;
+
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => repoUrls.map((u, i) => makeRepo(u, `svc-${i}`))),
+				snapshotWith: vi.fn(async (ref: any, dest: string, signal?: AbortSignal) => {
+					const url = typeof ref === "string" ? ref : ref.url;
+					if (url.endsWith("repo-7")) {
+						abortedSignal = signal;
+						return new Promise(() => {});
+					}
+					return {
+						snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
+						credential: PUBLIC_CREDENTIAL,
+					};
+				}),
+			});
+
+			const wsPromise = resolveWorkspace(minimalData(), ports);
+			await vi.advanceTimersByTimeAsync(600_000);
+			const ws = await wsPromise;
+
+			expect(ws.repos).toHaveLength(7);
+			expect(ws.checkoutsSkipped).toEqual([
+				{
+					repo: "https://github.com/acme/repo-7",
+					code: "budget",
+					reason: "the time for checkouts ran out",
+				},
+			]);
+			expect(abortedSignal?.aborted).toBe(true);
+			rmSync(tmpDir, { recursive: true, force: true });
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("checkout guard: 40 repos -> 32 attempted, 8 skipped as guard", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-guard-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			const repoUrls = Array.from({ length: 40 }, (_, i) => `https://github.com/acme/repo-${i}`);
+			const snapshotWith = vi.fn(async (ref: any, dest: string) => ({
+				snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
+				credential: PUBLIC_CREDENTIAL,
+			}));
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => repoUrls.map((u, i) => makeRepo(u, `svc-${i}`))),
+				snapshotWith,
+			});
+
+			const ws = await resolveWorkspace(minimalData(), ports);
+
+			expect(snapshotWith).toHaveBeenCalledTimes(32);
+			expect(ws.repos).toHaveLength(32);
+			expect(ws.checkoutsSkipped).toHaveLength(8);
+			expect(ws.checkoutsSkipped.every((s) => s.code === "guard" && s.reason === "over the 32-repository guard")).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it("checkout failure: primary-only failure has valid cwd, note, report line, and conductRun is called", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-primary-fail-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (opts: { cwd: string }) => {
+				expect(existsSync(opts.cwd)).toBe(true);
+				return {
+					report: { summary: "done", rootCause: null, nextSteps: [], coverage: { queried: [], notQueried: [] } },
+				};
+			});
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [makeRepo("https://github.com/acme/primary", "checkout")]),
+				snapshotWith: vi.fn(async () => {
+					throw new Error("clone failed");
+				}),
+				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+			});
+
+			await runInvestigationJob(
+				{ id: "job-1", investigationId: "inv-pf", attempts: 1 },
+				{ investigationId: "inv-pf", incidentId: "inc-1" },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			expect(mocks.conductRun).toHaveBeenCalled();
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
+			expect(opts.cwd).toContain("unmapped");
+			const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
+			expect(entry.metadata?.mapped).toBe(false);
+			expect(entry.description).toContain("Ran without code: no repository could be checked out: URL https://github.com/acme/primary (clone failed).");
+			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/primary: not checked out before the run, clone failed");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it("checkout failure: all-checkouts failure has valid cwd, note, report line, and conductRun is called", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-all-fail-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (opts: { cwd: string }) => {
+				expect(existsSync(opts.cwd)).toBe(true);
+				return {
+					report: { summary: "done", rootCause: null, nextSteps: [], coverage: { queried: [], notQueried: [] } },
+				};
+			});
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					makeRepo("https://github.com/acme/repo-a", "checkout"),
+					makeRepo("https://github.com/acme/repo-b", "worker"),
+				]),
+				snapshotWith: vi.fn(async () => {
+					throw new Error("network down");
+				}),
+				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+			});
+
+			await runInvestigationJob(
+				{ id: "job-2", investigationId: "inv-af", attempts: 1 },
+				{ investigationId: "inv-af", incidentId: "inc-1" },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			expect(mocks.conductRun).toHaveBeenCalled();
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
+			expect(opts.cwd).toContain("unmapped");
+			const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
+			expect(entry.metadata?.mapped).toBe(false);
+			expect(entry.description).toContain("Ran without code: no repository could be checked out");
+			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/repo-a: not checked out before the run, network down");
+			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/repo-b: not checked out before the run, network down");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	it("checkout failure: primary failure with a working secondary promotes secondary, has valid cwd, note, and conductRun called", async () => {
+		const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-sec-ok-"));
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+		try {
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (opts: { cwd: string }) => {
+				expect(existsSync(opts.cwd)).toBe(true);
+				return {
+					report: { summary: "done", rootCause: null, nextSteps: [], coverage: { queried: [], notQueried: [] } },
+				};
+			});
+			const ports = fakePorts({
+				incidentRepos: vi.fn(async () => [
+					makeRepo("https://github.com/acme/primary", "checkout"),
+					makeRepo("https://github.com/acme/secondary", "worker"),
+				]),
+				snapshotWith: vi.fn(async (ref: any, dest: string) => {
+					const url = typeof ref === "string" ? ref : ref.url;
+					if (url.includes("primary")) throw new Error("primary clone error");
+					mkdirSync(dest, { recursive: true });
+					return {
+						snap: { path: dest, head: "1a2b3c4d5e6f", branch: "main" },
+						credential: PUBLIC_CREDENTIAL,
+					};
+				}),
+				preRun: { telemetry: vi.fn(async () => ({ sources: [], notConfigured: [], endpoints: [] })), runbooks: vi.fn(async () => ({ entries: [] })) },
+			});
+
+			await runInvestigationJob(
+				{ id: "job-3", investigationId: "inv-sec", attempts: 1 },
+				{ investigationId: "inv-sec", incidentId: "inc-1" },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+			expect(mocks.conductRun).toHaveBeenCalled();
+			const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
+			expect(entry.metadata?.mapped).toBe(true);
+			expect(entry.metadata?.repo).toBe("https://github.com/acme/secondary");
+			expect(entry.description).toContain("Not included, because it could not be copied: URL https://github.com/acme/primary (primary clone error).");
+			const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string; context: { preRun?: { checkoutsSkipped?: { repo: string; reason: string }[] } } }];
+			const report = withSkippedSources({ coverage: { notQueried: [] } }, opts.context);
+			expect(report.coverage.notQueried).toContain("Repository https://github.com/acme/primary: not checked out before the run, primary clone error");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	for (const portName of ["getIncident", "contextPack", "incidentRepos"] as const) {
+		it(`deadline: non-settling ${portName} still lets conductRun start within its bound plus 1 s`, { timeout: 2000 }, async () => {
+			vi.useFakeTimers();
+			const tmpDir = mkdtempSync(join(os.tmpdir(), "pl-dl-"));
+			vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmpDir);
+			try {
+				mocks.conductRun.mockReset();
+				mocks.conductRun.mockResolvedValue({
+					report: { summary: "done", rootCause: null, nextSteps: [] },
+				});
+				const ports = fakePorts({
+					[portName]: vi.fn(() => new Promise(() => {})),
+				});
+
+				const jobPromise = runInvestigationJob(
+					{ id: `job-${portName}`, investigationId: "inv-dl", attempts: 1 },
+					{ investigationId: "inv-dl", incidentId: "inc-1" },
+					{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+					ports,
+				);
+
+				await vi.advanceTimersByTimeAsync(11_000);
+				await jobPromise;
+
+				expect(mocks.conductRun).toHaveBeenCalled();
+				if (portName === "incidentRepos") {
+					const [opts] = mocks.conductRun.mock.calls[0] as [{ cwd: string }];
+					expect(opts.cwd).toContain("unmapped");
+					const [entry] = vi.mocked(ports.createTimelineEntry).mock.calls[0] as [CreateTimelineEntryDto];
+					expect(entry.metadata?.mapped).toBe(false);
+					expect(entry.description).toContain("the repository list did not load in 10 s");
+				}
+			} finally {
+				vi.useRealTimers();
+				vi.unstubAllEnvs();
+				rmSync(tmpDir, { recursive: true, force: true });
+			}
+		});
+	}
 });
