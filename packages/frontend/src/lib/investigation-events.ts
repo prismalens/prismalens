@@ -20,7 +20,9 @@ import {
 	ACCESS_LEVEL_LABEL,
 	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
+import { replaceEqualDeep } from "@tanstack/react-query";
 import { formatClock, formatElapsed } from "./format-time";
+import { handoffRecord } from "./handoff-line";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
 export type EventIcon =
@@ -453,7 +455,8 @@ export type TranscriptItem =
 	  }
 	| { kind: "thought"; key: string; seconds: number }
 	| { kind: "divider"; key: string; text: string }
-	| { kind: "thinking"; key: string; seconds: number; stale: boolean }
+	/** Counts up from `since`, the last event, on the shared clock in its own leaf (#874). */
+	| { kind: "thinking"; key: string; since: string }
 	| {
 			kind: "operator";
 			key: string;
@@ -483,7 +486,7 @@ export type TranscriptItem =
 
 const DELEGATE_TOOL = /^(task|agent|delegate)/i;
 
-function seconds(from: string, to: number): number {
+export function seconds(from: string, to: number): number {
 	return Math.max(0, Math.round((to - new Date(from).getTime()) / 1000));
 }
 
@@ -675,16 +678,18 @@ function levelLine(
 /**
  * The conversation as chat (#743 §3c): the agent's prose, tool calls folded to
  * one line per group, `Thought for Ns` for gaps, operator blocks with their
- * delivery state, and one end line. PURE; `now` drives the live counters.
+ * delivery state, and one end line. PURE, and blind to the time: a live
+ * counter reads the clock where it is drawn.
  */
 export function deriveTranscript(
 	events: CanonicalEvent[],
-	now: number,
 	opts: {
 		run?: TranscriptRun;
 		pending?: PendingMessage[];
 		/** The picker's name for a model id (`haiku` reads `Haiku 5.5`, #673 w5-3). */
 		modelName?: (id: string) => string;
+		/** An agent's label for its id, for the handoff record. */
+		agentName?: (id: string) => string;
 	} = {},
 ): TranscriptItem[] {
 	const { run, pending = [] } = opts;
@@ -858,7 +863,17 @@ export function deriveTranscript(
 					}
 				}
 				if (event.messageId) queued.delete(event.messageId);
-				if (event.resumed)
+				const via = event.via;
+				if (event.resumed && via?.handoff)
+					items.push({
+						kind: "line",
+						key: `handoff-${key}`,
+						text: handoffRecord({ ...via, handoff: via.handoff }, event.ts, {
+							agent: opts.agentName ?? ((id) => id),
+							model: opts.modelName ?? ((id) => id),
+						}),
+					});
+				else if (event.resumed)
 					items.push({
 						kind: "divider",
 						key: `resumed-${key}`,
@@ -1022,13 +1037,7 @@ export function deriveTranscript(
 		} else if (!sawAgent) {
 			items.push({ kind: "line", key: "starting", text: "Starting…" });
 		} else if (lastTs && !toolRunning && waiting.length === 0) {
-			const s = seconds(lastTs, now);
-			items.push({
-				kind: "thinking",
-				key: "thinking",
-				seconds: s,
-				stale: s > STALE_AFTER_S,
-			});
+			items.push({ kind: "thinking", key: "thinking", since: lastTs });
 		}
 		return items;
 	}
@@ -1079,6 +1088,27 @@ export function deriveTranscript(
 		];
 	}
 	return items;
+}
+
+/**
+ * `next`, with each item that deep-equals the previous item of its key
+ * replaced by that previous object, so an unchanged row keeps its identity
+ * and a memoized row skips its render (#874).
+ */
+export function shareItems(
+	prev: readonly TranscriptItem[],
+	next: TranscriptItem[],
+): TranscriptItem[] {
+	if (prev.length === 0) return next;
+	const byKey = new Map(prev.map((i) => [i.key, i]));
+	let same = prev.length === next.length;
+	const out = next.map((item, i) => {
+		const old = byKey.get(item.key);
+		const kept = old ? replaceEqualDeep(old, item) : item;
+		if (kept !== prev[i]) same = false;
+		return kept;
+	});
+	return same ? (prev as TranscriptItem[]) : out;
 }
 
 /**

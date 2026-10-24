@@ -290,3 +290,20 @@ export async function drag(page: Page, from: Locator, to: Locator) {
 	await page.mouse.move(b.x + b.width / 2 + 2, b.y + 42, { steps: 2 });
 	await page.mouse.up();
 }
+
+/** A reported run folds its work behind "Worked for …"; open it to read what the agent did. */
+export async function openWork(page: Page): Promise<void> {
+	const fold = page.getByTestId("worked-toggle");
+	await expect(
+		page
+			.getByTestId("transcript-report")
+			.or(page.getByTestId("transcript-end"))
+			.or(page.getByTestId("transcript-thinking"))
+			.first(),
+	).toBeVisible({ timeout: 15_000 });
+	if (
+		(await fold.count()) &&
+		(await fold.getAttribute("aria-expanded")) === "false"
+	)
+		await fold.click();
+}

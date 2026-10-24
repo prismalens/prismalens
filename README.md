@@ -146,9 +146,11 @@ else, from configuration to commands, is on
 | `packages/@prismalens/agent-adapters` | The ACP adapters shipped for agents that don't speak ACP themselves. |
 | `packages/@prismalens/*` | Shared contracts, config, auth, database, integrations and logger. |
 
-Only `packages/cli` is published to npm; the other packages travel inside its
-tarball, except the desktop app, which is released as its own zips. For
-development, see [CONTRIBUTING.md](CONTRIBUTING.md).
+`packages/cli` is published to npm as `prismalens`, and the other packages travel
+inside its tarball, except the desktop app, which is released as its own zips.
+`@prismalens/agent-adapters` is published to npm on its own, by hand (the
+`Publish agent adapters` workflow), so other tools can depend on the same pinned adapters. For development, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 

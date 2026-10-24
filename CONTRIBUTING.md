@@ -90,6 +90,24 @@ open `bug` issue, one per test. It then runs in the non-blocking `chromium-quara
 `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its
 flaky and failed tests in the job summary.
 
+```mermaid
+stateDiagram-v2
+    direction LR
+    Blocking: Blocking - chromium or journeys, a failure fails e2e
+    Quarantined: Quarantined - chromium-quarantine or journeys-quarantine, a failure is reported only
+    [*] --> Blocking
+    Blocking --> Quarantined: passes only on a retry. Tag @quarantine, open a bug issue, name it beside the tag
+    Quarantined --> Blocking: fixed. Tag removed, the issue closes
+```
+
+In `packages/frontend/e2e/features/inbox.feature`:
+
+```gherkin
+  # Quarantined: #891 - the inbox's new-alert-row journey passes on its first attempt
+  @quarantine
+  Scenario: A new alert's row appears without a reload
+```
+
 Every PR touching `packages/frontend` ships or extends a spec covering its changed surface, and
 updates the coverage matrix if it adds or removes a route (see `AGENTS.md`).
 
@@ -109,7 +127,7 @@ A PR never waits on a live model (#884). The agent loop is checked two ways:
 | --- | --- | --- | --- |
 | `test`, `packed-intake`, `packed-upgrade-smoke`, `gate-side-checks` | the scripted ACP agent (`scripts/fakes/fake-acp-agent.mjs`) | every PR | `ci.yml` |
 | `harness-admission` (R1-R7) | the real pinned agent on a scripted model server (`scripts/fakes/fake-model-server.mjs`) | every PR | `ci.yml` |
-| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `live-agent.yml` |
+| `harness-admission-live`, `packed-intake-live` | the real pinned agent on a live free model | nightly on `main`, and before a release | `ci.yml` (schedule and dispatch only) |
 
 Run the PR admission yourself, with the agent on PATH (`opencode@1.18.30` or `claude@2.1.296`):
 
@@ -130,7 +148,7 @@ The driver starts the server on `127.0.0.1`, points the agent at it (a provider 
 `packages/@prismalens/engine/scripts/acp-admission.ts`, and exits nonzero if a run fails or the runs disagree.
 R7 runs on Claude Code only, the one agent that takes a base-URL override. A model's text is a pure
 function of the request, so to change what the scripted model says, edit `admissionScript` in the server.
-A change that needs a live model to show up goes to `live-agent.yml`, not into a PR check.
+A change that needs a live model to show up goes to the live jobs in `ci.yml`, not into a PR check.
 
 ## Database migrations
 
@@ -386,14 +404,18 @@ Versioning and publishing run through
    5. The Homebrew tap and Scoop bucket are updated from the published
       `SHA256SUMS`.
 
-   What a failure leaves: before npm, a draft release and nothing on npm;
-   after npm, a draft release with npm published. Either way, **Re-run failed
-   jobs** on that `Release` run finishes it: uploads to a draft replace what
-   is there, and npm is skipped when the version is already on it. If
-   release-please made the draft but its run failed, a re-run sees an
-   existing release and builds nothing; run **Release** by hand
-   (`gh workflow run release.yml -f tag=v<version>`) to resume that draft
-   from its assets on. It refuses a release that is not a draft. A version
+   What a failure leaves, and what finishes it, for a `v0.5.3` release whose
+   previous version is `0.5.2`:
+
+   | Job that failed | GitHub release `v0.5.3` | npm `latest` | Finish it with |
+   | --- | --- | --- | --- |
+   | `release-please`, after it made the tag and draft | draft, no assets | `0.5.2` | `gh workflow run release.yml -f tag=v0.5.3`. A re-run sees an existing release and builds nothing. |
+   | `Resolve the draft release`, `standalone` or `desktop` | draft, some assets | `0.5.2` | **Re-run failed jobs**. An upload to a draft replaces what is there. |
+   | `Publish to npm` | draft, every asset | `0.5.2`, or `0.5.3` if the publish went through | **Re-run failed jobs**. npm is skipped when the version is already on it. |
+   | `Publish the release` | draft, every asset | `0.5.3` | **Re-run failed jobs**. |
+   | `Update the Homebrew tap and Scoop bucket` | published, immutable | `0.5.3` | **Re-run failed jobs**. It reads the published `SHA256SUMS`. |
+
+   The hand-run **Release** refuses a release that is not a draft. A version
    older than the current latest release is published to npm under the
    `previous` dist-tag and not marked latest, and the tap and bucket are left
    alone.
@@ -441,7 +463,10 @@ throwaway HOME, workspace and port, with an agent-free PATH and the repository's
 fake ACP agent, so no real agent login is used. PostHog and GitHub requests go to
 a local stub. The script prints one PASS, FAIL or SKIP line per check and exits
 non-zero on any FAIL. The upgrade check is skipped when there is no systemd user
-manager or when a `prismalens.service` already exists.
+manager or when a `prismalens.service` already exists. The checks are POSIX-only: on
+native Windows every one prints SKIP and the run exits 0 (#902), so run them in WSL or
+Linux. CI's `Gate side checks (packed tarball)` job runs them on every PR and every
+push to `main`, and its run on the release PR's base SHA is the gate's record.
 
 ## Documentation and milestone exit gates
 
@@ -463,8 +488,15 @@ release walks everything. Each walk's findings go in the Phase gate issue or
 one linked `X.Y.Z walk findings` issue.
 
 Milestones are versions, and exactly two are open: the current release and the
-next. When a release PR merges, close its milestone, move its open leftovers to
-the next one, and open the one after. Direction by theme lives in the pinned
+next. With `0.5.3` and `0.5.4` open, once the `0.5.3` release PR merges:
+
+1. Finish and close the `0.5.3` Phase gate issue. A milestone closed before its
+   gate issue makes `phase-gate.yml` warn on that issue.
+2. Move `0.5.3`'s open issues to `0.5.4`, then close `0.5.3`.
+3. Create `0.5.5`; `phase-gate.yml` files its Phase gate issue from `patch.md`
+   (`minor.md` for a `0.N.0`).
+
+`0.5.4` and `0.5.5` are then the two open milestones. Direction by theme lives in the pinned
 [Roadmap and handoff](https://github.com/prismalens/prismalens/issues/881) issue,
 not in milestones.
 

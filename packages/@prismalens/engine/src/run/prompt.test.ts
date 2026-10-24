@@ -51,6 +51,14 @@ describe("buildInvestigationPrompt (#633)", () => {
 		);
 	});
 
+	it("asks for hypothesis ids and parent links, and the schema carries them", () => {
+		const prompt = buildInvestigationPrompt(baseContext);
+		expect(prompt).toContain(
+			"When one hypothesis refines or explains another, set its parentId",
+		);
+		expect(prompt).toContain('"parentId"');
+	});
+
 	it("without telemetry neither appears and the source-code line still does", () => {
 		const prompt = buildInvestigationPrompt(baseContext);
 
