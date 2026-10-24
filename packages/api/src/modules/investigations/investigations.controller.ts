@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
+import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	InvestigationReport,
 	LiveTurn,
@@ -23,6 +24,7 @@ import {
 	RunWorkspaceSchema,
 } from "@prismalens/contracts";
 import type { Investigation, Recommendation } from "@prismalens/database";
+import { buildHandoff, RESTART_NOTE } from "@prismalens/engine";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
@@ -39,6 +41,7 @@ import type {
 	RecommendationDto,
 } from "./dto/index.js";
 import { EvidenceRequestRefused, readEvidenceBlob } from "./evidence-blob.js";
+import { inheritedLevel } from "./follow-up-route.js";
 import {
 	followUpBlockedReason,
 	InvestigationsService,
@@ -298,6 +301,66 @@ export class InvestigationsController {
 			// The run holder answers on the bus; a pending run may not be held yet, so
 			// retry like cancel before refusing. On a finished run it is a follow-up
 			// in the same agent session (#747).
+			// GET /investigations/:id/handoff - What a follow-up would carry, before it is sent.
+			handoff: implement(investigationsContract.handoff).handler(
+				async ({ input }) => {
+					const inv = await this.investigationsService.findById(input.id);
+					if (!inv)
+						throw new ORPCError("NOT_FOUND", {
+							message: `Investigation ${input.id} not found`,
+						});
+					if (!TERMINAL_STATUSES.has(inv.status))
+						throw new ORPCError("CONFLICT", {
+							message: "The run is live; message it instead.",
+						});
+					const blocked = followUpBlockedReason(inv);
+					if (blocked) throw new ORPCError("CONFLICT", { message: blocked });
+					const plan = await this.dispatchService.planFollowUp(inv, {
+						...(input.harness ? { harness: input.harness } : {}),
+						...(input.model ? { model: input.model } : {}),
+					});
+					if (!plan)
+						throw new ORPCError("CONFLICT", {
+							message: "Pick an agent to continue in.",
+						});
+					const level = await this.dispatchService.followUpLevel(inv);
+					const afterRestart = await this.dispatchService.afterRestart(
+						inv.id,
+						inv.endReason,
+					);
+					const note = afterRestart ? RESTART_NOTE : null;
+					if (plan.route === "load")
+						return {
+							route: plan.route,
+							harness: plan.harness,
+							carried: "the agent's own session",
+							omitted: null,
+							accessLevel: level ?? null,
+							preflight: plan.preflight,
+							note,
+						};
+					const own = HARNESS_IDS.find((h) => h === inv.harness);
+					const seed = buildHandoff({
+						events: await this.investigationsService.allEvents(inv.id),
+						report:
+							(safeParseJsonObject(inv.report) as InvestigationReport | null) ??
+							null,
+						accessLevel: inheritedLevel(level),
+						from: own ? HARNESS_REGISTRY[own].label : null,
+						afterRestart,
+					});
+					return {
+						route: plan.route,
+						harness: plan.harness,
+						carried: seed.carried,
+						omitted: seed.omitted,
+						accessLevel: inheritedLevel(level),
+						preflight: plan.preflight,
+						note,
+					};
+				},
+			),
+
 			// POST /investigations/:id/asks/:askId - The operator's Approve or Deny (#673 w21).
 			answerAsk: implement(investigationsContract.answerAsk).handler(
 				async ({ input }) => {
@@ -350,6 +413,13 @@ export class InvestigationsController {
 								input.mode,
 								kind,
 								attachments,
+								{
+									...(input.harness ? { harness: input.harness } : {}),
+									...(input.model !== undefined ? { model: input.model } : {}),
+									...(input.effort !== undefined
+										? { effort: input.effort }
+										: {}),
+								},
 							)
 							.catch((e: unknown) => {
 								if (e instanceof FollowUpRefused)

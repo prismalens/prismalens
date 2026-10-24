@@ -11,6 +11,7 @@ export * from "./launch/types.js";
 export * from "./run/conductor.js";
 export * from "./run/connectors.js";
 export * from "./run/fence.js";
+export * from "./run/handoff.js";
 export * from "./run/harness-doctor.js";
 export * from "./run/investigate.js";
 export * from "./run/local-default.js";

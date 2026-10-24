@@ -47,6 +47,7 @@ import {
 import { failureStatusLine } from "@/lib/failure-sentence";
 import { formatElapsed } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { handedOff } from "@/lib/handoff-line";
 import { deriveTranscript, runStepText } from "@/lib/investigation-events";
 import { askTitle } from "@/lib/run-asks";
 import { cn } from "@/lib/utils";
@@ -105,9 +106,7 @@ export function RunPage() {
 	const chat = inv?.kind === "chat";
 	const name = inv ? viewName(runs, inv) : "Run";
 	const who = useRunAgentModel(inv);
-	const harness = harnesses.find(
-		(h) => h.id === (inv?.report?.fidelity?.harness ?? inv?.harness),
-	);
+	const harness = harnesses.find((h) => h.id === who.id);
 	const cwd = inv?.workspace?.cwd;
 
 	const items = useMemo(
@@ -115,6 +114,7 @@ export function RunPage() {
 			deriveTranscript(run.events, now ?? Date.now(), {
 				pending: run.pending,
 				modelName: (id) => modelName(harness, id) ?? id,
+				agentName: (id) => harnesses.find((h) => h.id === id)?.label ?? id,
 				run: inv
 					? {
 							id: inv.id,
@@ -141,6 +141,7 @@ export function RunPage() {
 			inv,
 			live,
 			harness,
+			harnesses,
 		],
 	);
 	const steps = run.steps;
@@ -316,11 +317,15 @@ export function RunPage() {
 			? `${who.agent} asks to run ${ask ? askTitle(ask) : "a tool"}`
 			: null,
 	);
-	const fidelity = report?.fidelity;
+	const fidelity =
+		report?.fidelity?.harness === who.id ? report.fidelity : undefined;
 	const substituted = !!fidelity && modelSubstituted(fidelity);
 	const asked = fidelity?.model ? modelName(harness, fidelity.model) : null;
 	const version = fidelity?.harnessVersion ? ` ${fidelity.harnessVersion}` : "";
-	const usage = usageView(inv?.usage, { live });
+	const usage = usageView(inv?.usage, {
+		live,
+		handedOff: handedOff(run.events),
+	});
 	// The chip's existing hint carries usage, naming no model; nothing reported adds nothing (ruling 13).
 	const usageHint = usage.hint ? ` ${usage.hint}` : "";
 	const modelChip: StripChip | null = inv
@@ -703,7 +708,7 @@ function summaryFacts(
 				}
 			: null,
 		effort: effort ? cap(effort) : null,
-		usage: usageView(inv.usage, { live }),
+		usage: usageView(inv.usage, { live, handedOff: handedOff(run.events) }),
 		access: level
 			? {
 					text: ACCESS_LEVEL_LABEL[level],
@@ -734,12 +739,12 @@ function endReasonStatus(
 	if (inv.endReason === "limited")
 		return {
 			text: "Limited",
-			sub: `${agent} reached its usage limit.${can ? " Send a message below to continue once it resets." : ""}`,
+			sub: `${agent} reached its usage limit.${can ? " Send a message below to continue with another agent, or wait for the limit to reset." : ""}`,
 		};
 	if (inv.endReason === "interrupted")
 		return {
 			text: "Interrupted (PrismaLens restarted)",
-			sub: `Its last command may or may not have completed.${can ? " Send a message below to continue." : ""}`,
+			sub: `Its last command may or may not have completed.${can ? " Send a message below to continue, with any agent." : ""}`,
 		};
 	return null;
 }

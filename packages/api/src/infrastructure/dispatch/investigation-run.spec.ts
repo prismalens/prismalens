@@ -8,11 +8,12 @@
  * No network, no LLM, no real harness — `@prismalens/engine` is mocked wherever a test
  * needs `conductRun` to run at all.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import type { AccessLevel } from "@prismalens/config/harness";
 import type { CanonicalEvent, InvestigationJobData } from "@prismalens/contracts";
+import type { conductRun } from "@prismalens/engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
@@ -69,6 +70,8 @@ function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		initLiveTurn: vi.fn(async () => {}),
 		settleFollowUp: vi.fn(async () => true),
 		lastEventSeq: vi.fn(async () => -1),
+		events: vi.fn(async () => []),
+		recordHandoff: vi.fn(async () => {}),
 		recordSession: vi.fn(async () => {}),
 		recordUsage: vi.fn(async () => {}),
 		markAwaitingApproval: vi.fn(async () => {}),
@@ -1054,6 +1057,142 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
 	});
 
+	it("hands off to a fresh session of another agent, carrying every message and refuted hypothesis, at the run's own level or narrower", async () => {
+		for (const bin of ["codex-acp", "codex-acp.cmd"])
+			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
+		const report = {
+			summary: "Pool exhausted",
+			rootCause: null,
+			hypotheses: [
+				{ statement: "pool max=10", status: "supported", evidence: [] },
+				{ statement: "the cache", status: "refuted", evidence: [] },
+			],
+			ruledOut: [],
+			nextSteps: [],
+		};
+		const said = (text: string, seq: number): CanonicalEvent => ({
+			kind: "operator_message", runId: "inv-1", branchId: "run", path: [], seq, label: null, ts: new Date().toISOString(), text, mode: "queue", delivered: true,
+		});
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				report: JSON.stringify(report),
+			})),
+			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
+			resolveHarness: vi.fn(async () => ({ selection: { runnable: true, harness: "codex", auto: false }, model: "gpt-x" })) as never,
+			// The clone is untrusted: it commits .prismalens-handoff as a link out of the workspace.
+			snapshotWith: cloneAs(async (_src: unknown, dest: string) => {
+				mkdirSync(dest, { recursive: true });
+				symlinkSync(join(tmp, "outside"), join(dest, ".prismalens-handoff"), "junction");
+				return { path: dest, head: HEAD, branch: null };
+			}),
+		});
+		const repo = join(tmp, "runs", "inv-1", "repo");
+		const outside = join(tmp, "outside");
+		mkdirSync(outside, { recursive: true });
+		let written: { linked: boolean; text: string } | undefined;
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			written = {
+				linked: lstatSync(join(repo, ".prismalens-handoff")).isSymbolicLink(),
+				text: readFileSync(join(repo, ".prismalens-handoff", "transcript.md"), "utf8"),
+			};
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, to: { harness: "codex" }, handoff: true, afterRestart: true } },
+			io(),
+			ports,
+		);
+		expect(written?.linked).toBe(false);
+		expect(written?.text).toContain("not the cache");
+		expect(existsSync(join(outside, "transcript.md"))).toBe(false);
+
+		const [opts] = mocks.conductRun.mock.calls[0] as [
+			{ harness: string; model: string; accessLevel: string; resume: { sessionId?: string; handoff: string; via: { harness: string; handoff: { carried: string } } } },
+		];
+		expect(opts.harness).toBe("codex");
+		expect(opts.model).toBe("gpt-x");
+		expect(opts.accessLevel).toBe("supervised");
+		expect(opts.resume.sessionId).toBeUndefined();
+		expect(opts.resume.handoff).toContain("1. look at checkout\n2. not the cache");
+		expect(opts.resume.handoff).toContain("- [refuted] the cache");
+		expect(opts.resume.handoff).toContain("may or may not have completed");
+		expect(opts.resume.via).toMatchObject({
+			harness: "codex",
+			handoff: { from: "opencode", carried: "the alert, 2 messages, the report and 1 refuted hypothesis" },
+		});
+	});
+
+	it("refuses a recipient that is no longer runnable on handoff (handoff-L7)", async () => {
+		for (const bin of ["codex-acp", "codex-acp.cmd"])
+			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
+		const report = {
+			summary: "Pool exhausted",
+			rootCause: null,
+			hypotheses: [],
+			ruledOut: [],
+			nextSteps: [],
+		};
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				report: JSON.stringify(report),
+			})),
+			events: vi.fn(async () => []),
+			resolveHarness: vi.fn(async () => ({
+				selection: {
+					runnable: false,
+					failure: "model-unsupported",
+					reason: "Codex refuses gpt-x.",
+					harness: "codex",
+				},
+			})) as unknown as RunPorts["resolveHarness"],
+		});
+
+		const result = await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, to: { harness: "codex" }, handoff: true } },
+			io(),
+			ports,
+		);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(result.success).toBe(false);
+		expect(vi.mocked(ports.settleFollowUp).mock.calls.at(-1)).toEqual([
+			"inv-1",
+			{
+				status: "completed",
+				completedAt: new Date(restore.completedAt),
+				error: null,
+				lastTurnOutcome: "error",
+			},
+			{ stopped: false },
+		]);
+		expect(result.error).toContain("Codex refuses gpt-x.");
+		expect(ports.appendEvents).toHaveBeenCalledWith(
+			"inv-1",
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: "error",
+					message: expect.stringContaining("Codex refuses gpt-x."),
+				}),
+			]),
+		);
+	});
+
 	it("puts a continued run back when it fails before the row went live (R4.4)", async () => {
 		const ports = followUpPorts();
 		mocks.conductRun.mockRejectedValue(new Error("db down"));
@@ -1202,6 +1341,83 @@ describe("follow-up on a finished run (#747)", () => {
 
 		expect(result.error).toBe(`fatal: reference is not a tree: ${HEAD}`);
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+	});
+
+	it("the new session's usage is written after the handoff is recorded (handoff-L8)", async () => {
+		for (const bin of ["codex-acp", "codex-acp.cmd"])
+			writeFileSync(join(tmp, "bin", bin), "#!/bin/sh\n", { mode: 0o755 });
+		const report = {
+			summary: "Pool exhausted",
+			rootCause: null,
+			hypotheses: [
+				{ statement: "pool max=10", status: "supported", evidence: [] },
+				{ statement: "the cache", status: "refuted", evidence: [] },
+			],
+			ruledOut: [],
+			nextSteps: [],
+		};
+		const said = (text: string, seq: number): CanonicalEvent => ({
+			kind: "operator_message", runId: "inv-1", branchId: "run", path: [], seq, label: null, ts: new Date().toISOString(), text, mode: "queue", delivered: true,
+		});
+		const order: string[] = [];
+		let resolveHandoff!: () => void;
+		const handoffPromise = new Promise<void>((resolve) => {
+			resolveHandoff = resolve;
+		});
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(join(tmp, "runs", "inv-1", "repo")),
+				report: JSON.stringify(report),
+			})),
+			events: vi.fn(async () => [said("look at checkout", 1), said("not the cache", 2)]),
+			resolveHarness: vi.fn(async () => ({
+				selection: { runnable: true as const, harness: "codex" as const, auto: false },
+				model: "gpt-x",
+			})),
+			recordHandoff: vi.fn(async () => {
+				await handoffPromise;
+				order.push("handoff");
+			}),
+			recordUsage: vi.fn(async () => {
+				order.push("usage");
+			}),
+		});
+		mocks.conductRun.mockImplementation(
+			async (
+				opts: Parameters<typeof conductRun>[0],
+				run: Parameters<typeof conductRun>[1],
+			) => {
+				await run.store.create();
+				if (!opts.onSession || !opts.onUsage) throw new Error("expected onSession and onUsage");
+				opts.onSession({ sessionId: "s-new", loadSession: true });
+				opts.onUsage({ used: 10, size: 100, at: new Date().toISOString() });
+				resolveHandoff();
+				return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+			},
+		);
+
+		await runInvestigationJob(
+			{ id: "job-2", investigationId: "inv-1", attempts: 1 },
+			{ ...data, resume: { ...data.resume!, to: { harness: "codex" }, handoff: true, afterRestart: true } },
+			io(),
+			ports,
+		);
+
+		expect(order).toEqual(["handoff", "usage"]);
+		expect(ports.recordHandoff).toHaveBeenCalledWith(
+			"inv-1",
+			expect.objectContaining({ harness: "codex" }),
+		);
+		expect(ports.recordUsage).toHaveBeenCalledWith("inv-1", {
+			used: 10,
+			size: 100,
+			at: expect.any(String),
+		});
 	});
 });
 
