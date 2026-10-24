@@ -108,4 +108,44 @@ describe("usageView", () => {
 
 		expect(view.hint).toMatch(/^This session last reported /);
 	});
+
+	it("explains that session sent no usage when not live and handedOff is true (handoff-L4)", () => {
+		const view = usageView(null, { live: false, handedOff: true });
+		expect(view.hint).toBeNull();
+		expect(view.cost).toBeNull();
+		expect(view.row).toEqual({
+			text: "Not reported",
+			sub: "This session sent no usage. That is not zero.",
+		});
+	});
+
+	it("prefers live sub over handedOff when live is true (handoff-L4)", () => {
+		const view = usageView(null, { live: true, handedOff: true });
+		expect(view.hint).toBeNull();
+		expect(view.cost).toBeNull();
+		expect(view.row).toEqual({
+			text: "Not reported",
+			sub: "This session has sent no usage so far.",
+		});
+	});
+
+	it("returns identical hint and row whether handedOff is true or false when usage is present (handoff-L4)", () => {
+		const usage: RunUsage = {
+			used: 1000,
+			size: 200000,
+			at: "2026-10-21T08:00:00.000Z",
+		};
+		const viewHandedOff = usageView(usage, { live: false, handedOff: true });
+		const viewNotHandedOff = usageView(usage, { live: false, handedOff: false });
+
+		expect(viewHandedOff.hint).toBe(viewNotHandedOff.hint);
+		expect(viewHandedOff.row).toEqual(viewNotHandedOff.row);
+		expect(viewHandedOff.hint).toBe(
+			`This session last reported 1,000 tokens of a 200,000-token context, at ${formatClock(usage.at)}.`,
+		);
+		expect(viewHandedOff.row).toEqual({
+			text: "1,000 tokens",
+			sub: `1% of a 200,000-token context, last reported at ${formatClock(usage.at)}.`,
+		});
+	});
 });

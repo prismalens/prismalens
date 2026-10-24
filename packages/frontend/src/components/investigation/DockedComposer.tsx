@@ -3,6 +3,7 @@
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
+	ACCESS_LEVEL_LABEL,
 	type FollowUpKind,
 	fidelityAccess,
 	type HarnessStatus,
@@ -10,6 +11,7 @@ import {
 	isRunStateLive,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { type MutableRefObject, useState } from "react";
 import {
 	AccessChip,
@@ -30,8 +32,10 @@ import {
 } from "@/components/incidents/run-facts";
 import { startedBy, viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
 import { uploadAttachment } from "@/lib/attachments";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { handoffHint } from "@/lib/handoff-line";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
@@ -229,8 +233,9 @@ export const stopFailed =
 
 /**
  * The box under a transcript (#811): a draft starts a run or an Ask, a live
- * run takes messages, a finished one continues. On a run the chips read
- * that run, and changing one opens a draft prefilled with the run plus the change.
+ * run takes messages, a finished one continues. On a finished run the agent
+ * and model chips pick who the message goes to (rulings 2, 3); on a live run
+ * changing one opens a draft prefilled with the run plus the change.
  */
 export function DockedComposer({
 	branchId,
@@ -299,19 +304,52 @@ export function DockedComposer({
 
 	// A draft reads its own chips, then Settings, per field; Settings is never written here (#673 w52).
 	const own = record.draftChoice;
-	const runHarness = choice.harnesses.find((h) => h.id === inv?.harness);
+	// A finished run's chips pick where its message goes; the run row is unchanged until it is sent.
+	const finished = !draft && !!inv && !live && !ended;
+	const [picks, setPicks] = useState<{ id: string; to: DraftChoice } | null>(
+		null,
+	);
+	const to: DraftChoice = finished && picks?.id === inv?.id ? picks.to : {};
+	const other = !!to.harness && to.harness !== inv?.harness;
+	const runHarness = choice.harnesses.find(
+		(h) => h.id === (to.harness ?? inv?.harness),
+	);
 	const harness = draft
 		? (choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective)
 		: runHarness;
 	const hid = harness?.id as HarnessId;
 	const model = draft
 		? (own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "")
-		: (inv?.model ?? "");
+		: (to.model ?? (other ? choice.models[hid] : inv?.model) ?? "");
 	const effort = draft
 		? own.effort !== undefined
 			? own.effort
 			: (choice.efforts[hid] ?? null)
-		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+		: to.effort !== undefined
+			? to.effort
+			: other
+				? (choice.efforts[hid] ?? null)
+				: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+	const preview = useQuery({
+		...orpc.investigations.handoff.queryOptions({
+			input: {
+				id: inv?.id ?? "",
+				...(to.harness ? { harness: to.harness } : {}),
+				...(to.model ? { model: to.model } : {}),
+			},
+		}),
+		enabled: finished,
+		retry: false,
+	});
+	const agentLabel = harness?.label ?? who.agent;
+	const handoff = preview.data
+		? handoffHint(preview.data, {
+				agent: agentLabel,
+				continues: run.continuable,
+				reported: !!inv?.report,
+				name,
+			})
+		: null;
 	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
 	const accessLevel: AccessLevel = draft
@@ -331,9 +369,11 @@ export function DockedComposer({
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
 					: { ...now, accessLevel: c.level };
-		// On a run, the draft is this run with one change.
+		// On a run, the draft is this run with one change; a follow-up never changes the level.
 		if (draft) record.setDraftChoice(next);
-		else record.newRun({ choice: next });
+		else if (finished && inv) {
+			if (c.kind !== "level") setPicks({ id: inv.id, to: next });
+		} else record.newRun({ choice: next });
 	};
 	const sent = {
 		...(own.harness ? { harness: own.harness } : {}),
@@ -382,6 +422,11 @@ export function DockedComposer({
 				harness={harness}
 				level={accessLevel}
 				disabled={blocked}
+				lockedHint={
+					finished
+						? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
+						: undefined
+				}
 				onLevel={(l) => choose({ kind: "level", level: l })}
 			/>
 		</>
@@ -420,29 +465,65 @@ export function DockedComposer({
 					branchId,
 					attachments,
 					...(kind ? { kind } : {}),
+					...(finished && to.harness
+						? {
+								to: {
+									harness: to.harness,
+									// The picker's "" is the agent's own model, which the API spells null.
+									...(to.model !== undefined
+										? { model: to.model || null }
+										: {}),
+									...(to.effort !== undefined ? { effort: to.effort } : {}),
+								},
+							}
+						: {}),
 				});
 			}
 		}
 	};
 
-	const hint = ended ? null : thread.hint[action];
-	const above = hint ? (
+	// Where the message goes and what a fresh session gets; the server plans it again on send.
+	const hint: string[] = ended
+		? []
+		: !finished
+			? [thread.hint[action] ?? ""]
+			: handoff
+				? [handoff.where, ...(handoff.what ? [handoff.what] : [])]
+				: preview.isPending
+					? [`Checking what ${agentLabel} can take from this run.`]
+					: [];
+	const notice = !finished
+		? undefined
+		: (handoff?.problem ??
+			(preview.isError
+				? `Unable to check what ${agentLabel} will get. Sending still works.`
+				: undefined));
+	const above = hint.some(Boolean) ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
-			{hint}
+			{hint.map((line) => (
+				<span key={line} className="block">
+					{line}
+				</span>
+			))}
 		</p>
 	) : null;
+	const restarted = finished && !!preview.data?.note;
 	const asks = live ? run.asks.filter((a) => a.state === "waiting") : [];
-	const dock =
-		asks.length > 0 || run.queued.length > 0 ? (
-			<RunDock
-				asks={asks}
-				queued={run.queued}
-				runId={inv?.id}
-				agent={harness?.label ?? who.agent}
-				cwd={inv?.workspace?.cwd}
-				onStep={onStep}
-			/>
-		) : null;
+	const dock = restarted ? (
+		<p className="text-meta text-text-1" data-testid="composer-restart-note">
+			PrismaLens restarted while the previous session was working. Its last
+			command may or may not have completed; check before relying on it.
+		</p>
+	) : asks.length > 0 || run.queued.length > 0 ? (
+		<RunDock
+			asks={asks}
+			queued={run.queued}
+			runId={inv?.id}
+			agent={harness?.label ?? who.agent}
+			cwd={inv?.workspace?.cwd}
+			onStep={onStep}
+		/>
+	) : null;
 
 	return (
 		<div
@@ -461,6 +542,9 @@ export function DockedComposer({
 						ended
 							? {
 									onNewRun: () => record.newRun(),
+									...(inv?.resumeBlockedReason
+										? { reason: inv.resumeBlockedReason }
+										: {}),
 									...(inv?.report && {
 										onRecheck: () =>
 											recheck("", []).catch((error: unknown) =>
@@ -474,7 +558,11 @@ export function DockedComposer({
 								}
 							: undefined
 					}
-					placeholder={thread.placeholder}
+					placeholder={
+						finished && inv?.kind !== "chat"
+							? `Message ${agentLabel}`
+							: thread.placeholder
+					}
 					initialFiles={draft ? record.draftFiles : undefined}
 					onFilesChange={draft ? record.setDraftFiles : undefined}
 					boxRef={boxRef}
@@ -492,6 +580,8 @@ export function DockedComposer({
 					isPending={record.isStarting}
 					stopping={run.stopRequested}
 					blockedReason={blockedReason}
+					notice={notice}
+					holdSend={finished && (preview.isPending || !!handoff?.problem)}
 					onStop={() => run.stop({ onError: stopFailed(toast) })}
 					undeliverable={run.undeliverable}
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}

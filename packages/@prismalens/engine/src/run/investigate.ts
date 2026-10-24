@@ -53,6 +53,7 @@ import {
 	type PromptPart,
 } from "../runner/acp-client.js";
 import { ATTACHED_IMAGE_GUARD, renderAttachment } from "./fence.js";
+import { RESTART_NOTE } from "./handoff.js";
 import { opencodeUserConfig } from "./local-default.js";
 import {
 	askWindow,
@@ -142,10 +143,16 @@ export interface RunInvestigationOptions {
 	onUsage?: (usage: RunUsage) => void;
 	/**
 	 * A follow-up on a finished run: reopen its session and send `text` (#747).
-	 * `heads` are the commits the workspace was rebuilt at.
+	 * `heads` are the commits the workspace was rebuilt at. Without a
+	 * `sessionId` a fresh session starts, seeded with `handoff`.
 	 */
 	resume?: {
-		sessionId: string;
+		sessionId?: string;
+		handoff?: string;
+		/** A restart cut the run off; a reopened session is told so too. */
+		afterRestart?: boolean;
+		/** Recorded on the follow-up's first message. */
+		via?: Extract<CanonicalEvent, { kind: "operator_message" }>["via"];
 		text: string;
 		mode: OperatorMessageMode;
 		heads: { name: string; head: string }[];
@@ -423,7 +430,7 @@ export async function* runInvestigation(
 		...(opts.seqStart !== undefined ? { seqStart: opts.seqStart } : {}),
 	});
 	// A follow-up on a run from before permission levels keeps the session's mode and shows every ask (#673 w21).
-	const keepMode = !!opts.resume && !opts.accessLevel;
+	const keepMode = !!opts.resume?.sessionId && !opts.accessLevel;
 	const level = opts.accessLevel ?? DEFAULT_ACCESS_LEVEL;
 	const access = resolveAccess(opts.harness, level);
 	const askedMode = access.mode ?? null;
@@ -474,7 +481,9 @@ export async function* runInvestigation(
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,
 		onStderr: opts.onHarnessStderr,
-		...(opts.resume ? { resume: { sessionId: opts.resume.sessionId } } : {}),
+		...(opts.resume?.sessionId
+			? { resume: { sessionId: opts.resume.sessionId } }
+			: {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -643,9 +652,13 @@ export async function* runInvestigation(
 				loadSession: session.loadSession,
 			});
 		}
-		if (opts.resume) wire("in", JSON.stringify({ replayed: session.replayed }));
+		if (opts.resume?.sessionId)
+			wire("in", JSON.stringify({ replayed: session.replayed }));
 		// The level's mode; a reopened session already in the stored mode, or that lists none, is sent nothing (#747).
-		if (!keepMode && !(opts.resume && session.offeredModes.length === 0)) {
+		if (
+			!keepMode &&
+			!(opts.resume?.sessionId && session.offeredModes.length === 0)
+		) {
 			const refused = await applyMode(session, {
 				label,
 				target: askedMode,
@@ -753,13 +766,24 @@ export async function* runInvestigation(
 				heads,
 				refsOf(attachments),
 				kind ?? "chat",
+				undefined,
+				opts.resume.via,
 			);
-			outcome = yield* turn(
-				promptParts(
-					newer ? `${line}\n\n${newerRunNote(newer)}` : line,
-					attachments,
-				),
-			);
+			const said = [
+				...(opts.resume.afterRestart && !opts.resume.handoff
+					? [RESTART_NOTE]
+					: []),
+				line,
+				...(newer ? [newerRunNote(newer)] : []),
+			].join("\n\n");
+			const seeded = opts.resume.handoff
+				? kind === "continue"
+					? `${buildInvestigationPrompt(opts.context, { modeName, noNetwork, level })}\n\n${opts.resume.handoff}\n\n${said}`
+					: buildChatPrompt(opts.context, `${opts.resume.handoff}\n\n${said}`, {
+							noNetwork,
+						})
+				: said;
+			outcome = yield* turn(promptParts(seeded, attachments));
 		} else if (opts.kind === "chat") {
 			const message = opts.brief?.trim() ?? "";
 			yield adapter.operatorMessage(

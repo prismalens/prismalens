@@ -459,7 +459,25 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
 		page,
 	}) => {
-		// 1. Finished run with report
+		// 1. Finished run with report; the seeded row has no workspace, so the handoff preview is served.
+		await page.route(
+			(url) =>
+				url.pathname === `/api/investigations/${INVESTIGATION_ID}/handoff`,
+			(route) =>
+				route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						route: "load",
+						harness: "claude-code",
+						carried: "the agent's own session",
+						omitted: null,
+						accessLevel: "auto",
+						preflight: null,
+						note: null,
+					}),
+				}),
+		);
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
 			continuable: false,
 			resumable: true,
