@@ -36,7 +36,7 @@ function runChecks(args, platform) {
 	);
 }
 
-test("--only rollback is N/A on Windows and macOS, and upgrade on Windows: no SKIP, no FAIL, exit 0", () => {
+test("--only rollback is N/A on Windows and macOS: no SKIP, no FAIL, exit 0", () => {
 	for (const platform of ["win32", "darwin"]) {
 		const res = runChecks(["--only", "rollback", "--no-skip"], platform);
 		assert.equal(res.status, 0, res.stderr);
@@ -60,11 +60,4 @@ test("--help lists every check and --no-skip", () => {
 	assert.equal(res.status, 0);
 	for (const word of ["telemetry", "rollback", "--no-skip"])
 		assert.ok(res.stdout.includes(word), word);
-});
-
-test("--only upgrade is N/A on Windows and names the finding", () => {
-	const res = runChecks(["--only", "upgrade", "--no-skip"], "win32");
-	assert.equal(res.status, 0, res.stderr);
-	assert.match(res.stdout, /^N\/A\s+upgrade\s+N\/A on Windows: .*#921/m);
-	assert.equal(/^SKIP|FAIL/m.test(res.stdout), false);
 });

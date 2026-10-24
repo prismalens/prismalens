@@ -630,7 +630,7 @@ a local stub. A terminal is a pseudo-terminal from `@lydell/node-pty` on every O
 runs as `node <bin>`, so no shell shim or `script(1)` is involved. The script prints one
 PASS, FAIL, SKIP or N/A line per check and exits non-zero on any FAIL, and on a SKIP
 under `--no-skip`, which CI passes. `rollback` is N/A off Linux (the trial runs under
-systemd), `upgrade` is N/A on Windows (the runner's `pl upgrade` dies when npm moves the running `pl`'s own directory; see #921), and `rollback` is skipped on Linux when there is no systemd user manager or a
+systemd) and is skipped on Linux when there is no systemd user manager or a
 `prismalens.service` already exists. On Windows there is no SIGTERM: the lock check ends the holder
 outright and expects the next boot to take the stale lock. CI's `Gate side checks`
 job runs them on Linux, macOS and Windows on every PR and every push to `main`, and its run on the release PR's base

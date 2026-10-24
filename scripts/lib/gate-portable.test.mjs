@@ -29,13 +29,12 @@ const ALL = [
 	"rollback",
 ];
 
-test("rollback runs on Linux only, upgrade not on Windows, the other five everywhere", () => {
+test("rollback runs on Linux only; the other six run everywhere", () => {
 	assert.deepEqual(checksFor(ALL, "linux"), ALL);
-	const everywhere = ["telemetry", "update", "lock", "reset", "hosts"];
-	assert.deepEqual(checksFor(ALL, "darwin"), [...everywhere, "upgrade"]);
-	assert.deepEqual(notApplicable(ALL, "darwin"), ["rollback"]);
-	assert.deepEqual(checksFor(ALL, "win32"), everywhere);
-	assert.deepEqual(notApplicable(ALL, "win32"), ["upgrade", "rollback"]);
+	for (const platform of ["win32", "darwin"]) {
+		assert.deepEqual(checksFor(ALL, platform), ALL.slice(0, 6));
+		assert.deepEqual(notApplicable(ALL, platform), ["rollback"]);
+	}
 	assert.deepEqual(notApplicable(ALL, "linux"), []);
 });
 
