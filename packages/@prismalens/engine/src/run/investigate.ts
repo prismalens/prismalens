@@ -93,8 +93,10 @@ export interface RunInvestigationOptions {
 		| "companionBinary"
 	> &
 		Partial<Pick<HarnessDescriptor, "modelVia" | "adapterPackage">>;
-	/** The clone the harness runs in. Never the user's own checkout (ADR 0004 §2). */
+	/** The snapshot the harness runs in. Never the user's own checkout (ADR 0004 §2). */
 	cwd: string;
+	/** Several repos: where to start and what to add when the agent takes extra directories, else `cwd` holds them all (#918). */
+	roots?: { cwd: string; additional: string[] };
 	/** Per-run directory: harness config, data home, transcript. */
 	runDir: string;
 	/** Model id in the harness's own format; undefined means the harness default. */
@@ -480,6 +482,7 @@ export async function* runInvestigation(
 		command: launch.command,
 		args: [...launch.args, ...descriptor.acpArgs(runEnv)],
 		cwd: opts.cwd,
+		...(opts.roots ? { roots: opts.roots } : {}),
 		env,
 		limits: opts.limits,
 		permission: levelPolicy(

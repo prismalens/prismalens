@@ -154,6 +154,8 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				},
 				join(tmp, "runs", "inv-1", "repo"),
 				undefined,
+				undefined,
+				"inv-1",
 			);
 			expect(ws.layout).toBe("single");
 			expect(ws.cwd).toBe(join("/app-data/repos/github.com/acme/api-gateway", "services/api"));
@@ -221,6 +223,8 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				{ sourceKind: "url", url: "https://github.com/acme/x", connectionId: null, defaultBranch: null },
 				join(tmp, "runs", "inv-1", "repo"),
 				undefined,
+				undefined,
+				"inv-1",
 			);
 		} finally {
 			vi.unstubAllEnvs();
@@ -254,11 +258,11 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(snapshot.mock.calls.map((c) => c[1])).toEqual([
-				"/ws/runs/inv-1/repos/api",
-				"/ws/runs/inv-1/repos/worker",
+				"/ws/worktrees/pl-inv-1/api",
+				"/ws/worktrees/pl-inv-1/worker",
 			]);
 			expect(ws.layout).toBe("multi");
-			expect(ws.cwd).toBe("/ws/runs/inv-1/repos");
+			expect(ws.cwd).toBe("/ws/worktrees/pl-inv-1");
 			expect(ws.repos.map((r) => [r.name, r.services, r.subPath])).toEqual([
 				["api", ["checkout"], null],
 				["worker", ["jobs"], "svc/jobs"],
@@ -285,7 +289,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const ws = await resolveWorkspace(minimalData(), ports);
 
 			expect(ws.layout).toBe("single");
-			expect(ws.cwd).toBe("/ws/runs/inv-1/repos/api");
+			expect(ws.cwd).toBe("/ws/worktrees/pl-inv-1/api");
 			expect(ws.repos.map((r) => r.name)).toEqual(["api"]);
 			expect(ws.note).toContain(
 				"Not included, because it could not be copied: URL git@github.com:o/worker.git (repository not found).",
@@ -370,8 +374,18 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 					via: "none",
 				});
 			}
-			const [opts] = mocks.conductRun.mock.calls[0] as [{ context: { workspace?: { repos: { path: string }[] } } }];
-			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual(["api/", "worker/"]);
+			const [opts] = mocks.conductRun.mock.calls[0] as [
+				{
+					cwd: string;
+					roots?: { cwd: string; additional: string[] };
+					context: { workspace?: { repos: { path: string }[] } };
+				},
+			];
+			// One parent for an agent without extra directories; the primary repo plus the rest for one with them (#918).
+			const parent = join(process.env.PRISMALENS_WORKSPACE_DIR ?? "", "worktrees", "pl-inv-1");
+			expect(opts.cwd).toBe(parent);
+			expect(opts.roots).toEqual({ cwd: join(parent, "api"), additional: [join(parent, "worker")] });
+			expect(opts.context.workspace?.repos.map((r) => r.path)).toEqual([join(parent, "api"), join(parent, "worker")]);
 		});
 
 		it("keeps the harness's last usage_update on the row, and writes nothing for a harness that sends none", async () => {
@@ -520,8 +534,10 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 				connectionId: null,
 				defaultBranch: null,
 			},
-			expect.any(String),
+			expect.stringMatching(/worktrees[\\/]pl-inv-1$/),
 			undefined,
+			undefined,
+			"inv-1",
 		);
 		expect(ws.note).toContain("folder");
 	});
@@ -1073,6 +1089,7 @@ describe("follow-up on a finished run (#747)", () => {
 			join(tmp, "runs", "inv-1", "repo"),
 			expect.any(AbortSignal),
 			HEAD,
+			"inv-1",
 		);
 		expect(ports.clearEvents).not.toHaveBeenCalled();
 		const [opts] = mocks.conductRun.mock.calls[0] as [

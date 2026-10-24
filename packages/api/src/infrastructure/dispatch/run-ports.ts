@@ -185,14 +185,15 @@ export interface RunPorts {
 	/** Host-assembled facts (ADR-0016 §5). Implemented by ContextPackService; null when the incident does not exist. */
 	contextPack(incidentId: string): Promise<ContextPack | null>;
 	/**
-	 * A fresh clone of the repo's committed HEAD, or of commit `at`, into `dest`, under the
-	 * credential the resolver picks (#673); `credential` is the one that cloned it.
+	 * The repo's committed HEAD, or commit `at`, at `dest` (a folder's worktree locked for
+	 * `runId`, #918), under the credential the resolver picks (#673); `credential` is the one used.
 	 */
 	snapshotWith(
 		ref: RepoRef,
 		dest: string,
 		signal?: AbortSignal,
 		at?: string,
+		runId?: string,
 	): Promise<{ snap: Snapshot; credential: RunCredential }>;
 }
 

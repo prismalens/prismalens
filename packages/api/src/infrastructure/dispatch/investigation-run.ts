@@ -69,6 +69,11 @@ import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
+import {
+	releaseWorktreesIn,
+	runWorktreeDir,
+	sweepRunWorktrees,
+} from "../../core/harness/run-worktree.js";
 import { inheritedLevel } from "../../modules/investigations/follow-up-route.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { IncidentRepo, RunPorts } from "./run-ports.js";
@@ -252,6 +257,7 @@ async function runJobInternal(
 				context,
 				harness: selection.harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
@@ -371,7 +377,7 @@ async function runJobInternal(
 		// The harness's per-run home and the packages it installs under its config dir go too:
 		// 125 MB per OpenCode run in #337 run e (G18). The config files themselves stay.
 		if (unvalidated?.investigationId) {
-			clearRunWorkspace(runDirFor(unvalidated.investigationId));
+			await clearRunWorkspace(unvalidated.investigationId);
 		}
 	}
 }
@@ -611,6 +617,7 @@ async function runFollowUp(
 				context,
 				harness,
 				cwd: workspace.cwd,
+				roots: rootsOf(workspace),
 				runDir,
 				...(model ? { model } : {}),
 				...(modelSource ? { modelSource } : {}),
@@ -709,7 +716,7 @@ async function runFollowUp(
 			sentence: message,
 		};
 	} finally {
-		clearRunWorkspace(runDir);
+		await clearRunWorkspace(id);
 	}
 
 	// A `continue` that reached its agent ends as a run (I6-I8); everything else is settled here.
@@ -980,7 +987,19 @@ const RUN_WORKSPACE = [
 	join("config", "node_modules"),
 ];
 
-function clearRunWorkspace(runDir: string): void {
+async function clearRunWorkspace(runId: string): Promise<void> {
+	const runDir = runDirFor(runId);
+	for (const dir of [
+		runWorktreeDir(runId),
+		join(runDir, "repo"),
+		join(runDir, "repos"),
+	]) {
+		try {
+			await releaseWorktreesIn(dir);
+		} catch (e) {
+			logger.warn(`Failed to release the worktrees in ${dir}`, e);
+		}
+	}
 	for (const rel of RUN_WORKSPACE) {
 		try {
 			rmSync(join(runDir, rel), { recursive: true, force: true });
@@ -992,21 +1011,25 @@ function clearRunWorkspace(runDir: string): void {
 
 /**
  * Called at boot, when nothing is running: a process that died mid-run never
- * reached the run's `finally`, so its clone and harness home are still on disk.
+ * reached the run's `finally`, so its clone, worktree and harness home are still on disk.
  */
-export function sweepRunWorkspaces(): number {
+export async function sweepRunWorkspaces(): Promise<number> {
+	const swept = new Set(await sweepRunWorktrees());
 	const runs = resolve(getAppDataDir(), "runs");
-	if (!existsSync(runs)) return 0;
-	let swept = 0;
+	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
-			clearRunWorkspace(dir);
-			swept++;
+			try {
+				await clearRunWorkspace(entry.name);
+				swept.add(entry.name);
+			} catch (e) {
+				logger.warn(`Could not sweep the run dir ${entry.name}`, e);
+			}
 		}
 	}
-	return swept;
+	return swept.size;
 }
 
 /** `runs/<id>` for a job id, refusing an id that would resolve anywhere else (it is joined, then deleted from). */
@@ -1035,11 +1058,26 @@ function workspaceContext(
 	if (ws.layout !== "multi") return undefined;
 	return {
 		repos: ws.repos.map((r) => ({
-			path: `${r.name}/`,
+			path: r.dir,
 			services: r.services,
 			subPath: r.subPath,
 			head: r.head,
 		})),
+	};
+}
+
+/**
+ * Several repos: an agent that takes `additionalDirectories` starts in the primary
+ * repo with the rest beside it, so each repo keeps its own trust root (#918).
+ */
+function rootsOf(
+	ws: RunWorkspace,
+): { cwd: string; additional: string[] } | undefined {
+	const [primary, ...rest] = ws.repos;
+	if (ws.layout !== "multi" || !primary) return undefined;
+	return {
+		cwd: inside(primary.dir, primary.subPath),
+		additional: rest.map((r) => r.dir),
 	};
 }
 
@@ -1094,11 +1132,11 @@ function whereFrom(repo: {
 }
 
 /**
- * The harness runs in fresh snapshots of every repo the incident touches, under
- * the run's own dir (ADR 0004 §2). One repo keeps `repo/`; several go under
- * `repos/<name>/` with the cwd at `repos/` (#747). No linked repo means an
- * UNMAPPED run in an empty scratch dir that says so; a run against the wrong
- * tree produces confident garbage.
+ * The harness runs in fresh snapshots of every repo the incident touches
+ * (ADR 0004 §2): one local repo is the worktree `worktrees/pl-<run>` (#918), one
+ * URL keeps the run's `repo/`, several go under `worktrees/pl-<run>/<name>/` (#747).
+ * No linked repo means an UNMAPPED run in an empty scratch dir that says so; a
+ * run against the wrong tree produces confident garbage.
  */
 export async function resolveWorkspace(
 	data: InvestigationJobData,
@@ -1111,7 +1149,8 @@ export async function resolveWorkspace(
 	} catch (e) {
 		logger.warn("Could not list the incident's repos", e);
 	}
-	const runDir = runDirFor(data.investigationId);
+	const runId = data.investigationId;
+	const runDir = runDirFor(runId);
 	const repos = dedupeRepos(listed);
 	if (repos.length === 0) {
 		const cwd = join(runDir, "unmapped");
@@ -1138,8 +1177,14 @@ export async function resolveWorkspace(
 					connectionId: repo.connectionId,
 					defaultBranch: repo.defaultBranch,
 				},
-				multi ? join(runDir, "repos", name) : join(runDir, "repo"),
+				multi
+					? join(runWorktreeDir(runId), name)
+					: repo.sourceKind === "folder"
+						? runWorktreeDir(runId)
+						: join(runDir, "repo"),
 				signal,
+				undefined,
+				runId,
 			);
 			inside(snap.path, repo.subPath);
 			taken.push({
@@ -1182,9 +1227,26 @@ export async function resolveWorkspace(
 		.join(", ");
 	return {
 		layout: "multi",
-		cwd: join(runDir, "repos"),
+		cwd: runWorktreeDir(runId),
 		repos: taken,
 		note: `Investigating snapshots of ${taken.length} repositories: ${listing}. Uncommitted changes are not included.${omitted}`,
+	};
+}
+
+/** Refuses a recorded path outside the run's dir and its worktree dir. */
+function ownedBy(runId: string): (path: string) => void {
+	const roots = [runDirFor(runId), runWorktreeDir(runId)];
+	return (path) => {
+		const ok = roots.some((r) => {
+			try {
+				inside(r, relative(r, path));
+				return true;
+			} catch {
+				return false;
+			}
+		});
+		if (!ok)
+			throw new Error(`Repository sub-path escapes the snapshot: ${path}`);
 	};
 }
 
@@ -1201,12 +1263,12 @@ export async function rebuildWorkspace(
 	signal?: AbortSignal,
 	handoff = false,
 ): Promise<Workspace> {
-	const runDir = runDirFor(investigationId);
-	// Paths come back from the row; nothing outside this run's dir is ever replaced.
-	inside(runDir, relative(runDir, ws.cwd));
+	// Paths come back from the row; nothing outside this run's own dirs is ever replaced.
+	const owned = ownedBy(investigationId);
+	owned(ws.cwd);
 	const repos: RunWorkspaceRepo[] = [];
 	for (const repo of ws.repos) {
-		inside(runDir, relative(runDir, repo.dir));
+		owned(repo.dir);
 		if (!/^[0-9a-f]{7,64}$/i.test(repo.head))
 			throw new Error(`Recorded commit is not a commit id: ${repo.head}`);
 		const { credential } = await ports.snapshotWith(
@@ -1218,6 +1280,7 @@ export async function rebuildWorkspace(
 			repo.dir,
 			signal,
 			repo.head,
+			investigationId,
 		);
 		repos.push({ ...repo, credential });
 	}

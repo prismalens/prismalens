@@ -19,7 +19,7 @@ describe("sweepRunWorkspaces (#743)", () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	it("removes the clone and harness home a crashed run left, and keeps its transcript", () => {
+	it("removes the clone and harness home a crashed run left, and keeps its transcript", async () => {
 		const crashed = join(dir, "runs", "run-a");
 		mkdirSync(join(crashed, "repo", "src"), { recursive: true });
 		mkdirSync(join(crashed, "home"), { recursive: true });
@@ -28,22 +28,32 @@ describe("sweepRunWorkspaces (#743)", () => {
 		mkdirSync(clean, { recursive: true });
 		writeFileSync(join(clean, "transcript.jsonl"), "{}\n");
 
-		expect(sweepRunWorkspaces()).toBe(1);
+		expect(await sweepRunWorkspaces()).toBe(1);
 		expect(existsSync(join(crashed, "repo"))).toBe(false);
 		expect(existsSync(join(crashed, "home"))).toBe(false);
 		expect(existsSync(join(crashed, "transcript.jsonl"))).toBe(true);
 		expect(existsSync(join(clean, "transcript.jsonl"))).toBe(true);
 	});
 
-	it("sweeps the repos/ a crashed multi-repo run left (#747)", () => {
+	it("sweeps the repos/ a crashed multi-repo run left (#747)", async () => {
 		const crashed = join(dir, "runs", "run-c");
 		mkdirSync(join(crashed, "repos", "api"), { recursive: true });
 
-		expect(sweepRunWorkspaces()).toBe(1);
+		expect(await sweepRunWorkspaces()).toBe(1);
 		expect(existsSync(join(crashed, "repos"))).toBe(false);
 	});
 
-	it("does nothing before any run exists", () => {
-		expect(sweepRunWorkspaces()).toBe(0);
+	it("sweeps the worktree dir a crashed run left, counting the run once (#918)", async () => {
+		mkdirSync(join(dir, "runs", "run-d", "home"), { recursive: true });
+		mkdirSync(join(dir, "worktrees", "pl-run-d", "api"), { recursive: true });
+		mkdirSync(join(dir, "worktrees", "not-ours"), { recursive: true });
+
+		expect(await sweepRunWorkspaces()).toBe(1);
+		expect(existsSync(join(dir, "worktrees", "pl-run-d"))).toBe(false);
+		expect(existsSync(join(dir, "worktrees", "not-ours"))).toBe(true);
+	});
+
+	it("does nothing before any run exists", async () => {
+		expect(await sweepRunWorkspaces()).toBe(0);
 	});
 });
