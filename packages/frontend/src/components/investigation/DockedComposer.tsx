@@ -3,12 +3,15 @@
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
 import {
+	ACCESS_LEVEL_LABEL,
 	type FollowUpKind,
 	fidelityAccess,
 	type HarnessStatus,
+	type InvestigationWithRelations,
 	isRunStateLive,
 	TURN_OUTCOME_LABEL,
 } from "@prismalens/contracts";
+import { useQuery } from "@tanstack/react-query";
 import { type MutableRefObject, useState } from "react";
 import {
 	AccessChip,
@@ -29,8 +32,10 @@ import {
 } from "@/components/incidents/run-facts";
 import { startedBy, viewName } from "@/components/run/run-labels";
 import { useToast } from "@/hooks/use-toast";
+import { orpc } from "@/lib/api/orpc-client";
 import { uploadAttachment } from "@/lib/attachments";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { handoffHint } from "@/lib/handoff-line";
 import { defaultVerb, recheckBrief } from "@/lib/run-verb";
 import { cn } from "@/lib/utils";
 import {
@@ -69,6 +74,8 @@ export function threadActions(t: {
 	reported: boolean;
 	name: string;
 	nextName: string;
+	/** Who a finished run's message goes to: its own agent, in its own session. */
+	agent: string;
 	defaultDraft: "ask" | "investigate";
 }): ThreadActions {
 	if (t.draft)
@@ -111,7 +118,7 @@ export function threadActions(t: {
 			],
 			initial: "message",
 			placeholder: "Message the agent",
-			hint: { message: "" },
+			hint: { message: "Reaches the agent at its next pause." },
 		};
 	if (t.chat)
 		return {
@@ -130,6 +137,7 @@ export function threadActions(t: {
 					"Follow-ups stay in this conversation. The latest answer also shows on the overview.",
 			},
 		};
+	// No continue control (rulings 2, 3): typing and sending continues; the run decides which kind.
 	if (t.continuable)
 		return {
 			actions: [
@@ -140,44 +148,78 @@ export function threadActions(t: {
 						"Resumes the agent's session and takes the run on to a report.",
 					needsText: true,
 				},
-				{
-					id: "follow-up",
-					label: "Ask",
-					detail: "A question in the same session. No report.",
-					needsText: true,
-				},
 			],
 			initial: "continue",
-			placeholder: "Say what to change, or just continue",
+			placeholder: `Message ${t.agent}`,
 			hint: {
-				continue: `Continuing resumes ${t.name}'s agent session and ends in a report on the overview.`,
-				"follow-up": `Asks in ${t.name}'s agent session. The answer shows here.`,
+				continue: `Continues in ${t.agent}'s own session and ends in a report on the overview.`,
 			},
 		};
-	const actions: ComposerAction[] = [
-		{
-			id: "follow-up",
-			label: `Continue ${t.name}`,
-			detail: `A follow-up in ${t.name}'s agent session. The answer shows here.`,
-			needsText: true,
-		},
-	];
-	if (t.reported)
-		actions.push({
-			id: "recheck",
-			label: "Investigate again",
-			detail: `Starts ${t.nextName} with this report quoted and anything typed here.`,
-			needsText: false,
-		});
 	return {
-		actions,
+		actions: [
+			{
+				id: "follow-up",
+				label: `Continue ${t.name}`,
+				detail: `A follow-up in ${t.name}'s agent session. The answer shows here.`,
+				needsText: true,
+			},
+		],
 		initial: "follow-up",
-		placeholder: "Say what to change, or just continue",
-		hint: {
-			"follow-up": `Continuing resumes ${t.name}'s agent session. Its answer shows here.`,
-			recheck: `${t.nextName} runs live and ends in a new report on the overview; ${t.name}'s finding stands until then.`,
-		},
+		placeholder: `Message ${t.agent}`,
+		hint: { "follow-up": `Continues in ${t.agent}'s own session.` },
 	};
+}
+
+/**
+ * The level a run's follow-up or recheck goes at: the run's own, or the
+ * person's Settings for an ended alert-started run (#673 w6-13).
+ */
+export function runFollowUpLevel(
+	inv: InvestigationWithRelations | null | undefined,
+	settings: AccessLevel,
+	live: boolean,
+): AccessLevel {
+	if (!live && startedBy(inv?.triggerType) === "PrismaLens") return settings;
+	return (
+		inv?.accessLevel ??
+		(inv?.report?.fidelity
+			? fidelityAccess(inv.report.fidelity, inv.agentMode)
+			: undefined) ??
+		"supervised"
+	);
+}
+
+/** Investigate again from a reported run: a new run with its report quoted; null when there is none. */
+export function useRecheck():
+	| ((text?: string, attachments?: string[]) => Promise<void>)
+	| null {
+	const record = useIncidentRecord();
+	const choice = useAgentChoice();
+	const inv = record.run.investigation;
+	const live = !!record.run.state && isRunStateLive(record.run.state);
+	const harness = choice.harnesses.find((h) => h.id === inv?.harness);
+	const report = inv?.report;
+	// startOrGet hands back the live run and drops the recheck text, so offer none while any run is live.
+	if (
+		!inv ||
+		!report ||
+		live ||
+		record.liveRun ||
+		choice.isLoading ||
+		inv.kind === "chat"
+	)
+		return null;
+	const level = runFollowUpLevel(
+		inv,
+		defaultAccessOf(harness, choice.axes).level.level,
+		live,
+	);
+	return (text = "", attachments = []) =>
+		record.investigate({
+			text: recheckBrief(report, runNumber(record.runs, inv.id), text),
+			accessLevel: level,
+			attachments,
+		});
 }
 
 /** The destructive toast for a Stop that never reached the agent; the run strip's Stop shares it. */
@@ -191,8 +233,9 @@ export const stopFailed =
 
 /**
  * The box under a transcript (#811): a draft starts a run or an Ask, a live
- * run takes messages, a finished one continues. On a run the chips read
- * that run, and changing one opens a draft prefilled with the run plus the change.
+ * run takes messages, a finished one continues. On a finished run the agent
+ * and model chips pick who the message goes to (rulings 2, 3); on a live run
+ * changing one opens a draft prefilled with the run plus the change.
  */
 export function DockedComposer({
 	branchId,
@@ -226,6 +269,7 @@ export function DockedComposer({
 		reported: !!inv?.report,
 		name,
 		nextName: `Run ${runNumber(runs, "")}`,
+		agent: who.agent,
 		defaultDraft:
 			record.draftVerb ??
 			defaultVerb(
@@ -260,33 +304,57 @@ export function DockedComposer({
 
 	// A draft reads its own chips, then Settings, per field; Settings is never written here (#673 w52).
 	const own = record.draftChoice;
-	const runHarness = choice.harnesses.find((h) => h.id === inv?.harness);
+	// A finished run's chips pick where its message goes; the run row is unchanged until it is sent.
+	const finished = !draft && !!inv && !live && !ended;
+	const [picks, setPicks] = useState<{ id: string; to: DraftChoice } | null>(
+		null,
+	);
+	const to: DraftChoice = finished && picks?.id === inv?.id ? picks.to : {};
+	const other = !!to.harness && to.harness !== inv?.harness;
+	const runHarness = choice.harnesses.find(
+		(h) => h.id === (to.harness ?? inv?.harness),
+	);
 	const harness = draft
 		? (choice.harnesses.find((h) => h.id === own.harness) ?? choice.effective)
 		: runHarness;
 	const hid = harness?.id as HarnessId;
 	const model = draft
 		? (own.model ?? (own.harness ? choice.models[hid] : choice.model) ?? "")
-		: (inv?.model ?? "");
+		: (to.model ?? (other ? choice.models[hid] : inv?.model) ?? "");
 	const effort = draft
 		? own.effort !== undefined
 			? own.effort
 			: (choice.efforts[hid] ?? null)
-		: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+		: to.effort !== undefined
+			? to.effort
+			: other
+				? (choice.efforts[hid] ?? null)
+				: (runEffort(inv, run.events) ?? inv?.effort ?? null);
+	const preview = useQuery({
+		...orpc.investigations.handoff.queryOptions({
+			input: {
+				id: inv?.id ?? "",
+				...(to.harness ? { harness: to.harness } : {}),
+				...(to.model ? { model: to.model } : {}),
+			},
+		}),
+		enabled: finished,
+		retry: false,
+	});
+	const agentLabel = harness?.label ?? who.agent;
+	const handoff = preview.data
+		? handoffHint(preview.data, {
+				agent: agentLabel,
+				continues: run.continuable,
+				reported: !!inv?.report,
+				name,
+			})
+		: null;
 	// A run shows what it asked for; one from before levels, the level its report records (#673 w21).
 	const defaults = defaultAccessOf(harness, choice.axes);
-	// An ended alert-started run's follow-up goes at the person's level, not its Auto (#673 w6-13).
-	const followUpAtSettings =
-		!draft && !live && startedBy(inv?.triggerType) === "PrismaLens";
 	const accessLevel: AccessLevel = draft
 		? (own.accessLevel ?? defaults.level.level)
-		: followUpAtSettings
-			? defaults.level.level
-			: (inv?.accessLevel ??
-				(inv?.report?.fidelity
-					? fidelityAccess(inv.report.fidelity, inv.agentMode)
-					: undefined) ??
-				"supervised");
+		: runFollowUpLevel(inv, defaults.level.level, live);
 
 	const choose = (c: Choice) => {
 		const now: DraftChoice = hid
@@ -301,9 +369,11 @@ export function DockedComposer({
 				: c.kind === "effort"
 					? { ...now, effort: c.effort }
 					: { ...now, accessLevel: c.level };
-		// On a run, the draft is this run with one change.
+		// On a run, the draft is this run with one change; a follow-up never changes the level.
 		if (draft) record.setDraftChoice(next);
-		else record.newRun({ choice: next });
+		else if (finished && inv) {
+			if (c.kind !== "level") setPicks({ id: inv.id, to: next });
+		} else record.newRun({ choice: next });
 	};
 	const sent = {
 		...(own.harness ? { harness: own.harness } : {}),
@@ -352,6 +422,11 @@ export function DockedComposer({
 				harness={harness}
 				level={accessLevel}
 				disabled={blocked}
+				lockedHint={
+					finished
+						? `A follow-up keeps the run's permission, ${ACCESS_LEVEL_LABEL[preview.data?.accessLevel ?? accessLevel]}. Start a new run to change it.`
+						: undefined
+				}
 				onLevel={(l) => choose({ kind: "level", level: l })}
 			/>
 		</>
@@ -360,14 +435,9 @@ export function DockedComposer({
 	const upload = (files: File[]) =>
 		Promise.all(files.map((f) => uploadAttachment(incident.id, f)));
 
-	const recheck = async (text: string, attachments: string[]) => {
-		if (!inv?.report) return;
-		return record.investigate({
-			text: recheckBrief(inv.report, runNumber(runs, inv.id), text),
-			accessLevel,
-			attachments,
-		});
-	};
+	const rechecker = useRecheck();
+	const recheck = async (text: string, attachments: string[]) =>
+		rechecker?.(text, attachments);
 
 	const onSend = async ({ text, files }: ComposerSend, now: boolean) => {
 		const attachments = await upload(files);
@@ -395,29 +465,65 @@ export function DockedComposer({
 					branchId,
 					attachments,
 					...(kind ? { kind } : {}),
+					...(finished && to.harness
+						? {
+								to: {
+									harness: to.harness,
+									// The picker's "" is the agent's own model, which the API spells null.
+									...(to.model !== undefined
+										? { model: to.model || null }
+										: {}),
+									...(to.effort !== undefined ? { effort: to.effort } : {}),
+								},
+							}
+						: {}),
 				});
 			}
 		}
 	};
 
-	const hint = ended ? null : thread.hint[action];
-	const above = hint ? (
+	// Where the message goes and what a fresh session gets; the server plans it again on send.
+	const hint: string[] = ended
+		? []
+		: !finished
+			? [thread.hint[action] ?? ""]
+			: handoff
+				? [handoff.where, ...(handoff.what ? [handoff.what] : [])]
+				: preview.isPending
+					? [`Checking what ${agentLabel} can take from this run.`]
+					: [];
+	const notice = !finished
+		? undefined
+		: (handoff?.problem ??
+			(preview.isError
+				? `Unable to check what ${agentLabel} will get. Sending still works.`
+				: undefined));
+	const above = hint.some(Boolean) ? (
 		<p className="px-3 text-meta text-text-3" data-testid="composer-hint">
-			{hint}
+			{hint.map((line) => (
+				<span key={line} className="block">
+					{line}
+				</span>
+			))}
 		</p>
 	) : null;
+	const restarted = finished && !!preview.data?.note;
 	const asks = live ? run.asks.filter((a) => a.state === "waiting") : [];
-	const dock =
-		asks.length > 0 || run.queued.length > 0 ? (
-			<RunDock
-				asks={asks}
-				queued={run.queued}
-				runId={inv?.id}
-				agent={harness?.label ?? who.agent}
-				cwd={inv?.workspace?.cwd}
-				onStep={onStep}
-			/>
-		) : null;
+	const dock = restarted ? (
+		<p className="text-meta text-text-1" data-testid="composer-restart-note">
+			PrismaLens restarted while the previous session was working. Its last
+			command may or may not have completed; check before relying on it.
+		</p>
+	) : asks.length > 0 || run.queued.length > 0 ? (
+		<RunDock
+			asks={asks}
+			queued={run.queued}
+			runId={inv?.id}
+			agent={harness?.label ?? who.agent}
+			cwd={inv?.workspace?.cwd}
+			onStep={onStep}
+		/>
+	) : null;
 
 	return (
 		<div
@@ -436,6 +542,9 @@ export function DockedComposer({
 						ended
 							? {
 									onNewRun: () => record.newRun(),
+									...(inv?.resumeBlockedReason
+										? { reason: inv.resumeBlockedReason }
+										: {}),
 									...(inv?.report && {
 										onRecheck: () =>
 											recheck("", []).catch((error: unknown) =>
@@ -449,7 +558,11 @@ export function DockedComposer({
 								}
 							: undefined
 					}
-					placeholder={thread.placeholder}
+					placeholder={
+						finished && inv?.kind !== "chat"
+							? `Message ${agentLabel}`
+							: thread.placeholder
+					}
 					initialFiles={draft ? record.draftFiles : undefined}
 					onFilesChange={draft ? record.setDraftFiles : undefined}
 					boxRef={boxRef}
@@ -467,6 +580,8 @@ export function DockedComposer({
 					isPending={record.isStarting}
 					stopping={run.stopRequested}
 					blockedReason={blockedReason}
+					notice={notice}
+					holdSend={finished && (preview.isPending || !!handoff?.problem)}
 					onStop={() => run.stop({ onError: stopFailed(toast) })}
 					undeliverable={run.undeliverable}
 					onSaveAsNote={(text) => record.addNote(text, run.clearUndeliverable)}

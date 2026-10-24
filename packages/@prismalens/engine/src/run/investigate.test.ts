@@ -82,6 +82,25 @@ async function collect(mode: string, extra?: Partial<Parameters<typeof runInvest
 }
 
 describe("runInvestigation over a fake ACP harness", () => {
+	it("offers the gateway in session/new but keeps its bearer out of the transcript (#848)", async () => {
+		const token = "run-bearer-0123456789abcdef";
+		const { runDir } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" },
+			gateway: {
+				url: "http://127.0.0.1:1/mcp",
+				token,
+				promptLine: "",
+				tools: [],
+				confirmed: () => false,
+				waitConfirmed: async () => false,
+			},
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).toContain("http://127.0.0.1:1/mcp");
+		expect(wire).toContain("Bearer [redacted]");
+		expect(wire).not.toContain(token);
+	});
+
 	it("sets the chosen model over session/set_config_option and records what the harness took (R4.2)", async () => {
 		const { events, runDir } = await collect("ok", {
 			model: "asked/model",
@@ -337,6 +356,20 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(warnings.join("\n")).toContain("unknown_stop_reason");
 	});
 
+	it("hands the host the harness's usage_update, and nothing from a harness that sends none", async () => {
+		const seen: unknown[] = [];
+		await collect("ok", {
+			onUsage: (u) => seen.push(u),
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_USAGE: "1" },
+		});
+		expect(seen).toEqual([
+			expect.objectContaining({ used: 182000, size: 440000, cost: { amount: 1.25, currency: "USD" } }),
+		]);
+		const none: unknown[] = [];
+		await collect("ok", { onUsage: (u) => none.push(u) });
+		expect(none).toEqual([]);
+	});
+
 	it("retries once in the same session when the first report is invalid", async () => {
 		const { events } = await collect("retry");
 		expect(events.at(-1)?.kind).toBe("report");
@@ -580,6 +613,31 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(events.some((e) => e.kind === "report" || e.kind === "error")).toBe(false);
 		expect(events.at(-1)?.kind).toBe("branch_done");
 		expect(sessions).toEqual([{ sessionId: "ses_old", loadSession: true }]);
+	});
+
+	it("a handoff opens a fresh session seeded with the handoff, and records the agent, model and level on the first message", async () => {
+		const { events, runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume" },
+			accessLevel: "supervised",
+			resume: {
+				handoff: "HANDOFF: 1. not the cache",
+				via: { harness: "codex", model: "gpt-x", accessLevel: "supervised", handoff: { carried: "alert, 1 message", omitted: null } },
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+		});
+		expect(events[0]).toMatchObject({
+			kind: "operator_message",
+			text: "Why the pool?",
+			via: { harness: "codex", model: "gpt-x", handoff: { carried: "alert, 1 message" } },
+		});
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(wire).not.toContain("session/load");
+		expect(wire).toContain("session/new");
+		const prompt = wire.split("\n").find((l) => l.includes("session/prompt"));
+		expect(prompt).toContain("HANDOFF: 1. not the cache");
+		expect(prompt).toContain("Why the pool?");
 	});
 
 	it("a resumed run with resume.newer includes the note in outbound prompt but not in operator_message (#673 w27)", async () => {

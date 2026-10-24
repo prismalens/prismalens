@@ -9,6 +9,7 @@ import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import { ago, useNow } from "@/hooks/use-now";
 import { answerWord } from "@/lib/answer-word";
+import { citedFile } from "@/lib/evidence-files";
 import { failureSentence } from "@/lib/failure-sentence";
 import { failureWords } from "@/lib/failure-words";
 import { formatClock } from "@/lib/format-time";
@@ -257,6 +258,9 @@ function Finding({
 										search={{
 											investigation: runId,
 											...(e.toolCallId ? { call: e.toolCallId } : {}),
+											...(citedFile(e.source, o.reportInvestigation?.workspace)
+												? { file: e.source }
+												: {}),
 										}}
 										className="flex min-w-0 items-baseline gap-2.5 rounded-control bg-surface-2 px-2.5 py-1.5 transition-colors duration-(--dur-instant) hover:bg-surface-3"
 										data-testid="why-evidence-row"

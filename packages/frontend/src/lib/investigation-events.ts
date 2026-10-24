@@ -21,6 +21,7 @@ import {
 	ModelReportSchema,
 } from "@prismalens/contracts/schemas";
 import { formatClock, formatElapsed } from "./format-time";
+import { handoffRecord } from "./handoff-line";
 import { endHint, isStopMessage, messageEndLine } from "./run-end-line";
 
 export type EventIcon =
@@ -687,6 +688,8 @@ export function deriveTranscript(
 		pending?: PendingMessage[];
 		/** The picker's name for a model id (`haiku` reads `Haiku 5.5`, #673 w5-3). */
 		modelName?: (id: string) => string;
+		/** An agent's label for its id, for the handoff record. */
+		agentName?: (id: string) => string;
 	} = {},
 ): TranscriptItem[] {
 	const { run, pending = [] } = opts;
@@ -860,7 +863,17 @@ export function deriveTranscript(
 					}
 				}
 				if (event.messageId) queued.delete(event.messageId);
-				if (event.resumed)
+				const via = event.via;
+				if (event.resumed && via?.handoff)
+					items.push({
+						kind: "line",
+						key: `handoff-${key}`,
+						text: handoffRecord({ ...via, handoff: via.handoff }, event.ts, {
+							agent: opts.agentName ?? ((id) => id),
+							model: opts.modelName ?? ((id) => id),
+						}),
+					});
+				else if (event.resumed)
 					items.push({
 						kind: "divider",
 						key: `resumed-${key}`,

@@ -2,19 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import {
-	type AccessLevel,
-	HARNESS_IDS,
-	HARNESS_REGISTRY,
-	type HarnessId,
-	resumeBlockedReason,
-} from "@prismalens/config/harness";
-import { harnessLaunch } from "@prismalens/config/harness-selection";
+import type { AccessLevel } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
 	FollowUpKind,
 	InvestigationKind,
 	LiveTurn,
+	RunEndReason,
 	TurnOutcome,
 	WorkflowStatus,
 } from "@prismalens/contracts";
@@ -60,25 +54,15 @@ function isForeignKeyViolation(error: unknown): boolean {
 }
 
 /**
- * Why a finished run cannot take a follow-up, or null when it can (#747).
- * Checked again by the run itself, since PATH can change in between.
+ * Why a finished run cannot take a follow-up, or null when it can (#747): only
+ * a run that kept no workspace. A session that cannot be loaded is handed off.
  */
 export function followUpBlockedReason(
-	inv: Pick<Investigation, "harness" | "acpSessionId" | "workspace">,
+	inv: Pick<Investigation, "workspace">,
 ): string | null {
-	const harness = (HARNESS_IDS as readonly string[]).includes(inv.harness ?? "")
-		? (inv.harness as HarnessId)
-		: null;
-	if (harness) {
-		const off = resumeBlockedReason(harness);
-		if (off) return off;
-	}
-	if (!harness || !inv.acpSessionId)
-		return "This run's agent kept no session to reopen.";
-	const row = HARNESS_REGISTRY[harness];
-	if (!harnessLaunch(row)) return `${row.label} is no longer installed.`;
-	if (!inv.workspace) return "This run recorded no workspace.";
-	return null;
+	return inv.workspace
+		? null
+		: "This run recorded no workspace, so there is nothing to continue from.";
 }
 
 export type InvestigationWithRelations = Investigation & {
@@ -378,6 +362,7 @@ export class InvestigationsService {
 			accessLevel?: AccessLevel;
 			/** A follow-up `continue` ending: how its message ended (#673 w59). */
 			lastTurnOutcome?: TurnOutcome;
+			endReason?: RunEndReason;
 		},
 	): Promise<Investigation | null> {
 		try {
@@ -412,6 +397,8 @@ export class InvestigationsService {
 			if (facts?.accessLevel) updateData.accessLevel = facts.accessLevel;
 			if (facts?.lastTurnOutcome)
 				updateData.lastTurnOutcome = facts.lastTurnOutcome;
+			updateData.endReason =
+				status === "failed" ? (facts?.endReason ?? null) : null;
 
 			return await this.applyStatusUpdate(id, status, updateData);
 		} catch {
@@ -754,6 +741,18 @@ export class InvestigationsService {
 			);
 		}
 		return count;
+	}
+
+	/** Every stored event of a run, in order. */
+	async allEvents(investigationId: string): Promise<CanonicalEvent[]> {
+		const all: CanonicalEvent[] = [];
+		let cursor: number | undefined;
+		do {
+			const page = await this.getEvents(investigationId, cursor, 1000);
+			all.push(...page.events);
+			cursor = page.nextCursor ?? undefined;
+		} while (cursor !== undefined);
+		return all;
 	}
 
 	/**
