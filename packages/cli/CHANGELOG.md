@@ -1,5 +1,28 @@
 # prismalens
 
+## [0.5.3](https://github.com/prismalens/prismalens/compare/v0.5.2...v0.5.3) (2026-10-24)
+
+
+### Features
+
+* **app:** run usage, evidence at its revision, never a dead end, hypothesis tree ([18f5559](https://github.com/prismalens/prismalens/commit/18f555916d16198430e5d44f170e5b158bc6b906))
+* **app:** run usage, the Worked fold, evidence files at their revision and the hypotheses card ([e4205a0](https://github.com/prismalens/prismalens/commit/e4205a0adb840bc37fd8fdc024c1df9f684556c4))
+* **run:** continue a finished run in another agent, with the existing chips ([18b3598](https://github.com/prismalens/prismalens/commit/18b3598a5cb6f8755f969f2d794f2ef5027e9709))
+
+
+### Bug Fixes
+
+* **#872:** recheck waits on live runs and settings, hypotheses clip watches a stable wrapper, small costs stay nonzero ([c04f026](https://github.com/prismalens/prismalens/commit/c04f0260a001c2902910cb06b6a3d3e3e05acd5a))
+* **#877:** fence and sanitize the handoff body and transcript, write each call once, write the transcript past symlinks, name the lock reason on the locked chip ([01304b2](https://github.com/prismalens/prismalens/commit/01304b2989cd079b047a17c367e3ba147a9ef5dd))
+* **#896:** useShared caches its input after commit, a run that ends with its stream down is caught up, the render probe is picked once at load ([411f025](https://github.com/prismalens/prismalens/commit/411f0250f88f8f5f7c2be3c472cdf1aea418d048))
+* **frontend:** the phone evidence sheet portals to the body, so the topbar no longer covers its Back ([0fc2335](https://github.com/prismalens/prismalens/commit/0fc2335ff01b574b9a4266337d42c6367c13eb04))
+* **run:** an ended run's last history read retries until it lands ([65a1c44](https://github.com/prismalens/prismalens/commit/65a1c446c8f9e66cf3bc51710341c1b121fc071b))
+
+
+### Performance Improvements
+
+* **frontend:** the run page does work only when something on it changes ([0d0bac8](https://github.com/prismalens/prismalens/commit/0d0bac8838c93c9a21230edb543cb70154d907aa))
+
 ## [0.5.2](https://github.com/prismalens/prismalens/compare/v0.5.1...v0.5.2) (2026-10-23)
 
 
