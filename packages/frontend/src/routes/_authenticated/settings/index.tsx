@@ -9,6 +9,7 @@ import {
 	NotificationsSettings,
 	TelemetrySettings,
 } from "@/components/settings";
+import { AcpRegistrySearch } from "@/components/settings/AcpRegistrySearch";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { DevicesTab } from "@/components/settings/DevicesTab";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
@@ -24,6 +25,7 @@ import {
 	SourcesSettings,
 } from "@/components/settings/SourcesSettings";
 import { Pool, Row } from "@/components/shared/Row";
+import { SettingGroup } from "@/components/shared/SettingRow";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useSourcesOverview } from "@/lib/api/hooks/use-sources-orpc";
@@ -85,7 +87,21 @@ function SettingsPage() {
 		>
 			{tab === "general" && <GeneralSettings />}
 			{tab === "appearance" && <AppearanceSettings />}
-			{tab === "agent" && <HarnessSettings />}
+			{tab === "agent" && (
+				<>
+					<HarnessSettings />
+					{/* Moves into Add agent's first step with #911. */}
+					<SettingGroup
+						title="More agents"
+						className="mt-8"
+						testId="agent-registry"
+					>
+						<Pool className="py-4">
+							<AcpRegistrySearch />
+						</Pool>
+					</SettingGroup>
+				</>
+			)}
 			{tab === "alert-intake" && <AlertIntakeSettings />}
 			{tab === "sources" && <SourcesSettings />}
 			{tab === "notifications" && <NotificationsSettings />}
