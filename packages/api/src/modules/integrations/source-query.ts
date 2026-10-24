@@ -35,7 +35,7 @@ const TRUNCATED_REASON = "the 256 KiB snapshot limit";
 export const MappingConfigSchema = z
 	.object({
 		deployment: z.string().min(1).max(64).optional().catch(undefined),
-		selector: z.string().max(500).optional().catch(undefined),
+		selector: z.string().optional().catch(undefined),
 		enabled: z.boolean().optional().catch(undefined),
 		metric: z.string().optional().catch(undefined),
 	})
@@ -55,6 +55,7 @@ export function mappingConfig(raw: unknown): MappingConfig {
 	return parsed.success ? parsed.data : {};
 }
 
+const SELECTOR_MAX = 500;
 const MATCHER = String.raw`[A-Za-z_][A-Za-z0-9_]*\s*(?:=~|!~|!=|=)\s*"(?:[^"\\]|\\.)*"`;
 const MATCHER_RE = new RegExp(MATCHER, "g");
 const SELECTOR_RE = new RegExp(
@@ -72,6 +73,11 @@ export function selectorMatchers(selector: string): string[] | null {
 
 function matchersOf(selector: string | undefined): string[] {
 	if (selector === undefined) return [];
+	// Too long is refused here, not dropped at parse, so the unit is skipped rather than widened (#848).
+	if (selector.length > SELECTOR_MAX)
+		throw new QueryFailed(
+			`the selector is longer than ${SELECTOR_MAX} characters`,
+		);
 	const m = selectorMatchers(selector);
 	if (!m)
 		throw new QueryFailed(
@@ -382,5 +388,7 @@ export function boundSnapshot(
 		dropped += n;
 		text = render(copy);
 	}
+	if (Buffer.byteLength(text) > limit)
+		text = render({ omitted: TRUNCATED_REASON });
 	return { text, truncated: { dropped, reason: TRUNCATED_REASON } };
 }

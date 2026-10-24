@@ -208,6 +208,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 	};
 	const incident = { findUnique: vi.fn(async () => null) };
 	const changeEvent = { findMany: vi.fn(async () => []) };
+	const alert = { findMany: vi.fn(async () => [{ serviceId: "svc-1" }]) };
 
 	async function call(
 		method: string,
@@ -217,6 +218,7 @@ describe("gateway tools (#848 ruling 2026-10-24)", () => {
 			investigation,
 			incident,
 			changeEvent,
+			alert,
 			setting: { findUnique: async () => null },
 		});
 		const entry = await g.lease(RUN_A, NAME);

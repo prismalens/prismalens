@@ -659,12 +659,7 @@ export async function* runInvestigation(
 	 * What the run leaves behind on any end (#820): an ask it never heard back on
 	 * reads stopped, and a message it never read, not delivered.
 	 */
-	const leftovers = function* (): Generator<CanonicalEvent> {
-		for (const askId of openAsks)
-			yield adapter.permissionAnswer(askId, "stopped");
-		openAsks.clear();
-		unsubscribe?.();
-		unQueued?.();
+	const toolsSummary = function* (): Generator<CanonicalEvent> {
 		unCalled?.();
 		if (offer && opts.gateway && !summarized) {
 			summarized = true;
@@ -675,6 +670,14 @@ export async function* runInvestigation(
 				opts.gateway.calls(),
 			);
 		}
+	};
+	const leftovers = function* (tools = true): Generator<CanonicalEvent> {
+		for (const askId of openAsks)
+			yield adapter.permissionAnswer(askId, "stopped");
+		openAsks.clear();
+		unsubscribe?.();
+		unQueued?.();
+		if (tools) yield* toolsSummary();
 		for (const line of [...sendNow.splice(0), ...drain(opts.steer)])
 			yield adapter.operatorMessage(
 				line.text,
@@ -917,15 +920,18 @@ export async function* runInvestigation(
 				),
 			);
 		}
-		yield* leftovers();
+		// Report repair turns still reach the tools, so their calls count until the end (#848).
+		yield* leftovers(false);
 
 		if ("error" in outcome) {
+			yield* toolsSummary();
 			yield adapter.error(
 				opts.signal?.aborted ? CANCELLED_MESSAGE : outcome.error,
 			);
 			return;
 		}
 		if (opts.signal?.aborted || outcome.stop === "cancelled") {
+			yield* toolsSummary();
 			yield adapter.error(CANCELLED_MESSAGE);
 			return;
 		}
@@ -935,6 +941,7 @@ export async function* runInvestigation(
 			opts.kind === "chat" ||
 			(opts.resume && opts.resume.kind !== "continue")
 		) {
+			yield* toolsSummary();
 			yield adapter.branchDone(mapStopReason(outcome.stop));
 			return;
 		}
@@ -955,25 +962,30 @@ export async function* runInvestigation(
 				opts.signal?.aborted ||
 				("stop" in retry && retry.stop === "cancelled")
 			) {
+				yield* toolsSummary();
 				yield adapter.error(CANCELLED_MESSAGE);
 				return;
 			}
 			if ("error" in retry) {
+				yield* toolsSummary();
 				yield adapter.error(retry.error);
 				return;
 			}
 			parsed = parseReport(text);
 		}
 		if (!parsed.ok) {
+			yield* toolsSummary();
 			yield adapter.error(
 				`report did not validate after ${retries === 1 ? "one retry" : "two retries"} (${parsed.reason}: ${parsed.detail})`,
 			);
 			return;
 		}
 		if (!sawEvidence) {
+			yield* toolsSummary();
 			yield adapter.error("investigation produced no evidence: no tool ran");
 			return;
 		}
+		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
 		const gapped = noNetwork
 			? withSandboxGap(parsed.report, label)
@@ -1055,6 +1067,10 @@ export function withPreRunCoverage<
 		if (pre.runbooksSkipped)
 			notQueried.push(
 				`Runbooks: skipped before the run, ${pre.runbooksSkipped}`,
+			);
+		if (pre.telemetrySkipped)
+			notQueried.push(
+				`Telemetry: skipped before the run, ${pre.telemetrySkipped}`,
 			);
 	}
 	for (const c of pre.checkoutsSkipped ?? [])

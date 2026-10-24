@@ -391,6 +391,8 @@ export const PreRunSnapshotSchema = z.object({
 	),
 	/** Why the runbook scan did not run, when it did not. */
 	runbooksSkipped: z.string().optional(),
+	/** Why no telemetry was read, when the whole read did not finish. */
+	telemetrySkipped: z.string().optional(),
 	checkoutsSkipped: z.array(CheckoutSkippedSchema),
 	/** The read copies' contents, scrubbed. */
 	files: z.array(

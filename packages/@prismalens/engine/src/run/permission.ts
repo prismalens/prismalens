@@ -158,10 +158,10 @@ function namedTool(
 		tool = qualified[2];
 	}
 	const raw = tc.rawInput as { server?: unknown; tool?: unknown } | undefined;
-	if (typeof raw?.server === "string" && typeof raw.tool === "string") {
-		servers.push(raw.server);
+	// Any server rawInput names must match too, with or without its tool (#848).
+	if (typeof raw?.server === "string") servers.push(raw.server);
+	if (typeof raw?.server === "string" && typeof raw.tool === "string")
 		tool ??= raw.tool;
-	}
 	return servers.length && tool ? { servers, tool } : null;
 }
 
