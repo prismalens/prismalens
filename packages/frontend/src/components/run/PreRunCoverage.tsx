@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PreRunSource, PreRunSummary } from "@prismalens/contracts";
+import type { PreRunDetail, PreRunSource } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import {
 	ChevronDown,
@@ -22,16 +22,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/**
- * What the run view reads of a run's pre-run context. `state` and
- * `telemetrySkipped` arrive from #851 and follow-up A; a summary without
- * `state` is a saved one (#848).
- */
-export type PreRunView = PreRunSummary & {
-	state?: "ready" | "not-saved" | "unavailable";
-	telemetrySkipped?: string;
-	reason?: string;
-};
+/** A run detail's pre-run context that holds a snapshot: ready or not saved. */
+export type PreRunRead = Exclude<PreRunDetail, { state: "unavailable" }>;
+
+/** The snapshot of a run's pre-run context; null when there is none to show. */
+export const preRunRead = (p: PreRunDetail | null | undefined) =>
+	p && p.state !== "unavailable" ? p : null;
+
+/** The run strip's snapshot step, in a few words. */
+export function snapshotLine(p: PreRunDetail | null | undefined): string {
+	const read = preRunRead(p);
+	if (!read) return "No snapshot";
+	const line = coverageLine(coverageCounts(read.sources));
+	return read.state === "not-saved" ? `${line}, not saved` : line;
+}
 
 export interface CoverageCounts {
 	found: number;
@@ -126,18 +130,28 @@ const LEGEND = [
  * source. Selection sentences, paths, the window and the counts dropped stay
  * in the report and the snapshot.
  */
-export function PreRunCoverage({ preRun }: { preRun: PreRunView }) {
+export function PreRunCoverage({ preRun }: { preRun: PreRunDetail }) {
 	if (preRun.state === "unavailable")
 		return (
-			<p className="text-text-2" data-testid="coverage-unavailable">
-				<StatePill word={{ text: "No snapshot", tone: "neutral" }} /> This
-				follow-up has no stored snapshot to read again.
-			</p>
+			<div className="flex flex-col gap-1" data-testid="coverage-unavailable">
+				<p className="flex flex-wrap items-center gap-2">
+					<b className="font-semibold">No snapshot for this run</b>
+					<StatePill word={{ text: "No snapshot", tone: "neutral" }} />
+				</p>
+				<p className="text-text-2">
+					This follow-up has no stored snapshot, so it ran without telemetry.
+				</p>
+			</div>
 		);
-	const sources = preRun.sources ?? [];
+	const sources = preRun.sources;
 	const c = coverageCounts(sources);
 	return (
 		<div className="flex flex-col gap-3" data-testid="pre-run-coverage">
+			{preRun.telemetrySkipped && (
+				<p className="text-text-2" data-testid="coverage-telemetry-skipped">
+					The telemetry read was skipped: {preRun.telemetrySkipped}
+				</p>
+			)}
 			{preRun.state === "not-saved" && (
 				<p
 					className="flex items-start gap-2 rounded-surface bg-warn/10 px-2.5 py-2"
@@ -277,17 +291,12 @@ function SourceResult({ source: s }: { source: PreRunSource }) {
 	);
 }
 
-/** Why parts were not read, and the kinds nothing serves. */
-function Notes({ preRun }: { preRun: PreRunView }) {
-	const lines = [
-		...(preRun.telemetrySkipped
-			? [`Telemetry: skipped before the run, ${preRun.telemetrySkipped}`]
-			: []),
-		...(preRun.notConfigured ?? []).map(
-			(n) =>
-				`No ${kindLabel(n.kind)} is set up for ${n.services.join(", ") || "this service"}.`,
-		),
-	];
+/** The kinds nothing serves. */
+function Notes({ preRun }: { preRun: PreRunRead }) {
+	const lines = preRun.notConfigured.map(
+		(n) =>
+			`No ${kindLabel(n.kind)} is set up for ${n.services.join(", ") || "this service"}.`,
+	);
 	if (!lines.length) return null;
 	return (
 		<ul className="text-meta text-text-3" data-testid="coverage-notes">

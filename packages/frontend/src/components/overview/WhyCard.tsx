@@ -3,10 +3,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import {
-	PreRunCoverage,
-	type PreRunView,
-} from "@/components/run/PreRunCoverage";
+import { PreRunCoverage } from "@/components/run/PreRunCoverage";
 import { viewName } from "@/components/run/run-labels";
 import { deriveSteps } from "@/components/run/run-steps";
 import { Hint } from "@/components/shared/Hint";
@@ -57,9 +54,8 @@ export function WhyCard({
 			: null;
 	const tag = report ? answerWord(report).word : null;
 	const transcriptRun = reported ?? failedLatest;
-	const preRun = (o.reportInvestigation?.preRun ??
-		o.latestRun.investigation?.preRun ??
-		null) as PreRunView | null;
+	const preRun =
+		o.reportInvestigation?.preRun ?? o.latestRun.investigation?.preRun ?? null;
 	const run = (id: string) => ({
 		to: "/incidents/$id/conversation" as const,
 		params: { id: incident.id },

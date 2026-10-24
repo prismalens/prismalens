@@ -63,7 +63,7 @@ import {
 	useFocusLater,
 } from "./HypothesesCard";
 import { IncidentHeader } from "./IncidentHeader";
-import { coverageCounts, coverageLine } from "./PreRunCoverage";
+import { snapshotLine } from "./PreRunCoverage";
 import {
 	type DetailsTab,
 	overviewSteps,
@@ -454,9 +454,7 @@ export function RunPage() {
 	const overview = inv && !chat && (
 		<RunOverview
 			steps={overviewSteps({
-				snapshot: preRun
-					? coverageLine(coverageCounts(preRun.sources))
-					: "No snapshot",
+				snapshot: snapshotLine(preRun),
 				code: codeLine(inv.workspace, preRun?.checkoutsSkipped ?? []),
 				agent: harness?.label ?? who.agent,
 				status: tools,

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { PreRunSummary } from "@prismalens/contracts";
+import type { PreRunDetail, PreRunSummary } from "@prismalens/contracts";
 import { BookOpen, Boxes, ExternalLink, FileText, Link2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { preRunRead } from "./PreRunCoverage";
 
 type Runbook = PreRunSummary["runbooks"][number];
 
@@ -26,11 +27,12 @@ export function RunRunbooks({
 	preRun,
 	loadError,
 }: {
-	/** null: a run with no snapshot (from before #848, or none was stored). */
-	preRun: PreRunSummary | null;
+	/** null or unavailable: a run with no snapshot (from before #848, or none was stored). */
+	preRun: PreRunDetail | null;
 	/** The run itself did not load: not the same as a scan that was skipped. */
 	loadError?: boolean;
 }) {
+	const read = preRunRead(preRun);
 	let body: ReactNode;
 	if (loadError)
 		body = (
@@ -38,19 +40,19 @@ export function RunRunbooks({
 				This run's runbooks did not load.
 			</p>
 		);
-	else if (!preRun)
+	else if (!read)
 		body = (
 			<p className="text-text-2" data-testid="runbooks-no-snapshot">
 				This run has no snapshot, so no runbooks were listed for it.
 			</p>
 		);
-	else if (preRun.runbooksSkipped)
+	else if (read.runbooksSkipped)
 		body = (
 			<p className="text-text-2" data-testid="runbooks-skipped">
-				The runbook scan was skipped: {preRun.runbooksSkipped}
+				The runbook scan was skipped: {read.runbooksSkipped}
 			</p>
 		);
-	else if (preRun.runbooks.length === 0)
+	else if (read.runbooks.length === 0)
 		body = (
 			<p className="text-text-2" data-testid="runbooks-none">
 				No runbook was found in the repositories this run read.
@@ -59,7 +61,7 @@ export function RunRunbooks({
 	else
 		body = (
 			<ul className="flex flex-col gap-2" data-testid="runbooks-list">
-				{preRun.runbooks.map((r: Runbook) => (
+				{read.runbooks.map((r: Runbook) => (
 					<li
 						key={`${r.service}:${r.path}`}
 						className="raised flex flex-col gap-2 rounded-pool p-3"
