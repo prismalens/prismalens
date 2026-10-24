@@ -434,6 +434,7 @@ describe("resolveWorkspace (per-investigation harness cwd)", () => {
 			const bin = join(tmp, "bin");
 			mkdirSync(bin);
 			writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+			writeFileSync(join(bin, "opencode.cmd"), "@echo off\n", { mode: 0o755 });
 			vi.stubEnv("PATH", bin);
 			const resolvedCred = {
 				source: "connection" as const,
@@ -994,6 +995,7 @@ describe("follow-up on a finished run (#747)", () => {
 		const bin = join(tmp, "bin");
 		mkdirSync(bin);
 		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		writeFileSync(join(bin, "opencode.cmd"), "@echo off\n", { mode: 0o755 });
 		vi.stubEnv("PATH", bin);
 		mocks.conductRun.mockReset();
 	});
@@ -1075,6 +1077,35 @@ describe("follow-up on a finished run (#747)", () => {
 			],
 		]);
 		expect(existsSync(join(tmp, "runs", "inv-1", "repo"))).toBe(false);
+	});
+
+	it("runFollowUp passes kind: 'chat' to conductRun when investigation is a chat run (#817)", async () => {
+		const dir = join(tmp, "runs", "inv-1", "repo");
+		const ports = followUpPorts({
+			findInvestigation: vi.fn(async () => ({
+				id: "inv-1",
+				status: "pending",
+				kind: "chat",
+				harness: "opencode",
+				model: "opencode/some-model",
+				acpSessionId: "ses_abc",
+				workspace: recorded(dir),
+			})),
+		});
+		mocks.conductRun.mockImplementation(async (_o, run: { store: { create(): Promise<void> } }) => {
+			await run.store.create();
+			return { runId: "inv-1", report: null, error: null, failureKind: "none" };
+		});
+
+		const result = await runInvestigationJob({ id: "job-chat", investigationId: "inv-1", attempts: 1 }, data, io(), ports);
+
+		expect(result.success).toBe(true);
+		expect(mocks.conductRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				kind: "chat",
+			}),
+			expect.anything(),
+		);
 	});
 
 	it("reuses its run's stored pre-run snapshot and fetches nothing (#848)", async () => {

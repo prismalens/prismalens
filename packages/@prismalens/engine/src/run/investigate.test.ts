@@ -1382,5 +1382,126 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(setModeIdx).toBeGreaterThanOrEqual(0);
 		expect(promptIdx).toBeGreaterThan(setModeIdx);
 	});
+
+	it("session/new carries append and first prompt lacks method block when systemPromptVia is claude-meta (#817)", async () => {
+		const { runDir } = await collect("ok", {
+			descriptor: {
+				...opts("ok").descriptor,
+				systemPromptVia: "claude-meta",
+				sessionMeta: () => ({ claudeCode: { options: {} } }),
+			},
+		});
+
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const sentMessages = wire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any });
+
+		const sessionNew = sentMessages.find((m) => m.method === "session/new");
+		expect(sessionNew).toBeDefined();
+		expect(sessionNew?.params?._meta?.systemPrompt).toBeDefined();
+		expect(sessionNew?.params?._meta?.systemPrompt?.append).toContain("METHOD (work iteratively");
+		expect(sessionNew?.params?._meta?.systemPrompt?.append).not.toContain("FIRING ALERT:");
+
+		const sessionPrompt = sentMessages.find((m) => m.method === "session/prompt");
+		expect(sessionPrompt).toBeDefined();
+		const promptText = sessionPrompt?.params?.prompt?.[0]?.text;
+		expect(promptText).toContain("FIRING ALERT");
+		expect(promptText).toContain("HighLatency");
+		expect(promptText).toContain("THIS RUN");
+		expect(promptText).not.toContain("METHOD (work iteratively");
+	});
+
+	it("session/new does not carry systemPrompt when kind is chat or descriptor lacks claude-meta (#817)", async () => {
+		const chatRun = await collect("ok", {
+			kind: "chat",
+			descriptor: {
+				...opts("ok").descriptor,
+				systemPromptVia: "claude-meta",
+			},
+		});
+		const chatWire = readFileSync(join(chatRun.runDir, "transcript.jsonl"), "utf8");
+		const chatSent = chatWire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any });
+		const chatSessionNew = chatSent.find((m) => m.method === "session/new");
+		expect(chatSessionNew?.params?._meta?.systemPrompt).toBeUndefined();
+
+		const opencodeRun = await collect("ok", {
+			descriptor: {
+				...opts("ok").descriptor,
+			},
+		});
+		const ocWire = readFileSync(join(opencodeRun.runDir, "transcript.jsonl"), "utf8");
+		const ocSent = ocWire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any });
+		const ocSessionNew = ocSent.find((m) => m.method === "session/new");
+		expect(ocSessionNew?.params?._meta?.systemPrompt).toBeUndefined();
+	});
+
+	it("session/load carries append when systemPromptVia is claude-meta on resume (#817)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			descriptor: {
+				...opts("resume").descriptor,
+				systemPromptVia: "claude-meta",
+				sessionMeta: () => ({ claudeCode: { options: {} } }),
+			},
+			resume: {
+				sessionId: "ses_old",
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+		});
+
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const sentMessages = wire
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any });
+
+		const sessionLoad = sentMessages.find((m) => m.method === "session/load");
+		expect(sessionLoad).toBeDefined();
+		expect(sessionLoad?.params?._meta?.systemPrompt?.append).toContain("METHOD (work iteratively");
+	});
+
+	it("handoff continue seeds the turn and not the whole prompt when systemPromptVia is claude-meta (#817)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume" },
+			descriptor: {
+				...opts("resume").descriptor,
+				systemPromptVia: "claude-meta",
+				sessionMeta: () => ({ claudeCode: { options: {} } }),
+			},
+			resume: {
+				kind: "continue",
+				handoff: "HANDOFF: 1. not the cache",
+				via: { harness: "codex", model: "gpt-x", accessLevel: "supervised", handoff: { carried: "alert, 1 message", omitted: null } },
+				text: "Why the pool?",
+				mode: "queue",
+				heads: [],
+			},
+		});
+
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		const prompt = wire.split("\n").find((l) => l.includes("session/prompt"));
+		expect(prompt).toContain("HANDOFF: 1. not the cache");
+		expect(prompt).toContain("Why the pool?");
+		expect(prompt).toContain("FIRING ALERT");
+		expect(prompt).not.toContain("METHOD (work iteratively");
+	});
 });
 
