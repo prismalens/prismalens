@@ -1613,17 +1613,29 @@ describe("harness tool call live events and summary (#848)", () => {
 			},
 			calls: () => [...callList],
 		};
-		let usageCount = 0;
-		const { events } = await collect("retry", {
-			env: { ...process.env, FAKE_ACP_MODE: "retry", FAKE_MCP_HTTP: "1", FAKE_USAGE: "1" },
-			gateway,
-			onUsage: () => {
-				usageCount++;
-				if (usageCount === 2) {
-					callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
-					onCallCb?.({ name: "incident_notes", at: call2At });
-				}
+		const gate = join(tmp("retry-gate"), "gate");
+		const run = collect("retry", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "retry",
+				FAKE_MCP_HTTP: "1",
+				FAKE_RETRY_GATE: gate,
 			},
+			gateway,
+		});
+
+		await vi.waitFor(() => expect(existsSync(`${gate}.ready`)).toBe(true));
+		callList.push({ name: "incident_notes", firstCalledAt: call2At, count: 1 });
+		onCallCb?.({ name: "incident_notes", at: call2At });
+		writeFileSync(`${gate}.release`, "go");
+
+		const { events } = await run;
+
+		const toolCalls = events.filter((e) => e.kind === "harness_tool_call");
+		expect(toolCalls).toHaveLength(1);
+		expect(toolCalls[0]).toMatchObject({
+			kind: "harness_tool_call",
+			name: "incident_notes",
 		});
 
 		const toolSummaries = events.filter((e) => e.kind === "harness_tools");
@@ -1636,6 +1648,78 @@ describe("harness tool call live events and summary (#848)", () => {
 				{ name: "incident_notes", firstCalledAt: call2At, count: 1 },
 			]);
 		}
+
+		const callIdx = events.findIndex((e) => e.kind === "harness_tool_call");
+		const summaryIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const terminalIdx = events.findLastIndex(
+			(e) => e.kind === "branch_done" || e.kind === "report" || e.kind === "error",
+		);
+		expect(callIdx).toBeGreaterThanOrEqual(0);
+		expect(summaryIdx).toBeGreaterThan(callIdx);
+		expect(terminalIdx).toBeGreaterThan(summaryIdx);
+	});
+
+	it("with a connected gateway, a model refusal yields exactly one harness_tools event before the final error event (OBJ-018)", async () => {
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+		};
+		const { events } = await collect("ok", {
+			model: "asked/model",
+			modelSource: "operator",
+			gateway,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODELS: "served/model,asked/model",
+				FAKE_REFUSE_SET: "1",
+				FAKE_MCP_HTTP: "1",
+			},
+		});
+
+		const toolsSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolsSummaries).toHaveLength(1);
+		expect(events.at(-1)?.kind).toBe("error");
+		const toolsIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const errorIdx = events.findLastIndex((e) => e.kind === "error");
+		expect(toolsIdx).toBeLessThan(errorIdx);
+	});
+
+	it("with a connected gateway, an effort refusal yields exactly one harness_tools event before the final error event (OBJ-018)", async () => {
+		const gateway = {
+			url: "http://127.0.0.1:1/mcp",
+			token: "t0k",
+			serverName: "prismalens-abcdefgh23",
+			promptLine: "",
+			tools: ["incident_get"],
+			connected: () => true,
+			waitConnected: async () => true,
+			onCall: () => () => {},
+			calls: () => [],
+		};
+		const { events } = await collect("ok", {
+			effort: "high",
+			gateway,
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MCP_HTTP: "1",
+			},
+		});
+
+		const toolsSummaries = events.filter((e) => e.kind === "harness_tools");
+		expect(toolsSummaries).toHaveLength(1);
+		expect(events.at(-1)?.kind).toBe("error");
+		const toolsIdx = events.findIndex((e) => e.kind === "harness_tools");
+		const errorIdx = events.findLastIndex((e) => e.kind === "error");
+		expect(toolsIdx).toBeLessThan(errorIdx);
 	});
 });
 

@@ -54,6 +54,7 @@ function codex(announce: string | null) {
 									title: announce,
 									kind: "execute",
 									status: "pending",
+									_meta: { is_mcp_tool_call: true },
 								},
 							},
 						});

@@ -31,7 +31,7 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -404,6 +404,16 @@ async function turn(sessionId, promptText) {
 	) {
 		await cancelled();
 		return { stopReason: "cancelled" };
+	}
+	// FAKE_RETRY_GATE: the repair turn signals live and waits for release.
+	if (
+		process.env.FAKE_RETRY_GATE &&
+		promptText.startsWith("Your final message did not")
+	) {
+		writeFileSync(`${process.env.FAKE_RETRY_GATE}.ready`, "ready");
+		while (!existsSync(`${process.env.FAKE_RETRY_GATE}.release`)) {
+			await new Promise((r) => setTimeout(r, 10));
+		}
 	}
 	// FAKE_REPORT_THEN_WAIT_CANCEL: a valid report is already in the turn when Stop lands,
 	// and the agent still ends the turn as end_turn (#673 w59).

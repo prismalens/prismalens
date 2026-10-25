@@ -150,6 +150,108 @@ describe("the run's pre-run snapshot (#848)", () => {
 			rmSync(runDir, { recursive: true, force: true });
 		}
 	});
+
+	it("buildPreRunSnapshot over skipped basic credential outcomes plus found source scrubs base64 secret (OBJ-002)", () => {
+		const b64 = "YWxpY2U6YWJj";
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "prom-skipped-req",
+					from: "set",
+					status: "skipped",
+					reason: "credential has a secret shorter than 4 characters",
+					secrets: [b64],
+				},
+				{
+					kind: "alertmanager",
+					label: "am-skipped-noreq",
+					from: "set",
+					status: "skipped",
+					reason: "it cannot be opened here",
+					secrets: [b64],
+				},
+				{
+					kind: "loki",
+					label: "loki-found",
+					from: "set",
+					status: "found",
+					part: {
+						summary: "1 line",
+						data: { result: [{ stream: { app: "api" }, values: [["1", `auth: ${b64}`]] }] },
+						count: 1,
+					},
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+		expect(JSON.stringify(snap)).not.toContain(b64);
+	});
+
+	it("a found source labelled 300,000 characters produces a file within 262,144 bytes (OBJ-006)", () => {
+		const ctx = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "L".repeat(300_000),
+					from: "set",
+					status: "found",
+					part: { summary: "1 alert", data: { alerts: [] }, count: 0 },
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+		expect(ctx.files[0]).toBeDefined();
+		expect(Buffer.byteLength(ctx.files[0]!.text)).toBeLessThanOrEqual(262_144);
+	});
+
+	it("buildPreRunSnapshot preserves schema enum/origin fields while scrubbing secrets from user fields (OBJ-015)", () => {
+		expect(() => {
+			const snap = buildPreRunSnapshot({
+				window: WINDOW,
+				telemetry: [
+					{
+						kind: "loki",
+						label: "checkout repo logs",
+						from: "set",
+						status: "found",
+						part: { summary: "1 line", data: { result: [] }, count: 0 },
+						secrets: ["sources", "kind", "found", "repo"],
+					},
+				],
+				pastIncidents: [],
+				runbooks: [
+					{
+						title: "deploy runbook",
+						path: "repo/runbooks/deploy.md",
+						service: "checkout",
+						matchedBy: "runbooks/",
+						origin: "repo",
+					},
+				],
+				checkoutsSkipped: [
+					{
+						repo: "https://github.com/acme/repo",
+						code: "failed",
+						reason: "repo clone error",
+					},
+				],
+				now: NOW,
+			});
+			expect(snap.sources[0]?.status).toBe("found");
+			expect(snap.sources[0]?.kind).toBe("loki");
+			expect(snap.runbooks[0]?.origin).toBe("repo");
+			expect(snap.sources[0]?.label).toBe("checkout [redacted] logs");
+		}).not.toThrow();
+	});
 });
 
 describe("safe writing of read copies and scrubbing (#848)", () => {
@@ -590,5 +692,97 @@ describe("stored snapshot markers (#848)", () => {
 		expect(markerReason(JSON.stringify(snap))).toBeNull();
 		expect(markerReason("not json {")).toBeNull();
 		expect(markerReason(JSON.stringify({ state: "ready" }))).toBeNull();
+	});
+});
+
+describe("scrub-before-truncate: no window of a long secret survives cutStrings (OBJ-019 #848)", () => {
+	/** Returns true when any 20-character substring of `needle` appears in `hay`. */
+	function anyWindowIn(needle: string, hay: string): boolean {
+		for (let i = 0; i <= needle.length - 20; i++) {
+			if (hay.includes(needle.slice(i, i + 20))) return true;
+		}
+		return false;
+	}
+
+	it("a 640-character secret in the source label and as a data label: no 20-char window in files[0].text or sources[0].excerpt, and file fits 262,144 bytes (OBJ-019)", () => {
+		const secret = "S".repeat(320) + "T".repeat(320); // 640 chars, recognisable halves
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: secret, // secret in the source label
+					from: "set",
+					status: "found",
+					part: {
+						summary: "1 alert",
+						data: { alerts: [{ labels: { env: secret } }] }, // secret in data
+						count: 1,
+					},
+					secrets: [secret],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+
+		const fileText = snap.files[0]?.text ?? "";
+		const excerpt = (snap.sources[0] as { excerpt?: string }).excerpt ?? "";
+		expect(anyWindowIn(secret, fileText)).toBe(false);
+		expect(anyWindowIn(secret, excerpt)).toBe(false);
+		expect(Buffer.byteLength(fileText)).toBeLessThanOrEqual(262_144);
+	});
+
+	it("300 characters of padding then a 300-character secret (straddles character 512): no 20-char window of the secret appears (OBJ-019)", () => {
+		// Without scrub-before-truncate the label is cut at 512, leaving the first 212 chars
+		// of the secret, which would then survive because the scrub only sees [redacted].
+		const padding = "P".repeat(300);
+		const secret = "Q".repeat(300);
+		const label = padding + secret; // secret starts at index 300, straddles the 512-char cut point
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label,
+					from: "set",
+					status: "found",
+					part: { summary: "0 alerts", data: { alerts: [] }, count: 0 },
+					secrets: [secret],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+
+		const fileText = snap.files[0]?.text ?? "";
+		const excerpt = (snap.sources[0] as { excerpt?: string }).excerpt ?? "";
+		expect(anyWindowIn(secret, fileText)).toBe(false);
+		expect(anyWindowIn(secret, excerpt)).toBe(false);
+	});
+
+	it("a 2000-character label of 'z' is cut to 512 characters plus the ellipsis, and no 513-character run survives (OBJ-019)", () => {
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: [
+				{
+					kind: "prometheus",
+					label: "z".repeat(2_000),
+					from: "set",
+					status: "found",
+					part: { summary: "1 alert", data: { alerts: [{ labels: { env: "z".repeat(2_000) } }] }, count: 1 },
+					secrets: [],
+				},
+			],
+			pastIncidents: [],
+			runbooks: [],
+			now: NOW,
+		});
+
+		const fileText = snap.files[0]?.text ?? "";
+		expect(fileText).toContain("z".repeat(512) + "\u2026");
+		expect(fileText).not.toContain("z".repeat(513));
 	});
 });

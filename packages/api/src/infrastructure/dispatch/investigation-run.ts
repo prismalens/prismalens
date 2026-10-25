@@ -12,6 +12,7 @@ import {
 	readdirSync,
 	realpathSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -1377,13 +1378,33 @@ function inside(root: string, sub: string | null): string {
 	// Across Windows drives `relative` stays absolute, so `..` alone is not the test.
 	if (rel.startsWith("..") || isAbsolute(rel) || resolve(root, rel) !== dir)
 		throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
-	// A sub-path the repo turned into a link must not move the cwd outside the snapshot.
-	if (sub && existsSync(dir)) {
-		const real = relative(realpathSync(root), realpathSync(dir));
-		if (real.startsWith("..") || isAbsolute(real))
-			throw new Error(`Repository sub-path escapes the snapshot: ${sub}`);
-	}
 	return dir;
+}
+
+/** `dir` as it is on disk, never created: an existing folder whose real path stays inside real `root` (#848). */
+function onDisk(root: string, dir: string, name: string): string {
+	let real = "";
+	try {
+		real = realpathSync(dir);
+	} catch {}
+	if (!real || !statSync(real).isDirectory())
+		throw new Error(`the sub-path ${name} is not in the repository`);
+	const rel = relative(realpathSync(root), real);
+	if (rel.startsWith("..") || isAbsolute(rel))
+		throw new Error(`Repository sub-path escapes the snapshot: ${name}`);
+	return dir;
+}
+
+function inCheckout(runDir: string, snap: string, sub: string | null): string {
+	const dir = inside(snap, sub);
+	onDisk(runDir, snap, relative(runDir, snap));
+	return onDisk(snap, dir, sub ?? ".");
+}
+
+function unmappedDir(runDir: string): string {
+	const dir = join(runDir, "unmapped");
+	mkdirSync(dir, { recursive: true });
+	return onDisk(runDir, dir, "unmapped");
 }
 
 function whereFrom(repo: {
@@ -1460,7 +1481,7 @@ export async function resolveWorkspace(
 		}
 		const { snap, credential } = outcome.value;
 		try {
-			inside(snap.path, repo.subPath);
+			inCheckout(runDir, snap.path, repo.subPath);
 		} catch (e) {
 			skipped.push({ repo, reason: messageOf(e), code: "failed" });
 			continue;
@@ -1547,8 +1568,7 @@ function unmappedWorkspace(
 	note: string,
 	checkoutsSkipped: CheckoutSkipped[] = [],
 ): Workspace {
-	const cwd = join(runDir, "unmapped");
-	mkdirSync(cwd, { recursive: true });
+	const cwd = unmappedDir(runDir);
 	return { layout: "unmapped", cwd, repos: [], checkoutsSkipped, note };
 }
 
@@ -1671,9 +1691,12 @@ export async function rebuildWorkspace(
 			),
 			bounded,
 		);
+		inCheckout(runDir, repo.dir, repo.subPath);
 		repos.push({ ...repo, credential });
 	}
-	mkdirSync(ws.cwd, { recursive: true });
+	if (ws.layout === "unmapped") unmappedDir(runDir);
+	const root = (ws.layout === "single" && ws.repos[0]?.dir) || runDir;
+	onDisk(root, ws.cwd, relative(root, ws.cwd));
 	const pinned =
 		ws.repos.length === 1
 			? (ws.repos[0] as RunWorkspaceRepo).head.slice(0, 7)

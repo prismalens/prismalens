@@ -140,29 +140,33 @@ export interface GatewayAsks {
 	tools: readonly string[];
 }
 
-/** The server and tool an ask names, from its title, `_meta` or `rawInput`; null when it names none. */
+/**
+ * The MCP server and tool an ask names; null unless the agent's own `_meta` marks an MCP call.
+ * Titles and rawInput can carry the call's own arguments, so rawInput only narrows (#848).
+ */
 function namedTool(
 	tc: NonNullable<PermissionRequest["toolCall"]>,
 ): { servers: string[]; tool: string } | null {
-	const servers: string[] = [];
-	let tool: string | undefined;
-	const meta = (tc._meta as { claudeCode?: { mcpServer?: { name?: unknown } } })
-		?.claudeCode?.mcpServer?.name;
-	if (typeof meta === "string") servers.push(meta);
+	const meta = tc._meta as
+		| {
+				claudeCode?: { mcpServer?: { name?: unknown } };
+				is_mcp_tool_call?: unknown;
+		  }
+		| undefined;
+	const server = meta?.claudeCode?.mcpServer?.name;
 	const title = tc.title ?? "";
 	const qualified =
-		/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(title) ??
-		/^mcp\.([^.]+)\.(.+)$/.exec(title);
-	if (qualified?.[1] && qualified[2]) {
-		servers.push(qualified[1]);
-		tool = qualified[2];
-	}
-	const raw = tc.rawInput as { server?: unknown; tool?: unknown } | undefined;
-	// Any server rawInput names must match too, with or without its tool (#848).
+		typeof server === "string"
+			? /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(title)
+			: meta?.is_mcp_tool_call === true
+				? /^mcp\.([^.]+)\.(.+)$/.exec(title)
+				: null;
+	if (!qualified?.[1] || !qualified[2]) return null;
+	const servers = [qualified[1]];
+	if (typeof server === "string") servers.push(server);
+	const raw = tc.rawInput as { server?: unknown } | undefined;
 	if (typeof raw?.server === "string") servers.push(raw.server);
-	if (typeof raw?.server === "string" && typeof raw.tool === "string")
-		tool ??= raw.tool;
-	return servers.length && tool ? { servers, tool } : null;
+	return { servers, tool: qualified[2] };
 }
 
 /**
