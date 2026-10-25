@@ -190,7 +190,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 			label: "Error Token",
 			status: "ERROR",
 			tokenExpiresAt: null,
-			lastErrorMessage: "Bad credentials",
+			lastErrorMessage: "github.com rejected token \"Error Token\". It was revoked or mistyped; replace it.",
 			credentialsEnc: connEnc,
 			connectionConfigEnc: configEnc,
 			integration: {
@@ -210,7 +210,7 @@ describe("GitCredentialService & host-token (#810)", () => {
 
 		const preview = await service.preview(ref);
 		expect(preview.problem?.code).toBe("pinned-unusable");
-		expect(preview.problem?.message).toContain("Pinned token Error Token is in error: Bad credentials; replace it or set Auto.");
+		expect(preview.problem?.message).toContain("Pinned token Error Token is in error: github.com rejected token \"Error Token\". It was revoked or mistyped; replace it.; replace it or set Auto.");
 
 		await expect(service.resolveForUse(ref)).rejects.toThrowError(GitFailure);
 		await expect(service.resolveForUse(ref)).rejects.toMatchObject({

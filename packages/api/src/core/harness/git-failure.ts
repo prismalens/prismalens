@@ -75,6 +75,42 @@ export function formatDay(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
+const GIT_TEXT: RegExp[] = [
+	/^Token "[^\n]*" expired on \d{4}-\d{2}-\d{2}\. Replace it in Settings → Integrations\.$/,
+	/^\S+ rejected token "[^\n]*"(?: \(fp [^\s)]*\))?\. It was revoked or mistyped; replace it\.$/,
+	/^Token "[^\n]*" can't see [^\n]+: it doesn't exist or the token has no access to it\. Check the URL or grant the repository on the token\.$/,
+	/^Could not reach \S+\.$/,
+	/^git could not read [^\n]+\.$/,
+	/^This connection has no host or token\.$/,
+	/^the check failed$/,
+];
+const GIT_DETAIL: RegExp[] = [
+	/^ok [^\n]+$/,
+	/^No repository on \S+ yet\. Add one to a service, then test again\.$/,
+];
+
+/** The git token texts PrismaLens writes; anything else, such as a row from before this, reads as a plain failure (#848). */
+export function gitFailureText(text: string): string {
+	return GIT_TEXT.some((re) => re.test(text)) ? text : "the check failed";
+}
+
+/** A git token Test line: ok, untested, or a failure text. */
+export function gitDetailText(line: string): string {
+	return GIT_DETAIL.some((re) => re.test(line)) ? line : gitFailureText(line);
+}
+
+/** The failure's text, with the two codes that carry git's own stderr line given a fixed sentence. */
+export function fixedGitFailureText(
+	failure: GitFailure,
+	host: string,
+	repo: string,
+): string {
+	if (failure.code === "unreachable") return `Could not reach ${host}.`;
+	return failure.code === "other"
+		? `git could not read ${repo}.`
+		: failure.message;
+}
+
 /** git's own message prefixes under `LC_ALL=C`, matched in table order (plan §1.4, #673). */
 export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	const { credential, host, repo } = input;

@@ -19,6 +19,7 @@ import {
 } from "@prismalens/contracts/schemas";
 import { getTemplate } from "@prismalens/integrations";
 import { normalizeGitHost } from "../../core/harness/git-credential.js";
+import { gitDetailText } from "../../core/harness/git-failure.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { HostToken } from "./host-token.js";
@@ -294,7 +295,7 @@ export class SourcesService {
 				need: "required",
 				why: "Checks the token against the repositories your services name.",
 				ok: detail.startsWith("ok "),
-				detail,
+				detail: gitDetailText(detail),
 			})),
 			discovered: {},
 			...(result.untested ? { untested: true } : {}),

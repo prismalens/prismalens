@@ -26,6 +26,7 @@ import {
 	formatDay,
 	GitFailure,
 	type GitFailureCode,
+	gitFailureText,
 } from "../../core/harness/git-failure.js";
 import {
 	effectiveGitUrl,
@@ -385,7 +386,7 @@ export class GitCredentialService {
 					};
 				const why = expired(picked)
 					? `expired on ${formatDay(picked.tokenExpiresAt as Date)}`
-					: `in error: ${picked.lastErrorMessage ?? picked.status}`;
+					: `in error: ${picked.lastErrorMessage ? gitFailureText(picked.lastErrorMessage) : picked.status}`;
 				const message = `Pinned token ${picked.label} is ${why}; replace it or set Auto.`;
 				if (mode === "use")
 					throw new GitFailure(

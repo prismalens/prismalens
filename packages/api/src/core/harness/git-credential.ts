@@ -39,15 +39,17 @@ export function urlHost(url: string): string | null {
 	}
 }
 
-/** `owner/repo` of a URL. */
+export const UNSHOWN_REPO = "a repository PrismaLens cannot show";
+
+/** `owner/repo` of a URL; one with no such path is never echoed, as it may carry userinfo (#848). */
 export function repoPath(url: string): string {
 	try {
 		const u = new URL(
 			url.replace(/^([\w.-]+)@([^:/]+):(?!\/\/)/, "ssh://$1@$2/"),
 		);
-		return u.pathname.replace(/^\/+/, "").replace(/\.git$/, "") || url;
+		return u.pathname.replace(/^\/+/, "").replace(/\.git$/, "") || UNSHOWN_REPO;
 	} catch {
-		return url;
+		return UNSHOWN_REPO;
 	}
 }
 

@@ -9,6 +9,7 @@ import {
 	IntegrationsService,
 	parseTokenExpiration,
 } from "./integrations.service.js";
+import { repoPath } from "../../core/harness/git-credential.js";
 import { TokenRefreshProcessor } from "./token-refresh.processor.js";
 
 // Mock git-spawn so spawnGit can be controlled cleanly
@@ -375,6 +376,9 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 		});
 	});
 
+	const REJECTED = 'github.com rejected token "work" (fp ab12). It was revoked or mistyped; replace it.';
+	const EXPIRED = 'Token "work" expired on 2026-10-10. Replace it in Settings → Integrations.';
+
 	describe("T15d: recordGitFailure writes the failed status once per distinct message", () => {
 		it("writes CREDENTIALS_INVALID (\"rejected\") and lastErrorMessage once for a rejected token, ignoring duplicates (#831 w6-9)", async () => {
 			mockPrisma.connection.findUnique.mockResolvedValueOnce({
@@ -385,7 +389,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 
 			await service.recordGitFailure("conn-fail-1", {
 				code: "token-rejected",
-				message: "Authentication failed for https://github.com/org/repo.git",
+				message: REJECTED,
 			});
 
 			expect(mockPrisma.connection.update).toHaveBeenCalledTimes(1);
@@ -393,7 +397,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 				where: { id: "conn-fail-1" },
 				data: expect.objectContaining({
 					status: "CREDENTIALS_INVALID",
-					lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
+					lastErrorMessage: REJECTED,
 					consecutiveErrors: { increment: 1 },
 				}),
 			});
@@ -401,12 +405,12 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			// Second call with same message should not update again
 			mockPrisma.connection.findUnique.mockResolvedValueOnce({
 				status: "CREDENTIALS_INVALID",
-				lastErrorMessage: "Authentication failed for https://github.com/org/repo.git",
+				lastErrorMessage: REJECTED,
 			});
 
 			await service.recordGitFailure("conn-fail-1", {
 				code: "token-rejected",
-				message: "Authentication failed for https://github.com/org/repo.git",
+				message: REJECTED,
 			});
 
 			expect(mockPrisma.connection.update).toHaveBeenCalledTimes(1);
@@ -421,16 +425,129 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 
 			await service.recordGitFailure("conn-expired-1", {
 				code: "token-expired",
-				message: "Token expired on 2026-10-10",
+				message: EXPIRED,
 			});
 
 			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
 				where: { id: "conn-expired-1" },
 				data: expect.objectContaining({
 					status: "TOKEN_EXPIRED",
-					lastErrorMessage: "Token expired on 2026-10-10",
+					lastErrorMessage: EXPIRED,
 				}),
 			});
+		});
+	});
+
+	describe("only error text PrismaLens wrote is stored or returned (#848)", () => {
+		const gitConn = (lastErrorMessage: string | null) => ({
+			id: "conn-gitlab",
+			integrationId: "int-1",
+			label: "GitLab Token",
+			status: "ERROR",
+			consecutiveErrors: 1,
+			tokenExpiresAt: null,
+			lastErrorMessage,
+			integration: { id: "int-1", templateId: "git-host-token", label: "Git host token", scopes: "[]", callbackUrl: null, enabled: true, createdAt: new Date(), updatedAt: new Date() },
+			credentialsEnc: credentialsService.encrypt({ token: "glpat_x" }),
+			connectionConfigEnc: credentialsService.encrypt({ host: "gitlab.com" }),
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		const promConn = (lastErrorMessage: string | null) => ({
+			...gitConn(lastErrorMessage),
+			id: "conn-prom",
+			integration: { id: "int-2", templateId: "prometheus", label: "Prometheus", scopes: "[]", callbackUrl: null, enabled: true, createdAt: new Date(), updatedAt: new Date() },
+			connectionConfigEnc: credentialsService.encrypt({ baseUrl: "https://prom.example:9090" }),
+		});
+		const SENTINEL_TEXT = "fetch failed: https://user:\nsentinel\n@prom.example/-/ready";
+
+		const handlerOf = async (name: "listConnections" | "getConnection") => {
+			const { IntegrationsController } = await import("./integrations.controller.js");
+			const controller = new IntegrationsController(service, { invalidate: vi.fn() } as any, { get: vi.fn() } as any);
+			return (controller.integrations() as any)[name]["~orpc"].handler;
+		};
+
+		it.each([
+			["a source", promConn],
+			["a git token", gitConn],
+		])("a legacy raw lastErrorMessage on %s reads the last check failed in the list and the detail", async (_name, make) => {
+			const conn = make(SENTINEL_TEXT);
+			vi.spyOn(service, "findAllConnections").mockResolvedValue([conn] as any);
+			vi.spyOn(service, "findConnectionById").mockResolvedValue(conn as any);
+
+			const list = await (await handlerOf("listConnections"))({ input: {}, context: {} });
+			const detail = await (await handlerOf("getConnection"))({ input: { id: conn.id }, context: {} });
+
+			expect(list[0].lastErrorMessage).toBe(_name === "a source" ? "the last check failed" : "the check failed");
+			expect(detail.lastErrorMessage).toBe(list[0].lastErrorMessage);
+			expect(JSON.stringify([list, detail])).not.toContain("sentinel");
+		});
+
+		it("text PrismaLens wrote is returned as it is", async () => {
+			const written = "Could not reach prom.example:9090: no answer in time";
+			const conn = promConn(written);
+			vi.spyOn(service, "findConnectionById").mockResolvedValue(conn as any);
+
+			const detail = await (await handlerOf("getConnection"))({ input: { id: conn.id }, context: {} });
+
+			expect(detail.lastErrorMessage).toBe(written);
+		});
+
+		it.each([
+			["unreachable", "fatal: unable to access 'https:user:sentinel@gitlab.com/org/repo.git': Failed to connect to gitlab.com port 443", "Could not reach gitlab.com."],
+			["other", "fatal: something odd happened at https:user:sentinel@gitlab.com/org/repo.git", "git could not read org/repo."],
+		])("a git %s failure whose stderr carries a credential URL stores and returns fixed text", async (_code, stderr, fixed) => {
+			const conn = gitConn(null);
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+			mockPrisma.repository.findMany.mockResolvedValue([{ url: "https://gitlab.com/org/repo.git" }]);
+			const gitSpawnMod = await import("../../core/harness/git-spawn.js");
+			vi.mocked(gitSpawnMod.spawnGit).mockRejectedValue(new gitSpawnMod.GitSpawnError("git ls-remote failed", 128, stderr, false));
+			globalThis.fetch = vi.fn() as typeof fetch;
+
+			const result = await service.testConnection("conn-gitlab");
+
+			expect(result.error).toBe(fixed);
+			expect(result.details).toEqual([fixed]);
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-gitlab" },
+				data: expect.objectContaining({ lastErrorMessage: fixed }),
+			});
+			expect(JSON.stringify([result, mockPrisma.connection.update.mock.calls])).not.toContain("sentinel");
+		});
+
+		it("recordGitFailure refuses text that is not from the taxonomy", async () => {
+			mockPrisma.connection.findUnique.mockResolvedValueOnce({ status: "ACTIVE", lastErrorMessage: null });
+			mockPrisma.connection.update.mockResolvedValue({});
+
+			await service.recordGitFailure("conn-1", { code: "unreachable", message: "Could not reach gitlab.com: fatal https:user:sentinel@gitlab.com/x." });
+
+			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
+				where: { id: "conn-1" },
+				data: expect.objectContaining({ lastErrorMessage: "the check failed" }),
+			});
+		});
+
+		it("a repository URL that does not parse reads as one PrismaLens cannot show", () => {
+			for (const url of ["https://user:sentinel@", "https://user:sentinel@host.example", "not a url sentinel"])
+				expect(repoPath(url)).toBe("a repository PrismaLens cannot show");
+			expect(repoPath("git@github.com:owner/repo.git")).toBe("owner/repo");
+		});
+
+		it("a thrown error on a source connection stores sourceErrorText, never the message", async () => {
+			const conn = promConn(null);
+			mockPrisma.connection.findFirst.mockResolvedValue(conn);
+			mockPrisma.connection.findUnique.mockResolvedValue(conn);
+			mockPrisma.connection.update.mockResolvedValue(conn);
+			globalThis.fetch = vi.fn(async () => {
+				throw new TypeError(SENTINEL_TEXT, { cause: { code: "ECONNREFUSED" } });
+			}) as typeof fetch;
+
+			const result = await service.testConnection("conn-prom");
+
+			expect(result.error).toBe("Could not reach prom.example:9090: connection refused or host not found");
+			expect(JSON.stringify([result, mockPrisma.connection.update.mock.calls])).not.toContain("sentinel");
 		});
 	});
 

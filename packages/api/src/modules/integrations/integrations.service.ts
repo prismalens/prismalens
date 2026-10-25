@@ -35,7 +35,11 @@ import {
 	repoPath,
 	urlHost,
 } from "../../core/harness/git-credential.js";
-import { diagnoseGitFailure } from "../../core/harness/git-failure.js";
+import {
+	diagnoseGitFailure,
+	fixedGitFailureText,
+	gitFailureText,
+} from "../../core/harness/git-failure.js";
 import {
 	effectiveGitUrl,
 	GIT_LS_REMOTE_TIMEOUT_MS,
@@ -528,7 +532,7 @@ export class IntegrationsService implements OnModuleInit {
 		failure: { code: string; message: string },
 	): Promise<void> {
 		const status = failedTokenStatus(failure.code);
-		const message = failure.message.slice(0, 500);
+		const message = gitFailureText(failure.message).slice(0, 500);
 		const conn = await this.prisma.connection.findUnique({
 			where: { id: connectionId },
 			select: { status: true, lastErrorMessage: true },
@@ -641,6 +645,8 @@ export class IntegrationsService implements OnModuleInit {
 			} else {
 				testResult = await this.getAuthManager().verifyConnection(id);
 			}
+			if (testResult.error && !template?.urlOnly)
+				testResult = { ...testResult, error: gitFailureText(testResult.error) };
 
 			await this.prisma.connection.update({
 				where: { id },
@@ -667,10 +673,7 @@ export class IntegrationsService implements OnModuleInit {
 			const template = getTemplate(connection.integration.templateId);
 			const errorMessage = template?.urlOnly
 				? sourceErrorText(error, this.baseUrlOf(connection) ?? "")
-				: (error instanceof Error ? error.message : "Unknown error").slice(
-						0,
-						500,
-					);
+				: "the check failed";
 			await this.prisma.connection.update({
 				where: { id },
 				data: {
@@ -802,13 +805,11 @@ export class IntegrationsService implements OnModuleInit {
 								tokenExpiresAt: token.tokenExpiresAt,
 								sshAuthSockSet: !!process.env.SSH_AUTH_SOCK,
 							});
-							// Those two carry git's own stderr line; Sources never echoes it (#848).
-							const text =
-								failure.code === "unreachable"
-									? `Could not reach ${token.host}.`
-									: failure.code === "other"
-										? `git could not read ${repoPath(url)}.`
-										: failure.message;
+							const text = fixedGitFailureText(
+								failure,
+								token.host,
+								repoPath(url),
+							);
 							// Any host's refusal reads CREDENTIALS_INVALID, not only github.com's API one.
 							if (failure.code === "token-rejected") rejected ??= text;
 							if (failure.code !== "no-access" || pinned.has(url))

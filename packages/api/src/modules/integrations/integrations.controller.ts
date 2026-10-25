@@ -22,10 +22,12 @@ import {
 	getTemplate,
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
+import { gitFailureText } from "../../core/harness/git-failure.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { ConnectionWithIntegration } from "./integrations.service.js";
 import { IntegrationsService } from "./integrations.service.js";
+import { storedErrorText } from "./source-query.js";
 import { SourcesService } from "./sources.service.js";
 import { TelemetrySnapshotService } from "./telemetry-snapshot.service.js";
 
@@ -481,11 +483,17 @@ export class IntegrationsController {
 			...(urlOnly
 				? {
 						baseUrl: this.integrationsService.baseUrlOf(connection),
-						lastErrorMessage: connection.lastErrorMessage ?? null,
+						lastErrorMessage: connection.lastErrorMessage
+							? storedErrorText(connection.lastErrorMessage)
+							: null,
 					}
 				: {}),
 			...(template?.gitHost
-				? { lastErrorMessage: connection.lastErrorMessage ?? null }
+				? {
+						lastErrorMessage: connection.lastErrorMessage
+							? gitFailureText(connection.lastErrorMessage)
+							: null,
+					}
 				: {}),
 			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),
 			...(legacy ? { legacy: true as const } : {}),
