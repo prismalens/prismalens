@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { parseSourceCredential, SourcesPreRunSchema } from "@prismalens/contracts/schemas";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildPreRunSnapshot } from "../../infrastructure/dispatch/pre-run-context.js";
 import { IntegrationsController } from "./integrations.controller.js";
 import type { OpenedSource } from "./open-source.js";
 import { boundSnapshot, cutSnapshot, mappingConfig, QueryFailed, selectorMatchers, SNAPSHOT_QUERIES } from "./source-query.js";
@@ -68,8 +70,16 @@ function service(rows: Row[]) {
 	const integrations = {
 		connectionBaseUrl: async (id: string) =>
 			rows.find((r) => r.id === id)?.baseUrl ?? null,
-		sourceCredential: async (id: string) =>
-			parseSourceCredential(rows.find((r) => r.id === id)?.credentials),
+		sourceCredential: async (id: string) => {
+			const row = rows.find((r) => r.id === id);
+			const parsed = parseSourceCredential(row?.credentials);
+			const state =
+				(row as any)?.state ??
+				(parsed.ok && parsed.credential.kind !== "none" && (parsed.credential as any).token !== "s3cret-token"
+					? "set"
+					: "absent");
+			return { ...parsed, state };
+		},
 	};
 	return new TelemetrySnapshotService(prisma as never, integrations as never);
 }
@@ -1091,5 +1101,85 @@ describe("cutSnapshot: label and log-line limits (OBJ-019 #848)", () => {
 		expect(cut.metric.job).toBe("api");
 		expect((cut.values[0] as string[])[1]).toBe("short log");
 		expect(cut.summary).toBe("ok");
+	});
+});
+
+describe("the snapshot scrubs credentials from query output (OBJ-022 #851)", () => {
+	it("the snapshot scrubs a credential the query output carries", async () => {
+		const SECRET = randomBytes(480).toString("base64url");
+		const url = await upstream((req) => {
+			if (req.url?.startsWith("/api/v1/query"))
+				return {
+					body: {
+						data: {
+							resultType: "vector",
+							result: [
+								{
+									metric: {
+										job: "p".repeat(300) + SECRET + "tail",
+										other: SECRET,
+									},
+								},
+							],
+						},
+					},
+				};
+			if (req.url?.startsWith("/api/v2/alerts"))
+				return {
+					body: [
+						{
+							labels: { env: SECRET },
+							annotations: { note: "n".repeat(300) + SECRET },
+						},
+					],
+				};
+			if (req.url?.startsWith("/loki/"))
+				return {
+					body: {
+						data: {
+							result: [
+								{
+									stream: { tag: SECRET },
+									values: [["1", "l".repeat(1700) + SECRET]],
+								},
+							],
+						},
+					},
+				};
+			return null;
+		});
+
+		const sources = await service([
+			{ id: "p", templateId: "prometheus", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+			{ id: "a", templateId: "alertmanager", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+			{ id: "l", templateId: "loki", baseUrl: url, credentials: { kind: "bearer", token: SECRET } },
+		]).sources({});
+
+		const out = await fetchSnapshot(sources, WINDOW);
+		const snap = buildPreRunSnapshot({
+			window: WINDOW,
+			telemetry: out,
+			pastIncidents: [],
+			runbooks: [],
+			now: new Date(),
+		});
+
+		expect(out.length).toBeGreaterThan(0);
+		for (let i = 0; i < out.length; i++) {
+			expect(out[i]?.status).toBe("found");
+		}
+
+		const filesText = snap.files.map((f) => f.text).join("\n");
+		const snapJson = JSON.stringify(snap);
+
+		for (let i = 0; i <= 620; i++) {
+			const slice = SECRET.slice(i, i + 20);
+			expect(filesText).not.toContain(slice);
+			expect(snapJson).not.toContain(slice);
+		}
+
+		expect(filesText).toContain("p".repeat(300));
+		expect(filesText).toContain("n".repeat(300));
+		expect(filesText).toContain("l".repeat(1700));
 	});
 });
