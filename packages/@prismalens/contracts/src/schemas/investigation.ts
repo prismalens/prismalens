@@ -289,9 +289,9 @@ export type ModelReport = z.infer<typeof ModelReportSchema>;
 
 /** One repository a run's workspace holds (#747). */
 export const RunWorkspaceRepoSchema = z.object({
-	/** Folder name under `repos/`, or "repo" for the single layout. */
+	/** Folder name of a multi-repo run, or "repo" for the single layout. */
 	name: z.string(),
-	/** Absolute clone path. */
+	/** Absolute path of its worktree or clone. */
 	dir: z.string(),
 	sourceKind: z.enum(["folder", "url"]),
 	url: z.string(),
@@ -1171,7 +1171,7 @@ export const InvestigationContextSchema = z.object({
 	contextPack: ContextPackSchema.optional(),
 	/** The pre-run fetch; a follow-up reads its run's saved one again (#848 ruling 2026-10-24). */
 	preRun: PreRunContextSchema.optional(),
-	/** Several repos under the cwd; `path` is relative to it, e.g. `api/` (#747). */
+	/** Several repos, each at its absolute `path` (#747, #918). */
 	workspace: z
 		.object({
 			repos: z.array(
