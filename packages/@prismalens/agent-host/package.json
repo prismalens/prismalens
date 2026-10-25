@@ -1,6 +1,6 @@
 {
 	"name": "@prismalens/agent-host",
-	"version": "0.1.0",
+	"version": "0.0.1",
 	"license": "Apache-2.0",
 	"description": "Launches coding agents over ACP: the agent registry, permission levels, launch env, run workspaces and a readiness probe",
 	"homepage": "https://prismalens.io",
