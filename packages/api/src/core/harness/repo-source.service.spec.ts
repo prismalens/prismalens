@@ -460,6 +460,19 @@ describe("repo-source.service", () => {
 			expect(git(["worktree", "list", "--porcelain"], src).match(/prismalens run run4/g)).toHaveLength(1);
 		});
 
+		it("a folder follow-up pinned to a commit the repo lacks fails naming it, and adds no worktree (#918, #747)", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			const dest = runWorktreeDir("run8");
+			const missing = "0123456789abcdef0123456789abcdef01234567";
+
+			await expect(
+				new RepoSourceService().snapshot({ kind: "folder", source: src }, dest, undefined, missing, "run8"),
+			).rejects.toThrow(`Commit ${missing} could not be checked out from this source`);
+			expect(existsSync(dest)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"], src)).not.toContain("run8");
+		});
+
 		it("a late release of an earlier attempt leaves the worktree a follow-up re-added at the same path (#918)", async () => {
 			const src = tmp("pl-src-");
 			const head = initRepo(src);

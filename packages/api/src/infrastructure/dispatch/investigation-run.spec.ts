@@ -61,8 +61,10 @@ const {
 	resolveWorkspace,
 	rebuildWorkspace,
 	runDirFor,
+	writeHandoffTranscript,
 	default: runInvestigationJob,
 } = await import("./investigation-run.js");
+const { releaseWorktreesIn, runWorktreeDir } = await import("../../core/harness/run-worktree.js");
 
 /** A `RunPorts` double covering exactly what the job makes. */
 function fakePorts(overrides: Partial<RunPorts> = {}): RunPorts {
@@ -1815,6 +1817,45 @@ describe("follow-up on a finished run (#747)", () => {
 			harness: "codex",
 			handoff: { from: "opencode", carried: "the alert, 2 messages, the report and 1 refuted hypothesis" },
 		});
+	});
+
+	it("a multi-repo handoff puts the transcript where the agent starts, ignored by git, and the worktrees still release (#918)", async () => {
+		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
+		// This block puts a stub bin dir on PATH; git is the real one.
+		vi.stubEnv("PATH", SYSTEM_PATH);
+		const src = mkdtempSync(join(os.tmpdir(), "pl-handoff-src-"));
+		try {
+			const git = (args: string[], cwd = src) => execFileSync("git", args, { cwd }).toString();
+			git(["init", "-q", "-b", "main"]);
+			writeFileSync(join(src, "a.txt"), "v1");
+			git(["add", "a.txt"]);
+			git(["-c", "user.email=t@t", "-c", "user.name=T", "commit", "-q", "-m", "init"]);
+			const service = new RepoSourceService();
+			const root = runWorktreeDir("inv-h");
+			const api = await service.snapshot({ kind: "folder", source: src }, join(root, "api"), undefined, undefined, "inv-h");
+			const worker = await service.snapshot({ kind: "folder", source: src }, join(root, "worker"), undefined, undefined, "inv-h");
+			const repo = (name: string, dir: string, head: string) => ({
+				name, dir, sourceKind: "folder" as const, url: src, subPath: null, connectionId: null, head, branch: null, services: [name],
+			});
+			const ws: RunWorkspace = {
+				layout: "multi",
+				cwd: root,
+				repos: [repo("api", api.path, api.head), repo("worker", worker.path, worker.head)],
+			};
+
+			writeHandoffTranscript(ws, "the transcript");
+
+			// With additionalDirectories the agent starts in the primary repo; without, in the parent.
+			for (const cwd of [root, api.path])
+				expect(readFileSync(join(cwd, ".prismalens-handoff", "transcript.md"), "utf8")).toBe("the transcript");
+			expect(git(["status", "--porcelain", "--ignored=no"], api.path)).toBe("");
+			await releaseWorktreesIn(root);
+			expect(existsSync(root)).toBe(false);
+			expect(git(["worktree", "list", "--porcelain"])).not.toContain("prismalens run inv-h");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(src, { recursive: true, force: true });
+		}
 	});
 
 	it("refuses a recipient that is no longer runnable on handoff (handoff-L7)", async () => {

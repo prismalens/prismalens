@@ -182,8 +182,12 @@ export async function sweepRunWorktrees(): Promise<string[]> {
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
 		if (!entry.isDirectory() || !entry.name.startsWith(WORKTREE_PREFIX))
 			continue;
-		await releaseWorktreesIn(join(root, entry.name));
-		swept.push(entry.name.slice(WORKTREE_PREFIX.length));
+		try {
+			await releaseWorktreesIn(join(root, entry.name));
+			swept.push(entry.name.slice(WORKTREE_PREFIX.length));
+		} catch (e) {
+			logger.warn(`Could not sweep the run worktree ${entry.name}`, e);
+		}
 	}
 	return swept;
 }

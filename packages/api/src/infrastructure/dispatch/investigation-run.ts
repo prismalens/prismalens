@@ -648,6 +648,22 @@ export function sessionCwds(ws: RunWorkspace): string[] {
 		: [ws.cwd];
 }
 
+/**
+ * The handoff transcript, in every cwd the agent may start in (#918), with a `.gitignore`
+ * so the snapshot's `git status` stays clean.
+ */
+export function writeHandoffTranscript(ws: RunWorkspace, text: string): void {
+	for (const cwd of sessionCwds(ws)) {
+		const file = join(cwd, HANDOFF_TRANSCRIPT_PATH);
+		const dir = dirname(file);
+		// The checkout is untrusted: a committed symlink here must not redirect the write.
+		rmSync(dir, { recursive: true, force: true });
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, ".gitignore"), "*\n", { flag: "wx" });
+		writeFileSync(file, text, { flag: "wx" });
+	}
+}
+
 function copyTargets(ws: RunWorkspace): CopyTarget[] {
 	return sessionCwds(ws).map((dir) => {
 		const repo = ws.repos.find((r) => {
@@ -915,14 +931,7 @@ async function runFollowUp(
 					afterRestart: !!resume.afterRestart,
 				})
 			: null;
-		if (seed) {
-			const file = join(workspace.cwd, HANDOFF_TRANSCRIPT_PATH);
-			const dir = dirname(file);
-			// The clone is untrusted: a committed symlink here must not redirect the write.
-			rmSync(dir, { recursive: true, force: true });
-			mkdirSync(dir, { recursive: true });
-			writeFileSync(file, seed.transcript, { flag: "wx" });
-		}
+		if (seed) writeHandoffTranscript(workspace, seed.transcript);
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);

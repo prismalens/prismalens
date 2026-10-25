@@ -7,6 +7,20 @@ import { join } from "node:path";
 import { GATEWAY_RUN_FILE } from "@prismalens/config/harness";
 import { sweepRunWorkspaces } from "./investigation-run.js";
 
+// A path that refuses deletion, as Windows does with EBUSY for a held file.
+const stuck = vi.hoisted(() => ({ name: "" }));
+vi.mock("node:fs", async (importOriginal) => {
+	const fs = await importOriginal<typeof import("node:fs")>();
+	return {
+		...fs,
+		rmSync: (path: Parameters<typeof fs.rmSync>[0], opts?: Parameters<typeof fs.rmSync>[1]) => {
+			if (stuck.name && String(path).endsWith(stuck.name))
+				throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${path}'`), { code: "EBUSY" });
+			return fs.rmSync(path, opts);
+		},
+	};
+});
+
 describe("sweepRunWorkspaces (#743)", () => {
 	let dir: string;
 	const saved = process.env.PRISMALENS_WORKSPACE_DIR;
@@ -63,6 +77,23 @@ describe("sweepRunWorkspaces (#743)", () => {
 		expect(await sweepRunWorkspaces()).toBe(1);
 		expect(existsSync(join(config, GATEWAY_RUN_FILE))).toBe(false);
 		expect(existsSync(join(config, "other.json"))).toBe(true);
+	});
+
+	it("a worktree entry that cannot be removed is logged and skipped; the other entries and runs/ are still swept (#918)", async () => {
+		mkdirSync(join(dir, "worktrees", "pl-run-stuck"), { recursive: true });
+		mkdirSync(join(dir, "worktrees", "pl-run-ok"), { recursive: true });
+		const config = join(dir, "runs", "run-e", "config");
+		mkdirSync(config, { recursive: true });
+		writeFileSync(join(config, GATEWAY_RUN_FILE), "{}");
+		stuck.name = "pl-run-stuck";
+		try {
+			expect(await sweepRunWorkspaces()).toBe(2);
+		} finally {
+			stuck.name = "";
+		}
+		expect(existsSync(join(dir, "worktrees", "pl-run-stuck"))).toBe(true);
+		expect(existsSync(join(dir, "worktrees", "pl-run-ok"))).toBe(false);
+		expect(existsSync(join(config, GATEWAY_RUN_FILE))).toBe(false);
 	});
 
 	it("does nothing before any run exists", async () => {

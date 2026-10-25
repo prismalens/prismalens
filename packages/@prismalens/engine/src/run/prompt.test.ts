@@ -120,6 +120,11 @@ describe("buildInvestigationPrompt (#633)", () => {
 		expect(prompt).toContain(
 			"  - Application SOURCE CODE: 2 repositories, one folder each:\n      /w/pl-1/api  services: checkout, cart  (at 1a2b3c4d5e6f)\n      /w/pl-1/worker  services: jobs  (at 5d6e7f8a9b0c)  sub-path: svc/jobs",
 		);
+		// The listed folders are not all under the cwd, so the scope rule names them (#918).
+		expect(prompt).toContain(
+			"2. File reads, greps, and globs stay INSIDE the repository folders listed under Application SOURCE CODE — use their absolute paths.",
+		);
+		expect(prompt).not.toContain("stay INSIDE your current working directory");
 	});
 
 	it("tells the agent how to cite a context-pack fact only when a pack is present", () => {

@@ -205,6 +205,10 @@ export class RepoSourceService {
 		let lock: string | undefined;
 		if (src.kind === "folder") {
 			const commit = at ?? (await this.headOf(src.source)).head;
+			if (at && !(await this.hasCommit(src.source, at, signal)))
+				throw new Error(
+					`Commit ${at} could not be checked out from this source`,
+				);
 			try {
 				lock = await addRunWorktree(
 					src.source,
@@ -341,6 +345,36 @@ export class RepoSourceService {
 	}
 
 	/** A local git call: no remote, so no credential. */
+	/** False only when git confirms `at` names no commit in `repo` (exit 1); any other failure throws. */
+	private async hasCommit(
+		repo: string,
+		at: string,
+		signal?: AbortSignal,
+	): Promise<boolean> {
+		try {
+			await spawnGit(
+				[
+					"rev-parse",
+					"--verify",
+					"--quiet",
+					"--end-of-options",
+					`${at}^{commit}`,
+				],
+				{
+					cwd: repo,
+					signal,
+					env: gitEnv({ source: "machine" }),
+					timeoutMs: GIT_TIMEOUT_MS,
+				},
+			);
+			return true;
+		} catch (err) {
+			if (signal?.aborted) throw signal.reason;
+			if (err instanceof GitSpawnError && err.exitCode === 1) return false;
+			throw err instanceof Error ? new Error(err.message) : err;
+		}
+	}
+
 	private async git(
 		args: string[],
 		cwd?: string,
