@@ -1166,4 +1166,74 @@ test.describe("Incident Overview (#811, PR #815)", () => {
 			.poll(() => savedConfig)
 			.toEqual({ metric: "http_requests_total" });
 	});
+
+	test.describe("on a phone (#848, OBJ-011)", () => {
+		test.use({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+
+		test("the incident header and the area strip keep every 48 px target on screen", async ({
+			page,
+			alertmanager,
+			deliverWebhook,
+			unique,
+		}) => {
+			test.setTimeout(90_000);
+			const inc = await fireIncident(page, alertmanager, deliverWebhook, {
+				name: unique("PaymentsCheckoutLatencyBudgetBurnHighEuWest1"),
+				service: LIVE,
+				severity: "critical",
+				session: "success",
+			});
+			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
+			for (const [path, last] of [
+				[`/incidents/${inc.id}`, "header-more"],
+				[`/incidents/${inc.id}/conversation`, "details-toggle"],
+			] as const) {
+				await visit(page, path);
+				await expect(page.getByTestId("header-resolve")).toBeVisible();
+				await expect(page.getByTestId(last)).toBeVisible();
+				expect(await toolbarFaults(page, "incident-header"), path).toEqual([]);
+				expect(await toolbarFaults(page, "topbar"), path).toEqual([]);
+			}
+		});
+	});
 });
+
+/** Overflow, and every link or button under 48x48 once its clipping ancestors cut it, or off screen. */
+async function toolbarFaults(page: Page, testId: string): Promise<string[]> {
+	return page.getByTestId(testId).evaluate((bar) => {
+		const faults: string[] = [];
+		if (bar.scrollWidth > bar.clientWidth)
+			faults.push(`overflow ${bar.scrollWidth} > ${bar.clientWidth}`);
+		for (const el of Array.from(
+			bar.querySelectorAll<HTMLElement>("a, button"),
+		)) {
+			let { left, right, top, bottom } = el.getBoundingClientRect();
+			if (right - left === 0) continue;
+			for (
+				let p = el.parentElement;
+				p && p !== bar.parentElement;
+				p = p.parentElement
+			) {
+				if (getComputedStyle(p).overflowX === "visible") continue;
+				const r = p.getBoundingClientRect();
+				left = Math.max(left, r.left);
+				right = Math.min(right, r.right);
+				top = Math.max(top, r.top);
+				bottom = Math.min(bottom, r.bottom);
+			}
+			const id =
+				el.dataset.testid ?? el.getAttribute("aria-label") ?? el.tagName;
+			if (right - left < 47.5 || bottom - top < 47.5)
+				faults.push(
+					`${id} ${Math.round(right - left)}x${Math.round(bottom - top)}`,
+				);
+			if (left < 0 || right > document.documentElement.clientWidth)
+				faults.push(`${id} off screen`);
+		}
+		return faults;
+	});
+}

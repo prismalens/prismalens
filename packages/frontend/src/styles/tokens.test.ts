@@ -1,9 +1,19 @@
+// @vitest-environment happy-dom
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { act, createElement, type ElementType, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 	const css = readFileSync(resolve(__dirname, "tokens.css"), "utf8");
@@ -53,13 +63,91 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 			nodes?.find((n) => n.prelude === prelude)?.decls ?? [],
 		);
 
+	const touchRules = () =>
+		parse(css).find((n) => n.prelude === TOUCH)?.children ?? [];
+	const slotRule = () => touchRules().find((n) => n.prelude.includes("[data-slot"));
+
 	it("gives every Button, asChild anchors included, a real 48 px box on touch", () => {
-		const media = parse(css).find((n) => n.prelude === TOUCH);
-		expect(decls(media?.children, ':where([data-slot="button"])')).toEqual({
+		expect(Object.fromEntries(slotRule()?.decls ?? [])).toEqual({
 			"min-width": "48px",
 			"min-height": "48px",
 		});
 		expect(css).not.toMatch(/\[data-slot="button"\][^{]*::after/);
+	});
+
+	it("covers exactly the ui slots a Button can carry, triggers included (OBJ-011)", () => {
+		const prelude = slotRule()?.prelude ?? "";
+		const tests = Array.from(prelude.matchAll(/\[data-slot([*^$]?)="([^"]+)"\]/g)).map(
+			([, op, v]) =>
+				(s: string) =>
+					op === "$" ? s.endsWith(v) : op === "^" ? s.startsWith(v) : op === "*" ? s.includes(v) : s === v,
+		);
+		const uiDir = resolve(__dirname, "../components/ui");
+		const slots = new Set(
+			readdirSync(uiDir)
+				.filter((f) => f.endsWith(".tsx"))
+				.flatMap((f) => Array.from(readFileSync(join(uiDir, f), "utf8").matchAll(/data-slot="([^"]+)"/g)))
+				.map((m) => m[1] as string),
+		);
+		expect(Array.from(slots).filter((s) => tests.some((t) => t(s))).sort()).toEqual([
+			"button",
+			"dropdown-menu-sub-trigger",
+			"dropdown-menu-trigger",
+		]);
+	});
+
+	it("matches a Button rendered as the asChild of every trigger", () => {
+		const prelude = slotRule()?.prelude ?? "";
+		const icon = createElement(Button, { size: "icon" }, "x");
+		const asChild = (trigger: ElementType<{ asChild: boolean; children?: ReactNode }>) =>
+			createElement(trigger, { asChild: true }, icon);
+		const host = document.createElement("div");
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				createElement(
+					TooltipProvider,
+					null,
+					createElement(DropdownMenu, null, asChild(DropdownMenuTrigger)),
+					createElement(Popover, null, asChild(PopoverTrigger)),
+					createElement(Tooltip, null, asChild(TooltipTrigger)),
+					createElement(Dialog, null, asChild(DialogTrigger)),
+				),
+			),
+		);
+		const buttons = Array.from(host.querySelectorAll("button"));
+		expect(buttons.map((b) => b.dataset.slot)).toEqual([
+			"dropdown-menu-trigger",
+			"button",
+			"button",
+			"button",
+		]);
+		for (const b of buttons) expect(b.matches(prelude)).toBe(true);
+		act(() => root.unmount());
+	});
+
+	it("gives header links and buttons 48 px of width, the title link 48 px of height", () => {
+		expect(
+			decls(touchRules(), ':where(header button:not([role="switch"]), header a)'),
+		).toEqual({ "min-width": "48px" });
+		expect(decls(touchRules(), ':where([data-testid="incident-header"] h1 > a)')).toEqual({
+			display: "block",
+			overflow: "hidden",
+			"text-overflow": "ellipsis",
+			"line-height": "48px",
+		});
+	});
+
+	it("keeps the phone incident header's actions on screen (OBJ-011)", () => {
+		const phone = parse(css).find((n) => n.prelude === "@media (max-width: 639px)");
+		const h = '[data-testid="incident-header"]';
+		expect(decls(phone?.children, `:where(${h})`)).toEqual({ "column-gap": "8px" });
+		expect(decls(phone?.children, `:where(${h} > .font-mono)`)).toEqual({
+			display: "none",
+		});
+		expect(decls(phone?.children, `:where(${h} > h1)`)).toEqual({
+			"min-width": "0",
+		});
 	});
 
 	it("gives a switch a 48 px hit area that keeps its look", () => {

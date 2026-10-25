@@ -159,10 +159,34 @@
 	) {
 		min-height: 48px;
 	}
-	/* A real box, not an overlay, so a neighbour 4 px away can't take part of it (#848, OBJ-003). */
-	:where([data-slot="button"]) {
+	/* A real box, not an overlay, so a neighbour 4 px away can't take part of it (#848, OBJ-003).
+	   An asChild trigger's slot replaces the Button's, so triggers are named too (OBJ-011). */
+	:where([data-slot="button"], [data-slot$="-trigger"]) {
 		min-width: 48px;
 		min-height: 48px;
+	}
+	:where(header button:not([role="switch"]), header a) {
+		min-width: 48px;
+	}
+	:where([data-testid="incident-header"] h1 > a) {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		line-height: 48px;
+	}
+}
+
+/* The phone incident header is one row: the number goes and the title gives way
+   so every 48 px action stays on screen (#848, OBJ-011). */
+@media (max-width: 639px) {
+	:where([data-testid="incident-header"]) {
+		column-gap: 8px;
+	}
+	:where([data-testid="incident-header"] > .font-mono) {
+		display: none;
+	}
+	:where([data-testid="incident-header"] > h1) {
+		min-width: 0;
 	}
 }
 

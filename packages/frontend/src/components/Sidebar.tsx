@@ -502,7 +502,7 @@ function PhoneStrip({ pathname, doors }: { pathname: string; doors: Door[] }) {
 						}
 						data-testid={`strip-${door.label.toLowerCase()}`}
 						className={cn(
-							"relative flex h-8 items-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
+							"relative flex h-8 min-w-12 items-center justify-center gap-1 rounded-control px-2.5 text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1",
 							on &&
 								"bg-surface-2 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
 						)}
