@@ -1,0 +1,19 @@
+{
+	"row": "tool-call",
+	"kind": "happy",
+	"title": "Tool call",
+	"run": {},
+	"expect": "tool-report",
+	"fixtures": [
+		{
+			"match": { "inConversation": "[row:tool-call]", "hasToolResult": false },
+			"response": {
+				"toolCalls": [{ "name": "$shell", "arguments": { "$command": "ls" } }]
+			}
+		},
+		{
+			"match": { "inConversation": "[row:tool-call]" },
+			"response": { "content": "$report" }
+		}
+	]
+}

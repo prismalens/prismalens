@@ -130,7 +130,7 @@ export function InboxTiles({
 					value: "Not set up",
 					sub: "Investigations wait until one is",
 					dot: "warn",
-					link: { to: "/settings", search: { tab: "harness" } },
+					link: { to: "/settings", search: { tab: "agent" } },
 				},
 			];
 		}

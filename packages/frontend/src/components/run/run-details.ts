@@ -9,6 +9,7 @@ import type {
 import type { FileAt } from "@/lib/evidence-files";
 import type { OperatorState, TranscriptItem } from "@/lib/investigation-events";
 import { commandText } from "@/lib/report-view";
+import { skippedWord } from "./RunTools";
 import { shortCredential } from "./run-labels";
 import type { RunStep } from "./run-steps";
 
@@ -20,7 +21,7 @@ export type DetailLink =
 	/** In-page: opens the hypotheses card's larger preview. */
 	| { kind: "hypotheses" }
 	| { kind: "run"; id: string }
-	| { kind: "settings"; section: "agent" | "integrations" };
+	| { kind: "settings"; section: "agent" | "sources" };
 
 export interface DetailRow {
 	label?: string;
@@ -31,6 +32,8 @@ export interface DetailRow {
 	strong?: boolean;
 	/** A flagged item sits on the danger tint. */
 	box?: "danger";
+	/** A short warning word beside the text, as "Fell back" (#848). */
+	flag?: string;
 	/** In-page: opens and highlights step N in the transcript. */
 	step?: number;
 	/** Where an item with no step came from, shown in the step's place. */
@@ -130,21 +133,31 @@ export function summarySections(
 }
 
 function codeRows(inv: InvestigationWithRelations): DetailRow[] {
-	return (inv.workspace?.repos ?? []).map((r) => {
-		const c = r.credential;
-		const how = c
-			? c.source === "none"
-				? `Cloned without a credential (${shortCredential(c)}) from ${r.url}.`
-				: `Cloned with ${c.label} from ${r.url}.`
-			: `From ${r.url}.`;
-		const maps = r.services.length ? ` Maps to ${r.services.join(", ")}.` : "";
-		return {
-			label: r.name,
-			text: `${r.branch ?? "HEAD"} at ${r.head.slice(0, 7)}`,
-			mono: true,
-			sub: `${how}${maps}`,
-		};
-	});
+	const skipped = (inv.preRun?.checkoutsSkipped ?? []).map(
+		(s): DetailRow => ({ label: s.repo, text: skippedWord(s), tone: "warn" }),
+	);
+	return [
+		...(inv.workspace?.repos ?? []).map((r) => {
+			const c = r.credential;
+			const how = c
+				? c.source === "none"
+					? `Cloned without a credential (${shortCredential(c)}) from ${r.url}.`
+					: `Cloned with ${c.label} from ${r.url}.`
+				: `From ${r.url}.`;
+			const maps = r.services.length
+				? ` Maps to ${r.services.join(", ")}.`
+				: "";
+			return {
+				label: r.name,
+				text: `${r.branch ?? "HEAD"} at ${r.head.slice(0, 7)}`,
+				mono: true,
+				sub: `${how}${maps}`,
+				// The next credential in the order was used; which and why stay in pl doctor (#848).
+				...(c?.fallbackFrom ? { flag: "Fell back" } : {}),
+			};
+		}),
+		...skipped,
+	];
 }
 
 /** Which step an evidence item came from, if any. */
@@ -303,7 +316,7 @@ function reportSections(
 				...report.coverage.notQueried.map((text) => ({ text })),
 				{
 					text: "A source the agent could not reach can be connected in Settings.",
-					link: { kind: "settings", section: "integrations" },
+					link: { kind: "settings", section: "sources" },
 					action: "Connect a source",
 				},
 			],

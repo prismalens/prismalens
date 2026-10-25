@@ -7,7 +7,7 @@ import { createAdapter, getAdapterSegments } from "@prismalens/integrations";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "./integrations.service.js";
 
-const SUPPORTED_TEMPLATES = new Set(["prometheus", "alertmanager"]);
+const SUPPORTED_TEMPLATES = new Set(["prometheus", "alertmanager", "loki"]);
 
 @Injectable()
 export class ConnectorResolverService implements ConnectorProvider {
@@ -52,6 +52,7 @@ export class ConnectorResolverService implements ConnectorProvider {
 					label: conn.label || conn.integration.label || templateId,
 					baseUrl,
 					segments,
+					authenticated: await this.authenticated(conn.id),
 				});
 				seenTemplates.add(templateId);
 			}
@@ -86,10 +87,18 @@ export class ConnectorResolverService implements ConnectorProvider {
 				label: conn.label || conn.integration.label || templateId,
 				baseUrl,
 				segments,
+				authenticated: await this.authenticated(conn.id),
 			});
 			seenTemplates.add(templateId);
 		}
 
 		return results;
+	}
+
+	/** A source that sends a credential is read through the gateway, never by a prompt curl (#848). */
+	private async authenticated(connectionId: string): Promise<boolean> {
+		const parsed =
+			await this.integrationsService.sourceCredential(connectionId);
+		return !parsed.ok || parsed.credential.kind !== "none";
 	}
 }

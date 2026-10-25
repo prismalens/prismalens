@@ -136,9 +136,9 @@ describe("waitForReady", () => {
 });
 
 describe("noAgentLine (#673 S7)", () => {
-	it("is one line naming pl doctor when no agent is installed, and null otherwise", () => {
+	it("is one line naming Settings → Agent when no agent is installed, and null otherwise (#907)", () => {
 		expect(noAgentLine([{ installed: false }, { installed: false }])).toBe(
-			"No coding agent on PATH: investigations need one. `pl doctor` shows how to install one.",
+			"No coding agent can run: investigations need one. Add one in Settings → Agent.",
 		);
 		expect(noAgentLine([{ installed: false }, { installed: true }])).toBe(null);
 	});

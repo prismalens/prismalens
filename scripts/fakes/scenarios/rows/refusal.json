@@ -1,0 +1,45 @@
+{
+	"row": "refusal",
+	"kind": "negative",
+	"title": "Refusal",
+	"run": {},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:refusal]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:refusal]"
+			},
+			"response": {
+				"content": "$report"
+			},
+			"misbehavior": {
+				"faults": [
+					{
+						"fault": "refusal",
+						"providers": ["openai-chat", "openai-responses", "anthropic"]
+					},
+					{
+						"fault": "content-filter",
+						"providers": ["gemini"]
+					}
+				]
+			}
+		}
+	]
+}

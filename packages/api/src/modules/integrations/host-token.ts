@@ -21,6 +21,8 @@ export interface HostToken {
 	status: string;
 	tokenExpiresAt: Date | null;
 	lastErrorMessage: string | null;
+	/** The last Test that passed (#848). */
+	testedAt?: Date | null;
 }
 
 /** A git host template: Test and the resolver treat its rows as clone credentials. */
@@ -63,6 +65,7 @@ export function readHostToken(
 		status: conn.status,
 		tokenExpiresAt: conn.tokenExpiresAt,
 		lastErrorMessage: conn.lastErrorMessage,
+		testedAt: conn.testedAt ?? null,
 	};
 }
 

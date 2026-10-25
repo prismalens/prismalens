@@ -18,6 +18,7 @@ const agent = (
 	label,
 	binary: id,
 	installed: true,
+	runnable: true,
 	tested: null,
 	install: "",
 	defaultModel: null,
@@ -26,6 +27,10 @@ const agent = (
 	loginHint: "",
 	envModel: null,
 	windowsOnlyPath: null,
+	cliBinary: "",
+	configDir: null,
+	providerKeys: [],
+	envVars: [],
 	models: { source: "harness", asOf: "", entries: [] },
 	checked: {
 		at: "",

@@ -11,11 +11,10 @@ import {
 	ACCESS_LEVEL_LINE,
 	type AxisSource,
 	effectiveAccess,
-	type FavouriteModel,
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
-import { Check, ChevronDown, Lock, Star } from "lucide-react";
+import { Check, ChevronDown, Lock, Plus, Star } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
 	ModelSelector,
@@ -25,6 +24,7 @@ import {
 	ModelSelectorItem,
 	ModelSelectorList,
 } from "@/components/ai/model-selector";
+import { AddAgentDialog } from "@/components/settings/AddAgentDialog";
 import { Hint } from "@/components/shared/Hint";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,10 +33,10 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-	defaultTag,
 	levelIcon,
 	levelRowLine,
 	levelSandbox,
+	levelTag,
 	sandboxLine,
 } from "@/lib/access-levels";
 import {
@@ -48,7 +48,16 @@ import {
 import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
+import {
+	isAgentDefault,
+	isFoldedId,
+	pickerModels,
+	providerOf,
+	starredOf,
+} from "./model-list";
 import { focusChosen, roveKeys } from "./rove";
+
+export { providerOf };
 
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
@@ -68,12 +77,13 @@ export function useAgentChoice() {
 			(effective && settingsQuery.data?.models?.[effective.id as HarnessId]) ??
 			"",
 		models: settingsQuery.data?.models ?? {},
-		favourites: settingsQuery.data?.favourites ?? [],
 		efforts: settingsQuery.data?.efforts ?? {},
 		axes: {
 			accessLevels: settingsQuery.data?.accessLevels ?? {},
 		},
 		customModels: settingsQuery.data?.customModels ?? {},
+		hiddenModels: settingsQuery.data?.hiddenModels ?? {},
+		modelOrder: settingsQuery.data?.modelOrder ?? {},
 		isLoading: harnessesQuery.isLoading || settingsQuery.isLoading,
 		isError: harnessesQuery.isError,
 	};
@@ -118,8 +128,10 @@ export function modelName(
 	harness: HarnessStatus | undefined,
 	id: string | null | undefined,
 ): string | null {
-	if (!id) return null;
-	const entries = harness?.models.entries ?? [];
+	if (!id || isFoldedId(harness, id)) return null;
+	const entries = (harness?.models.entries ?? []).filter(
+		(m) => !isAgentDefault(m),
+	);
 	const named = (m: { id: string; name?: string | null }) =>
 		withoutProvider(m.name ?? m.id, providerOf(harness?.id ?? "", m.id));
 	const exact = entries.find((m) => m.id === id);
@@ -132,16 +144,46 @@ export function modelName(
 	return alike.length === 1 && alike[0] ? named(alike[0]) : id;
 }
 
-/** The model the agent picks for itself, when its check or the env says. */
-function resolvedModel(h: HarnessStatus): string | null {
-	return modelName(h, h.envModel?.model || h.checked?.servedModel || null);
+export interface NamedModel {
+	/** Null when the agent named a model its list doesn't hold. */
+	id: string | null;
+	name: string;
 }
 
-/** The default row's line: the model the agent picks, and where the env named it (#673 w57). */
-export function defaultModelLine(h: HarnessStatus): string | undefined {
-	const model = resolvedModel(h);
-	if (!model) return undefined;
-	return h.envModel ? `${model}, from your environment` : model;
+/**
+ * The model the agent runs when a run sends none: what the env or its check
+ * reports, a `default` entry resolved through its description, as Claude
+ * Code's "Default (recommended)" names the model behind it (#907).
+ */
+export function agentCurrentModel(h: HarnessStatus): NamedModel | null {
+	const raw = h.envModel?.model || h.checked?.servedModel || null;
+	if (!raw) return null;
+	if (!isFoldedId(h, raw)) return { id: raw, name: modelName(h, raw) ?? raw };
+	const said = h.models.entries.find((e) => e.id === raw)?.description;
+	const name = said ? modelName(h, said) : null;
+	if (!name) return null;
+	const listed = h.models.entries.find(
+		(e) => !isAgentDefault(e) && modelName(h, e.id) === name,
+	);
+	return { id: listed?.id ?? null, name };
+}
+
+/**
+ * PrismaLens's model for `h` by its real name, never the word Default: the
+ * starred one, else what the agent runs, else its list's first (#907).
+ */
+export function defaultModel(
+	h: HarnessStatus,
+	starred: string | null | undefined,
+): NamedModel | null {
+	if (starred && !isFoldedId(h, starred))
+		return { id: starred, name: modelName(h, starred) ?? starred };
+	const current = agentCurrentModel(h);
+	if (current) return current;
+	const first = h.models.entries.find((e) => !isAgentDefault(e));
+	return first
+		? { id: first.id, name: modelName(h, first.id) ?? first.id }
+		: null;
 }
 
 /** The agent and model the next run starts with, each named once. */
@@ -155,17 +197,15 @@ export function agentModelLabel(
 	}
 	return {
 		agent: effective.label,
-		model:
-			modelName(effective, model || resolvedModel(effective)) ??
-			"agent default",
+		model: defaultModel(effective, model)?.name ?? "its own model",
 	};
 }
 
-/** The chip's words for a model: never a bare default with no model named (#673 w7). */
+/** The chip's words for a model: always a model's real name (#673 w7, #907). */
 export function chipModel(h: HarnessStatus | undefined, model: string): string {
 	if (!h) return "No agent";
 	if (h.modelVia === "unsupported") return h.label;
-	return modelName(h, model || resolvedModel(h)) ?? `${h.label} default`;
+	return defaultModel(h, model)?.name ?? h.label;
 }
 
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
@@ -190,45 +230,12 @@ function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 	return h.checked || h.models.entries.length > 0 ? "list" : "pending";
 }
 
-const PROVIDERS: Record<string, string> = {
-	anthropic: "Anthropic",
-	openai: "OpenAI",
-	google: "Google",
-	opencode: "OpenCode Zen",
-	"github-copilot": "GitHub Copilot",
-	openrouter: "OpenRouter",
-	xai: "xAI",
-	mistral: "Mistral",
-	deepseek: "DeepSeek",
-	ollama: "Ollama",
-};
-const VENDOR: Record<string, string> = {
-	"claude-code": "Anthropic",
-	codex: "OpenAI",
-	gemini: "Google",
-};
 /** A provider's mark where an agent mark is the same company's. */
 const PROVIDER_MARK: Record<string, string> = {
 	Anthropic: "claude-code",
 	Google: "gemini",
 	"OpenCode Zen": "opencode",
 };
-
-/** The provider a model id lists under: its prefix, else the agent's own vendor. */
-export function providerOf(harnessId: string, modelId: string): string {
-	const slash = modelId.indexOf("/");
-	if (slash > 0) {
-		const prefix = modelId.slice(0, slash);
-		return (
-			PROVIDERS[prefix] ?? prefix.charAt(0).toUpperCase() + prefix.slice(1)
-		);
-	}
-	if (/:[\w.-]*cloud$|^[\w.-]+:\d/.test(modelId)) return "Ollama";
-	return VENDOR[harnessId] ?? "Models";
-}
-
-const isStarred = (f: FavouriteModel[], harness: string, model: string) =>
-	f.some((x) => x.harness === harness && x.model === model);
 
 /** The chip every box control shares: ghost, h-8, 13/500, a 14 px caret. */
 export const CHIP =
@@ -249,8 +256,8 @@ interface Row {
 }
 
 /**
- * The agent and model chip (#673 w7): a 44 px rail of installed
- * agents and a cmdk list of the shown agent's models, fixed at 380 × 400.
+ * The agent and model chip (#673 w7): a 44 px rail of the agents that can
+ * run (#907) and a cmdk list of the shown agent's models, fixed at 380 × 400.
  */
 export function ModelChip({
 	harness,
@@ -267,15 +274,23 @@ export function ModelChip({
 	side?: "top" | "bottom";
 	className?: string;
 }) {
-	const { harnesses, favourites, models, customModels, isLoading } =
-		useAgentChoice();
+	const {
+		harnesses,
+		models,
+		customModels,
+		hiddenModels,
+		modelOrder,
+		isLoading,
+	} = useAgentChoice();
 	const update = useUpdateHarnessSettings();
 	const check = useCheckHarness();
 	const [open, setOpen] = useState(false);
 	const [tile, setTile] = useState<string | null>(null);
+	const [adding, setAdding] = useState(false);
 	const shown = tile ?? harness?.id ?? "starred";
 	const agent = harnesses.find((h) => h.id === shown);
-	const installed = harnesses.filter((h) => h.installed);
+	// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907).
+	const onRail = harnesses.filter((h) => h.runnable || h.id === harness?.id);
 
 	const row = (h: HarnessStatus, id: string, key: string): Row => {
 		const m = h.models.entries.find((e) => e.id === id);
@@ -291,61 +306,87 @@ export function ModelChip({
 			...(m?.status === "training" ? { warn: "trains on your prompts" } : {}),
 		};
 	};
+	// One star per agent: the model a run on it uses when none is picked (#907).
+	const favourites = starredOf(harnesses, models);
+	const isStarred = (h: HarnessStatus, id: string) =>
+		models[h.id as HarnessId] === id;
 	let rows: Row[] = [];
 	if (shown === "starred") {
 		rows = favourites.flatMap((f) => {
 			const h = harnesses.find((x) => x.id === f.harness);
-			return h?.installed ? [row(h, f.model, "star")] : [];
+			return h && (h.runnable || h.id === harness?.id)
+				? [row(h, f.model, "star")]
+				: [];
 		});
-	} else if (agent && modelState(agent) === "list") {
-		const listed = agent.models.entries.map((m) => row(agent, m.id, "m"));
-		const order = Array.from(new Set(listed.map((r) => r.provider)));
-		listed.sort(
-			(a, b) =>
-				Number(isStarred(favourites, b.harness.id, b.model)) -
-					Number(isStarred(favourites, a.harness.id, a.model)) ||
-				order.indexOf(a.provider) - order.indexOf(b.provider),
-		);
+	} else if (agent) {
+		const id = agent.id as HarnessId;
+		const custom = customModels[id] ?? [];
 		const listedIds = new Set(agent.models.entries.map((m) => m.id));
-		// Ids the operator added in Settings, Agent; the agent's own list may not hold them (#673 w57).
-		const added = (customModels[agent.id as HarnessId] ?? [])
-			.filter((id) => !listedIds.has(id))
-			.map((id) => ({ ...row(agent, id, "c"), provider: "Added by you" }));
-		const stored = models[agent.id as HarnessId];
+		const stored = models[id];
+		// A starred id the agent doesn't list or can't take; unstarring it clears it (#907).
 		const unknown =
 			stored &&
 			!listedIds.has(stored) &&
-			!customModels[agent.id as HarnessId]?.includes(stored)
+			!custom.includes(stored) &&
+			!isFoldedId(agent, stored)
 				? [
 						{
 							...row(agent, stored, "u"),
-							warn: `Not confirmed for ${agent.label}`,
+							warn:
+								agent.modelVia === "unsupported"
+									? `${agent.label} picks its own model; unstar to clear`
+									: `Not confirmed for ${agent.label}`,
 						},
 					]
 				: [];
-		rows = [...unknown, ...added, ...listed];
+		rows = unknown;
+		if (modelState(agent) === "list") {
+			const ids = pickerModels(agent, {
+				custom,
+				order: modelOrder[id],
+				hidden: hiddenModels[id],
+				favourites,
+				chosen: harness?.id === agent.id ? model : (stored ?? ""),
+			});
+			// Ids the operator added in Settings, Agent; the agent's own list may not hold them (#673 w57).
+			const listed = ids.map((m) =>
+				listedIds.has(m)
+					? row(agent, m, "m")
+					: { ...row(agent, m, "c"), provider: "Added by you" },
+			);
+			// The model the agent runs now, when its list doesn't hold it (an env model, say).
+			const current = agentCurrentModel(agent);
+			const runsNow =
+				current?.id && !stored && !ids.includes(current.id)
+					? [
+							{
+								...row(agent, current.id, "now"),
+								provider: agent.envModel
+									? "From your environment"
+									: providerOf(agent.id, current.id),
+							},
+						]
+					: [];
+			rows = [...unknown, ...runsNow, ...listed];
+		}
 	}
 
+	// With none picked, the row ticked is the model the agent reports it runs (#907).
 	const chosen = (h: HarnessStatus, id: string) =>
-		harness?.id === h.id && model === id;
+		harness?.id === h.id &&
+		(model === id ||
+			((!model || isFoldedId(h, model)) && agentCurrentModel(h)?.id === id));
 	const pick = (h: HarnessStatus, id: string) => {
 		setOpen(false);
 		if (!chosen(h, id)) onPick(h, id);
 	};
 	const star = (h: HarnessStatus, id: string) =>
-		update.mutate({
-			favourites: isStarred(favourites, h.id, id)
-				? favourites.filter((f) => !(f.harness === h.id && f.model === id))
-				: [...favourites, { harness: h.id as HarnessId, model: id }],
-		});
+		update.mutate({ models: { [h.id]: isStarred(h, id) ? null : id } });
 
 	// The rail is one tab stop: Up and Down move along it and show that agent, Right goes to the search.
 	const rail = useRef<HTMLDivElement>(null);
 	const search = useRef<HTMLInputElement>(null);
-	const tiles = [
-		"starred",
-		...installed.filter((h) => !unreadyReason(h)).map((h) => h.id),
-	];
+	const tiles = ["starred", ...onRail.map((h) => h.id)];
 	const onRailKeys = (e: KeyboardEvent<HTMLDivElement>) => {
 		// The shown agent may be off the rail (stored, then uninstalled): Down takes the first, Up the last.
 		const found = tiles.indexOf(shown);
@@ -406,40 +447,51 @@ export function ModelChip({
 					search.current?.focus();
 				}}
 			>
-				<div
-					ref={rail}
-					role="tablist"
-					aria-orientation="vertical"
-					aria-label="Agents"
-					onKeyDown={onRailKeys}
-					className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto bg-surface-1 py-1.5 [scrollbar-width:none]"
-					data-testid="picker-rail"
-				>
-					<RailTile
-						on={shown === "starred"}
-						label="Starred"
-						onClick={() => setTile("starred")}
-						testId="rail-starred"
+				<div className="flex min-h-0 flex-col items-center bg-surface-1 pb-1.5">
+					<div
+						ref={rail}
+						role="tablist"
+						aria-orientation="vertical"
+						aria-label="Agents"
+						onKeyDown={onRailKeys}
+						className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-1.5 [scrollbar-width:none]"
+						data-testid="picker-rail"
 					>
-						<StarredMark className="size-[18px]" />
-					</RailTile>
-					{installed.map((h) => {
-						const why = unreadyReason(h);
-						return (
+						<RailTile
+							on={shown === "starred"}
+							label="Starred"
+							onClick={() => setTile("starred")}
+							testId="rail-starred"
+						>
+							<StarredMark className="size-[18px]" />
+						</RailTile>
+						{onRail.map((h) => (
 							<RailTile
 								key={h.id}
 								on={shown === h.id}
-								off={!!why}
-								label={why ?? h.label}
-								onClick={() => {
-									if (!why) setTile(h.id);
-								}}
+								label={unreadyReason(h) ?? h.label}
+								onClick={() => setTile(h.id)}
 								testId={`rail-${h.id}`}
 							>
 								<AgentMark id={h.id} className="size-5" />
 							</RailTile>
-						);
-					})}
+						))}
+					</div>
+					{/* Every supported agent, set up or not, is one step away (#907, operator's clarification). */}
+					<Hint label="Add agent" side="left">
+						<button
+							type="button"
+							aria-label="Add agent"
+							onClick={() => {
+								setOpen(false);
+								setAdding(true);
+							}}
+							className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 max-md:size-12 pointer-coarse:size-12"
+							data-testid="rail-add-agent"
+						>
+							<Plus className="size-4" />
+						</button>
+					</Hint>
 				</div>
 				<ModelSelector
 					key={shown}
@@ -481,21 +533,6 @@ export function ModelChip({
 								: "No model matches."}
 						</ModelSelectorEmpty>
 						<ModelSelectorGroup>
-							{agent && shown !== "starred" && (
-								<ModelSelectorItem
-									value={`${agent.label} default`}
-									onSelect={() => pick(agent, "")}
-									data-testid="model-default"
-									data-checked={chosen(agent, "") ? "" : undefined}
-								>
-									<RowText
-										name="Agent's own model"
-										sub={defaultModelLine(agent)}
-									/>
-									{chosen(agent, "") && <Tick />}
-									<span className="w-6 shrink-0" />
-								</ModelSelectorItem>
-							)}
 							{rows.map((r) => (
 								<ModelSelectorItem
 									key={r.key}
@@ -503,6 +540,7 @@ export function ModelChip({
 									onSelect={() => pick(r.harness, r.model)}
 									data-testid="model-option"
 									data-model={r.name}
+									data-checked={chosen(r.harness, r.model) ? "" : undefined}
 								>
 									<RowText
 										name={r.name}
@@ -521,11 +559,11 @@ export function ModelChip({
 									<button
 										type="button"
 										aria-label={
-											isStarred(favourites, r.harness.id, r.model)
+											isStarred(r.harness, r.model)
 												? `Unstar ${r.name}`
 												: `Star ${r.name}`
 										}
-										aria-pressed={isStarred(favourites, r.harness.id, r.model)}
+										aria-pressed={isStarred(r.harness, r.model)}
 										onPointerDown={(e) => {
 											e.preventDefault();
 											e.stopPropagation();
@@ -549,8 +587,7 @@ export function ModelChip({
 										<Star
 											className={cn(
 												"size-3.5",
-												isStarred(favourites, r.harness.id, r.model) &&
-													"fill-warn text-warn",
+												isStarred(r.harness, r.model) && "fill-warn text-warn",
 											)}
 										/>
 									</button>
@@ -580,6 +617,7 @@ export function ModelChip({
 					</ModelSelectorList>
 				</ModelSelector>
 			</PopoverContent>
+			{adding && <AddAgentDialog open onOpenChange={setAdding} />}
 		</Popover>
 	);
 }
@@ -626,14 +664,12 @@ function RowText({
 
 function RailTile({
 	on,
-	off,
 	label,
 	onClick,
 	testId,
 	children,
 }: {
 	on: boolean;
-	off?: boolean;
 	label: string;
 	onClick: () => void;
 	testId: string;
@@ -645,7 +681,6 @@ function RailTile({
 				type="button"
 				role="tab"
 				aria-selected={on}
-				aria-disabled={off}
 				aria-label={label}
 				tabIndex={on ? 0 : -1}
 				onClick={onClick}
@@ -653,11 +688,9 @@ function RailTile({
 					"relative inline-flex size-9 shrink-0 items-center justify-center rounded-control text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3",
 					on &&
 						"bg-surface-3 text-text-1 before:absolute before:top-2 before:bottom-2 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
-					off && "cursor-default opacity-40 hover:bg-transparent",
 				)}
 				data-testid={testId}
 				data-tile={testId.replace(/^rail-/, "")}
-				data-off={off ? "" : undefined}
 			>
 				{children}
 			</button>
@@ -665,19 +698,26 @@ function RailTile({
 	);
 }
 
-/** An agent's effort levels by its own names, the model's default marked. */
+/**
+ * An agent's effort levels by its own names, its current one marked. A
+ * `default` pseudo-level names no level, so it reads "Set by <agent>" (#907).
+ */
 export function effortLevels(
 	h: HarnessStatus | undefined,
 ): { id: string; name: string; default: boolean }[] {
+	const named = (l: { id: string; name: string; default: boolean }) =>
+		h && isAgentDefault(l) ? { ...l, name: `Set by ${h.label}` } : l;
 	const listed = h?.checked?.efforts;
-	if (listed?.length) return listed;
+	if (listed?.length) return listed.map(named);
 	const offered = h?.checked?.effort;
 	if (!offered) return [];
-	return offered.values.map((v) => ({
-		id: v,
-		name: v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " "),
-		default: v === offered.default,
-	}));
+	return offered.values.map((v) =>
+		named({
+			id: v,
+			name: v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " "),
+			default: v === offered.default,
+		}),
+	);
 }
 
 /** Claude Code takes its 1M window as a model alias; no other agent offers a choice. */
@@ -726,7 +766,7 @@ export function EffortChip({
 						data-off=""
 					>
 						{/* A bare "Effort" read as an empty value (#673 w56). */}
-						Default
+						Fixed
 						<Caret />
 					</button>
 				</span>
@@ -745,7 +785,9 @@ export function EffortChip({
 	const item =
 		"flex h-8 w-full items-center gap-2 rounded-control px-2.5 text-left text-body font-medium transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3";
 	const tag = (
-		<span className="ml-auto text-[11px] leading-4 text-text-2">Default</span>
+		<span className="ml-auto text-[11px] leading-4 text-text-2">
+			{harness.label}'s pick
+		</span>
 	);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -786,7 +828,7 @@ export function EffortChip({
 						data-testid="effort-option"
 					>
 						{l.name}
-						{l.default && tag}
+						{l.default && !isAgentDefault({ id: l.id }) && tag}
 					</button>
 				))}
 				<div className="mx-1.5 my-1 h-px bg-hairline" />
@@ -935,7 +977,7 @@ export function AccessChip({
 										className="text-meta text-text-3"
 										data-testid="access-default-tag"
 									>
-										{defaultTag(fallback.from)}
+										{levelTag(fallback.from)}
 									</span>
 								) : (
 									<span />

@@ -95,6 +95,7 @@ function makePorts(overrides: Partial<RunPorts> = {}): RunPorts {
 		newerRun: vi.fn(async () => null),
 		writeResult: vi.fn(async () => true),
 		createTimelineEntry: vi.fn(async (_dto: CreateTimelineEntryDto) => {}),
+		agentRuntime: vi.fn(async () => ({ env: {}, note: null })),
 		resolveHarness: vi.fn(async () => ({
 			selection: { runnable: true as const, harness: "opencode" as const, auto: true },
 		})),
@@ -267,7 +268,10 @@ describe("#331 workspace record (in-process run)", () => {
 		vi.stubEnv("PRISMALENS_WORKSPACE_DIR", tmp);
 		try {
 			const createTimelineEntry = vi.fn(async (_dto: CreateTimelineEntryDto) => {});
-			const snapshot = cloneAs(async () => ({ path: MAPPED, head: "abc123def456", branch: "main" as const }));
+			const snapshot = cloneAs(async (_src, dest) => {
+				mkdirSync(dest, { recursive: true });
+				return { path: dest, head: "abc123def456", branch: "main" as const };
+			});
 			const ports = makePorts({
 				createTimelineEntry,
 				incidentRepos: vi.fn(async () => [
@@ -296,7 +300,7 @@ describe("#331 workspace record (in-process run)", () => {
 			expect(entry.incidentId).toBe("inc-1");
 			expect(entry.metadata).toMatchObject({
 				investigationId: "inv-1",
-				cwd: MAPPED,
+				cwd: join(tmp, "runs", "inv-1", "repo"),
 				mapped: true,
 			});
 		} finally {

@@ -19,6 +19,7 @@
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
 // FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_MCP_HTTP=1 advertises mcpCapabilities.http, so a run offers it the gateway.
 // FAKE_IMAGES=1 advertises promptCapabilities.image. It always attempts one read-only shell call and one write,
 // and reports what the client decided for each so the test can assert the gate.
 // Access levels (#673 w21): FAKE_PROFILE=claude offers default, acceptEdits, auto, bypassPermissions
@@ -30,7 +31,7 @@
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_ACP_MODE ?? "ok";
@@ -404,6 +405,16 @@ async function turn(sessionId, promptText) {
 		await cancelled();
 		return { stopReason: "cancelled" };
 	}
+	// FAKE_RETRY_GATE: the repair turn signals live and waits for release.
+	if (
+		process.env.FAKE_RETRY_GATE &&
+		promptText.startsWith("Your final message did not")
+	) {
+		writeFileSync(`${process.env.FAKE_RETRY_GATE}.ready`, "ready");
+		while (!existsSync(`${process.env.FAKE_RETRY_GATE}.release`)) {
+			await new Promise((r) => setTimeout(r, 10));
+		}
+	}
 	// FAKE_REPORT_THEN_WAIT_CANCEL: a valid report is already in the turn when Stop lands,
 	// and the agent still ends the turn as end_turn (#673 w59).
 	// The value is a file written once the report is sent, so the test stops after it.
@@ -481,6 +492,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 						: {}),
 					...(process.env.FAKE_AUTH_STATUS
 						? { _meta: { authStatus: {} } }
+						: {}),
+					...(process.env.FAKE_MCP_HTTP
+						? { mcpCapabilities: { http: true } }
 						: {}),
 				},
 				...(mode === "auth-required"

@@ -18,6 +18,7 @@ import { getAppDataDir } from "@prismalens/config";
 import {
 	type GitCredential,
 	MACHINE_CREDENTIAL,
+	repoLabel,
 	repoPath,
 	urlHost,
 } from "./git-credential.js";
@@ -61,23 +62,6 @@ export interface Snapshot {
 	branch: string | null;
 }
 
-/** Paths a supported harness loads as its own config, hooks, plugins or instructions when found in a repo. */
-const AGENT_CONFIG_NAMES = new Set([
-	".opencode",
-	"opencode.json",
-	"opencode.jsonc",
-	".claude",
-	".mcp.json",
-	".gemini",
-	".codex",
-	// A repository's instructions to an agent; the brief is the run's only instruction (#673 w21).
-	"AGENTS.md",
-	"AGENTS.override.md",
-	"CLAUDE.md",
-	"GEMINI.md",
-	".cursorrules",
-]);
-
 const URL_LIKE = /^(https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/;
 
 /** Folder or URL; anything else is refused before git sees it. */
@@ -98,6 +82,13 @@ export function classifySource(input: string): {
 		if (hasEmbeddedSecret(trimmed))
 			throw new Error(
 				"Repository URL must not carry credentials; add a Git host token in Settings instead",
+			);
+		// A URL's `#` is a fragment; in an scp path it is a path character, but `?` is refused either way (#848).
+		if (
+			/^[a-z]+:\/\//i.test(trimmed) ? /[?#]/.test(trimmed) : /\?/.test(trimmed)
+		)
+			throw new Error(
+				"Repository URL must not carry a query string or fragment; add a Git host token in Settings instead",
 			);
 		return { kind: "url", source: trimmed };
 	}
@@ -234,7 +225,12 @@ export class RepoSourceService {
 				["-C", dest, "checkout", "--detach", "--quiet", at, "--"],
 				undefined,
 				signal,
-			);
+			).catch((err: unknown) => {
+				if (signal?.aborted) throw err;
+				throw new Error(
+					`Commit ${at} could not be checked out from this source`,
+				);
+			});
 		// origin is the user's checkout or our mirror: refuse local-path push and fetch from the run (#676).
 		await this.git(
 			["-C", dest, "config", "protocol.file.allow", "never"],
@@ -242,29 +238,10 @@ export class RepoSourceService {
 			signal,
 		);
 		const check = await this.headOf(dest);
-		const removed = await this.stripAgentConfig(dest);
 		this.logger.log(
-			`snapshot ${src.source} at ${check.head.slice(0, 12)} → ${dest}${removed.length ? ` (removed agent config: ${removed.join(", ")})` : ""}`,
+			`snapshot ${repoLabel(src.source)} at ${check.head.slice(0, 12)} → ${dest}`,
 		);
 		return { path: dest, ...check };
-	}
-
-	/**
-	 * Deletes repo-supplied agent config from the snapshot at any depth. opencode imports
-	 * `.opencode/plugin/*.js` whatever OPENCODE_DISABLE_PROJECT_CONFIG or --pure say
-	 * (verified on 1.18.30), so env flags alone let a repo run code on the host (#637).
-	 */
-	private async stripAgentConfig(dest: string): Promise<string[]> {
-		const { stdout } = await this.git(["ls-files", "-z"], dest);
-		const hits = new Set<string>();
-		for (const file of stdout.split("\0").filter(Boolean)) {
-			const parts = file.split("/");
-			const at = parts.findIndex((p) => AGENT_CONFIG_NAMES.has(p));
-			if (at >= 0) hits.add(parts.slice(0, at + 1).join("/"));
-		}
-		for (const path of hits)
-			rmSync(join(dest, path), { recursive: true, force: true });
-		return [...hits].sort();
 	}
 
 	/**
@@ -311,7 +288,7 @@ export class RepoSourceService {
 		} catch (err) {
 			const failure = remoteFailure(err, src);
 			if (failure instanceof GitFailure && failure.stderr)
-				this.logger.warn(`git ${src.source}: ${failure.stderr.trim()}`);
+				this.logger.warn(`git ${repoLabel(src.source)}: ${failure.code}`);
 			throw failure;
 		}
 		return path;

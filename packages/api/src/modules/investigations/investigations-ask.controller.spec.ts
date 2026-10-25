@@ -37,7 +37,7 @@ describe("InvestigationsController.answerAsk (#673 w21)", () => {
 					provide: AttachmentsService,
 					useValue: { forJob: vi.fn(async () => []) },
 				},
-				{ provide: HarnessService, useValue: {} },
+				{ provide: HarnessService, useValue: { launchProbe: () => ({}) } },
 			],
 		})
 			.overrideGuard(MutationThrottleGuard)

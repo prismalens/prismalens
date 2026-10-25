@@ -66,6 +66,41 @@ sql() {
 	" "$2/prismalens.db" "$3"
 }
 
+# `pl upgrade` run from the old install, as a person runs it (#920): `upgrade_with_pl <old> <new> <base>`.
+# Its two reads of the network are redirected: prismalens.io/install.sh is this checkout's installer, and
+# the release check answers for the staged archive. A release whose pl has no `upgrade` is moved by the installer.
+upgrade_with_pl() {
+	u_shim="$work/shim"
+	mkdir -p "$u_shim"
+	printf '#!/bin/sh\ncase "$*" in\n*https://prismalens.io/install.sh*) cat "%s" ;;\n*) exec "%s" "$@" ;;\nesac\n' \
+		"$installer" "$(command -v curl)" >"$u_shim/curl"
+	chmod 755 "$u_shim/curl"
+	cat >"$work/ready.mjs" <<'JS'
+const real = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+	const url = String(typeof input === "string" || input instanceof URL ? input : input.url);
+	if (init?.method === "HEAD" && /\/releases\/download\/v[^/]+\/SHA256SUMS$/.test(url))
+		return Promise.resolve(new Response(null, { status: 200 }));
+	return real(input, init);
+};
+JS
+	if u_out=$(env -i HOME="$work/home" PATH="$u_shim:$bin:$clean_path" SHELL=/bin/bash \
+		PRISMALENS_RELEASE_BASE_URL="$3" PRISMALENS_UPDATE_CHECK=off PRISMALENS_TELEMETRY=off \
+		NODE_OPTIONS="--import=file://$work/ready.mjs" "$bin/pl" upgrade --version "$2" 2>&1); then
+		return 0
+	fi
+	case "$u_out" in
+	*[Uu]nknown\ command*)
+		echo "note: $1 has no pl upgrade; the installer moves it"
+		run_installer "$3" --version "$2" --no-modify-path >/dev/null 2>&1
+		;;
+	*)
+		echo "$u_out" >&2
+		return 1
+		;;
+	esac
+}
+
 mkdir -p "$work/home"
 bin="$work/home/.local/bin"
 # The installer picks bash's rc file per OS: macOS terminals start login shells.
@@ -80,13 +115,14 @@ if [ -n "$old_dir" ]; then
 	health "$ws" "$bin/pl" || fail "$old_version pl up"
 	migrations_before=$(sql "$old_version" "$ws" "select count(*) from _prisma_migrations")
 	sql "$old_version" "$ws" "insert into settings (id, key, value, updatedAt) values ('smoke', 'SMOKE_MARKER', '\"kept\"', CURRENT_TIMESTAMP)" >/dev/null
-	run_installer "$new_base" --version "$new_version" --no-modify-path >/dev/null 2>&1 || fail "upgrading to $new_version"
+	upgrade_with_pl "$old_version" "$new_version" "$new_base" || fail "upgrading $old_version to $new_version with pl upgrade"
+	[ "$(env -i PATH="$clean_path" "$bin/pl" --version)" = "$new_version" ] || fail "pl --version after upgrading from $old_version"
 	health "$ws" "$bin/pl" || fail "$new_version pl up on the $old_version workspace"
 	migrations_after=$(sql "$new_version" "$ws" "select count(*) from _prisma_migrations")
 	marker=$(sql "$new_version" "$ws" "select value from settings where key = 'SMOKE_MARKER'")
 	[ "$migrations_after" -ge "$migrations_before" ] || fail "migrations went from $migrations_before to $migrations_after"
 	[ "$marker" = '"kept"' ] || fail "a row written by $old_version was lost (got '$marker')"
-	pass "upgrade $old_version → $new_version: pl up healthy, migrations $migrations_before → $migrations_after, a row written by $old_version kept"
+	pass "pl upgrade $old_version → $new_version: pl up healthy, migrations $migrations_before → $migrations_after, a row written by $old_version kept"
 	rm -rf "$work/home"
 	mkdir -p "$work/home"
 fi

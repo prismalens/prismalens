@@ -21,24 +21,33 @@
  *              (fake ACP agent holds the run), and the end state is empty.
  *   hosts      a Host off the allowlist is refused with the
  *              PRISMALENS_ALLOWED_HOSTS line; an IP literal pairs.
- *   upgrade    Verdaccio serves the tarball and a next-patch copy that exits
- *              on `up`; `pl upgrade --trial-seconds 60` under `pl service`
- *              rolls back and the reason holds no token. Needs a systemd user
- *              manager and no loaded prismalens.service, else SKIP. The unit
- *              stays in the sandbox, linked from $XDG_RUNTIME_DIR, memory-capped.
+ *   upgrade    Verdaccio serves the tarball and a next-patch copy; `pl upgrade
+ *              --version` installs it through npm, `pl --version` then names it,
+ *              and an older version is refused.
+ *   rollback   (Linux) a next-patch copy that exits on `up`; `pl upgrade
+ *              --trial-seconds 60` under `pl service` rolls back and the reason
+ *              holds no token. Needs a systemd user manager and no loaded
+ *              prismalens.service, else SKIP. The unit stays in the sandbox,
+ *              linked from $XDG_RUNTIME_DIR, memory-capped.
  *
  * PostHog and the GitHub releases endpoint are never reached: a preload
  * (NODE_OPTIONS=--import) points fetch() for those hosts at a local stub,
  * since neither URL has an env override.
  *
- * Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,lock,...]
+ * Runs on Linux, macOS and Windows (#920). A terminal is a pseudo-terminal from
+ * @lydell/node-pty; `pl` is started as `node <bin>` so no .cmd shim is involved; the
+ * agent-free PATH is built per OS (scripts/lib/gate-portable.mjs). `rollback` needs
+ * systemd and is reported N/A elsewhere; `lock` on Windows ends the holder outright,
+ * since Windows has no SIGTERM, and expects the next boot to take the stale lock.
+ *
+ * Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,lock,...] [--no-skip]
  *   With no --tarball, packs the built CLI (`pack-cli.mjs --skip-build`).
- *   POSIX-only (sh shims, script(1), systemd): on native Windows every check
- *   prints SKIP and the run exits 0 (#902).
+ *   --no-skip makes a SKIP a failure: the CI jobs on all three OSes pass it.
  */
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import {
+	copyFileSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -50,11 +59,23 @@ import {
 import http from "node:http";
 import net from "node:net";
 import { hostname, tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, stripVTControlCharacters } from "node:util";
+import crossSpawn from "cross-spawn";
 import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
+import {
+	baseEnv,
+	checksFor,
+	homeDirs,
+	killTree,
+	NOT_APPLICABLE,
+	notApplicable,
+	resolveOnPath,
+	systemDirs,
+} from "./lib/gate-portable.mjs";
 import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
+import { freePort, startLocalRegistry } from "./lib/local-registry.mjs";
 import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
 // pnpm's npm_config_* would reach the npm we spawn as unknown-config warnings.
@@ -75,19 +96,19 @@ const AGENT_BINARIES = [
 const NOTICE = /Usage data: PrismaLens counts feature use/;
 const READY = /It works once, for 15 minutes|Once it is listening/;
 
+const WIN = process.platform === "win32";
 const { values: opts } = parseArgs({
 	options: {
 		tarball: { type: "string" },
 		only: { type: "string" },
+		"no-skip": { type: "boolean" },
 		help: { type: "boolean", short: "h" },
 	},
 });
-const WIN32_SKIP =
-	'POSIX-only (sh shims, systemd); CI job "Gate side checks (packed tarball)" is the record';
 if (opts.help) {
-	console.log(`Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,update,lock,reset,hosts,upgrade]
+	console.log(`Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,update,lock,reset,hosts,upgrade,rollback] [--no-skip]
   With no --tarball, packs the built CLI (pack-cli.mjs --skip-build).
-  On native Windows every check prints SKIP and the run exits 0: ${WIN32_SKIP}.`);
+  --no-skip fails the run when a check SKIPs. rollback is N/A off Linux.`);
 	process.exit(0);
 }
 
@@ -118,6 +139,20 @@ function findOrPackTarball() {
 	return join(out, found);
 }
 
+/** npm through cross-spawn, which finds `npm.cmd` on Windows; throws on a failed exit. */
+function npm(args, { env = CLEAN_ENV, cwd, capture = false } = {}) {
+	const r = crossSpawn.sync("npm", args, {
+		env,
+		cwd,
+		encoding: "utf8",
+		stdio: ["ignore", capture ? "pipe" : "ignore", "inherit"],
+	});
+	if (r.error) throw r.error;
+	if (r.status !== 0)
+		throw new Error(`npm ${args.join(" ")} exited ${r.status}`);
+	return r.stdout ?? "";
+}
+
 function npmInstall(prefix, spec, extraEnv = {}) {
 	installWithRetry(
 		"npm",
@@ -132,9 +167,21 @@ function npmInstall(prefix, spec, extraEnv = {}) {
 		],
 		{
 			stdout: "ignore",
+			run: crossSpawn.sync,
 			env: { ...CLEAN_ENV, ...extraEnv },
 		},
 	);
+}
+
+/** `node <bin>` for an installed prismalens package: no `.cmd` shim or shebang between us and the CLI. */
+function cliOf(pkgDir) {
+	const manifest = JSON.parse(
+		readFileSync(join(pkgDir, "package.json"), "utf8"),
+	);
+	const rel = typeof manifest.bin === "string" ? manifest.bin : manifest.bin.pl;
+	const file = join(pkgDir, rel);
+	assert(existsSync(file), `pl is not at ${file}`);
+	return [process.execPath, file];
 }
 
 /** Records PostHog captures and answers the GitHub release HEADs the update check makes. */
@@ -208,24 +255,6 @@ if (stub) {
 	return pathToFileURL(file).href;
 }
 
-function freePort() {
-	return new Promise((r, reject) => {
-		const s = net.createServer();
-		s.on("error", reject);
-		s.listen(0, "127.0.0.1", () => {
-			const { port } = s.address();
-			s.close(() => r(port));
-		});
-	});
-}
-
-function resolveOnPath(bin, pathEnv) {
-	for (const dir of pathEnv.split(delimiter)) {
-		if (dir && existsSync(join(dir, bin))) return join(dir, bin);
-	}
-	return null;
-}
-
 // ---------- per-check sandbox ----------
 
 let ctx;
@@ -233,44 +262,57 @@ let ctx;
 /** Throwaway HOME, workspace and agent-free PATH; a minimal env so no login or key leaks in. */
 async function sandbox(name, { fakeAgent } = {}) {
 	const dir = join(root, name);
-	const home = join(dir, "home");
 	const tools = join(dir, "tools");
-	for (const d of [home, tools, join(home, ".claude"), join(home, ".codex")])
-		mkdirSync(d, { recursive: true });
-	for (const tool of ["node", "npm", "git"]) {
-		const target =
-			tool === "node"
-				? process.execPath
-				: resolveOnPath(tool, process.env.PATH);
-		if (!target) throw new Error(`${tool} is not on PATH`);
-		writeFileSync(join(tools, tool), `#!/bin/sh\nexec "${target}" "$@"\n`, {
-			mode: 0o755,
-		});
-	}
+	const home = join(dir, "home");
+	const env = baseEnv({ home, tmp: join(dir, "tmp") });
+	for (const d of [...homeDirs(env), tools]) mkdirSync(d, { recursive: true });
+	const git = resolveOnPath("git", process.env.PATH ?? "");
+	if (!git) throw new Error("git is not on PATH");
+	// POSIX finds node, npm and git through sh shims in `tools`. Windows gets node.exe itself and an
+	// npm.cmd shim there, and finds git where it lives.
+	if (WIN) {
+		const nodeDir = dirname(process.execPath);
+		copyFileSync(process.execPath, join(tools, "node.exe"));
+		writeFileSync(
+			join(tools, "npm.cmd"),
+			[
+				"@echo off",
+				`call "${join(nodeDir, "npm.cmd")}" %*`,
+				"exit /b %ERRORLEVEL%",
+				"",
+			].join("\r\n"),
+		);
+	} else
+		for (const tool of ["node", "npm", "git"]) {
+			const target =
+				tool === "node"
+					? process.execPath
+					: resolveOnPath(tool, process.env.PATH ?? "");
+			if (!target) throw new Error(`${tool} is not on PATH`);
+			writeFileSync(
+				join(tools, tool),
+				`#!/bin/sh
+exec "${target}" "$@"
+`,
+				{
+					mode: 0o755,
+				},
+			);
+		}
 	const stateDir = join(dir, "fake-agent-state");
 	if (fakeAgent) installFakeAgent(tools, { session: fakeAgent, stateDir });
-	const PATH = [tools, "/usr/bin", "/bin"].join(delimiter);
+	const system = systemDirs(process.platform, process.env, { git });
 	const leaked = AGENT_BINARIES.filter(
-		(b) => resolveOnPath(b, ["/usr/bin", "/bin"].join(delimiter)) !== null,
+		(b) => resolveOnPath(b, system.join(delimiter)) !== null,
 	);
-	if (leaked.length) throw new Error(`agent binaries on /usr/bin: ${leaked}`);
-	const env = {
-		PATH,
-		HOME: home,
-		TERM: "xterm-256color",
-		LANG: process.env.LANG ?? "C.UTF-8",
-		TMPDIR: join(dir, "tmp"),
-		XDG_CONFIG_HOME: join(home, ".config"),
-		XDG_DATA_HOME: join(home, ".local", "share"),
-		XDG_CACHE_HOME: join(home, ".cache"),
-		XDG_STATE_HOME: join(home, ".local", "state"),
-		CLAUDE_CONFIG_DIR: join(home, ".claude"),
-		CODEX_HOME: join(home, ".codex"),
+	if (leaked.length)
+		throw new Error(`agent binaries on the system PATH: ${leaked}`);
+	Object.assign(env, {
+		PATH: [tools, ...system].join(delimiter),
 		NODE_OPTIONS: `--import=${ctx.preload}`,
 		GATE_STUB_URL: ctx.stub.url,
 		PRISMALENS_HOST: "127.0.0.1",
-	};
-	mkdirSync(env.TMPDIR, { recursive: true });
+	});
 	return {
 		dir,
 		env,
@@ -280,10 +322,10 @@ async function sandbox(name, { fakeAgent } = {}) {
 	};
 }
 
-/** `pl up` in its own process group; `tty` runs it under script(1) for a real terminal. */
+/** `pl up` in its own process group; `tty` gives it a pseudo-terminal, as a person's shell would. */
 function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 	const argv = [
-		ctx.bin,
+		...ctx.cli,
 		"up",
 		"--port",
 		String(port),
@@ -292,40 +334,61 @@ function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 		"--no-open",
 		...args,
 	];
-	const quoted = argv.map((a) => `'${a.replaceAll("'", "'\\''")}'`).join(" ");
-	const child = tty
-		? spawn("script", ["-qfec", quoted, "/dev/null"], {
-				env: { ...sb.env, ...env },
-				detached: true,
-				stdio: ["ignore", "pipe", "pipe"],
-			})
-		: spawn(argv[0], argv.slice(1), {
-				env: { ...sb.env, ...env },
-				detached: true,
-				stdio: ["ignore", "pipe", "pipe"],
-			});
+	const childEnv = { ...sb.env, ...env };
 	let out = "";
-	child.stdout.on("data", (d) => {
-		out += d;
+	let finished = false;
+	let pid;
+	let kill;
+	let exited;
+	if (tty) {
+		const term = ctx.ptySpawn(argv[0], argv.slice(1), {
+			name: "xterm-256color",
+			cols: 120,
+			rows: 30,
+			cwd: sb.dir,
+			env: childEnv,
+		});
+		term.onData((d) => {
+			out += d;
+		});
+		pid = term.pid;
+		kill = () => term.kill();
+		exited = new Promise((r) =>
+			term.onExit(({ exitCode, signal }) =>
+				r({ code: exitCode, signal: signal ? "SIGNAL" : null }),
+			),
+		);
+	} else {
+		const child = spawn(argv[0], argv.slice(1), {
+			env: childEnv,
+			detached: !WIN,
+			windowsHide: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		for (const stream of [child.stdout, child.stderr])
+			stream.on("data", (d) => {
+				out += d;
+			});
+		pid = child.pid;
+		kill = () => child.kill();
+		exited = new Promise((r) =>
+			child.on("exit", (code, signal) => r({ code, signal })),
+		);
+	}
+	exited.then(() => {
+		finished = true;
 	});
-	child.stderr.on("data", (d) => {
-		out += d;
-	});
-	const exited = new Promise((r) =>
-		child.on("exit", (code, signal) => r({ code, signal })),
-	);
-	procs.add(child);
-	exited.then(() => procs.delete(child));
 	const handle = {
-		child,
+		pid,
 		base: `http://127.0.0.1:${port}`,
 		exited,
+		isDone: () => finished,
 		out: () => stripVTControlCharacters(out).replaceAll("\r", ""),
 		async waitFor(pattern, ms = READY_MS) {
 			const end = Date.now() + ms;
 			while (Date.now() < end) {
 				if (pattern.test(handle.out())) return true;
-				if (child.exitCode !== null) return pattern.test(handle.out());
+				if (finished) return pattern.test(handle.out());
 				await sleep(250);
 			}
 			return false;
@@ -340,18 +403,18 @@ function up(sb, { tty = false, env = {}, args = [], port = sb.port } = {}) {
 			await sleep(1500);
 		},
 		async stop(signal = "SIGTERM") {
-			if (child.exitCode !== null || child.signalCode !== null) return exited;
-			try {
-				process.kill(-child.pid, signal);
-			} catch {}
+			if (finished) return exited;
+			killTree(pid, signal);
+			// POSIX: the group signal already reached pl up; a second one would force its exit.
+			if (WIN) kill();
 			const done = await Promise.race([exited, sleep(30_000).then(() => null)]);
 			if (done) return done;
-			try {
-				process.kill(-child.pid, "SIGKILL");
-			} catch {}
+			killTree(pid, "SIGKILL");
 			return exited;
 		},
 	};
+	procs.add(handle);
+	exited.then(() => procs.delete(handle));
 	return handle;
 }
 
@@ -366,11 +429,16 @@ function run(file, args, env) {
 	);
 }
 
+/** The installed `pl` (or `cli`, another install's) as `node <bin> ...args`. */
+function runPl(args, env, cli = ctx.cli) {
+	return run(cli[0], [...cli.slice(1), ...args], env);
+}
+
 /** `pl pair --operator`, then POST /api/pairing/redeem: the cookie a browser would get. */
 async function pairOperator(sb, base, address) {
 	const args = ["pair", "--operator", "--workspace", sb.workspace];
 	if (address) args.push("--address", address);
-	const { code, out } = await run(ctx.bin, args, sb.env);
+	const { code, out } = await runPl(args, sb.env);
 	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
 	assert(code === 0 && token, `pl pair --operator failed (${code}): ${out}`);
 	const res = await fetch(`${base}/api/pairing/redeem`, {
@@ -580,22 +648,28 @@ async function checkLock() {
 	);
 
 	const stopped = await holder.stop("SIGTERM");
-	// Nest re-raises the signal after its shutdown hooks, so a shell reads 128+15.
-	const exit143 = stopped.code === 143 || stopped.signal === "SIGTERM";
-	assert(exit143, `SIGTERM exit ${JSON.stringify(stopped)}`);
-	assert(!existsSync(lockFile), "lock file left after SIGTERM");
+	// Windows has no SIGTERM: the holder is ended outright, so its lock is stale for the next boot.
+	if (!WIN) {
+		// Nest re-raises the signal after its shutdown hooks, so a shell reads 128+15.
+		const exit143 = stopped.code === 143 || stopped.signal === "SIGTERM";
+		assert(exit143, `SIGTERM exit ${JSON.stringify(stopped)}`);
+		assert(!existsSync(lockFile), "lock file left after SIGTERM");
+	}
 
 	const next = up(sb, { env });
 	await next.ready();
 	const owner = JSON.parse(readFileSync(lockFile, "utf8"));
 	assert(owner.pid !== holderPid, "next boot still shows the old pid");
-	assert(!/stale/i.test(next.out()), "next boot reclaimed a stale lock");
+	if (!WIN)
+		assert(!/stale/i.test(next.out()), "next boot reclaimed a stale lock");
 	await next.stop();
 	const line = refusal
 		.split("\n")
 		.find((l) => l.includes("Another PrismaLens process"))
 		?.trim();
-	return `refused: "${line?.slice(0, 110)}…"; SIGTERM exit 143, lock removed; next boot took a free lock`;
+	return WIN
+		? `refused: "${line?.slice(0, 110)}…"; holder ended (no SIGTERM on Windows); next boot took the stale lock (pid ${holderPid} -> ${owner.pid})`
+		: `refused: "${line?.slice(0, 110)}…"; SIGTERM exit 143, lock removed; next boot took a free lock`;
 }
 
 async function checkReset() {
@@ -738,8 +812,7 @@ async function checkHosts() {
 
 	let cli = "CLI half skipped: the hostname does not resolve to loopback";
 	if (bindHost !== "127.0.0.1") {
-		const r = await run(
-			ctx.bin,
+		const r = await runPl(
 			[
 				"pair",
 				"--operator",
@@ -762,7 +835,159 @@ async function checkHosts() {
 	return `Host gate-unlisted.invalid → 403 naming PRISMALENS_ALLOWED_HOSTS; ${cli}; IP literal ${bindHost} paired (redeem 200)`;
 }
 
+/** npm's verbose log without its per-package cache and fetch lines, tail only. */
+const quiet = (text, n) =>
+	text
+		.split("\n")
+		.filter((l) => !/ http (cache|fetch) /.test(l))
+		.join("\n")
+		.slice(-n);
+
+/** `prefix` is an npm global prefix; the package sits under it differently per OS. */
+const globalPackageDir = (prefix) =>
+	WIN
+		? join(prefix, "node_modules", "prismalens")
+		: join(prefix, "lib", "node_modules", "prismalens");
+
+/** The tarball's own package.json, read with a relative name so a Windows drive letter never reads as a tar host. */
+function tarballManifest() {
+	return JSON.parse(
+		execFileSync(
+			"tar",
+			["-xzOf", basename(ctx.tarball), "package/package.json"],
+			{
+				cwd: dirname(ctx.tarball),
+				encoding: "utf8",
+			},
+		),
+	);
+}
+
+/** A local registry serving the tarball, and the env that points npm and `pl upgrade` at it. */
+async function startRegistry(sb) {
+	const registry = await startLocalRegistry({ dir: sb.dir, env: CLEAN_ENV });
+	procs.add({ pid: registry.pid });
+	const prefix = join(sb.dir, "prefix");
+	return {
+		prefix,
+		npmEnv: {
+			...sb.env,
+			NPM_CONFIG_USERCONFIG: registry.npmrc,
+			NPM_CONFIG_REGISTRY: registry.registry,
+			NPM_CONFIG_PREFIX: prefix,
+		},
+	};
+}
+
+/**
+ * Publishes the tarball and a next-patch copy of it. The copy's bin prints its version, and
+ * with `broken` it also refuses to start `up`, leaking a pairing token in its reason.
+ */
+function publishCopies(sb, npmEnv, { broken, token = "G".repeat(43) }) {
+	const current = tarballManifest().version;
+	const [ma, mi, pa] = current.split(".").map(Number);
+	const next = `${ma}.${mi}.${pa + 1}`;
+	const copy = join(sb.dir, "copy");
+	mkdirSync(copy, { recursive: true });
+	execFileSync("tar", ["-xzf", basename(ctx.tarball), "-C", copy], {
+		cwd: dirname(ctx.tarball),
+	});
+	const pkgDir = join(copy, "package");
+	const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+	pkg.version = next;
+	writeFileSync(join(pkgDir, "package.json"), JSON.stringify(pkg, null, 2));
+	const refuseUp = `if (process.argv.includes("up")) {
+	console.log("Open: http://127.0.0.1:1/pair#${token}");
+	console.error("error: gate-side-checks fake ${next} refuses to start token=${token}");
+	process.exit(1);
+}
+`;
+	for (const binPath of new Set(Object.values(pkg.bin))) {
+		writeFileSync(
+			join(pkgDir, binPath),
+			`#!/usr/bin/env node\n${broken ? refuseUp : ""}console.log("${next}");\n`,
+			{ mode: 0o755 },
+		);
+	}
+	const copyTgz = npm(["pack", "--pack-destination", sb.dir], {
+		cwd: pkgDir,
+		env: npmEnv,
+		capture: true,
+	})
+		.trim()
+		.split("\n")
+		.at(-1);
+	for (const tgz of [ctx.tarball, join(sb.dir, copyTgz.trim())])
+		npm(["publish", tgz, "--tag", "latest"], { env: npmEnv });
+	return { current, next, token };
+}
+
 async function checkUpgrade() {
+	const sb = await sandbox("upgrade");
+	const { npmEnv, prefix } = await startRegistry(sb);
+	const { current, next } = publishCopies(sb, npmEnv, { broken: false });
+	npm(["install", "-g", `prismalens@${current}`, "--no-audit", "--no-fund"], {
+		env: npmEnv,
+	});
+	const cli = cliOf(globalPackageDir(prefix));
+	const env = {
+		...npmEnv,
+		PRISMALENS_TELEMETRY: "off",
+		PRISMALENS_UPDATE_CHECK: "off",
+	};
+	const before = await runPl(["--version"], env, cli);
+	assert(before.out.includes(current), `pl --version before: ${before.out}`);
+	const older = await runPl(["upgrade", "--version", "0.0.1"], env, cli);
+	assert(
+		older.code !== 0 && /older than/.test(older.out),
+		`0.0.1 should be refused as older: ${older.code} ${older.out.slice(-300)}`,
+	);
+	const upgrade = await runPl(
+		["upgrade", "--version", next],
+		{ ...env, NPM_CONFIG_LOGLEVEL: "verbose" },
+		cli,
+	);
+	if (upgrade.code !== 0) {
+		const cache =
+			env.npm_config_cache ??
+			env.NPM_CONFIG_CACHE ??
+			(WIN
+				? join(env.LOCALAPPDATA ?? "", "npm-cache")
+				: join(env.HOME ?? "", ".npm"));
+		const logs = join(cache, "_logs");
+		const latest = existsSync(logs) ? readdirSync(logs).sort().at(-1) : null;
+		const debugLog = latest
+			? quiet(readFileSync(join(logs, latest), "utf8"), 3500)
+			: "(no npm log)";
+		// What `pl upgrade` runs, run by hand in the same env, says why npm said nothing.
+		const probe = WIN
+			? await run(
+					"cmd",
+					[
+						"/c",
+						"npm",
+						"install",
+						"-g",
+						`prismalens@${next}`,
+						"--loglevel=verbose",
+					],
+					env,
+				)
+			: { out: "" };
+		assert(
+			false,
+			`pl upgrade --version ${next} exited ${upgrade.code}: ${quiet(upgrade.out, 2500)} | npm log: ${debugLog} | by hand: ${probe.code} ${quiet(probe.out, 2000)}`,
+		);
+	}
+	const after = await runPl(["--version"], env, cli);
+	assert(
+		after.out.trim() === next,
+		`pl --version after the upgrade: ${after.out.trim()}`,
+	);
+	return `${current} -> ${next} through npm by pl upgrade; pl --version prints ${next}; an older version is refused`;
+}
+
+async function checkRollback() {
 	const sysd = await run(
 		"systemctl",
 		["--user", "show-environment"],
@@ -791,7 +1016,7 @@ async function checkUpgrade() {
 	if (verdaccioOk.code !== 0)
 		throw new Skip(`npx verdaccio unavailable: ${verdaccioOk.out.slice(-200)}`);
 
-	const sb = await sandbox("upgrade");
+	const sb = await sandbox("rollback");
 	const runtimeDir =
 		process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
 	const env = {
@@ -801,102 +1026,12 @@ async function checkUpgrade() {
 		PRISMALENS_TELEMETRY: "off",
 		PRISMALENS_UPDATE_CHECK: "off",
 	};
-	const regPort = await freePort();
-	const registry = `http://127.0.0.1:${regPort}/`;
-	const cfg = join(sb.dir, "verdaccio.yaml");
-	writeFileSync(
-		cfg,
-		`storage: ${join(sb.dir, "storage")}
-uplinks:
-  npmjs:
-    url: https://registry.npmjs.org/
-packages:
-  'prismalens':
-    access: $all
-    publish: $anonymous
-  '**':
-    access: $all
-    proxy: npmjs
-log: { type: stdout, format: pretty, level: warn }
-`,
-	);
-	const verdaccio = spawn(
-		"npx",
-		["-y", "verdaccio@6", "--config", cfg, "--listen", `127.0.0.1:${regPort}`],
-		{ detached: true, stdio: "ignore", env: CLEAN_ENV },
-	);
-	procs.add(verdaccio);
-	let up200 = false;
-	for (let i = 0; i < 120 && !up200; i++) {
-		up200 = await fetch(`${registry}-/ping`)
-			.then((r) => r.ok)
-			.catch(() => false);
-		if (!up200) await sleep(500);
-	}
-	assert(up200, "verdaccio did not answer /-/ping");
-	const npmrc = join(sb.dir, "npmrc");
-	writeFileSync(
-		npmrc,
-		`registry=${registry}\n//127.0.0.1:${regPort}/:_authToken=gate-fake\n`,
-	);
-	const npmEnv = {
-		...env,
-		NPM_CONFIG_USERCONFIG: npmrc,
-		NPM_CONFIG_REGISTRY: registry,
-		NPM_CONFIG_PREFIX: join(sb.dir, "prefix"),
-	};
-	const current = JSON.parse(
-		execFileSync("tar", ["-xzOf", ctx.tarball, "package/package.json"], {
-			encoding: "utf8",
-		}),
-	).version;
-	const [ma, mi, pa] = current.split(".").map(Number);
-	const next = `${ma}.${mi}.${pa + 1}`;
-	const token = "G".repeat(43);
-	const bad = join(sb.dir, "bad");
-	mkdirSync(bad, { recursive: true });
-	execFileSync("tar", ["-xzf", ctx.tarball, "-C", bad]);
-	const pkgDir = join(bad, "package");
-	const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-	pkg.version = next;
-	writeFileSync(join(pkgDir, "package.json"), JSON.stringify(pkg, null, 2));
-	for (const binPath of new Set(Object.values(pkg.bin))) {
-		writeFileSync(
-			join(pkgDir, binPath),
-			`#!/usr/bin/env node
-if (process.argv.includes("up")) {
-	console.log("Open: http://127.0.0.1:1/pair#${token}");
-	console.error("error: gate-side-checks fake ${next} refuses to start token=${token}");
-	process.exit(1);
-}
-console.log("${next}");
-`,
-			{ mode: 0o755 },
-		);
-	}
-	const badTgz = execFileSync("npm", ["pack", "--pack-destination", sb.dir], {
-		cwd: pkgDir,
+	const { npmEnv, prefix } = await startRegistry({ ...sb, env });
+	const { current, next, token } = publishCopies(sb, npmEnv, { broken: true });
+	npm(["install", "-g", `prismalens@${current}`, "--no-audit", "--no-fund"], {
 		env: npmEnv,
-		encoding: "utf8",
-	})
-		.trim()
-		.split("\n")
-		.at(-1);
-	for (const tgz of [ctx.tarball, join(sb.dir, badTgz)]) {
-		execFileSync("npm", ["publish", tgz, "--tag", "latest"], {
-			env: npmEnv,
-			stdio: ["ignore", "ignore", "inherit"],
-		});
-	}
-	execFileSync(
-		"npm",
-		["install", "-g", `prismalens@${current}`, "--no-audit", "--no-fund"],
-		{
-			env: npmEnv,
-			stdio: ["ignore", "ignore", "inherit"],
-		},
-	);
-	const pl = join(npmEnv.NPM_CONFIG_PREFIX, "bin", "pl");
+	});
+	const pl = join(prefix, "bin", "pl");
 	const port = await freePort();
 	const service = isolateService({
 		configHome: sb.env.XDG_CONFIG_HOME,
@@ -971,16 +1106,24 @@ const CHECKS = [
 	["reset", checkReset],
 	["hosts", checkHosts],
 	["upgrade", checkUpgrade],
+	["rollback", checkRollback],
 ];
 
 function cleanup() {
-	for (const child of procs) {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {}
-	}
+	for (const handle of procs) killTree(handle.pid, "SIGKILL");
 	ctx?.stub?.server.close();
-	if (root) rmSync(root, { recursive: true, force: true });
+	if (root) {
+		try {
+			rmSync(root, {
+				recursive: true,
+				force: true,
+				maxRetries: 5,
+				retryDelay: 300,
+			});
+		} catch {
+			// Windows may still hold a killed process's files; the runner's temp dir goes with it.
+		}
+	}
 }
 process.on("SIGINT", () => {
 	cleanup();
@@ -992,35 +1135,39 @@ process.on("SIGTERM", () => {
 });
 
 async function main() {
+	const names = CHECKS.map(([name]) => name);
 	const only = opts.only
 		?.split(",")
 		.map((n) => n.trim())
 		.filter(Boolean);
 	if (only) {
-		const known = CHECKS.map(([name]) => name);
-		const unknown = only.filter((n) => !known.includes(n));
+		const unknown = only.filter((n) => !names.includes(n));
 		// A typo would otherwise skip every check and exit 0.
 		if (!only.length || unknown.length)
 			throw new Error(
-				`--only takes ${known.join(", ")}; got ${unknown.join(", ") || "nothing"}`,
+				`--only takes ${names.join(", ")}; got ${unknown.join(", ") || "nothing"}`,
 			);
 	}
-	if (process.platform === "win32") {
-		for (const [name] of CHECKS)
-			if (!only || only.includes(name))
-				results.push(["SKIP", name, WIN32_SKIP]);
-		return printResults();
-	}
+	const wanted = only ?? names;
+	for (const name of notApplicable(wanted))
+		results.push(["N/A", name, NOT_APPLICABLE[name]]);
+	const runnable = checksFor(wanted);
+	if (runnable.length === 0) return printResults();
 	root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
 	const tarball = findOrPackTarball();
 	const prefix = join(root, "prefix");
 	log(`installing ${tarball}`);
 	npmInstall(prefix, tarball);
-	const bin = join(prefix, "node_modules", ".bin", "pl");
-	assert(existsSync(bin), `pl not linked at ${bin}`);
-	ctx = { tarball, bin, stub: await startStub(), preload: writePreload() };
+	const pty = await import("@lydell/node-pty");
+	ctx = {
+		tarball,
+		cli: cliOf(join(prefix, "node_modules", "prismalens")),
+		ptySpawn: (pty.default ?? pty).spawn,
+		stub: await startStub(),
+		preload: writePreload(),
+	};
 	for (const [name, fn] of CHECKS) {
-		if (only && !only.includes(name)) continue;
+		if (!runnable.includes(name)) continue;
 		const t0 = Date.now();
 		log(`${name}: running`);
 		try {
@@ -1029,11 +1176,7 @@ async function main() {
 		} catch (e) {
 			results.push([e instanceof Skip ? "SKIP" : "FAIL", name, e.message, t0]);
 		} finally {
-			for (const child of procs) {
-				try {
-					process.kill(-child.pid, "SIGKILL");
-				} catch {}
-			}
+			for (const handle of procs) killTree(handle.pid, "SIGKILL");
 		}
 		const [status, , detail] = results.at(-1);
 		log(
@@ -1047,7 +1190,12 @@ function printResults() {
 	console.log("");
 	for (const [status, name, detail] of results)
 		console.log(`${status.padEnd(4)} ${name.padEnd(9)} ${detail}`);
-	return results.some(([s]) => s === "FAIL") ? 1 : 0;
+	const skipped = results.filter(([s]) => s === "SKIP").length;
+	if (opts["no-skip"] && skipped)
+		console.log(`FAIL ${skipped} check(s) skipped and --no-skip is set`);
+	return results.some(([s]) => s === "FAIL") || (opts["no-skip"] && skipped)
+		? 1
+		: 0;
 }
 
 main()

@@ -1,0 +1,40 @@
+{
+	"row": "empty-response",
+	"kind": "negative",
+	"title": "Empty response",
+	"run": {},
+	"expect": "fault",
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:empty-response]",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "ls"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:empty-response]"
+			},
+			"response": {
+				"content": "$report"
+			},
+			"misbehavior": {
+				"faults": [
+					{
+						"fault": "empty-response"
+					}
+				]
+			}
+		}
+	]
+}

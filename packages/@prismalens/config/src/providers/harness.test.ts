@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	GATEWAY_RUN_FILE,
 	refuseModel,
 	getHarnessProviderKeys,
 	HARNESS_REGISTRY,
@@ -87,19 +88,16 @@ describe("getHarnessProviderKeys (ADR 0004 §5, trust floor)", () => {
 	});
 });
 
-describe("harness isolation (ADR 0004 §1, #637)", () => {
+describe("harness config (#817: the repo's own agent config loads)", () => {
 	const runEnv = {
 		configDir: "/c",
 		dataDir: "/d",
 		cwd: "/w",
 	};
 
-	it("opencode ignores the snapshot's own config and keeps looping after a refusal", () => {
+	it("opencode loads the snapshot's own config and keeps looping after a refusal", () => {
 		const row = HARNESS_REGISTRY.opencode;
-		expect(row.acpEnv(runEnv)).toMatchObject({
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
-		});
+		expect(Object.keys(row.acpEnv(runEnv))).toEqual(["OPENCODE_CONFIG_DIR"]);
 		const config = JSON.parse(row.configFiles?.(runEnv)["opencode.json"] ?? "{}");
 		expect(config.permission).toBeUndefined();
 		expect(config.share).toBe("disabled");
@@ -109,8 +107,6 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 	it("opencode keeps the user's own config home, so their model, providers and agents apply (#791)", () => {
 		expect(HARNESS_REGISTRY.opencode.acpEnv({ cwd: "/r", configDir: "/c", dataDir: "/d" })).toEqual({
 			OPENCODE_CONFIG_DIR: "/c",
-			OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-			OPENCODE_DISABLE_CLAUDE_CODE: "1",
 		});
 	});
 
@@ -125,12 +121,22 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBeUndefined();
 	});
 
-	it("deepagents runs dcode's ACP server with no MCP servers (#634)", () => {
-		expect(HARNESS_REGISTRY.deepagents.binary).toBe("dcode");
-		expect(HARNESS_REGISTRY.deepagents.acpArgs(runEnv)).toEqual([
-			"--acp",
-			"--no-mcp",
-		]);
+	it("deepagents takes the gateway as an --mcp-config run file, and never --no-mcp (#848)", () => {
+		const d = HARNESS_REGISTRY.deepagents;
+		expect(d.binary).toBe("dcode");
+		expect(d.gatewayDelivery).toBe("mcp-config-file");
+		expect(d.acpArgs(runEnv)).toEqual(["--acp"]);
+		expect(d.configFiles?.(runEnv)).toEqual({});
+		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok", name: "prismalens-abcdefgh23" };
+		const args = d.acpArgs({ ...runEnv, gateway });
+		expect(args.slice(0, 2)).toEqual(["--acp", "--mcp-config"]);
+		expect(args[2]).toContain(GATEWAY_RUN_FILE);
+		expect(args).not.toContain("--trust-project-mcp");
+		expect(JSON.parse(d.configFiles?.({ ...runEnv, gateway })[GATEWAY_RUN_FILE] ?? "{}")).toEqual({
+			mcpServers: {
+				"prismalens-abcdefgh23": { type: "http", url: gateway.url, headers: { Authorization: "Bearer tok" } },
+			},
+		});
 	});
 
 	it("claude-code, codex and gemini keep the user's own config and sign-in", () => {
@@ -154,21 +160,20 @@ describe("harness isolation (ADR 0004 §1, #637)", () => {
 		).toBeUndefined();
 	});
 
-	it("claude-code loads the user's settings, never the snapshot's, and has no plan-mode tools (#673 w7-4)", () => {
+	it("claude-code loads the user's, the repo's and the local settings, and has no plan-mode tools (#673 w7-4, #817)", () => {
 		expect(HARNESS_REGISTRY["claude-code"].sessionMeta?.()).toEqual({
 			claudeCode: {
 				options: {
-					settingSources: ["user"],
+					settingSources: ["user", "project", "local"],
 					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
 				},
 			},
 		});
 	});
 
-	it("gemini marks workspace untrusted to keep repo config inert (#634)", () => {
-		expect(HARNESS_REGISTRY.gemini.acpEnv(runEnv)).toMatchObject({
-			GEMINI_CLI_TRUST_WORKSPACE: "false",
-		});
+	it("gemini forces no folder trust, and starts with --acp alone (#817, #848)", () => {
+		expect(Object.keys(HARNESS_REGISTRY.gemini.acpEnv(runEnv))).toEqual([]);
+		expect(HARNESS_REGISTRY.gemini.acpArgs(runEnv)).toEqual(["--acp"]);
 	});
 });
 
@@ -239,7 +244,7 @@ describe("resolveHarnessModel (#337 run e, G11)", () => {
 describe("refuseModel (#639 rec 4)", () => {
 	it("refuses a model on a harness that cannot take one, and nothing else", () => {
 		expect(refuseModel("gemini", "synthetic/model-a")).toBe(
-			"Gemini CLI picks its own model. Clear synthetic/model-a in the picker above.",
+			"Gemini CLI picks its own model. Unstar synthetic/model-a in the picker above.",
 		);
 		expect(refuseModel("gemini", undefined)).toBeNull();
 		expect(refuseModel("gemini", "  ")).toBeNull();
@@ -306,9 +311,13 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].mode).toBe("workspace-write");
 		expect(HARNESS_REGISTRY.codex.access["auto-edits"].fallbackMode).toBe("read-only");
 		expect(HARNESS_REGISTRY.codex.modeMechanism).toBe("acp");
-		for (const level of ACCESS_LEVELS) {
-			expect(HARNESS_REGISTRY.gemini.access[level].mode, `gemini ${level}`).toBe("default");
-		}
+		// gemini-cli 0.64.0's own mode ids; Auto has no reviewer to hand to (#907).
+		expect(Object.fromEntries(ACCESS_LEVELS.map((l) => [l, HARNESS_REGISTRY.gemini.access[l].mode]))).toEqual({
+			supervised: "default",
+			"auto-edits": "autoEdit",
+			auto: "default",
+			"full-access": "yolo",
+		});
 	});
 
 	it("levelOfAgentMode round-trips every non-null mode and returns null for unknown ids", () => {
@@ -421,6 +430,33 @@ describe("permission levels (ADR 0003, #673 w21 ruling 2026-10-10)", () => {
 			expect(version).toBe(row?.tested?.version);
 		}
 	});
+
+	it("HARNESS_REGISTRY claude-code has systemPromptVia claude-meta and no other row has it (#817)", () => {
+		expect(HARNESS_REGISTRY["claude-code"].systemPromptVia).toBe("claude-meta");
+		for (const [id, row] of Object.entries(HARNESS_REGISTRY)) {
+			if (id !== "claude-code") {
+				expect(row.systemPromptVia).toBeUndefined();
+			}
+		}
+	});
 });
 
 
+
+describe("reservedEnvNames (#907)", () => {
+	it("names what PrismaLens sets on the child, the config-dir key and the custom-model key", async () => {
+		const { reservedEnvNames } = await import("./harness.js");
+		expect(reservedEnvNames("claude-code").sort()).toEqual(
+			[
+				"ANTHROPIC_CUSTOM_MODEL_OPTION",
+				"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+				"CLAUDE_CODE_EXECUTABLE",
+				"CLAUDE_CONFIG_DIR",
+			].sort(),
+		);
+		expect(reservedEnvNames("codex")).toEqual(
+			expect.arrayContaining(["DEFAULT_AUTH_REQUEST", "CODEX_PATH", "CODEX_HOME"]),
+		);
+		expect(reservedEnvNames("local")).toEqual([]);
+	});
+});

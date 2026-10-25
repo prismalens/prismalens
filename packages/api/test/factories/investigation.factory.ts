@@ -51,6 +51,7 @@ export class InvestigationFactory {
 			liveTurn: null,
 			lastTurnOutcome: null,
 			endReason: null,
+			preRun: null,
 			origin: "local",
 			schemaVersion: 1,
 			createdAt: faker.date.recent(),
