@@ -138,16 +138,25 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		});
 	});
 
-	it("keeps the phone incident header's actions on screen (OBJ-011)", () => {
+	it("keeps the phone incident header's actions on screen, the title 48 px wide (OBJ-011, OBJ-012)", () => {
 		const phone = parse(css).find((n) => n.prelude === "@media (max-width: 639px)");
 		const h = '[data-testid="incident-header"]';
-		expect(decls(phone?.children, `:where(${h})`)).toEqual({ "column-gap": "8px" });
-		expect(decls(phone?.children, `:where(${h} > .font-mono)`)).toEqual({
+		expect(decls(phone?.children, `:where(${h})`)).toEqual({
+			"column-gap": "8px",
+			"padding-right": "8px",
+		});
+		expect(decls(phone?.children, `:where(${h} > .font-mono, ${h} > .flex-1)`)).toEqual({
 			display: "none",
 		});
 		expect(decls(phone?.children, `:where(${h} > h1)`)).toEqual({
-			"min-width": "0",
+			"min-width": "48px",
 		});
+		const narrow = parse(css).find((n) => n.prelude === "@media (max-width: 379px)");
+		const dot = decls(
+			narrow?.children,
+			`:where(${h}:has([data-testid="details-toggle"]) [data-testid="header-severity"])`,
+		);
+		expect(dot).toMatchObject({ "font-size": "0", background: "currentColor" });
 	});
 
 	it("gives a switch a 48 px hit area that keeps its look", () => {

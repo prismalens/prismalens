@@ -176,17 +176,41 @@
 	}
 }
 
-/* The phone incident header is one row: the number goes and the title gives way
-   so every 48 px action stays on screen (#848, OBJ-011). */
+/* The phone incident header is one row of 48 px targets down to 320 px: the number and
+   spacer go, the title truncates to no less than 48 px, and below 380 px the run page's
+   severity keeps only its colour (#848, OBJ-011, OBJ-012). */
 @media (max-width: 639px) {
 	:where([data-testid="incident-header"]) {
 		column-gap: 8px;
+		padding-right: 8px;
 	}
-	:where([data-testid="incident-header"] > .font-mono) {
+	:where(
+		[data-testid="incident-header"] > .font-mono,
+		[data-testid="incident-header"] > .flex-1
+	) {
 		display: none;
 	}
 	:where([data-testid="incident-header"] > h1) {
-		min-width: 0;
+		min-width: 48px;
+	}
+	:where([data-testid="header-severity"]) {
+		margin-right: auto;
+	}
+	:where([data-testid="header-resolve"], [data-testid="header-reopen"]) {
+		padding-inline: 8px;
+	}
+}
+@media (max-width: 379px) {
+	:where(
+		[data-testid="incident-header"]:has([data-testid="details-toggle"])
+			[data-testid="header-severity"]
+	) {
+		width: 8px;
+		height: 8px;
+		padding: 0;
+		border-radius: 9999px;
+		background: currentColor;
+		font-size: 0;
 	}
 }
 
