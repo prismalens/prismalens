@@ -150,6 +150,117 @@ describe("RunRunbooks (#848)", () => {
 		expect(anchor?.getAttribute("target")).toBe("_blank");
 	});
 
+	it("past eight runbooks, groups them by repository with search and service filters", async () => {
+		const file = (repo: string, name: string, service: string) => ({
+			title: name,
+			path: `${repo}/runbooks/${name}.md`,
+			service,
+			origin: "repo" as const,
+		});
+		const runbooks = [
+			file("checkout", "checkout-5xx", "checkout-api"),
+			file("checkout", "db-failover", "checkout-api"),
+			file("checkout", "rollback", "checkout-api"),
+			file("payments", "card-declines", "payments"),
+			file("payments", "refund-backlog", "payments"),
+			{
+				title: "payments-oncall",
+				path: "https://wiki.example.com/payments-oncall",
+				link: "https://wiki.example.com/payments-oncall",
+				service: "payments",
+				origin: "repo" as const,
+			},
+			file("checkout", "cert-expiry", "checkout-api"),
+			file("billing", "invoice-stuck", "billing"),
+		];
+		const view = () =>
+			container?.querySelector('[data-testid="runbooks-many"]');
+		const groups = () =>
+			Array.from(
+				container?.querySelectorAll('[data-testid="runbooks-group"]') ?? [],
+			).map(
+				(g) =>
+					`${g.getAttribute("aria-label")}:${g.querySelectorAll('[data-testid="runbook-card"]').length}`,
+			);
+
+		// Eight is still Few: one flat list, no controls.
+		await act(async () => {
+			root?.render(<RunRunbooks preRun={makePreRun({ runbooks })} />);
+		});
+		expect(view()).toBeNull();
+		expect(
+			container?.querySelectorAll('[data-testid="runbook-card"]').length,
+		).toBe(8);
+
+		await act(async () => {
+			root?.render(
+				<RunRunbooks
+					preRun={makePreRun({
+						runbooks: [...runbooks, file("billing", "dunning", "billing")],
+					})}
+				/>,
+			);
+		});
+		expect(view()).not.toBeNull();
+		expect(groups()).toEqual([
+			"checkout:4",
+			"payments:2",
+			"billing:2",
+			"Links:1",
+		]);
+		// Inside its repository's group a path drops the repository's name.
+		expect(
+			container?.querySelector(
+				'[aria-label="checkout"] [data-testid="runbook-card"]',
+			)?.textContent,
+		).toContain("runbooks/checkout-5xx.md");
+
+		await act(async () =>
+			(
+				container?.querySelector(
+					'[data-testid="runbooks-service-payments"]',
+				) as HTMLButtonElement
+			).click(),
+		);
+		expect(groups()).toEqual(["payments:2", "Links:1"]);
+
+		const search = container?.querySelector(
+			'[data-testid="runbooks-search"]',
+		) as HTMLInputElement;
+		await act(async () => {
+			const set = Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set;
+			set?.call(search, "refund");
+			search.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(groups()).toEqual(["payments:1"]);
+
+		await act(async () => {
+			const set = Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set;
+			set?.call(search, "no such runbook");
+			search.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(groups()).toEqual([]);
+		await act(async () =>
+			(
+				container?.querySelector(
+					'[data-testid="runbooks-clear"]',
+				) as HTMLButtonElement
+			).click(),
+		);
+		expect(groups()).toEqual([
+			"checkout:4",
+			"payments:2",
+			"billing:2",
+			"Links:1",
+		]);
+	});
+
 	it("renders contextTop inside the context tab of RunDetailsPanel", async () => {
 		await act(async () => {
 			root?.render(
